@@ -1813,110 +1813,57 @@ func TestRunSponsoredTransaction_MatchesCoveredAndReceiptToStatus(t *testing.T) 
 	}
 }
 
-func TestRunTransactionBundle_BundlesDisabled_ReturnsEnvelopeAndNoProcessedBundleAndResultInvalid(t *testing.T) {
+func TestRunTransactionBundle_BundlesDisabled_ReturnsEnvelopeAndResultInvalid(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	state := state.NewMockStateDB(ctrl)
-	evm := NewMock_evm(ctrl)
+	log := NewMocklogger(ctrl)
+	log.EXPECT().Warn("Transaction bundles are not enabled, bundle transaction skipped", gomock.Any())
 
-	tx := getTransactionBundle(t)
+	tx := types.NewTx(&types.LegacyTx{})
 
-	gasPool := new(core.GasPool).AddGas(1_000_000)
 	context := &runContext{
-		statedb:  state,
-		signer:   types.LatestSignerForChainID(big.NewInt(1)),
-		baseFee:  big.NewInt(1),
-		gasPool:  gasPool,
 		upgrades: opera.Upgrades{TransactionBundles: false},
 	}
 
-	runner := &transactionRunner{evm: evm}
+	runner := &transactionRunner{}
 
-	processedTransactions, result := runner.runTransactionBundle(context, tx, 0)
+	processedTransactions, result := runner.runTransactionBundleInternal(context, tx, 0, log)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
 	require.Equal(t, core_types.TransactionResultInvalid, result)
 }
 
-func TestRunTransactionBundle_InvalidEnvelope_ReturnsEnvelopeAndNoProcessedBundleAndResultInvalid(t *testing.T) {
+func TestRunTransactionBundle_InvalidEnvelope_ReturnsEnvelopeAndResultInvalid(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	state := state.NewMockStateDB(ctrl)
-	evm := NewMock_evm(ctrl)
+	log := NewMocklogger(ctrl)
+	log.EXPECT().Warn("Invalid bundle skipped", "tx", gomock.Any(), "err", gomock.Any())
 
-	tx := getRegularTransaction(t) // a regular transaction is not a valid bundle envelope
+	tx := types.NewTx(&types.LegacyTx{})
+	require.False(t, bundle.IsEnvelope(tx))
 
-	gasPool := new(core.GasPool).AddGas(1_000_000)
 	context := &runContext{
-		statedb:  state,
 		signer:   types.LatestSignerForChainID(big.NewInt(1)),
-		baseFee:  big.NewInt(1),
-		gasPool:  gasPool,
 		upgrades: opera.Upgrades{TransactionBundles: true},
 	}
 
-	runner := &transactionRunner{evm: evm}
+	runner := &transactionRunner{}
 
-	processedTransactions, result := runner.runTransactionBundle(context, tx, 0)
+	processedTransactions, result := runner.runTransactionBundleInternal(context, tx, 0, log)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
 	require.Equal(t, core_types.TransactionResultInvalid, result)
 }
 
-func TestRunTransactionBundle_InvalidExecutionPlan_ReturnsEnvelopeAndNoProcessedBundleAndResultInvalid(t *testing.T) {
+func TestRunTransactionBundle_BundleOutOfRange_ReturnsEnvelopeAndResultInvalid(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 
 	ctrl := gomock.NewController(t)
-	state := state.NewMockStateDB(ctrl)
-	evm := NewMock_evm(ctrl)
 
-	key, err := crypto.GenerateKey()
-	require.NoError(t, err)
+	log := NewMocklogger(ctrl)
+	log.EXPECT().Warn("Bundle skipped due to out-of-range execution plan", gomock.Any())
 
-	// execution plan extraction will fail because the transaction in the bundle
-	// is not signed so its sender can not be derived
-	txBundle := bundle.TransactionBundle{
-		Transactions: []*types.Transaction{types.NewTx(&types.AccessListTx{
-			Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
-		})},
-		Range: bundle.BlockRange{
-			Earliest: 0,
-			Latest:   1000,
-		},
-	}
-	tx := types.MustSignNewTx(key, signer, &types.AccessListTx{
-		ChainID: big.NewInt(1),
-		To:      &bundle.BundleProcessor,
-		Data:    txBundle.Encode(),
-		Gas:     0,
-	})
-
-	gasPool := new(core.GasPool).AddGas(1_000_000)
-	context := &runContext{
-		statedb:  state,
-		signer:   signer,
-		baseFee:  big.NewInt(1),
-		gasPool:  gasPool,
-		upgrades: opera.Upgrades{TransactionBundles: true},
-	}
-
-	runner := &transactionRunner{evm: evm}
-
-	processedTransactions, result := runner.runTransactionBundle(context, tx, 0)
-	require.Len(t, processedTransactions, 1)
-	require.Equal(t, tx, processedTransactions[0].Transaction)
-	require.Nil(t, processedTransactions[0].Receipt)
-	require.Equal(t, core_types.TransactionResultInvalid, result)
-}
-
-func TestRunTransactionBundle_BundleOutOfRange_ReturnsEnvelopeAndNoProcessedBundleAndResultInvalid(t *testing.T) {
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-
-	ctrl := gomock.NewController(t)
-	state := state.NewMockStateDB(ctrl)
-	evm := NewMock_evm(ctrl)
-
-	blockNumber := big.NewInt(2000)
+	blockNumber := 10
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
@@ -1924,23 +1871,53 @@ func TestRunTransactionBundle_BundleOutOfRange_ReturnsEnvelopeAndNoProcessedBund
 		With(bundle.Step(key, &types.AccessListTx{
 			Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
 		})).
-		SetEarliest(0).
-		SetLatest(blockNumber.Uint64() - 1). // the bundle is too old
+		SetEarliest(11). // not ready for execution yet
+		SetLatest(12).
 		Build()
 
-	gasPool := new(core.GasPool).AddGas(1_000_000)
+	_, _, err = bundle.ValidateEnvelope(signer, tx)
+	require.NoError(t, err)
+
 	context := &runContext{
-		statedb:     state,
 		signer:      signer,
-		baseFee:     big.NewInt(1),
-		gasPool:     gasPool,
 		upgrades:    opera.Upgrades{TransactionBundles: true},
-		blockNumber: blockNumber,
+		blockNumber: big.NewInt(int64(blockNumber)),
 	}
 
-	runner := &transactionRunner{evm: evm}
+	runner := &transactionRunner{}
 
-	processedTransactions, result := runner.runTransactionBundle(context, tx, 0)
+	processedTransactions, result := runner.runTransactionBundleInternal(context, tx, 0, log)
+	require.Len(t, processedTransactions, 1)
+	require.Equal(t, tx, processedTransactions[0].Transaction)
+	require.Nil(t, processedTransactions[0].Receipt)
+	require.Equal(t, core_types.TransactionResultInvalid, result)
+}
+
+func TestRunTransactionBundle_PreviouslyProcessedBundle_ReturnsEnvelopeAndResultInvalid(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	ctrl := gomock.NewController(t)
+
+	tx, plan := bundle.NewBuilder(signer).BuildEnvelopeAndPlan()
+	_, _, err := bundle.ValidateEnvelope(signer, tx)
+	require.NoError(t, err)
+
+	log := NewMocklogger(ctrl)
+	log.EXPECT().Warn("Rescheduled bundle skipped", "exec_plan_hash", plan.Hash())
+
+	state := state.NewMockStateDB(ctrl)
+	state.EXPECT().HasBundleRecentlyBeenProcessed(plan.Hash()).Return(true)
+
+	context := &runContext{
+		signer:      signer,
+		statedb:     state,
+		upgrades:    opera.Upgrades{TransactionBundles: true},
+		blockNumber: big.NewInt(0),
+	}
+
+	runner := &transactionRunner{}
+
+	processedTransactions, result := runner.runTransactionBundleInternal(context, tx, 0, log)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
@@ -1953,10 +1930,15 @@ func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResu
 	state := state.NewMockStateDB(ctrl)
 	evm := NewMock_evm(ctrl)
 
-	state.EXPECT().InterTxSnapshot().Return(1)
-	state.EXPECT().RevertToInterTxSnapshot(1)
-
 	tx := bundle.OneOf(signer) // an empty bundle with OneOf flag will fail
+	_, plan, err := bundle.ValidateEnvelope(signer, tx)
+	require.NoError(t, err)
+
+	gomock.InOrder(
+		state.EXPECT().HasBundleRecentlyBeenProcessed(plan.Hash()),
+		state.EXPECT().InterTxSnapshot().Return(1),
+		state.EXPECT().RevertToInterTxSnapshot(1),
+	)
 
 	gasPool := new(core.GasPool).AddGas(1_000_000)
 	context := &runContext{
@@ -1980,36 +1962,159 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 	state := state.NewMockStateDB(ctrl)
 	evm := NewMock_evm(ctrl)
 
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	txOffset := 12
+
 	envelope := getTransactionBundle(t)
 	txBundle, err := bundle.OpenEnvelope(envelope)
 	require.NoError(t, err)
+	plan, err := bundle.ExtractExecutionPlan(signer, envelope)
+	require.NoError(t, err)
 
-	state.EXPECT().InterTxSnapshot().Return(1)
+	gomock.InOrder(
+		state.EXPECT().HasBundleRecentlyBeenProcessed(plan.Hash()),
+		state.EXPECT().InterTxSnapshot().Return(1),
+		state.EXPECT().AddProcessedBundle(plan.Hash(), bundle.PositionInBlock{
+			Offset: uint32(txOffset),
+			Count:  1,
+		}),
+	)
 
 	runner := &transactionRunner{evm: evm}
 
-	gasPool := new(core.GasPool).AddGas(1_000_000)
 	context := &runContext{
 		statedb:     state,
-		signer:      types.LatestSignerForChainID(big.NewInt(1)),
+		signer:      signer,
 		baseFee:     big.NewInt(1),
-		gasPool:     gasPool,
 		upgrades:    opera.Upgrades{TransactionBundles: true},
 		blockNumber: big.NewInt(0),
 		runner:      runner,
 	}
 
-	evm.EXPECT().runWithBaseFeeCheck(context, gomock.Any(), 0).
+	evm.EXPECT().runWithBaseFeeCheck(context, gomock.Any(), txOffset).
 		Return(ProcessedTransaction{
 			Transaction: txBundle.Transactions[0],
 			Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful},
 		})
 
-	processedTransactions, result := runner.runTransactionBundle(context, envelope, 0)
+	processedTransactions, result := runner.runTransactionBundle(context, envelope, txOffset)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, txBundle.Transactions[0], processedTransactions[0].Transaction)
 	require.NotNil(t, processedTransactions[0].Receipt)
 	require.Equal(t, core_types.TransactionResultSuccessful, result)
+}
+
+func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountToStateDB(t *testing.T) {
+	tests := map[string]struct {
+		offset      uint32
+		validTxs    []bool
+		wantedCount uint32
+	}{
+		"empty result": {
+			offset:      12,
+			validTxs:    []bool{},
+			wantedCount: 0,
+		},
+		"one successful transaction": {
+			offset:      5,
+			validTxs:    []bool{true},
+			wantedCount: 1,
+		},
+		"one invalid transaction": {
+			offset:      8,
+			validTxs:    []bool{false},
+			wantedCount: 0,
+		},
+		"multiple transactions with mixed results": {
+			offset:      3,
+			validTxs:    []bool{true, false, true, true, false},
+			wantedCount: 3,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			// The main goal of this test is to verify that the
+			// runTransactionBundle function reports the correct number of
+			// transactions accepted in the block. Transactions are accepted if
+			// they are listed in the processed transactions with a non-nil
+			// receipt.
+			//
+			// To simulate the execution of bundles with different number of
+			// accepted transactions, the following bundle blueprint is used:
+			//
+			//      envelope = AllOf(A)
+			//
+			// where A is a transaction requesting sponsorship. The sponsored
+			// inner transaction is needed since regular transactions are
+			// restricted to only result into a single processed transaction.
+			// Sponsored transactions, however, result in multiple transactions
+			// (typically two), but by mocking their execution an arbitrary
+			// list of transactions can be returned.
+			//
+			// Thus, to simulate the test cases defined above, the envelope with
+			// a single sponsored transaction is used, to produce the list of
+			// expected processed transactions for the test setup.
+
+			ctrl := gomock.NewController(t)
+
+			signer := types.LatestSignerForChainID(big.NewInt(1))
+			txOffset := test.offset
+
+			key, err := crypto.GenerateKey()
+			require.NoError(t, err)
+			envelope := bundle.AllOf(signer,
+				bundle.Step(key, &types.AccessListTx{ // < sponsorship request
+					To: &common.Address{1},
+				}),
+			)
+
+			state := state.NewMockStateDB(ctrl)
+			gomock.InOrder(
+				state.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()),
+				state.EXPECT().InterTxSnapshot().Return(1),
+				state.EXPECT().AddProcessedBundle(gomock.Any(), bundle.PositionInBlock{
+					Offset: test.offset, // < these two fields are the main test targets
+					Count:  test.wantedCount,
+				}),
+			)
+
+			// Here we build the list of processed transactions resulting from
+			// the sponsored transaction execution step in the bundle.
+			var execResult []ProcessedTransaction
+			for _, accepted := range test.validTxs {
+				var receipt *types.Receipt
+				if accepted {
+					receipt = &types.Receipt{}
+				}
+				execResult = append(execResult, ProcessedTransaction{
+					Transaction: &types.Transaction{},
+					Receipt:     receipt,
+				})
+			}
+
+			innerRunner := NewMock_transactionRunner(ctrl)
+			innerRunner.EXPECT().runSponsoredTransaction(gomock.Any(), gomock.Any(), int(txOffset)).Return(
+				execResult, core_types.TransactionResultSuccessful,
+			)
+
+			context := &runContext{
+				statedb: state,
+				signer:  signer,
+				upgrades: opera.Upgrades{
+					GasSubsidies:       true,
+					TransactionBundles: true,
+				},
+				blockNumber: big.NewInt(0),
+				runner:      innerRunner,
+			}
+
+			runner := &transactionRunner{}
+			processedTransactions, result := runner.runTransactionBundle(context, envelope, int(txOffset))
+			require.Equal(t, execResult, processedTransactions)
+			require.Equal(t, core_types.TransactionResultSuccessful, result)
+		})
+	}
 }
 
 func TestRunRegularTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testing.T) {
