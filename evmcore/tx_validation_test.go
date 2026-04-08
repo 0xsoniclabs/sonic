@@ -1580,8 +1580,9 @@ func Test_validateBundleTransactions_RespectNetworkRules(t *testing.T) {
 	bundle := bundle.NewBuilder(signer).Build()
 
 	tests := map[string]struct {
-		rules         NetworkRules
-		expectedError error
+		rules            NetworkRules
+		expectedError    error
+		expectEvaluation bool
 	}{
 		"bundle transactions disabled pre brio": {
 			rules:         NetworkRules{},
@@ -1596,15 +1597,23 @@ func Test_validateBundleTransactions_RespectNetworkRules(t *testing.T) {
 			expectedError: ErrBundleTransactionsDisabled,
 		},
 		"bundle transactions enabled post brio": {
-			rules:         NetworkRules{brio: true, transactionBundles: true},
-			expectedError: nil,
+			rules:            NetworkRules{brio: true, transactionBundles: true},
+			expectedError:    nil,
+			expectEvaluation: true,
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			err := validateBundleTransactions(bundle, test.rules, nil, nil, signer)
+
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+			if test.expectEvaluation {
+				state.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(false)
+			}
+
+			err := validateBundleTransactions(bundle, test.rules, nil, state, signer)
 			if test.expectedError != nil {
 				require.ErrorIs(err, test.expectedError)
 			} else {
@@ -1630,6 +1639,32 @@ func Test_validateBundleTransactions_ReturnsErrorWithMalformedEnvelope(t *testin
 
 	err := validateBundleTransactions(malformedBundle, bundlesEnabled, nil, nil, nil)
 	require.ErrorIs(err, ErrBundleTransactionInvalid)
+}
+
+func Test_validateBundleTransactions_RejectsRecentlyProcessedBundles(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	envelope, plan := bundle.NewBuilder(signer).
+		With(bundle.Step(key, &types.AccessListTx{})).
+		BuildEnvelopeAndPlan()
+
+	require := require.New(t)
+
+	bundlesEnabled := NetworkRules{
+		brio:               true,
+		transactionBundles: true,
+	}
+
+	state.EXPECT().HasBundleRecentlyBeenProcessed(plan.Hash()).Return(true)
+
+	err = validateBundleTransactions(envelope, bundlesEnabled, nil, state, signer)
+	require.ErrorIs(err, ErrBundleAlreadyProcessed)
 }
 
 func TestValidateTx_AllowsSponsoredZeroGasPriceTransactions_WhenSubsidiesAreFunded(t *testing.T) {

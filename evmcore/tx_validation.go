@@ -396,23 +396,6 @@ func validateBundleTransactions(
 	stateDb state.StateDB,
 	signer types.Signer,
 ) error {
-	return validateBundleTransactionsInternal(
-		tx,
-		netRules,
-		chainState,
-		stateDb,
-		signer,
-	)
-}
-
-func validateBundleTransactionsInternal(
-	tx *types.Transaction,
-	netRules NetworkRules,
-	chainState StateReader,
-	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
-	stateDb state.StateDB,
-	signer types.Signer,
-) error {
 	// This check only covers bundle transactions, ignore the rest.
 	if !bundle.IsEnvelope(tx) {
 		return nil
@@ -428,9 +411,15 @@ func validateBundleTransactionsInternal(
 	}
 
 	// If the transaction is a bundle, validate its structure and content.
-	_, _, err := bundle.ValidateEnvelope(signer, tx)
+	_, plan, err := bundle.ValidateEnvelope(signer, tx)
 	if err != nil {
 		return errors.Join(ErrBundleTransactionInvalid, err)
+	}
+
+	// Check that the bundle contained in the envelope has not been recently
+	// processed to prevent replaying the same bundle multiple times in a short period.
+	if stateDb.HasBundleRecentlyBeenProcessed(plan.Hash()) {
+		return ErrBundleAlreadyProcessed
 	}
 
 	// Check that the bundle is runnable.

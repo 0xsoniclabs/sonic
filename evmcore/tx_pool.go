@@ -113,6 +113,9 @@ var (
 
 	// ErrBundleTransactionInvalid is returned when a bundle envelope is ill-formed
 	ErrBundleTransactionInvalid = errors.New("invalid bundle transaction")
+
+	// ErrBundleAlreadyProcessed is returned when a bundle transaction is rejected because the same bundle has already been processed recently.
+	ErrBundleAlreadyProcessed = errors.New("bundle has already been processed recently")
 )
 
 var (
