@@ -1,0 +1,51 @@
+package sonicapi
+
+import (
+	"context"
+
+	rpctest "github.com/0xsoniclabs/sonic/api/rpc_test"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rpc"
+)
+
+// GetBundleInfo implements the `sonic_getBundleInfo` RPC method, which retrieves
+// information about the execution of a transaction bundle.
+//
+// Since bundles are not stored in the blockchain like regular transactions,
+// this method provides information about bundles executed in the recent past.
+// The sonic client is not capable of tracking bundles indefinitely, and may return
+// null for bundles executed too far in the past.
+//
+// In the same fashion as `eth_getTransactionReceipt`, this method returns a
+// non-error response with null payload if the bundle hasn't been executed yet.
+//
+// If the bundle has been executed, it returns the block number, position of the
+// first transaction of the bundle in the block, and the total number of non-reverted
+// transactions.
+func (a *PublicBundleAPI) GetBundleInfo(
+	ctx context.Context,
+	executionPlanHash common.Hash,
+) (*RPCBundleInfo, error) {
+
+	// Check whether the given execution plan got already executed.
+	info := a.b.GetBundleExecutionInfo(executionPlanHash)
+	if info != nil {
+		return &RPCBundleInfo{
+			Block:    rpctest.ToBlockNum(info.BlockNumber),
+			Position: rpctest.ToHexUint(uint(info.Position.Offset)),
+			Count:    rpctest.ToHexUint(uint(info.Position.Count)),
+		}, nil
+	}
+
+	// Otherwise, the state is unknown (default).
+	return nil, nil
+}
+
+// RPCBundleInfo is the JSON RPC message returned by the GetBundleInfo API, which
+// provides information about the status of a transaction bundle.
+type RPCBundleInfo struct {
+	Block    *rpc.BlockNumber `json:"block,omitempty"`
+	Position *hexutil.Uint    `json:"position,omitempty"`
+	Count    *hexutil.Uint    `json:"count,omitempty"`
+}
