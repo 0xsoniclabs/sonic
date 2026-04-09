@@ -963,6 +963,113 @@ func TestStore_SetProcessedBundlesHistoryHash_LogsOnPutError(t *testing.T) {
 		func() { store.SetProcessedBundlesHistoryHash(1, common.Hash{1, 2, 3}) })
 }
 
+func TestStore_EnumerateProcessedBundles_ReturnsEmptySliceWhenNoEntries(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	exportedEntries := store.EnumerateProcessedBundles()
+	require.NotNil(exportedEntries)
+	require.Empty(exportedEntries, "expected no exported entries when store is empty")
+}
+
+func TestStore_EnumerateProcessedBundles_ReturnsAllAddedEntries(t *testing.T) {
+
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	expected := map[common.Hash]bundle.ExecutionInfo{}
+	// fill the store with the maximum number of bundles
+	for i := range bundle.MaxBlockRange + 1 {
+		hash := common.BytesToHash(bigendian.Uint32ToBytes(uint32(i)))
+		position := bundle.PositionInBlock{Offset: uint32(i), Count: 1}
+		executedBundles := map[common.Hash]bundle.PositionInBlock{
+			hash: position,
+		}
+		store.AddProcessedBundles(uint64(i), executedBundles)
+		if i > 1 {
+			expected[hash] = bundle.ExecutionInfo{
+				ExecutionPlanHash: hash,
+				BlockNumber:       uint64(i),
+				Position:          position,
+			}
+		}
+	}
+	block, historyHash := store.GetProcessedBundleHistoryHash()
+	require.Equal(uint64(bundle.MaxBlockRange), block)
+	require.NotNil(historyHash)
+	require.NotZero(historyHash)
+
+	entries := store.EnumerateProcessedBundles()
+	// MaxBlockRange-1 entries (oldest was pruned)
+	require.Len(entries, int(bundle.MaxBlockRange-1))
+	require.Len(entries, len(expected),
+		"expected number of exported entries does not match expected")
+
+	// Verify each returned entry matches the expected info
+	for _, entry := range expected {
+		require.Contains(entries, entry, "expected entry not found: %+v", entry)
+	}
+}
+
+func TestStore_EnumerateProcessedBundles_LogsOnCrit_IteratorError(t *testing.T) {
+	store, table, log, _, it := storeTableLogMocks(t)
+
+	injectedErr := errors.New("iterator error")
+	gomock.InOrder(
+		table.EXPECT().NewIterator([]byte{'e'}, nil).Return(it),
+		it.EXPECT().Next().Return(false),
+		it.EXPECT().Error().Return(injectedErr).AnyTimes(),
+	)
+	expectCrit(log, "failed to export processed bundles", "error", injectedErr)
+
+	require.PanicsWithValue(t,
+		fmt.Sprintf("failed to export processed bundles: %v", []any{"error", injectedErr}),
+		func() { store.EnumerateProcessedBundles() })
+}
+
+func TestStore_EnumerateProcessedBundles_LogsOnCrit_IteratorWrongSize(t *testing.T) {
+
+	tests := map[string]struct {
+		key   []byte
+		value []byte
+	}{
+		"short key": {
+			key:   []byte{1, 2}, // should be 33 bytes for 'e' + hash
+			value: make([]byte, 16),
+		},
+		"short value": {
+			key:   append([]byte{'e'}, common.Hash{1, 2, 3}.Bytes()...),
+			value: make([]byte, 15), // should be 16 bytes
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			store, table, log, _, it := storeTableLogMocks(t)
+
+			gomock.InOrder(
+				table.EXPECT().NewIterator([]byte{'e'}, nil).Return(it),
+				it.EXPECT().Next().Return(true),
+				it.EXPECT().Key().Return(tc.key),
+				it.EXPECT().Value().Return(tc.value),
+			)
+			expectCrit(
+				log,
+				"invalid key or value length for processed bundle entry during export",
+				"keyLength", len(tc.key),
+				"valueLength", len(tc.value))
+
+			require.PanicsWithValue(t,
+				fmt.Sprintf("invalid key or value length for processed bundle entry during export: %v",
+					[]any{"keyLength", fmt.Sprintf("%d", len(tc.key)),
+						"valueLength", fmt.Sprintf("%d", len(tc.value))}),
+				func() { store.EnumerateProcessedBundles() })
+
+		})
+	}
+}
 
 // --- helper functions ---
 

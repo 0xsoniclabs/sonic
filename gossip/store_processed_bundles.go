@@ -266,6 +266,43 @@ func (s *Store) SetProcessedBundlesHistoryHash(blockNum uint64, hash common.Hash
 	}
 }
 
+// EnumerateProcessedBundles returns a list of all recently processed bundle
+// execution infos currently tracked by the store.
+func (s *Store) EnumerateProcessedBundles() []bundle.ExecutionInfo {
+	// Make sure there is only one update at any time.
+	s.processedBundleMutex.Lock()
+	defer s.processedBundleMutex.Unlock()
+
+	result := make([]bundle.ExecutionInfo, 0)
+
+	// get all recently processed bundles
+	it := s.table.ProcessedBundles.NewIterator([]byte{'e'}, nil)
+	defer it.Release()
+	for it.Next() {
+		key := it.Key()
+		value := it.Value()
+		if len(key) != 1+32 || len(value) != 16 {
+			s.Log.Crit(
+				"invalid key or value length for processed bundle entry during export",
+				"keyLength", len(key),
+				"valueLength", len(value))
+		}
+
+		result = append(result, bundle.ExecutionInfo{
+			ExecutionPlanHash: common.BytesToHash(key[1:]),
+			BlockNumber:       binary.BigEndian.Uint64(value[:8]),
+			Position: bundle.PositionInBlock{
+				Offset: binary.BigEndian.Uint32(value[8:12]),
+				Count:  binary.BigEndian.Uint32(value[12:]),
+			},
+		})
+	}
+	if it.Error() != nil {
+		s.Log.Crit("failed to export processed bundles", "error", it.Error())
+	}
+	return result
+}
+
 // --- utility functions for processed bundles management ---
 
 // getEntryKey returns the key used to store the presence of a processed bundle
