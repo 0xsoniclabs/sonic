@@ -265,14 +265,14 @@ func (s *Store) processedBundleHistoryEntry() []byte {
 	return state
 }
 
-// SetRawProcessedBundles imports a batch of processed bundle entries from a
+// ImportProcessedBundles imports a batch of processed bundle entries from a
 // single byte slice.
 // The format is a repeated sequence of:
 //
 //	[4 bytes key length][key][4 bytes value length][value]
 //
 // This is used for genesis import.
-func (s *Store) SetRawProcessedBundles(data []byte) error {
+func (s *Store) ImportProcessedBundles(data []byte) error {
 	// Make sure there is only one update at any time.
 	s.processedBundleMutex.Lock()
 	defer s.processedBundleMutex.Unlock()
@@ -368,22 +368,22 @@ func decodeEntry(offset int, data []byte) ([]byte, []byte, int, error) {
 	return key, value, offset, nil
 }
 
-// DumpProcessedBundles returns a dump of all the entries in the processed
-// bundles table in bytes. The dump includes both the history entry and the
+// ExportProcessedBundles exports all the entries in the processed
+// bundles table in bytes. The export includes both the history entry and the
 // entries for recently processed bundles.
-func (s *Store) DumpProcessedBundles() [][]byte {
+func (s *Store) ExportProcessedBundles() [][]byte {
 	// Make sure there is only one update at any time.
 	s.processedBundleMutex.Lock()
 	defer s.processedBundleMutex.Unlock()
 
-	dump := make([][]byte, 0)
+	result := make([][]byte, 0)
 
 	// get history entry
 	currentHistoryHash := BundleKV{Key: nil, Value: s.processedBundleHistoryEntry()}
 	if currentHistoryHash.Value == nil {
 		return [][]byte{}
 	}
-	dump = append(dump, currentHistoryHash.Encode())
+	result = append(result, currentHistoryHash.Encode())
 
 	// get all recently processed bundles
 	it := s.table.ProcessedBundles.NewIterator([]byte{'e'}, nil)
@@ -393,17 +393,17 @@ func (s *Store) DumpProcessedBundles() [][]byte {
 		value := it.Value()
 		if len(key) != 1+32 || len(value) != 16 {
 			s.Log.Crit(
-				"invalid key or value length for processed bundle entry during dump",
+				"invalid key or value length for processed bundle entry during export",
 				"keyLength", len(key),
 				"valueLength", len(value))
 		}
 		entry := BundleKV{Key: key, Value: value}
-		dump = append(dump, entry.Encode())
+		result = append(result, entry.Encode())
 	}
 	if it.Error() != nil {
-		s.Log.Crit("failed to dump processed bundles", "error", it.Error())
+		s.Log.Crit("failed to export processed bundles", "error", it.Error())
 	}
-	return dump
+	return result
 }
 
 // BundleKV represents a key-value pair for a processed bundle entry, used for

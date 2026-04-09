@@ -934,7 +934,7 @@ func TestStore_ProcessedBundles_RetainsAllBundlesRequiredToCoverTheMaximumBlockR
 	}
 }
 
-func TestStore_SetRawProcessedBundle_ReturnsErrorForInvalidHashLength(t *testing.T) {
+func TestStore_ImportProcessedBundles_ReturnsErrorForInvalidHashLength(t *testing.T) {
 	tests := map[string]struct {
 		key, value []byte
 		errorMsg   string
@@ -975,25 +975,25 @@ func TestStore_SetRawProcessedBundle_ReturnsErrorForInvalidHashLength(t *testing
 			// Encode as batch
 			entry := BundleKV{Key: tc.key, Value: tc.value}
 			batch := entry.Encode()
-			err = store.SetRawProcessedBundles(batch)
+			err = store.ImportProcessedBundles(batch)
 			require.Error(err)
 			require.Contains(err.Error(), tc.errorMsg)
 		})
 	}
 }
 
-func TestStore_SetRawProcessedBundle_ReturnsErrorForInvalidBatchData(t *testing.T) {
+func TestStore_ImportProcessedBundles_ReturnsErrorForInvalidBatchData(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
 	invalidData := []byte{0, 1, 2} // not a valid batch encoding
-	err = store.SetRawProcessedBundles(invalidData)
+	err = store.ImportProcessedBundles(invalidData)
 	require.Error(err)
 	require.Contains(err.Error(), "invalid data")
 }
 
-func TestStore_SetRawProcessedBundle_RecognizesBundleHistoryHash(t *testing.T) {
+func TestStore_ImportProcessedBundles_RecognizesBundleHistoryHash(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -1007,7 +1007,7 @@ func TestStore_SetRawProcessedBundle_RecognizesBundleHistoryHash(t *testing.T) {
 
 	entry := BundleKV{Key: nil, Value: value}
 	batch := entry.Encode()
-	err = store.SetRawProcessedBundles(batch)
+	err = store.ImportProcessedBundles(batch)
 	require.NoError(err)
 
 	resBlockNum, resHash := store.GetProcessedBundleHistoryHash()
@@ -1015,7 +1015,7 @@ func TestStore_SetRawProcessedBundle_RecognizesBundleHistoryHash(t *testing.T) {
 	require.Equal(hash, resHash)
 }
 
-func TestStore_SetRawProcessedBundle_ReportsHistoryHashPutErrors(t *testing.T) {
+func TestStore_ImportProcessedBundles_ReportsHistoryHashPutErrors(t *testing.T) {
 	store, table, log, _, _ := storeTableLogMocks(t)
 
 	log.EXPECT().Info(gomock.Any(), gomock.Any())
@@ -1029,11 +1029,11 @@ func TestStore_SetRawProcessedBundle_ReportsHistoryHashPutErrors(t *testing.T) {
 	injectedErr := errors.New("put error")
 	table.EXPECT().Put(nil, historyEntry.Value).Return(injectedErr)
 
-	err := store.SetRawProcessedBundles(data)
+	err := store.ImportProcessedBundles(data)
 	require.ErrorIs(t, err, injectedErr)
 }
 
-func TestStore_SetRawProcessedBundle_ReportsEntryPutErrors(t *testing.T) {
+func TestStore_ImportProcessedBundles_ReportsEntryPutErrors(t *testing.T) {
 	hash := common.Hash{1, 2, 3}
 	entry := BundleKV{
 		Key:   append([]byte{'e'}, hash.Bytes()...),
@@ -1063,13 +1063,13 @@ func TestStore_SetRawProcessedBundle_ReportsEntryPutErrors(t *testing.T) {
 			table.EXPECT().NewBatch().Return(batch)
 			setupMocks(batch)
 
-			err := store.SetRawProcessedBundles(data)
+			err := store.ImportProcessedBundles(data)
 			require.ErrorIs(t, err, injectedError)
 		})
 	}
 }
 
-func TestStore_SetRawProcessedBundle_AddsEntryToStore(t *testing.T) {
+func TestStore_ImportProcessedBundles_AddsEntryToStore(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -1095,7 +1095,7 @@ func TestStore_SetRawProcessedBundle_AddsEntryToStore(t *testing.T) {
 	}
 
 	batch := entry.Encode()
-	err = store.SetRawProcessedBundles(batch)
+	err = store.ImportProcessedBundles(batch)
 	require.NoError(err)
 
 	resInfo := store.GetBundleExecutionInfo(hash)
@@ -1105,7 +1105,7 @@ func TestStore_SetRawProcessedBundle_AddsEntryToStore(t *testing.T) {
 	require.Equal(info.Position, resInfo.Position)
 }
 
-func TestStore_SetRawProcessedBundle_AddsIndexEntry(t *testing.T) {
+func TestStore_ImportProcessedBundles_AddsIndexEntry(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -1129,7 +1129,7 @@ func TestStore_SetRawProcessedBundle_AddsIndexEntry(t *testing.T) {
 		Value: data,
 	}
 	batch := entry.Encode()
-	err = store.SetRawProcessedBundles(batch)
+	err = store.ImportProcessedBundles(batch)
 	require.NoError(err)
 
 	// check that the index entry was added (the value doesn't matter, just that it exists)
@@ -1224,17 +1224,17 @@ func TestStore_DecodeEntry_ReturnsKeyAndValue(t *testing.T) {
 	}
 }
 
-func TestStore_DumpProcessedBundles_ReturnsEmptySliceWhenNoEntries(t *testing.T) {
+func TestStore_ExportProcessedBundles_ReturnsEmptySliceWhenNoEntries(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
-	dumpedEntries := store.DumpProcessedBundles()
-	require.NotNil(dumpedEntries)
-	require.Empty(dumpedEntries, "expected no dumped entries when store is empty")
+	exportedEntries := store.ExportProcessedBundles()
+	require.NotNil(exportedEntries)
+	require.Empty(exportedEntries, "expected no exported entries when store is empty")
 }
 
-func TestStore_DumpProcessedBundles_ReturnsAllAddedEntries(t *testing.T) {
+func TestStore_ExportProcessedBundles_ReturnsAllAddedEntries(t *testing.T) {
 
 	require := require.New(t)
 	store, err := NewMemStore(t)
@@ -1264,23 +1264,23 @@ func TestStore_DumpProcessedBundles_ReturnsAllAddedEntries(t *testing.T) {
 			int(bundle.MaxBlockRange-1)*entrySize +
 			8*int(bundle.MaxBlockRange) // key/value size per entry.
 
-	dumpedEntries := store.DumpProcessedBundles()
+	entries := store.ExportProcessedBundles()
 	// 1 history hash + MaxBlockRange-1 entries
-	require.Len(dumpedEntries, int(bundle.MaxBlockRange),
-		fmt.Sprintf("expected %d dumped entries, got %d",
-			bundle.MaxBlockRange, len(dumpedEntries)))
+	require.Len(entries, int(bundle.MaxBlockRange),
+		fmt.Sprintf("expected %d exported entries, got %d",
+			bundle.MaxBlockRange, len(entries)))
 
 	actualSize := 0
-	for _, entry := range dumpedEntries {
+	for _, entry := range entries {
 		actualSize += len(entry)
 	}
 
 	require.Equal(expectedSize, actualSize,
-		fmt.Sprintf("expected %d dumped entries, got %d",
+		fmt.Sprintf("expected %d exported entries, got %d",
 			expectedSize, actualSize))
 }
 
-func TestStore_DumpProcessedBundles_ReturnsEncodedEntry(t *testing.T) {
+func TestStore_ExportProcessedBundles_ReturnsEncodedEntry(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -1300,11 +1300,11 @@ func TestStore_DumpProcessedBundles_ReturnsEncodedEntry(t *testing.T) {
 	// add execution info to store.
 	store.AddProcessedBundles(blockNum, executedBundles)
 
-	// get the dumped entries
-	dumpedEntries := store.DumpProcessedBundles()
-	require.Len(dumpedEntries, 2) // history hash + 1 entry
+	// get the exported entries
+	exportedEntries := store.ExportProcessedBundles()
+	require.Len(exportedEntries, 2) // history hash + 1 entry
 
-	// check that the dumped entry matches the expected encoding of the added entry
+	// check that the exported entry matches the expected encoding of the added entry
 	expectedEntry := BundleKV{
 		Key:   append([]byte{'e'}, hash.Bytes()...),
 		Value: make([]byte, 16),
@@ -1313,10 +1313,10 @@ func TestStore_DumpProcessedBundles_ReturnsEncodedEntry(t *testing.T) {
 	binary.BigEndian.PutUint32(expectedEntry.Value[8:12], info.Position.Offset)
 	binary.BigEndian.PutUint32(expectedEntry.Value[12:], info.Position.Count)
 
-	require.Contains(dumpedEntries, expectedEntry.Encode())
+	require.Contains(exportedEntries, expectedEntry.Encode())
 }
 
-func TestStore_DumpProcessedBundles_LogsOnCrit_IteratorError(t *testing.T) {
+func TestStore_ExportProcessedBundles_LogsOnCrit_IteratorError(t *testing.T) {
 	store, table, log, _, it := storeTableLogMocks(t)
 
 	injectedErr := errors.New("iterator error")
@@ -1326,14 +1326,14 @@ func TestStore_DumpProcessedBundles_LogsOnCrit_IteratorError(t *testing.T) {
 		it.EXPECT().Next().Return(false),
 		it.EXPECT().Error().Return(injectedErr).AnyTimes(),
 	)
-	expectCrit(log, "failed to dump processed bundles", "error", injectedErr)
+	expectCrit(log, "failed to export processed bundles", "error", injectedErr)
 
 	require.PanicsWithValue(t,
-		fmt.Sprintf("failed to dump processed bundles: %v", []any{"error", injectedErr}),
-		func() { store.DumpProcessedBundles() })
+		fmt.Sprintf("failed to export processed bundles: %v", []any{"error", injectedErr}),
+		func() { store.ExportProcessedBundles() })
 }
 
-func TestStore_DumpProcessedBundles_LogsOnCrit_IteratorKeyValueWrongSize_Key(t *testing.T) {
+func TestStore_ExportProcessedBundles_LogsOnCrit_IteratorKeyValueWrongSize_Key(t *testing.T) {
 
 	tests := map[string]struct {
 		key   []byte
@@ -1362,15 +1362,15 @@ func TestStore_DumpProcessedBundles_LogsOnCrit_IteratorKeyValueWrongSize_Key(t *
 			)
 			expectCrit(
 				log,
-				"invalid key or value length for processed bundle entry during dump",
+				"invalid key or value length for processed bundle entry during export",
 				"keyLength", len(tc.key),
 				"valueLength", len(tc.value))
 
 			require.PanicsWithValue(t,
-				fmt.Sprintf("invalid key or value length for processed bundle entry during dump: %v",
+				fmt.Sprintf("invalid key or value length for processed bundle entry during export: %v",
 					[]any{"keyLength", fmt.Sprintf("%d", len(tc.key)),
 						"valueLength", fmt.Sprintf("%d", len(tc.value))}),
-				func() { store.DumpProcessedBundles() })
+				func() { store.ExportProcessedBundles() })
 
 		})
 	}
