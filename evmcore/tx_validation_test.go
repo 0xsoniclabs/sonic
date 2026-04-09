@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
@@ -1083,6 +1084,67 @@ func TestValidateTxForPool_AcceptsNonLocalTxWithTipBiggerThanMin(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestValidateTxForPool_IgnoresBundleAndSponsoredTx_ForTipChecks(t *testing.T) {
+	signer := types.LatestSignerForChainID(params.TestChainConfig.ChainID)
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		tx            *types.Transaction
+		expectedError error
+	}{
+		"too low tip tx": {
+			tx: types.MustSignNewTx(key, signer, &types.DynamicFeeTx{
+				GasTipCap: big.NewInt(1),
+			}),
+			expectedError: ErrUnderpriced,
+		},
+		"sponsored tx": {
+			tx: types.MustSignNewTx(key, signer, &types.DynamicFeeTx{
+				To: &common.Address{42}, // not a contract creation
+			})},
+		"bundle envelope": {
+			tx: bundle.NewBuilder(signer).
+				With(bundle.Step(key, &types.DynamicFeeTx{})).
+				Build(),
+		},
+		"priced bundle envelope": {
+			tx: bundle.NewBuilder(signer).
+				SetEnvelopeGasPrice(big.NewInt(1)). // not a sponsorship request as it has a gas price; keep it below minTip to exercise the bundle exemption
+				With(bundle.Step(key, &types.DynamicFeeTx{})).
+				Build(),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			if test.expectedError == nil {
+				// sanity check to make sure that inputs are adequate for the test
+				require.True(t, subsidies.IsSponsorshipRequest(test.tx) || bundle.IsEnvelope(test.tx))
+			}
+
+			opts := poolOptions{
+				minTip: big.NewInt(10),
+				locals: newAccountSet(nil),
+			}
+
+			rules := NetworkRules{
+				brio:               true,
+				gasSubsidies:       true,
+				transactionBundles: true,
+			}
+			err := validateTxForPool(test.tx, rules, opts, signer)
+			if test.expectedError != nil {
+				require.ErrorIs(t, err, test.expectedError)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
