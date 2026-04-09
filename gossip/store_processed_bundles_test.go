@@ -25,6 +25,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/logger"
+	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
@@ -252,7 +253,7 @@ func TestStore_GetProcessedBundleHistoryHash_CorrectlyParsesHash(t *testing.T) {
 		hash := crypto.Keccak256Hash([]byte(fmt.Sprintf("hash for block %d", block)))
 
 		encoded := append(
-			uint64ToBytes(block),
+			bigendian.Uint64ToBytes(block),
 			hash.Bytes()...,
 		)
 
@@ -933,375 +934,88 @@ func TestStore_ProcessedBundles_RetainsAllBundlesRequiredToCoverTheMaximumBlockR
 		})
 	}
 }
-
-func TestStore_ImportProcessedBundles_ReturnsErrorForInvalidHashLength(t *testing.T) {
-	tests := map[string]struct {
-		key, value []byte
-		errorMsg   string
-	}{
-		"history hash invalid value": {
-			key:      nil,
-			value:    []byte{0, 1, 2}, // should be 40 bytes for blockNum + hash
-			errorMsg: "invalid value length for bundle history hash",
-		},
-		"entry invalid key length": {
-			key:      []byte{0, 1, 2},  // should be 33 bytes for 'e' + hash
-			value:    make([]byte, 16), // correct length for value
-			errorMsg: "invalid key or value for processed bundle entry",
-		},
-		"entry invalid value length": {
-			key:      append([]byte{'e'}, make([]byte, 32)...), // valid length key
-			value:    []byte{0, 1, 2},                          // short value
-			errorMsg: "invalid key or value for processed bundle entry",
-		},
-		"zero execution plan": {
-			key:      append([]byte{'e'}, make([]byte, 32)...), // valid length key
-			value:    make([]byte, 16),                         // valid length but empty value
-			errorMsg: "invalid execution plan hash",
-		},
-		"entry does not start with 'e'": {
-			key:      append([]byte{'x'}, make([]byte, 32)...), // valid length but wrong prefix
-			value:    make([]byte, 16),                         // correct length for value
-			errorMsg: "invalid key prefix for processed bundle entry: expected 'e'",
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
-			store, err := NewMemStore(t)
-			require.NoError(err)
-
-			// Encode as batch
-			batch := Encode(tc.key, tc.value)
-			err = store.ImportProcessedBundles(batch)
-			require.Error(err)
-			require.Contains(err.Error(), tc.errorMsg)
-		})
-	}
-}
-
-func TestStore_ImportProcessedBundles_ReturnsErrorForInvalidBatchData(t *testing.T) {
-	require := require.New(t)
-	store, err := NewMemStore(t)
-	require.NoError(err)
-
-	invalidData := []byte{0, 1, 2} // not a valid batch encoding
-	err = store.ImportProcessedBundles(invalidData)
-	require.Error(err)
-	require.Contains(err.Error(), "invalid data")
-}
-
-func TestStore_ImportProcessedBundles_RecognizesBundleHistoryHash(t *testing.T) {
+func TestStore_SetProcessedBundlesHistoryHash_WritesBundlesHistoryHash(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
 	blockNum := uint64(10)
 	hash := common.Hash{1, 2, 3}
-	// build the value for the history hash entry
-	value := make([]byte, 8+32)
-	binary.BigEndian.PutUint64(value[:8], blockNum)
-	copy(value[8:], hash[:])
 
-	batch := Encode(nil, value)
-	err = store.ImportProcessedBundles(batch)
-	require.NoError(err)
+	store.SetProcessedBundlesHistoryHash(blockNum, hash)
 
 	resBlockNum, resHash := store.GetProcessedBundleHistoryHash()
 	require.Equal(blockNum, resBlockNum)
 	require.Equal(hash, resHash)
 }
 
-func TestStore_ImportProcessedBundles_ReportsHistoryHashPutErrors(t *testing.T) {
+func TestStore_SetProcessedBundlesHistoryHash_LogsOnPutError(t *testing.T) {
 	store, table, log, _, _ := storeTableLogMocks(t)
 
-	log.EXPECT().Info(gomock.Any(), gomock.Any())
-
-	historyEntry := append(uint64ToBytes(10), common.Hash{1, 2, 3}.Bytes()...)
-	data := Encode(nil, historyEntry)
-
 	injectedErr := errors.New("put error")
-	table.EXPECT().Put(nil, historyEntry).Return(injectedErr)
+	table.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErr)
 
-	err := store.ImportProcessedBundles(data)
-	require.ErrorIs(t, err, injectedErr)
+	expectCrit(log, "failed to set hash of processed bundles", "error", injectedErr)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
+	require.PanicsWithValue(t,
+		fmt.Sprintf("failed to set hash of processed bundles: %v", []any{"error", injectedErr}),
+		func() { store.SetProcessedBundlesHistoryHash(1, common.Hash{1, 2, 3}) })
 }
 
-func TestStore_ImportProcessedBundles_ReportsEntryPutErrors(t *testing.T) {
-	hash := common.Hash{1, 2, 3}
-	key := append([]byte{'e'}, hash.Bytes()...)
-	value := make([]byte, 16)
-	data := Encode(key, value)
-	injectedError := errors.New("put entry error")
-
-	cases := map[string]func(batch *MockstoreBatch){
-		"entry put error": func(batch *MockstoreBatch) {
-			batch.EXPECT().Put(getEntryKey(hash), value).Return(injectedError)
-		},
-		"index put error": func(batch *MockstoreBatch) {
-			batch.EXPECT().Put(getEntryKey(hash), value).Return(nil)
-			batch.EXPECT().Put(getIndexKey(uint64(0), hash), []byte{0}).Return(injectedError)
-		},
-		"batch write error": func(batch *MockstoreBatch) {
-			batch.EXPECT().Put(getEntryKey(hash), value).Return(nil)
-			batch.EXPECT().Put(getIndexKey(uint64(0), hash), []byte{0}).Return(nil)
-			batch.EXPECT().Write().Return(injectedError)
-		},
-	}
-
-	for name, setupMocks := range cases {
-		t.Run(name, func(t *testing.T) {
-			store, table, _, batch, _ := storeTableLogMocks(t)
-			table.EXPECT().NewBatch().Return(batch)
-			setupMocks(batch)
-
-			err := store.ImportProcessedBundles(data)
-			require.ErrorIs(t, err, injectedError)
-		})
-	}
-}
-
-func TestStore_ImportProcessedBundles_AddsEntryToStore(t *testing.T) {
+func TestStore_EnumerateProcessedBundles_ReturnsEmptySliceWhenNoEntries(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
-	// build execution info
-	hash := common.Hash{1, 2, 3}
-	blockNum := uint64(10)
-	info := bundle.ExecutionInfo{
-		ExecutionPlanHash: hash,
-		BlockNumber:       blockNum,
-		Position:          bundle.PositionInBlock{Offset: 0, Count: 1},
-	}
-
-	// encode entry value.
-	data := make([]byte, 16)
-	binary.BigEndian.PutUint64(data[:8], info.BlockNumber)
-	binary.BigEndian.PutUint32(data[8:12], info.Position.Offset)
-	binary.BigEndian.PutUint32(data[12:], info.Position.Count)
-
-	key := append([]byte{'e'}, hash.Bytes()...)
-	value := data
-
-	batch := Encode(key, value)
-	err = store.ImportProcessedBundles(batch)
-	require.NoError(err)
-
-	resInfo := store.GetBundleExecutionInfo(hash)
-	require.NotNil(resInfo)
-	require.Equal(info.ExecutionPlanHash, resInfo.ExecutionPlanHash)
-	require.Equal(info.BlockNumber, resInfo.BlockNumber)
-	require.Equal(info.Position, resInfo.Position)
-}
-
-func TestStore_ImportProcessedBundles_AddsIndexEntry(t *testing.T) {
-	require := require.New(t)
-	store, err := NewMemStore(t)
-	require.NoError(err)
-
-	hash := common.Hash{1, 2, 3}
-	blockNum := uint64(10)
-	info := bundle.ExecutionInfo{
-		ExecutionPlanHash: hash,
-		BlockNumber:       blockNum,
-		Position:          bundle.PositionInBlock{Offset: 0, Count: 1},
-	}
-
-	// encode entry value.
-	data := make([]byte, 16)
-	binary.BigEndian.PutUint64(data[:8], info.BlockNumber)
-	binary.BigEndian.PutUint32(data[8:12], info.Position.Offset)
-	binary.BigEndian.PutUint32(data[12:], info.Position.Count)
-
-	key := append([]byte{'e'}, hash.Bytes()...)
-	value := data
-	batch := Encode(key, value)
-	err = store.ImportProcessedBundles(batch)
-	require.NoError(err)
-
-	// check that the index entry was added (the value doesn't matter, just that it exists)
-	indexKey := getIndexKey(blockNum, hash)
-	hasIndexEntry, err := store.table.ProcessedBundles.Has(indexKey)
-	require.NoError(err)
-	require.True(hasIndexEntry, "expected index entry for processed bundle was not found")
-}
-
-func TestStore_DecodeEntry_ReturnsErrorForInvalidData(t *testing.T) {
-	tests := map[string]struct {
-		data     []byte
-		errorMsg string
-	}{
-		"empty data": {
-			data:     []byte{},
-			errorMsg: "incomplete key length",
-		},
-		"incomplete key length": {
-			data:     append(uint32ToBytes(4), []byte{1, 2}...),
-			errorMsg: "incomplete key at",
-		},
-		"incomplete value length": {
-			data:     append(uint32ToBytes(4), uint32ToBytes(5)...),
-			errorMsg: "incomplete value length",
-		},
-		"incomplete value": {
-			data: append(
-				append(uint32ToBytes(4),
-					[]byte{1, 2, 3, 4}...),
-				uint32ToBytes(5)...),
-			errorMsg: "incomplete value at ",
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
-			key, value, bytesRead, err := decodeEntry(0, tc.data)
-			require.Error(err)
-			require.Contains(err.Error(), tc.errorMsg)
-			require.Nil(key)
-			require.Nil(value)
-			require.Zero(bytesRead)
-		})
-	}
-}
-
-func TestStore_DecodeEntry_ReturnsKeyAndValue(t *testing.T) {
-
-	bundleHistoryValue := append(uint64ToBytes(10), common.Hash{1, 2, 3}.Bytes()...)
-	entryValue := append(
-		append(
-			uint64ToBytes(20),
-			uint32ToBytes(1)...),
-		uint32ToBytes(2)...)
-	key := append([]byte{'e'}, common.Hash{4, 5, 6}.Bytes()...)
-
-	tests := map[string]struct {
-		data          []byte
-		expectedKey   []byte
-		expectedValue []byte
-	}{
-		"bundle history hash": {
-			data:          Encode(nil, bundleHistoryValue),
-			expectedKey:   []byte{},
-			expectedValue: bundleHistoryValue,
-		},
-		"bundle entry": {
-			data:          Encode(key, entryValue),
-			expectedKey:   append([]byte{'e'}, common.Hash{4, 5, 6}.Bytes()...),
-			expectedValue: entryValue,
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
-			key, value, bytesRead, err := decodeEntry(0, tc.data)
-			require.NoError(err)
-			require.Equal(tc.expectedKey, key)
-			require.Equal(tc.expectedValue, value)
-			require.Equal(len(tc.data), bytesRead)
-		})
-	}
-}
-
-func TestStore_ExportProcessedBundles_ReturnsEmptySliceWhenNoEntries(t *testing.T) {
-	require := require.New(t)
-	store, err := NewMemStore(t)
-	require.NoError(err)
-
-	exportedEntries := store.ExportProcessedBundles()
+	exportedEntries := store.EnumerateProcessedBundles()
 	require.NotNil(exportedEntries)
 	require.Empty(exportedEntries, "expected no exported entries when store is empty")
 }
 
-func TestStore_ExportProcessedBundles_ReturnsAllAddedEntries(t *testing.T) {
+func TestStore_EnumerateProcessedBundles_ReturnsAllAddedEntries(t *testing.T) {
 
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
+	expected := map[common.Hash]bundle.ExecutionInfo{}
 	// fill the store with the maximum number of bundles
 	for i := range bundle.MaxBlockRange + 1 {
-		hash := uint32ToBytes(uint32(i))
+		hash := common.BytesToHash(bigendian.Uint32ToBytes(uint32(i)))
+		position := bundle.PositionInBlock{Offset: uint32(i), Count: 1}
 		executedBundles := map[common.Hash]bundle.PositionInBlock{
-			common.BytesToHash(hash): {Offset: 0, Count: 1},
+			hash: position,
 		}
 		store.AddProcessedBundles(uint64(i), executedBundles)
+		expected[hash] = bundle.ExecutionInfo{
+			ExecutionPlanHash: hash,
+			BlockNumber:       uint64(i),
+			Position:          position,
+		}
 	}
 	block, historyHash := store.GetProcessedBundleHistoryHash()
 	require.Equal(uint64(bundle.MaxBlockRange), block)
 	require.NotNil(historyHash)
 	require.NotZero(historyHash)
 
-	// blockNum (8 bytes) + hash (32 bytes)
-	bundleHistoryHashSize := 8 + 32
-	// key size: 'e' prefix + hash
-	// value size: blockNum (8 bytes) + position (4 bytes) + count (4 bytes)
-	entrySize := 1 + 32 + 16
+	entries := store.EnumerateProcessedBundles()
+	// MaxBlockRange-1 entries (oldest was pruned)
+	require.Len(entries, int(bundle.MaxBlockRange-1))
 
-	expectedSize :=
-		bundleHistoryHashSize +
-			int(bundle.MaxBlockRange-1)*entrySize +
-			8*int(bundle.MaxBlockRange) // key/value size per entry.
-
-	entries := store.ExportProcessedBundles()
-	// 1 history hash + MaxBlockRange-1 entries
-	require.Len(entries, int(bundle.MaxBlockRange),
-		fmt.Sprintf("expected %d exported entries, got %d",
-			bundle.MaxBlockRange, len(entries)))
-
-	actualSize := 0
+	// Verify each returned entry matches the expected info
 	for _, entry := range entries {
-		actualSize += len(entry)
+		exp, ok := expected[entry.ExecutionPlanHash]
+		require.True(ok, "unexpected hash %x", entry.ExecutionPlanHash)
+		require.Equal(exp, entry)
 	}
-
-	require.Equal(expectedSize, actualSize,
-		fmt.Sprintf("expected %d exported entries, got %d",
-			expectedSize, actualSize))
 }
 
-func TestStore_ExportProcessedBundles_ReturnsEncodedEntry(t *testing.T) {
-	require := require.New(t)
-	store, err := NewMemStore(t)
-	require.NoError(err)
-
-	// make an execution info
-	hash := common.Hash{1, 2, 3}
-	blockNum := uint64(10)
-	info := bundle.ExecutionInfo{
-		ExecutionPlanHash: hash,
-		BlockNumber:       blockNum,
-		Position:          bundle.PositionInBlock{Offset: 0, Count: 1},
-	}
-	executedBundles := map[common.Hash]bundle.PositionInBlock{
-		hash: {Offset: info.Position.Offset, Count: info.Position.Count},
-	}
-
-	// add execution info to store.
-	store.AddProcessedBundles(blockNum, executedBundles)
-
-	// get the exported entries
-	exportedEntries := store.ExportProcessedBundles()
-	require.Len(exportedEntries, 2) // history hash + 1 entry
-
-	// check that the exported entry matches the expected encoding of the added entry
-	key := append([]byte{'e'}, hash.Bytes()...)
-	value := make([]byte, 16)
-	binary.BigEndian.PutUint64(value[:8], info.BlockNumber)
-	binary.BigEndian.PutUint32(value[8:12], info.Position.Offset)
-	binary.BigEndian.PutUint32(value[12:], info.Position.Count)
-
-	require.Contains(exportedEntries, Encode(key, value))
-}
-
-func TestStore_ExportProcessedBundles_LogsOnCrit_IteratorError(t *testing.T) {
+func TestStore_EnumerateProcessedBundles_LogsOnCrit_IteratorError(t *testing.T) {
 	store, table, log, _, it := storeTableLogMocks(t)
 
 	injectedErr := errors.New("iterator error")
 	gomock.InOrder(
-		table.EXPECT().Get(nil).Return(make([]byte, 40), nil),
 		table.EXPECT().NewIterator([]byte{'e'}, nil).Return(it),
 		it.EXPECT().Next().Return(false),
 		it.EXPECT().Error().Return(injectedErr).AnyTimes(),
@@ -1310,10 +1024,10 @@ func TestStore_ExportProcessedBundles_LogsOnCrit_IteratorError(t *testing.T) {
 
 	require.PanicsWithValue(t,
 		fmt.Sprintf("failed to export processed bundles: %v", []any{"error", injectedErr}),
-		func() { store.ExportProcessedBundles() })
+		func() { store.EnumerateProcessedBundles() })
 }
 
-func TestStore_ExportProcessedBundles_LogsOnCrit_IteratorKeyValueWrongSize_Key(t *testing.T) {
+func TestStore_EnumerateProcessedBundles_LogsOnCrit_IteratorKeyValueWrongSize_Key(t *testing.T) {
 
 	tests := map[string]struct {
 		key   []byte
@@ -1334,7 +1048,6 @@ func TestStore_ExportProcessedBundles_LogsOnCrit_IteratorKeyValueWrongSize_Key(t
 			store, table, log, _, it := storeTableLogMocks(t)
 
 			gomock.InOrder(
-				table.EXPECT().Get(nil).Return(make([]byte, 40), nil),
 				table.EXPECT().NewIterator([]byte{'e'}, nil).Return(it),
 				it.EXPECT().Next().Return(true),
 				it.EXPECT().Key().Return(tc.key),
@@ -1350,45 +1063,8 @@ func TestStore_ExportProcessedBundles_LogsOnCrit_IteratorKeyValueWrongSize_Key(t
 				fmt.Sprintf("invalid key or value length for processed bundle entry during export: %v",
 					[]any{"keyLength", fmt.Sprintf("%d", len(tc.key)),
 						"valueLength", fmt.Sprintf("%d", len(tc.value))}),
-				func() { store.ExportProcessedBundles() })
+				func() { store.EnumerateProcessedBundles() })
 
-		})
-	}
-}
-
-func TestStore_Encode_FollowsExpectedFormat(t *testing.T) {
-	tests := map[string]struct {
-		key   []byte
-		value []byte
-	}{
-		"entry key": {
-			key:   append([]byte{'e'}, common.Hash{1, 2, 3}.Bytes()...),
-			value: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
-		},
-		"nil key (history hash)": {
-			key:   []byte{},
-			value: []byte{1: 40},
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			encoded := Encode(tc.key, tc.value)
-
-			// expected total: 4 (key len) + key + 4 (value len) + value
-			expectedLen := 4 + len(tc.key) + 4 + len(tc.value)
-			require.Len(t, encoded, expectedLen)
-
-			// verify lengths are big-endian encoded at the right offsets
-			gotKeyLen := binary.BigEndian.Uint32(encoded[0:4])
-			require.Equal(t, uint32(len(tc.key)), gotKeyLen)
-
-			gotValLen := binary.BigEndian.Uint32(encoded[4+len(tc.key) : 4+len(tc.key)+4])
-			require.Equal(t, uint32(len(tc.value)), gotValLen)
-
-			// verify key and value payloads
-			require.Equal(t, tc.key, encoded[4:4+len(tc.key)])
-			require.Equal(t, tc.value, encoded[4+len(tc.key)+4:])
 		})
 	}
 }

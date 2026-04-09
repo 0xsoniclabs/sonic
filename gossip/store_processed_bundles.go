@@ -19,9 +19,9 @@ package gossip
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -80,7 +80,7 @@ func (s *Store) AddProcessedBundles(
 	newHash := computeNewBundleStateHash(oldHash, addedHash, deletedHash, blockNum)
 
 	err := batch.Put(nil, append(
-		uint64ToBytes(blockNum),
+		bigendian.Uint64ToBytes(blockNum),
 		newHash.Bytes()...,
 	))
 	if err != nil {
@@ -233,7 +233,7 @@ func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) *bundle.Executi
 // GetProcessedBundleHistoryHash returns the block number of the last update
 // and the current hash of the processed bundles history.
 func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
-	state := s.processedBundleHistoryEntry()
+	state := s.readProcessedBundleHistoryEntry()
 	if state == nil {
 		return 0, common.Hash{}
 	}
@@ -242,12 +242,12 @@ func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
 	return blockNum, hash
 }
 
-// processedBundleHistoryEntry returns the raw value of the entry that stores the
+// readProcessedBundleHistoryEntry returns the raw value of the entry that stores the
 // block number and hash of the processed bundles history, or nil if it is not
 // set. The returned value is expected to be 40 bytes long, with the first 8
 // bytes representing the block number in big-endian format, and the next 32
 // bytes representing the hash of the processed bundles history.
-func (s *Store) processedBundleHistoryEntry() []byte {
+func (s *Store) readProcessedBundleHistoryEntry() []byte {
 	state, err := s.table.ProcessedBundles.Get(nil)
 	if err != nil {
 		s.Log.Crit("failed to get hash of processed bundles", "error", err)
@@ -265,125 +265,30 @@ func (s *Store) processedBundleHistoryEntry() []byte {
 	return state
 }
 
-// ImportProcessedBundles imports a batch of processed bundle entries from a
-// single byte slice.
-// The format is a repeated sequence of:
-//
-//	[4 bytes key length][key][4 bytes value length][value]
-//
-// This is used for genesis import.
-func (s *Store) ImportProcessedBundles(data []byte) error {
+// SetProcessedBundlesHistoryHash sets the block number and hash of the
+// processed bundles history. This should be used only during genesis initialization.
+func (s *Store) SetProcessedBundlesHistoryHash(blockNum uint64, hash common.Hash) {
 	// Make sure there is only one update at any time.
 	s.processedBundleMutex.Lock()
 	defer s.processedBundleMutex.Unlock()
 
-	for offset := 0; offset < len(data); {
-
-		key, value, newOffset, err := decodeEntry(offset, data)
-		if err != nil {
-			return err
-		}
-		offset = newOffset
-
-		if len(key) == 0 {
-			// This is the entry for the history hash and block number, which is
-			// expected to have an empty key. We validate the value length and content,
-			// but we don't require the hash to be non-zero since a genesis may start
-			// with no bundles having been processed.
-			if len(value) != 8+32 {
-				return fmt.Errorf("invalid value length for bundle history hash (should be 40, got %d)", len(value))
-			}
-			blockNum := binary.BigEndian.Uint64(value[:8])
-			hash := common.BytesToHash(value[8:])
-			s.Log.Info("Importing processed bundle history hash from genesis",
-				"blockNum", blockNum,
-				"hash", hash)
-			if err := s.table.ProcessedBundles.Put(nil, value); err != nil {
-				return err
-			}
-			continue
-		}
-
-		// key := e + plan.Hash
-		// value := blockNum + position + count
-		if len(key) != 1+32 || len(value) != 16 {
-			return fmt.Errorf(
-				"invalid key or value for processed bundle entry (key length: %d, value length: %d)",
-				len(key),
-				len(value),
-			)
-		}
-
-		if key[0] != 'e' {
-			return fmt.Errorf("invalid key prefix for processed bundle entry: expected 'e', got '%c'", key[0])
-		}
-
-		var execPlanHash common.Hash
-		copy(execPlanHash[:], key[1:])
-		if execPlanHash == (common.Hash{}) {
-			return errors.New("invalid execution plan hash in processed bundle entry")
-		}
-
-		batch := s.table.ProcessedBundles.NewBatch()
-
-		// write entry key
-		if err := batch.Put(key, value); err != nil {
-			return err
-		}
-		// write index key
-		blockNumber := binary.BigEndian.Uint64(value[:8])
-		indexKey := getIndexKey(blockNumber, execPlanHash)
-		if err := batch.Put(indexKey, []byte{0}); err != nil {
-			return err
-		}
-		if err := batch.Write(); err != nil {
-			return err
-		}
+	err := s.table.ProcessedBundles.Put(nil, append(
+		bigendian.Uint64ToBytes(blockNum),
+		hash.Bytes()...,
+	))
+	if err != nil {
+		s.Log.Crit("failed to set hash of processed bundles", "error", err)
 	}
-
-	return nil
 }
 
-func decodeEntry(offset int, data []byte) ([]byte, []byte, int, error) {
-	if offset+4 > len(data) {
-		return nil, nil, 0, fmt.Errorf("invalid data: incomplete key length at offset %d", offset)
-	}
-	keyLen := int(binary.BigEndian.Uint32(data[offset : offset+4]))
-	offset += 4
-	if offset+keyLen > len(data) {
-		return nil, nil, 0, fmt.Errorf("invalid data: incomplete key at offset %d", offset)
-	}
-	key := data[offset : offset+keyLen]
-	offset += keyLen
-	if offset+4 > len(data) {
-		return nil, nil, 0, fmt.Errorf("invalid data: incomplete value length at offset %d", offset)
-	}
-	valueLen := int(binary.BigEndian.Uint32(data[offset : offset+4]))
-	offset += 4
-	if offset+valueLen > len(data) {
-		return nil, nil, 0, fmt.Errorf("invalid data: incomplete value at offset %d", offset)
-	}
-	value := data[offset : offset+valueLen]
-	offset += valueLen
-	return key, value, offset, nil
-}
-
-// ExportProcessedBundles exports all the entries in the processed
-// bundles table in bytes. The export includes both the history entry and the
-// entries for recently processed bundles.
-func (s *Store) ExportProcessedBundles() [][]byte {
+// EnumerateProcessedBundles returns a list of all recently processed bundle
+// execution infos currently tracked by the store.
+func (s *Store) EnumerateProcessedBundles() []bundle.ExecutionInfo {
 	// Make sure there is only one update at any time.
 	s.processedBundleMutex.Lock()
 	defer s.processedBundleMutex.Unlock()
 
-	result := make([][]byte, 0)
-
-	// get history entry
-	currentHistoryHash := s.processedBundleHistoryEntry()
-	if currentHistoryHash == nil {
-		return [][]byte{}
-	}
-	result = append(result, Encode(nil, currentHistoryHash))
+	result := make([]bundle.ExecutionInfo, 0)
 
 	// get all recently processed bundles
 	it := s.table.ProcessedBundles.NewIterator([]byte{'e'}, nil)
@@ -398,25 +303,19 @@ func (s *Store) ExportProcessedBundles() [][]byte {
 				"valueLength", len(value))
 		}
 
-		result = append(result, Encode(key, value))
+		result = append(result, bundle.ExecutionInfo{
+			ExecutionPlanHash: common.BytesToHash(key[1:]),
+			BlockNumber:       binary.BigEndian.Uint64(value[:8]),
+			Position: bundle.PositionInBlock{
+				Offset: binary.BigEndian.Uint32(value[8:12]),
+				Count:  binary.BigEndian.Uint32(value[12:]),
+			},
+		})
 	}
 	if it.Error() != nil {
 		s.Log.Crit("failed to export processed bundles", "error", it.Error())
 	}
 	return result
-}
-
-// Encode encodes a key-value pair into a byte slice for storage or export.
-// The format is: [uint32 key length][key][uint32 value length][value]
-func Encode(key, value []byte) []byte {
-	data := make([]byte, 0, 8+len(key)+len(value))
-	keyLen := uint32ToBytes(uint32(len(key)))
-	data = append(data, keyLen...)
-	data = append(data, key...)
-	valueLen := uint32ToBytes(uint32(len(value)))
-	data = append(data, valueLen...)
-	data = append(data, value...)
-	return data
 }
 
 // --- utility functions for processed bundles management ---
@@ -430,7 +329,9 @@ func getEntryKey(hash common.Hash) []byte {
 // getIndexKey returns the key used to index a processed bundle hash at a
 // specific block number, to handle cleanups.
 func getIndexKey(blockNum uint64, hash common.Hash) []byte {
-	return append(append([]byte{'i'}, uint64ToBytes(blockNum)...), hash.Bytes()...)
+	return append(
+		append([]byte{'i'}, bigendian.Uint64ToBytes(blockNum)...),
+		hash.Bytes()...)
 }
 
 // xorHash returns the XOR of two hashes.
@@ -440,14 +341,4 @@ func xorHash(a, b common.Hash) common.Hash {
 		res[i] = a[i] ^ b[i]
 	}
 	return res
-}
-
-// uint64ToBytes converts a uint64 to a byte slice in big-endian order.
-func uint64ToBytes(v uint64) []byte {
-	return binary.BigEndian.AppendUint64(nil, v)
-}
-
-// uint32ToBytes converts a uint32 to a byte slice in big-endian order.
-func uint32ToBytes(v uint32) []byte {
-	return binary.BigEndian.AppendUint32(nil, v)
 }
