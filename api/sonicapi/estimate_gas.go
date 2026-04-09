@@ -104,7 +104,7 @@ func doEstimateGasForTransactions(
 	for i, arg := range args {
 		gas, err := eval.EstimateGas(arg, preArgs)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to estimate gas for transaction %d: %w", i, err)
 		}
 
 		preArgs = append(preArgs, arg)
