@@ -205,7 +205,7 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		tx := types.NewTx(step.tx)
 		newGasLimit := tx.Gas() + markerCosts
 
-		// For nested envelopes, the gas price needs to be accurately adjusted
+		// For nested envelopes, the gas limit needs to be accurately adjusted
 		// to pass the bundle validation test.
 		if IsEnvelope(tx) {
 			innerBundle, _, err := ValidateEnvelope(b.signer, tx)
