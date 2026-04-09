@@ -34,6 +34,15 @@ import (
 // to account for the execution plan entries in the access list.
 const bundleGasOverhead = params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
 
+func Test_EstimateGasForTransactions_NilArgs(t *testing.T) {
+	be := rpctest.NewBackendBuilder(t).Build()
+	api := NewPublicBundleAPI(be)
+
+	result, err := api.EstimateGasForTransactions(t.Context(), nil, nil, nil, nil)
+	require.NoError(t, err)
+	require.Empty(t, result.GasLimits)
+}
+
 func Test_EstimateGasForTransactions_SingleTx_IsEstimated(t *testing.T) {
 	addr1, _, args := getTestDefaults()
 
