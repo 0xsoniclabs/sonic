@@ -1183,14 +1183,14 @@ func DoCall(
 	gp := new(core.GasPool).AddGas(math.MaxUint64)
 
 	// Apply previous transactions if required.
-	for _, arg := range preArgs {
+	for i, arg := range preArgs {
 		preMsg, err := arg.ToMessage(globalGasCap, block.BaseFee, log.Root())
 		if err != nil {
-			log.Error("failed to convert to message", "tx", arg.toTransaction().Hash(), "err", err)
+			log.Warn("failed to convert previous transaction to message", "index", i, "err", err)
 			continue
 		}
 		if _, err := core.ApplyMessage(evm, preMsg, gp); err != nil {
-			log.Error("failed to apply previous transaction", "tx", arg.toTransaction().Hash(), "err", err)
+			log.Warn("failed to apply previous transaction", "index", i, "err", err)
 		}
 		state.EndTransaction()
 	}
