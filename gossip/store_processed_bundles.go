@@ -80,7 +80,7 @@ func (s *Store) AddProcessedBundles(
 	newHash := computeNewBundleStateHash(oldHash, addedHash, deletedHash, blockNum)
 
 	err := batch.Put(nil, append(
-		binary.BigEndian.AppendUint64(nil, blockNum),
+		uint64ToBytes(blockNum),
 		newHash.Bytes()...,
 	))
 	if err != nil {
@@ -367,9 +367,11 @@ type BundleKV struct {
 // The format is: [uint32 key length][key][uint32 value length][value]
 func (k *BundleKV) Encode() []byte {
 	data := make([]byte, 0, 8+len(k.Key)+len(k.Value))
-	data = append(data, uint32ToBytes(uint32(len(k.Key)))...)
+	keyLen := uint32ToBytes(uint32(len(k.Key)))
+	data = append(data, keyLen...)
 	data = append(data, k.Key...)
-	data = append(data, uint32ToBytes(uint32(len(k.Value)))...)
+	valueLen := uint32ToBytes(uint32(len(k.Value)))
+	data = append(data, valueLen...)
 	data = append(data, k.Value...)
 	return data
 }
@@ -385,7 +387,7 @@ func getEntryKey(hash common.Hash) []byte {
 // getIndexKey returns the key used to index a processed bundle hash at a
 // specific block number, to handle cleanups.
 func getIndexKey(blockNum uint64, hash common.Hash) []byte {
-	return append(append([]byte{'i'}, binary.BigEndian.AppendUint64(nil, blockNum)...), hash.Bytes()...)
+	return append(append([]byte{'i'}, uint64ToBytes(blockNum)...), hash.Bytes()...)
 }
 
 // xorHash returns the XOR of two hashes.
@@ -397,9 +399,12 @@ func xorHash(a, b common.Hash) common.Hash {
 	return res
 }
 
+// uint64ToBytes converts a uint64 to a byte slice in big-endian order.
+func uint64ToBytes(v uint64) []byte {
+	return binary.BigEndian.AppendUint64(nil, v)
+}
+
 // uint32ToBytes converts a uint32 to a byte slice in big-endian order.
 func uint32ToBytes(v uint32) []byte {
-	b := make([]byte, 4)
-	binary.BigEndian.PutUint32(b, v)
-	return b
+	return binary.BigEndian.AppendUint32(nil, v)
 }

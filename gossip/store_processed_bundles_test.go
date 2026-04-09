@@ -252,7 +252,7 @@ func TestStore_GetProcessedBundleHistoryHash_CorrectlyParsesHash(t *testing.T) {
 		hash := crypto.Keccak256Hash([]byte(fmt.Sprintf("hash for block %d", block)))
 
 		encoded := append(
-			binary.BigEndian.AppendUint64(nil, block),
+			uint64ToBytes(block),
 			hash.Bytes()...,
 		)
 
