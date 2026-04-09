@@ -88,6 +88,11 @@ func GetAPIs(apiBackend backend) []rpc.API {
 			Version:   "1.0",
 			Service:   ethapi.NewPublicSccApi(apiBackend),
 			Public:    true,
+		}, {
+			Namespace: "sonic",
+			Version:   "1.0",
+			Service:   sonicapi.NewPublicBundleAPI(apiBackend),
+			Public:    true,
 		},
 	}
 }

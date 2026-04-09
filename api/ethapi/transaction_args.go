@@ -169,7 +169,7 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 			AuthorizationList:    args.AuthorizationList,
 		}
 		pendingBlockNr := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
-		estimated, err := DoEstimateGas(ctx, b, callArgs, pendingBlockNr, nil, nil, b.RPCGasCap())
+		estimated, err := DoEstimateGas(ctx, b, callArgs, pendingBlockNr, nil, nil, b.RPCGasCap(), nil)
 		if err != nil {
 			return err
 		}
