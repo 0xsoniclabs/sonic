@@ -158,9 +158,8 @@ func TestStore_AddProcessedBundles_AddsNewBundlesToStorage(t *testing.T) {
 		bundle.MaxBlockRange + 1,
 	} {
 		t.Run(fmt.Sprintf("BlockNumber=%d", block), func(t *testing.T) {
-			store, table, _, _, _ := storeTableLogMocks(t)
+			store, table, _, batch, it := storeTableLogMocks(t)
 
-			batch := NewMockstoreBatch(gomock.NewController(t))
 			table.EXPECT().NewBatch().Return(batch)
 			table.EXPECT().Get(gomock.Any())
 
@@ -183,7 +182,6 @@ func TestStore_AddProcessedBundles_AddsNewBundlesToStorage(t *testing.T) {
 			if block >= bundle.MaxBlockRange-1 {
 				toDelete := block - bundle.MaxBlockRange + 1
 
-				it := NewMockdbIterator(gomock.NewController(t))
 				table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it)
 				next := it.EXPECT().Next().Return(true)
 				it.EXPECT().Next().Return(false).After(next).AnyTimes()
@@ -508,6 +506,7 @@ func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 			batch := NewMockstoreBatch(ctrl)
 			table := NewMockstoreTable(ctrl)
 			it := NewMockdbIterator(ctrl)
+			it.EXPECT().Release().AnyTimes()
 			store := &Store{}
 			store.table.ProcessedBundles = table
 
@@ -551,6 +550,7 @@ func TestStore_deleteOutdatedBundles_RemovesMultipleEntries_WhenNotCleanedForToo
 	store.table.ProcessedBundles = table
 
 	it := NewMockdbIterator(ctrl)
+	it.EXPECT().Release().AnyTimes()
 	table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it)
 
 	for i := range 10 {
@@ -1109,6 +1109,7 @@ func storeTableLogMocks(t *testing.T) (
 
 	batch := NewMockstoreBatch(ctrl)
 	it := NewMockdbIterator(ctrl)
+	it.EXPECT().Release().AnyTimes()
 
 	return store, table, log, batch, it
 }

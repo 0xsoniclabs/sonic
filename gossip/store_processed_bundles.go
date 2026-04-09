@@ -129,6 +129,7 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) common.
 		// enough blocks have passed to start cleaning up the store
 		highestOutdatedBlockNumber := blockNum - bundle.MaxBlockRange + 1
 		it := s.table.ProcessedBundles.NewIterator([]byte{'i'}, nil)
+		defer it.Release()
 		for it.Next() {
 			key := it.Key()
 			// size of the key used to index processed bundle is:
