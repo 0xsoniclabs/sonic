@@ -36,7 +36,6 @@ type BundleGasLimits struct {
 // EstimateGasForTransactions implements the `sonic_estimateGasForTransactions` RPC method.
 // It estimates the gas required for each provided transaction,
 // applying state changes from previous transactions when estimating subsequent ones.
-// Transactions that become invalid or fail during execution for later estimations are ignored.
 // This method can help getting gas estimates for mutually depending transactions in bundles.
 func (a *PublicBundleAPI) EstimateGasForTransactions(
 	ctx context.Context,
@@ -93,7 +92,7 @@ func (e *estimator) EstimateGas(args ethapi.TransactionArgs, preArgs []ethapi.Tr
 	return gas, nil
 }
 
-// doEstimateGasForTransactions estimates the gas for a list of transactions using the provided GasEstimator.
+// doEstimateGasForTransactions estimates the gas for a list of transactions using the provided gas estimator.
 // It applies the state changes from each transaction to the subsequent ones when estimating gas.
 func doEstimateGasForTransactions(
 	args []ethapi.TransactionArgs,
