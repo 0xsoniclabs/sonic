@@ -115,7 +115,15 @@ type Backend interface {
 
 	SccApiBackend
 
-	// Bundle API
+	BundleApiBackend
+}
+
+// BundleApiBackend is the subset of the Backend interface serving the data
+// sources for the bundle-related APIs (e.g., `sonic_getBundleInfo`).
+type BundleApiBackend interface {
+
+	// GetBundleExecutionInfo returns information about the execution of a transaction bundle, if available.
+	// If the bundle is unknown, it returns nil.
 	GetBundleExecutionInfo(common.Hash) *bundle.ExecutionInfo
 }
 
