@@ -37,8 +37,8 @@ import (
 // non-error response with null payload if the bundle hasn't been executed yet.
 //
 // If the bundle has been executed, it returns the block number, position of the
-// first transaction of the bundle in the block, and the total number of non-reverted
-// transactions.
+// first transaction of the bundle in the block, and the total number of transactions
+// that got included in the block due to the execution of the bundle.
 func (a *PublicBundleAPI) GetBundleInfo(
 	ctx context.Context,
 	executionPlanHash common.Hash,
@@ -59,7 +59,7 @@ func (a *PublicBundleAPI) GetBundleInfo(
 }
 
 // RPCBundleInfo is the JSON RPC message returned by the GetBundleInfo API, which
-// provides information about the status of a transaction bundle.
+// provides information about the effect of the execution of a transaction bundle.
 type RPCBundleInfo struct {
 	Block    *rpc.BlockNumber `json:"block,omitempty"`
 	Position *hexutil.Uint    `json:"position,omitempty"`
