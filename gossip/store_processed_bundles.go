@@ -250,6 +250,22 @@ func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
 	return blockNum, hash
 }
 
+// SetProcessedBundlesHistoryHash sets the block number and hash of the
+// processed bundles history. This should be used only during genesis initialization.
+func (s *Store) SetProcessedBundlesHistoryHash(blockNum uint64, hash common.Hash) {
+	// Make sure there is only one update at any time.
+	s.processedBundleMutex.Lock()
+	defer s.processedBundleMutex.Unlock()
+
+	err := s.table.ProcessedBundles.Put(nil, append(
+		bigendian.Uint64ToBytes(blockNum),
+		hash.Bytes()...,
+	))
+	if err != nil {
+		s.Log.Crit("failed to set hash of processed bundles", "error", err)
+	}
+}
+
 // --- utility functions for processed bundles management ---
 
 // getEntryKey returns the key used to store the presence of a processed bundle

@@ -934,6 +934,36 @@ func TestStore_ProcessedBundles_RetainsAllBundlesRequiredToCoverTheMaximumBlockR
 	}
 }
 
+func TestStore_SetProcessedBundlesHistoryHash_WritesBundlesHistoryHash(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	blockNum := uint64(10)
+	hash := common.Hash{1, 2, 3}
+
+	store.SetProcessedBundlesHistoryHash(blockNum, hash)
+
+	resBlockNum, resHash := store.GetProcessedBundleHistoryHash()
+	require.Equal(blockNum, resBlockNum)
+	require.Equal(hash, resHash)
+}
+
+func TestStore_SetProcessedBundlesHistoryHash_LogsOnPutError(t *testing.T) {
+	store, table, log, _, _ := storeTableLogMocks(t)
+
+	injectedErr := errors.New("put error")
+	table.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErr)
+
+	expectCrit(log, "failed to set hash of processed bundles", "error", injectedErr)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
+	require.PanicsWithValue(t,
+		fmt.Sprintf("failed to set hash of processed bundles: %v", []any{"error", injectedErr}),
+		func() { store.SetProcessedBundlesHistoryHash(1, common.Hash{1, 2, 3}) })
+}
+
+
 // --- helper functions ---
 
 // referenceComputeStateHash is a reference implementation of the hash
