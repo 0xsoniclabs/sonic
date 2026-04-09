@@ -25,6 +25,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/logger"
+	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
@@ -254,7 +255,7 @@ func TestStore_GetProcessedBundleHistoryHash_CorrectlyParsesHash(t *testing.T) {
 		hash := crypto.Keccak256Hash([]byte(fmt.Sprintf("hash for block %d", block)))
 
 		encoded := append(
-			binary.BigEndian.AppendUint64(nil, block),
+			bigendian.Uint64ToBytes(block),
 			hash.Bytes()...,
 		)
 

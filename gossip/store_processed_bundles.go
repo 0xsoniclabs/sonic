@@ -21,6 +21,7 @@ import (
 	"errors"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -79,7 +80,7 @@ func (s *Store) AddProcessedBundles(
 	newHash := computeNewBundleStateHash(oldHash, addedHash, deletedHash, blockNum)
 
 	err := batch.Put(nil, append(
-		binary.BigEndian.AppendUint64(nil, blockNum),
+		bigendian.Uint64ToBytes(blockNum),
 		newHash.Bytes()...,
 	))
 	if err != nil {
@@ -314,7 +315,9 @@ func getEntryKey(hash common.Hash) []byte {
 // getIndexKey returns the key used to index a processed bundle hash at a
 // specific block number, to handle cleanups.
 func getIndexKey(blockNum uint64, hash common.Hash) []byte {
-	return append(append([]byte{'i'}, binary.BigEndian.AppendUint64(nil, blockNum)...), hash.Bytes()...)
+	return append(
+		append([]byte{'i'}, bigendian.Uint64ToBytes(blockNum)...),
+		hash.Bytes()...)
 }
 
 // xorHash returns the XOR of two hashes.
