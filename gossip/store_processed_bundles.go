@@ -265,57 +265,107 @@ func (s *Store) processedBundleHistoryEntry() []byte {
 	return state
 }
 
-// SetRawProcessedBundle writes a raw key-value pair to the ProcessedBundles
-// table, if key and value are of valid sizes. The main use case is to import
-// the processed bundles history hash and block number from the genesis file.
-func (s *Store) SetRawProcessedBundle(kv BundleKV) error {
+// SetRawProcessedBundles imports a batch of processed bundle entries from a
+// single byte slice.
+// The format is a repeated sequence of:
+//
+//	[4 bytes key length][key][4 bytes value length][value]
+//
+// This is used for genesis import.
+func (s *Store) SetRawProcessedBundles(data []byte) error {
 	// Make sure there is only one update at any time.
 	s.processedBundleMutex.Lock()
 	defer s.processedBundleMutex.Unlock()
 
-	if len(kv.Key) == 0 {
-		// This is the entry for the history hash and block number, which is
-		// expected to have an empty key. We validate the value length and content,
-		// but we don't require the hash to be non-zero since a genesis may start
-		// with no bundles having been processed.
-		if len(kv.Value) != 8+32 {
+	for offset := 0; offset < len(data); {
+
+		key, value, newOffset, err := decodeEntry(offset, data)
+		if err != nil {
+			return err
+		}
+		offset = newOffset
+
+		if len(key) == 0 {
+			// This is the entry for the history hash and block number, which is
+			// expected to have an empty key. We validate the value length and content,
+			// but we don't require the hash to be non-zero since a genesis may start
+			// with no bundles having been processed.
+			if len(value) != 8+32 {
+				return fmt.Errorf("invalid value length for bundle history hash (should be 40, got %d)", len(value))
+			}
+			blockNum := binary.BigEndian.Uint64(value[:8])
+			hash := common.BytesToHash(value[8:])
+			s.Log.Info("Importing processed bundle history hash from genesis",
+				"blockNum", blockNum,
+				"hash", hash)
+			if err := s.table.ProcessedBundles.Put(nil, value); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// key := e + plan.Hash
+		// value := blockNum + position + count
+		if len(key) != 1+32 || len(value) != 16 {
 			return fmt.Errorf(
-				"invalid value length for bundle history hash (should be 40, got %d)",
-				len(kv.Value),
+				"invalid key or value for processed bundle entry (key length: %d, value length: %d)",
+				len(key),
+				len(value),
 			)
 		}
-		blockNum := binary.BigEndian.Uint64(kv.Value[:8])
-		hash := common.BytesToHash(kv.Value[8:])
-		s.Log.Info("Importing processed bundle history hash from genesis",
-			"blockNum", blockNum,
-			"hash", hash)
-		return s.table.ProcessedBundles.Put(nil, kv.Value)
-	}
 
-	// key := e + plan.Hash
-	// value := blockNum + position + count
-	if len(kv.Key) != 1+32 || len(kv.Value) != 16 {
-		return fmt.Errorf(
-			"invalid key or value for processed bundle entry (key length: %d, value length: %d)",
-			len(kv.Key),
-			len(kv.Value),
-		)
-	}
+		if key[0] != 'e' {
+			return fmt.Errorf("invalid key prefix for processed bundle entry: expected 'e', got '%c'", key[0])
+		}
 
-	if kv.Key[0] != 'e' {
-		return fmt.Errorf("invalid key prefix for processed bundle entry: expected 'e', got '%c'", kv.Key[0])
-	}
+		var execPlanHash common.Hash
+		copy(execPlanHash[:], key[1:])
+		if execPlanHash == (common.Hash{}) {
+			return errors.New("invalid execution plan hash in processed bundle entry")
+		}
 
-	var execPlanHash common.Hash
-	copy(execPlanHash[:], kv.Key[1:])
-	if execPlanHash == (common.Hash{}) {
-		return errors.New("invalid execution plan hash in processed bundle entry")
-	}
+		batch := s.table.ProcessedBundles.NewBatch()
 
-	batch := s.table.ProcessedBundles.NewBatch()
-
+		// write entry key
+		if err := batch.Put(key, value); err != nil {
+			return err
+		}
+		// write index key
 		blockNumber := binary.BigEndian.Uint64(value[:8])
 		indexKey := getIndexKey(blockNumber, execPlanHash)
+		if err := batch.Put(indexKey, []byte{0}); err != nil {
+			return err
+		}
+		if err := batch.Write(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func decodeEntry(offset int, data []byte) ([]byte, []byte, int, error) {
+	if offset+4 > len(data) {
+		return nil, nil, 0, fmt.Errorf("invalid data: incomplete key length at offset %d", offset)
+	}
+	keyLen := int(binary.BigEndian.Uint32(data[offset : offset+4]))
+	offset += 4
+	if offset+keyLen > len(data) {
+		return nil, nil, 0, fmt.Errorf("invalid data: incomplete key at offset %d", offset)
+	}
+	key := data[offset : offset+keyLen]
+	offset += keyLen
+	if offset+4 > len(data) {
+		return nil, nil, 0, fmt.Errorf("invalid data: incomplete value length at offset %d", offset)
+	}
+	valueLen := int(binary.BigEndian.Uint32(data[offset : offset+4]))
+	offset += 4
+	if offset+valueLen > len(data) {
+		return nil, nil, 0, fmt.Errorf("invalid data: incomplete value at offset %d", offset)
+	}
+	value := data[offset : offset+valueLen]
+	offset += valueLen
+	return key, value, offset, nil
 }
 
 // DumpProcessedBundles returns a dump of all the entries in the processed

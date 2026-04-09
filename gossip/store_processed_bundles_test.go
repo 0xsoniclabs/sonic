@@ -935,8 +935,6 @@ func TestStore_ProcessedBundles_RetainsAllBundlesRequiredToCoverTheMaximumBlockR
 }
 
 func TestStore_SetRawProcessedBundle_ReturnsErrorForInvalidHashLength(t *testing.T) {
-	require := require.New(t)
-
 	tests := map[string]struct {
 		key, value []byte
 		errorMsg   string
@@ -956,10 +954,10 @@ func TestStore_SetRawProcessedBundle_ReturnsErrorForInvalidHashLength(t *testing
 			value:    []byte{0, 1, 2},                          // short value
 			errorMsg: "invalid key or value for processed bundle entry",
 		},
-		"empty execution plan": {
+		"zero execution plan": {
 			key:      append([]byte{'e'}, make([]byte, 32)...), // valid length key
 			value:    make([]byte, 16),                         // valid length but empty value
-			errorMsg: "invalid execution plan hash",            // we require the hash to be non-zero to avoid confusion with empty entries, but the error message is the same as for invalid lengths since we check length first
+			errorMsg: "invalid execution plan hash",
 		},
 		"entry does not start with 'e'": {
 			key:      append([]byte{'x'}, make([]byte, 32)...), // valid length but wrong prefix
@@ -970,14 +968,29 @@ func TestStore_SetRawProcessedBundle_ReturnsErrorForInvalidHashLength(t *testing
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
 			store, err := NewMemStore(t)
 			require.NoError(err)
 
-			err = store.SetRawProcessedBundle(BundleKV{Key: tc.key, Value: tc.value})
+			// Encode as batch
+			entry := BundleKV{Key: tc.key, Value: tc.value}
+			batch := entry.Encode()
+			err = store.SetRawProcessedBundles(batch)
 			require.Error(err)
 			require.Contains(err.Error(), tc.errorMsg)
 		})
 	}
+}
+
+func TestStore_SetRawProcessedBundle_ReturnsErrorForInvalidBatchData(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	invalidData := []byte{0, 1, 2} // not a valid batch encoding
+	err = store.SetRawProcessedBundles(invalidData)
+	require.Error(err)
+	require.Contains(err.Error(), "invalid data")
 }
 
 func TestStore_SetRawProcessedBundle_RecognizesBundleHistoryHash(t *testing.T) {
@@ -992,13 +1005,68 @@ func TestStore_SetRawProcessedBundle_RecognizesBundleHistoryHash(t *testing.T) {
 	binary.BigEndian.PutUint64(value[:8], blockNum)
 	copy(value[8:], hash[:])
 
-	// nil key for history hash
-	err = store.SetRawProcessedBundle(BundleKV{Key: nil, Value: value})
+	entry := BundleKV{Key: nil, Value: value}
+	batch := entry.Encode()
+	err = store.SetRawProcessedBundles(batch)
 	require.NoError(err)
 
 	resBlockNum, resHash := store.GetProcessedBundleHistoryHash()
 	require.Equal(blockNum, resBlockNum)
 	require.Equal(hash, resHash)
+}
+
+func TestStore_SetRawProcessedBundle_ReportsHistoryHashPutErrors(t *testing.T) {
+	store, table, log, _, _ := storeTableLogMocks(t)
+
+	log.EXPECT().Info(gomock.Any(), gomock.Any())
+
+	historyEntry := BundleKV{
+		Key:   nil,
+		Value: append(uint64ToBytes(10), common.Hash{1, 2, 3}.Bytes()...),
+	}
+	data := historyEntry.Encode()
+
+	injectedErr := errors.New("put error")
+	table.EXPECT().Put(nil, historyEntry.Value).Return(injectedErr)
+
+	err := store.SetRawProcessedBundles(data)
+	require.ErrorIs(t, err, injectedErr)
+}
+
+func TestStore_SetRawProcessedBundle_ReportsEntryPutErrors(t *testing.T) {
+	hash := common.Hash{1, 2, 3}
+	entry := BundleKV{
+		Key:   append([]byte{'e'}, hash.Bytes()...),
+		Value: make([]byte, 16),
+	}
+	data := entry.Encode()
+	injectedError := errors.New("put entry error")
+
+	cases := map[string]func(batch *MockstoreBatch){
+		"entry put error": func(batch *MockstoreBatch) {
+			batch.EXPECT().Put(getEntryKey(hash), entry.Value).Return(injectedError)
+		},
+		"index put error": func(batch *MockstoreBatch) {
+			batch.EXPECT().Put(getEntryKey(hash), entry.Value).Return(nil)
+			batch.EXPECT().Put(getIndexKey(uint64(0), hash), []byte{0}).Return(injectedError)
+		},
+		"batch write error": func(batch *MockstoreBatch) {
+			batch.EXPECT().Put(getEntryKey(hash), entry.Value).Return(nil)
+			batch.EXPECT().Put(getIndexKey(uint64(0), hash), []byte{0}).Return(nil)
+			batch.EXPECT().Write().Return(injectedError)
+		},
+	}
+
+	for name, setupMocks := range cases {
+		t.Run(name, func(t *testing.T) {
+			store, table, _, batch, _ := storeTableLogMocks(t)
+			table.EXPECT().NewBatch().Return(batch)
+			setupMocks(batch)
+
+			err := store.SetRawProcessedBundles(data)
+			require.ErrorIs(t, err, injectedError)
+		})
+	}
 }
 
 func TestStore_SetRawProcessedBundle_AddsEntryToStore(t *testing.T) {
@@ -1026,7 +1094,8 @@ func TestStore_SetRawProcessedBundle_AddsEntryToStore(t *testing.T) {
 		Value: data,
 	}
 
-	err = store.SetRawProcessedBundle(entry)
+	batch := entry.Encode()
+	err = store.SetRawProcessedBundles(batch)
 	require.NoError(err)
 
 	resInfo := store.GetBundleExecutionInfo(hash)
@@ -1059,7 +1128,8 @@ func TestStore_SetRawProcessedBundle_AddsIndexEntry(t *testing.T) {
 		Key:   append([]byte{'e'}, hash.Bytes()...),
 		Value: data,
 	}
-	err = store.SetRawProcessedBundle(entry)
+	batch := entry.Encode()
+	err = store.SetRawProcessedBundles(batch)
 	require.NoError(err)
 
 	// check that the index entry was added (the value doesn't matter, just that it exists)
@@ -1069,35 +1139,89 @@ func TestStore_SetRawProcessedBundle_AddsIndexEntry(t *testing.T) {
 	require.True(hasIndexEntry, "expected index entry for processed bundle was not found")
 }
 
-func TestStore_SetRawProcessedBundle_ReturnsErrorForBatchErrors(t *testing.T) {
-	store, table, _, batch, _ := storeTableLogMocks(t)
-
-	bundleEntry := BundleKV{
-		Key:   append([]byte{'e'}, common.Hash{1, 2, 3}.Bytes()...),
-		Value: make([]byte, 16),
+func TestStore_DecodeEntry_ReturnsErrorForInvalidData(t *testing.T) {
+	tests := map[string]struct {
+		data     []byte
+		errorMsg string
+	}{
+		"empty data": {
+			data:     []byte{},
+			errorMsg: "incomplete key length",
+		},
+		"incomplete key length": {
+			data:     append(uint32ToBytes(4), []byte{1, 2}...),
+			errorMsg: "incomplete key at",
+		},
+		"incomplete value length": {
+			data:     append(uint32ToBytes(4), uint32ToBytes(5)...),
+			errorMsg: "incomplete value length",
+		},
+		"incomplete value": {
+			data: append(
+				append(uint32ToBytes(4),
+					[]byte{1, 2, 3, 4}...),
+				uint32ToBytes(5)...),
+			errorMsg: "incomplete value at ",
+		},
 	}
 
-	entryError := errors.New("batch put error entry")
-	entryKey := getEntryKey(common.BytesToHash(bundleEntry.Key[1:]))
-	batch.EXPECT().Put(entryKey, bundleEntry.Value).Return(entryError)
-	table.EXPECT().NewBatch().Return(batch)
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			key, value, bytesRead, err := decodeEntry(0, tc.data)
+			require.Error(err)
+			require.Contains(err.Error(), tc.errorMsg)
+			require.Nil(key)
+			require.Nil(value)
+			require.Zero(bytesRead)
+		})
+	}
+}
 
-	err := store.SetRawProcessedBundle(bundleEntry)
-	require.ErrorIs(t, err, entryError)
+func TestStore_DecodeEntry_ReturnsKeyAndValue(t *testing.T) {
 
-	indexKey := getIndexKey(
-		binary.BigEndian.Uint64(bundleEntry.Value[:8]),
-		common.BytesToHash(bundleEntry.Key[1:]))
-	indexError := errors.New("batch put error index")
-	batch.EXPECT().Put(entryKey, gomock.Any()).Return(nil)
-	batch.EXPECT().Put(indexKey, gomock.Any()).Return(indexError)
-	table.EXPECT().NewBatch().Return(batch)
+	bundleHistoryValue := append(uint64ToBytes(10), common.Hash{1, 2, 3}.Bytes()...)
+	bundleHistoryEntry := BundleKV{
+		Key:   nil,
+		Value: bundleHistoryValue,
+	}
+	entryValue := append(
+		append(
+			uint64ToBytes(20),
+			uint32ToBytes(1)...),
+		uint32ToBytes(2)...)
+	entryData := BundleKV{
+		Key:   append([]byte{'e'}, common.Hash{4, 5, 6}.Bytes()...),
+		Value: entryValue,
+	}
 
-	err = store.SetRawProcessedBundle(BundleKV{
-		Key:   append([]byte{'e'}, common.Hash{1, 2, 3}.Bytes()...),
-		Value: make([]byte, 16),
-	})
-	require.ErrorIs(t, err, indexError)
+	tests := map[string]struct {
+		data          []byte
+		expectedKey   []byte
+		expectedValue []byte
+	}{
+		"bundle history hash": {
+			data:          bundleHistoryEntry.Encode(),
+			expectedKey:   []byte{},
+			expectedValue: bundleHistoryValue,
+		},
+		"bundle entry": {
+			data:          entryData.Encode(),
+			expectedKey:   append([]byte{'e'}, common.Hash{4, 5, 6}.Bytes()...),
+			expectedValue: entryValue,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			key, value, bytesRead, err := decodeEntry(0, tc.data)
+			require.NoError(err)
+			require.Equal(tc.expectedKey, key)
+			require.Equal(tc.expectedValue, value)
+			require.Equal(len(tc.data), bytesRead)
+		})
+	}
 }
 
 func TestStore_DumpProcessedBundles_ReturnsEmptySliceWhenNoEntries(t *testing.T) {
