@@ -244,55 +244,78 @@ func (k *BundleKV) Encode() []byte {
 	return data
 }
 
-// SetRawProcessedBundle writes a raw key-value pair to the ProcessedBundles
-// table. This is used for genesis import.
-func (s *Store) SetRawProcessedBundle(kv BundleKV) error {
+// SetRawProcessedBundles imports a batch of processed bundle entries from a single byte slice.
+// The format is a repeated sequence of:
+//
+//	[4 bytes key length][key][4 bytes value length][value]
+//
+// This is used for genesis import.
+func (s *Store) SetRawProcessedBundles(data []byte) error {
+	offset := 0
+	for offset < len(data) {
 
-	if len(kv.Key) == 0 {
-		// This is the entry for the history hash and block number, which is
-		// expected to have an empty key. We validate the value length and content,
-		// but we don't require the hash to be non-zero since a genesis may start
-		// with no bundles having been processed.
-		if len(kv.Value) != 8+32 {
-			return fmt.Errorf(
-				"invalid value length for bundle history hash (should be 40, got %d)",
-				len(kv.Value),
-			)
+		// Import the entry (logic from old SetRawProcessedBundle)
+		key, value, newOffset, err := decodeEntry(offset, data)
+		if err != nil {
+			return err
 		}
-		blockNum := binary.BigEndian.Uint64(kv.Value[:8])
-		hash := common.BytesToHash(kv.Value[8:])
-		log.Info("Importing processed bundle history hash from genesis",
-			"blockNum", blockNum,
-			"hash", hash)
-		return s.table.ProcessedBundles.Put(nil, kv.Value)
-	}
+		offset = newOffset
 
-	// key := e + plan.Hash
-	// value := blockNum + position + count
-	if len(kv.Key) != 1+32 || len(kv.Value) != 16 {
-		return fmt.Errorf(
-			"invalid key or value for processed bundle entry (key length: %d, value length: %d)",
-			len(kv.Key),
-			len(kv.Value),
-		)
+		if len(key) == 0 {
+			if len(value) != 8+32 {
+				return fmt.Errorf("invalid value length for bundle history hash (should be 40, got %d)", len(value))
+			}
+			blockNum := binary.BigEndian.Uint64(value[:8])
+			hash := common.BytesToHash(value[8:])
+			log.Info("Importing processed bundle history hash from genesis",
+				"blockNum", blockNum,
+				"hash", hash)
+			if err := s.table.ProcessedBundles.Put(nil, value); err != nil {
+				return err
+			}
+			continue
+		}
+		if len(key) != 1+32 || len(value) != 16 {
+			return fmt.Errorf("invalid key or value for processed bundle entry (key length: %d, value length: %d)", len(key), len(value))
+		}
+		var execPlanHash common.Hash
+		copy(execPlanHash[:], key[1:])
+		if execPlanHash == (common.Hash{}) {
+			return errors.New("invalid execution plan hash in processed bundle entry")
+		}
+		if err := s.table.ProcessedBundles.Put(key, value); err != nil {
+			return err
+		}
+		indexKey := getIndexKey(binary.BigEndian.Uint64(value[:8]), execPlanHash)
+		if err := s.table.ProcessedBundles.Put(indexKey, []byte{0}); err != nil {
+			return err
+		}
 	}
-	var execPlanHash common.Hash
-	copy(execPlanHash[:], kv.Key[1:])
-	if execPlanHash == (common.Hash{}) {
-		return errors.New("invalid execution plan hash in processed bundle entry")
-	}
-
-	// write entry key
-	if err := s.table.ProcessedBundles.Put(kv.Key, kv.Value); err != nil {
-		return err
-	}
-	// write index key
-	indexKey := getIndexKey(binary.BigEndian.Uint64(kv.Value[:8]), execPlanHash)
-	if err := s.table.ProcessedBundles.Put(indexKey, []byte{0}); err != nil {
-		return err
-	}
-
 	return nil
+}
+
+func decodeEntry(offset int, data []byte) ([]byte, []byte, int, error) {
+	if offset+4 > len(data) {
+		return nil, nil, 0, fmt.Errorf("invalid data: incomplete key length at offset %d", offset)
+	}
+	keyLen := int(binary.BigEndian.Uint32(data[offset : offset+4]))
+	offset += 4
+	if offset+keyLen > len(data) {
+		return nil, nil, 0, fmt.Errorf("invalid data: incomplete key at offset %d", offset)
+	}
+	key := data[offset : offset+keyLen]
+	offset += keyLen
+	if offset+4 > len(data) {
+		return nil, nil, 0, fmt.Errorf("invalid data: incomplete value length at offset %d", offset)
+	}
+	valueLen := int(binary.BigEndian.Uint32(data[offset : offset+4]))
+	offset += 4
+	if offset+valueLen > len(data) {
+		return nil, nil, 0, fmt.Errorf("invalid data: incomplete value at offset %d", offset)
+	}
+	value := data[offset : offset+valueLen]
+	offset += valueLen
+	return key, value, offset, nil
 }
 
 // getEntryKey returns the key used to store the presence of a processed bundle

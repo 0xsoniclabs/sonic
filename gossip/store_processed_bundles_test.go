@@ -165,8 +165,6 @@ func TestStore_GetProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
 }
 
 func TestStore_SetRawProcessedBundle_ReturnsErrorForInvalidHashLength(t *testing.T) {
-	require := require.New(t)
-
 	tests := map[string]struct {
 		key, value []byte
 		errorMsg   string
@@ -195,10 +193,14 @@ func TestStore_SetRawProcessedBundle_ReturnsErrorForInvalidHashLength(t *testing
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
 			store, err := NewMemStore(t)
 			require.NoError(err)
 
-			err = store.SetRawProcessedBundle(BundleKV{Key: tc.key, Value: tc.value})
+			// Encode as batch
+			entry := BundleKV{Key: tc.key, Value: tc.value}
+			batch := entry.Encode()
+			err = store.SetRawProcessedBundles(batch)
 			require.Error(err)
 			require.Contains(err.Error(), tc.errorMsg)
 		})
@@ -216,7 +218,9 @@ func TestStore_SetRawProcessedBundle_RecognizesBundleHistoryHash(t *testing.T) {
 	binary.BigEndian.PutUint64(value[:8], blockNum)
 	copy(value[8:], hash[:])
 
-	err = store.SetRawProcessedBundle(BundleKV{Key: nil, Value: value}) // nil key for history hash
+	entry := BundleKV{Key: nil, Value: value}
+	batch := entry.Encode()
+	err = store.SetRawProcessedBundles(batch)
 	require.NoError(err)
 
 	resBlockNum, resHash := store.GetProcessedBundleHistoryHash()
@@ -245,7 +249,8 @@ func TestStore_SetRawProcessedBundle_AddsEntryToStore(t *testing.T) {
 		Value: data,
 	}
 
-	err = store.SetRawProcessedBundle(entry)
+	batch := entry.Encode()
+	err = store.SetRawProcessedBundles(batch)
 	require.NoError(err)
 
 	resInfo := store.GetBundleExecutionInfo(hash)
@@ -275,7 +280,8 @@ func TestStore_SetRawProcessedBundle_AddsIndexEntry(t *testing.T) {
 		Key:   append([]byte{'e'}, hash.Bytes()...),
 		Value: data,
 	}
-	err = store.SetRawProcessedBundle(entry)
+	batch := entry.Encode()
+	err = store.SetRawProcessedBundles(batch)
 	require.NoError(err)
 
 	// check that the index entry was added (the value doesn't matter, just that it exists)
@@ -283,6 +289,88 @@ func TestStore_SetRawProcessedBundle_AddsIndexEntry(t *testing.T) {
 	hasIndexEntry, err := store.table.ProcessedBundles.Has(indexKey)
 	require.NoError(err)
 	require.True(hasIndexEntry, "expected index entry for processed bundle was not found")
+}
+
+func TestStore_DecodeEntry_ReturnsErrorForInvalidData(t *testing.T) {
+	tests := map[string]struct {
+		data     []byte
+		errorMsg string
+	}{
+		"empty data": {
+			data:     []byte{},
+			errorMsg: "incomplete key length",
+		},
+		"incomplete key length": {
+			data:     append(Uint32ToBytes(4), []byte{1, 2}...),
+			errorMsg: "incomplete key at",
+		},
+		"incomplete value length": {
+			data:     append(Uint32ToBytes(4), Uint32ToBytes(5)...),
+			errorMsg: "incomplete value length",
+		},
+		"incomplete value": {
+			data: append(
+				append(Uint32ToBytes(4),
+					[]byte{1, 2, 3, 4}...),
+				Uint32ToBytes(5)...),
+			errorMsg: "incomplete value at ",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			key, value, bytesRead, err := decodeEntry(0, tc.data)
+			require.Error(err)
+			require.Contains(err.Error(), tc.errorMsg)
+			require.Nil(key)
+			require.Nil(value)
+			require.Zero(bytesRead)
+		})
+	}
+}
+
+func TestStore_DecodeEntry_ReturnsKeyAndValue(t *testing.T) {
+
+	bundleHistoryValue := append(Uint64ToBytes(10), common.Hash{1, 2, 3}.Bytes()...)
+	bundleHistoryEntry := BundleKV{
+		Key:   nil,
+		Value: bundleHistoryValue,
+	}
+	entryValue := append(
+		append(Uint64ToBytes(20), Uint32ToBytes(1)...), Uint32ToBytes(2)...)
+	entryData := BundleKV{
+		Key:   append([]byte{'e'}, common.Hash{4, 5, 6}.Bytes()...),
+		Value: entryValue,
+	}
+
+	tests := map[string]struct {
+		data          []byte
+		expectedKey   []byte
+		expectedValue []byte
+	}{
+		"bundle history hash": {
+			data:          bundleHistoryEntry.Encode(),
+			expectedKey:   []byte{},
+			expectedValue: bundleHistoryValue,
+		},
+		"bundle entry": {
+			data:          entryData.Encode(),
+			expectedKey:   append([]byte{'e'}, common.Hash{4, 5, 6}.Bytes()...),
+			expectedValue: entryValue,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			key, value, bytesRead, err := decodeEntry(0, tc.data)
+			require.NoError(err)
+			require.Equal(tc.expectedKey, key)
+			require.Equal(tc.expectedValue, value)
+			require.Equal(len(tc.data), bytesRead)
+		})
+	}
 }
 
 func TestStore_DumpProcessedBundles_ReturnsEmptySliceWhenNoEntries(t *testing.T) {
@@ -408,4 +496,10 @@ func wrapInfo(hash common.Hash, blockNum ...uint64) bundle.ExecutionInfo {
 		Position:          0,
 		Count:             1,
 	}
+}
+
+func Uint64ToBytes(v uint64) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, v)
+	return b
 }

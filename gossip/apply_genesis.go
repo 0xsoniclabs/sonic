@@ -149,14 +149,18 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 	})
 
 	if g.ProcessedBundles != nil {
+		// Collect all entries and encode as a single []byte batch
+		var batch []byte
 		g.ProcessedBundles.ForEach(func(key, value []byte) bool {
 			entry := BundleKV{Key: key, Value: value}
-			if putErr := s.SetRawProcessedBundle(entry); putErr != nil {
-				s.Log.Crit("Failed to write processed bundle", "err", putErr)
-				return false
-			}
+			batch = append(batch, entry.Encode()...)
 			return true
 		})
+		if len(batch) > 0 {
+			if putErr := s.SetRawProcessedBundles(batch); putErr != nil {
+				s.Log.Crit("Failed to write processed bundles batch", "err", putErr)
+			}
+		}
 	}
 
 	return nil
