@@ -314,17 +314,8 @@ func (s *Store) SetRawProcessedBundle(kv BundleKV) error {
 
 	batch := s.table.ProcessedBundles.NewBatch()
 
-	// write entry key
-	if err := batch.Put(kv.Key, kv.Value); err != nil {
-		return err
-	}
-	// write index key
-	indexKey := getIndexKey(binary.BigEndian.Uint64(kv.Value[:8]), execPlanHash)
-	if err := batch.Put(indexKey, []byte{0}); err != nil {
-		return err
-	}
-
-	return batch.Write()
+		blockNumber := binary.BigEndian.Uint64(value[:8])
+		indexKey := getIndexKey(blockNumber, execPlanHash)
 }
 
 // DumpProcessedBundles returns a dump of all the entries in the processed
