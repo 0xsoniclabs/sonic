@@ -269,7 +269,6 @@ func TestBundleBuilder_CanSetGasPrice(t *testing.T) {
 
 	for _, price := range []*big.Int{nil, big.NewInt(1), big.NewInt(1_000_000)} {
 		t.Run(price.String(), func(t *testing.T) {
-
 			tx := NewBuilder(signer).
 				SetEnvelopeGasPrice(price).
 				With(

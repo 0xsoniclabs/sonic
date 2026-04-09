@@ -1092,14 +1092,14 @@ func TestValidateTxForPool_IgnoresBundleAndSponsoredTx_ForTipChecks(t *testing.T
 	require.NoError(t, err)
 
 	tests := map[string]struct {
-		tx           *types.Transaction
-		expecedError error
+		tx            *types.Transaction
+		expectedError error
 	}{
 		"too low tip tx": {
 			tx: types.MustSignNewTx(key, signer, &types.DynamicFeeTx{
 				GasTipCap: big.NewInt(1),
 			}),
-			expecedError: ErrUnderpriced,
+			expectedError: ErrUnderpriced,
 		},
 		"sponsored tx": {
 			tx: types.MustSignNewTx(key, signer, &types.DynamicFeeTx{
@@ -1112,7 +1112,7 @@ func TestValidateTxForPool_IgnoresBundleAndSponsoredTx_ForTipChecks(t *testing.T
 		},
 		"priced bundle envelope": {
 			tx: bundle.NewBuilder(signer).
-				SetEnvelopeGasPrice(big.NewInt(10)). // not an sponsorship request as it has a gas price
+				SetEnvelopeGasPrice(big.NewInt(1)). // not a sponsorship request as it has a gas price; keep it below minTip to exercise the bundle exemption
 				With(bundle.Step(key, &types.DynamicFeeTx{})).
 				Build(),
 		},
@@ -1121,8 +1121,8 @@ func TestValidateTxForPool_IgnoresBundleAndSponsoredTx_ForTipChecks(t *testing.T
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 
-			if test.expecedError == nil {
-				// sanity chech to make sure that inputs are addequate for the test
+			if test.expectedError == nil {
+				// sanity check to make sure that inputs are adequate for the test
 				require.True(t, subsidies.IsSponsorshipRequest(test.tx) || bundle.IsEnvelope(test.tx))
 			}
 
@@ -1137,8 +1137,8 @@ func TestValidateTxForPool_IgnoresBundleAndSponsoredTx_ForTipChecks(t *testing.T
 				transactionBundles: true,
 			}
 			err := validateTxForPool(test.tx, rules, opts, signer)
-			if test.expecedError != nil {
-				require.ErrorIs(t, err, test.expecedError)
+			if test.expectedError != nil {
+				require.ErrorIs(t, err, test.expectedError)
 			} else {
 				require.NoError(t, err)
 			}
