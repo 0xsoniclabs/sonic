@@ -19,11 +19,9 @@ package bundle
 import (
 	"bytes"
 	"fmt"
-	"math"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -79,88 +77,7 @@ var (
 	// BundleProcessor is the address to which envelope transactions are sending
 	// their payload containing the bundle of transactions to be executed.
 	BundleProcessor = common.HexToAddress("0x00000000000000000000000000000000B0D1EADD")
-
-	// MaxBlockRange is the maximum allowed block range (Latest - Earliest) for
-	// allowed for the validity period of a bundle.
-	MaxBlockRange = uint64(1024)
 )
-
-// ExecutionStep represents a single step in the execution plan,
-// which corresponds to a transaction to be executed as part of the bundle.
-type ExecutionStep struct {
-	// From is the sender of the transaction, derived from the signature of the transaction
-	From common.Address
-	// Hash is the transaction hash to be signed (not the hash of the transaction including its signature)
-	// where the access list has been stripped from the bundle-only mark.
-	Hash common.Hash
-}
-
-// ExecutionPlan represents the plan for executing a bundle of transactions,
-// to which every participant in the bundle shall agree on.
-// The execution plan includes the list of steps to be executed, in the order of execution
-type ExecutionPlan struct {
-	Steps []ExecutionStep // Steps to be executed in the bundle, in the order of execution
-	Flags ExecutionFlags  // Execution flags that specify the behavior of the bundle execution
-	Range BlockRange      // Block range [Earliest, Latest] in which the bundle can be included
-}
-
-// BlockRange represents a range of blocks, defined by an earliest and latest
-// block number. The covered block range is a closed interval [Earliest, Latest],
-// meaning that the earliest and latest blocks are included in the range.
-// For instance, [0,0] is a valid block range that only includes the block
-// number 0, while [0,1] includes both blocks 0 and 1. An interval where Latest
-// is smaller than Earliest, such as [1,0], is a valid empty range.
-type BlockRange struct {
-	Earliest uint64
-	Latest   uint64
-}
-
-// MakeMaxRangeStartingAt creates a block range of maximum allowed size, starting
-// at the given block number.
-func MakeMaxRangeStartingAt(blockNum uint64) BlockRange {
-	latest := blockNum + MaxBlockRange - 1
-	if blockNum > math.MaxUint64-MaxBlockRange {
-		// if the starting block number is too close to maxUint64,
-		// we cannot create a full range of MaxBlockRange blocks without overflowing.
-		// In this case, we create the largest possible range starting at blockNum,
-		// which ends at the maximum uint64 value.
-		latest = math.MaxUint64
-	}
-	return BlockRange{
-		Earliest: blockNum,
-		Latest:   latest,
-	}
-}
-
-// Size returns the size of the block range, which is the number of blocks
-// included in the range.
-func (r BlockRange) Size() uint64 {
-	if r.Latest < r.Earliest {
-		return 0
-	}
-	// overflow check
-	if r.Earliest == 0 && r.Latest == math.MaxUint64 {
-		return math.MaxUint64
-	}
-	return r.Latest - r.Earliest + 1
-}
-
-// IsInRange checks if the given block number is within this block range.
-// The range is a closed interval [Earliest, Latest], meaning that blocks with
-// numbers from Earliest through Latest (inclusive) are considered in range.
-func (r BlockRange) IsInRange(blockNum uint64) bool {
-	return blockNum >= r.Earliest && blockNum <= r.Latest
-}
-
-// Hash computes the execution plan hash
-// The hash is computed with Keccak256, and is based on the RLP encoding of the type
-// rlp([Steps, Flags]), where Steps is of type [[{20 bytes}, {32 bytes}]...] where
-// ... means “zero or more of the thing to the left”
-func (e *ExecutionPlan) Hash() common.Hash {
-	hasher := crypto.NewKeccakState()
-	_ = rlp.Encode(hasher, e)
-	return common.BytesToHash(hasher.Sum(nil))
-}
 
 // TransactionBundle represents a bundle of transactions, which are to be executed
 // sequentially within the same block. A payment transaction is included to
