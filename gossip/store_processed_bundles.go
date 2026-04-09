@@ -379,11 +379,11 @@ func (s *Store) ExportProcessedBundles() [][]byte {
 	result := make([][]byte, 0)
 
 	// get history entry
-	currentHistoryHash := BundleKV{Key: nil, Value: s.processedBundleHistoryEntry()}
-	if currentHistoryHash.Value == nil {
+	currentHistoryHash := s.processedBundleHistoryEntry()
+	if currentHistoryHash == nil {
 		return [][]byte{}
 	}
-	result = append(result, currentHistoryHash.Encode())
+	result = append(result, Encode(nil, currentHistoryHash))
 
 	// get all recently processed bundles
 	it := s.table.ProcessedBundles.NewIterator([]byte{'e'}, nil)
@@ -397,8 +397,8 @@ func (s *Store) ExportProcessedBundles() [][]byte {
 				"keyLength", len(key),
 				"valueLength", len(value))
 		}
-		entry := BundleKV{Key: key, Value: value}
-		result = append(result, entry.Encode())
+
+		result = append(result, Encode(key, value))
 	}
 	if it.Error() != nil {
 		s.Log.Crit("failed to export processed bundles", "error", it.Error())
@@ -406,23 +406,16 @@ func (s *Store) ExportProcessedBundles() [][]byte {
 	return result
 }
 
-// BundleKV represents a key-value pair for a processed bundle entry, used for
-// exporting and importing processed bundles in the genesis file.
-type BundleKV struct {
-	Key   []byte
-	Value []byte
-}
-
-// Encode encodes the BundleKV into a byte slice for storage or export.
+// Encode encodes a key-value pair into a byte slice for storage or export.
 // The format is: [uint32 key length][key][uint32 value length][value]
-func (k *BundleKV) Encode() []byte {
-	data := make([]byte, 0, 8+len(k.Key)+len(k.Value))
-	keyLen := uint32ToBytes(uint32(len(k.Key)))
+func Encode(key, value []byte) []byte {
+	data := make([]byte, 0, 8+len(key)+len(value))
+	keyLen := uint32ToBytes(uint32(len(key)))
 	data = append(data, keyLen...)
-	data = append(data, k.Key...)
-	valueLen := uint32ToBytes(uint32(len(k.Value)))
+	data = append(data, key...)
+	valueLen := uint32ToBytes(uint32(len(value)))
 	data = append(data, valueLen...)
-	data = append(data, k.Value...)
+	data = append(data, value...)
 	return data
 }
 

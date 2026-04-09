@@ -973,8 +973,7 @@ func TestStore_ImportProcessedBundles_ReturnsErrorForInvalidHashLength(t *testin
 			require.NoError(err)
 
 			// Encode as batch
-			entry := BundleKV{Key: tc.key, Value: tc.value}
-			batch := entry.Encode()
+			batch := Encode(tc.key, tc.value)
 			err = store.ImportProcessedBundles(batch)
 			require.Error(err)
 			require.Contains(err.Error(), tc.errorMsg)
@@ -1005,8 +1004,7 @@ func TestStore_ImportProcessedBundles_RecognizesBundleHistoryHash(t *testing.T) 
 	binary.BigEndian.PutUint64(value[:8], blockNum)
 	copy(value[8:], hash[:])
 
-	entry := BundleKV{Key: nil, Value: value}
-	batch := entry.Encode()
+	batch := Encode(nil, value)
 	err = store.ImportProcessedBundles(batch)
 	require.NoError(err)
 
@@ -1020,14 +1018,11 @@ func TestStore_ImportProcessedBundles_ReportsHistoryHashPutErrors(t *testing.T) 
 
 	log.EXPECT().Info(gomock.Any(), gomock.Any())
 
-	historyEntry := BundleKV{
-		Key:   nil,
-		Value: append(uint64ToBytes(10), common.Hash{1, 2, 3}.Bytes()...),
-	}
-	data := historyEntry.Encode()
+	historyEntry := append(uint64ToBytes(10), common.Hash{1, 2, 3}.Bytes()...)
+	data := Encode(nil, historyEntry)
 
 	injectedErr := errors.New("put error")
-	table.EXPECT().Put(nil, historyEntry.Value).Return(injectedErr)
+	table.EXPECT().Put(nil, historyEntry).Return(injectedErr)
 
 	err := store.ImportProcessedBundles(data)
 	require.ErrorIs(t, err, injectedErr)
@@ -1035,23 +1030,21 @@ func TestStore_ImportProcessedBundles_ReportsHistoryHashPutErrors(t *testing.T) 
 
 func TestStore_ImportProcessedBundles_ReportsEntryPutErrors(t *testing.T) {
 	hash := common.Hash{1, 2, 3}
-	entry := BundleKV{
-		Key:   append([]byte{'e'}, hash.Bytes()...),
-		Value: make([]byte, 16),
-	}
-	data := entry.Encode()
+	key := append([]byte{'e'}, hash.Bytes()...)
+	value := make([]byte, 16)
+	data := Encode(key, value)
 	injectedError := errors.New("put entry error")
 
 	cases := map[string]func(batch *MockstoreBatch){
 		"entry put error": func(batch *MockstoreBatch) {
-			batch.EXPECT().Put(getEntryKey(hash), entry.Value).Return(injectedError)
+			batch.EXPECT().Put(getEntryKey(hash), value).Return(injectedError)
 		},
 		"index put error": func(batch *MockstoreBatch) {
-			batch.EXPECT().Put(getEntryKey(hash), entry.Value).Return(nil)
+			batch.EXPECT().Put(getEntryKey(hash), value).Return(nil)
 			batch.EXPECT().Put(getIndexKey(uint64(0), hash), []byte{0}).Return(injectedError)
 		},
 		"batch write error": func(batch *MockstoreBatch) {
-			batch.EXPECT().Put(getEntryKey(hash), entry.Value).Return(nil)
+			batch.EXPECT().Put(getEntryKey(hash), value).Return(nil)
 			batch.EXPECT().Put(getIndexKey(uint64(0), hash), []byte{0}).Return(nil)
 			batch.EXPECT().Write().Return(injectedError)
 		},
@@ -1089,12 +1082,10 @@ func TestStore_ImportProcessedBundles_AddsEntryToStore(t *testing.T) {
 	binary.BigEndian.PutUint32(data[8:12], info.Position.Offset)
 	binary.BigEndian.PutUint32(data[12:], info.Position.Count)
 
-	entry := BundleKV{
-		Key:   append([]byte{'e'}, hash.Bytes()...),
-		Value: data,
-	}
+	key := append([]byte{'e'}, hash.Bytes()...)
+	value := data
 
-	batch := entry.Encode()
+	batch := Encode(key, value)
 	err = store.ImportProcessedBundles(batch)
 	require.NoError(err)
 
@@ -1124,11 +1115,9 @@ func TestStore_ImportProcessedBundles_AddsIndexEntry(t *testing.T) {
 	binary.BigEndian.PutUint32(data[8:12], info.Position.Offset)
 	binary.BigEndian.PutUint32(data[12:], info.Position.Count)
 
-	entry := BundleKV{
-		Key:   append([]byte{'e'}, hash.Bytes()...),
-		Value: data,
-	}
-	batch := entry.Encode()
+	key := append([]byte{'e'}, hash.Bytes()...)
+	value := data
+	batch := Encode(key, value)
 	err = store.ImportProcessedBundles(batch)
 	require.NoError(err)
 
@@ -1181,19 +1170,12 @@ func TestStore_DecodeEntry_ReturnsErrorForInvalidData(t *testing.T) {
 func TestStore_DecodeEntry_ReturnsKeyAndValue(t *testing.T) {
 
 	bundleHistoryValue := append(uint64ToBytes(10), common.Hash{1, 2, 3}.Bytes()...)
-	bundleHistoryEntry := BundleKV{
-		Key:   nil,
-		Value: bundleHistoryValue,
-	}
 	entryValue := append(
 		append(
 			uint64ToBytes(20),
 			uint32ToBytes(1)...),
 		uint32ToBytes(2)...)
-	entryData := BundleKV{
-		Key:   append([]byte{'e'}, common.Hash{4, 5, 6}.Bytes()...),
-		Value: entryValue,
-	}
+	key := append([]byte{'e'}, common.Hash{4, 5, 6}.Bytes()...)
 
 	tests := map[string]struct {
 		data          []byte
@@ -1201,12 +1183,12 @@ func TestStore_DecodeEntry_ReturnsKeyAndValue(t *testing.T) {
 		expectedValue []byte
 	}{
 		"bundle history hash": {
-			data:          bundleHistoryEntry.Encode(),
+			data:          Encode(nil, bundleHistoryValue),
 			expectedKey:   []byte{},
 			expectedValue: bundleHistoryValue,
 		},
 		"bundle entry": {
-			data:          entryData.Encode(),
+			data:          Encode(key, entryValue),
 			expectedKey:   append([]byte{'e'}, common.Hash{4, 5, 6}.Bytes()...),
 			expectedValue: entryValue,
 		},
@@ -1305,15 +1287,13 @@ func TestStore_ExportProcessedBundles_ReturnsEncodedEntry(t *testing.T) {
 	require.Len(exportedEntries, 2) // history hash + 1 entry
 
 	// check that the exported entry matches the expected encoding of the added entry
-	expectedEntry := BundleKV{
-		Key:   append([]byte{'e'}, hash.Bytes()...),
-		Value: make([]byte, 16),
-	}
-	binary.BigEndian.PutUint64(expectedEntry.Value[:8], info.BlockNumber)
-	binary.BigEndian.PutUint32(expectedEntry.Value[8:12], info.Position.Offset)
-	binary.BigEndian.PutUint32(expectedEntry.Value[12:], info.Position.Count)
+	key := append([]byte{'e'}, hash.Bytes()...)
+	value := make([]byte, 16)
+	binary.BigEndian.PutUint64(value[:8], info.BlockNumber)
+	binary.BigEndian.PutUint32(value[8:12], info.Position.Offset)
+	binary.BigEndian.PutUint32(value[12:], info.Position.Count)
 
-	require.Contains(exportedEntries, expectedEntry.Encode())
+	require.Contains(exportedEntries, Encode(key, value))
 }
 
 func TestStore_ExportProcessedBundles_LogsOnCrit_IteratorError(t *testing.T) {
@@ -1376,7 +1356,7 @@ func TestStore_ExportProcessedBundles_LogsOnCrit_IteratorKeyValueWrongSize_Key(t
 	}
 }
 
-func TestStore_BundleKV_Encode_FollowsExpectedFormat(t *testing.T) {
+func TestStore_Encode_FollowsExpectedFormat(t *testing.T) {
 	tests := map[string]struct {
 		key   []byte
 		value []byte
@@ -1393,8 +1373,7 @@ func TestStore_BundleKV_Encode_FollowsExpectedFormat(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			entry := BundleKV{Key: tc.key, Value: tc.value}
-			encoded := entry.Encode()
+			encoded := Encode(tc.key, tc.value)
 
 			// expected total: 4 (key len) + key + 4 (value len) + value
 			expectedLen := 4 + len(tc.key) + 4 + len(tc.value)
