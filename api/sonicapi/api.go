@@ -16,14 +16,12 @@
 
 package sonicapi
 
-import "github.com/0xsoniclabs/sonic/api/ethapi"
-
 type PublicBundleAPI struct {
-	b ethapi.Backend
+	b backend
 }
 
 // NewPublicBundleAPI creates a new instance of the PublicBundleAPI with the given backend.
-func NewPublicBundleAPI(b ethapi.Backend) *PublicBundleAPI {
+func NewPublicBundleAPI(b backend) *PublicBundleAPI {
 	return &PublicBundleAPI{
 		b: b,
 	}
