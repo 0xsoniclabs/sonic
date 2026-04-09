@@ -23,6 +23,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 )
 
@@ -228,6 +229,70 @@ func TestBundleBuilder_Builder_NewNestedBundle(t *testing.T) {
 	)
 
 	_, _, err = ValidateEnvelope(signer, combined)
+	require.NoError(t, err)
+}
+
+func TestBundleBuilder_AutomaticallyAddsGasCostsForMarkers(t *testing.T) {
+	require := require.New(t)
+	signer := types.LatestSignerForChainID(testChainID)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+
+	txData := []types.TxData{
+		&types.AccessListTx{},
+		&types.AccessListTx{Gas: 1000},
+		&types.DynamicFeeTx{},
+		&types.DynamicFeeTx{Gas: 1000},
+		&types.BlobTx{},
+		&types.BlobTx{Gas: 1000},
+		&types.SetCodeTx{},
+		&types.SetCodeTx{Gas: 1000},
+	}
+
+	// The transaction data gets modified by the builder. So we keep a backup
+	// of the gas limits before passing them to the builder.
+	gasLimits := make([]uint64, len(txData))
+	for i, data := range txData {
+		gasLimits[i] = types.NewTx(data).Gas()
+	}
+
+	steps := make([]BundleStep, len(txData))
+	for i, data := range txData {
+		steps[i] = Step(key, data)
+	}
+
+	bundle, _ := NewBuilder(signer).With(steps...).BuildBundleAndPlan()
+
+	require.Len(bundle.Transactions, len(txData))
+
+	markerCosts := params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
+	for i, tx := range bundle.Transactions {
+		require.True(IsBundleOnly(tx))
+		cur := types.NewTx(txData[i])
+		require.Equal(tx.Type(), cur.Type())
+		require.Equal(gasLimits[i]+markerCosts, cur.Gas())
+	}
+}
+
+func TestBundleBuilder_AdjustsNestedEnvelopeGasToPassValidation(t *testing.T) {
+	signer := types.LatestSignerForChainID(testChainID)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	inner := OneOf(signer,
+		Step(key, &types.AccessListTx{}),
+	)
+
+	outer := AllOf(signer,
+		Step(key, inner),
+	)
+
+	bundle, _, err := ValidateEnvelope(signer, outer)
+	require.NoError(t, err)
+
+	_, _, err = ValidateEnvelope(signer, bundle.Transactions[0])
 	require.NoError(t, err)
 }
 
