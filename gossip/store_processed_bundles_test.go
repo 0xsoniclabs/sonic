@@ -988,10 +988,12 @@ func TestStore_EnumerateProcessedBundles_ReturnsAllAddedEntries(t *testing.T) {
 			hash: position,
 		}
 		store.AddProcessedBundles(uint64(i), executedBundles)
-		expected[hash] = bundle.ExecutionInfo{
-			ExecutionPlanHash: hash,
-			BlockNumber:       uint64(i),
-			Position:          position,
+		if i > 1 {
+			expected[hash] = bundle.ExecutionInfo{
+				ExecutionPlanHash: hash,
+				BlockNumber:       uint64(i),
+				Position:          position,
+			}
 		}
 	}
 	block, historyHash := store.GetProcessedBundleHistoryHash()
@@ -1002,12 +1004,12 @@ func TestStore_EnumerateProcessedBundles_ReturnsAllAddedEntries(t *testing.T) {
 	entries := store.EnumerateProcessedBundles()
 	// MaxBlockRange-1 entries (oldest was pruned)
 	require.Len(entries, int(bundle.MaxBlockRange-1))
+	require.Len(entries, len(expected),
+		"expected number of exported entries does not match expected")
 
 	// Verify each returned entry matches the expected info
-	for _, entry := range entries {
-		exp, ok := expected[entry.ExecutionPlanHash]
-		require.True(ok, "unexpected hash %x", entry.ExecutionPlanHash)
-		require.Equal(exp, entry)
+	for _, entry := range expected {
+		require.Contains(entries, entry, "expected entry not found: %+v", entry)
 	}
 }
 
@@ -1027,7 +1029,7 @@ func TestStore_EnumerateProcessedBundles_LogsOnCrit_IteratorError(t *testing.T) 
 		func() { store.EnumerateProcessedBundles() })
 }
 
-func TestStore_EnumerateProcessedBundles_LogsOnCrit_IteratorKeyValueWrongSize_Key(t *testing.T) {
+func TestStore_EnumerateProcessedBundles_LogsOnCrit_IteratorWrongSize(t *testing.T) {
 
 	tests := map[string]struct {
 		key   []byte
