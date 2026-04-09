@@ -26,12 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-//go:generate mockgen -source=estimate_gas_api.go -destination=estimate_gas_api_mock.go -package=sonicapi
-
-// MAX_BUNDLE_TRANSACTIONS is the maximum number of transactions
-// that can be included in a bundle for gas estimation.
-const MAX_BUNDLE_TRANSACTIONS = 16
-
+// BundleGasLimits represents the estimated gas limits for a bundle of transactions.
 type BundleGasLimits struct {
 	// GasLimits contains the estimated gas limit for each transaction in the
 	// bundle, in the same order as the input transactions.
@@ -51,8 +46,8 @@ func (a *PublicBundleAPI) EstimateGasForTransactions(
 	blockOverrides *ethapi.BlockOverrides,
 ) (BundleGasLimits, error) {
 
-	if len(args) > MAX_BUNDLE_TRANSACTIONS {
-		return BundleGasLimits{}, fmt.Errorf("too many transactions to estimate gas for: got %d, max is %d", len(args), MAX_BUNDLE_TRANSACTIONS)
+	if len(args) > MaxBundleTransactions {
+		return BundleGasLimits{}, fmt.Errorf("too many transactions to estimate gas for: got %d, max is %d", len(args), MaxBundleTransactions)
 	}
 
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
@@ -77,12 +72,8 @@ func (a *PublicBundleAPI) EstimateGasForTransactions(
 	return BundleGasLimits{GasLimits: gasLimits}, nil
 }
 
-// GasEstimator is an interface for estimating gas for a transaction with given pre-state.
-type GasEstimator interface {
-	EstimateGas(args ethapi.TransactionArgs, preArgs []ethapi.TransactionArgs) (hexutil.Uint64, error)
-}
-
-// estimator is a struct that implements the GasEstimator interface using the ethapi.DoEstimateGas function.
+// estimator is a helper struct that holds the context and parameters
+// needed to estimate gas for a list of transactions.
 type estimator struct {
 	ctx            context.Context
 	b              ethapi.Backend
@@ -106,7 +97,7 @@ func (e *estimator) EstimateGas(args ethapi.TransactionArgs, preArgs []ethapi.Tr
 // It applies the state changes from each transaction to the subsequent ones when estimating gas.
 func doEstimateGasForTransactions(
 	args []ethapi.TransactionArgs,
-	eval GasEstimator,
+	eval *estimator,
 ) ([]hexutil.Uint64, error) {
 	gasLimits := make([]hexutil.Uint64, len(args))
 	preArgs := make([]ethapi.TransactionArgs, 0, len(args))
