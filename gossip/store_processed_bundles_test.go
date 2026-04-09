@@ -1192,7 +1192,7 @@ func TestStore_DumpProcessedBundles_ReturnsEncodedEntry(t *testing.T) {
 	require.Contains(dumpedEntries, expectedEntry.Encode())
 }
 
-func TestStore_DumpProcessedBundles_LogsOnCrit(t *testing.T) {
+func TestStore_DumpProcessedBundles_LogsOnCrit_IteratorError(t *testing.T) {
 	store, table, log, _, it := storeTableLogMocks(t)
 
 	injectedErr := errors.New("iterator error")
@@ -1207,6 +1207,49 @@ func TestStore_DumpProcessedBundles_LogsOnCrit(t *testing.T) {
 	require.PanicsWithValue(t,
 		fmt.Sprintf("failed to dump processed bundles: %v", []any{"error", injectedErr}),
 		func() { store.DumpProcessedBundles() })
+}
+
+func TestStore_DumpProcessedBundles_LogsOnCrit_IteratorKeyValueWrongSize_Key(t *testing.T) {
+
+	tests := map[string]struct {
+		key   []byte
+		value []byte
+	}{
+		"short key": {
+			key:   []byte{1, 2}, // should be 33 bytes for 'e' + hash
+			value: make([]byte, 16),
+		},
+		"short value": {
+			key:   append([]byte{'e'}, common.Hash{1, 2, 3}.Bytes()...),
+			value: make([]byte, 15), // should be 16 bytes
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			store, table, log, _, it := storeTableLogMocks(t)
+
+			gomock.InOrder(
+				table.EXPECT().Get(nil).Return(make([]byte, 40), nil),
+				table.EXPECT().NewIterator([]byte{'e'}, nil).Return(it),
+				it.EXPECT().Next().Return(true),
+				it.EXPECT().Key().Return(tc.key),
+				it.EXPECT().Value().Return(tc.value),
+			)
+			expectCrit(
+				log,
+				"invalid key or value length for processed bundle entry during dump",
+				"keyLength", len(tc.key),
+				"valueLength", len(tc.value))
+
+			require.PanicsWithValue(t,
+				fmt.Sprintf("invalid key or value length for processed bundle entry during dump: %v",
+					[]any{"keyLength", fmt.Sprintf("%d", len(tc.key)),
+						"valueLength", fmt.Sprintf("%d", len(tc.value))}),
+				func() { store.DumpProcessedBundles() })
+
+		})
+	}
 }
 
 func TestStore_BundleKV_Encode_FollowsExpectedFormat(t *testing.T) {

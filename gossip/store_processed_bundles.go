@@ -339,7 +339,15 @@ func (s *Store) DumpProcessedBundles() [][]byte {
 	it := s.table.ProcessedBundles.NewIterator([]byte{'e'}, nil)
 	defer it.Release()
 	for it.Next() {
-		entry := BundleKV{Key: it.Key(), Value: it.Value()}
+		key := it.Key()
+		value := it.Value()
+		if len(key) != 1+32 || len(value) != 16 {
+			s.Log.Crit(
+				"invalid key or value length for processed bundle entry during dump",
+				"keyLength", len(key),
+				"valueLength", len(value))
+		}
+		entry := BundleKV{Key: key, Value: value}
 		dump = append(dump, entry.Encode())
 	}
 	if it.Error() != nil {
