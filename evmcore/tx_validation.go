@@ -341,7 +341,8 @@ func validateTxForPool(
 
 	// Drop non-local transactions under our own minimal accepted gas price or tip.
 	isSponsorRequest := netRules.gasSubsidies && subsidies.IsSponsorshipRequest(tx)
-	if !isSponsorRequest && tx.GasTipCapIntCmp(opt.minTip) < 0 {
+	isBundle := netRules.brio && bundle.IsEnvelope(tx)
+	if !isSponsorRequest && !isBundle && tx.GasTipCapIntCmp(opt.minTip) < 0 {
 		log.Trace("Rejecting underpriced tx: pool.minTip", "pool.minTip",
 			opt.minTip, "tx.GasTipCap", tx.GasTipCap())
 		return ErrUnderpriced

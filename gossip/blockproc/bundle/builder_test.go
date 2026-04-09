@@ -260,3 +260,52 @@ func TestBundleBuilder_DefaultsSignerIfUnspecified(t *testing.T) {
 	_, _, err = ValidateEnvelope(signer, tx)
 	require.NoError(t, err)
 }
+
+func TestBundleBuilder_CanSetGasPrice(t *testing.T) {
+	signer := types.LatestSignerForChainID(testChainID)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	for _, price := range []*big.Int{nil, big.NewInt(1), big.NewInt(1_000_000)} {
+		t.Run(price.String(), func(t *testing.T) {
+
+			tx := NewBuilder(signer).
+				SetEnvelopeGasPrice(price).
+				With(
+					Step(key, &types.AccessListTx{
+						Nonce: 0,
+					}),
+				).
+				Build()
+
+			_, _, err = ValidateEnvelope(signer, tx)
+			require.NoError(t, err)
+
+			if price != nil {
+				require.Equal(t, 0, tx.GasPrice().Cmp(price))
+			} else {
+				require.Equal(t, 0, tx.GasPrice().Cmp(big.NewInt(0)))
+			}
+		})
+	}
+}
+
+func TestBundleBuilder_DefaultsGasPriceToZero(t *testing.T) {
+	signer := types.LatestSignerForChainID(testChainID)
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	tx := NewBuilder(signer).
+		With(
+			Step(key, &types.AccessListTx{
+				Nonce: 0,
+			}),
+		).
+		Build()
+
+	_, _, err = ValidateEnvelope(signer, tx)
+	require.NoError(t, err)
+
+	require.Equal(t, 0, tx.GasPrice().Cmp(big.NewInt(0)))
+}

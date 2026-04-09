@@ -128,12 +128,14 @@ func NewBuilder(signer types.Signer) *builder {
 }
 
 type builder struct {
-	signer      types.Signer
-	flags       *ExecutionFlags
-	earliest    *uint64
-	latest      *uint64
-	steps       []BundleStep
-	envelopeKey *ecdsa.PrivateKey
+	signer        types.Signer
+	flags         *ExecutionFlags
+	earliest      *uint64
+	latest        *uint64
+	steps         []BundleStep
+	envelopeKey   *ecdsa.PrivateKey
+	envelopeNonce uint64
+	gasPrice      *big.Int
 }
 
 func (b *builder) SetFlags(flags ExecutionFlags) *builder {
@@ -158,6 +160,19 @@ func (b *builder) With(steps ...BundleStep) *builder {
 
 func (b *builder) SetEnvelopeSenderKey(key *ecdsa.PrivateKey) *builder {
 	b.envelopeKey = key
+	return b
+}
+
+func (b *builder) SetEnvelopeNonce(nonce uint64) *builder {
+	b.envelopeNonce = nonce
+	return b
+}
+
+// SetEnvelopeGasPrice sets the gas price for the envelope transaction.
+// An envelope with gas price is still a valid envelope. This function is
+// added to be able to generate test cases.
+func (b *builder) SetEnvelopeGasPrice(gasPrice *big.Int) *builder {
+	b.gasPrice = gasPrice
 	return b
 }
 
@@ -253,7 +268,7 @@ func (b *builder) BuildEnvelopeBundleAndPlan() (
 		key = newKey
 	}
 	bundle, plan := b.BuildBundleAndPlan()
-	return newEnvelope(b.signer, key, bundle), bundle, plan
+	return newEnvelope(b.signer, key, b.envelopeNonce, b.gasPrice, bundle), bundle, plan
 }
 
 // BuildEnvelope returns an envelope transaction and its execution plan
@@ -284,6 +299,8 @@ func OneOf(signer types.Signer, steps ...BundleStep) *types.Transaction {
 func newEnvelope(
 	signer types.Signer,
 	key *ecdsa.PrivateKey,
+	nonce uint64,
+	gasPrice *big.Int,
 	bundle *TransactionBundle,
 ) *types.Transaction {
 
@@ -315,8 +332,10 @@ func newEnvelope(
 	gasLimit := max(intrinsic, floorDataGas, txGasSum)
 
 	return types.MustSignNewTx(key, signer, &types.AccessListTx{
-		To:   &BundleProcessor,
-		Data: payload,
-		Gas:  gasLimit,
+		To:       &BundleProcessor,
+		Nonce:    nonce,
+		Data:     payload,
+		Gas:      gasLimit,
+		GasPrice: gasPrice,
 	})
 }
