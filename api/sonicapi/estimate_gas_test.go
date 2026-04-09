@@ -193,3 +193,43 @@ func getTestArgs(addr1, addr2 common.Address, val *hexutil.Big) []ethapi.Transac
 		},
 	}
 }
+
+func Test_EstimateGasForTransactions_AnyTxFails_ReturnsError(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+	addr3 := common.Address{3}
+
+	// reverted code
+	code := []byte{0x60, 0x00, 0x80, 0xfd} // PUSH1 0x00; DUP1; REVERT
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(addr3, rpctest.AccountState{Code: code}).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	args := []ethapi.TransactionArgs{
+		{
+			From:  &addr1,
+			To:    &addr2,
+			Nonce: rpctest.ToHexUint64(0),
+			Value: rpctest.ToHexBigInt(big.NewInt(1e16)),
+		},
+		{
+			From:  &addr2,
+			To:    &addr3,
+			Nonce: rpctest.ToHexUint64(0),
+		},
+		{
+			From:  &addr1,
+			To:    &addr2,
+			Nonce: rpctest.ToHexUint64(1),
+			Value: rpctest.ToHexBigInt(big.NewInt(1e16)),
+		},
+	}
+
+	result, err := api.EstimateGasForTransactions(t.Context(), args, nil, nil, nil)
+	require.ErrorContains(t, err, "failed to estimate gas for transaction 1: execution reverted")
+	require.Len(t, result.GasLimits, 0)
+}
