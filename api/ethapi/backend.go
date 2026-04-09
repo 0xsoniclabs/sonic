@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -113,6 +114,9 @@ type Backend interface {
 	GetOriginatedFee(ctx context.Context, vid idx.ValidatorID) (*big.Int, error)
 
 	SccApiBackend
+
+	// Bundle API
+	GetBundleExecutionInfo(common.Hash) *bundle.ExecutionInfo
 }
 
 // GetVmConfig is a utility function resolving the VM configuration for a block

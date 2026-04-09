@@ -40,6 +40,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -646,4 +647,8 @@ func (b *EthAPIBackend) EnumerateBlockCertificates(first idx.Block) iter.Seq[res
 
 func (b *EthAPIBackend) GetUpgradeHeights() []opera.UpgradeHeight {
 	return b.svc.store.GetUpgradeHeights()
+}
+
+func (b *EthAPIBackend) GetBundleExecutionInfo(hash common.Hash) *bundle.ExecutionInfo {
+	return b.svc.store.GetBundleExecutionInfo(hash)
 }
