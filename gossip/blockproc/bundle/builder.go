@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 // This file offers utilities to build bundles from transaction data. The most
@@ -197,8 +198,44 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		b.signer = types.LatestSignerForChainID(big.NewInt(1))
 	}
 
-	// Create an Execution Plan for the bundle.
+	// Add the costs for the additional marker to the gas limit.
+	markerCosts := params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
+	for _, step := range b.steps {
+		// Fix the gas limit for nested envelops to be accurate.
+		tx := types.NewTx(step.tx)
+		newGasLimit := tx.Gas() + markerCosts
 
+		// For nested envelopes, the gas price needs to be accurately adjusted
+		// to pass the bundle validation test.
+		if IsEnvelope(tx) {
+			innerBundle, _, err := ValidateEnvelope(b.signer, tx)
+			if err == nil {
+				marker := types.AccessTuple{
+					Address:     BundleOnly,
+					StorageKeys: []common.Hash{{1, 2, 3}}, // < value not relevant
+				}
+				newGasLimit = getGasLimitForEnvelope(
+					innerBundle, tx.Data(), []types.AccessTuple{marker},
+				)
+			}
+		}
+
+		switch data := step.tx.(type) {
+		case *types.DynamicFeeTx:
+			data.Gas = newGasLimit
+		case *types.AccessListTx:
+			data.Gas = newGasLimit
+		case *types.BlobTx:
+			data.Gas = newGasLimit
+		case *types.SetCodeTx:
+			data.Gas = newGasLimit
+		default:
+			panic("unsupported TxData type for gas adjustment")
+		}
+
+	}
+
+	// Create an Execution Plan for the bundle.
 	plan := ExecutionPlan{
 		Steps: make([]ExecutionStep, len(b.steps)),
 		Flags: flags,
@@ -305,10 +342,25 @@ func newEnvelope(
 ) *types.Transaction {
 
 	payload := bundle.Encode()
+	gasLimit := getGasLimitForEnvelope(bundle, payload, nil)
 
+	return types.MustSignNewTx(key, signer, &types.AccessListTx{
+		To:       &BundleProcessor,
+		Nonce:    nonce,
+		Data:     payload,
+		Gas:      gasLimit,
+		GasPrice: gasPrice,
+	})
+}
+
+func getGasLimitForEnvelope(
+	bundle *TransactionBundle,
+	payload []byte,
+	accessList []types.AccessTuple,
+) uint64 {
 	intrinsic, err := core.IntrinsicGas(
 		payload,
-		nil,   // access list is not used in the envelope transaction
+		accessList,
 		nil,   // code auth is not used in the bundle transaction
 		false, // bundle transaction is not a contract creation
 		true,  // is homestead
@@ -329,13 +381,5 @@ func newEnvelope(
 		txGasSum += tx.Gas()
 	}
 
-	gasLimit := max(intrinsic, floorDataGas, txGasSum)
-
-	return types.MustSignNewTx(key, signer, &types.AccessListTx{
-		To:       &BundleProcessor,
-		Nonce:    nonce,
-		Data:     payload,
-		Gas:      gasLimit,
-		GasPrice: gasPrice,
-	})
+	return max(intrinsic, floorDataGas, txGasSum)
 }
