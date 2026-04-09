@@ -19,7 +19,6 @@ package sonicapi
 import (
 	"context"
 
-	rpctest "github.com/0xsoniclabs/sonic/api/rpc_test"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -48,9 +47,9 @@ func (a *PublicBundleAPI) GetBundleInfo(
 	info := a.b.GetBundleExecutionInfo(executionPlanHash)
 	if info != nil {
 		return &RPCBundleInfo{
-			Block:    rpctest.ToBlockNum(info.BlockNumber),
-			Position: rpctest.ToHexUint(uint(info.Position.Offset)),
-			Count:    rpctest.ToHexUint(uint(info.Position.Count)),
+			Block:    rpc.BlockNumber(info.BlockNumber),
+			Position: hexutil.Uint(info.Position.Offset),
+			Count:    hexutil.Uint(info.Position.Count),
 		}, nil
 	}
 
@@ -61,7 +60,7 @@ func (a *PublicBundleAPI) GetBundleInfo(
 // RPCBundleInfo is the JSON RPC message returned by the GetBundleInfo API, which
 // provides information about the effect of the execution of a transaction bundle.
 type RPCBundleInfo struct {
-	Block    *rpc.BlockNumber `json:"block,omitempty"`
-	Position *hexutil.Uint    `json:"position,omitempty"`
-	Count    *hexutil.Uint    `json:"count,omitempty"`
+	Block    rpc.BlockNumber `json:"block,omitempty"`
+	Position hexutil.Uint    `json:"position,omitempty"`
+	Count    hexutil.Uint    `json:"count,omitempty"`
 }
