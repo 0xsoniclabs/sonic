@@ -16,13 +16,17 @@
 
 package sonicapi
 
-type PublicBundleAPI struct {
-	b backend
-}
+import (
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/ethereum/go-ethereum/common"
+)
 
-// NewPublicBundleAPI creates a new instance of the PublicBundleAPI with the given backend.
-func NewPublicBundleAPI(b backend) *PublicBundleAPI {
-	return &PublicBundleAPI{
-		b: b,
-	}
+//go:generate mockgen -source=backend.go -destination=backend_mock.go -package=sonicapi
+
+// backend is an interface that abstracts the necessary backend functions for the
+// sonic API.
+type backend interface {
+	// GetBundleExecutionInfo returns information about the execution of a transaction bundle, if available.
+	// If the bundle is unknown, it returns nil.
+	GetBundleExecutionInfo(common.Hash) *bundle.ExecutionInfo
 }

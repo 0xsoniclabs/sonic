@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // This file contains utility functions and types for the RPC tests.
@@ -85,4 +86,10 @@ func ToEvmHeader(block Block) *evmcore.EvmHeader {
 		Hash:       block.Hash,
 		ParentHash: block.ParentHash,
 	}
+}
+
+// ToBlockNum converts a uint64 to a *rpc.BlockNumber.
+func ToBlockNum(i uint64) *rpc.BlockNumber {
+	bn := rpc.BlockNumber(i)
+	return &bn
 }
