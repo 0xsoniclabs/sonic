@@ -30,7 +30,6 @@ import (
 )
 
 func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
-	t.Parallel()
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.TransactionBundles = true
 
