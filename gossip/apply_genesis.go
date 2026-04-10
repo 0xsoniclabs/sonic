@@ -19,7 +19,10 @@ package gossip
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
@@ -149,17 +152,20 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 	})
 
 	if g.ProcessedBundles != nil {
-		// Collect all entries and encode as a single []byte batch
-		var batch []byte
-		g.ProcessedBundles.ForEach(func(key, value []byte) bool {
-			entry := BundleKV{Key: key, Value: value}
-			batch = append(batch, entry.Encode()...)
+		bundlesByBlock := make(map[uint64][]bundle.ExecutionInfo)
+
+		g.ProcessedBundles.ForEach(func(info bundle.ExecutionInfo) bool {
+			bundlesByBlock[info.BlockNum] = append(bundlesByBlock[info.BlockNum], info)
 			return true
 		})
-		if len(batch) > 0 {
-			if putErr := s.SetRawProcessedBundles(batch); putErr != nil {
-				s.Log.Crit("Failed to write processed bundles batch", "err", putErr)
-			}
+
+		// Import bundles grouped by block number in ascending order.
+		for _, bn := range slices.Sorted(maps.Keys(bundlesByBlock)) {
+			s.AddProcessedBundles(bn, bundlesByBlock[bn])
+		}
+
+		if h := g.ProcessedBundles.GetHistoryHash(); h != nil {
+			s.SetProcessedBundlesHistoryHash(h.BlockNum, h.Hash)
 		}
 	}
 

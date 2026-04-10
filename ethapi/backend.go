@@ -94,6 +94,7 @@ type Backend interface {
 
 	// Bundle API
 	GetBundleExecutionInfo(common.Hash) *bundle.ExecutionInfo
+	GetProcessedBundleHistoryHash() (uint64, common.Hash)
 
 	ChainConfig(blockHeight idx.Block) *params.ChainConfig
 	ChainID() *big.Int

@@ -19,9 +19,9 @@ package gossip
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
@@ -204,118 +204,55 @@ func (s *Store) processedBundleHistoryEntry() []byte {
 	return state
 }
 
-func (s *Store) DumpProcessedBundles() [][]byte {
-	dump := make([][]byte, 0)
+// SetProcessedBundlesHistoryHash sets the block number and hash of the
+// processed bundles history. This should be used only during genesis initialization.
+func (s *Store) SetProcessedBundlesHistoryHash(blockNum uint64, hash common.Hash) {
+	// Make sure there is only one update at any time.
+	s.processedBundleMutex.Lock()
+	defer s.processedBundleMutex.Unlock()
 
-	currentHistoryHash := BundleKV{Key: nil, Value: s.processedBundleHistoryEntry()}
-	if currentHistoryHash.Value == nil {
-		return [][]byte{}
+	err := s.table.ProcessedBundles.Put(nil, append(
+		bigendian.Uint64ToBytes(blockNum),
+		hash.Bytes()...,
+	))
+	if err != nil {
+		s.Log.Crit("failed to set hash of processed bundles", "error", err)
 	}
+}
 
-	dump = append(dump, currentHistoryHash.Encode())
+// EnumerateProcessedBundles returns a list of all recently processed bundle
+// execution infos currently tracked by the store.
+func (s *Store) EnumerateProcessedBundles() []bundle.ExecutionInfo {
+	// Make sure there is only one update at any time.
+	s.processedBundleMutex.Lock()
+	defer s.processedBundleMutex.Unlock()
 
+	result := make([]bundle.ExecutionInfo, 0)
+
+	// get all recently processed bundles
 	it := s.table.ProcessedBundles.NewIterator([]byte{'e'}, nil)
 	defer it.Release()
 	for it.Next() {
-		entry := BundleKV{Key: it.Key(), Value: it.Value()}
-		dump = append(dump, entry.Encode())
+		key := it.Key()
+		value := it.Value()
+		if len(key) != 1+32 || len(value) != 16 {
+			s.Log.Crit(
+				"invalid key or value length for processed bundle entry during export",
+				"keyLength", len(key),
+				"valueLength", len(value))
+		}
+
+		result = append(result, bundle.ExecutionInfo{
+			ExecutionPlanHash: common.BytesToHash(key[1:]),
+			BlockNum:          binary.BigEndian.Uint64(value[:8]),
+			Position:          binary.BigEndian.Uint32(value[8:12]),
+			Count:             binary.BigEndian.Uint32(value[12:]),
+		})
 	}
 	if it.Error() != nil {
-		log.Crit("Failed to dump processed bundles", "err", it.Error())
+		s.Log.Crit("failed to export processed bundles", "error", it.Error())
 	}
-	return dump
-}
-
-// BundleKV represents a key-value pair for a processed bundle entry, used for
-// exporting and importing processed bundles in the genesis file.
-type BundleKV struct {
-	Key   []byte
-	Value []byte
-}
-
-// Encode encodes the BundleKV into a byte slice for storage or export.
-// The format is: [uint32 key length][key][uint32 value length][value]
-func (k *BundleKV) Encode() []byte {
-	data := make([]byte, 0, 8+len(k.Key)+len(k.Value))
-	data = append(data, Uint32ToBytes(uint32(len(k.Key)))...)
-	data = append(data, k.Key...)
-	data = append(data, Uint32ToBytes(uint32(len(k.Value)))...)
-	data = append(data, k.Value...)
-	return data
-}
-
-// SetRawProcessedBundles imports a batch of processed bundle entries from a single byte slice.
-// The format is a repeated sequence of:
-//
-//	[4 bytes key length][key][4 bytes value length][value]
-//
-// This is used for genesis import.
-func (s *Store) SetRawProcessedBundles(data []byte) error {
-	offset := 0
-	for offset < len(data) {
-
-		// Import the entry (logic from old SetRawProcessedBundle)
-		key, value, newOffset, err := decodeEntry(offset, data)
-		if err != nil {
-			return err
-		}
-		offset = newOffset
-
-		if len(key) == 0 {
-			if len(value) != 8+32 {
-				return fmt.Errorf("invalid value length for bundle history hash (should be 40, got %d)", len(value))
-			}
-			blockNum := binary.BigEndian.Uint64(value[:8])
-			hash := common.BytesToHash(value[8:])
-			log.Info("Importing processed bundle history hash from genesis",
-				"blockNum", blockNum,
-				"hash", hash)
-			if err := s.table.ProcessedBundles.Put(nil, value); err != nil {
-				return err
-			}
-			continue
-		}
-		if len(key) != 1+32 || len(value) != 16 {
-			return fmt.Errorf("invalid key or value for processed bundle entry (key length: %d, value length: %d)", len(key), len(value))
-		}
-		var execPlanHash common.Hash
-		copy(execPlanHash[:], key[1:])
-		if execPlanHash == (common.Hash{}) {
-			return errors.New("invalid execution plan hash in processed bundle entry")
-		}
-		if err := s.table.ProcessedBundles.Put(key, value); err != nil {
-			return err
-		}
-		indexKey := getIndexKey(binary.BigEndian.Uint64(value[:8]), execPlanHash)
-		if err := s.table.ProcessedBundles.Put(indexKey, []byte{0}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func decodeEntry(offset int, data []byte) ([]byte, []byte, int, error) {
-	if offset+4 > len(data) {
-		return nil, nil, 0, fmt.Errorf("invalid data: incomplete key length at offset %d", offset)
-	}
-	keyLen := int(binary.BigEndian.Uint32(data[offset : offset+4]))
-	offset += 4
-	if offset+keyLen > len(data) {
-		return nil, nil, 0, fmt.Errorf("invalid data: incomplete key at offset %d", offset)
-	}
-	key := data[offset : offset+keyLen]
-	offset += keyLen
-	if offset+4 > len(data) {
-		return nil, nil, 0, fmt.Errorf("invalid data: incomplete value length at offset %d", offset)
-	}
-	valueLen := int(binary.BigEndian.Uint32(data[offset : offset+4]))
-	offset += 4
-	if offset+valueLen > len(data) {
-		return nil, nil, 0, fmt.Errorf("invalid data: incomplete value at offset %d", offset)
-	}
-	value := data[offset : offset+valueLen]
-	offset += valueLen
-	return key, value, offset, nil
+	return result
 }
 
 // getEntryKey returns the key used to store the presence of a processed bundle
@@ -337,10 +274,4 @@ func xorHash(a, b common.Hash) common.Hash {
 		res[i] = a[i] ^ b[i]
 	}
 	return res
-}
-
-func Uint32ToBytes(v uint32) []byte {
-	b := make([]byte, 4)
-	binary.BigEndian.PutUint32(b, v)
-	return b
 }

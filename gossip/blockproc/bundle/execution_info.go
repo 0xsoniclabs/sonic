@@ -27,3 +27,10 @@ type ExecutionInfo struct {
 	Position          uint32
 	Count             uint32
 }
+
+// HistoryHash represents the block number and cumulative hash of the processed
+// bundles history. It is used for genesis export/import serialization.
+type HistoryHash struct {
+	BlockNum uint64
+	Hash     common.Hash
+}

@@ -24,6 +24,7 @@ import (
 	"path"
 
 	"github.com/0xsoniclabs/sonic/gossip"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
@@ -258,9 +259,26 @@ func exportBlockCertificates(ctx context.Context, gdb *gossip.Store, writer *uni
 func exportBundles(ctx context.Context, gdb *gossip.Store, writer *unitWriter, lastBlock idx.Block) error {
 	log.Info("Exporting processed bundles")
 
+	// write the history hash as the first item.
+	blockNum, histHash := gdb.GetProcessedBundleHistoryHash()
+	b, err := rlp.EncodeToBytes(bundle.HistoryHash{
+		BlockNum: blockNum,
+		Hash:     histHash,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to encode bundle history hash: %w", err)
+	}
+	if _, err := writer.Write(b); err != nil {
+		return err
+	}
+
 	count := 0
-	for _, entry := range gdb.DumpProcessedBundles() {
-		if _, err := writer.Write(entry); err != nil {
+	for _, info := range gdb.EnumerateProcessedBundles() {
+		b, err := rlp.EncodeToBytes(info)
+		if err != nil {
+			return fmt.Errorf("failed to encode execution info: %w", err)
+		}
+		if _, err := writer.Write(b); err != nil {
 			return err
 		}
 		count++

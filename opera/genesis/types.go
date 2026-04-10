@@ -21,6 +21,7 @@ import (
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/scc/cert"
@@ -49,7 +50,8 @@ type (
 		ForEach(fn func(cert.Certificate[cert.BlockStatement]) bool)
 	}
 	ProcessedBundles interface {
-		ForEach(fn func(key, value []byte) bool)
+		ForEach(fn func(bundle.ExecutionInfo) bool)
+		GetHistoryHash() *bundle.HistoryHash
 	}
 	FwsLiveSection interface {
 		GetReader() (io.Reader, error)

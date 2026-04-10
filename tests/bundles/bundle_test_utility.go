@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -157,6 +158,19 @@ func GetBundleInfo(
 		return nil, ethereum.NotFound
 	}
 	return info, err
+}
+
+func GetProcessedBundleHistoryHash(
+	ctxt context.Context,
+	client *rpc.Client,
+) (*bundle.HistoryHash, error) {
+	var historyHash *bundle.HistoryHash
+	err := client.CallContext(
+		ctxt,
+		&historyHash,
+		"sonic_getProcessedBundleHistoryHash",
+	)
+	return historyHash, err
 }
 
 func WaitForBundlesExecution(

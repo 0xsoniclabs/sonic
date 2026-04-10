@@ -77,6 +77,14 @@ func (a *PublicBundleAPI) GetBundleInfo(
 	return nil, nil
 }
 
+func (a *PublicBundleAPI) GetProcessedBundleHistoryHash(ctx context.Context) (*bundle.HistoryHash, error) {
+	blockNum, hash := a.b.GetProcessedBundleHistoryHash()
+	return &bundle.HistoryHash{
+		BlockNum: blockNum,
+		Hash:     hash,
+	}, nil
+}
+
 // RPCBundleInfo is the JSON RPC message returned by the GetBundleInfo API, which
 // provides information about the status of a transaction bundle.
 type RPCBundleInfo struct {

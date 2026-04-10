@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
@@ -224,22 +225,47 @@ func (s *Store) ProcessedBundles() genesis.ProcessedBundles {
 	return RawProcessedBundles{s.fMap}
 }
 
-func (s RawProcessedBundles) ForEach(fn func(key, value []byte) bool) {
+func (s RawProcessedBundles) GetHistoryHash() *bundle.HistoryHash {
 	for i := range 1000 {
 		f, err := s.fMap(BundlesSection(i))
 		if err != nil {
 			continue
 		}
-		it := iodb.NewIterator(f)
-		for it.Next() {
-			if !fn(it.Key(), it.Value()) {
+		stream := rlp.NewStream(f, 0)
+		var h bundle.HistoryHash
+		if err := stream.Decode(&h); err != nil {
+			return nil
+		}
+		return &h
+	}
+	return nil
+}
+
+func (s RawProcessedBundles) ForEach(fn func(bundle.ExecutionInfo) bool) {
+	for i := range 1000 {
+		f, err := s.fMap(BundlesSection(i))
+		if err != nil {
+			continue
+		}
+		stream := rlp.NewStream(f, 0)
+		// Skip the history hash (first item in the stream).
+		var h bundle.HistoryHash
+		if err := stream.Decode(&h); err != nil {
+			return
+		}
+		for {
+			var info bundle.ExecutionInfo
+			err := stream.Decode(&info)
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Crit("Failed to decode ProcessedBundles genesis section", "err", err)
+			}
+			if !fn(info) {
 				break
 			}
 		}
-		if it.Error() != nil {
-			log.Crit("Failed to decode ProcessedBundles genesis section", "err", it.Error())
-		}
-		it.Release()
 	}
 }
 
