@@ -26,5 +26,7 @@ import (
 // backend is an interface that abstracts the necessary backend functions for the
 // sonic API.
 type backend interface {
-	GetBundleExecutionInfo(executionPlanHash common.Hash) *bundle.ExecutionInfo
+	// GetBundleExecutionInfo returns information about the execution of a transaction bundle, if available.
+	// If the bundle is unknown, it returns nil.
+	GetBundleExecutionInfo(common.Hash) *bundle.ExecutionInfo
 }

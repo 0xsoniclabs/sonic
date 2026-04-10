@@ -42,15 +42,15 @@ func (m *Mockbackend) EXPECT() *MockbackendMockRecorder {
 }
 
 // GetBundleExecutionInfo mocks base method.
-func (m *Mockbackend) GetBundleExecutionInfo(executionPlanHash common.Hash) *bundle.ExecutionInfo {
+func (m *Mockbackend) GetBundleExecutionInfo(arg0 common.Hash) *bundle.ExecutionInfo {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetBundleExecutionInfo", executionPlanHash)
+	ret := m.ctrl.Call(m, "GetBundleExecutionInfo", arg0)
 	ret0, _ := ret[0].(*bundle.ExecutionInfo)
 	return ret0
 }
 
 // GetBundleExecutionInfo indicates an expected call of GetBundleExecutionInfo.
-func (mr *MockbackendMockRecorder) GetBundleExecutionInfo(executionPlanHash any) *gomock.Call {
+func (mr *MockbackendMockRecorder) GetBundleExecutionInfo(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBundleExecutionInfo", reflect.TypeOf((*Mockbackend)(nil).GetBundleExecutionInfo), executionPlanHash)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBundleExecutionInfo", reflect.TypeOf((*Mockbackend)(nil).GetBundleExecutionInfo), arg0)
 }
