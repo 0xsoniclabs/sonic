@@ -21,6 +21,7 @@ import (
 	"errors"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -79,7 +80,7 @@ func (s *Store) AddProcessedBundles(
 	newHash := computeNewBundleStateHash(oldHash, addedHash, deletedHash, blockNum)
 
 	err := batch.Put(nil, append(
-		binary.BigEndian.AppendUint64(nil, blockNum),
+		bigendian.Uint64ToBytes(blockNum),
 		newHash.Bytes()...,
 	))
 	if err != nil {
@@ -128,6 +129,7 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) common.
 		// enough blocks have passed to start cleaning up the store
 		highestOutdatedBlockNumber := blockNum - bundle.MaxBlockRange + 1
 		it := s.table.ProcessedBundles.NewIterator([]byte{'i'}, nil)
+		defer it.Release()
 		for it.Next() {
 			key := it.Key()
 			// size of the key used to index processed bundle is:
@@ -250,6 +252,59 @@ func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
 	return blockNum, hash
 }
 
+// SetProcessedBundlesHistoryHash sets the block number and hash of the
+// processed bundles history. This should be used only during genesis initialization.
+func (s *Store) SetProcessedBundlesHistoryHash(blockNum uint64, hash common.Hash) {
+	// Make sure there is only one update at any time.
+	s.processedBundleMutex.Lock()
+	defer s.processedBundleMutex.Unlock()
+
+	err := s.table.ProcessedBundles.Put(nil, append(
+		bigendian.Uint64ToBytes(blockNum),
+		hash.Bytes()...,
+	))
+	if err != nil {
+		s.Log.Crit("failed to set hash of processed bundles", "error", err)
+	}
+}
+
+// EnumerateProcessedBundles returns a list of all recently processed bundle
+// execution infos currently tracked by the store.
+func (s *Store) EnumerateProcessedBundles() []bundle.ExecutionInfo {
+	// Make sure there is only one update at any time.
+	s.processedBundleMutex.Lock()
+	defer s.processedBundleMutex.Unlock()
+
+	result := make([]bundle.ExecutionInfo, 0)
+
+	// get all recently processed bundles
+	it := s.table.ProcessedBundles.NewIterator([]byte{'e'}, nil)
+	defer it.Release()
+	for it.Next() {
+		key := it.Key()
+		value := it.Value()
+		if len(key) != 1+32 || len(value) != 16 {
+			s.Log.Crit(
+				"invalid key or value length for processed bundle entry during export",
+				"keyLength", len(key),
+				"valueLength", len(value))
+		}
+
+		result = append(result, bundle.ExecutionInfo{
+			ExecutionPlanHash: common.BytesToHash(key[1:]),
+			BlockNumber:       binary.BigEndian.Uint64(value[:8]),
+			Position: bundle.PositionInBlock{
+				Offset: binary.BigEndian.Uint32(value[8:12]),
+				Count:  binary.BigEndian.Uint32(value[12:]),
+			},
+		})
+	}
+	if it.Error() != nil {
+		s.Log.Crit("failed to export processed bundles", "error", it.Error())
+	}
+	return result
+}
+
 // --- utility functions for processed bundles management ---
 
 // getEntryKey returns the key used to store the presence of a processed bundle
@@ -261,7 +316,9 @@ func getEntryKey(hash common.Hash) []byte {
 // getIndexKey returns the key used to index a processed bundle hash at a
 // specific block number, to handle cleanups.
 func getIndexKey(blockNum uint64, hash common.Hash) []byte {
-	return append(append([]byte{'i'}, binary.BigEndian.AppendUint64(nil, blockNum)...), hash.Bytes()...)
+	return append(
+		append([]byte{'i'}, bigendian.Uint64ToBytes(blockNum)...),
+		hash.Bytes()...)
 }
 
 // xorHash returns the XOR of two hashes.
