@@ -23,6 +23,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
@@ -373,6 +374,10 @@ func (l *txList) Filter(
 
 	// Filter out all the transactions above the account's funds
 	removed := l.txs.Filter(func(tx *types.Transaction) bool {
+		if bundle.IsEnvelope(tx) {
+			// TODO: filter out permanently blocked bundles
+			return false
+		}
 		if subsidies.IsSponsorshipRequest(tx) {
 			return !isSponsored(tx)
 		}
