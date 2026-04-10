@@ -18,10 +18,20 @@ package api
 
 import (
 	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/api/sonicapi"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-func GetAPIs(apiBackend ethapi.Backend) []rpc.API {
+// Backend is an aggreate of all the APIs' backends.
+// This is a compromise solution because of the monolithic nature of the
+// original api backend object. This interface allows to develop and
+// maintain the APIs independently of the backend implementation.
+type backend interface {
+	ethapi.Backend
+	sonicapi.BundleApiBackend
+}
+
+func GetAPIs(apiBackend backend) []rpc.API {
 	nonceLock := new(ethapi.AddrLocker)
 	return []rpc.API{
 		{
@@ -67,6 +77,11 @@ func GetAPIs(apiBackend ethapi.Backend) []rpc.API {
 			Namespace: "abft",
 			Version:   "1.0",
 			Service:   ethapi.NewPublicAbftAPI(apiBackend),
+			Public:    true,
+		}, {
+			Namespace: "sonic",
+			Version:   "1.0",
+			Service:   sonicapi.NewPublicBundleAPI(apiBackend),
 			Public:    true,
 		}, {
 			Namespace: "sonic",
