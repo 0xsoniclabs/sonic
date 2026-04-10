@@ -33,3 +33,10 @@ type PositionInBlock struct {
 	Offset uint32
 	Count  uint32
 }
+
+// HistoryHash represents the block number and cumulative hash of the processed
+// bundles history. It is used for genesis export/import serialization.
+type HistoryHash struct {
+	BlockNumber uint64
+	Hash        common.Hash
+}
