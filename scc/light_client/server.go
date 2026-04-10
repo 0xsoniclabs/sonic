@@ -111,7 +111,7 @@ func (s server) getCommitteeCertificates(first scc.Period, maxResults uint64) ([
 	results := []sccapi.CommitteeCertificate{}
 	err := s.client.Call(
 		&results,
-		"sonic_getCommitteeCertificates",
+		"scc_getCommitteeCertificates",
 		fmt.Sprintf("0x%x", first),
 		fmt.Sprintf("0x%x", maxResults),
 	)
@@ -163,7 +163,7 @@ func (s server) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert
 	results := []sccapi.BlockCertificate{}
 	err := s.client.Call(
 		&results,
-		"sonic_getBlockCertificates",
+		"scc_getBlockCertificates",
 		firstString,
 		fmt.Sprintf("0x%x", maxResults),
 	)
