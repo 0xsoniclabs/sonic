@@ -911,7 +911,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		timeout := time.Duration(time.Second)
 		gasCap := uint64(10000000)
 
-		result, err := DoCall(t.Context(), backend, txArgs, blockNrOrHash, stateOverrides, blockOverrides, timeout, gasCap)
+		result, err := DoCall(t.Context(), backend, txArgs, blockNrOrHash, stateOverrides, blockOverrides, timeout, gasCap, nil)
 		require.NoError(t, err)
 		require.False(t, result.Failed())
 	}
