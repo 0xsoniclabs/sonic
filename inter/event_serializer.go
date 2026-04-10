@@ -36,7 +36,7 @@ var (
 	ErrUnknownVersion    = errors.New("unknown serialization version")
 )
 
-const MaxSerializationVersion = 3
+const MaxSerializationVersion = 4
 
 const ProtocolMaxMsgSize = 10 * 1024 * 1024
 
@@ -92,7 +92,11 @@ func (e *Event) MarshalCSER(w *cser.Writer) error {
 	if e.Version() == 3 {
 		w.Bool(e.HasProposal())
 	}
-	if e.AnyTxs() || e.AnyMisbehaviourProofs() || e.AnyBlockVotes() || e.AnyEpochVote() || e.Version() == 3 {
+	if e.Version() == 4 {
+		w.Bool(e.HasProposal())
+		w.Bool(e.AnyBlockHashes())
+	}
+	if e.AnyTxs() || e.AnyMisbehaviourProofs() || e.AnyBlockVotes() || e.AnyEpochVote() || e.Version() == 3 || e.Version() == 4 {
 		w.FixedBytes(e.PayloadHash().Bytes())
 	}
 	// extra
@@ -167,10 +171,15 @@ func eventUnmarshalCSER(r *cser.Reader, e *MutableEventPayload) (err error) {
 	anyEpochVote := version == 1 && r.Bool()
 	anyBlockVotes := version == 1 && r.Bool()
 	hasProposal := version == 3 && r.Bool()
+	anyBlockHashes := false
+	if version == 4 {
+		hasProposal = r.Bool()
+		anyBlockHashes = r.Bool()
+	}
 	payloadHash := EmptyPayloadHash(version)
-	if anyTxs || anyMisbehaviourProofs || anyEpochVote || anyBlockVotes || version == 3 {
+	if anyTxs || anyMisbehaviourProofs || anyEpochVote || anyBlockVotes || version == 3 || version == 4 {
 		r.FixedBytes(payloadHash[:])
-		if version != 3 && payloadHash == EmptyPayloadHash(version) {
+		if version != 3 && version != 4 && payloadHash == EmptyPayloadHash(version) {
 			return cser.ErrNonCanonicalEncoding
 		}
 	}
@@ -199,6 +208,7 @@ func eventUnmarshalCSER(r *cser.Reader, e *MutableEventPayload) (err error) {
 	e.anyEpochVote = anyEpochVote
 	e.anyMisbehaviourProofs = anyMisbehaviourProofs
 	e.hasProposal = hasProposal
+	e.anyBlockHashes = anyBlockHashes
 	e.SetPayloadHash(payloadHash)
 	e.SetExtra(extra)
 	return nil
@@ -280,6 +290,17 @@ func (e *EventPayload) MarshalCSER(w *cser.Writer) error {
 			return ErrSerMalformedEvent
 		}
 	}
+	if e.Version() == 4 {
+		if e.AnyBlockVotes() || e.AnyEpochVote() || e.AnyMisbehaviourProofs() || e.AnyTxs() {
+			return ErrSerMalformedEvent
+		}
+		if e.HasProposal() != (e.payload.Proposal != nil) {
+			return ErrSerMalformedEvent
+		}
+		if e.AnyBlockHashes() != (len(e.blockHashes.Hashes) != 0) {
+			return ErrSerMalformedEvent
+		}
+	}
 	err := e.Event.MarshalCSER(w)
 	if err != nil {
 		return err
@@ -325,6 +346,19 @@ func (e *EventPayload) MarshalCSER(w *cser.Writer) error {
 			return err
 		}
 		w.SliceBytes(b)
+	}
+	if e.Version() == 4 {
+		b, err := e.Payload().Serialize()
+		if err != nil {
+			return err
+		}
+		w.SliceBytes(b)
+		if e.AnyBlockHashes() {
+			err = e.BlockHashes().MarshalCSER(w)
+			if err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -398,12 +432,24 @@ func (e *MutableEventPayload) UnmarshalCSER(r *cser.Reader) error {
 	}
 	e.blockVotes = bvs
 	// generic payload
-	if e.Version() == 3 {
+	if e.Version() == 3 || e.Version() == 4 {
 		b := r.SliceBytes(ProtocolMaxMsgSize)
 		if err := e.payload.Deserialize(b); err != nil {
 			return err
 		}
 	}
+	// block hashes (version 4 only)
+	bhs := BlockHashes{Hashes: make([]hash.Hash, 0)}
+	if e.AnyBlockHashes() {
+		err := bhs.UnmarshalCSER(r)
+		if err != nil {
+			return err
+		}
+		if len(bhs.Hashes) == 0 || bhs.Start == 0 || bhs.Epoch == 0 {
+			return cser.ErrNonCanonicalEncoding
+		}
+	}
+	e.blockHashes = bhs
 	return nil
 }
 

@@ -127,6 +127,9 @@ func (u Upgrades) EncodeRLP(w io.Writer) error {
 	if u.TransactionBundles {
 		bitmap.V |= transactionBundlesBit
 	}
+	if u.BlockHashesOnEvents {
+		bitmap.V |= blockHashesOnEventsBit
+	}
 	return rlp.Encode(w, &bitmap)
 }
 
@@ -149,6 +152,7 @@ func (u *Upgrades) DecodeRLP(s *rlp.Stream) error {
 	u.SingleProposerBlockFormation = (bitmap.V & singleProposerBlockFormationBit) != 0
 	u.GasSubsidies = (bitmap.V & gasSubsidiesBit) != 0
 	u.TransactionBundles = (bitmap.V & transactionBundlesBit) != 0
+	u.BlockHashesOnEvents = (bitmap.V & blockHashesOnEventsBit) != 0
 	return nil
 }
 

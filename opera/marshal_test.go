@@ -147,6 +147,7 @@ func TestUpgradesRLP_CanBeEncodedAndDecoded(t *testing.T) {
 		func(u *Upgrades) { u.Brio = true },
 		func(u *Upgrades) { u.GasSubsidies = true },
 		func(u *Upgrades) { u.TransactionBundles = true },
+		func(u *Upgrades) { u.BlockHashesOnEvents = true },
 	}
 
 	for mask := range 1 << len(setUpgrade) {

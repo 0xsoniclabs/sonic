@@ -289,5 +289,12 @@ func validateUpgrades(old, new Upgrades) error {
 
 	// The GasSubsidies feature can be freely modified.
 
+	// The BlockHashesOnEvents feature can be freely modified, but requires
+	// SingleProposerBlockFormation since it extends the version 3 event format.
+	if new.BlockHashesOnEvents && !new.SingleProposerBlockFormation {
+		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
+		issues = append(issues, errors.New("BlockHashesOnEvents requires SingleProposerBlockFormation"))
+	}
+
 	return errors.Join(issues...)
 }

@@ -26,11 +26,17 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 )
 
+const MaxBlockHashesPerEvent = 64
+
 var (
-	ErrWrongNetForkID = errors.New("wrong network fork ID")
-	ErrZeroTime       = errors.New("event has zero timestamp")
-	ErrNegativeValue  = errors.New("negative value")
-	ErrIntrinsicGas   = errors.New("intrinsic gas too low")
+	ErrWrongNetForkID         = errors.New("wrong network fork ID")
+	ErrZeroTime               = errors.New("event has zero timestamp")
+	ErrNegativeValue          = errors.New("negative value")
+	ErrIntrinsicGas           = errors.New("intrinsic gas too low")
+	ErrTooManyBlockHash       = errors.New("too many block hashes in event")
+	ErrBlockHashZeroStart     = errors.New("block hashes present with zero Start")
+	ErrBlockHashZeroEpoch     = errors.New("block hashes present with zero Epoch")
+	ErrBlockHashEpochMismatch = errors.New("block hashes epoch does not match event epoch")
 	// ErrTipAboveFeeCap is a sanity error to ensure no one is able to specify a
 	// transaction with a tip higher than the total fee cap.
 	ErrTipAboveFeeCap = errors.New("max priority fee per gas higher than max fee per gas")
@@ -63,7 +69,6 @@ func validateTx(tx *types.Transaction) error {
 	if tx.Gas() < intrGas {
 		return ErrIntrinsicGas
 	}
-
 	if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
 		return ErrTipAboveFeeCap
 	}
@@ -95,6 +100,21 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 	}
 	if err := v.checkTxs(e); err != nil {
 		return err
+	}
+	bh := e.BlockHashes()
+	if len(bh.Hashes) > MaxBlockHashesPerEvent {
+		return ErrTooManyBlockHash
+	}
+	if len(bh.Hashes) > 0 {
+		if bh.Start == 0 {
+			return ErrBlockHashZeroStart
+		}
+		if bh.Epoch == 0 {
+			return ErrBlockHashZeroEpoch
+		}
+		if bh.Epoch != e.Epoch() {
+			return ErrBlockHashEpochMismatch
+		}
 	}
 
 	return nil

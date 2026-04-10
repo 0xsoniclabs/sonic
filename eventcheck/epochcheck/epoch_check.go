@@ -90,7 +90,12 @@ func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) uint64 {
 		ersGas = gasCfg.EpochVoteGas
 	}
 
-	return txsGas + parentsGas + extraGas + gasCfg.EventGas + mpsGas + bvsGas + ersGas
+	bhsGas := uint64(0)
+	if e.BlockHashes().Start != 0 {
+		bhsGas = gasCfg.BlockVotesBaseGas + uint64(len(e.BlockHashes().Hashes))*gasCfg.BlockVoteGas
+	}
+
+	return txsGas + parentsGas + extraGas + gasCfg.EventGas + mpsGas + bvsGas + bhsGas + ersGas
 }
 
 func (v *Checker) checkGas(e inter.EventPayloadI, rules opera.Rules) error {
@@ -149,7 +154,9 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 	}
 
 	version := uint8(0)
-	if rules.Upgrades.SingleProposerBlockFormation {
+	if rules.Upgrades.BlockHashesOnEvents {
+		version = 4
+	} else if rules.Upgrades.SingleProposerBlockFormation {
 		version = 3
 	} else if rules.Upgrades.Sonic {
 		version = 2
