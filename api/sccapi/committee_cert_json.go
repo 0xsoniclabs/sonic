@@ -14,53 +14,47 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package ethapi
+package sccapi
 
 import (
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/ethereum/go-ethereum/common"
 )
 
-// BlockCertificate is a JSON representation of a block certificate
+// CommitteeCertificate is a JSON representation of a committee certificate
 // as returned by the Sonic API. This type provides a conversion between the
 // internal certificate representation and the JSON representation provided to
 // the API clients. The external API is expected to be stable over time and
 // should only be updated in a backward compatible way.
-type BlockCertificate struct {
+type CommitteeCertificate struct {
 	ChainId   uint64                    `json:"chainId"`
-	Number    uint64                    `json:"number"`
-	Hash      common.Hash               `json:"hash"`
-	StateRoot common.Hash               `json:"stateRoot"`
+	Period    uint64                    `json:"period"`
+	Members   []scc.Member              `json:"members"`
 	Signers   cert.BitSet[scc.MemberId] `json:"signers"`
 	Signature bls.Signature             `json:"signature"`
 }
 
-func (b BlockCertificate) ToCertificate() cert.BlockCertificate {
-	aggregatedSignature := cert.NewAggregatedSignature[cert.BlockStatement](
-		b.Signers, b.Signature)
+func (c CommitteeCertificate) ToCertificate() cert.CommitteeCertificate {
+	aggregatedSignature := cert.NewAggregatedSignature[cert.CommitteeStatement](c.Signers, c.Signature)
 
 	newCert := cert.NewCertificateWithSignature(
-		cert.NewBlockStatement(
-			b.ChainId,
-			idx.Block(b.Number),
-			b.Hash,
-			b.StateRoot),
+		cert.NewCommitteeStatement(
+			c.ChainId,
+			scc.Period(c.Period),
+			scc.NewCommittee(c.Members...)),
 		aggregatedSignature)
 
 	return newCert
 }
 
-func toJsonBlockCertificate(b cert.BlockCertificate) BlockCertificate {
-	sub := b.Subject()
-	agg := b.Signature()
-	return BlockCertificate{
+func toJsonCommitteeCertificate(c cert.CommitteeCertificate) CommitteeCertificate {
+	sub := c.Subject()
+	agg := c.Signature()
+	return CommitteeCertificate{
 		ChainId:   sub.ChainId,
-		Number:    uint64(sub.Number),
-		Hash:      sub.Hash,
-		StateRoot: sub.StateRoot,
+		Period:    uint64(sub.Period),
+		Members:   sub.Committee.Members(),
 		Signers:   agg.Signers(),
 		Signature: agg.Signature(),
 	}
