@@ -23,9 +23,9 @@ import (
 
 //go:generate mockgen -source=backend.go -destination=backend_mock.go -package=sonicapi
 
-// backend is an interface that abstracts the necessary backend functions for the
+// BundleApiBackend is an interface that abstracts the necessary BundleApiBackend functions for the
 // sonic API.
-type backend interface {
+type BundleApiBackend interface {
 	// GetBundleExecutionInfo returns information about the execution of a transaction bundle, if available.
 	// If the bundle is unknown, it returns nil.
 	GetBundleExecutionInfo(common.Hash) *bundle.ExecutionInfo

@@ -17,11 +17,11 @@
 package sonicapi
 
 type PublicBundleAPI struct {
-	b backend
+	b BundleApiBackend
 }
 
 // NewPublicBundleAPI creates a new instance of the PublicBundleAPI with the given backend.
-func NewPublicBundleAPI(b backend) *PublicBundleAPI {
+func NewPublicBundleAPI(b BundleApiBackend) *PublicBundleAPI {
 	return &PublicBundleAPI{
 		b: b,
 	}
