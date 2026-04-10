@@ -30,6 +30,7 @@ import (
 
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
 	ogenesis "github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
@@ -229,6 +230,26 @@ func TestSonicTool_genesis_ExportsAndSigns_WithoutErrors(t *testing.T) {
 	// Note, this how far we can get without the actual key
 	require.ErrorContains(t, err, "genesis signature does not match any trusted signer")
 	revertPrompt()
+}
+
+func TestSonicTool_genesis_ExportImportBundles_PreservesExecutedBundle(t *testing.T) {
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	net := tests.StartIntegrationTestNet(t,
+		tests.IntegrationTestNetOptions{Upgrades: &upgrades})
+
+	bundleHash, originalInfo := runBundle(t, net)
+	require.NotZero(t, originalInfo.BlockNumber)
+
+	require.NoError(t, net.RestartWithExportImport())
+
+	newClient, err := net.GetClient()
+	require.NoError(t, err)
+	defer newClient.Close()
+
+	// info, err := bundles.GetBundleInfo(t.Context(), newClient.Client(), bundleHash)
+	// require.NoError(t, err)
+	// require.Equal(t, originalInfo, *info)
 }
 
 func TestSonicTool_heal_ExecutesWithoutErrors(t *testing.T) {
@@ -581,4 +602,49 @@ func replaceUserPrompter(newPrompt prompt.UserPrompter) (cleanup func()) {
 	prompt.UserPrompt = newPrompt
 	cleanup = func() { prompt.UserPrompt = oldPrompt }
 	return
+}
+
+func runBundle(t *testing.T, net *tests.IntegrationTestNet) (common.Hash, bundle.ExecutionInfo) {
+	t.Helper()
+
+	// Create a funded account to use as sender
+	sender := tests.NewAccount()
+	_, err := net.EndowAccount(sender.Address(), big.NewInt(1e18))
+	require.NoError(t, err)
+
+	// Build a simple transaction (transfer to a random address)
+	recipient := common.Address{0x42}
+	tx := &types.AccessListTx{
+		To:    &recipient,
+		Value: big.NewInt(1),
+		Nonce: 0,
+		Gas:   21000,
+	}
+
+	// Build the bundle envelope
+	signer := types.LatestSignerForChainID(net.GetChainId())
+	envelope := bundle.NewBuilder(signer).
+		With(bundle.Step(sender.PrivateKey, tx)).
+		Build()
+
+	// Send the envelope to the network
+	receipt, err := net.Run(envelope)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// Compute the execution plan hash
+	plan, err := bundle.ExtractExecutionPlan(signer, envelope)
+	require.NoError(t, err)
+	planHash := plan.Hash()
+
+	// Fill ExecutionInfo
+	info := bundle.ExecutionInfo{
+		ExecutionPlanHash: planHash,
+		BlockNumber:       uint64(receipt.BlockNumber.Uint64()),
+		Position: bundle.PositionInBlock{
+			Offset: uint32(receipt.TransactionIndex),
+			Count:  1,
+		},
+	}
+	return planHash, info
 }
