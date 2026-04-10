@@ -191,6 +191,7 @@ func TestStore_AddProcessedBundles_AddsNewBundlesToStorage(t *testing.T) {
 				hash := uint64ToHash(toDelete)
 				batch.EXPECT().Delete(getEntryKey(hash)).Return(nil)
 				batch.EXPECT().Delete(getIndexKey(toDelete, hash)).Return(nil)
+				it.EXPECT().Release()
 			}
 
 			store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
@@ -506,7 +507,9 @@ func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 			batch := NewMockstoreBatch(ctrl)
 			table := NewMockstoreTable(ctrl)
 			it := NewMockdbIterator(ctrl)
-			it.EXPECT().Release().AnyTimes()
+			if c.finishingBlock >= bundle.MaxBlockRange-1 {
+				it.EXPECT().Release().AnyTimes()
+			}
 			store := &Store{}
 			store.table.ProcessedBundles = table
 
@@ -550,7 +553,7 @@ func TestStore_deleteOutdatedBundles_RemovesMultipleEntries_WhenNotCleanedForToo
 	store.table.ProcessedBundles = table
 
 	it := NewMockdbIterator(ctrl)
-	it.EXPECT().Release().AnyTimes()
+	it.EXPECT().Release()
 	table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it)
 
 	for i := range 10 {
@@ -613,6 +616,7 @@ func TestStore_deleteOutdatedBundles_ReturnsXorHashOfDeletedEntries(t *testing.T
 			}
 
 			it.EXPECT().Next().Return(false)
+			it.EXPECT().Release()
 
 			deletedHash := store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch)
 
@@ -634,6 +638,7 @@ func TestStore_deleteOutdatedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
 		// This is the key that will be ignored, since it does not have the correct length.
 		it.EXPECT().Key().Return([]byte{1, 2}),
 		it.EXPECT().Next().Return(false),
+		it.EXPECT().Release(),
 	)
 	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it)
 
@@ -651,6 +656,7 @@ func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
 	gomock.InOrder(
 		it.EXPECT().Next().Return(true),
 		it.EXPECT().Key().Return(getIndexKey(1, common.Hash{1, 2, 3})),
+		it.EXPECT().Release(),
 	)
 	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it)
 
@@ -981,7 +987,7 @@ func TestStore_EnumerateProcessedBundles_ReturnsAllAddedEntries(t *testing.T) {
 	require.NoError(err)
 
 	expected := map[common.Hash]bundle.ExecutionInfo{}
-	// fill the store with the maximum number of bundles
+	// fill the store with the maximum number of block
 	for i := range bundle.MaxBlockRange + 1 {
 		hash := common.BytesToHash(bigendian.Uint32ToBytes(uint32(i)))
 		position := bundle.PositionInBlock{Offset: uint32(i), Count: 1}
@@ -1021,7 +1027,8 @@ func TestStore_EnumerateProcessedBundles_LogsOnCrit_IteratorError(t *testing.T) 
 	gomock.InOrder(
 		table.EXPECT().NewIterator([]byte{'e'}, nil).Return(it),
 		it.EXPECT().Next().Return(false),
-		it.EXPECT().Error().Return(injectedErr).AnyTimes(),
+		it.EXPECT().Error().Return(injectedErr).Times(2),
+		it.EXPECT().Release(),
 	)
 	expectCrit(log, "failed to export processed bundles", "error", injectedErr)
 
@@ -1055,6 +1062,7 @@ func TestStore_EnumerateProcessedBundles_LogsOnCrit_IteratorWrongSize(t *testing
 				it.EXPECT().Next().Return(true),
 				it.EXPECT().Key().Return(tc.key),
 				it.EXPECT().Value().Return(tc.value),
+				it.EXPECT().Release(),
 			)
 			expectCrit(
 				log,
@@ -1109,7 +1117,6 @@ func storeTableLogMocks(t *testing.T) (
 
 	batch := NewMockstoreBatch(ctrl)
 	it := NewMockdbIterator(ctrl)
-	it.EXPECT().Release().AnyTimes()
 
 	return store, table, log, batch, it
 }
