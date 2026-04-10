@@ -111,8 +111,6 @@ type Backend interface {
 	GetDowntime(ctx context.Context, vid idx.ValidatorID) (idx.Block, inter.Timestamp, error)
 	GetUptime(ctx context.Context, vid idx.ValidatorID) (*big.Int, error)
 	GetOriginatedFee(ctx context.Context, vid idx.ValidatorID) (*big.Int, error)
-
-	SccApiBackend
 }
 
 // GetVmConfig is a utility function resolving the VM configuration for a block

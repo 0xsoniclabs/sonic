@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package ethapi
+package sccapi
 
 import (
 	"context"
@@ -24,12 +24,9 @@ import (
 	"strings"
 
 	"github.com/0xsoniclabs/sonic/scc"
-	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils/result"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
-
-//go:generate mockgen -source=sonic_api.go -package=ethapi -destination=sonic_api_mock.go
 
 // PublicSccApi provides an API to access certificates of the Sonic
 // Certification Chain.
@@ -89,16 +86,6 @@ func (s *PublicSccApi) GetBlockCertificates(
 		maxResults,
 		s.maxResults,
 	)
-}
-
-// SccApiBackend is the backend interface for the Sonic Certification Chain API.
-// An implementation thereof provides access to the Sonic Certification Chain.
-type SccApiBackend interface {
-	GetLatestCommitteeCertificate() (cert.CommitteeCertificate, error)
-	EnumerateCommitteeCertificates(first scc.Period) iter.Seq[result.T[cert.CommitteeCertificate]]
-
-	GetLatestBlockCertificate() (cert.BlockCertificate, error)
-	EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[cert.BlockCertificate]]
 }
 
 // --- Period and Block Numbers -----------------------------------------------
