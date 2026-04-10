@@ -21,7 +21,7 @@ import (
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
-	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/api/sccapi"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -108,10 +108,10 @@ func (s server) getCommitteeCertificates(first scc.Period, maxResults uint64) ([
 		return nil, fmt.Errorf("no client available")
 	}
 
-	results := []ethapi.CommitteeCertificate{}
+	results := []sccapi.CommitteeCertificate{}
 	err := s.client.Call(
 		&results,
-		"sonic_getCommitteeCertificates",
+		"scc_getCommitteeCertificates",
 		fmt.Sprintf("0x%x", first),
 		fmt.Sprintf("0x%x", maxResults),
 	)
@@ -160,10 +160,10 @@ func (s server) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert
 	} else {
 		firstString = fmt.Sprintf("0x%x", first)
 	}
-	results := []ethapi.BlockCertificate{}
+	results := []sccapi.BlockCertificate{}
 	err := s.client.Call(
 		&results,
-		"sonic_getBlockCertificates",
+		"scc_getBlockCertificates",
 		firstString,
 		fmt.Sprintf("0x%x", maxResults),
 	)

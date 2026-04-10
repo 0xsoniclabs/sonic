@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
-	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/api/sccapi"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
@@ -118,11 +118,11 @@ func TestServer_GetCertificates_PropagatesErrorFromClientCall(t *testing.T) {
 	client := NewMockrpcClient(ctrl)
 
 	committeeError := fmt.Errorf("committee error")
-	client.EXPECT().Call(gomock.Any(), "sonic_getCommitteeCertificates",
+	client.EXPECT().Call(gomock.Any(), "scc_getCommitteeCertificates",
 		gomock.Any(), gomock.Any()).Return(committeeError)
 
 	blockError := fmt.Errorf("block error")
-	client.EXPECT().Call(gomock.Any(), "sonic_getBlockCertificates",
+	client.EXPECT().Call(gomock.Any(), "scc_getBlockCertificates",
 		gomock.Any(), gomock.Any()).Return(blockError)
 
 	server, err := newServerFromClient(client)
@@ -141,13 +141,13 @@ func TestServer_GetCommitteeCertificates_ReportsCorruptedCertificatesOutOfOrder(
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 
-	tests := [][]ethapi.CommitteeCertificate{
+	tests := [][]sccapi.CommitteeCertificate{
 		{
-			ethapi.CommitteeCertificate{Period: uint64(1)},
+			sccapi.CommitteeCertificate{Period: uint64(1)},
 		},
 		{
-			ethapi.CommitteeCertificate{Period: uint64(0)},
-			ethapi.CommitteeCertificate{Period: uint64(2)},
+			sccapi.CommitteeCertificate{Period: uint64(0)},
+			sccapi.CommitteeCertificate{Period: uint64(2)},
 		},
 	}
 
@@ -157,10 +157,10 @@ func TestServer_GetCommitteeCertificates_ReportsCorruptedCertificatesOutOfOrder(
 		require.NoError(err)
 
 		// client setup
-		client.EXPECT().Call(gomock.Any(), "sonic_getCommitteeCertificates",
+		client.EXPECT().Call(gomock.Any(), "scc_getCommitteeCertificates",
 			gomock.Any(), gomock.Any()).
 			DoAndReturn(
-				func(result *[]ethapi.CommitteeCertificate, method string, args ...interface{}) error {
+				func(result *[]sccapi.CommitteeCertificate, method string, args ...interface{}) error {
 					*result = committees
 					return nil
 				})
@@ -178,10 +178,10 @@ func TestServer_GetCommitteeCertificates_DropsExcessCertificates(t *testing.T) {
 	server, err := newServerFromClient(client)
 	require.NoError(err)
 
-	client.EXPECT().Call(gomock.Any(), "sonic_getCommitteeCertificates",
+	client.EXPECT().Call(gomock.Any(), "scc_getCommitteeCertificates",
 		gomock.Any(), gomock.Any()).DoAndReturn(
-		func(result *[]ethapi.CommitteeCertificate, method string, args ...interface{}) error {
-			*result = []ethapi.CommitteeCertificate{
+		func(result *[]sccapi.CommitteeCertificate, method string, args ...interface{}) error {
+			*result = []sccapi.CommitteeCertificate{
 				{Period: uint64(0)},
 				{Period: uint64(1)},
 			}
@@ -201,20 +201,20 @@ func TestServer_GetBlockCertificates_ReportsCorruptedCertificatesOutOfOrder(t *t
 	server, err := newServerFromClient(client)
 	require.NoError(err)
 
-	tests := [][]ethapi.BlockCertificate{
+	tests := [][]sccapi.BlockCertificate{
 		{
-			ethapi.BlockCertificate{Number: uint64(1)},
+			sccapi.BlockCertificate{Number: uint64(1)},
 		},
 		{
-			ethapi.BlockCertificate{Number: uint64(0)},
-			ethapi.BlockCertificate{Number: uint64(2)},
+			sccapi.BlockCertificate{Number: uint64(0)},
+			sccapi.BlockCertificate{Number: uint64(2)},
 		},
 	}
 
 	for _, blocks := range tests {
-		client.EXPECT().Call(gomock.Any(), "sonic_getBlockCertificates",
+		client.EXPECT().Call(gomock.Any(), "scc_getBlockCertificates",
 			gomock.Any(), gomock.Any()).DoAndReturn(
-			func(result *[]ethapi.BlockCertificate, method string, args ...interface{}) error {
+			func(result *[]sccapi.BlockCertificate, method string, args ...interface{}) error {
 				*result = blocks
 				return nil
 			})
@@ -232,10 +232,10 @@ func TestServer_GetBlockCertificates_DropsExcessCertificates(t *testing.T) {
 	server, err := newServerFromClient(client)
 	require.NoError(err)
 
-	client.EXPECT().Call(gomock.Any(), "sonic_getBlockCertificates",
+	client.EXPECT().Call(gomock.Any(), "scc_getBlockCertificates",
 		gomock.Any(), gomock.Any()).DoAndReturn(
-		func(result *[]ethapi.BlockCertificate, method string, args ...interface{}) error {
-			*result = []ethapi.BlockCertificate{
+		func(result *[]sccapi.BlockCertificate, method string, args ...interface{}) error {
+			*result = []sccapi.BlockCertificate{
 				{Number: uint64(0)},
 				{Number: uint64(1)},
 			}
@@ -255,10 +255,10 @@ func TestServer_GetBlockCertificates_FailsWhenNoCertificatesReturned(t *testing.
 	server, err := newServerFromClient(client)
 	require.NoError(err)
 
-	client.EXPECT().Call(gomock.Any(), "sonic_getBlockCertificates",
+	client.EXPECT().Call(gomock.Any(), "scc_getBlockCertificates",
 		gomock.Any(), gomock.Any()).DoAndReturn(
-		func(result *[]ethapi.BlockCertificate, method string, args ...interface{}) error {
-			*result = []ethapi.BlockCertificate{}
+		func(result *[]sccapi.BlockCertificate, method string, args ...interface{}) error {
+			*result = []sccapi.BlockCertificate{}
 			return nil
 		})
 
@@ -276,10 +276,10 @@ func TestServer_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {
 
 	latestBlockNumber := idx.Block(1024)
 	// block certificates
-	client.EXPECT().Call(gomock.Any(), "sonic_getBlockCertificates",
+	client.EXPECT().Call(gomock.Any(), "scc_getBlockCertificates",
 		"latest", "0x1").DoAndReturn(
-		func(result *[]ethapi.BlockCertificate, method string, args ...interface{}) error {
-			*result = []ethapi.BlockCertificate{
+		func(result *[]sccapi.BlockCertificate, method string, args ...interface{}) error {
+			*result = []sccapi.BlockCertificate{
 				{Number: uint64(latestBlockNumber)},
 			}
 			return nil
@@ -316,10 +316,10 @@ func TestServer_GetCertificates_ReturnsCertificates(t *testing.T) {
 	require.NoError(err)
 
 	// committee certificates
-	client.EXPECT().Call(gomock.Any(), "sonic_getCommitteeCertificates",
+	client.EXPECT().Call(gomock.Any(), "scc_getCommitteeCertificates",
 		gomock.Any(), gomock.Any()).DoAndReturn(
-		func(result *[]ethapi.CommitteeCertificate, method string, args ...interface{}) error {
-			*result = []ethapi.CommitteeCertificate{
+		func(result *[]sccapi.CommitteeCertificate, method string, args ...interface{}) error {
+			*result = []sccapi.CommitteeCertificate{
 				{Period: uint64(0)},
 				{Period: uint64(1)},
 			}
@@ -334,10 +334,10 @@ func TestServer_GetCertificates_ReturnsCertificates(t *testing.T) {
 	require.Equal(scc.Period(1), comCerts[1].Subject().Period)
 
 	// block certificates
-	client.EXPECT().Call(gomock.Any(), "sonic_getBlockCertificates",
+	client.EXPECT().Call(gomock.Any(), "scc_getBlockCertificates",
 		gomock.Any(), gomock.Any()).DoAndReturn(
-		func(result *[]ethapi.BlockCertificate, method string, args ...interface{}) error {
-			*result = []ethapi.BlockCertificate{
+		func(result *[]sccapi.BlockCertificate, method string, args ...interface{}) error {
+			*result = []sccapi.BlockCertificate{
 				{Number: uint64(0)},
 				{Number: uint64(1)},
 			}
