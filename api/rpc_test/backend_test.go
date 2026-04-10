@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -104,16 +105,6 @@ func Test_NewBackendBuilder_CanSetInitialState(t *testing.T) {
 	require.EqualValues(t, state.GetBalance(addr2).Uint64(), 43)
 }
 
-func Test_NewBackendBuilder_CanSetUpgrade(t *testing.T) {
-
-	be := NewBackendBuilder(t).Build()
-	require.True(t, be.rules.Upgrades.Brio)
-
-	be = NewBackendBuilder(t).WithUpgrade(opera.GetSonicUpgrades()).Build()
-	require.True(t, be.rules.Upgrades.Sonic)
-	require.False(t, be.rules.Upgrades.Brio)
-}
-
 func Test_FakeBackend_ProducesCompatibleSigners(t *testing.T) {
 
 	key, err := crypto.GenerateKey()
@@ -138,9 +129,80 @@ func Test_FakeBackend_ProducesCompatibleSigners(t *testing.T) {
 	}
 }
 
-func Test_DefaultBlockHistory(t *testing.T) {
+func Test_FakeBackend_DefaultBlockHistory(t *testing.T) {
 	blockHistory := defaultBlockHistory()
 	require.EqualValues(t, 1, len(blockHistory))
 	require.EqualValues(t, 1, blockHistory[0].Number)
 	require.Equal(t, common.HexToHash("0x1"), blockHistory[0].Hash)
+}
+
+func Test_FakeBackend_MultipleUpgrades(t *testing.T) {
+	be := NewBackendBuilder(t).
+		WithUpgrade(0, opera.GetSonicUpgrades()).
+		WithUpgrade(10, opera.GetBrioUpgrades()).
+		Build()
+
+	// Check that Prague upgrade is active at correct block heights
+	require.False(t, be.ChainConfig(0).IsPrague(big.NewInt(0), 0))
+	require.False(t, be.ChainConfig(0).IsPrague(big.NewInt(10), 0))
+}
+
+func Test_FakeBackend_GetNetworkRules(t *testing.T) {
+	be := NewBackendBuilder(t).
+		WithUpgrade(0, opera.GetSonicUpgrades()).
+		WithUpgrade(10, opera.GetAllegroUpgrades()).
+		WithUpgrade(20, opera.GetBrioUpgrades()).
+		Build()
+
+	type expectedUpgrade struct {
+		Sonic   bool
+		Allegro bool
+		Brio    bool
+	}
+
+	tests := []struct {
+		name        string
+		blockHeight idx.Block
+		expected    expectedUpgrade
+	}{
+		{
+			name:        "Before any upgrades",
+			blockHeight: 5,
+			expected: expectedUpgrade{
+				Sonic:   true,
+				Allegro: false,
+				Brio:    false,
+			},
+		},
+		{
+			name:        "After Allegro upgrade",
+			blockHeight: 15,
+			expected: expectedUpgrade{
+
+				Sonic:   true,
+				Allegro: true,
+				Brio:    false,
+			},
+		},
+		{
+			name:        "After Brio upgrade",
+			blockHeight: 25,
+			expected: expectedUpgrade{
+				Sonic:   true,
+				Allegro: true,
+				Brio:    true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rules, err := be.GetNetworkRules(t.Context(), tt.blockHeight)
+			require.NoError(t, err)
+			require.NotNil(t, rules)
+			require.Equal(t, tt.expected.Sonic, rules.Upgrades.Sonic, "unexpected Sonic upgrade status")
+			require.Equal(t, tt.expected.Allegro, rules.Upgrades.Allegro, "unexpected Allegro upgrade status")
+			require.Equal(t, tt.expected.Brio, rules.Upgrades.Brio, "unexpected Brio upgrade status")
+		})
+	}
 }

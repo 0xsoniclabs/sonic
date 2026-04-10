@@ -30,6 +30,7 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"sort"
 	"testing"
 	"time"
 
@@ -98,7 +99,6 @@ func NewBackendBuilder(t *testing.T) backendBuilder {
 	return backendBuilder{
 		be: fakeBackend{
 			chainID:      opera.FakeNetworkID,
-			rules:        opera.FakeNetRules(opera.GetBrioUpgrades()),
 			state:        NewTestState(t),
 			blockHistory: defaultBlockHistory(),
 		},
@@ -149,13 +149,20 @@ func (b backendBuilder) WithAccount(addr common.Address, account AccountState) b
 // WithUpgrade sets the network upgrades for the fake backend's rules.
 //
 // By default, the fake backend uses the Brio upgrades defined in the opera package.
-func (b backendBuilder) WithUpgrade(upgrades opera.Upgrades) backendBuilder {
-	b.be.rules = opera.FakeNetRules(upgrades)
+func (b backendBuilder) WithUpgrade(blockHeight idx.Block, upgrades opera.Upgrades) backendBuilder {
+	if b.be.upgrades == nil {
+		b.be.upgrades = make(map[idx.Block]opera.Upgrades)
+	}
+	b.be.upgrades[blockHeight] = upgrades
 	return b
 }
 
 // Build constructs the fakeBackend instance with the configured parameters.
 func (b backendBuilder) Build() *fakeBackend {
+	if b.be.upgrades == nil {
+		b.be.upgrades = make(map[idx.Block]opera.Upgrades)
+		b.be.upgrades[0] = opera.GetBrioUpgrades()
+	}
 	return &b.be
 }
 
@@ -182,10 +189,10 @@ type fakeBackend struct {
 	ethapi.Backend
 
 	chainID      uint64
-	rules        opera.Rules
 	state        *testState
 	pool         TxPool
 	blockHistory []Block
+	upgrades     map[idx.Block]opera.Upgrades
 }
 
 // GetSigner is a helper method outside of the ethapi.Backend interface,
@@ -214,7 +221,7 @@ func (b *fakeBackend) GetEVM(
 		blkctx := ethapi.GetBlockContext(ctx, b, header)
 		blockContext = &blkctx
 	}
-	chainConfig := b.ChainConfig(idx.Block(header.Number.Int64()))
+	chainConfig := b.ChainConfig(idx.Block(blockContext.BlockNumber.Uint64()))
 	if vmConfig == nil {
 		defaultCfg := vm.Config{}
 		vmConfig = &defaultCfg
@@ -271,7 +278,11 @@ func (b *fakeBackend) BlockByHash(ctx context.Context, hash common.Hash) (*evmco
 }
 
 func (b *fakeBackend) MaxGasLimit() uint64 {
-	return b.rules.Economy.Gas.MaxEventGas
+	rules, err := b.GetNetworkRules(context.Background(), 0)
+	if err != nil {
+		return 0
+	}
+	return rules.Economy.Gas.MaxEventGas
 }
 
 func (b *fakeBackend) MinGasPrice() *big.Int {
@@ -326,13 +337,36 @@ func (b *fakeBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNrOr
 	return b.state.Copy(), block, nil
 }
 
+// GetNetworkRules returns the network rules applicable at a given block height.
 func (b *fakeBackend) GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*opera.Rules, error) {
-	return &b.rules, nil
+
+	heights := make([]idx.Block, 0, len(b.upgrades))
+	for k := range b.upgrades {
+		heights = append(heights, k)
+	}
+
+	sort.Slice(heights, func(i, j int) bool { return heights[i] < heights[j] })
+
+	for i := len(heights) - 1; i >= 0; i-- {
+		k := heights[i]
+		if k <= blockHeight {
+			rules := opera.FakeNetRules(b.upgrades[k])
+			return &rules, nil
+		}
+	}
+
+	return nil, errors.New("no network rules found for the given block height")
 }
 
+// ChainConfig returns the chain configuration applicable at a given block height,
+// based on the defined network upgrades.
 func (b *fakeBackend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
-	heights := opera.MakeUpgradeHeight(b.rules.Upgrades, 0)
-	return opera.CreateTransientEvmChainConfig(b.chainID, []opera.UpgradeHeight{heights}, blockHeight)
+	heights := make([]opera.UpgradeHeight, 0, len(b.upgrades))
+	for height, upgrades := range b.upgrades {
+
+		heights = append(heights, opera.MakeUpgradeHeight(upgrades, height))
+	}
+	return opera.CreateTransientEvmChainConfig(b.chainID, heights, blockHeight)
 }
 
 // TxPool is a minimal interface for the transaction pool, only including the methods needed for testing.
