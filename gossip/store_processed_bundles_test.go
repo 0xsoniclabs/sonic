@@ -508,7 +508,7 @@ func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 			table := NewMockstoreTable(ctrl)
 			it := NewMockdbIterator(ctrl)
 			if c.finishingBlock >= bundle.MaxBlockRange-1 {
-				it.EXPECT().Release().AnyTimes()
+				it.EXPECT().Release()
 			}
 			store := &Store{}
 			store.table.ProcessedBundles = table
