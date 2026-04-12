@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -93,25 +94,20 @@ func Step(key *ecdsa.PrivateKey, tx any) BundleStep {
 	case types.SetCodeTx:
 		return BundleStep{key: key, tx: &tx}
 	case *types.Transaction:
-
-		if tx.Type() != types.AccessListTxType &&
-			tx.Type() != types.LegacyTxType {
-			// this code path is used to nest bundles, if
-			// you need any other transaction type, please add it
-			//
-			// not doing this check will lead to data loss
-			panic(" unsupported Tx type for Step. Only AccessListTx and LegacyTx are supported")
+		txData := utils.GetTxData(tx)
+		// Legacy transactions are promoted to AccessListTx in the builder,
+		// to enable marking nested transactions with the bundle-only marker.
+		if data, ok := txData.(*types.LegacyTx); ok {
+			txData = &types.AccessListTx{
+				Nonce:    data.Nonce,
+				GasPrice: data.GasPrice,
+				Gas:      data.Gas,
+				To:       data.To,
+				Value:    data.Value,
+				Data:     data.Data,
+			}
 		}
-
-		return Step(key, &types.AccessListTx{
-			Nonce:      tx.Nonce(),
-			GasPrice:   tx.GasPrice(),
-			Gas:        tx.Gas(),
-			To:         tx.To(),
-			Value:      tx.Value(),
-			Data:       tx.Data(),
-			AccessList: tx.AccessList(),
-		})
+		return Step(key, txData)
 	default:
 		panic("unsupported TxData type")
 	}
