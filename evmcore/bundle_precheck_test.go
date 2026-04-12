@@ -399,7 +399,9 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 func Test_checkForNonceConflicts_LowestReferencedNoncesCannotBeDerived_ReturnsNonExecutable(t *testing.T) {
 	invalidTx := types.NewTx(&types.LegacyTx{})
 	bundle := &bundle.TransactionBundle{
-		Transactions: []*types.Transaction{invalidTx},
+		Transactions: map[bundle.TxReference]*types.Transaction{
+			{}: invalidTx,
+		},
 	}
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	_, err := getLowestReferencedNonces(bundle, signer)
@@ -463,7 +465,9 @@ func Test_getLowestReferencedNonces_ReturnsIfSenderCannotBeDerived(t *testing.T)
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	bundle := bundle.TransactionBundle{
 		// Add a transaction with a missing signature.
-		Transactions: []*types.Transaction{types.NewTx(&types.LegacyTx{})},
+		Transactions: map[bundle.TxReference]*types.Transaction{
+			{}: types.NewTx(&types.LegacyTx{}),
+		},
 	}
 	_, err := getLowestReferencedNonces(&bundle, signer)
 	require.ErrorContains(t, err, "failed to derive sender")
@@ -479,7 +483,9 @@ func Test_getLowestReferencedNonces_DetectsInvalidNestedBundle(t *testing.T) {
 	require.Error(err)
 
 	bundle := bundle.TransactionBundle{
-		Transactions: []*types.Transaction{invalidBundle},
+		Transactions: map[bundle.TxReference]*types.Transaction{
+			{}: invalidBundle,
+		},
 	}
 	_, err = getLowestReferencedNonces(&bundle, signer)
 	require.ErrorContains(err, "invalid nested bundle")
@@ -571,20 +577,20 @@ func Test_trialRunBundle_DummyTest(t *testing.T) {
 
 func allOf(nested ...any) pattern {
 	return pattern{
-		flags:  bundle.EF_AllOf,
+		oneOf:  false,
 		nested: nested,
 	}
 }
 
 func oneOf(nested ...any) pattern {
 	return pattern{
-		flags:  bundle.EF_OneOf,
+		oneOf:  true,
 		nested: nested,
 	}
 }
 
 type pattern struct {
-	flags  bundle.ExecutionFlags
+	oneOf  bool
 	nested []any
 }
 
@@ -593,7 +599,7 @@ func (p pattern) toBundle(
 	keys []*ecdsa.PrivateKey,
 ) *types.Transaction {
 	// convert elements into steps
-	steps := make([]bundle.BundleStep, 0, len(p.nested))
+	steps := make([]bundle.BuilderStep, 0, len(p.nested))
 	for _, element := range p.nested {
 		switch v := element.(type) {
 		case int:
@@ -615,7 +621,7 @@ func (p pattern) toBundle(
 	}
 
 	// Build the resulting bundle.
-	return bundle.NewBuilder(signer).SetFlags(p.flags).With(steps...).Build()
+	return bundle.NewBuilder(signer).With(bundle.Group(p.oneOf, steps...)).Build()
 }
 
 func createKeys(t *testing.T) ([]*ecdsa.PrivateKey, []common.Address) {

@@ -14,17 +14,16 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package sonicapi
+package bundle
 
-import (
-	"testing"
+import "io"
 
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/stretchr/testify/require"
-)
+//go:generate mockgen -source=io_test.go -destination=io_test_mock.go -package=bundle
 
-func TestNewRPCExecutionPlan(t *testing.T) {
-	require.PanicsWithValue(t, "not implemented yet", func() {
-		_ = NewRPCExecutionPlan(bundle.ExecutionPlan{})
-	})
+type Reader interface {
+	io.Reader
+}
+
+type Writer interface {
+	io.Writer
 }

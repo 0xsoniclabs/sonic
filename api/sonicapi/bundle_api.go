@@ -42,18 +42,6 @@ type RPCExecutionPlan struct {
 
 // NewRPCExecutionPlan converts a bundle.ExecutionPlan to an RPCExecutionPlan for JSON-RPC responses.
 func NewRPCExecutionPlan(plan bundle.ExecutionPlan) RPCExecutionPlan {
-	steps := make([]RPCExecutionStep, len(plan.Steps))
-	for i, step := range plan.Steps {
-		steps[i] = RPCExecutionStep{
-			From: step.From,
-			Hash: step.Hash,
-		}
-	}
-
-	return RPCExecutionPlan{
-		Flags:    plan.Flags,
-		Steps:    steps,
-		Earliest: rpc.BlockNumber(plan.Range.Earliest),
-		Latest:   rpc.BlockNumber(plan.Range.Latest),
-	}
+	// TODO: This needs to be re-implemented reflecting the new execution plan structure.
+	panic("not implemented yet")
 }

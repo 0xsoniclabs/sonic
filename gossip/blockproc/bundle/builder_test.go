@@ -27,53 +27,120 @@ import (
 )
 
 func TestBundleBuilder_Build_AllowsToBuildBundleAsSpecified(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
+	require := require.New(t)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	key0, err := crypto.GenerateKey()
+	require.NoError(err)
 
 	key1, err := crypto.GenerateKey()
-	require.NoError(t, err)
+	require.NoError(err)
 
 	key2, err := crypto.GenerateKey()
-	require.NoError(t, err)
+	require.NoError(err)
 
 	keyE, err := crypto.GenerateKey()
-	require.NoError(t, err)
+	require.NoError(err)
 
 	tx := NewBuilder(signer).
-		SetFlags(EF_AllOf|EF_TolerateFailed).
 		SetEarliest(12).
 		SetLatest(15).
-		With(
+		AllOf(
+			Step(key0, &types.AccessListTx{
+				Nonce: 0,
+			}),
 			Step(key1, &types.AccessListTx{
 				Nonce: 1,
-			}),
+			}).WithFlags(EF_TolerateFailed),
 			Step(key2, &types.AccessListTx{
 				Nonce: 2,
-			}),
+			}).WithFlags(EF_TolerateInvalid),
 		).
 		SetEnvelopeSenderKey(keyE).
 		Build()
 
 	bundle, plan, err := ValidateEnvelope(signer, tx)
-	require.NoError(t, err)
+	require.NoError(err)
 
-	require.Equal(t, EF_AllOf|EF_TolerateFailed, plan.Flags)
-	require.EqualValues(t, 12, plan.Range.Earliest)
-	require.EqualValues(t, 15, plan.Range.Latest)
+	// Check the block range.
+	require.Equal(bundle.Plan, *plan)
+	require.EqualValues(12, plan.Range.Earliest)
+	require.EqualValues(15, plan.Range.Latest)
 
+	// check the structure of the execution plan
+	require.Equal(
+		"AllOf(A,Step[TolerateFailed](B),Step[TolerateInvalid](C))",
+		plan.Root.String(),
+	)
+
+	// Check the transactions and their senders.
 	txs := bundle.Transactions
-	require.Len(t, txs, 2)
+	require.Len(txs, 3)
 
-	sender1, err := signer.Sender(txs[0])
-	require.NoError(t, err)
-	require.Equal(t, crypto.PubkeyToAddress(key1.PublicKey), sender1)
+	tx0, found := txs[*plan.Root.steps[0].txRef]
+	require.True(found)
+	sender0, err := signer.Sender(tx0)
+	require.NoError(err)
+	require.Equal(crypto.PubkeyToAddress(key0.PublicKey), sender0)
+	require.EqualValues(0, tx0.Nonce())
 
-	sender2, err := signer.Sender(txs[1])
-	require.NoError(t, err)
-	require.Equal(t, crypto.PubkeyToAddress(key2.PublicKey), sender2)
+	tx1, found := txs[*plan.Root.steps[1].txRef]
+	require.True(found)
+	sender1, err := signer.Sender(tx1)
+	require.NoError(err)
+	require.Equal(crypto.PubkeyToAddress(key1.PublicKey), sender1)
+	require.EqualValues(1, tx1.Nonce())
 
-	envelopeSigner, err := signer.Sender(tx)
+	tx2, found := txs[*plan.Root.steps[2].txRef]
+	require.True(found)
+	sender2, err := signer.Sender(tx2)
+	require.NoError(err)
+	require.Equal(crypto.PubkeyToAddress(key2.PublicKey), sender2)
+	require.EqualValues(2, tx2.Nonce())
+}
+
+func TestBundleBuilder_BuildComposedBundles(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	keyA, err := crypto.GenerateKey()
 	require.NoError(t, err)
-	require.Equal(t, crypto.PubkeyToAddress(keyE.PublicKey), envelopeSigner)
+
+	keyB, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	keyC, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	A := Step(keyA, &types.AccessListTx{Nonce: 1})
+	B := Step(keyB, &types.AccessListTx{Nonce: 2})
+	C := Step(keyC, &types.AccessListTx{Nonce: 3})
+	envelope := NewBuilder(signer).
+		OneOf(
+			AllOf(A, B),
+			AllOf(A, C),
+			AllOf(B, C),
+		).Build()
+
+	bundle, _, err := ValidateEnvelope(signer, envelope)
+	require.NoError(t, err)
+
+	require.Len(t, bundle.Transactions, 3)
+	require.Equal(t,
+		"OneOf(AllOf(A,B),AllOf(A,C),AllOf(B,C))",
+		bundle.Plan.Root.String(),
+	)
+
+	txs := bundle.GetTransactionsInExecutionOrder()
+	require.Len(t, txs, 6)
+
+	require.EqualValues(t, 1, txs[0].Nonce())
+	require.EqualValues(t, 2, txs[1].Nonce())
+
+	require.EqualValues(t, 1, txs[2].Nonce())
+	require.EqualValues(t, 3, txs[3].Nonce())
+
+	require.EqualValues(t, 2, txs[4].Nonce())
+	require.EqualValues(t, 3, txs[5].Nonce())
 }
 
 func TestBundleBuilder_Step_AcceptsVariousInputTypes(t *testing.T) {
@@ -86,7 +153,11 @@ func TestBundleBuilder_Step_AcceptsVariousInputTypes(t *testing.T) {
 		&types.DynamicFeeTx{},
 		&types.BlobTx{},
 		&types.SetCodeTx{},
-		types.NewTx(&types.LegacyTx{}), // = *types.Transaction
+		types.NewTx(&types.LegacyTx{}),
+		types.NewTx(&types.AccessListTx{}),
+		types.NewTx(&types.DynamicFeeTx{}),
+		types.NewTx(&types.BlobTx{}),
+		types.NewTx(&types.SetCodeTx{}),
 	}
 
 	for _, input := range inputs {
@@ -103,20 +174,20 @@ func TestBundleBuilder_Step_PanicsOnInvalidInput(t *testing.T) {
 }
 
 func TestBundleBuilder_AllOf_BuildEmptyBundle(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
-	tx := AllOf(signer)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	tx := AllOf().Build(signer)
 
 	_, _, err := ValidateEnvelope(signer, tx)
 	require.NoError(t, err)
 }
 
 func TestBundleBuilder_AllOf_BuildBundle(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	tx := AllOf(signer,
+	tx := AllOf(
 		Step(key, &types.AccessListTx{
 			Nonce: 0,
 		}),
@@ -126,19 +197,19 @@ func TestBundleBuilder_AllOf_BuildBundle(t *testing.T) {
 		Step(key, &types.AccessListTx{
 			Nonce: 2,
 		}),
-	)
+	).Build(signer)
 
 	_, _, err = ValidateEnvelope(signer, tx)
 	require.NoError(t, err)
 }
 
 func TestBundleBuilder_OneOf_BuildBundle(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	tx := OneOf(signer,
+	tx := OneOf(
 		Step(key, &types.AccessListTx{
 			Nonce: 0,
 		}),
@@ -148,27 +219,27 @@ func TestBundleBuilder_OneOf_BuildBundle(t *testing.T) {
 		Step(key, &types.AccessListTx{
 			Nonce: 2,
 		}),
-	)
+	).Build(signer)
 
 	_, _, err = ValidateEnvelope(signer, tx)
 	require.NoError(t, err)
 }
 
 func TestBundleBuilder_OneOf_EmptyBundle(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
-	tx := OneOf(signer)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	tx := OneOf().Build(signer)
 
 	_, _, err := ValidateEnvelope(signer, tx)
 	require.NoError(t, err)
 }
 
 func TestBundleBuilder_Builder_NewNestedBundle(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	inner := OneOf(signer,
+	inner := OneOf(
 		Step(key, &types.AccessListTx{
 			Nonce: 0,
 		}),
@@ -178,9 +249,9 @@ func TestBundleBuilder_Builder_NewNestedBundle(t *testing.T) {
 		Step(key, &types.AccessListTx{
 			Nonce: 2,
 		}),
-	)
+	).Build(signer)
 
-	outer := AllOf(signer,
+	outer := AllOf(
 		Step(key, &types.AccessListTx{
 			Nonce: 2,
 		}),
@@ -188,7 +259,7 @@ func TestBundleBuilder_Builder_NewNestedBundle(t *testing.T) {
 		Step(key, &types.AccessListTx{
 			Nonce: 3,
 		}),
-	)
+	).Build(signer)
 
 	_, _, err = ValidateEnvelope(signer, inner)
 	require.NoError(t, err)
@@ -198,15 +269,15 @@ func TestBundleBuilder_Builder_NewNestedBundle(t *testing.T) {
 
 	// all combined in one
 
-	combined := AllOf(signer,
-		Step(key, OneOf(signer,
+	combined := AllOf(
+		Step(key, OneOf(
 			Step(key, &types.AccessListTx{}),
 			Step(key, &types.DynamicFeeTx{}),
-		)),
-		Step(key, AllOf(signer,
+		).Build(signer)),
+		Step(key, AllOf(
 			Step(key, &types.AccessListTx{}),
-		)),
-	)
+		).Build(signer)),
+	).Build(signer)
 
 	_, _, err = ValidateEnvelope(signer, combined)
 	require.NoError(t, err)
@@ -237,17 +308,17 @@ func TestBundleBuilder_AutomaticallyAddsGasCostsForMarkers(t *testing.T) {
 		gasLimits[i] = types.NewTx(data).Gas()
 	}
 
-	steps := make([]BundleStep, len(txData))
+	steps := make([]BuilderStep, len(txData))
 	for i, data := range txData {
 		steps[i] = Step(key, data)
 	}
 
-	bundle, _ := NewBuilder(signer).With(steps...).BuildBundleAndPlan()
+	bundle, _ := NewBuilder(signer).AllOf(steps...).BuildBundleAndPlan()
 
 	require.Len(bundle.Transactions, len(txData))
 
 	markerCosts := params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
-	for i, tx := range bundle.Transactions {
+	for i, tx := range bundle.GetTransactionsInExecutionOrder() {
 		require.True(IsBundleOnly(tx))
 		cur := types.NewTx(txData[i])
 		require.Equal(tx.Type(), cur.Type())
@@ -261,18 +332,19 @@ func TestBundleBuilder_AdjustsNestedEnvelopeGasToPassValidation(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	inner := OneOf(signer,
+	inner := OneOf(
 		Step(key, &types.AccessListTx{}),
-	)
+	).Build(signer)
 
-	outer := AllOf(signer,
+	outer := AllOf(
 		Step(key, inner),
-	)
+	).Build(signer)
 
 	bundle, _, err := ValidateEnvelope(signer, outer)
 	require.NoError(t, err)
 
-	_, _, err = ValidateEnvelope(signer, bundle.Transactions[0])
+	txs := bundle.GetTransactionsInExecutionOrder()
+	_, _, err = ValidateEnvelope(signer, txs[0])
 	require.NoError(t, err)
 }
 
@@ -287,7 +359,7 @@ func TestBundleBuilder_Regression_RespectsChainID(t *testing.T) {
 			NewBuilder(signer).
 				// the following line promotes a legacy tx (without chain id) to access list
 				// the bug yielded invalid chain id panic during signing
-				With(Step(key, types.NewTx(&types.LegacyTx{}))).
+				AllOf(Step(key, types.NewTx(&types.LegacyTx{}))).
 				Build()
 		})
 	}
@@ -298,7 +370,7 @@ func TestBundleBuilder_DefaultsSignerIfUnspecified(t *testing.T) {
 	require.NoError(t, err)
 
 	tx := NewBuilder(nil).
-		With(Step(key, types.NewTx(&types.LegacyTx{}))).
+		AllOf(Step(key, types.NewTx(&types.LegacyTx{}))).
 		Build()
 
 	signer := types.LatestSignerForChainID(big.NewInt(1))

@@ -642,13 +642,13 @@ func TestFilterNonPermissibleTransactions_InactiveWithoutAllegro(t *testing.T) {
 	valid := types.NewTx(&types.LegacyTx{})
 	invalid := types.NewTx(&types.SetCodeTx{})
 
-	require.NoError(isPermissible(valid, &withAllegro))
-	require.Error(isPermissible(invalid, &withAllegro))
+	require.NoError(isPermissible(valid, &withAllegro, nil))
+	require.Error(isPermissible(invalid, &withAllegro, nil))
 
 	txs := []*types.Transaction{valid, invalid}
 
-	require.Equal(txs, filterNonPermissibleTransactions(txs, &withoutAllegro, nil, nil))
-	require.Equal([]*types.Transaction{valid}, filterNonPermissibleTransactions(txs, &withAllegro, nil, nil))
+	require.Equal(txs, filterNonPermissibleTransactions(txs, &withoutAllegro, nil, nil, nil))
+	require.Equal([]*types.Transaction{valid}, filterNonPermissibleTransactions(txs, &withAllegro, nil, nil, nil))
 }
 
 func TestFilterNonPermissibleTransactions_FiltersNonPermissibleTransactions(t *testing.T) {
@@ -666,7 +666,7 @@ func TestFilterNonPermissibleTransactions_FiltersNonPermissibleTransactions(t *t
 
 	txs := []*types.Transaction{invalid, valid1, invalid, valid2, invalid, invalid, valid3, invalid}
 	want := []*types.Transaction{valid1, valid2, valid3}
-	require.Equal(t, want, filterNonPermissibleTransactions(txs, &rules, nil, nil))
+	require.Equal(t, want, filterNonPermissibleTransactions(txs, &rules, nil, nil, nil))
 }
 
 func TestFilterNonPermissibleTransactions_LogsIssuesOfNonPermissibleTransactions(t *testing.T) {
@@ -687,18 +687,19 @@ func TestFilterNonPermissibleTransactions_LogsIssuesOfNonPermissibleTransactions
 	log.EXPECT().Warn(
 		"Non-permissible transaction in the proposal",
 		"tx", gomock.Any(),
-		"issue", isPermissible(invalid1, &rules),
+		"issue", isPermissible(invalid1, &rules, nil),
 	)
 
 	log.EXPECT().Warn(
 		"Non-permissible transaction in the proposal",
 		"tx", gomock.Any(),
-		"issue", isPermissible(invalid2, &rules),
+		"issue", isPermissible(invalid2, &rules, nil),
 	)
 
 	filterNonPermissibleTransactions(
 		[]*types.Transaction{invalid1, invalid2},
 		&rules,
+		nil,
 		log,
 		nil,
 	)
@@ -725,6 +726,7 @@ func TestFilterNonPermissibleTransactions_ReportsNonPermissibleTransactionsToMon
 		[]*types.Transaction{valid, invalid, valid, invalid},
 		&rules,
 		nil,
+		nil,
 		counter,
 	)
 }
@@ -742,17 +744,22 @@ func TestIsPermissible_AcceptsPermissibleTransactions(t *testing.T) {
 		"set code": types.NewTx(&types.SetCodeTx{
 			AuthList: []types.SetCodeAuthorization{{}},
 		}),
-		"empty all-of bundle": bundle.AllOf(signer),
-		"empty one-of bundle": bundle.OneOf(signer),
-		"non-empty bundle": bundle.AllOf(signer,
+		"empty all-of bundle": bundle.AllOf().Build(signer),
+		"empty one-of bundle": bundle.OneOf().Build(signer),
+		"non-empty bundle": bundle.AllOf(
 			bundle.Step(key, &types.AccessListTx{}),
 			bundle.Step(key, &types.AccessListTx{}),
-		),
-		"nested bundle": bundle.AllOf(signer,
-			bundle.Step(key, bundle.AllOf(signer,
+		).Build(signer),
+		"composed bundle": bundle.OneOf(
+			bundle.AllOf(
 				bundle.Step(key, &types.AccessListTx{}),
-			)),
-		),
+			),
+		).Build(signer),
+		"nested bundle": bundle.AllOf(
+			bundle.Step(key, bundle.AllOf(
+				bundle.Step(key, &types.AccessListTx{}),
+			).Build(signer)),
+		).Build(signer),
 	}
 
 	rules := opera.Rules{
@@ -764,7 +771,7 @@ func TestIsPermissible_AcceptsPermissibleTransactions(t *testing.T) {
 	}
 	for name, tx := range tests {
 		t.Run(name, func(t *testing.T) {
-			require.NoError(t, isPermissible(tx, &rules))
+			require.NoError(t, isPermissible(tx, &rules, signer))
 		})
 	}
 }
@@ -784,10 +791,10 @@ func TestIsPermissible_AcceptsSetCodeTransactionsInAllegroAndBeyond(t *testing.T
 		t.Run(name, func(t *testing.T) {
 			rules := opera.Rules{Upgrades: updates}
 			if updates.Allegro {
-				require.NoError(t, isPermissible(tx, &rules))
+				require.NoError(t, isPermissible(tx, &rules, nil))
 			} else {
 				require.ErrorContains(t,
-					isPermissible(tx, &rules),
+					isPermissible(tx, &rules, nil),
 					"unsupported transaction type",
 				)
 			}
@@ -807,32 +814,32 @@ func TestIsPermissible_WithBrio_RejectsBundleOnlyTransactions(t *testing.T) {
 
 	// Before Brio, this transaction should be permissible.
 	rules := opera.Rules{Upgrades: opera.Upgrades{Brio: false}}
-	require.NoError(isPermissible(tx, &rules))
+	require.NoError(isPermissible(tx, &rules, nil))
 
 	// With Brio, this transaction should not be permissible.
 	rules.Upgrades.Brio = true
-	require.ErrorContains(isPermissible(tx, &rules), "bundle-only transactions are not supported")
+	require.ErrorContains(isPermissible(tx, &rules, nil), "bundle-only transactions are not supported")
 }
 
 func TestIsPermissible_WithBrio_BundlesDisabled_RejectsBundleEnvelopes(t *testing.T) {
 	require := require.New(t)
 	signer := types.LatestSignerForChainID(big.NewInt(1))
-	tx := bundle.AllOf(signer)
+	tx := bundle.AllOf().Build(signer)
 
 	require.True(bundle.IsEnvelope(tx))
 
 	// Before Brio, envelopes are accepted, but not interpreted as such.
 	rules := opera.Rules{Upgrades: opera.Upgrades{Brio: false}}
-	require.NoError(isPermissible(tx, &rules))
+	require.NoError(isPermissible(tx, &rules, signer))
 
 	// With Brio, envelopes are rejected if bundles are disabled.
 	rules.Upgrades.Brio = true
 	rules.Upgrades.TransactionBundles = false
-	require.ErrorContains(isPermissible(tx, &rules), "bundle transactions are disabled")
+	require.ErrorContains(isPermissible(tx, &rules, signer), "bundle transactions are disabled")
 
 	// If bundles are enabled, envelopes should be accepted.
 	rules.Upgrades.TransactionBundles = true
-	require.NoError(isPermissible(tx, &rules))
+	require.NoError(isPermissible(tx, &rules, signer))
 }
 
 func TestIsPermissible_NonOpenableEnvelope_IsRejectedWithBrio(t *testing.T) {
@@ -846,17 +853,17 @@ func TestIsPermissible_NonOpenableEnvelope_IsRejectedWithBrio(t *testing.T) {
 
 	// Before Brio, this is accepted.
 	rules := opera.Rules{Upgrades: opera.Upgrades{Brio: false}}
-	require.NoError(isPermissible(tx, &rules))
+	require.NoError(isPermissible(tx, &rules, nil))
 
 	// With Brio, and bundles disabled, this is rejected for being an envelope.
 	rules.Upgrades.Brio = true
 	rules.Upgrades.TransactionBundles = false
-	require.ErrorContains(isPermissible(tx, &rules), "bundle transactions are disabled")
+	require.ErrorContains(isPermissible(tx, &rules, nil), "bundle transactions are disabled")
 
 	// With Brio and bundles enabled, this should be rejected as it's an invalid envelope.
 	rules.Upgrades.Brio = true
 	rules.Upgrades.TransactionBundles = true
-	require.ErrorContains(isPermissible(tx, &rules), "invalid bundle envelope")
+	require.ErrorContains(isPermissible(tx, &rules, nil), "invalid bundle envelope")
 }
 
 func TestIsPermissible_BundlesWithInvalidContent_Rejected(t *testing.T) {
@@ -878,12 +885,14 @@ func TestIsPermissible_BundlesWithInvalidContent_Rejected(t *testing.T) {
 		TransactionBundles: true,
 	}}
 
+	txs := txBundle.GetTransactionsInExecutionOrder()
+
 	// The first transaction in the bundle is not permissible.
-	issue := isPermissible(txBundle.Transactions[0], &rules)
+	issue := isPermissible(txs[0], &rules, signer)
 	require.Error(issue)
 
 	// Thus, the bundle should be rejected.
-	got := isPermissible(tx, &rules)
+	got := isPermissible(tx, &rules, signer)
 	require.ErrorContains(got, "bundle contains non-permissible transaction")
 	require.ErrorContains(got, issue.Error())
 }
@@ -912,12 +921,14 @@ func TestIsPermissible_BundlesWithInvalidNestedContent_Rejected(t *testing.T) {
 		TransactionBundles: true,
 	}}
 
+	txs := txBundle.GetTransactionsInExecutionOrder()
+
 	// The first transaction in the bundle is not permissible.
-	issue := isPermissible(txBundle.Transactions[0], &rules)
+	issue := isPermissible(txs[0], &rules, signer)
 	require.Error(issue)
 
 	// Thus, the bundle should be rejected.
-	got := isPermissible(outer, &rules)
+	got := isPermissible(outer, &rules, signer)
 	require.ErrorContains(got, "bundle contains non-permissible transaction")
 	require.ErrorContains(got, issue.Error())
 }
@@ -1012,7 +1023,7 @@ func TestIsPermissible_DetectsNonPermissibleTransactions(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			err := isPermissible(test.transaction, &rules)
+			err := isPermissible(test.transaction, &rules, nil)
 			require.ErrorContains(t, err, test.issue)
 		})
 	}
