@@ -190,13 +190,13 @@ func TestValidateEnvelope_AcceptsValidBlockRanges(t *testing.T) {
 		Gas  uint64
 	}{
 		"single-block range": {
-			From: 10, To: 10, Gas: 21580,
+			From: 10, To: 10, Gas: 21480,
 		},
 		"multi-block range": {
-			From: 7, To: 42, Gas: 21580,
+			From: 7, To: 42, Gas: 21480,
 		},
 		"max-size block range": {
-			From: 100, To: 100 + MaxBlockRange - 1, Gas: 21610,
+			From: 100, To: 100 + MaxBlockRange - 1, Gas: 21560,
 		},
 	}
 

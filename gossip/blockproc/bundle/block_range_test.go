@@ -18,11 +18,11 @@ package bundle
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"math"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -252,7 +252,7 @@ func TestBlockRange_EncodingAndDecodingIsAligned(t *testing.T) {
 	}
 }
 
-func TestBlockRange_encode_encodesBoundsUsingFixedLengthBigEndian(t *testing.T) {
+func TestBlockRange_encode_encodesBoundsUsingRlp(t *testing.T) {
 	require := require.New(t)
 	tests := []BlockRange{
 		{0, 0}, {10, 20}, {20, 10},
@@ -264,9 +264,13 @@ func TestBlockRange_encode_encodesBoundsUsingFixedLengthBigEndian(t *testing.T) 
 		var buf bytes.Buffer
 		require.NoError(cur.encode(&buf))
 
-		want := [16]byte{}
-		binary.BigEndian.PutUint64(want[0:8], cur.Earliest)
-		binary.BigEndian.PutUint64(want[8:16], cur.Latest)
+		type pair struct {
+			A, B uint64
+		}
+
+		want, err := rlp.EncodeToBytes(pair{cur.Earliest, cur.Latest})
+		require.NoError(err)
+
 		require.Equal(want[:], buf.Bytes())
 	}
 }
@@ -283,7 +287,7 @@ func TestBlockRange_encode_FailingWriter_ReturnsIssue(t *testing.T) {
 	require.ErrorIs(t, err, issue)
 }
 
-func TestBlockRange_decode_Reads16BytesAndInterpretsThoseAsBigEndianUnsignedIntegers(t *testing.T) {
+func TestBlockRange_decode_ReadsRlpEncodedUint64Values(t *testing.T) {
 	require := require.New(t)
 	tests := []BlockRange{
 		{0, 0}, {10, 20}, {20, 10},
@@ -292,12 +296,15 @@ func TestBlockRange_decode_Reads16BytesAndInterpretsThoseAsBigEndianUnsignedInte
 	}
 
 	for _, cur := range tests {
-		data := [16]byte{}
-		binary.BigEndian.PutUint64(data[0:8], cur.Earliest)
-		binary.BigEndian.PutUint64(data[8:16], cur.Latest)
+		type pair struct {
+			A, B uint64
+		}
+
+		data, err := rlp.EncodeToBytes(pair{cur.Earliest, cur.Latest})
+		require.NoError(err)
 
 		var r BlockRange
-		err := r.decode(bytes.NewReader(data[:]))
+		err = r.decode(bytes.NewReader(data))
 		require.NoError(err)
 		require.Equal(cur, r)
 	}

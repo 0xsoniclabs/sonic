@@ -17,9 +17,10 @@
 package bundle
 
 import (
-	"encoding/binary"
 	"io"
 	"math"
+
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -77,19 +78,9 @@ func (r BlockRange) IsInRange(blockNum uint64) bool {
 }
 
 func (r BlockRange) encode(writer io.Writer) error {
-	data := make([]byte, 16)
-	binary.BigEndian.PutUint64(data[0:8], r.Earliest)
-	binary.BigEndian.PutUint64(data[8:16], r.Latest)
-	_, err := writer.Write(data)
-	return err
+	return rlp.Encode(writer, r)
 }
 
 func (r *BlockRange) decode(reader io.Reader) error {
-	data := make([]byte, 16)
-	if _, err := io.ReadFull(reader, data); err != nil {
-		return err
-	}
-	r.Earliest = binary.BigEndian.Uint64(data[0:8])
-	r.Latest = binary.BigEndian.Uint64(data[8:16])
-	return nil
+	return rlp.Decode(reader, r)
 }
