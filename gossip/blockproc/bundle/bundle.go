@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -144,47 +145,29 @@ func (tb *TransactionBundle) extractExecutionPlan(signer types.Signer) (Executio
 // By doing so, the signature of the transaction is erased. Therefore, the sender
 // or the ChainId can no longer be derived from the resulting transaction.
 func removeBundleOnlyMark(tx *types.Transaction) (*types.Transaction, error) {
-	removeBundleOnlyMark := func(tx *types.Transaction) types.AccessList {
-		var accessList types.AccessList
-		for _, entry := range tx.AccessList() {
-			if entry.Address == BundleOnly {
-				continue
-			}
-			accessList = append(accessList, entry)
+	curAccessList := tx.AccessList()
+	newAccessList := make([]types.AccessTuple, 0, len(curAccessList))
+	for _, cur := range curAccessList {
+		if cur.Address != BundleOnly {
+			newAccessList = append(newAccessList, cur)
 		}
-		return accessList
 	}
 
-	var txData types.TxData
-	switch tx.Type() {
-	case types.AccessListTxType:
-		txData = &types.AccessListTx{
-			Nonce:      tx.Nonce(),
-			GasPrice:   tx.GasPrice(),
-			Gas:        tx.Gas(),
-			To:         tx.To(),
-			Value:      tx.Value(),
-			Data:       tx.Data(),
-			AccessList: removeBundleOnlyMark(tx),
-		}
-	case types.DynamicFeeTxType:
-		txData = &types.DynamicFeeTx{
-			Nonce:      tx.Nonce(),
-			GasTipCap:  tx.GasTipCap(),
-			GasFeeCap:  tx.GasFeeCap(),
-			Gas:        tx.Gas(),
-			To:         tx.To(),
-			Value:      tx.Value(),
-			Data:       tx.Data(),
-			AccessList: removeBundleOnlyMark(tx),
-		}
+	// Create a copy of the transaction data with the modified access list.
+	txData := utils.GetTxData(tx)
+	switch data := txData.(type) {
+	case *types.AccessListTx:
+		data.AccessList = newAccessList
+	case *types.DynamicFeeTx:
+		data.AccessList = newAccessList
+	case *types.BlobTx:
+		data.AccessList = newAccessList
+	case *types.SetCodeTx:
+		data.AccessList = newAccessList
 	default:
-		// Note:
-		// - Legacy transactions cannot be bundled, because they lack of access list
-		// - Blob transactions have dubious usefulness in bundles and are not fully supported in Sonic
-		// - SetCodeTransactions have special interactions with other transactions, and they are not supported in bundles
-		return nil, fmt.Errorf("invalid bundle: unsupported transaction type %d", tx.Type())
+		return nil, fmt.Errorf("unsupported transaction type: %d", tx.Type())
 	}
+
 	return types.NewTx(txData), nil
 }
 

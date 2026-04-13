@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -303,8 +304,6 @@ func TestExtractExecutionPlan_ReturnsErrorWithUnsupportedTransactionType(t *test
 
 	tests := []types.TxData{
 		&types.LegacyTx{},
-		&types.BlobTx{},
-		&types.SetCodeTx{},
 	}
 
 	for _, txData := range tests {
@@ -320,7 +319,7 @@ func TestExtractExecutionPlan_ReturnsErrorWithUnsupportedTransactionType(t *test
 
 		_, err := bundle.extractExecutionPlan(mockSigner)
 		require.ErrorContains(t, err,
-			fmt.Sprintf("invalid bundle: unsupported transaction type %d", tx.Type()))
+			fmt.Sprintf("unsupported transaction type: %d", tx.Type()))
 	}
 }
 
@@ -350,15 +349,13 @@ func TestExtractExecutionPlan_ReturnsErrorWithMalformedSignature(t *testing.T) {
 func TestRemoveBundleOnlyMark_ReturnsErrorWithUnsupportedTransactionType(t *testing.T) {
 	tests := []types.TxData{
 		&types.LegacyTx{},
-		&types.BlobTx{},
-		&types.SetCodeTx{},
 	}
 
 	for _, txData := range tests {
 		tx := types.NewTx(txData)
 		_, err := removeBundleOnlyMark(tx)
 		require.ErrorContains(t, err,
-			fmt.Sprintf("invalid bundle: unsupported transaction type %d", tx.Type()))
+			fmt.Sprintf("unsupported transaction type: %d", tx.Type()))
 	}
 }
 
@@ -366,12 +363,16 @@ func TestRemoveBundleOnlyMark_PreservesOriginalData(t *testing.T) {
 
 	type msg struct {
 		Nonce      uint64
-		GasPrice   *big.Int
+		GasPrice   *uint256.Int
+		GasFeeCap  *uint256.Int
+		GasTipCap  *uint256.Int
 		Gas        uint64
 		To         *common.Address
-		Value      *big.Int
+		Value      *uint256.Int
 		Data       []byte
 		AccessList types.AccessList
+		BlobHashes []common.Hash
+		AuthList   []types.SetCodeAuthorization
 	}
 
 	normalAccessListEntry := types.AccessList{
@@ -388,24 +389,42 @@ func TestRemoveBundleOnlyMark_PreservesOriginalData(t *testing.T) {
 	}
 
 	tests := make([]msg, 0)
-	for _, gasPrice := range []*big.Int{nil, big.NewInt(0), big.NewInt(200)} {
-		for _, gas := range []uint64{0, 21000} {
-			for _, to := range []*common.Address{nil, {0x01}} {
-				for _, value := range []*big.Int{nil, big.NewInt(0), big.NewInt(100)} {
-					for _, accessList := range []types.AccessList{
-						nil,
-						normalAccessListEntry,
-					} {
-
-						tests = append(tests, msg{
-							Nonce:      1,
-							GasPrice:   gasPrice,
-							Gas:        gas,
-							To:         to,
-							Value:      value,
-							Data:       []byte{0x01, 0x02},
-							AccessList: accessList,
-						})
+	for _, gasPrice := range []*uint256.Int{nil, uint256.NewInt(0), uint256.NewInt(200)} {
+		for _, gasFeeCap := range []*uint256.Int{nil, uint256.NewInt(0), uint256.NewInt(200)} {
+			for _, gasTipCap := range []*uint256.Int{nil, uint256.NewInt(0), uint256.NewInt(200)} {
+				for _, gas := range []uint64{0, 21000} {
+					for _, to := range []*common.Address{nil, {0x01}} {
+						for _, value := range []*uint256.Int{nil, uint256.NewInt(0), uint256.NewInt(100)} {
+							for _, accessList := range []types.AccessList{
+								nil,
+								normalAccessListEntry,
+							} {
+								for _, blobHash := range [][]common.Hash{
+									nil, {{0x01}, {0x02}},
+								} {
+									for _, authList := range [][]types.SetCodeAuthorization{
+										nil, {
+											{Address: common.Address{1}, Nonce: 0x02},
+											{Address: common.Address{3}, Nonce: 0x04},
+										},
+									} {
+										tests = append(tests, msg{
+											Nonce:      1,
+											GasPrice:   gasPrice,
+											GasFeeCap:  gasFeeCap,
+											GasTipCap:  gasTipCap,
+											Gas:        gas,
+											To:         to,
+											Value:      value,
+											Data:       []byte{0x01, 0x02},
+											AccessList: accessList,
+											BlobHashes: blobHash,
+											AuthList:   authList,
+										})
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -418,10 +437,10 @@ func TestRemoveBundleOnlyMark_PreservesOriginalData(t *testing.T) {
 
 			txData := &types.AccessListTx{
 				Nonce:      test.Nonce,
-				GasPrice:   test.GasPrice,
+				GasPrice:   test.GasPrice.ToBig(),
 				Gas:        test.Gas,
 				To:         test.To,
-				Value:      test.Value,
+				Value:      test.Value.ToBig(),
 				Data:       test.Data,
 				AccessList: test.AccessList,
 			}
@@ -431,20 +450,20 @@ func TestRemoveBundleOnlyMark_PreservesOriginalData(t *testing.T) {
 			require.NoError(t, err)
 
 			if test.GasPrice == nil {
-				test.GasPrice = big.NewInt(0)
+				test.GasPrice = uint256.NewInt(0)
 			}
 			if test.Value == nil {
-				test.Value = big.NewInt(0)
+				test.Value = uint256.NewInt(0)
 			}
 			if test.AccessList == nil {
 				test.AccessList = types.AccessList{}
 			}
 
 			require.Equal(t, test.Nonce, modified.Nonce())
-			require.Equal(t, test.GasPrice, modified.GasPrice())
+			require.Equal(t, test.GasPrice.Uint64(), modified.GasPrice().Uint64())
 			require.Equal(t, test.Gas, modified.Gas())
 			require.Equal(t, test.To, modified.To())
-			require.Equal(t, test.Value, modified.Value())
+			require.Equal(t, test.Value.Uint64(), modified.Value().Uint64())
 			require.Equal(t, test.Data, modified.Data())
 			require.Equal(t, test.AccessList, modified.AccessList())
 		})
@@ -453,10 +472,10 @@ func TestRemoveBundleOnlyMark_PreservesOriginalData(t *testing.T) {
 
 			txData := &types.AccessListTx{
 				Nonce:      test.Nonce,
-				GasPrice:   test.GasPrice,
+				GasPrice:   test.GasPrice.ToBig(),
 				Gas:        test.Gas,
 				To:         test.To,
-				Value:      test.Value,
+				Value:      test.Value.ToBig(),
 				Data:       test.Data,
 				AccessList: append(test.AccessList, bundleOnlyMark...),
 			}
@@ -476,11 +495,11 @@ func TestRemoveBundleOnlyMark_PreservesOriginalData(t *testing.T) {
 
 			txData := &types.DynamicFeeTx{
 				Nonce:      test.Nonce,
-				GasFeeCap:  test.GasPrice,
-				GasTipCap:  test.GasPrice,
+				GasFeeCap:  test.GasFeeCap.ToBig(),
+				GasTipCap:  test.GasTipCap.ToBig(),
 				Gas:        test.Gas,
 				To:         test.To,
-				Value:      test.Value,
+				Value:      test.Value.ToBig(),
 				Data:       test.Data,
 				AccessList: test.AccessList,
 			}
@@ -489,22 +508,25 @@ func TestRemoveBundleOnlyMark_PreservesOriginalData(t *testing.T) {
 			modified, err := removeBundleOnlyMark(tx)
 			require.NoError(t, err)
 
-			if test.GasPrice == nil {
-				test.GasPrice = big.NewInt(0)
+			if test.GasFeeCap == nil {
+				test.GasFeeCap = uint256.NewInt(0)
+			}
+			if test.GasTipCap == nil {
+				test.GasTipCap = uint256.NewInt(0)
 			}
 			if test.Value == nil {
-				test.Value = big.NewInt(0)
+				test.Value = uint256.NewInt(0)
 			}
 			if test.AccessList == nil {
 				test.AccessList = types.AccessList{}
 			}
 
 			require.Equal(t, test.Nonce, modified.Nonce())
-			require.Equal(t, test.GasPrice, modified.GasFeeCap())
-			require.Equal(t, test.GasPrice, modified.GasTipCap())
+			require.Equal(t, test.GasFeeCap.Uint64(), modified.GasFeeCap().Uint64())
+			require.Equal(t, test.GasTipCap.Uint64(), modified.GasTipCap().Uint64())
 			require.Equal(t, test.Gas, modified.Gas())
 			require.Equal(t, test.To, modified.To())
-			require.Equal(t, test.Value, modified.Value())
+			require.Equal(t, test.Value.Uint64(), modified.Value().Uint64())
 			require.Equal(t, test.Data, modified.Data())
 			require.Equal(t, test.AccessList, modified.AccessList())
 		})
@@ -513,13 +535,168 @@ func TestRemoveBundleOnlyMark_PreservesOriginalData(t *testing.T) {
 
 			txData := &types.DynamicFeeTx{
 				Nonce:      test.Nonce,
+				GasFeeCap:  test.GasFeeCap.ToBig(),
+				GasTipCap:  test.GasTipCap.ToBig(),
+				Gas:        test.Gas,
+				To:         test.To,
+				Value:      test.Value.ToBig(),
+				Data:       test.Data,
+				AccessList: append(test.AccessList, bundleOnlyMark...),
+			}
+
+			tx := types.NewTx(txData)
+			modified, err := removeBundleOnlyMark(tx)
+			require.NoError(t, err)
+
+			if test.AccessList == nil {
+				test.AccessList = types.AccessList{}
+			}
+
+			require.Equal(t, test.AccessList, modified.AccessList())
+		})
+
+		t.Run("preserves original members of a blob transaction", func(t *testing.T) {
+			if test.To == nil {
+				t.Skip("receiver must not be nil for blob transactions")
+			}
+
+			txData := &types.BlobTx{
+				Nonce:      test.Nonce,
+				GasFeeCap:  test.GasFeeCap,
+				GasTipCap:  test.GasTipCap,
+				Gas:        test.Gas,
+				To:         *test.To,
+				Value:      test.Value,
+				Data:       test.Data,
+				AccessList: test.AccessList,
+				BlobFeeCap: test.GasPrice,
+				BlobHashes: test.BlobHashes,
+			}
+
+			tx := types.NewTx(txData)
+			modified, err := removeBundleOnlyMark(tx)
+			require.NoError(t, err)
+
+			if test.GasPrice == nil {
+				test.GasPrice = uint256.NewInt(0)
+			}
+			if test.GasFeeCap == nil {
+				test.GasFeeCap = uint256.NewInt(0)
+			}
+			if test.GasTipCap == nil {
+				test.GasTipCap = uint256.NewInt(0)
+			}
+			if test.Value == nil {
+				test.Value = uint256.NewInt(0)
+			}
+			if test.AccessList == nil {
+				test.AccessList = types.AccessList{}
+			}
+			if test.BlobHashes == nil {
+				test.BlobHashes = []common.Hash{}
+			}
+
+			require.Equal(t, test.Nonce, modified.Nonce())
+			require.Equal(t, test.GasFeeCap.Uint64(), modified.GasFeeCap().Uint64())
+			require.Equal(t, test.GasTipCap.Uint64(), modified.GasTipCap().Uint64())
+			require.Equal(t, test.Gas, modified.Gas())
+			require.Equal(t, test.To, modified.To())
+			require.Equal(t, test.Value.Uint64(), modified.Value().Uint64())
+			require.Equal(t, test.Data, modified.Data())
+			require.Equal(t, test.AccessList, modified.AccessList())
+			require.Equal(t, test.GasPrice.Uint64(), modified.BlobGasFeeCap().Uint64())
+			require.Equal(t, test.BlobHashes, modified.BlobHashes())
+		})
+
+		t.Run("removes bundle marker from the blob transaction", func(t *testing.T) {
+			if test.To == nil {
+				t.Skip("receiver must not be nil for blob transactions")
+			}
+
+			txData := &types.BlobTx{
+				Nonce:      test.Nonce,
 				GasFeeCap:  test.GasPrice,
 				GasTipCap:  test.GasPrice,
 				Gas:        test.Gas,
-				To:         test.To,
+				To:         *test.To,
 				Value:      test.Value,
 				Data:       test.Data,
 				AccessList: append(test.AccessList, bundleOnlyMark...),
+			}
+
+			tx := types.NewTx(txData)
+			modified, err := removeBundleOnlyMark(tx)
+			require.NoError(t, err)
+
+			if test.AccessList == nil {
+				test.AccessList = types.AccessList{}
+			}
+
+			require.Equal(t, test.AccessList, modified.AccessList())
+		})
+
+		t.Run("preserves original members of a set code transaction", func(t *testing.T) {
+			if test.To == nil {
+				t.Skip("receiver must not be nil for set code transactions")
+			}
+
+			txData := &types.SetCodeTx{
+				Nonce:      test.Nonce,
+				GasFeeCap:  test.GasFeeCap,
+				GasTipCap:  test.GasTipCap,
+				Gas:        test.Gas,
+				To:         *test.To,
+				Value:      test.Value,
+				Data:       test.Data,
+				AccessList: test.AccessList,
+				AuthList:   test.AuthList,
+			}
+
+			tx := types.NewTx(txData)
+			modified, err := removeBundleOnlyMark(tx)
+			require.NoError(t, err)
+
+			if test.GasFeeCap == nil {
+				test.GasFeeCap = uint256.NewInt(0)
+			}
+			if test.GasTipCap == nil {
+				test.GasTipCap = uint256.NewInt(0)
+			}
+			if test.Value == nil {
+				test.Value = uint256.NewInt(0)
+			}
+			if test.AccessList == nil {
+				test.AccessList = types.AccessList{}
+			}
+			if test.AuthList == nil {
+				test.AuthList = []types.SetCodeAuthorization{}
+			}
+
+			require.Equal(t, test.Nonce, modified.Nonce())
+			require.Equal(t, test.GasFeeCap.Uint64(), modified.GasFeeCap().Uint64())
+			require.Equal(t, test.GasTipCap.Uint64(), modified.GasTipCap().Uint64())
+			require.Equal(t, test.Gas, modified.Gas())
+			require.Equal(t, test.To, modified.To())
+			require.Equal(t, test.Value.Uint64(), modified.Value().Uint64())
+			require.Equal(t, test.Data, modified.Data())
+			require.Equal(t, test.AccessList, modified.AccessList())
+			require.Equal(t, test.AuthList, modified.SetCodeAuthorizations())
+		})
+
+		t.Run("removes bundle marker from the dynamic fee transaction", func(t *testing.T) {
+			if test.To == nil {
+				t.Skip("receiver must not be nil for set code transactions")
+			}
+			txData := &types.SetCodeTx{
+				Nonce:      test.Nonce,
+				GasFeeCap:  test.GasFeeCap,
+				GasTipCap:  test.GasTipCap,
+				Gas:        test.Gas,
+				To:         *test.To,
+				Value:      test.Value,
+				Data:       test.Data,
+				AccessList: append(test.AccessList, bundleOnlyMark...),
+				AuthList:   test.AuthList,
 			}
 
 			tx := types.NewTx(txData)
