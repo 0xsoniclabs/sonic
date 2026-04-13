@@ -44,6 +44,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/api"
 	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/api/sccapi"
 	"github.com/0xsoniclabs/sonic/eventcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/basiccheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
@@ -565,9 +566,9 @@ func (s *Service) APIs() []rpc.API {
 			Service:   ethapi.NewPublicTxTraceAPI(s.EthAPI, s.config.MaxResponseSize),
 			Public:    true,
 		}, {
-			Namespace: "sonic",
+			Namespace: "scc",
 			Version:   "1.0",
-			Service:   ethapi.NewPublicSccApi(s.EthAPI),
+			Service:   sccapi.NewPublicSccApi(s.EthAPI),
 			Public:    true,
 		},
 	}...)

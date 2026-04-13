@@ -673,7 +673,7 @@ func testScc_HasCommitteeCertificates(
 	results := []struct {
 		ChainId uint64
 	}{}
-	err := client.Client().Call(&results, "sonic_getCommitteeCertificates", "0x0", "max")
+	err := client.Client().Call(&results, "scc_getCommitteeCertificates", "0x0", "max")
 	require.NoError(err)
 	require.NotEmpty(results, "no committee certificates found")
 
@@ -697,7 +697,7 @@ func testScc_HasBlockCertificatesForBlocks(
 		Hash      common.Hash
 		StateRoot common.Hash
 	}{}
-	err := client.Client().Call(&results, "sonic_getBlockCertificates", "0x0", "max")
+	err := client.Client().Call(&results, "scc_getBlockCertificates", "0x0", "max")
 	require.NoError(err)
 
 	// Check that all certificates starting with block 0 are present.
