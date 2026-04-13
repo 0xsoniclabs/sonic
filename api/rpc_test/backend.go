@@ -376,7 +376,7 @@ func (b *fakeBackend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
 
 // GetBundleExecutionInfo returns nil — not used in fake backend tests.
 func (b *fakeBackend) GetBundleExecutionInfo(_ common.Hash) *bundle.ExecutionInfo {
-	return nil
+	panic("not implemented")
 }
 
 // TxPool is a minimal interface for the transaction pool, only including the methods needed for testing.
