@@ -75,7 +75,7 @@ type TxReference struct {
 	Hash common.Hash
 }
 
-// ExecutionStep is a single nodes in the hierarchy of processing steps defining an
+// ExecutionStep is a single node in the hierarchy of processing steps defining an
 // execution plan. Each ExecutionStep is either a reference to a transaction to be
 // executed or a group of sub-steps. Groups may be marked as "oneOf", meaning
 // that only one of the sub-steps needs to be successfully executed for the
