@@ -36,6 +36,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -367,6 +368,11 @@ func (b *fakeBackend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
 		heights = append(heights, opera.MakeUpgradeHeight(upgrades, height))
 	}
 	return opera.CreateTransientEvmChainConfig(b.chainID, heights, blockHeight)
+}
+
+// GetBundleExecutionInfo returns nil — not used in fake backend tests.
+func (b *fakeBackend) GetBundleExecutionInfo(_ common.Hash) *bundle.ExecutionInfo {
+	return nil
 }
 
 // TxPool is a minimal interface for the transaction pool, only including the methods needed for testing.

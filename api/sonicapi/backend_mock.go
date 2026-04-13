@@ -10,39 +10,229 @@
 package sonicapi
 
 import (
+	context "context"
+	iter "iter"
+	big "math/big"
 	reflect "reflect"
+	time "time"
 
+	ethapi "github.com/0xsoniclabs/sonic/api/ethapi"
+	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	bundle "github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	inter "github.com/0xsoniclabs/sonic/inter"
+	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
+	state "github.com/0xsoniclabs/sonic/inter/state"
+	opera "github.com/0xsoniclabs/sonic/opera"
+	scc "github.com/0xsoniclabs/sonic/scc"
+	cert "github.com/0xsoniclabs/sonic/scc/cert"
+	result "github.com/0xsoniclabs/sonic/utils/result"
+	hash "github.com/Fantom-foundation/lachesis-base/hash"
+	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
+	accounts "github.com/ethereum/go-ethereum/accounts"
 	common "github.com/ethereum/go-ethereum/common"
+	types "github.com/ethereum/go-ethereum/core/types"
+	vm "github.com/ethereum/go-ethereum/core/vm"
+	event "github.com/ethereum/go-ethereum/event"
+	params "github.com/ethereum/go-ethereum/params"
+	rpc "github.com/ethereum/go-ethereum/rpc"
 	gomock "go.uber.org/mock/gomock"
 )
 
-// Mockbackend is a mock of backend interface.
-type Mockbackend struct {
+// MockBundleApiBackend is a mock of BundleApiBackend interface.
+type MockBundleApiBackend struct {
 	ctrl     *gomock.Controller
-	recorder *MockbackendMockRecorder
-	isgomock struct{}
+	recorder *MockBundleApiBackendMockRecorder
 }
 
-// MockbackendMockRecorder is the mock recorder for Mockbackend.
-type MockbackendMockRecorder struct {
-	mock *Mockbackend
+// MockBundleApiBackendMockRecorder is the mock recorder for MockBundleApiBackend.
+type MockBundleApiBackendMockRecorder struct {
+	mock *MockBundleApiBackend
 }
 
-// NewMockbackend creates a new mock instance.
-func NewMockbackend(ctrl *gomock.Controller) *Mockbackend {
-	mock := &Mockbackend{ctrl: ctrl}
-	mock.recorder = &MockbackendMockRecorder{mock}
+// NewMockBundleApiBackend creates a new mock instance.
+func NewMockBundleApiBackend(ctrl *gomock.Controller) *MockBundleApiBackend {
+	mock := &MockBundleApiBackend{ctrl: ctrl}
+	mock.recorder = &MockBundleApiBackendMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *Mockbackend) EXPECT() *MockbackendMockRecorder {
+func (m *MockBundleApiBackend) EXPECT() *MockBundleApiBackendMockRecorder {
 	return m.recorder
 }
 
+// AccountManager mocks base method.
+func (m *MockBundleApiBackend) AccountManager() *accounts.Manager {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AccountManager")
+	ret0, _ := ret[0].(*accounts.Manager)
+	return ret0
+}
+
+// AccountManager indicates an expected call of AccountManager.
+func (mr *MockBundleApiBackendMockRecorder) AccountManager() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AccountManager", reflect.TypeOf((*MockBundleApiBackend)(nil).AccountManager))
+}
+
+// BlockByHash mocks base method.
+func (m *MockBundleApiBackend) BlockByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmBlock, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BlockByHash", ctx, hash)
+	ret0, _ := ret[0].(*evmcore.EvmBlock)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BlockByHash indicates an expected call of BlockByHash.
+func (mr *MockBundleApiBackendMockRecorder) BlockByHash(ctx, hash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BlockByHash", reflect.TypeOf((*MockBundleApiBackend)(nil).BlockByHash), ctx, hash)
+}
+
+// BlockByNumber mocks base method.
+func (m *MockBundleApiBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmBlock, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BlockByNumber", ctx, number)
+	ret0, _ := ret[0].(*evmcore.EvmBlock)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BlockByNumber indicates an expected call of BlockByNumber.
+func (mr *MockBundleApiBackendMockRecorder) BlockByNumber(ctx, number any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BlockByNumber", reflect.TypeOf((*MockBundleApiBackend)(nil).BlockByNumber), ctx, number)
+}
+
+// CalcBlockExtApi mocks base method.
+func (m *MockBundleApiBackend) CalcBlockExtApi() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CalcBlockExtApi")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// CalcBlockExtApi indicates an expected call of CalcBlockExtApi.
+func (mr *MockBundleApiBackendMockRecorder) CalcBlockExtApi() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CalcBlockExtApi", reflect.TypeOf((*MockBundleApiBackend)(nil).CalcBlockExtApi))
+}
+
+// ChainConfig mocks base method.
+func (m *MockBundleApiBackend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ChainConfig", blockHeight)
+	ret0, _ := ret[0].(*params.ChainConfig)
+	return ret0
+}
+
+// ChainConfig indicates an expected call of ChainConfig.
+func (mr *MockBundleApiBackendMockRecorder) ChainConfig(blockHeight any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChainConfig", reflect.TypeOf((*MockBundleApiBackend)(nil).ChainConfig), blockHeight)
+}
+
+// ChainID mocks base method.
+func (m *MockBundleApiBackend) ChainID() *big.Int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ChainID")
+	ret0, _ := ret[0].(*big.Int)
+	return ret0
+}
+
+// ChainID indicates an expected call of ChainID.
+func (mr *MockBundleApiBackendMockRecorder) ChainID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChainID", reflect.TypeOf((*MockBundleApiBackend)(nil).ChainID))
+}
+
+// CurrentBlock mocks base method.
+func (m *MockBundleApiBackend) CurrentBlock() *evmcore.EvmBlock {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CurrentBlock")
+	ret0, _ := ret[0].(*evmcore.EvmBlock)
+	return ret0
+}
+
+// CurrentBlock indicates an expected call of CurrentBlock.
+func (mr *MockBundleApiBackendMockRecorder) CurrentBlock() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentBlock", reflect.TypeOf((*MockBundleApiBackend)(nil).CurrentBlock))
+}
+
+// CurrentEpoch mocks base method.
+func (m *MockBundleApiBackend) CurrentEpoch(ctx context.Context) idx.Epoch {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CurrentEpoch", ctx)
+	ret0, _ := ret[0].(idx.Epoch)
+	return ret0
+}
+
+// CurrentEpoch indicates an expected call of CurrentEpoch.
+func (mr *MockBundleApiBackendMockRecorder) CurrentEpoch(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentEpoch", reflect.TypeOf((*MockBundleApiBackend)(nil).CurrentEpoch), ctx)
+}
+
+// EnumerateBlockCertificates mocks base method.
+func (m *MockBundleApiBackend) EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[cert.BlockCertificate]] {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnumerateBlockCertificates", first)
+	ret0, _ := ret[0].(iter.Seq[result.T[cert.BlockCertificate]])
+	return ret0
+}
+
+// EnumerateBlockCertificates indicates an expected call of EnumerateBlockCertificates.
+func (mr *MockBundleApiBackendMockRecorder) EnumerateBlockCertificates(first any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnumerateBlockCertificates", reflect.TypeOf((*MockBundleApiBackend)(nil).EnumerateBlockCertificates), first)
+}
+
+// EnumerateCommitteeCertificates mocks base method.
+func (m *MockBundleApiBackend) EnumerateCommitteeCertificates(first scc.Period) iter.Seq[result.T[cert.CommitteeCertificate]] {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnumerateCommitteeCertificates", first)
+	ret0, _ := ret[0].(iter.Seq[result.T[cert.CommitteeCertificate]])
+	return ret0
+}
+
+// EnumerateCommitteeCertificates indicates an expected call of EnumerateCommitteeCertificates.
+func (mr *MockBundleApiBackendMockRecorder) EnumerateCommitteeCertificates(first any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnumerateCommitteeCertificates", reflect.TypeOf((*MockBundleApiBackend)(nil).EnumerateCommitteeCertificates), first)
+}
+
+// ExtRPCEnabled mocks base method.
+func (m *MockBundleApiBackend) ExtRPCEnabled() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExtRPCEnabled")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// ExtRPCEnabled indicates an expected call of ExtRPCEnabled.
+func (mr *MockBundleApiBackendMockRecorder) ExtRPCEnabled() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExtRPCEnabled", reflect.TypeOf((*MockBundleApiBackend)(nil).ExtRPCEnabled))
+}
+
+// FetchReceiptsForBlock mocks base method.
+func (m *MockBundleApiBackend) FetchReceiptsForBlock(block *evmcore.EvmBlock) types.Receipts {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchReceiptsForBlock", block)
+	ret0, _ := ret[0].(types.Receipts)
+	return ret0
+}
+
+// FetchReceiptsForBlock indicates an expected call of FetchReceiptsForBlock.
+func (mr *MockBundleApiBackendMockRecorder) FetchReceiptsForBlock(block any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchReceiptsForBlock", reflect.TypeOf((*MockBundleApiBackend)(nil).FetchReceiptsForBlock), block)
+}
+
 // GetBundleExecutionInfo mocks base method.
-func (m *Mockbackend) GetBundleExecutionInfo(arg0 common.Hash) *bundle.ExecutionInfo {
+func (m *MockBundleApiBackend) GetBundleExecutionInfo(arg0 common.Hash) *bundle.ExecutionInfo {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBundleExecutionInfo", arg0)
 	ret0, _ := ret[0].(*bundle.ExecutionInfo)
@@ -50,7 +240,554 @@ func (m *Mockbackend) GetBundleExecutionInfo(arg0 common.Hash) *bundle.Execution
 }
 
 // GetBundleExecutionInfo indicates an expected call of GetBundleExecutionInfo.
-func (mr *MockbackendMockRecorder) GetBundleExecutionInfo(arg0 any) *gomock.Call {
+func (mr *MockBundleApiBackendMockRecorder) GetBundleExecutionInfo(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBundleExecutionInfo", reflect.TypeOf((*Mockbackend)(nil).GetBundleExecutionInfo), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBundleExecutionInfo", reflect.TypeOf((*MockBundleApiBackend)(nil).GetBundleExecutionInfo), arg0)
+}
+
+// GetDowntime mocks base method.
+func (m *MockBundleApiBackend) GetDowntime(ctx context.Context, vid idx.ValidatorID) (idx.Block, inter.Timestamp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDowntime", ctx, vid)
+	ret0, _ := ret[0].(idx.Block)
+	ret1, _ := ret[1].(inter.Timestamp)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetDowntime indicates an expected call of GetDowntime.
+func (mr *MockBundleApiBackendMockRecorder) GetDowntime(ctx, vid any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDowntime", reflect.TypeOf((*MockBundleApiBackend)(nil).GetDowntime), ctx, vid)
+}
+
+// GetEVM mocks base method.
+func (m *MockBundleApiBackend) GetEVM(ctx context.Context, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEVM", ctx, state, header, vmConfig, blockContext)
+	ret0, _ := ret[0].(*vm.EVM)
+	ret1, _ := ret[1].(func() error)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetEVM indicates an expected call of GetEVM.
+func (mr *MockBundleApiBackendMockRecorder) GetEVM(ctx, state, header, vmConfig, blockContext any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEVM", reflect.TypeOf((*MockBundleApiBackend)(nil).GetEVM), ctx, state, header, vmConfig, blockContext)
+}
+
+// GetEpochBlockState mocks base method.
+func (m *MockBundleApiBackend) GetEpochBlockState(ctx context.Context, epoch rpc.BlockNumber) (*iblockproc.BlockState, *iblockproc.EpochState, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEpochBlockState", ctx, epoch)
+	ret0, _ := ret[0].(*iblockproc.BlockState)
+	ret1, _ := ret[1].(*iblockproc.EpochState)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetEpochBlockState indicates an expected call of GetEpochBlockState.
+func (mr *MockBundleApiBackendMockRecorder) GetEpochBlockState(ctx, epoch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEpochBlockState", reflect.TypeOf((*MockBundleApiBackend)(nil).GetEpochBlockState), ctx, epoch)
+}
+
+// GetEvent mocks base method.
+func (m *MockBundleApiBackend) GetEvent(ctx context.Context, shortEventID string) (*inter.Event, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEvent", ctx, shortEventID)
+	ret0, _ := ret[0].(*inter.Event)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetEvent indicates an expected call of GetEvent.
+func (mr *MockBundleApiBackendMockRecorder) GetEvent(ctx, shortEventID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEvent", reflect.TypeOf((*MockBundleApiBackend)(nil).GetEvent), ctx, shortEventID)
+}
+
+// GetEventPayload mocks base method.
+func (m *MockBundleApiBackend) GetEventPayload(ctx context.Context, shortEventID string) (*inter.EventPayload, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEventPayload", ctx, shortEventID)
+	ret0, _ := ret[0].(*inter.EventPayload)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetEventPayload indicates an expected call of GetEventPayload.
+func (mr *MockBundleApiBackendMockRecorder) GetEventPayload(ctx, shortEventID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEventPayload", reflect.TypeOf((*MockBundleApiBackend)(nil).GetEventPayload), ctx, shortEventID)
+}
+
+// GetGenesisID mocks base method.
+func (m *MockBundleApiBackend) GetGenesisID() common.Hash {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetGenesisID")
+	ret0, _ := ret[0].(common.Hash)
+	return ret0
+}
+
+// GetGenesisID indicates an expected call of GetGenesisID.
+func (mr *MockBundleApiBackendMockRecorder) GetGenesisID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGenesisID", reflect.TypeOf((*MockBundleApiBackend)(nil).GetGenesisID))
+}
+
+// GetHeads mocks base method.
+func (m *MockBundleApiBackend) GetHeads(ctx context.Context, epoch rpc.BlockNumber) (hash.Events, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHeads", ctx, epoch)
+	ret0, _ := ret[0].(hash.Events)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHeads indicates an expected call of GetHeads.
+func (mr *MockBundleApiBackendMockRecorder) GetHeads(ctx, epoch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHeads", reflect.TypeOf((*MockBundleApiBackend)(nil).GetHeads), ctx, epoch)
+}
+
+// GetLatestBlockCertificate mocks base method.
+func (m *MockBundleApiBackend) GetLatestBlockCertificate() (cert.BlockCertificate, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLatestBlockCertificate")
+	ret0, _ := ret[0].(cert.BlockCertificate)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLatestBlockCertificate indicates an expected call of GetLatestBlockCertificate.
+func (mr *MockBundleApiBackendMockRecorder) GetLatestBlockCertificate() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestBlockCertificate", reflect.TypeOf((*MockBundleApiBackend)(nil).GetLatestBlockCertificate))
+}
+
+// GetLatestCommitteeCertificate mocks base method.
+func (m *MockBundleApiBackend) GetLatestCommitteeCertificate() (cert.CommitteeCertificate, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLatestCommitteeCertificate")
+	ret0, _ := ret[0].(cert.CommitteeCertificate)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLatestCommitteeCertificate indicates an expected call of GetLatestCommitteeCertificate.
+func (mr *MockBundleApiBackendMockRecorder) GetLatestCommitteeCertificate() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestCommitteeCertificate", reflect.TypeOf((*MockBundleApiBackend)(nil).GetLatestCommitteeCertificate))
+}
+
+// GetNetworkRules mocks base method.
+func (m *MockBundleApiBackend) GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*opera.Rules, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNetworkRules", ctx, blockHeight)
+	ret0, _ := ret[0].(*opera.Rules)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetNetworkRules indicates an expected call of GetNetworkRules.
+func (mr *MockBundleApiBackendMockRecorder) GetNetworkRules(ctx, blockHeight any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNetworkRules", reflect.TypeOf((*MockBundleApiBackend)(nil).GetNetworkRules), ctx, blockHeight)
+}
+
+// GetOriginatedFee mocks base method.
+func (m *MockBundleApiBackend) GetOriginatedFee(ctx context.Context, vid idx.ValidatorID) (*big.Int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetOriginatedFee", ctx, vid)
+	ret0, _ := ret[0].(*big.Int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetOriginatedFee indicates an expected call of GetOriginatedFee.
+func (mr *MockBundleApiBackendMockRecorder) GetOriginatedFee(ctx, vid any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOriginatedFee", reflect.TypeOf((*MockBundleApiBackend)(nil).GetOriginatedFee), ctx, vid)
+}
+
+// GetPoolNonce mocks base method.
+func (m *MockBundleApiBackend) GetPoolNonce(ctx context.Context, addr common.Address) (uint64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPoolNonce", ctx, addr)
+	ret0, _ := ret[0].(uint64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPoolNonce indicates an expected call of GetPoolNonce.
+func (mr *MockBundleApiBackendMockRecorder) GetPoolNonce(ctx, addr any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPoolNonce", reflect.TypeOf((*MockBundleApiBackend)(nil).GetPoolNonce), ctx, addr)
+}
+
+// GetPoolTransaction mocks base method.
+func (m *MockBundleApiBackend) GetPoolTransaction(txHash common.Hash) *types.Transaction {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPoolTransaction", txHash)
+	ret0, _ := ret[0].(*types.Transaction)
+	return ret0
+}
+
+// GetPoolTransaction indicates an expected call of GetPoolTransaction.
+func (mr *MockBundleApiBackendMockRecorder) GetPoolTransaction(txHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPoolTransaction", reflect.TypeOf((*MockBundleApiBackend)(nil).GetPoolTransaction), txHash)
+}
+
+// GetPoolTransactions mocks base method.
+func (m *MockBundleApiBackend) GetPoolTransactions() (types.Transactions, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPoolTransactions")
+	ret0, _ := ret[0].(types.Transactions)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPoolTransactions indicates an expected call of GetPoolTransactions.
+func (mr *MockBundleApiBackendMockRecorder) GetPoolTransactions() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPoolTransactions", reflect.TypeOf((*MockBundleApiBackend)(nil).GetPoolTransactions))
+}
+
+// GetReceiptsByNumber mocks base method.
+func (m *MockBundleApiBackend) GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetReceiptsByNumber", ctx, number)
+	ret0, _ := ret[0].(types.Receipts)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetReceiptsByNumber indicates an expected call of GetReceiptsByNumber.
+func (mr *MockBundleApiBackendMockRecorder) GetReceiptsByNumber(ctx, number any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetReceiptsByNumber", reflect.TypeOf((*MockBundleApiBackend)(nil).GetReceiptsByNumber), ctx, number)
+}
+
+// GetTransaction mocks base method.
+func (m *MockBundleApiBackend) GetTransaction(ctx context.Context, txHash common.Hash) (*types.Transaction, uint64, uint64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTransaction", ctx, txHash)
+	ret0, _ := ret[0].(*types.Transaction)
+	ret1, _ := ret[1].(uint64)
+	ret2, _ := ret[2].(uint64)
+	ret3, _ := ret[3].(error)
+	return ret0, ret1, ret2, ret3
+}
+
+// GetTransaction indicates an expected call of GetTransaction.
+func (mr *MockBundleApiBackendMockRecorder) GetTransaction(ctx, txHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransaction", reflect.TypeOf((*MockBundleApiBackend)(nil).GetTransaction), ctx, txHash)
+}
+
+// GetUpgradeHeights mocks base method.
+func (m *MockBundleApiBackend) GetUpgradeHeights() []opera.UpgradeHeight {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUpgradeHeights")
+	ret0, _ := ret[0].([]opera.UpgradeHeight)
+	return ret0
+}
+
+// GetUpgradeHeights indicates an expected call of GetUpgradeHeights.
+func (mr *MockBundleApiBackendMockRecorder) GetUpgradeHeights() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUpgradeHeights", reflect.TypeOf((*MockBundleApiBackend)(nil).GetUpgradeHeights))
+}
+
+// GetUptime mocks base method.
+func (m *MockBundleApiBackend) GetUptime(ctx context.Context, vid idx.ValidatorID) (*big.Int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUptime", ctx, vid)
+	ret0, _ := ret[0].(*big.Int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUptime indicates an expected call of GetUptime.
+func (mr *MockBundleApiBackendMockRecorder) GetUptime(ctx, vid any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUptime", reflect.TypeOf((*MockBundleApiBackend)(nil).GetUptime), ctx, vid)
+}
+
+// HeaderByHash mocks base method.
+func (m *MockBundleApiBackend) HeaderByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmHeader, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HeaderByHash", ctx, hash)
+	ret0, _ := ret[0].(*evmcore.EvmHeader)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HeaderByHash indicates an expected call of HeaderByHash.
+func (mr *MockBundleApiBackendMockRecorder) HeaderByHash(ctx, hash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HeaderByHash", reflect.TypeOf((*MockBundleApiBackend)(nil).HeaderByHash), ctx, hash)
+}
+
+// HeaderByNumber mocks base method.
+func (m *MockBundleApiBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmHeader, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HeaderByNumber", ctx, number)
+	ret0, _ := ret[0].(*evmcore.EvmHeader)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HeaderByNumber indicates an expected call of HeaderByNumber.
+func (mr *MockBundleApiBackendMockRecorder) HeaderByNumber(ctx, number any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HeaderByNumber", reflect.TypeOf((*MockBundleApiBackend)(nil).HeaderByNumber), ctx, number)
+}
+
+// HistoryPruningCutoff mocks base method.
+func (m *MockBundleApiBackend) HistoryPruningCutoff() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HistoryPruningCutoff")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// HistoryPruningCutoff indicates an expected call of HistoryPruningCutoff.
+func (mr *MockBundleApiBackendMockRecorder) HistoryPruningCutoff() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HistoryPruningCutoff", reflect.TypeOf((*MockBundleApiBackend)(nil).HistoryPruningCutoff))
+}
+
+// MaxGasLimit mocks base method.
+func (m *MockBundleApiBackend) MaxGasLimit() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MaxGasLimit")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// MaxGasLimit indicates an expected call of MaxGasLimit.
+func (mr *MockBundleApiBackendMockRecorder) MaxGasLimit() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxGasLimit", reflect.TypeOf((*MockBundleApiBackend)(nil).MaxGasLimit))
+}
+
+// MinGasPrice mocks base method.
+func (m *MockBundleApiBackend) MinGasPrice() *big.Int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MinGasPrice")
+	ret0, _ := ret[0].(*big.Int)
+	return ret0
+}
+
+// MinGasPrice indicates an expected call of MinGasPrice.
+func (mr *MockBundleApiBackendMockRecorder) MinGasPrice() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MinGasPrice", reflect.TypeOf((*MockBundleApiBackend)(nil).MinGasPrice))
+}
+
+// Progress mocks base method.
+func (m *MockBundleApiBackend) Progress() ethapi.PeerProgress {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Progress")
+	ret0, _ := ret[0].(ethapi.PeerProgress)
+	return ret0
+}
+
+// Progress indicates an expected call of Progress.
+func (mr *MockBundleApiBackendMockRecorder) Progress() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Progress", reflect.TypeOf((*MockBundleApiBackend)(nil).Progress))
+}
+
+// RPCEVMTimeout mocks base method.
+func (m *MockBundleApiBackend) RPCEVMTimeout() time.Duration {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RPCEVMTimeout")
+	ret0, _ := ret[0].(time.Duration)
+	return ret0
+}
+
+// RPCEVMTimeout indicates an expected call of RPCEVMTimeout.
+func (mr *MockBundleApiBackendMockRecorder) RPCEVMTimeout() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RPCEVMTimeout", reflect.TypeOf((*MockBundleApiBackend)(nil).RPCEVMTimeout))
+}
+
+// RPCGasCap mocks base method.
+func (m *MockBundleApiBackend) RPCGasCap() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RPCGasCap")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// RPCGasCap indicates an expected call of RPCGasCap.
+func (mr *MockBundleApiBackendMockRecorder) RPCGasCap() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RPCGasCap", reflect.TypeOf((*MockBundleApiBackend)(nil).RPCGasCap))
+}
+
+// RPCTxFeeCap mocks base method.
+func (m *MockBundleApiBackend) RPCTxFeeCap() float64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RPCTxFeeCap")
+	ret0, _ := ret[0].(float64)
+	return ret0
+}
+
+// RPCTxFeeCap indicates an expected call of RPCTxFeeCap.
+func (mr *MockBundleApiBackendMockRecorder) RPCTxFeeCap() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RPCTxFeeCap", reflect.TypeOf((*MockBundleApiBackend)(nil).RPCTxFeeCap))
+}
+
+// ResolveRpcBlockNumberOrHash mocks base method.
+func (m *MockBundleApiBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveRpcBlockNumberOrHash", ctx, blockNrOrHash)
+	ret0, _ := ret[0].(idx.Block)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveRpcBlockNumberOrHash indicates an expected call of ResolveRpcBlockNumberOrHash.
+func (mr *MockBundleApiBackendMockRecorder) ResolveRpcBlockNumberOrHash(ctx, blockNrOrHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveRpcBlockNumberOrHash", reflect.TypeOf((*MockBundleApiBackend)(nil).ResolveRpcBlockNumberOrHash), ctx, blockNrOrHash)
+}
+
+// SealedEpochTiming mocks base method.
+func (m *MockBundleApiBackend) SealedEpochTiming(ctx context.Context) (inter.Timestamp, inter.Timestamp) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SealedEpochTiming", ctx)
+	ret0, _ := ret[0].(inter.Timestamp)
+	ret1, _ := ret[1].(inter.Timestamp)
+	return ret0, ret1
+}
+
+// SealedEpochTiming indicates an expected call of SealedEpochTiming.
+func (mr *MockBundleApiBackendMockRecorder) SealedEpochTiming(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SealedEpochTiming", reflect.TypeOf((*MockBundleApiBackend)(nil).SealedEpochTiming), ctx)
+}
+
+// SendTx mocks base method.
+func (m *MockBundleApiBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SendTx", ctx, signedTx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SendTx indicates an expected call of SendTx.
+func (mr *MockBundleApiBackendMockRecorder) SendTx(ctx, signedTx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendTx", reflect.TypeOf((*MockBundleApiBackend)(nil).SendTx), ctx, signedTx)
+}
+
+// StateAndBlockByNumberOrHash mocks base method.
+func (m *MockBundleApiBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmBlock, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StateAndBlockByNumberOrHash", ctx, blockNrOrHash)
+	ret0, _ := ret[0].(state.StateDB)
+	ret1, _ := ret[1].(*evmcore.EvmBlock)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// StateAndBlockByNumberOrHash indicates an expected call of StateAndBlockByNumberOrHash.
+func (mr *MockBundleApiBackendMockRecorder) StateAndBlockByNumberOrHash(ctx, blockNrOrHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StateAndBlockByNumberOrHash", reflect.TypeOf((*MockBundleApiBackend)(nil).StateAndBlockByNumberOrHash), ctx, blockNrOrHash)
+}
+
+// Stats mocks base method.
+func (m *MockBundleApiBackend) Stats() (int, int) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Stats")
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(int)
+	return ret0, ret1
+}
+
+// Stats indicates an expected call of Stats.
+func (mr *MockBundleApiBackendMockRecorder) Stats() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stats", reflect.TypeOf((*MockBundleApiBackend)(nil).Stats))
+}
+
+// SubscribeNewTxsNotify mocks base method.
+func (m *MockBundleApiBackend) SubscribeNewTxsNotify(arg0 chan<- evmcore.NewTxsNotify) event.Subscription {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SubscribeNewTxsNotify", arg0)
+	ret0, _ := ret[0].(event.Subscription)
+	return ret0
+}
+
+// SubscribeNewTxsNotify indicates an expected call of SubscribeNewTxsNotify.
+func (mr *MockBundleApiBackendMockRecorder) SubscribeNewTxsNotify(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribeNewTxsNotify", reflect.TypeOf((*MockBundleApiBackend)(nil).SubscribeNewTxsNotify), arg0)
+}
+
+// SuggestGasTipCap mocks base method.
+func (m *MockBundleApiBackend) SuggestGasTipCap(ctx context.Context, certainty uint64) *big.Int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SuggestGasTipCap", ctx, certainty)
+	ret0, _ := ret[0].(*big.Int)
+	return ret0
+}
+
+// SuggestGasTipCap indicates an expected call of SuggestGasTipCap.
+func (mr *MockBundleApiBackendMockRecorder) SuggestGasTipCap(ctx, certainty any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SuggestGasTipCap", reflect.TypeOf((*MockBundleApiBackend)(nil).SuggestGasTipCap), ctx, certainty)
+}
+
+// TxPoolContent mocks base method.
+func (m *MockBundleApiBackend) TxPoolContent() (map[common.Address]types.Transactions, map[common.Address]types.Transactions) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TxPoolContent")
+	ret0, _ := ret[0].(map[common.Address]types.Transactions)
+	ret1, _ := ret[1].(map[common.Address]types.Transactions)
+	return ret0, ret1
+}
+
+// TxPoolContent indicates an expected call of TxPoolContent.
+func (mr *MockBundleApiBackendMockRecorder) TxPoolContent() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TxPoolContent", reflect.TypeOf((*MockBundleApiBackend)(nil).TxPoolContent))
+}
+
+// TxPoolContentFrom mocks base method.
+func (m *MockBundleApiBackend) TxPoolContentFrom(addr common.Address) (types.Transactions, types.Transactions) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TxPoolContentFrom", addr)
+	ret0, _ := ret[0].(types.Transactions)
+	ret1, _ := ret[1].(types.Transactions)
+	return ret0, ret1
+}
+
+// TxPoolContentFrom indicates an expected call of TxPoolContentFrom.
+func (mr *MockBundleApiBackendMockRecorder) TxPoolContentFrom(addr any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TxPoolContentFrom", reflect.TypeOf((*MockBundleApiBackend)(nil).TxPoolContentFrom), addr)
+}
+
+// UnprotectedAllowed mocks base method.
+func (m *MockBundleApiBackend) UnprotectedAllowed() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UnprotectedAllowed")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// UnprotectedAllowed indicates an expected call of UnprotectedAllowed.
+func (mr *MockBundleApiBackendMockRecorder) UnprotectedAllowed() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnprotectedAllowed", reflect.TypeOf((*MockBundleApiBackend)(nil).UnprotectedAllowed))
 }
