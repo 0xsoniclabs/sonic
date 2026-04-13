@@ -184,7 +184,7 @@ type stepEncodingV1 struct {
 // useful for debugging or creating readable unit tests. It assigns a unique
 // letter (A, B, C, etc.) to each referenced transaction.
 func (s *ExecutionStep) String() string {
-	txs := s.GetTransactionReferencesInExecutionOrder()
+	txs := s.GetTransactionReferencesInReferencedOrder()
 	references := make(map[TxReference]string)
 	for _, tx := range txs {
 		if _, found := references[tx]; found {
@@ -197,7 +197,7 @@ func (s *ExecutionStep) String() string {
 	return out.String()
 }
 
-func (s *ExecutionStep) GetTransactionReferencesInExecutionOrder() []TxReference {
+func (s *ExecutionStep) GetTransactionReferencesInReferencedOrder() []TxReference {
 	var refs []TxReference
 	s.collectReferencedTransactions(&refs)
 	return refs

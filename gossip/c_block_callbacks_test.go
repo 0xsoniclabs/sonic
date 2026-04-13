@@ -885,7 +885,7 @@ func TestIsPermissible_BundlesWithInvalidContent_Rejected(t *testing.T) {
 		TransactionBundles: true,
 	}}
 
-	txs := txBundle.GetTransactionsInExecutionOrder()
+	txs := txBundle.GetTransactionsInReferencedOrder()
 
 	// The first transaction in the bundle is not permissible.
 	issue := isPermissible(txs[0], &rules, signer)
@@ -921,7 +921,7 @@ func TestIsPermissible_BundlesWithInvalidNestedContent_Rejected(t *testing.T) {
 		TransactionBundles: true,
 	}}
 
-	txs := txBundle.GetTransactionsInExecutionOrder()
+	txs := txBundle.GetTransactionsInReferencedOrder()
 
 	// The first transaction in the bundle is not permissible.
 	issue := isPermissible(txs[0], &rules, signer)

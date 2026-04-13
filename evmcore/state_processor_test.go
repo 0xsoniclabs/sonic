@@ -1991,7 +1991,7 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 		runner:      runner,
 	}
 
-	txs := txBundle.GetTransactionsInExecutionOrder()
+	txs := txBundle.GetTransactionsInReferencedOrder()
 
 	evm.EXPECT().runWithBaseFeeCheck(context, gomock.Any(), txOffset).
 		Return(ProcessedTransaction{

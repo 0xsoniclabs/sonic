@@ -85,7 +85,7 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check that the transactions are in the block as advertised.
-	txs := bundle.GetTransactionsInExecutionOrder()
+	txs := bundle.GetTransactionsInReferencedOrder()
 	receipts, err := net.GetReceipts([]common.Hash{txs[0].Hash(), txs[1].Hash()})
 	require.NoError(t, err)
 	require.Len(t, receipts, 2)

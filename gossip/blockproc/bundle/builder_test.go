@@ -130,7 +130,7 @@ func TestBundleBuilder_BuildComposedBundles(t *testing.T) {
 		bundle.Plan.Root.String(),
 	)
 
-	txs := bundle.GetTransactionsInExecutionOrder()
+	txs := bundle.GetTransactionsInReferencedOrder()
 	require.Len(t, txs, 6)
 
 	require.EqualValues(t, 1, txs[0].Nonce())
@@ -318,7 +318,7 @@ func TestBundleBuilder_AutomaticallyAddsGasCostsForMarkers(t *testing.T) {
 	require.Len(bundle.Transactions, len(txData))
 
 	markerCosts := params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
-	for i, tx := range bundle.GetTransactionsInExecutionOrder() {
+	for i, tx := range bundle.GetTransactionsInReferencedOrder() {
 		require.True(IsBundleOnly(tx))
 		cur := types.NewTx(txData[i])
 		require.Equal(tx.Type(), cur.Type())
@@ -343,7 +343,7 @@ func TestBundleBuilder_AdjustsNestedEnvelopeGasToPassValidation(t *testing.T) {
 	bundle, _, err := ValidateEnvelope(signer, outer)
 	require.NoError(t, err)
 
-	txs := bundle.GetTransactionsInExecutionOrder()
+	txs := bundle.GetTransactionsInReferencedOrder()
 	_, _, err = ValidateEnvelope(signer, txs[0])
 	require.NoError(t, err)
 }

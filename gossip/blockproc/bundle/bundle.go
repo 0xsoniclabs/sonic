@@ -79,11 +79,17 @@ type TransactionBundle struct {
 	Plan         ExecutionPlan
 }
 
-func (tb *TransactionBundle) GetTransactionsInExecutionOrder() []*types.Transaction {
-	refs := tb.Plan.Root.GetTransactionReferencesInExecutionOrder()
-	txs := make([]*types.Transaction, len(refs))
-	for i, ref := range refs {
-		txs[i] = tb.Transactions[ref]
+// GetTransactionsInReferencedOrder returns the transactions stored in the bundle
+// in the order they are referenced by the execution plan. The main intention
+// for this function is to provide a readable mechanism for tests having build
+// bundles using the builder to access the contained singed transactions.
+// Note that the map retaining the transactions in the bundle on its own would
+// make it difficult to retrieve individual transactions.
+func (tb *TransactionBundle) GetTransactionsInReferencedOrder() []*types.Transaction {
+	refs := tb.Plan.Root.GetTransactionReferencesInReferencedOrder()
+	var txs []*types.Transaction
+	for _, ref := range refs {
+		txs = append(txs, tb.Transactions[ref])
 	}
 	return txs
 }

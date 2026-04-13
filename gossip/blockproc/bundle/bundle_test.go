@@ -114,8 +114,8 @@ func TestOpenEnvelope_SuccessfullyDecodesEnvelopes(t *testing.T) {
 			// check them explicitly first before replacing them in the unpacked
 			// bundle for the final equality check.
 			require.Equal(t, len(bundle.Transactions), len(unpacked.Transactions))
-			originalTxs := bundle.GetTransactionsInExecutionOrder()
-			unpackedTxs := unpacked.GetTransactionsInExecutionOrder()
+			originalTxs := bundle.GetTransactionsInReferencedOrder()
+			unpackedTxs := unpacked.GetTransactionsInReferencedOrder()
 			for i, tx := range originalTxs {
 				require.Equal(t, tx.Hash(), unpackedTxs[i].Hash())
 			}
@@ -132,6 +132,80 @@ func TestOpenEnvelope_FailsIfNotAnEnvelope(t *testing.T) {
 
 	_, err := OpenEnvelope(nil, notEnvelope)
 	require.ErrorContains(t, err, "not an envelope")
+}
+
+func TestTransactionBundle_GetTransactionsInReferencedOrder_ReturnsTransactionsInCorrectOrder(t *testing.T) {
+
+	ref1 := TxReference{From: common.Address{1}}
+	ref2 := TxReference{From: common.Address{2}}
+	ref3 := TxReference{From: common.Address{3}}
+	ref4 := TxReference{From: common.Address{4}}
+
+	tx1 := types.NewTx(&types.LegacyTx{Nonce: 1})
+	tx2 := types.NewTx(&types.LegacyTx{Nonce: 2})
+	tx3 := types.NewTx(&types.LegacyTx{Nonce: 3})
+
+	index := map[TxReference]*types.Transaction{
+		ref1: tx1,
+		ref2: tx2,
+		ref3: tx3,
+		// ref4 deliberately skipped to test that missing references are handled gracefully (e.g. by returning nil in the corresponding position in the result).
+	}
+
+	tests := map[string]struct {
+		plan ExecutionStep
+		want []*types.Transaction
+	}{
+		"empty": {
+			plan: ExecutionStep{},
+			want: nil,
+		},
+		"single": {
+			plan: NewTxStep(ref1),
+			want: []*types.Transaction{tx1},
+		},
+		"allOf group": {
+			plan: NewAllOfStep(
+				NewTxStep(ref1),
+				NewTxStep(ref2),
+				NewTxStep(ref3),
+				NewTxStep(ref4),
+			),
+			want: []*types.Transaction{tx1, tx2, tx3, nil},
+		},
+		"duplicate references": {
+			plan: NewOneOfStep(
+				NewTxStep(ref1),
+				NewTxStep(ref2),
+				NewTxStep(ref1),
+			),
+			want: []*types.Transaction{tx1, tx2, tx1},
+		},
+		"nested groups": {
+			plan: NewOneOfStep(
+				NewAllOfStep(NewTxStep(ref1), NewTxStep(ref2)),
+				NewAllOfStep(NewTxStep(ref1), NewTxStep(ref3)),
+				NewAllOfStep(NewTxStep(ref2), NewTxStep(ref3)),
+			),
+			want: []*types.Transaction{tx1, tx2, tx1, tx3, tx2, tx3},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+
+			bundle := TransactionBundle{
+				Transactions: index,
+				Plan: ExecutionPlan{
+					Root: tc.plan,
+				},
+			}
+
+			got := bundle.GetTransactionsInReferencedOrder()
+			require.Equal(tc.want, got)
+		})
+	}
 }
 
 func TestRemoveBundleOnlyMark_FailsOnUnsupportedTransactionType(t *testing.T) {

@@ -79,6 +79,61 @@ func TestExecutionPlan_Hash_ComputesDeterministicHash(t *testing.T) {
 	}
 }
 
+func TestExecutionStep_GetTransactionReferencesInReferencedOrder_ReturnsReferencesInCorrectOrder(t *testing.T) {
+
+	ref1 := TxReference{From: common.Address{1}}
+	ref2 := TxReference{From: common.Address{1}}
+	ref3 := TxReference{From: common.Address{1}}
+	ref4 := TxReference{From: common.Address{1}}
+
+	tests := map[string]struct {
+		input ExecutionStep
+		want  []TxReference
+	}{
+		"empty": {
+			input: ExecutionStep{},
+			want:  nil,
+		},
+		"single": {
+			input: NewTxStep(ref1),
+			want:  []TxReference{ref1},
+		},
+		"allOf group": {
+			input: NewAllOfStep(
+				NewTxStep(ref1),
+				NewTxStep(ref2),
+				NewTxStep(ref3),
+				NewTxStep(ref4),
+			),
+			want: []TxReference{ref1, ref2, ref3, ref4},
+		},
+		"duplicate references": {
+			input: NewOneOfStep(
+				NewTxStep(ref1),
+				NewTxStep(ref2),
+				NewTxStep(ref1),
+			),
+			want: []TxReference{ref1, ref2, ref1},
+		},
+		"nested groups": {
+			input: NewOneOfStep(
+				NewAllOfStep(NewTxStep(ref1), NewTxStep(ref2)),
+				NewAllOfStep(NewTxStep(ref1), NewTxStep(ref3)),
+				NewAllOfStep(NewTxStep(ref2), NewTxStep(ref3)),
+			),
+			want: []TxReference{ref1, ref2, ref1, ref3, ref2, ref3},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			got := tc.input.GetTransactionReferencesInReferencedOrder()
+			require.Equal(tc.want, got)
+		})
+	}
+}
+
 func TestExecutionStep_EncodingAndDecodingAreAligned(t *testing.T) {
 	tests := map[string]ExecutionStep{
 		"zero value": {},
