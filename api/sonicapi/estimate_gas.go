@@ -45,8 +45,8 @@ func (a *PublicBundleAPI) EstimateGasForTransactions(
 	blockOverrides *ethapi.BlockOverrides,
 ) (BundleGasLimits, error) {
 
-	if len(args) > MaxBundleTransactions {
-		return BundleGasLimits{}, fmt.Errorf("too many transactions to estimate gas for: got %d, max is %d", len(args), MaxBundleTransactions)
+	if len(args) > MaxNumEstimableTransactions {
+		return BundleGasLimits{}, fmt.Errorf("too many transactions to estimate gas for: got %d, max is %d", len(args), MaxNumEstimableTransactions)
 	}
 
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)

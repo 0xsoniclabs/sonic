@@ -112,7 +112,7 @@ func Test_EstimateGasForTransactions_TooManyTransactions_ReturnsError(t *testing
 	api := NewPublicBundleAPI(be)
 
 	// Build 17 transactions (limit is 16)
-	args := make([]ethapi.TransactionArgs, MaxBundleTransactions+1)
+	args := make([]ethapi.TransactionArgs, MaxNumEstimableTransactions+1)
 	for i := range args {
 		args[i] = ethapi.TransactionArgs{
 			From:  &addr1,

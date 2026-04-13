@@ -22,11 +22,11 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-// MaxBundleTransactions is the maximum number of transactions
+// MaxNumEstimableTransactions is the maximum number of transactions
 // that can be included in a bundle for gas estimation.
 // The algorithm to estimate bundle gas is O(n^2),
 // therefore an upper bound is introduced.
-const MaxBundleTransactions = 16
+const MaxNumEstimableTransactions = 16
 
 type RPCExecutionStep struct {
 	From common.Address `json:"from"`
