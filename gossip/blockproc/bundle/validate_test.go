@@ -37,10 +37,10 @@ func TestValidateEnvelope_ValidBundles_AreAccepted(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := map[string]*types.Transaction{
-		"empty AllOf bundle":     AllOf().Build(signer),
-		"empty OneOf bundle":     OneOf().Build(signer),
-		"non-empty AllOf bundle": AllOf(Step(key, &types.AccessListTx{})).Build(signer),
-		"non-empty OneOf bundle": OneOf(Step(key, &types.AccessListTx{})).Build(signer),
+		"empty AllOf bundle":     AllOf().Build(),
+		"empty OneOf bundle":     OneOf().Build(),
+		"non-empty AllOf bundle": AllOf(Step(key, &types.AccessListTx{})).Build(),
+		"non-empty OneOf bundle": OneOf(Step(key, &types.AccessListTx{})).Build(),
 	}
 
 	for name, tx := range tests {
@@ -306,7 +306,7 @@ func (gen testBundleGenerator) makeValidBundleTx() *types.Transaction {
 		}))
 	}
 
-	return AllOf(steps...).Build(gen.signer)
+	return AllOf(steps...).Build()
 }
 
 func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transaction {

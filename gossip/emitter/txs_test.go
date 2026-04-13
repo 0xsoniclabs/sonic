@@ -71,7 +71,7 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 			}
 
 			signer := types.LatestSignerForChainID(big.NewInt(int64(rules.NetworkID)))
-			tx := bundle.NewBuilder(signer).SetEarliest(50).SetLatest(150).Build()
+			tx := bundle.NewBuilder().SetEarliest(50).SetLatest(150).Build()
 
 			_, _, err := bundle.ValidateEnvelope(signer, tx)
 			require.NoError(err)
@@ -86,14 +86,13 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 }
 
 func Test_Emitter_isValidBundleTx_RejectsInvalidBundle(t *testing.T) {
-	signer := types.LatestSignerForChainID(big.NewInt(1))
 	tests := map[string]*types.Transaction{
 		"not a bundle": types.NewTx(&types.LegacyTx{}),
 		"invalid bundle data": types.NewTx(&types.LegacyTx{
 			To:   &bundle.BundleProcessor,
 			Data: []byte{0x01, 0x02, 0x03},
 		}),
-		"bundle with out-of-range block numbers": bundle.NewBuilder(signer).
+		"bundle with out-of-range block numbers": bundle.NewBuilder().
 			SetEarliest(150).
 			SetLatest(250).
 			Build(),
@@ -151,7 +150,7 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 			}
 
 			signer := types.LatestSignerForChainID(big.NewInt(1))
-			tx := bundle.NewBuilder(signer).SetEarliest(50).SetLatest(150).Build()
+			tx := bundle.NewBuilder().SetEarliest(50).SetLatest(150).Build()
 
 			_, _, err := bundle.ValidateEnvelope(signer, tx)
 			require.NoError(t, err)

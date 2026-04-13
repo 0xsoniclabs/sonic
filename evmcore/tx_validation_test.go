@@ -711,13 +711,11 @@ func TestValidateTxForBlock_IgnoresFeeCheck_ForBundles_WithBrio(t *testing.T) {
 	chain := NewMockStateReader(ctrl)
 	chain.EXPECT().CurrentMaxGasLimit().Return(uint64(100_000))
 
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-
 	rules := NetworkRules{
 		brio: true,
 	}
 
-	envelope := bundle.NewBuilder(signer).Build()
+	envelope := bundle.NewBuilder().Build()
 	err := ValidateTxForBlock(envelope, rules, chain)
 	require.NoError(t, err)
 }
@@ -1106,12 +1104,12 @@ func TestValidateTxForPool_IgnoresBundleAndSponsoredTx_ForTipChecks(t *testing.T
 				To: &common.Address{42}, // not a contract creation
 			})},
 		"bundle envelope": {
-			tx: bundle.NewBuilder(signer).
+			tx: bundle.NewBuilder().
 				With(bundle.Step(key, &types.DynamicFeeTx{})).
 				Build(),
 		},
 		"priced bundle envelope": {
-			tx: bundle.NewBuilder(signer).
+			tx: bundle.NewBuilder().
 				SetEnvelopeGasPrice(big.NewInt(1)). // not a sponsorship request as it has a gas price; keep it below minTip to exercise the bundle exemption
 				With(bundle.Step(key, &types.DynamicFeeTx{})).
 				Build(),
@@ -1646,7 +1644,7 @@ func Test_validateBundleTransactions_AcceptNonBundleTransactions(t *testing.T) {
 
 func Test_validateBundleTransactions_RespectNetworkRules(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
-	bundle := bundle.NewBuilder(signer).Build()
+	bundle := bundle.NewBuilder().Build()
 
 	tests := map[string]struct {
 		rules            NetworkRules
@@ -1719,7 +1717,7 @@ func Test_validateBundleTransactions_RejectsRecentlyProcessedBundles(t *testing.
 	require.NoError(t, err)
 
 	signer := types.LatestSignerForChainID(big.NewInt(1))
-	envelope, plan := bundle.NewBuilder(signer).
+	envelope, plan := bundle.NewBuilder().
 		With(bundle.Step(key, &types.AccessListTx{})).
 		BuildEnvelopeAndPlan()
 

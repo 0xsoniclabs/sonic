@@ -53,7 +53,8 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	signer := types.LatestSignerForChainID(net.GetChainId())
 
 	// Create a bundle where sender A and B exchange 1 token each.
-	envelope, bundle, plan := bundle.NewBuilder(signer).
+	envelope, bundle, plan := bundle.NewBuilder().
+		WithSigner(signer).
 		SetEarliest(block).
 		AllOf(
 			bundle.Step(

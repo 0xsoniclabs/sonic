@@ -82,7 +82,7 @@ func Test_GetBundleState_OutdatedBundle_ReturnsNonExecutable(t *testing.T) {
 
 	// Build an outdated bundle.
 	signer := types.LatestSignerForChainID(big.NewInt(1))
-	envelope := bundle.NewBuilder(signer).SetLatest(currentBlock - 1).Build()
+	envelope := bundle.NewBuilder().SetLatest(currentBlock - 1).Build()
 
 	_, _, err := bundle.ValidateEnvelope(signer, envelope)
 	require.NoError(t, err)
@@ -107,7 +107,7 @@ func Test_GetBundleState_FutureBundle_ReturnsTemporaryBlocked(t *testing.T) {
 
 	// Build a bundle with a block window in the future
 	signer := types.LatestSignerForChainID(big.NewInt(1))
-	envelop := bundle.NewBuilder(signer).
+	envelop := bundle.NewBuilder().
 		SetEarliest(currentBlock + 1).
 		SetLatest(currentBlock + 10).
 		Build()
@@ -138,8 +138,7 @@ func Test_GetBundleState_FailedTrialRun_ReturnsNonExecutable(t *testing.T) {
 	}).AnyTimes()
 	chainState.EXPECT().StateDB().Return(stateDb).AnyTimes()
 
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	envelope := bundle.NewBuilder(signer).
+	envelope := bundle.NewBuilder().
 		SetEarliest(currentBlock - 5).
 		SetLatest(currentBlock + 5).
 		Build()
@@ -171,8 +170,7 @@ func Test_GetBundleState_ValidBundle_ReturnsRunnable(t *testing.T) {
 	chainState.EXPECT().StateDB().Return(stateDb).AnyTimes()
 
 	// Build a bundle with a valid block window.
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	envelope := bundle.NewBuilder(signer).
+	envelope := bundle.NewBuilder().
 		SetEarliest(currentBlock - 5).
 		SetLatest(currentBlock + 5).
 		Build()
@@ -245,7 +243,7 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 			chainId := big.NewInt(1)
 			signer := types.LatestSignerForChainID(chainId)
 
-			envelope := test.bundle.toBundle(signer, keys)
+			envelope := test.bundle.toBundle(keys)
 			_, _, err := bundle.ValidateEnvelope(signer, envelope)
 			require.NoError(t, err)
 
@@ -386,7 +384,7 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 				source.EXPECT().GetNonce(sender).Return(uint64(initialNonce)).MaxTimes(2)
 			}
 
-			envelope := test.bundle.toBundle(signer, keys)
+			envelope := test.bundle.toBundle(keys)
 			bundle, _, err := bundle.ValidateEnvelope(signer, envelope)
 			require.NoError(t, err)
 
@@ -445,7 +443,7 @@ func Test_getLowestReferencedNonces_ReturnsLowestNoncesInBundle(t *testing.T) {
 			chainId := big.NewInt(1)
 			signer := types.LatestSignerForChainID(chainId)
 
-			envelope := test.bundle.toBundle(signer, keys)
+			envelope := test.bundle.toBundle(keys)
 			bundle, _, err := bundle.ValidateEnvelope(signer, envelope)
 			require.NoError(t, err)
 
@@ -503,11 +501,11 @@ func Test_getLowestReferencedNonces_ReportsErrorWhileObtainingNoncesOfNestedBund
 	key, err := crypto.GenerateKey()
 	require.NoError(err)
 
-	middle := bundle.NewBuilder(signer).
+	middle := bundle.NewBuilder().
 		With(bundle.Step(key, invalidInner)).
 		Build()
 
-	outer, _ := bundle.NewBuilder(signer).
+	outer, _ := bundle.NewBuilder().
 		With(bundle.Step(key, middle)).
 		BuildBundleAndPlan()
 
@@ -595,7 +593,6 @@ type pattern struct {
 }
 
 func (p pattern) toBundle(
-	signer types.Signer,
 	keys []*ecdsa.PrivateKey,
 ) *types.Transaction {
 	// convert elements into steps
@@ -613,7 +610,7 @@ func (p pattern) toBundle(
 		case pattern:
 			steps = append(steps, bundle.Step(
 				keys[0], // for envelope transaction, any key is fine
-				v.toBundle(signer, keys),
+				v.toBundle(keys),
 			))
 		default:
 			panic("unsupported element type")
@@ -621,7 +618,7 @@ func (p pattern) toBundle(
 	}
 
 	// Build the resulting bundle.
-	return bundle.NewBuilder(signer).With(bundle.Group(p.oneOf, steps...)).Build()
+	return bundle.NewBuilder().With(bundle.Group(p.oneOf, steps...)).Build()
 }
 
 func createKeys(t *testing.T) ([]*ecdsa.PrivateKey, []common.Address) {

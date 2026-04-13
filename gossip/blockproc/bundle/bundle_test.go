@@ -584,13 +584,13 @@ func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
 
 	tests := map[string]TransactionBundle{
 		"empty bundle": {},
-		"empty all-of": NewBuilder(signer).AllOf().BuildBundle(),
-		"empty one-of": NewBuilder(signer).OneOf().BuildBundle(),
-		"bundle with transactions": NewBuilder(signer).AllOf(
+		"empty all-of": NewBuilder().AllOf().BuildBundle(),
+		"empty one-of": NewBuilder().OneOf().BuildBundle(),
+		"bundle with transactions": NewBuilder().AllOf(
 			Step(key1, &types.AccessListTx{}),
 			Step(key2, &types.DynamicFeeTx{}),
 		).BuildBundle(),
-		"bundle with nested transactions": NewBuilder(signer).OneOf(
+		"bundle with nested transactions": NewBuilder().OneOf(
 			AllOf(
 				Step(key1, &types.AccessListTx{Nonce: 1}),
 				Step(key2, &types.DynamicFeeTx{Nonce: 2}),

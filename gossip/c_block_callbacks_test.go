@@ -744,22 +744,22 @@ func TestIsPermissible_AcceptsPermissibleTransactions(t *testing.T) {
 		"set code": types.NewTx(&types.SetCodeTx{
 			AuthList: []types.SetCodeAuthorization{{}},
 		}),
-		"empty all-of bundle": bundle.AllOf().Build(signer),
-		"empty one-of bundle": bundle.OneOf().Build(signer),
+		"empty all-of bundle": bundle.AllOf().Build(),
+		"empty one-of bundle": bundle.OneOf().Build(),
 		"non-empty bundle": bundle.AllOf(
 			bundle.Step(key, &types.AccessListTx{}),
 			bundle.Step(key, &types.AccessListTx{}),
-		).Build(signer),
+		).Build(),
 		"composed bundle": bundle.OneOf(
 			bundle.AllOf(
 				bundle.Step(key, &types.AccessListTx{}),
 			),
-		).Build(signer),
+		).Build(),
 		"nested bundle": bundle.AllOf(
 			bundle.Step(key, bundle.AllOf(
 				bundle.Step(key, &types.AccessListTx{}),
-			).Build(signer)),
-		).Build(signer),
+			).Build()),
+		).Build(),
 	}
 
 	rules := opera.Rules{
@@ -824,7 +824,7 @@ func TestIsPermissible_WithBrio_RejectsBundleOnlyTransactions(t *testing.T) {
 func TestIsPermissible_WithBrio_BundlesDisabled_RejectsBundleEnvelopes(t *testing.T) {
 	require := require.New(t)
 	signer := types.LatestSignerForChainID(big.NewInt(1))
-	tx := bundle.AllOf().Build(signer)
+	tx := bundle.AllOf().Build()
 
 	require.True(bundle.IsEnvelope(tx))
 
@@ -873,7 +873,7 @@ func TestIsPermissible_BundlesWithInvalidContent_Rejected(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(err)
 
-	tx, txBundle, _ := bundle.NewBuilder(signer).
+	tx, txBundle, _ := bundle.NewBuilder().
 		With(bundle.Step(key, &types.SetCodeTx{
 			// Invalid, since there are no authorizations.
 		})).
@@ -905,13 +905,13 @@ func TestIsPermissible_BundlesWithInvalidNestedContent_Rejected(t *testing.T) {
 	require.NoError(err)
 
 	// Issues in nested bundles are also detected.
-	inner, txBundle, _ := bundle.NewBuilder(signer).
+	inner, txBundle, _ := bundle.NewBuilder().
 		With(bundle.Step(key, &types.SetCodeTx{
 			// Invalid, since there are no authorizations.
 		})).
 		BuildEnvelopeBundleAndPlan()
 
-	outer := bundle.NewBuilder(signer).
+	outer := bundle.NewBuilder().
 		With(bundle.Step(key, inner)).
 		Build()
 

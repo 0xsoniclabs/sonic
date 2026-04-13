@@ -34,7 +34,7 @@ import (
 // generic format is the NewBuilder function, enabling the creation of an
 // envelope transaction carrying a bundle as follows:
 //
-//   envelope := NewBuilder(signer).
+//   envelope := NewBuilder().
 // 		SetEarliest(12).
 // 		SetLatest(15).
 // 		AllOf(
@@ -57,7 +57,7 @@ import (
 // 			Step(key, &types.AccessListTx{
 // 				Nonce: 2,
 // 			}),
-//    ).Build(signer)
+//    ).Build()
 //
 // Also nested bundles are supported by using
 //
@@ -71,7 +71,7 @@ import (
 // 					Nonce: 2,
 // 				}),
 // 			)),
-//    ).Build(signer)
+//    ).Build()
 //
 // The hope for this library is to provide means for the readable generation of
 // bundles in unit tests.
@@ -127,8 +127,8 @@ func Group(oneOf bool, steps ...BuilderStep) BuilderStep {
 }
 
 // NewBuilder creates a new bundle builder to create a custom bundle.
-func NewBuilder(signer types.Signer) *builder {
-	return &builder{signer: signer}
+func NewBuilder() *builder {
+	return &builder{}
 }
 
 type builder struct {
@@ -148,6 +148,11 @@ func (b *builder) SetEarliest(earliest uint64) *builder {
 
 func (b *builder) SetLatest(latest uint64) *builder {
 	b.latest = &latest
+	return b
+}
+
+func (b *builder) WithSigner(signer types.Signer) *builder {
+	b.signer = signer
 	return b
 }
 
@@ -354,13 +359,13 @@ func (s BuilderStep) WithFlags(flags ExecutionFlags) BuilderStep {
 }
 
 // Build is a utility function to directly build an envelope transaction from
-// this step, using the provided signer. It is a shortcut for
+// this step. It is a shortcut for
 //
-//	NewBuilder(signer).With(step).Build()
+//	NewBuilder().With(step).Build()
 //
 // which can be convenient for simple bundles with a single step.
-func (s BuilderStep) Build(signer types.Signer) *types.Transaction {
-	return NewBuilder(signer).With(s).Build()
+func (s BuilderStep) Build() *types.Transaction {
+	return NewBuilder().With(s).Build()
 }
 
 // collectTransactions recursively collects all transactions reachable from this
