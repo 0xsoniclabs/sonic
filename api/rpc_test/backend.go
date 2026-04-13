@@ -63,6 +63,10 @@ type Block struct {
 	Number     uint64
 	Hash       common.Hash
 	ParentHash common.Hash
+	// PrevRandao is the previous block's RANDAO value.
+	// If non zero, it enables Shanghai, Cancun, Prague, and Osaka features
+	// depending on the chain config.
+	PrevRandao common.Hash
 }
 
 type backendBuilder struct {

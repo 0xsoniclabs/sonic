@@ -22,6 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	rpctest "github.com/0xsoniclabs/sonic/api/rpc_test"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/params"
@@ -232,4 +233,70 @@ func Test_EstimateGasForTransactions_AnyTxFails_ReturnsError(t *testing.T) {
 	result, err := api.EstimateGasForTransactions(t.Context(), args, nil, nil, nil)
 	require.ErrorContains(t, err, "failed to estimate gas for transaction 1: execution reverted")
 	require.Len(t, result.GasLimits, 0)
+}
+
+func Test_EstimateGasForTransactions_WithBlockOverrides(t *testing.T) {
+	addr1 := common.Address{1}
+	// modExp precompile address - gas cost is greater in Brio then in Sonic
+	modExpAddr := common.HexToAddress("0x05")
+
+	// modExp(1, 1, 1): three 32 byte big endian length fields (value=1) + three 1-byte values
+	one := uint256.NewInt(1).Bytes32()
+	var input []byte
+	input = append(input, one[:]...) // base_length = 1
+	input = append(input, one[:]...) // exp_length = 1
+	input = append(input, one[:]...) // mod_length = 1
+	input = append(input, 0x01)      // base = 1
+	input = append(input, 0x01)      // exp = 1
+	input = append(input, 0x01)      // mod = 1
+	inputHex := hexutil.Bytes(input)
+
+	// Non zero PrevRandao enables post merge EVM rules (isMerge=true), which
+	// activates Osaka precompile variants and Prague floor data gas.
+	prevRandao := common.Hash{1}
+
+	// Block 1 is in Sonic era, block 10 triggers Brio upgrade.
+	be := rpctest.NewBackendBuilder(t).
+		WithBlockHistory([]rpctest.Block{
+			{Number: 1, Hash: common.HexToHash("0x1"), PrevRandao: prevRandao},
+			{Number: 10, Hash: common.HexToHash("0xa"), PrevRandao: prevRandao},
+		}).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		WithUpgrade(0, opera.GetSonicUpgrades()).
+		WithUpgrade(10, opera.GetBrioUpgrades()).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	args := []ethapi.TransactionArgs{{
+		From:  &addr1,
+		To:    &modExpAddr,
+		Nonce: rpctest.ToHexUint64(0),
+		Data:  &inputHex,
+	}}
+
+	// Sonic
+	blockNr1 := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(1))
+	sonicResult, err := api.EstimateGasForTransactions(t.Context(), args, &blockNr1, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, sonicResult.GasLimits, 1)
+
+	// Brio
+	blockNr10 := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(10))
+	brioResult, err := api.EstimateGasForTransactions(t.Context(), args, &blockNr10, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, brioResult.GasLimits, 1)
+
+	require.Equal(t, uint64(brioResult.GasLimits[0])-uint64(sonicResult.GasLimits[0]), uint64(502),
+		"Brio should require more gas than Sonic for the same transaction")
+
+	// Block override to block 1
+	blockOverrides := ethapi.BlockOverrides{
+		Number: (*hexutil.Big)(big.NewInt(1)),
+	}
+	overrideResult, err := api.EstimateGasForTransactions(t.Context(), args, nil, nil, &blockOverrides)
+	require.NoError(t, err)
+	require.Len(t, overrideResult.GasLimits, 1)
+	require.Equal(t, uint64(sonicResult.GasLimits[0]), uint64(overrideResult.GasLimits[0]),
+		"block override to Sonic upgrade should give the same gas as explicit Sonic block")
 }
