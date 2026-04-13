@@ -45,6 +45,11 @@ type TransactionRunner interface {
 	RevertToSnapshot(id int)
 }
 
+// runStep executes a single execution step, which may be a transaction or a
+// group of steps (one-of or all-of). It returns true if the step is considered
+// successful based on the execution result and its execution flags, and false
+// otherwise. The transaction index map is required to resolve transaction
+// references for steps that execute transactions.
 func runStep(
 	step *ExecutionStep,
 	transactions map[TxReference]*types.Transaction,
@@ -63,6 +68,10 @@ func runStep(
 	return isTolerated(result, step.flags)
 }
 
+// runAllOfGroup executes a group of steps where all steps must be successful
+// for the group to be considered successful. If any step fails, the entire
+// group is reverted to the state before the group execution began, and the
+// function returns a failed result.
 func runAllOfGroup(
 	steps []ExecutionStep,
 	transactions map[TxReference]*types.Transaction,
@@ -78,6 +87,11 @@ func runAllOfGroup(
 	return core_types.TransactionResultSuccessful
 }
 
+// runOneOfGroup executes a group of steps where at least one step must be
+// successful for the group to be considered successful. If all steps fail, the
+// entire group is reverted to the state before the group execution began, and
+// the function returns a failed result. After the first successful step,
+// processing of the group stops and the function returns a successful result.
 func runOneOfGroup(
 	steps []ExecutionStep,
 	transactions map[TxReference]*types.Transaction,
@@ -93,6 +107,10 @@ func runOneOfGroup(
 	return core_types.TransactionResultFailed
 }
 
+// runTransaction executes a single transaction referenced by txRef using the
+// provided TransactionRunner. It returns the result of the transaction
+// execution. If the transaction reference is not found in the transactions map,
+// it signals an invalid transaction result.
 func runTransaction(
 	txRef TxReference,
 	transactions map[TxReference]*types.Transaction,
@@ -105,6 +123,10 @@ func runTransaction(
 	return runner.Run(tx)
 }
 
+// isTolerated determines whether a transaction result is considered successful
+// based on the execution flags. It returns true if the result is successful or
+// if it is invalid/failed but the corresponding tolerance flag is set, and false
+// otherwise.
 func isTolerated(
 	result core_types.TransactionResult,
 	flags ExecutionFlags,
