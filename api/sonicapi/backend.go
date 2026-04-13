@@ -17,6 +17,7 @@
 package sonicapi
 
 import (
+	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -26,6 +27,8 @@ import (
 // BundleApiBackend is an interface that abstracts the necessary BundleApiBackend functions for the
 // sonic API.
 type BundleApiBackend interface {
+	ethapi.Backend
+
 	// GetBundleExecutionInfo returns information about the execution of a transaction bundle, if available.
 	// If the bundle is unknown, it returns nil.
 	GetBundleExecutionInfo(common.Hash) *bundle.ExecutionInfo

@@ -33,7 +33,7 @@ import (
 func Test_GetBundleInfo_UnknownBundle_ReturnsNonErrorEmptyAnswer(t *testing.T) {
 
 	ctr := gomock.NewController(t)
-	be := NewMockbackend(ctr)
+	be := NewMockBundleApiBackend(ctr)
 	api := NewPublicBundleAPI(be)
 
 	hash := common.Hash{123}
@@ -46,7 +46,7 @@ func Test_GetBundleInfo_UnknownBundle_ReturnsNonErrorEmptyAnswer(t *testing.T) {
 func Test_GetBundleInfo_KnownBundle_ReturnsInfo(t *testing.T) {
 
 	ctr := gomock.NewController(t)
-	be := NewMockbackend(ctr)
+	be := NewMockBundleApiBackend(ctr)
 	api := NewPublicBundleAPI(be)
 
 	hash := common.Hash{123}

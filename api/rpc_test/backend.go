@@ -36,6 +36,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -62,6 +63,10 @@ type Block struct {
 	Number     uint64
 	Hash       common.Hash
 	ParentHash common.Hash
+	// PrevRandao is the previous block's RANDAO value.
+	// If non zero, it enables Shanghai, Cancun, Prague, and Osaka features
+	// depending on the chain config.
+	PrevRandao common.Hash
 }
 
 type backendBuilder struct {
@@ -367,6 +372,11 @@ func (b *fakeBackend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
 		heights = append(heights, opera.MakeUpgradeHeight(upgrades, height))
 	}
 	return opera.CreateTransientEvmChainConfig(b.chainID, heights, blockHeight)
+}
+
+// GetBundleExecutionInfo returns nil — not used in fake backend tests.
+func (b *fakeBackend) GetBundleExecutionInfo(_ common.Hash) *bundle.ExecutionInfo {
+	panic("not implemented")
 }
 
 // TxPool is a minimal interface for the transaction pool, only including the methods needed for testing.
