@@ -26,7 +26,7 @@ import (
 func TestExecutionFlags_Valid_AllCombinationsPass(t *testing.T) {
 	// explicit combination tests
 	tests := []ExecutionFlags{
-		0,
+		EF_Default,
 		EF_TolerateInvalid,
 		EF_TolerateFailed,
 		EF_TolerateInvalid | EF_TolerateFailed,
