@@ -95,7 +95,7 @@ func TestValidateEnvelope_InvalidEncoding_ReturnsError(t *testing.T) {
 func TestValidateEnvelope_DetectsErrorInIntrinsicGasCalculation(t *testing.T) {
 	signer := types.LatestSignerForChainID(testChainID)
 
-	bundle := TransactionBundle{}
+	bundle := NewBuilder().AllOf().BuildBundle()
 	encoded, err := bundle.encode()
 	require.NoError(t, err)
 
@@ -120,7 +120,7 @@ func TestValidateEnvelope_DetectsErrorInIntrinsicGasCalculation(t *testing.T) {
 func TestValidateEnvelope_DetectsErrorInFloorDataGasCalculation(t *testing.T) {
 	signer := types.LatestSignerForChainID(testChainID)
 
-	bundle := TransactionBundle{}
+	bundle := NewBuilder().AllOf().BuildBundle()
 	encoded, err := bundle.encode()
 	require.NoError(t, err)
 
@@ -190,13 +190,13 @@ func TestValidateEnvelope_AcceptsValidBlockRanges(t *testing.T) {
 		Gas  uint64
 	}{
 		"single-block range": {
-			From: 10, To: 10, Gas: 21480,
+			From: 10, To: 10, Gas: 22240,
 		},
 		"multi-block range": {
-			From: 7, To: 42, Gas: 21480,
+			From: 7, To: 42, Gas: 22240,
 		},
 		"max-size block range": {
-			From: 100, To: 100 + MaxBlockRange - 1, Gas: 21560,
+			From: 100, To: 100 + MaxBlockRange - 1, Gas: 22320,
 		},
 	}
 
@@ -204,6 +204,7 @@ func TestValidateEnvelope_AcceptsValidBlockRanges(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bundle := TransactionBundle{
 				Plan: ExecutionPlan{
+					Root: NewTxStep(TxReference{}),
 					Range: BlockRange{
 						Earliest: test.From,
 						Latest:   test.To,
@@ -246,6 +247,7 @@ func TestValidateEnvelope_IdentifiesInvalidBlockRanges(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bundle := TransactionBundle{
 				Plan: ExecutionPlan{
+					Root: NewTxStep(TxReference{}),
 					Range: BlockRange{
 						Earliest: test.From,
 						Latest:   test.To,
@@ -342,6 +344,9 @@ func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transact
 	// prepare the bundle
 	bundle := TransactionBundle{
 		Transactions: signedTransactions,
+		Plan: ExecutionPlan{
+			Root: NewTxStep(TxReference{}),
+		},
 	}
 
 	data, err := bundle.encode()
@@ -384,6 +389,9 @@ func (gen testBundleGenerator) makeBundleTxWithWronglySignedTx(t testing.TB) *ty
 		Transactions: map[TxReference]*types.Transaction{
 			{}: unsignedTransaction,
 		},
+		Plan: ExecutionPlan{
+			Root: NewTxStep(TxReference{}),
+		},
 	}
 
 	encoded, err := bundle.encode()
@@ -414,6 +422,9 @@ func (gen testBundleGenerator) makeBundleTxWithoutEnoughFloorGas(t testing.TB) *
 			{}: types.MustSignNewTx(gen.keys[0], gen.signer, &types.AccessListTx{
 				Data: make([]byte, 1<<10), // < high data usage
 			}),
+		},
+		Plan: ExecutionPlan{
+			Root: NewTxStep(TxReference{}),
 		},
 	}
 

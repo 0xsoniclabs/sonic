@@ -27,39 +27,75 @@ import (
 
 func TestExecutionPlan_Hash_ComputesDeterministicHash(t *testing.T) {
 
-	step1 := ExecutionStep{txRef: &TxReference{
-		From: common.HexToAddress("0x0000000000000000000000000000000000000001"),
-		Hash: common.Hash{0x01},
-	}}
-	step2 := ExecutionStep{txRef: &TxReference{
-		From: common.HexToAddress("0x0000000000000000000000000000000000000002"),
-		Hash: common.Hash{0x02},
-	}}
+	ref1 := TxReference{
+		From: common.Address{1},
+		Hash: common.Hash{2},
+	}
+
+	ref2 := TxReference{
+		From: common.Address{3},
+		Hash: common.Hash{4},
+	}
+
+	step1 := NewTxStep(ref1)
+	step2 := NewTxStep(ref2)
 
 	tests := map[string]ExecutionPlan{
-		"empty plan": {},
-		"plan with transactions": {
-			Root: ExecutionStep{steps: []ExecutionStep{step1, step2}},
+		"plan with single step": {
+			Root: step1,
 		},
-		"plan with flag 1": {
-			Root: ExecutionStep{flags: 0x1, steps: []ExecutionStep{step1}},
+		"plan with different single step": {
+			Root: step2,
 		},
-		"plan with flag 2": {
-			Root: ExecutionStep{flags: 0x2, steps: []ExecutionStep{step1}},
+		"plan with single step and execution flags 1": {
+			Root: step1.WithFlags(EF_TolerateFailed),
 		},
-		"plan with flag 3": {
-			Root: ExecutionStep{flags: 0x3, steps: []ExecutionStep{step1}},
+		"plan with single step and execution flags 2": {
+			Root: step1.WithFlags(EF_TolerateInvalid),
+		},
+		"plan with single step and execution flags 3": {
+			Root: step2.WithFlags(EF_TolerateFailed | EF_TolerateInvalid),
+		},
+		"plan with all-of group": {
+			Root: NewAllOfStep(step1, step2),
+		},
+		"plan with different all-of group": {
+			Root: NewAllOfStep(step2, step1),
+		},
+		"plan with all-of group tolerating failed": {
+			Root: NewAllOfStep(step1, step2).WithFlags(EF_TolerateFailed),
+		},
+		"plan with one-of group": {
+			Root: NewOneOfStep(step1, step2),
+		},
+		"plan with different one-of group": {
+			Root: NewOneOfStep(step2, step1),
+		},
+		"plan with one-of group and tolerating failed": {
+			Root: NewOneOfStep(step1, step2).WithFlags(EF_TolerateFailed),
+		},
+		"plan with nested groups": {
+			Root: NewOneOfStep(
+				NewAllOfStep(step1, step2),
+				NewAllOfStep(step2, step1),
+			),
+		},
+		"plan with different nested groups": {
+			Root: NewOneOfStep(
+				NewAllOfStep(step2, step1),
+				NewAllOfStep(step1, step2),
+			),
 		},
 		"plan with block range": {
-			Root:  ExecutionStep{steps: []ExecutionStep{step1}},
+			Root:  step1,
 			Range: BlockRange{Earliest: 10, Latest: 20},
 		},
 		"plan with different start": {
-			Root:  ExecutionStep{steps: []ExecutionStep{step1}},
+			Root:  step1,
 			Range: BlockRange{Earliest: 11, Latest: 20},
 		},
 		"plan with different end": {
-			Root:  ExecutionStep{steps: []ExecutionStep{step1}},
+			Root:  step1,
 			Range: BlockRange{Earliest: 10, Latest: 21},
 		},
 	}
@@ -123,6 +159,18 @@ func TestExecutionStep_GetTransactionReferencesInReferencedOrder_ReturnsReferenc
 			),
 			want: []TxReference{ref1, ref2, ref1, ref3, ref2, ref3},
 		},
+		// Also provide a clear definition for an invalid case. Even though it
+		// should not show up in practice, it is possible and should have a
+		// defined behavior.
+		"invalid single and group step": {
+			input: ExecutionStep{
+				single: &single{txRef: ref1},
+				group: &group{steps: []ExecutionStep{
+					NewTxStep(ref2), NewTxStep(ref3),
+				}},
+			},
+			want: []TxReference{ref1, ref2, ref3},
+		},
 	}
 
 	for name, tc := range tests {
@@ -134,49 +182,98 @@ func TestExecutionStep_GetTransactionReferencesInReferencedOrder_ReturnsReferenc
 	}
 }
 
+func TestNewTxStep_CreatesExecutionStepWithSingleTransaction(t *testing.T) {
+	ref := TxReference{
+		From: common.Address{1},
+		Hash: common.Hash{2},
+	}
+
+	step := NewTxStep(ref)
+	require := require.New(t)
+	require.NotNil(step.single)
+	require.Nil(step.group)
+	require.Equal(ref, step.single.txRef)
+}
+
+func TestNewAllOfStep_CreatesExecutionStepWithAllOfGroup(t *testing.T) {
+	step1 := NewTxStep(TxReference{From: common.Address{1}})
+	step2 := NewTxStep(TxReference{From: common.Address{2}})
+
+	step := NewAllOfStep(step1, step2)
+	require := require.New(t)
+	require.Nil(step.single)
+	require.NotNil(step.group)
+	require.False(step.group.oneOf)
+	require.Equal([]ExecutionStep{step1, step2}, step.group.steps)
+}
+
+func TestNewOneOfStep_CreatesExecutionStepWithOneOfGroup(t *testing.T) {
+	step1 := NewTxStep(TxReference{From: common.Address{1}})
+	step2 := NewTxStep(TxReference{From: common.Address{2}})
+
+	step := NewOneOfStep(step1, step2)
+	require := require.New(t)
+	require.Nil(step.single)
+	require.NotNil(step.group)
+	require.True(step.group.oneOf)
+	require.Equal([]ExecutionStep{step1, step2}, step.group.steps)
+}
+
+func TestExecutionStep_WithFlags_ReturnsNewExecutionStepWithUpdatedFlags(t *testing.T) {
+	flags := []ExecutionFlags{
+		EF_TolerateFailed,
+		EF_TolerateInvalid,
+		EF_TolerateFailed | EF_TolerateInvalid,
+	}
+
+	for _, flag := range flags {
+		step := NewTxStep(TxReference{})
+		updated := step.WithFlags(flag)
+
+		require := require.New(t)
+		require.NotEqual(step, updated, "WithFlags should return a new instance")
+		require.Equal(flag, updated.single.flags)
+		require.Equal(step.single.txRef, updated.single.txRef)
+	}
+}
+
+func TestExecutionStep_WithFlags_PanicsWhenTolerateInvalidFlagIsUsedForGroup(t *testing.T) {
+	step := NewAllOfStep(NewTxStep(TxReference{}))
+	require.Panics(t, func() {
+		step.WithFlags(EF_TolerateInvalid)
+	}, "WithFlags should panic when TolerateInvalid flag is used for a group")
+}
+
 func TestExecutionStep_EncodingAndDecodingAreAligned(t *testing.T) {
+	ref1 := TxReference{
+		From: common.Address{1},
+		Hash: common.Hash{2},
+	}
+
+	ref2 := TxReference{
+		From: common.Address{3},
+		Hash: common.Hash{4},
+	}
+
+	step1 := NewTxStep(ref1)
+	step2 := NewTxStep(ref2)
+
 	tests := map[string]ExecutionStep{
-		"zero value": {},
-		"single transaction step": {
-			flags: 0x1,
-			txRef: &TxReference{
-				From: common.Address{1, 2, 3},
-				Hash: common.Hash{0x01},
-			},
-		},
-		"allOf group": {
-			flags: 0x2,
-			oneOf: false,
-			steps: []ExecutionStep{
-				{
-					flags: 0x3,
-					txRef: &TxReference{
-						From: common.Address{4, 5, 6},
-						Hash: common.Hash{0x02},
-					},
-				},
-				{
-					flags: 0x4,
-					txRef: &TxReference{
-						From: common.Address{7, 8, 9},
-						Hash: common.Hash{0x03},
-					},
-				},
-			},
-		},
-		"oneOf group": {
-			flags: 0x5,
-			oneOf: true,
-			steps: []ExecutionStep{
-				{
-					flags: 0x6,
-					txRef: &TxReference{
-						From: common.Address{10, 11, 12},
-						Hash: common.Hash{0x04},
-					},
-				},
-			},
-		},
+		"single step":                        step1,
+		"different single step":              step2,
+		"single step and execution flags 1":  step1.WithFlags(0x1),
+		"single step and execution flags 2":  step1.WithFlags(0x2),
+		"single step and execution flags 3":  step2.WithFlags(0x3),
+		"all-of group":                       NewAllOfStep(step1, step2),
+		"different all-of group":             NewAllOfStep(step2, step1),
+		"all-of group tolerating failed":     NewAllOfStep(step1, step2).WithFlags(EF_TolerateFailed),
+		"one-of group":                       NewOneOfStep(step1, step2),
+		"different one-of group":             NewOneOfStep(step2, step1),
+		"one-of group and tolerating failed": NewOneOfStep(step1, step2).WithFlags(EF_TolerateFailed),
+		"nested groups": NewOneOfStep(
+			NewAllOfStep(step1, step2),
+			NewAllOfStep(step2, step1),
+		),
 	}
 
 	for name, input := range tests {
@@ -201,6 +298,22 @@ func TestExecutionStep_EncodingAndDecodingAreAligned(t *testing.T) {
 	}
 }
 
+func TestExecutionStep_encode_FailsOnInvalidStep(t *testing.T) {
+	tests := map[string]ExecutionStep{
+		"empty step": {},
+		"step with both single and group set": {
+			single: &single{txRef: TxReference{}},
+			group:  &group{steps: []ExecutionStep{}},
+		},
+	}
+
+	for name, step := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorContains(t, step.encode(nil), "can not encode invalid execution step")
+		})
+	}
+}
+
 func TestExecutionStep_decode_FailsOnInvalidInput(t *testing.T) {
 	data := []byte("invalid rlp data")
 	var s ExecutionStep
@@ -208,113 +321,60 @@ func TestExecutionStep_decode_FailsOnInvalidInput(t *testing.T) {
 }
 
 func TestExecutionStep_String_PrintsReadableRepresentation(t *testing.T) {
+	ref1 := TxReference{From: common.Address{1}}
+	ref2 := TxReference{From: common.Address{2}}
+	ref3 := TxReference{From: common.Address{3}}
+
+	step1 := NewTxStep(ref1)
+	step2 := NewTxStep(ref2)
+	step3 := NewTxStep(ref3)
+
 	tests := map[string]struct {
 		input ExecutionStep
 		want  string
 	}{
 		"zero value": {
 			input: ExecutionStep{},
-			want:  "AllOf()",
+			want:  "InvalidStep",
 		},
 		"single transaction step": {
-			input: ExecutionStep{
-				txRef: &TxReference{
-					From: common.Address{1, 2, 3},
-				},
-			},
-			want: "A",
+			input: NewTxStep(ref1),
+			want:  "A",
 		},
 		"single transaction tolerating invalid": {
-			input: ExecutionStep{
-				flags: EF_TolerateInvalid,
-				txRef: &TxReference{
-					From: common.Address{1, 2, 3},
-				},
-			},
-			want: "Step[TolerateInvalid](A)",
+			input: NewTxStep(ref1).WithFlags(EF_TolerateInvalid),
+			want:  "Step[TolerateInvalid](A)",
 		},
 		"single transaction tolerating failed": {
-			input: ExecutionStep{
-				flags: EF_TolerateFailed,
-				txRef: &TxReference{
-					From: common.Address{1, 2, 3},
-				},
-			},
-			want: "Step[TolerateFailed](A)",
+			input: NewTxStep(ref1).WithFlags(EF_TolerateFailed),
+			want:  "Step[TolerateFailed](A)",
 		},
 		"single transaction tolerating invalid and failed": {
-			input: ExecutionStep{
-				flags: EF_TolerateInvalid | EF_TolerateFailed,
-				txRef: &TxReference{
-					From: common.Address{1, 2, 3},
-				},
-			},
-			want: "Step[TolerateInvalid|TolerateFailed](A)",
+			input: NewTxStep(ref1).WithFlags(EF_TolerateInvalid | EF_TolerateFailed),
+			want:  "Step[TolerateInvalid|TolerateFailed](A)",
 		},
 		"allOf group": {
-			input: ExecutionStep{
-				oneOf: false,
-				steps: []ExecutionStep{
-					{txRef: &TxReference{From: common.Address{1}}},
-					{txRef: &TxReference{From: common.Address{2}}},
-				},
-			},
-			want: "AllOf(A,B)",
+			input: NewAllOfStep(step1, step2),
+			want:  "AllOf(A,B)",
 		},
 		"oneOf group": {
-			input: ExecutionStep{
-				oneOf: true,
-				steps: []ExecutionStep{
-					{txRef: &TxReference{From: common.Address{1}}},
-					{txRef: &TxReference{From: common.Address{2}}},
-				},
-			},
-			want: "OneOf(A,B)",
+			input: NewOneOfStep(step1, step2),
+			want:  "OneOf(A,B)",
 		},
 		"group with execution flags": {
-			input: ExecutionStep{
-				flags: EF_TolerateFailed | EF_TolerateInvalid,
-				steps: []ExecutionStep{
-					{txRef: &TxReference{From: common.Address{1}}},
-					{txRef: &TxReference{From: common.Address{2}}},
-				},
-			},
-			want: "Step[TolerateInvalid|TolerateFailed](AllOf(A,B))",
+			input: NewAllOfStep(step1, step2).WithFlags(EF_TolerateFailed),
+			want:  "TolerateFailed(AllOf(A,B))",
 		},
 		"repeated transactions": {
-			input: ExecutionStep{
-				steps: []ExecutionStep{
-					{txRef: &TxReference{From: common.Address{1}}},
-					{txRef: &TxReference{From: common.Address{2}}},
-					{txRef: &TxReference{From: common.Address{1}}},
-				},
-			},
-			want: "AllOf(A,B,A)",
+			input: NewAllOfStep(step1, step2, step1),
+			want:  "AllOf(A,B,A)",
 		},
 		"nested groups": {
-			input: ExecutionStep{
-				oneOf: true,
-				steps: []ExecutionStep{
-					{
-						steps: []ExecutionStep{
-							{txRef: &TxReference{From: common.Address{1}}},
-							{txRef: &TxReference{From: common.Address{2}}},
-						},
-					},
-					{
-						steps: []ExecutionStep{
-							{txRef: &TxReference{From: common.Address{1}}},
-							{txRef: &TxReference{From: common.Address{3}}},
-						},
-					},
-					{
-						steps: []ExecutionStep{
-							{txRef: &TxReference{From: common.Address{2}}},
-							{txRef: &TxReference{From: common.Address{3}}},
-						},
-					},
-				},
-			},
+			input: NewOneOfStep(
+				NewAllOfStep(step1, step2),
+				NewAllOfStep(step1, step3),
+				NewAllOfStep(step2, step3),
+			),
 			want: "OneOf(AllOf(A,B),AllOf(A,C),AllOf(B,C))",
 		},
 	}

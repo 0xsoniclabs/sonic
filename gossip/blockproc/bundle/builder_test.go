@@ -78,21 +78,21 @@ func TestBundleBuilder_Build_AllowsToBuildBundleAsSpecified(t *testing.T) {
 	txs := bundle.Transactions
 	require.Len(txs, 3)
 
-	tx0, found := txs[*plan.Root.steps[0].txRef]
+	tx0, found := txs[plan.Root.group.steps[0].single.txRef]
 	require.True(found)
 	sender0, err := signer.Sender(tx0)
 	require.NoError(err)
 	require.Equal(crypto.PubkeyToAddress(key0.PublicKey), sender0)
 	require.EqualValues(0, tx0.Nonce())
 
-	tx1, found := txs[*plan.Root.steps[1].txRef]
+	tx1, found := txs[plan.Root.group.steps[1].single.txRef]
 	require.True(found)
 	sender1, err := signer.Sender(tx1)
 	require.NoError(err)
 	require.Equal(crypto.PubkeyToAddress(key1.PublicKey), sender1)
 	require.EqualValues(1, tx1.Nonce())
 
-	tx2, found := txs[*plan.Root.steps[2].txRef]
+	tx2, found := txs[plan.Root.group.steps[2].single.txRef]
 	require.True(found)
 	sender2, err := signer.Sender(tx2)
 	require.NoError(err)

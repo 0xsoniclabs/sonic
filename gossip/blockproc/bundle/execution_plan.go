@@ -18,6 +18,7 @@ package bundle
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -82,22 +83,36 @@ type TxReference struct {
 // group to be considered successful. Furthermore, for each ExecutionStep, execution
 // flags can be defined to specify the behavior of the execution (e.g. whether
 // failed or invalid transactions should be tolerated).
+
+// ExecutionStep is a node in the hierarchy of an execution plan describing a
+// processing step. It can either be a single transaction to be executed or a
+// group of nested execution steps.
 type ExecutionStep struct {
-	// -- common for individual transactions and groups --
+	single *single // < -- mutually exclusive with group
+	group  *group
+}
+
+// single is the structure representing a single transaction execution step,
+// containing a reference to the transaction and any execution flags that modify
+// the interpretation of the step's result during execution.
+type single struct {
+	txRef TxReference
 	flags ExecutionFlags
+}
 
-	// -- single transaction fields --
-	txRef *TxReference // < if nil, it is a group
-
-	// -- group fields --
-	oneOf bool
-	steps []ExecutionStep
+// group is the structure representing a group of execution steps, which can be
+// executed with different semantics (e.g. oneOf or allOf) and can also have
+// a flag whether a failure of the group should be tolerated.
+type group struct {
+	oneOf          bool
+	tolerateFailed bool
+	steps          []ExecutionStep
 }
 
 // NewTxStep creates a step in the execution plan processing a single
 // transaction identified by the given TxReference.
 func NewTxStep(txRef TxReference) ExecutionStep {
-	return ExecutionStep{txRef: &txRef}
+	return ExecutionStep{single: &single{txRef: txRef}}
 }
 
 // NewAllOfStep creates a step in the execution plan that requires all of the
@@ -117,19 +132,47 @@ func NewOneOfStep(subSteps ...ExecutionStep) ExecutionStep {
 // NewGroupStep creates a step in the execution plan that groups the provided
 // sub-steps together, with the specified execution semantic (oneOf or allOf).
 func NewGroupStep(oneOf bool, subSteps ...ExecutionStep) ExecutionStep {
-	return ExecutionStep{oneOf: oneOf, steps: subSteps}
+	return ExecutionStep{group: &group{oneOf: oneOf, steps: subSteps}}
 }
 
-// SetExecutionFlags sets the execution flags for the given step, which can
-// modify the interpretation of result of the step during execution. For
-// example, the flags can specify whether failed or invalid transactions should
-// be tolerated without causing the entire step to be considered failed.
-func SetExecutionFlags(step ExecutionStep, flags ExecutionFlags) ExecutionStep {
-	step.flags = flags
-	return step
+// WithFlags produces a modified version of this step with the given flags set,
+// which can  modify the interpretation of result of the step during execution.
+// For example, the flags can specify whether failed or invalid transactions
+// should be tolerated without causing the entire step to be considered failed.
+func (s ExecutionStep) WithFlags(flags ExecutionFlags) ExecutionStep {
+	res := s
+	if res.single != nil {
+		copy := *res.single
+		res.single = &copy
+		res.single.flags = flags
+	} else if res.group != nil {
+		if flags.TolerateInvalid() {
+			panic("TolerateInvalid flag is not supported for groups")
+		}
+		copy := *res.group
+		res.group = &copy
+		res.group.tolerateFailed = flags&EF_TolerateFailed != 0
+	}
+	return res
+}
+
+// valid returns true if the step is valid, meaning that it is either a single
+// step or a group step, but not both or neither. This is a basic validation to
+// ensure the integrity of the execution plan structure.
+func (s *ExecutionStep) valid() bool {
+	if s.single != nil && s.group != nil {
+		return false
+	}
+	if s.single == nil && s.group == nil {
+		return false
+	}
+	return true
 }
 
 func (s *ExecutionStep) encode(writer io.Writer) error {
+	if !s.valid() {
+		return fmt.Errorf("can not encode invalid execution step")
+	}
 	encoding := s.toEncodingV1()
 	return rlp.Encode(writer, encoding)
 }
@@ -144,14 +187,15 @@ func (s *ExecutionStep) decode(reader io.Reader) error {
 }
 
 func (s *ExecutionStep) toEncodingV1() stepEncodingV1 {
-	encoding := stepEncodingV1{
-		Flags: s.flags,
-		TxRef: s.txRef,
-		OneOf: s.oneOf,
-	}
-	if s.txRef == nil && len(s.steps) > 0 {
-		encoding.Steps = make([]stepEncodingV1, len(s.steps))
-		for i, subStep := range s.steps {
+	encoding := stepEncodingV1{}
+	if s.single != nil {
+		encoding.Flags = s.single.flags
+		encoding.TxRef = &s.single.txRef
+	} else if s.group != nil {
+		encoding.OneOf = s.group.oneOf
+		encoding.TolerateFailed = s.group.tolerateFailed
+		encoding.Steps = make([]stepEncodingV1, len(s.group.steps))
+		for i, subStep := range s.group.steps {
 			encoding.Steps[i] = subStep.toEncodingV1()
 		}
 	}
@@ -159,23 +203,36 @@ func (s *ExecutionStep) toEncodingV1() stepEncodingV1 {
 }
 
 func (s *ExecutionStep) fromEncodingV1(encoding stepEncodingV1) {
-	s.flags = encoding.Flags
-	s.txRef = encoding.TxRef
-	s.oneOf = encoding.OneOf
-	if encoding.TxRef == nil && len(encoding.Steps) > 0 {
-		s.steps = make([]ExecutionStep, len(encoding.Steps))
-		for i, subEncoding := range encoding.Steps {
-			s.steps[i].fromEncodingV1(subEncoding)
+	s.single = nil
+	s.group = nil
+	if encoding.TxRef != nil {
+		s.single = &single{
+			txRef: *encoding.TxRef,
+			flags: encoding.Flags,
+		}
+	} else {
+		s.group = &group{
+			oneOf:          encoding.OneOf,
+			tolerateFailed: encoding.TolerateFailed,
+		}
+		if len(encoding.Steps) > 0 {
+			s.group.steps = make([]ExecutionStep, len(encoding.Steps))
+			for i, subEncoding := range encoding.Steps {
+				s.group.steps[i].fromEncodingV1(subEncoding)
+			}
 		}
 	}
 }
 
 // stepEncodingV1 is the RLP encoding structure for a step.
 type stepEncodingV1 struct {
+	// single step fields
 	Flags ExecutionFlags
 	TxRef *TxReference `rlp:"nil"`
-	OneOf bool
-	Steps []stepEncodingV1
+	// group step fields
+	OneOf          bool
+	TolerateFailed bool
+	Steps          []stepEncodingV1
 }
 
 // -- debug and testing utilities --
@@ -204,10 +261,11 @@ func (s *ExecutionStep) GetTransactionReferencesInReferencedOrder() []TxReferenc
 }
 
 func (s *ExecutionStep) collectReferencedTransactions(refs *[]TxReference) {
-	if s.txRef != nil {
-		*refs = append(*refs, *s.txRef)
-	} else {
-		for _, subStep := range s.steps {
+	if s.single != nil {
+		*refs = append(*refs, s.single.txRef)
+	}
+	if s.group != nil {
+		for _, subStep := range s.group.steps {
 			subStep.collectReferencedTransactions(refs)
 		}
 	}
@@ -217,28 +275,40 @@ func (s *ExecutionStep) print(
 	references map[TxReference]string,
 	out *strings.Builder,
 ) {
-	if s.flags != EF_Default {
-		out.WriteString("Step[")
-		out.WriteString(s.flags.String())
-		out.WriteString("](")
+	if !s.valid() {
+		out.WriteString("InvalidStep")
+		return
 	}
-	if s.txRef != nil {
-		out.WriteString(references[*s.txRef])
+	if s.single != nil {
+		if s.single.flags != EF_Default {
+			out.WriteString("Step[")
+			out.WriteString(s.single.flags.String())
+			out.WriteString("](")
+		}
+		out.WriteString(references[s.single.txRef])
+		if s.single.flags != EF_Default {
+			out.WriteString(")")
+		}
+		return
+	}
+
+	if s.group.tolerateFailed {
+		out.WriteString("TolerateFailed(")
+	}
+	if s.group.oneOf {
+		out.WriteString("OneOf(")
 	} else {
-		if s.oneOf {
-			out.WriteString("OneOf(")
-		} else {
-			out.WriteString("AllOf(")
-		}
-		for i, subStep := range s.steps {
-			if i > 0 {
-				out.WriteString(",")
-			}
-			subStep.print(references, out)
-		}
-		out.WriteString(")")
+		out.WriteString("AllOf(")
 	}
-	if s.flags != EF_Default {
+	for i, subStep := range s.group.steps {
+		if i > 0 {
+			out.WriteString(",")
+		}
+		subStep.print(references, out)
+	}
+	out.WriteString(")")
+
+	if s.group.tolerateFailed {
 		out.WriteString(")")
 	}
 }

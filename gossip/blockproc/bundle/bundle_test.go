@@ -90,12 +90,12 @@ func TestOpenEnvelope_SuccessfullyDecodesEnvelopes(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := map[string]TransactionBundle{
-		"empty bundle": {},
-		"bundle with transactions": {
-			Transactions: map[TxReference]*types.Transaction{
-				{}: types.MustSignNewTx(key, signer, &types.AccessListTx{}),
-			},
-		},
+		"empty all-of": NewBuilder().AllOf().BuildBundle(),
+		"empty one-of": NewBuilder().OneOf().BuildBundle(),
+		"bundle with transactions": NewBuilder().AllOf(
+			Step(key, &types.AccessListTx{Nonce: 1}),
+			Step(key, &types.DynamicFeeTx{Nonce: 2}),
+		).BuildBundle(),
 	}
 
 	for name, bundle := range tests {
@@ -583,7 +583,6 @@ func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := map[string]TransactionBundle{
-		"empty bundle": {},
 		"empty all-of": NewBuilder().AllOf().BuildBundle(),
 		"empty one-of": NewBuilder().OneOf().BuildBundle(),
 		"bundle with transactions": NewBuilder().AllOf(
@@ -599,14 +598,6 @@ func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
 				Step(key1, &types.AccessListTx{Nonce: 3}),
 				Step(key2, &types.DynamicFeeTx{Nonce: 4}),
 			).WithFlags(EF_TolerateFailed),
-			AllOf(
-				Step(key1, &types.AccessListTx{Nonce: 5}),
-				Step(key2, &types.DynamicFeeTx{Nonce: 6}),
-			).WithFlags(EF_TolerateInvalid),
-			AllOf(
-				Step(key1, &types.AccessListTx{Nonce: 7}),
-				Step(key2, &types.DynamicFeeTx{Nonce: 8}),
-			).WithFlags(EF_TolerateInvalid|EF_TolerateFailed),
 		).BuildBundle(),
 	}
 
@@ -648,7 +639,7 @@ func TestEncoding_IsVersioned(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			bundle := TransactionBundle{}
+			bundle := NewBuilder().AllOf().BuildBundle()
 
 			encoded, err := encodeInternal(test.version, &bundle)
 			require.NoError(t, err)
@@ -702,6 +693,9 @@ func TestDecode_LegacyTxDataInBundle_FailsDecodingSinceBundleOnlyMarkCanNotBeRem
 	bundle := TransactionBundle{
 		Transactions: map[TxReference]*types.Transaction{
 			{}: legacyTx,
+		},
+		Plan: ExecutionPlan{
+			Root: NewTxStep(TxReference{}),
 		},
 	}
 

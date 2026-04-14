@@ -55,63 +55,93 @@ func runStep(
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
 ) bool {
-	var result core_types.TransactionResult
-	if step.txRef == nil {
-		if step.oneOf {
-			result = runOneOfGroup(step.steps, transactions, runner)
-		} else {
-			result = runAllOfGroup(step.steps, transactions, runner)
-		}
-	} else {
-		result = runTransaction(*step.txRef, transactions, runner)
+	if !step.valid() {
+		return false
 	}
-	return isTolerated(result, step.flags)
+	if step.single != nil {
+		return runSingle(step.single, transactions, runner)
+	}
+	return runGroup(step.group, transactions, runner)
+}
+
+// runGroup executes a group of steps, which can be either one-of or all-of,
+// based on the group's execution semantic. It returns true if the group
+// execution is considered successful, and false otherwise.
+func runGroup(
+	group *group,
+	transactions map[TxReference]*types.Transaction,
+	runner TransactionRunner,
+) bool {
+	var success bool
+	if group.oneOf {
+		success = runOneOfGroup(group.steps, transactions, runner)
+	} else {
+		success = runAllOfGroup(group.steps, transactions, runner)
+	}
+	if group.tolerateFailed {
+		return true
+	}
+	return success
 }
 
 // runAllOfGroup executes a group of steps where all steps must be successful
 // for the group to be considered successful. If any step fails, the entire
 // group is reverted to the state before the group execution began, and the
-// function returns a failed result.
+// function returns false. If all transactions succeed, true is returned.
 func runAllOfGroup(
 	steps []ExecutionStep,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
-) core_types.TransactionResult {
+) bool {
 	snapshot := runner.CreateSnapshot()
 	for i := range steps {
 		if !runStep(&(steps[i]), transactions, runner) {
 			runner.RevertToSnapshot(snapshot)
-			return core_types.TransactionResultFailed
+			return false
 		}
 	}
-	return core_types.TransactionResultSuccessful
+	return true
 }
 
 // runOneOfGroup executes a group of steps where at least one step must be
 // successful for the group to be considered successful. If all steps fail, the
 // entire group is reverted to the state before the group execution began, and
-// the function returns a failed result. After the first successful step,
-// processing of the group stops and the function returns a successful result.
+// the function returns false. After the first successful step, processing of
+// the group stops and the function returns true.
 func runOneOfGroup(
 	steps []ExecutionStep,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
-) core_types.TransactionResult {
+) bool {
 	snapshot := runner.CreateSnapshot()
 	for i := range steps {
 		if runStep(&(steps[i]), transactions, runner) {
-			return core_types.TransactionResultSuccessful
+			return true
 		}
 	}
 	runner.RevertToSnapshot(snapshot)
-	return core_types.TransactionResultFailed
+	return false
 }
 
-// runTransaction executes a single transaction referenced by txRef using the
-// provided TransactionRunner. It returns the result of the transaction
-// execution. If the transaction reference is not found in the transactions map,
-// it signals an invalid transaction result.
-func runTransaction(
+// runSingle executes a single transaction step and returns true if the
+// execution result is considered successful based on the execution flags, and
+// false otherwise. If the transaction reference is not found in the transactions
+// map, it is considered an invalid transaction result, and the function returns
+// true if the TolerateInvalid flag is set, and false otherwise.
+func runSingle(
+	single *single,
+	transactions map[TxReference]*types.Transaction,
+	runner TransactionRunner,
+) bool {
+	result := runSingleTx(single.txRef, transactions, runner)
+	return isTolerated(result, single.flags)
+}
+
+// runSingleTx executes a single transaction using the provided TransactionRunner.
+// It returns the result of the transaction execution. If the transaction
+// reference is not found in the transactions map, it signals an invalid
+// transaction result.
+func runSingleTx(
 	txRef TxReference,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,

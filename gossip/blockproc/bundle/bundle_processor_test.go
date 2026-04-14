@@ -125,40 +125,87 @@ func Test_runStep_DispatchesToCorrectExecutionMode(t *testing.T) {
 	}
 }
 
-func Test_runStep_InterpretsExecutionFlagsCorrectly(t *testing.T) {
-	flags := []ExecutionFlags{
-		EF_Default,
-		EF_TolerateInvalid,
-		EF_TolerateFailed,
-		EF_TolerateInvalid | EF_TolerateFailed,
+func Test_runStep_UnknownStepType_ReturnsFalse(t *testing.T) {
+	test := map[string]ExecutionStep{
+		"neither single nor group": {single: nil, group: nil},
+		"single and group":         {single: &single{}, group: &group{}},
 	}
 
-	results := []core_types.TransactionResult{
-		core_types.TransactionResultSuccessful,
-		core_types.TransactionResultFailed,
-		core_types.TransactionResultInvalid,
+	for name, step := range test {
+		t.Run(name, func(t *testing.T) {
+			require.False(t, runStep(&step, nil, nil))
+		})
+	}
+}
+
+func Test_runGroup_DispatchesToCorrectExecutionMode(t *testing.T) {
+	tests := map[string]struct {
+		group          group
+		expectedResult bool // < distinguishes all-of and one-of mode
+	}{
+		"all of group": {
+			group:          group{oneOf: false},
+			expectedResult: true, // empty group should succeed
+		},
+		"one of group": {
+			group:          group{oneOf: true},
+			expectedResult: false, // empty group should fail
+		},
 	}
 
-	for _, flag := range flags {
-		for _, result := range results {
-			t.Run(fmt.Sprintf("flags=%b,result=%d", flag, result), func(t *testing.T) {
-				step := NewTxStep(TxReference{})
-				step.flags = flag
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMockTransactionRunner(ctrl)
 
-				txs := map[TxReference]*types.Transaction{
-					{}: types.NewTx(&types.LegacyTx{}),
-				}
+			runner.EXPECT().CreateSnapshot().Return(1).Times(1)
+			if !test.expectedResult {
+				runner.EXPECT().RevertToSnapshot(1).Times(1)
+			}
 
-				ctrl := gomock.NewController(t)
-				runner := NewMockTransactionRunner(ctrl)
+			result := runGroup(&test.group, nil, runner)
+			require.Equal(t, test.expectedResult, result)
+		})
+	}
+}
 
-				runner.EXPECT().Run(gomock.Any()).Return(result).Times(1)
+func Test_runGroup_HandlesTolerateFailedFlag(t *testing.T) {
 
-				allowed := isTolerated(result, flag)
-				actual := runStep(&step, txs, runner)
-				require.Equal(t, allowed, actual)
-			})
-		}
+	alwaysSucceed := NewAllOfStep()
+	alwaysFail := NewOneOfStep()
+
+	tests := map[string]struct {
+		step   ExecutionStep
+		wanted bool
+	}{
+		"succeeding and failure not tolerated": {
+			step:   alwaysSucceed,
+			wanted: true,
+		},
+		"succeeding and failure tolerated": {
+			step:   alwaysSucceed.WithFlags(EF_TolerateFailed),
+			wanted: true,
+		},
+		"failing and failure not tolerated": {
+			step:   alwaysFail,
+			wanted: false,
+		},
+		"failing and failure tolerated": {
+			step:   alwaysFail.WithFlags(EF_TolerateFailed),
+			wanted: true,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMockTransactionRunner(ctrl)
+
+			runner.EXPECT().CreateSnapshot().Return(1)
+			runner.EXPECT().RevertToSnapshot(1).MaxTimes(1)
+
+			require.Equal(t, test.wanted, runGroup(test.step.group, nil, runner))
+		})
 	}
 }
 
@@ -167,8 +214,7 @@ func Test_runAllOfGroup_EmptySteps_ReturnsSuccessful(t *testing.T) {
 	runner := NewMockTransactionRunner(ctrl)
 	runner.EXPECT().CreateSnapshot().Return(1)
 
-	result := runAllOfGroup(nil, nil, runner)
-	require.Equal(t, core_types.TransactionResultSuccessful, result)
+	require.True(t, runAllOfGroup(nil, nil, runner))
 }
 
 func Test_runAllOfGroup_ReturnsTrueIfAllTransactionsPass(t *testing.T) {
@@ -191,8 +237,7 @@ func Test_runAllOfGroup_ReturnsTrueIfAllTransactionsPass(t *testing.T) {
 		ref: tx,
 	}
 
-	result := runAllOfGroup(steps, txs, runner)
-	require.Equal(t, core_types.TransactionResultSuccessful, result)
+	require.True(t, runAllOfGroup(steps, txs, runner))
 }
 
 func Test_runAllOfGroup_StopsAtFirstFailedTransaction(t *testing.T) {
@@ -225,8 +270,7 @@ func Test_runAllOfGroup_StopsAtFirstFailedTransaction(t *testing.T) {
 		NewTxStep(ref1), NewTxStep(ref2), NewTxStep(ref3),
 	}
 
-	result := runAllOfGroup(steps, txs, runner)
-	require.Equal(t, core_types.TransactionResultFailed, result)
+	require.False(t, runAllOfGroup(steps, txs, runner))
 }
 
 func Test_runOneOfGroup_ForEmptySteps_ReturnsFailed(t *testing.T) {
@@ -238,8 +282,7 @@ func Test_runOneOfGroup_ForEmptySteps_ReturnsFailed(t *testing.T) {
 		runner.EXPECT().RevertToSnapshot(1),
 	)
 
-	result := runOneOfGroup(nil, nil, runner)
-	require.Equal(t, core_types.TransactionResultFailed, result)
+	require.False(t, runOneOfGroup(nil, nil, runner))
 }
 
 func Test_runOneOfGroup_RollsBackAndReturnsFailedIfAllTransactionsFail(t *testing.T) {
@@ -263,8 +306,7 @@ func Test_runOneOfGroup_RollsBackAndReturnsFailedIfAllTransactionsFail(t *testin
 		NewTxStep(ref), NewTxStep(ref), NewTxStep(ref),
 	}
 
-	result := runOneOfGroup(steps, txs, runner)
-	require.Equal(t, core_types.TransactionResultFailed, result)
+	require.False(t, runOneOfGroup(steps, txs, runner))
 }
 
 func Test_runOneOfGroup_StopsAtFirstSuccessfulTransaction(t *testing.T) {
@@ -296,11 +338,63 @@ func Test_runOneOfGroup_StopsAtFirstSuccessfulTransaction(t *testing.T) {
 		NewTxStep(ref1), NewTxStep(ref2), NewTxStep(ref3),
 	}
 
-	result := runOneOfGroup(steps, txs, runner)
-	require.Equal(t, result, core_types.TransactionResultSuccessful)
+	require.True(t, runOneOfGroup(steps, txs, runner))
 }
 
-func Test_runTransaction_ForwardsResultOfRunner(t *testing.T) {
+func Test_runSingle_InterpretsTxResultAsDefinedByFlags(t *testing.T) {
+	tests := []core_types.TransactionResult{
+		core_types.TransactionResultSuccessful,
+		core_types.TransactionResultFailed,
+		core_types.TransactionResultInvalid,
+	}
+
+	flags := []ExecutionFlags{
+		EF_Default,
+		EF_TolerateInvalid,
+		EF_TolerateFailed,
+		EF_TolerateInvalid | EF_TolerateFailed,
+	}
+
+	for _, result := range tests {
+		for _, flag := range flags {
+			t.Run(fmt.Sprintf("result=%d, flags=%b", result, flag), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				runner := NewMockTransactionRunner(ctrl)
+
+				ref := TxReference{}
+				tx := types.NewTx(&types.LegacyTx{})
+				txs := map[TxReference]*types.Transaction{ref: tx}
+
+				runner.EXPECT().Run(tx).Return(result)
+
+				single := &single{flags: flag}
+				got := runSingle(single, txs, runner)
+				want := isTolerated(result, flag)
+				require.Equal(t, want, got)
+			})
+		}
+	}
+}
+
+func Test_runSingle_MissingTransaction_AcceptsAsDefinedByFlags(t *testing.T) {
+	tests := []ExecutionFlags{
+		EF_Default,
+		EF_TolerateInvalid,
+		EF_TolerateFailed,
+		EF_TolerateInvalid | EF_TolerateFailed,
+	}
+
+	for _, flags := range tests {
+		t.Run(fmt.Sprintf("flags=%b", flags), func(t *testing.T) {
+			single := &single{flags: flags}
+			result := runSingle(single, nil, nil)
+			want := isTolerated(core_types.TransactionResultInvalid, flags)
+			require.Equal(t, want, result)
+		})
+	}
+}
+
+func Test_runSingleTx_ForwardsResultOfRunner(t *testing.T) {
 	tx := types.NewTx(&types.LegacyTx{})
 	txRef := TxReference{From: common.Address{1, 2, 3}}
 	txs := map[TxReference]*types.Transaction{txRef: tx}
@@ -317,14 +411,14 @@ func Test_runTransaction_ForwardsResultOfRunner(t *testing.T) {
 			runner := NewMockTransactionRunner(ctrl)
 
 			runner.EXPECT().Run(tx).Return(result).Times(1)
-			actualResult := runTransaction(txRef, txs, runner)
+			actualResult := runSingleTx(txRef, txs, runner)
 			require.Equal(t, result, actualResult)
 		})
 	}
 }
 
-func Test_runTransaction_MissingTransaction_ReturnsTransactionResultInvalid(t *testing.T) {
-	res := runTransaction(TxReference{}, nil, nil)
+func Test_runSingleTx_MissingTransaction_ReturnsTransactionResultInvalid(t *testing.T) {
+	res := runSingleTx(TxReference{}, nil, nil)
 	require.Equal(t, core_types.TransactionResultInvalid, res)
 }
 

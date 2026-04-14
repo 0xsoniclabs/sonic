@@ -431,7 +431,7 @@ func (s *BuilderStep) toStep(
 			res = NewAllOfStep(subSteps...)
 		}
 	}
-	return SetExecutionFlags(res, s.flags)
+	return res.WithFlags(s.flags)
 }
 
 // txReference is a helper struct to keep track of a transaction and its signing
