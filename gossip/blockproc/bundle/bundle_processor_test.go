@@ -394,34 +394,6 @@ func Test_runSingle_MissingTransaction_AcceptsAsDefinedByFlags(t *testing.T) {
 	}
 }
 
-func Test_runSingleTx_ForwardsResultOfRunner(t *testing.T) {
-	tx := types.NewTx(&types.LegacyTx{})
-	txRef := TxReference{From: common.Address{1, 2, 3}}
-	txs := map[TxReference]*types.Transaction{txRef: tx}
-
-	results := []core_types.TransactionResult{
-		core_types.TransactionResultSuccessful,
-		core_types.TransactionResultFailed,
-		core_types.TransactionResultInvalid,
-	}
-
-	for _, result := range results {
-		t.Run(fmt.Sprintf("res=%d", result), func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			runner := NewMockTransactionRunner(ctrl)
-
-			runner.EXPECT().Run(tx).Return(result).Times(1)
-			actualResult := runSingleTx(txRef, txs, runner)
-			require.Equal(t, result, actualResult)
-		})
-	}
-}
-
-func Test_runSingleTx_MissingTransaction_ReturnsTransactionResultInvalid(t *testing.T) {
-	res := runSingleTx(TxReference{}, nil, nil)
-	require.Equal(t, core_types.TransactionResultInvalid, res)
-}
-
 func Test_isTolerated_InterpretsExecutionFlagsCorrectly(t *testing.T) {
 	tests := []struct {
 		flags     ExecutionFlags

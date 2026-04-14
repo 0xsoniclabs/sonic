@@ -133,24 +133,14 @@ func runSingle(
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
 ) bool {
-	result := runSingleTx(single.txRef, transactions, runner)
-	return isTolerated(result, single.flags)
-}
-
-// runSingleTx executes a single transaction using the provided TransactionRunner.
-// It returns the result of the transaction execution. If the transaction
-// reference is not found in the transactions map, it signals an invalid
-// transaction result.
-func runSingleTx(
-	txRef TxReference,
-	transactions map[TxReference]*types.Transaction,
-	runner TransactionRunner,
-) core_types.TransactionResult {
-	tx, found := transactions[txRef]
+	var result core_types.TransactionResult
+	tx, found := transactions[single.txRef]
 	if !found {
-		return core_types.TransactionResultInvalid
+		result = core_types.TransactionResultInvalid
+	} else {
+		result = runner.Run(tx)
 	}
-	return runner.Run(tx)
+	return isTolerated(result, single.flags)
 }
 
 // isTolerated determines whether a transaction result is considered successful
