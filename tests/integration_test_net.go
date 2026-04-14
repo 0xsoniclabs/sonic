@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"os"
@@ -30,6 +31,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -74,6 +76,21 @@ type IntegrationTestNetSession interface {
 	// accounts. This is a faster than calling EndowAccount for each account since
 	// multiple endowments may get bundled in the same block.
 	EndowAccounts(addresses []common.Address, value *big.Int) ([]*types.Receipt, error)
+
+	// Send sends the given transaction to the network without waiting for it to
+	// be processed. An error is returned if the submission failed.
+	Send(tx *types.Transaction) (common.Hash, error)
+
+	// SendAll sends the given transactions to the network without waiting for
+	// them to be processed. An error is returned if the submission of any
+	// transaction failed.
+	SendAll(txs []*types.Transaction) ([]common.Hash, error)
+
+	// TrySendAll transactions to the network without waiting for them to be
+	// processed. The method returns the list of hashes of accepted transactions,
+	// a map of hashes to error reasons for rejected transactions, and an error
+	// indicating if any other issue prevented the operation from being carried out.
+	TrySendAll(txs []*types.Transaction) (accepted []common.Hash, rejected map[common.Hash]error, error error)
 
 	// Run sends the given transaction to the network and waits for it to be processed.
 	// The resulting receipt is returned.
@@ -1041,6 +1058,37 @@ func (s *Session) EndowAccounts(
 		nonce++
 	}
 	return s.RunAll(transactions)
+}
+
+func (s *Session) Send(tx *types.Transaction) (common.Hash, error) {
+	hashes, err := s.SendAll([]*types.Transaction{tx})
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to send transaction: %w", err)
+	}
+	return hashes[0], nil
+}
+
+func (s *Session) SendAll(tx []*types.Transaction) ([]common.Hash, error) {
+	accepted, rejected, err := s.TrySendAll(tx)
+	return accepted, errors.Join(err, errors.Join(slices.Collect(maps.Values(rejected))...))
+}
+
+func (s *Session) TrySendAll(tx []*types.Transaction) ([]common.Hash, map[common.Hash]error, error) {
+	accepted := make([]common.Hash, len(tx))
+	rejected := make(map[common.Hash]error)
+	rejectedMutex := sync.Mutex{}
+	err := runParallelWithClient(s.net, len(tx), func(client *PooledEhtClient, i int) error {
+		err := client.SendTransaction(context.Background(), tx[i])
+		if err != nil {
+			rejectedMutex.Lock()
+			rejected[tx[i].Hash()] = fmt.Errorf("failed to send transaction %d: %w", i, err)
+			rejectedMutex.Unlock()
+		} else {
+			accepted[i] = tx[i].Hash()
+		}
+		return nil
+	})
+	return accepted, rejected, err
 }
 
 // Run sends the given transaction to the network and waits for it to be processed.

@@ -404,7 +404,7 @@ func WaitFor(ctx context.Context, predicate func(context.Context) (bool, error))
 		}
 		select {
 		case <-timedContext.Done():
-			return fmt.Errorf("wait timeout")
+			return timedContext.Err()
 		case <-time.After(backoff):
 			// The predicate was not satisfied, backoff and try again.
 			backoff = min(maxWaitTime, backoff*2)
