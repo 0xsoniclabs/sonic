@@ -237,6 +237,18 @@ func TestExecutionStep_WithFlags_ReturnsNewExecutionStepWithUpdatedFlags(t *test
 	}
 }
 
+func TestExecutionStep_WithFlags_CanBeUsedToResetFlags(t *testing.T) {
+	step := NewTxStep(TxReference{
+		From: common.Address{12},
+	}).WithFlags(EF_TolerateFailed | EF_TolerateInvalid)
+	updated := step.WithFlags(EF_Default)
+
+	require := require.New(t)
+	require.NotEqual(step, updated, "WithFlags should return a new instance")
+	require.Equal(EF_Default, updated.single.flags)
+	require.Equal(step.single.txRef, updated.single.txRef)
+}
+
 func TestExecutionStep_WithFlags_PanicsWhenTolerateInvalidFlagIsUsedForGroup(t *testing.T) {
 	step := NewAllOfStep(NewTxStep(TxReference{}))
 	require.Panics(t, func() {
