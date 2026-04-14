@@ -86,24 +86,24 @@ func TestRunBundle_DelegatesToRunStep(t *testing.T) {
 
 func Test_runStep_DispatchesToCorrectExecutionMode(t *testing.T) {
 	tests := map[string]struct {
-		step           ExecutionStep
-		expectSnapshot bool // < distinguishes group and transaction mode
-		expectedResult bool // < distinguishes all-of and one-of mode
+		step            ExecutionStep
+		expectSnapshot  bool // < distinguishes group and transaction mode
+		expectedSuccess bool // < distinguishes all-of and one-of mode
 	}{
 		"single transaction": {
-			step:           NewTxStep(TxReference{}),
-			expectSnapshot: false,
-			expectedResult: false, // transaction is missing
+			step:            NewTxStep(TxReference{}),
+			expectSnapshot:  false,
+			expectedSuccess: false, // transaction is missing
 		},
 		"all of group": {
-			step:           NewAllOfStep(),
-			expectSnapshot: true,
-			expectedResult: true, // empty group should succeed
+			step:            NewAllOfStep(),
+			expectSnapshot:  true,
+			expectedSuccess: true, // empty group should succeed
 		},
 		"one of group": {
-			step:           NewOneOfStep(),
-			expectSnapshot: true,
-			expectedResult: false, // empty group should fail
+			step:            NewOneOfStep(),
+			expectSnapshot:  true,
+			expectedSuccess: false, // empty group should fail
 		},
 	}
 
@@ -114,13 +114,13 @@ func Test_runStep_DispatchesToCorrectExecutionMode(t *testing.T) {
 
 			if test.expectSnapshot {
 				runner.EXPECT().CreateSnapshot().Return(1).Times(1)
-				if !test.expectedResult {
+				if !test.expectedSuccess {
 					runner.EXPECT().RevertToSnapshot(1).Times(1)
 				}
 			}
 
 			result := runStep(test.step, nil, runner)
-			require.Equal(t, test.expectedResult, result)
+			require.Equal(t, test.expectedSuccess, result)
 		})
 	}
 }
