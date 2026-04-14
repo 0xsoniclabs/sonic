@@ -118,6 +118,15 @@ func ExportGenesis(ctx context.Context, gdb *gossip.Store, includeArchive bool, 
 		return err
 	}
 
+	// bundles hash
+	writer = newUnitWriter(out)
+	if err := writer.Start(header, "bh", tmpPath); err != nil {
+		return err
+	}
+	if err := exportBundlesHash(ctx, gdb, writer, lastBlock); err != nil {
+		return err
+	}
+
 	// bundles
 	writer = newUnitWriter(out)
 	if err := writer.Start(header, "bundles", tmpPath); err != nil {
@@ -285,8 +294,8 @@ func exportFwaSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter
 	return nil
 }
 
-func exportBundles(ctx context.Context, gdb *gossip.Store, writer *unitWriter, lastBlock idx.Block) error {
-	log.Info("Exporting processed bundles")
+func exportBundlesHash(ctx context.Context, gdb *gossip.Store, writer *unitWriter, lastBlock idx.Block) error {
+	log.Info("Exporting processed bundles history hash")
 
 	// write the history hash as the first item.
 	blockNum, histHash := gdb.GetProcessedBundleHistoryHash()
@@ -297,6 +306,17 @@ func exportBundles(ctx context.Context, gdb *gossip.Store, writer *unitWriter, l
 	if _, err := writer.Write(b); err != nil {
 		return err
 	}
+	hash, err := writer.Flush()
+	if err != nil {
+		return err
+	}
+	log.Info("Exported processed bundles history hash", "blockNum", blockNum, "hash", histHash)
+	fmt.Printf("- Processed bundles history hash: %v \n", hash.String())
+	return nil
+}
+
+func exportBundles(ctx context.Context, gdb *gossip.Store, writer *unitWriter, lastBlock idx.Block) error {
+	log.Info("Exporting processed bundles")
 
 	// write all the execution info from the store.
 	count := 0

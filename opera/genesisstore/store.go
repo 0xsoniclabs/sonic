@@ -51,6 +51,10 @@ func SccBlockSection(i int) string {
 	return getSectionName("scc_bc", i)
 }
 
+func BundleHashSection(i int) string {
+	return getSectionName("bh", i)
+}
+
 func BundlesSection(i int) string {
 	return getSectionName("bundles", i)
 }

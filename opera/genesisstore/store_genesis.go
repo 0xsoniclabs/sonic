@@ -227,7 +227,7 @@ func (s *Store) ProcessedBundles() genesis.ProcessedBundles {
 
 func (s RawProcessedBundles) GetHistoryHash() (bundle.HistoryHash, bool) {
 	for i := range 1000 {
-		f, err := s.fMap(BundlesSection(i))
+		f, err := s.fMap(BundleHashSection(i))
 		if err != nil {
 			continue
 		}
@@ -252,11 +252,6 @@ func (s RawProcessedBundles) ForEach(fn func(bundle.ExecutionInfo) bool) {
 			continue
 		}
 		stream := rlp.NewStream(f, 0)
-		// Skip the history hash (first item in the stream).
-		var h bundle.HistoryHash
-		if err := stream.Decode(&h); err != nil {
-			return
-		}
 		for {
 			var info bundle.ExecutionInfo
 			err := stream.Decode(&info)
