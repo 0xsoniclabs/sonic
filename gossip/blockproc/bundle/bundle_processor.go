@@ -33,7 +33,7 @@ func RunBundle(
 	bundle *TransactionBundle,
 	runner TransactionRunner,
 ) bool {
-	return runStep(&bundle.Plan.Root, bundle.Transactions, runner)
+	return runStep(bundle.Plan.Root, bundle.Transactions, runner)
 }
 
 // TransactionRunner defines an interface for running individual transactions
@@ -51,7 +51,7 @@ type TransactionRunner interface {
 // otherwise. The transaction index map is required to resolve transaction
 // references for steps that execute transactions.
 func runStep(
-	step *ExecutionStep,
+	step ExecutionStep,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
 ) bool {
@@ -94,8 +94,8 @@ func runAllOfGroup(
 	runner TransactionRunner,
 ) bool {
 	snapshot := runner.CreateSnapshot()
-	for i := range steps {
-		if !runStep(&(steps[i]), transactions, runner) {
+	for _, step := range steps {
+		if !runStep(step, transactions, runner) {
 			runner.RevertToSnapshot(snapshot)
 			return false
 		}
@@ -114,8 +114,8 @@ func runOneOfGroup(
 	runner TransactionRunner,
 ) bool {
 	snapshot := runner.CreateSnapshot()
-	for i := range steps {
-		if runStep(&(steps[i]), transactions, runner) {
+	for _, step := range steps {
+		if runStep(step, transactions, runner) {
 			return true
 		}
 	}

@@ -119,7 +119,7 @@ func Test_runStep_DispatchesToCorrectExecutionMode(t *testing.T) {
 				}
 			}
 
-			result := runStep(&test.step, nil, runner)
+			result := runStep(test.step, nil, runner)
 			require.Equal(t, test.expectedResult, result)
 		})
 	}
@@ -133,7 +133,7 @@ func Test_runStep_UnknownStepType_ReturnsFalse(t *testing.T) {
 
 	for name, step := range test {
 		t.Run(name, func(t *testing.T) {
-			require.False(t, runStep(&step, nil, nil))
+			require.False(t, runStep(step, nil, nil))
 		})
 	}
 }
