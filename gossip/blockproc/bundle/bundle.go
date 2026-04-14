@@ -18,7 +18,10 @@ package bundle
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
@@ -46,27 +49,14 @@ func IsEnvelope(tx *types.Transaction) bool {
 }
 
 // OpenEnvelope extracts the bundle enclosed in the given envelope.
-func OpenEnvelope(tx *types.Transaction) (TransactionBundle, error) {
+func OpenEnvelope(
+	signer types.Signer,
+	tx *types.Transaction,
+) (TransactionBundle, error) {
 	if !IsEnvelope(tx) {
 		return TransactionBundle{}, fmt.Errorf("not an envelope")
 	}
-	return decode(tx.Data())
-}
-
-// ExtractExecutionPlan extracts the execution plan from the given envelope.
-func ExtractExecutionPlan(
-	signer types.Signer,
-	tx *types.Transaction,
-) (ExecutionPlan, error) {
-	bundle, err := OpenEnvelope(tx)
-	if err != nil {
-		return ExecutionPlan{}, err
-	}
-	plan, err := bundle.extractExecutionPlan(signer)
-	if err != nil {
-		return ExecutionPlan{}, err
-	}
-	return plan, nil
+	return decode(signer, tx.Data())
 }
 
 var (
@@ -81,61 +71,34 @@ var (
 )
 
 // TransactionBundle represents a bundle of transactions, which are to be executed
-// sequentially within the same block. A payment transaction is included to
-// pay ahead of time for the execution of the bundle.
-// The execution flags can be used to specify the behavior regarding skipped,
-// failed or successful transactions within the bundle, or whenever stop the
-// execution after the first successful transaction.
-// The default behavior (if no flags are set) is to revert the entire bundle
-// if any of the transactions is invalid or fails.
-// A reverted bundle will still include the payment transaction into the block,
-// consuming the payment and nonce, and preventing this transaction from being
-// included in future blocks.
+// sequentially within the same block. The bundle comprises an indexed list of
+// transactions and an execution plan that specifies the order of execution of
+// the transactions and the block range in which the bundle can be included.
 type TransactionBundle struct {
-	Transactions types.Transactions
-	Flags        ExecutionFlags
-	Range        BlockRange // Block range [Earliest, Latest] in which the bundle can be included
+	Transactions map[TxReference]*types.Transaction
+	Plan         ExecutionPlan
 }
 
-func (tb *TransactionBundle) Encode() []byte {
+// GetTransactionsInReferencedOrder returns the transactions stored in the bundle
+// in the order they are referenced by the execution plan. The main intention
+// for this function is to provide a readable mechanism for tests having build
+// bundles using the builder to access the contained singed transactions.
+// Note that the map retaining the transactions in the bundle on its own would
+// make it difficult to retrieve individual transactions.
+func (tb *TransactionBundle) GetTransactionsInReferencedOrder() []*types.Transaction {
+	refs := tb.Plan.Root.GetTransactionReferencesInReferencedOrder()
+	var txs []*types.Transaction
+	for _, ref := range refs {
+		txs = append(txs, tb.Transactions[ref])
+	}
+	return txs
+}
+
+func (tb *TransactionBundle) encode() ([]byte, error) {
 	return encodeInternal(bundleEncodingVersion, tb)
 }
 
 // --- internal utilities ---
-
-// extractExecutionPlan extracts the execution plan from the bundle, deriving
-// the sender of each transaction using the provided signer.
-func (tb *TransactionBundle) extractExecutionPlan(signer types.Signer) (ExecutionPlan, error) {
-
-	txs := make([]ExecutionStep, 0, len(tb.Transactions))
-	for _, tx := range tb.Transactions {
-
-		// derive the sender before stripping the bundle-only mark from the access list
-		// as this operation erases the original signature
-		sender, err := signer.Sender(tx)
-		if err != nil {
-			return ExecutionPlan{}, fmt.Errorf("failed to derive sender: %v", err)
-		}
-
-		// hash the transaction after removing the bundle-only mark from the access list
-		tx, err := removeBundleOnlyMark(tx)
-		if err != nil {
-			return ExecutionPlan{}, err
-		}
-		hash := signer.Hash(tx)
-
-		txs = append(txs, ExecutionStep{
-			From: sender,
-			Hash: hash,
-		})
-	}
-
-	return ExecutionPlan{
-		Steps: txs,
-		Flags: tb.Flags,
-		Range: tb.Range,
-	}, nil
-}
 
 // removeBundleOnlyMark is an utility function that removes the bundle-only mark
 // from the access list of a transaction.
@@ -176,31 +139,41 @@ const (
 )
 
 type bundleEncodingV1 struct {
-	Bundle   types.Transactions
-	Flags    ExecutionFlags
-	Earliest uint64
-	Latest   uint64
+	Transactions types.Transactions
+	Plan         []byte
 }
 
 func encodeInternal(
 	version byte,
 	bundle *TransactionBundle,
-) []byte {
+) ([]byte, error) {
 
-	buffer := bytes.Buffer{}
-	// encode into a buffer can only fail due to OOM
-	// since we are encoding a struct with fixed fields, we can ignore the error
-	_ = rlp.Encode(&buffer, version)
-	_ = rlp.Encode(&buffer, bundleEncodingV1{
-		bundle.Transactions,
-		bundle.Flags,
-		bundle.Range.Earliest,
-		bundle.Range.Latest,
+	// Create canonical form of list of included transactions.
+	transactions := slices.Collect(maps.Values(bundle.Transactions))
+	slices.SortFunc(transactions, func(a, b *types.Transaction) int {
+		hashA := a.Hash()
+		hashB := b.Hash()
+		return bytes.Compare(hashA[:], hashB[:])
 	})
-	return buffer.Bytes()
+
+	// serialize the execution plan and the full bundle data
+	encodedPlan := bytes.NewBuffer(nil)
+	buffer := bytes.Buffer{}
+	err := errors.Join(
+		bundle.Plan.encode(encodedPlan),
+		rlp.Encode(&buffer, version),
+		rlp.Encode(&buffer, bundleEncodingV1{
+			transactions,
+			encodedPlan.Bytes(),
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode transaction bundle: %w", err)
+	}
+	return buffer.Bytes(), nil
 }
 
-func decode(data []byte) (TransactionBundle, error) {
+func decode(signer types.Signer, data []byte) (TransactionBundle, error) {
 	var bundle TransactionBundle
 
 	_, encodedVersion, rest, err := rlp.Split(data)
@@ -219,11 +192,26 @@ func decode(data []byte) (TransactionBundle, error) {
 	if err := rlp.DecodeBytes(rest, &payload); err != nil {
 		return bundle, fmt.Errorf("failed to decode transaction bundle: %v", err)
 	}
-	bundle.Transactions = payload.Bundle
-	bundle.Flags = payload.Flags
-	bundle.Range = BlockRange{
-		Earliest: payload.Earliest,
-		Latest:   payload.Latest,
+
+	bundle.Transactions = make(map[TxReference]*types.Transaction)
+	for _, tx := range payload.Transactions {
+		sender, err := types.Sender(signer, tx)
+		if err != nil {
+			return bundle, err
+		}
+		withoutMarker, err := removeBundleOnlyMark(tx)
+		if err != nil {
+			return bundle, fmt.Errorf("failed to remove bundle-only mark: %v", err)
+		}
+		txRef := TxReference{
+			From: sender,
+			Hash: signer.Hash(withoutMarker),
+		}
+		bundle.Transactions[txRef] = tx
+	}
+
+	if err := bundle.Plan.decode(bytes.NewReader(payload.Plan)); err != nil {
+		return bundle, fmt.Errorf("failed to decode execution plan: %v", err)
 	}
 	return bundle, nil
 }

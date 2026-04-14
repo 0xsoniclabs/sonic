@@ -98,10 +98,10 @@ func getBundleState(
 
 	// Quickest filter: check if the bundle is in the valid block range.
 	currentBlock := chain.GetLatestHeader().Number.Uint64()
-	if bundle.Range.Latest < currentBlock {
+	if bundle.Plan.Range.Latest < currentBlock {
 		return makePermanentlyBlockedState("bundle has expired")
 	}
-	if bundle.Range.Earliest > currentBlock {
+	if bundle.Plan.Range.Earliest > currentBlock {
 		return makeTemporaryBlockedState("bundle targets future blocks")
 	}
 
@@ -220,7 +220,7 @@ func getLowestReferencedNonces(
 	res := make(map[common.Address]uint64)
 	for _, tx := range txBundle.Transactions {
 		if bundle.IsEnvelope(tx) {
-			bundle, err := bundle.OpenEnvelope(tx)
+			bundle, err := bundle.OpenEnvelope(signer, tx)
 			if err != nil {
 				return nil, fmt.Errorf("invalid nested bundle: %w", err)
 			}
@@ -264,7 +264,7 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 
 	// if the transaction is a nested bundle, process it as such
 	if bundle.IsEnvelope(tx) {
-		txBundle, err := bundle.OpenEnvelope(tx)
+		txBundle, err := bundle.OpenEnvelope(r.signer, tx)
 		if err != nil {
 			return core_types.TransactionResultInvalid
 		}

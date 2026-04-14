@@ -1867,7 +1867,7 @@ func TestRunTransactionBundle_BundleOutOfRange_ReturnsEnvelopeAndResultInvalid(t
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
-	tx := bundle.NewBuilder(signer).
+	tx := bundle.NewBuilder().
 		With(bundle.Step(key, &types.AccessListTx{
 			Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
 		})).
@@ -1898,7 +1898,7 @@ func TestRunTransactionBundle_PreviouslyProcessedBundle_ReturnsEnvelopeAndResult
 
 	ctrl := gomock.NewController(t)
 
-	tx, plan := bundle.NewBuilder(signer).BuildEnvelopeAndPlan()
+	tx, plan := bundle.NewBuilder().BuildEnvelopeAndPlan()
 	_, _, err := bundle.ValidateEnvelope(signer, tx)
 	require.NoError(t, err)
 
@@ -1930,7 +1930,7 @@ func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResu
 	state := state.NewMockStateDB(ctrl)
 	evm := NewMock_evm(ctrl)
 
-	tx := bundle.OneOf(signer) // an empty bundle with OneOf flag will fail
+	tx := bundle.OneOf().Build() // an empty bundle with OneOf flag will fail
 	_, plan, err := bundle.ValidateEnvelope(signer, tx)
 	require.NoError(t, err)
 
@@ -1966,9 +1966,9 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 	txOffset := 12
 
 	envelope := getTransactionBundle(t)
-	txBundle, err := bundle.OpenEnvelope(envelope)
+	txBundle, err := bundle.OpenEnvelope(signer, envelope)
 	require.NoError(t, err)
-	plan, err := bundle.ExtractExecutionPlan(signer, envelope)
+	_, plan, err := bundle.ValidateEnvelope(signer, envelope)
 	require.NoError(t, err)
 
 	gomock.InOrder(
@@ -1991,15 +1991,17 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 		runner:      runner,
 	}
 
+	txs := txBundle.GetTransactionsInReferencedOrder()
+
 	evm.EXPECT().runWithBaseFeeCheck(context, gomock.Any(), txOffset).
 		Return(ProcessedTransaction{
-			Transaction: txBundle.Transactions[0],
+			Transaction: txs[0],
 			Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful},
 		})
 
 	processedTransactions, result := runner.runTransactionBundle(context, envelope, txOffset)
 	require.Len(t, processedTransactions, 1)
-	require.Equal(t, txBundle.Transactions[0], processedTransactions[0].Transaction)
+	require.Equal(t, txs[0], processedTransactions[0].Transaction)
 	require.NotNil(t, processedTransactions[0].Receipt)
 	require.Equal(t, core_types.TransactionResultSuccessful, result)
 }
@@ -2063,11 +2065,11 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 
 			key, err := crypto.GenerateKey()
 			require.NoError(t, err)
-			envelope := bundle.AllOf(signer,
+			envelope := bundle.AllOf(
 				bundle.Step(key, &types.AccessListTx{ // < sponsorship request
 					To: &common.Address{1},
 				}),
-			)
+			).Build()
 
 			state := state.NewMockStateDB(ctrl)
 			gomock.InOrder(
@@ -2745,10 +2747,9 @@ func getSponsorshipRequest(t *testing.T) *types.Transaction {
 func getTransactionBundle(t *testing.T) *types.Transaction {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	envelope := bundle.AllOf(signer, bundle.Step(key, &types.AccessListTx{
-		Nonce: 0, To: &common.Address{1}, Gas: 29_000, GasPrice: big.NewInt(1),
-	}))
+	envelope := bundle.AllOf(bundle.Step(key, &types.AccessListTx{
+		Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
+	})).Build()
 	return envelope
 }
 

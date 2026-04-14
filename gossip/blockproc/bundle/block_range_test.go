@@ -17,10 +17,14 @@
 package bundle
 
 import (
+	"bytes"
+	"fmt"
 	"math"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestMakeMaxRangeStartingAt_CreatesMaxRangeStartingAtGivenBlock(t *testing.T) {
@@ -228,4 +232,92 @@ func TestBlockRange_IsInRange_ReturnsTrueIfBlockNumberIsWithinRange(t *testing.T
 			require.Equal(t, test.want, got)
 		})
 	}
+}
+
+func TestBlockRange_EncodingAndDecodingIsAligned(t *testing.T) {
+	require := require.New(t)
+	tests := []BlockRange{
+		{0, 0}, {10, 20}, {20, 10},
+		{0, math.MaxUint64}, {math.MaxUint64, 0},
+		{math.MaxUint64, math.MaxUint64},
+	}
+
+	for _, cur := range tests {
+		var buf bytes.Buffer
+		require.NoError(cur.encode(&buf))
+
+		var decoded BlockRange
+		require.NoError(decoded.decode(&buf))
+		require.Equal(cur, decoded)
+	}
+}
+
+func TestBlockRange_encode_encodesBoundsUsingRlp(t *testing.T) {
+	require := require.New(t)
+	tests := []BlockRange{
+		{0, 0}, {10, 20}, {20, 10},
+		{0, math.MaxUint64}, {math.MaxUint64, 0},
+		{math.MaxUint64, math.MaxUint64},
+	}
+
+	for _, cur := range tests {
+		var buf bytes.Buffer
+		require.NoError(cur.encode(&buf))
+
+		type pair struct {
+			A, B uint64
+		}
+
+		want, err := rlp.EncodeToBytes(pair{cur.Earliest, cur.Latest})
+		require.NoError(err)
+
+		require.Equal(want[:], buf.Bytes())
+	}
+}
+
+func TestBlockRange_encode_FailingWriter_ReturnsIssue(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	writer := NewMockWriter(ctrl)
+
+	issue := fmt.Errorf("injected issue")
+	writer.EXPECT().Write(gomock.Any()).Return(0, issue)
+
+	r := BlockRange{Earliest: 10, Latest: 20}
+	err := r.encode(writer)
+	require.ErrorIs(t, err, issue)
+}
+
+func TestBlockRange_decode_ReadsRlpEncodedUint64Values(t *testing.T) {
+	require := require.New(t)
+	tests := []BlockRange{
+		{0, 0}, {10, 20}, {20, 10},
+		{0, math.MaxUint64}, {math.MaxUint64, 0},
+		{math.MaxUint64, math.MaxUint64},
+	}
+
+	for _, cur := range tests {
+		type pair struct {
+			A, B uint64
+		}
+
+		data, err := rlp.EncodeToBytes(pair{cur.Earliest, cur.Latest})
+		require.NoError(err)
+
+		var r BlockRange
+		err = r.decode(bytes.NewReader(data))
+		require.NoError(err)
+		require.Equal(cur, r)
+	}
+}
+
+func TestBlockRange_decode_FailingReader_ReturnsIssue(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	reader := NewMockReader(ctrl)
+
+	issue := fmt.Errorf("injected issue")
+	reader.EXPECT().Read(gomock.Any()).Return(0, issue)
+
+	var r BlockRange
+	err := r.decode(reader)
+	require.ErrorIs(t, err, issue)
 }

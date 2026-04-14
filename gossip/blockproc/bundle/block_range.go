@@ -16,7 +16,12 @@
 
 package bundle
 
-import "math"
+import (
+	"io"
+	"math"
+
+	"github.com/ethereum/go-ethereum/rlp"
+)
 
 const (
 	// MaxBlockRange is the maximum allowed block range (Latest - Earliest) for
@@ -70,4 +75,12 @@ func (r BlockRange) Size() uint64 {
 // numbers from Earliest through Latest (inclusive) are considered in range.
 func (r BlockRange) IsInRange(blockNum uint64) bool {
 	return blockNum >= r.Earliest && blockNum <= r.Latest
+}
+
+func (r BlockRange) encode(writer io.Writer) error {
+	return rlp.Encode(writer, r)
+}
+
+func (r *BlockRange) decode(reader io.Reader) error {
+	return rlp.Decode(reader, r)
 }

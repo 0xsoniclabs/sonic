@@ -53,9 +53,10 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	signer := types.LatestSignerForChainID(net.GetChainId())
 
 	// Create a bundle where sender A and B exchange 1 token each.
-	envelope, bundle, plan := bundle.NewBuilder(signer).
+	envelope, bundle, plan := bundle.NewBuilder().
+		WithSigner(signer).
 		SetEarliest(block).
-		With(
+		AllOf(
 			bundle.Step(
 				senderA.PrivateKey,
 				tests.SetTransactionDefaults(t, net, &types.AccessListTx{
@@ -85,7 +86,8 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check that the transactions are in the block as advertised.
-	receipts, err := net.GetReceipts([]common.Hash{bundle.Transactions[0].Hash(), bundle.Transactions[1].Hash()})
+	txs := bundle.GetTransactionsInReferencedOrder()
+	receipts, err := net.GetReceipts([]common.Hash{txs[0].Hash(), txs[1].Hash()})
 	require.NoError(t, err)
 	require.Len(t, receipts, 2)
 	for _, receipt := range receipts {
