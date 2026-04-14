@@ -32,107 +32,26 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore/fileshash"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
 )
 
 func TestExportBundles_WritesIntoWriter(t *testing.T) {
-
-	tests := map[string]struct {
-		storeSetup func(*gossip.Store)
-	}{
-		"empty store": {
-			storeSetup: func(store *gossip.Store) {},
-		},
-		"store with history hash but no bundles": {
-			storeSetup: func(store *gossip.Store) {
-				store.SetProcessedBundlesHistoryHash(1, common.Hash{0x42})
-			},
-		},
-		"store with bundles": {
-			storeSetup: func(store *gossip.Store) {
-				store.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
-					{1}: {Offset: 0, Count: 2},
-					{2}: {Offset: 2, Count: 1},
-				})
-				store.AddProcessedBundles(2, map[common.Hash]bundle.PositionInBlock{
-					{3}: {Offset: 0, Count: 1},
-				})
-			},
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			store := setupBundleStore(t)
-			writer := newDryRunWriter(t)
-
-			tc.storeSetup(store)
-
-			err := exportBundles(context.Background(), store, writer, 10)
-			require.NoError(t, err)
-			// Even with no bundles, the history hash is always written.
-			require.Greater(t, writer.uncompressedSize, uint64(0),
-				"history hash should always be written")
-
-		})
-	}
-}
-
-func TestExportBundles_DataIntegrity(t *testing.T) {
 	store := setupBundleStore(t)
-
 	store.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
-		{0x10}: {Offset: 0, Count: 1},
+		{1}: {Offset: 0, Count: 2},
 	})
-	store.SetProcessedBundlesHistoryHash(5, common.Hash{0xde, 0xad})
-
-	// Manually compute expected size.
-	blockNum, histHash := store.GetProcessedBundleHistoryHash()
-	histBytes, err := rlp.EncodeToBytes(bundle.HistoryHash{
-		BlockNumber: blockNum,
-		Hash:        histHash,
-	})
-	require.NoError(t, err)
-	expectedSize := uint64(len(histBytes))
-
-	for _, info := range store.EnumerateProcessedBundles() {
-		b, err := rlp.EncodeToBytes(info)
-		require.NoError(t, err)
-		expectedSize += uint64(len(b))
-	}
 
 	writer := newDryRunWriter(t)
-	err = exportBundles(context.Background(), store, writer, 100)
-	require.NoError(t, err)
-	require.Equal(t, expectedSize, writer.uncompressedSize,
-		"written bytes should match manually encoded data")
-}
 
-func TestExportBundles_MoreBundlesProducesMoreData(t *testing.T) {
-	// Store with 1 bundle
-	store1 := setupBundleStore(t)
-	store1.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
-		{1}: {Offset: 0, Count: 1},
-	})
-	writer1 := newDryRunWriter(t)
-	err := exportBundles(context.Background(), store1, writer1, 10)
+	err := exportBundles(context.Background(), store, writer, 10)
 	require.NoError(t, err)
+	// Even with no bundles, the history hash is always written.
+	require.Greater(t, writer.uncompressedSize, uint64(0),
+		"history hash should always be written")
 
-	// Store with 3 bundles
-	store3 := setupBundleStore(t)
-	store3.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
-		{1}: {Offset: 0, Count: 1},
-		{2}: {Offset: 1, Count: 1},
-		{3}: {Offset: 2, Count: 1},
-	})
-	writer3 := newDryRunWriter(t)
-	err = exportBundles(context.Background(), store3, writer3, 10)
-	require.NoError(t, err)
-
-	require.Greater(t, writer3.uncompressedSize, writer1.uncompressedSize,
-		"3 bundles should produce more data than 1 bundle")
 }
 
 func TestExportBundles_ContextCancelledImmediately(t *testing.T) {
@@ -170,8 +89,11 @@ func TestExportBundles_ContextCancelledAfterFirstBundle(t *testing.T) {
 		"some data should have been written before cancellation")
 }
 
-func TestExportBundles_HistoryHash_WriteError(t *testing.T) {
+func TestBundles_WriteError(t *testing.T) {
 	store := setupBundleStore(t)
+	store.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
+		{1}: {Offset: 0, Count: 1},
+	})
 
 	writer := &unitWriter{}
 	writer.fileshasher = fileshash.WrapWriter(nil, genesisstore.FilesHashPieceSize,
@@ -179,72 +101,95 @@ func TestExportBundles_HistoryHash_WriteError(t *testing.T) {
 			return &failingTmpWriter{}
 		},
 	)
+	err := exportBundlesHash(context.Background(), store, writer, 10)
+	require.Error(t, err)
 
-	err := exportBundles(context.Background(), store, writer, 10)
+	err = exportBundles(context.Background(), store, writer, 10)
 	require.Error(t, err)
 }
 
-func TestExportBundles_WrittenWithRealFile(t *testing.T) {
+func TestBundles_RoundTrip(t *testing.T) {
 	store := setupBundleStore(t)
-	store.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
-		{0xaa}: {Offset: 0, Count: 2},
-	})
-	store.SetProcessedBundlesHistoryHash(1, common.Hash{0xff})
 
+	wantBundles := map[common.Hash]bundle.PositionInBlock{
+		{0xaa}: {Offset: 0, Count: 2},
+		{0xbb}: {Offset: 2, Count: 1},
+	}
+	store.AddProcessedBundles(1, wantBundles)
+	wantHistoryHash := common.Hash{0xff}
+	store.SetProcessedBundlesHistoryHash(1, wantHistoryHash)
+
+	// Export to a real file.
 	tmpDir := t.TempDir()
-	outFile, err := os.CreateTemp(tmpDir, "export-bundles-*")
+	outFile, err := os.CreateTemp(tmpDir, "export-bundles-*.g")
 	require.NoError(t, err)
 	defer func() { require.NoError(t, outFile.Close()) }()
 
+	header := genesis.Header{}
 	writer := newUnitWriter(outFile)
-	err = writer.Start(genesis.Header{}, "bundles", tmpDir)
+
+	err = writer.Start(header, "bh", tmpDir)
+	require.NoError(t, err)
+	err = exportBundlesHash(context.Background(), store, writer, 10)
 	require.NoError(t, err)
 
+	err = writer.Start(header, "bundles", tmpDir)
+	require.NoError(t, err)
 	err = exportBundles(context.Background(), store, writer, 10)
 	require.NoError(t, err)
-	require.Greater(t, writer.uncompressedSize, uint64(0))
+
+	// Re-open the file and read back through genesisstore.
+	_, err = outFile.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+
+	gs, _, err := genesisstore.OpenGenesisStore(outFile)
+	require.NoError(t, err)
+
+	// Verify history hash roundtrips correctly.
+	gotHist, ok := gs.ProcessedBundles().GetHistoryHash()
+	require.True(t, ok, "history hash should be present")
+	require.Equal(t, uint64(1), gotHist.BlockNumber)
+	require.Equal(t, wantHistoryHash, gotHist.Hash)
+
+	// Verify bundle execution infos roundtrip correctly.
+	wantInfos := store.EnumerateProcessedBundles()
+	var gotInfos []bundle.ExecutionInfo
+	gs.ProcessedBundles().ForEach(func(info bundle.ExecutionInfo) bool {
+		gotInfos = append(gotInfos, info)
+		return true
+	})
+	require.Equal(t, wantInfos, gotInfos,
+		"exported and re-imported bundle execution infos should match")
 }
 
-func TestExportBundles_DeterministicOutput(t *testing.T) {
+func TestBundles_DeterministicOutput(t *testing.T) {
 	// Running export twice with the same data should produce the same hash.
-	makeStore := func() *gossip.Store {
-		s := setupBundleStore(t)
-		s.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
-			{0x01}: {Offset: 0, Count: 1},
-		})
-		s.SetProcessedBundlesHistoryHash(1, common.Hash{0x42})
-		return s
+
+	exporter := []func(context.Context, *gossip.Store, *unitWriter, idx.Block) error{
+		exportBundlesHash,
+		exportBundles,
 	}
 
-	writer1 := newDryRunWriter(t)
-	err := exportBundles(context.Background(), makeStore(), writer1, 10)
-	require.NoError(t, err)
+	for _, exp := range exporter {
+		t.Run("exporter", func(t *testing.T) {
+			s := setupBundleStore(t)
+			s.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
+				{0x01}: {Offset: 0, Count: 1},
+			})
+			s.SetProcessedBundlesHistoryHash(1, common.Hash{0x42})
 
-	writer2 := newDryRunWriter(t)
-	err = exportBundles(context.Background(), makeStore(), writer2, 10)
-	require.NoError(t, err)
+			hashWriter1 := newDryRunWriter(t)
+			err := exp(context.Background(), s, hashWriter1, 10)
+			require.NoError(t, err)
 
-	require.Equal(t, writer1.fileshasher.Root(), writer2.fileshasher.Root(),
-		"same input should produce same output hash")
-}
+			hashWriter2 := newDryRunWriter(t)
+			err = exp(context.Background(), s, hashWriter2, 10)
+			require.NoError(t, err)
 
-func TestExportBundles_HistoryHashAlwaysWrittenFirst(t *testing.T) {
-	storeEmpty := setupBundleStore(t)
-	writerEmpty := newDryRunWriter(t)
-	err := exportBundles(context.Background(), storeEmpty, writerEmpty, 10)
-	require.NoError(t, err)
-	histOnlySize := writerEmpty.uncompressedSize
-
-	storeWithBundles := setupBundleStore(t)
-	storeWithBundles.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
-		{1}: {Offset: 0, Count: 1},
-	})
-	writerWithBundles := newDryRunWriter(t)
-	err = exportBundles(context.Background(), storeWithBundles, writerWithBundles, 10)
-	require.NoError(t, err)
-
-	require.Greater(t, writerWithBundles.uncompressedSize, histOnlySize,
-		"bundles should add data beyond just the history hash")
+			require.Equal(t, hashWriter1.fileshasher.Root(), hashWriter2.fileshasher.Root(),
+				"same input should produce same output hash")
+		})
+	}
 }
 
 func TestMustRlpEncodeToByte_PanicsOnError(t *testing.T) {
