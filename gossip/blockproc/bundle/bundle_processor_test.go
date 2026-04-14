@@ -419,34 +419,34 @@ func Test_runSingle_MissingTransaction_AcceptsAsDefinedByFlags(t *testing.T) {
 
 func Test_isTolerated_InterpretsExecutionFlagsCorrectly(t *testing.T) {
 	tests := []struct {
-		flags     ExecutionFlags
-		result    core_types.TransactionResult
-		tolerated bool
+		flags             ExecutionFlags
+		result            core_types.TransactionResult
+		expectedTolerated bool
 	}{
-		{flags: EF_Default, result: core_types.TransactionResultInvalid, tolerated: false},
-		{flags: EF_Default, result: core_types.TransactionResultFailed, tolerated: false},
-		{flags: EF_Default, result: core_types.TransactionResultSuccessful, tolerated: true},
-		{flags: EF_Default, result: 99, tolerated: false}, // unknown result treated as failed
+		{flags: EF_Default, result: core_types.TransactionResultInvalid, expectedTolerated: false},
+		{flags: EF_Default, result: core_types.TransactionResultFailed, expectedTolerated: false},
+		{flags: EF_Default, result: core_types.TransactionResultSuccessful, expectedTolerated: true},
+		{flags: EF_Default, result: 99, expectedTolerated: false}, // unknown result treated as failed
 
-		{flags: EF_TolerateInvalid, result: core_types.TransactionResultInvalid, tolerated: true},
-		{flags: EF_TolerateInvalid, result: core_types.TransactionResultFailed, tolerated: false},
-		{flags: EF_TolerateInvalid, result: core_types.TransactionResultSuccessful, tolerated: true},
-		{flags: EF_TolerateInvalid, result: 99, tolerated: false}, // unknown result treated as failed
+		{flags: EF_TolerateInvalid, result: core_types.TransactionResultInvalid, expectedTolerated: true},
+		{flags: EF_TolerateInvalid, result: core_types.TransactionResultFailed, expectedTolerated: false},
+		{flags: EF_TolerateInvalid, result: core_types.TransactionResultSuccessful, expectedTolerated: true},
+		{flags: EF_TolerateInvalid, result: 99, expectedTolerated: false}, // unknown result treated as failed
 
-		{flags: EF_TolerateFailed, result: core_types.TransactionResultInvalid, tolerated: false},
-		{flags: EF_TolerateFailed, result: core_types.TransactionResultFailed, tolerated: true},
-		{flags: EF_TolerateFailed, result: core_types.TransactionResultSuccessful, tolerated: true},
-		{flags: EF_TolerateFailed, result: 99, tolerated: false}, // unknown result treated as failed
+		{flags: EF_TolerateFailed, result: core_types.TransactionResultInvalid, expectedTolerated: false},
+		{flags: EF_TolerateFailed, result: core_types.TransactionResultFailed, expectedTolerated: true},
+		{flags: EF_TolerateFailed, result: core_types.TransactionResultSuccessful, expectedTolerated: true},
+		{flags: EF_TolerateFailed, result: 99, expectedTolerated: false}, // unknown result treated as failed
 
-		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: core_types.TransactionResultInvalid, tolerated: true},
-		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: core_types.TransactionResultFailed, tolerated: true},
-		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: core_types.TransactionResultSuccessful, tolerated: true},
-		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: 99, tolerated: false}, // unknown result treated as failed
+		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: core_types.TransactionResultInvalid, expectedTolerated: true},
+		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: core_types.TransactionResultFailed, expectedTolerated: true},
+		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: core_types.TransactionResultSuccessful, expectedTolerated: true},
+		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: 99, expectedTolerated: false}, // unknown result treated as failed
 	}
 
 	for _, test := range tests {
 		require.Equal(t,
-			test.tolerated,
+			test.expectedTolerated,
 			isTolerated(test.result, test.flags),
 			"flags: %b, result: %d", test.flags, test.result,
 		)
