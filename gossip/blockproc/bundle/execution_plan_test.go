@@ -244,6 +244,26 @@ func TestExecutionStep_WithFlags_PanicsWhenTolerateInvalidFlagIsUsedForGroup(t *
 	}, "WithFlags should panic when TolerateInvalid flag is used for a group")
 }
 
+func TestExecutionStep_valid_PassesWhenExactlyOneOfSingleOrGroupIsSet(t *testing.T) {
+	correct := []ExecutionStep{
+		{single: &single{}},
+		{group: &group{}},
+	}
+
+	for _, step := range correct {
+		require.True(t, step.valid())
+	}
+
+	wrong := []ExecutionStep{
+		{},                                   // neither single nor group set
+		{single: &single{}, group: &group{}}, // both single and group set
+	}
+
+	for _, step := range wrong {
+		require.False(t, step.valid())
+	}
+}
+
 func TestExecutionStep_EncodingAndDecodingAreAligned(t *testing.T) {
 	ref1 := TxReference{
 		From: common.Address{1},
