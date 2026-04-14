@@ -241,36 +241,48 @@ func Test_runAllOfGroup_ReturnsTrueIfAllTransactionsPass(t *testing.T) {
 }
 
 func Test_runAllOfGroup_StopsAtFirstFailedTransaction(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	runner := NewMockTransactionRunner(ctrl)
-
-	tx1 := types.NewTx(&types.LegacyTx{})
-	tx2 := types.NewTx(&types.LegacyTx{})
-	tx3 := types.NewTx(&types.LegacyTx{})
-
-	ref1 := TxReference{From: common.Address{1}}
-	ref2 := TxReference{From: common.Address{2}}
-	ref3 := TxReference{From: common.Address{3}}
-
-	txs := map[TxReference]*types.Transaction{
-		ref1: tx1,
-		ref2: tx2,
-		ref3: tx3,
+	txs := []*types.Transaction{
+		types.NewTx(&types.LegacyTx{}),
+		types.NewTx(&types.LegacyTx{}),
+		types.NewTx(&types.LegacyTx{}),
 	}
 
-	gomock.InOrder(
-		runner.EXPECT().CreateSnapshot().Return(1),
-		runner.EXPECT().Run(tx1).Return(core_types.TransactionResultSuccessful),
-		runner.EXPECT().Run(tx2).Return(core_types.TransactionResultFailed),
-		// tx3 should not be run
-		runner.EXPECT().RevertToSnapshot(1),
-	)
-
-	steps := []ExecutionStep{
-		NewTxStep(ref1), NewTxStep(ref2), NewTxStep(ref3),
+	refs := []TxReference{}
+	for i := range txs {
+		refs = append(refs, TxReference{From: common.Address{byte(i)}})
 	}
 
-	require.False(t, runAllOfGroup(steps, txs, runner))
+	index := map[TxReference]*types.Transaction{}
+	for i, ref := range refs {
+		index[ref] = txs[i]
+	}
+
+	steps := []ExecutionStep{}
+	for _, ref := range refs {
+		steps = append(steps, NewTxStep(ref))
+	}
+
+	for firstFailed := range txs {
+		t.Run(fmt.Sprintf("first failed tx index: %d", firstFailed), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMockTransactionRunner(ctrl)
+
+			head := runner.EXPECT().CreateSnapshot().Return(1)
+			for i := range firstFailed {
+				head = runner.EXPECT().
+					Run(txs[i]).
+					Return(core_types.TransactionResultSuccessful).
+					After(head)
+			}
+			head = runner.EXPECT().Run(txs[firstFailed]).
+				Return(core_types.TransactionResultFailed).
+				After(head)
+
+			runner.EXPECT().RevertToSnapshot(1).After(head)
+
+			require.False(t, runAllOfGroup(steps, index, runner))
+		})
+	}
 }
 
 func Test_runOneOfGroup_ForEmptySteps_ReturnsFailed(t *testing.T) {
@@ -310,35 +322,46 @@ func Test_runOneOfGroup_RollsBackAndReturnsFailedIfAllTransactionsFail(t *testin
 }
 
 func Test_runOneOfGroup_StopsAtFirstSuccessfulTransaction(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	runner := NewMockTransactionRunner(ctrl)
-
-	tx1 := types.NewTx(&types.LegacyTx{})
-	tx2 := types.NewTx(&types.LegacyTx{})
-	tx3 := types.NewTx(&types.LegacyTx{})
-
-	ref1 := TxReference{From: common.Address{1}}
-	ref2 := TxReference{From: common.Address{2}}
-	ref3 := TxReference{From: common.Address{3}}
-
-	txs := map[TxReference]*types.Transaction{
-		ref1: tx1,
-		ref2: tx2,
-		ref3: tx3,
+	txs := []*types.Transaction{
+		types.NewTx(&types.LegacyTx{}),
+		types.NewTx(&types.LegacyTx{}),
+		types.NewTx(&types.LegacyTx{}),
 	}
 
-	gomock.InOrder(
-		runner.EXPECT().CreateSnapshot().Return(1),
-		runner.EXPECT().Run(tx1).Return(core_types.TransactionResultFailed),
-		runner.EXPECT().Run(tx2).Return(core_types.TransactionResultSuccessful),
-		// tx3 should not be run
-	)
-
-	steps := []ExecutionStep{
-		NewTxStep(ref1), NewTxStep(ref2), NewTxStep(ref3),
+	refs := []TxReference{}
+	for i := range txs {
+		refs = append(refs, TxReference{From: common.Address{byte(i)}})
 	}
 
-	require.True(t, runOneOfGroup(steps, txs, runner))
+	index := map[TxReference]*types.Transaction{}
+	for i, ref := range refs {
+		index[ref] = txs[i]
+	}
+
+	steps := []ExecutionStep{}
+	for _, ref := range refs {
+		steps = append(steps, NewTxStep(ref))
+	}
+
+	for firstSuccess := range txs {
+		t.Run(fmt.Sprintf("first successful tx index: %d", firstSuccess), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMockTransactionRunner(ctrl)
+
+			head := runner.EXPECT().CreateSnapshot().Return(1)
+			for i := range firstSuccess {
+				head = runner.EXPECT().
+					Run(txs[i]).
+					Return(core_types.TransactionResultFailed).
+					After(head)
+			}
+			runner.EXPECT().Run(txs[firstSuccess]).
+				Return(core_types.TransactionResultSuccessful).
+				After(head)
+
+			require.True(t, runOneOfGroup(steps, index, runner))
+		})
+	}
 }
 
 func Test_runSingle_InterpretsTxResultAsDefinedByFlags(t *testing.T) {
