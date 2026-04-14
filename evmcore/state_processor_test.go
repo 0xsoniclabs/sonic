@@ -2490,11 +2490,11 @@ func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOn
 		processedTransactions: make([]ProcessedTransaction, 100),
 	}
 
-	bundleTransactionRunner.snapshots = append(bundleTransactionRunner.snapshots, bundleTransactionRunnerSnapshot{
+	bundleTransactionRunner.snapshots = []bundleTransactionRunnerSnapshot{{
 		stateDbSnapshot:                snapshotId,
 		txOffset:                       14,
 		processedTransactionListLength: 5,
-	})
+	}}
 	bundleTransactionRunner.RevertToSnapshot(0)
 
 	require.Len(t, bundleTransactionRunner.snapshots, 0)
