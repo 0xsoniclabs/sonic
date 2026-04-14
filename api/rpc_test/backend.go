@@ -374,6 +374,11 @@ func (b *fakeBackend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
 	return opera.CreateTransientEvmChainConfig(b.chainID, heights, blockHeight)
 }
 
+// UnprotectedAllowed returns false — only EIP-155 protected transactions allowed.
+func (b *fakeBackend) UnprotectedAllowed() bool {
+	return false
+}
+
 // GetBundleExecutionInfo returns nil — not used in fake backend tests.
 func (b *fakeBackend) GetBundleExecutionInfo(_ common.Hash) *bundle.ExecutionInfo {
 	panic("not implemented")
