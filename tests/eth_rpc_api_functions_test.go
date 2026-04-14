@@ -36,6 +36,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/abft"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -220,7 +221,6 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 	// and upgrades gets updated in block 1
 	block1, err := client.BlockByNumber(t.Context(), big.NewInt(1))
 	require.NoError(t, err, "could not get block 1 to determine expected ActivationTime")
-	activationTime := block1.Header().Time
 
 	upgradeHeight := opera.UpgradeHeight{
 		Upgrades: opera.GetBrioUpgrades(),
@@ -232,7 +232,8 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 
 	want := map[string]map[string]any{
 		"current": {
-			"activationTime": activationTime,
+			"activationTime": block1.Time(),
+			"blockHeight":    fmt.Sprintf("0x%x", block1.Number().Uint64()),
 			"blobSchedule":   nil,
 			"chainId":        "0xfa3",
 			"forkId":         fmt.Sprintf("0x%x", expectedForkId),
@@ -261,27 +262,19 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 		"next": nil,
 		"last": nil,
 	}
-
 	require.Equal(t, want, response, "eth_config returned unexpected result")
 
 	originalForkId := response["current"]["forkId"]
 	require.NotZero(t, originalForkId, "forkId should not be zero")
 
 	// get current rules and change to single proposer mode
-	var rules opera.Rules
-	err = client.Client().Call(&rules, "eth_getRules", "latest")
+	var originalRules opera.Rules
+	err = client.Client().Call(&originalRules, "eth_getRules", "latest")
 	require.NoError(t, err, "eth_getRules failed")
 
-	rules.Upgrades.GasSubsidies = true
-	UpdateNetworkRules(t, net, rules)
+	originalRules.Upgrades.GasSubsidies = true
+	UpdateNetworkRules(t, net, originalRules)
 	net.AdvanceEpoch(t, 1)
-
-	// get current block to confirm epoch advancement
-	currentBlock, err := client.BlockByNumber(t.Context(), nil)
-	require.NoError(t, err, "could not get current block after epoch advancement")
-	require.Greater(t, currentBlock.NumberU64(), block1.NumberU64(), "block number did not advance after epoch advancement")
-
-	WaitForProofOf(t, client, int(currentBlock.NumberU64()))
 
 	// get new config
 	err = client.Client().Call(&response, "eth_config")
@@ -295,28 +288,24 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 	require.Contains(t, response["current"], "systemContracts")
 	require.Contains(t, response["current"]["systemContracts"], "GAS_SUBSIDY_REGISTRY_ADDRESS")
 
-	foundActivationBlock := false
-	activationBlockNumber := idx.Block(0)
-	for i := currentBlock.NumberU64(); i > 0 || !foundActivationBlock; i-- {
-		// get previous block to determine expected activation time
-		previousBlock, err := client.BlockByNumber(t.Context(), big.NewInt(int64(i)))
-		require.NoError(t, err, "could not get previous block after epoch advancement")
+	// reinterpret block height from string to uint64
+	heightString := response["current"]["blockHeight"].(string)
+	heightUint, err := hexutil.DecodeUint64(heightString)
+	require.NoError(t, err, "could not decode block height from hex string")
 
-		if previousBlock.Header().Time == uint64(response["current"]["activationTime"].(float64)) {
-			foundActivationBlock = true
-			activationBlockNumber = idx.Block(previousBlock.NumberU64())
-			break
-		}
-	}
+	// get current block to confirm epoch advancement
+	activationBlock, err := client.HeaderByNumber(t.Context(), big.NewInt(int64(heightUint)))
+	require.NoError(t, err)
+	require.Equal(t, activationBlock.Time, uint64(response["current"]["activationTime"].(float64)),
+		"activation block time should be greater than the activation time in config")
 
 	upgradeHeight = opera.UpgradeHeight{
-		Upgrades: rules.Upgrades,
-		Height:   activationBlockNumber,
+		Upgrades: originalRules.Upgrades,
+		Height:   idx.Block(heightUint),
 	}
 	expectedForkId, err = ethapi.MakeForkId(upgradeHeight, genesisId)
 	require.NoError(t, err, "could not make expected fork ID after upgrade")
 
 	require.Equal(t, fmt.Sprintf("0x%x", expectedForkId), response["current"]["forkId"],
 		"fork ID after upgrade is incorrect")
-	require.True(t, foundActivationBlock, "should have found block with the same timestamp as the activation time")
 }

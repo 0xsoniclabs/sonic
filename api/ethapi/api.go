@@ -727,7 +727,9 @@ type configResponse struct {
 // config as described by https://eips.ethereum.org/EIPS/eip-7910
 type config struct {
 	// ActivationTime is the timestamp of the first block where this config is active.
-	ActivationTime uint64 `json:"activationTime"`
+	ActivationTime uint64       `json:"activationTime"`
+	BlockHeight    *hexutil.Big `json:"blockHeight"`
+
 	// BlobSchedule will remain nil because in Sonic this is not relevant
 	BlobSchedule *params.BlobConfig `json:"blobSchedule"`
 

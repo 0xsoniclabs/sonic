@@ -69,6 +69,7 @@ func makeConfigFromUpgrade(
 		// block time needs to be converted to unix timestamp as it is done in
 		// evmcore/dummy_block.go in method EvmHeader.EthHeader()
 		ActivationTime:  uint64(block.Time.Unix()),
+		BlockHeight:     (*hexutil.Big)(block.Number),
 		ChainId:         (*hexutil.Big)(chainID),
 		ForkId:          forkId[:],
 		Precompiles:     precompiled,
