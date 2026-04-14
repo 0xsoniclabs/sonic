@@ -66,7 +66,7 @@ func runStep(
 
 // runGroup executes a group of steps, which can be either one-of or all-of,
 // based on the group's execution semantic. It returns true if the group
-// execution is considered successful, and false otherwise.
+// execution is considered tolerated, and false otherwise.
 func runGroup(
 	group *group,
 	transactions map[TxReference]*types.Transaction,
