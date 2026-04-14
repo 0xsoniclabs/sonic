@@ -59,16 +59,16 @@ func runStep(
 		return false
 	}
 	if step.single != nil {
-		return runSingle(step.single, transactions, runner)
+		return runSingle(*step.single, transactions, runner)
 	}
-	return runGroup(step.group, transactions, runner)
+	return runGroup(*step.group, transactions, runner)
 }
 
 // runGroup executes a group of steps, which can be either one-of or all-of,
 // based on the group's execution semantic. It returns true if the group
 // execution is considered tolerated, and false otherwise.
 func runGroup(
-	group *group,
+	group group,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
 ) bool {
@@ -129,7 +129,7 @@ func runOneOfGroup(
 // map, it is considered an invalid transaction result, and the function returns
 // true if the TolerateInvalid flag is set, and false otherwise.
 func runSingle(
-	single *single,
+	single single,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
 ) bool {

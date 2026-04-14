@@ -163,7 +163,7 @@ func Test_runGroup_DispatchesToCorrectExecutionMode(t *testing.T) {
 				runner.EXPECT().RevertToSnapshot(1).Times(1)
 			}
 
-			result := runGroup(&test.group, nil, runner)
+			result := runGroup(test.group, nil, runner)
 			require.Equal(t, test.expectedResult, result)
 		})
 	}
@@ -204,7 +204,7 @@ func Test_runGroup_HandlesTolerateFailedFlag(t *testing.T) {
 			runner.EXPECT().CreateSnapshot().Return(1)
 			runner.EXPECT().RevertToSnapshot(1).MaxTimes(1)
 
-			require.Equal(t, test.wanted, runGroup(test.step.group, nil, runner))
+			require.Equal(t, test.wanted, runGroup(*test.step.group, nil, runner))
 		})
 	}
 }
@@ -367,7 +367,7 @@ func Test_runSingle_InterpretsTxResultAsDefinedByFlags(t *testing.T) {
 
 				runner.EXPECT().Run(tx).Return(result)
 
-				single := &single{flags: flag}
+				single := single{flags: flag}
 				got := runSingle(single, txs, runner)
 				want := isTolerated(result, flag)
 				require.Equal(t, want, got)
@@ -386,7 +386,7 @@ func Test_runSingle_MissingTransaction_AcceptsAsDefinedByFlags(t *testing.T) {
 
 	for _, flags := range tests {
 		t.Run(fmt.Sprintf("flags=%b", flags), func(t *testing.T) {
-			single := &single{flags: flags}
+			single := single{flags: flags}
 			result := runSingle(single, nil, nil)
 			want := isTolerated(core_types.TransactionResultInvalid, flags)
 			require.Equal(t, want, result)
