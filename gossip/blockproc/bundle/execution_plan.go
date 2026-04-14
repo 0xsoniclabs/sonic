@@ -76,14 +76,6 @@ type TxReference struct {
 	Hash common.Hash
 }
 
-// ExecutionStep is a single node in the hierarchy of processing steps defining an
-// execution plan. Each ExecutionStep is either a reference to a transaction to be
-// executed or a group of sub-steps. Groups may be marked as "oneOf", meaning
-// that only one of the sub-steps needs to be successfully executed for the
-// group to be considered successful. Furthermore, for each ExecutionStep, execution
-// flags can be defined to specify the behavior of the execution (e.g. whether
-// failed or invalid transactions should be tolerated).
-
 // ExecutionStep is a node in the hierarchy of an execution plan describing a
 // processing step. It can either be a single transaction to be executed or a
 // group of nested execution steps.
