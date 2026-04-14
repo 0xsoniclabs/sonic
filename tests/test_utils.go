@@ -56,7 +56,7 @@ import (
 //     minimum gas required to execute the transaction
 //     Filled gas is a static minimum value, it does not account for the gas
 //     costs of the contract opcodes.
-func CreateTransaction(t *testing.T, session IntegrationTestNetSession, tx types.TxData, account *Account) *types.Transaction {
+func CreateTransaction(t testing.TB, session IntegrationTestNetSession, tx types.TxData, account *Account) *types.Transaction {
 	t.Helper()
 	signedTx := SignTransaction(
 		t,
@@ -70,7 +70,7 @@ func CreateTransaction(t *testing.T, session IntegrationTestNetSession, tx types
 // SignTransaction is a testing helper that signs a transaction with the
 // key from the provided account
 func SignTransaction(
-	t *testing.T,
+	t testing.TB,
 	chainId *big.Int,
 	payload types.TxData,
 	from *Account,
@@ -98,7 +98,7 @@ func SignTransaction(
 // Notice that this function is generic, returning the same type as the input, this
 // allows further manual configuration of the transaction fields after the defaults are set.
 func SetTransactionDefaults[T types.TxData](
-	t *testing.T,
+	t testing.TB,
 	net IntegrationTestNetSession,
 	txPayload T,
 	sender *Account,

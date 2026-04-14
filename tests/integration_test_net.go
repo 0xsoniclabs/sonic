@@ -859,9 +859,17 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 // For this reason, it is not exposed via the Session object to avoid side effects in parallel tests.
 func (n *IntegrationTestNet) AdvanceEpoch(t testing.TB, epochs int) {
 	t.Helper()
+
 	client, err := n.GetClient()
 	require.NoError(t, err, "failed to connect to the Ethereum client")
 	defer client.Close()
+
+	//send a noop transaction to trigger a block
+	sendNoop := func() {
+		noopTx := CreateTransaction(t, n, &types.LegacyTx{}, n.GetSessionSponsor())
+		err := client.SendTransaction(t.Context(), noopTx)
+		require.NoError(t, err, "failed to send noop transaction to trigger block sealing")
+	}
 
 	var currentEpoch hexutil.Uint64
 	err = client.Client().Call(&currentEpoch, "eth_currentEpoch")
@@ -882,7 +890,11 @@ func (n *IntegrationTestNet) AdvanceEpoch(t testing.TB, epochs int) {
 		if err := client.Client().Call(&newEpoch, "eth_currentEpoch"); err != nil {
 			return false, fmt.Errorf("failed to get current epoch: %w", err)
 		}
-		return newEpoch >= currentEpoch+hexutil.Uint64(epochs), nil
+		hasEpochAdvanced := newEpoch >= currentEpoch+hexutil.Uint64(epochs)
+		if !hasEpochAdvanced {
+			sendNoop()
+		}
+		return hasEpochAdvanced, nil
 	})
 	require.NoError(t, err, "failed to wait for epoch to advance")
 
@@ -895,12 +907,19 @@ func (n *IntegrationTestNet) AdvanceEpoch(t testing.TB, epochs int) {
 	// block is completed.
 	currentBlock, err := client.BlockByNumber(t.Context(), nil)
 	require.NoError(t, err)
+
+	sendNoop()
 	err = WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 		newBlock, err := client.BlockByNumber(t.Context(), nil)
 		if err != nil {
 			return false, err
 		}
-		return newBlock.Number().Int64() > currentBlock.Number().Int64()+1, nil
+		advancedEnough := newBlock.Number().Int64() > currentBlock.Number().Int64()+1
+		if !advancedEnough {
+			sendNoop()
+			return false, nil
+		}
+		return true, nil
 	})
 	require.NoError(t, err, "failed to wait seling block to be completed epoch change")
 }
