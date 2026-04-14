@@ -124,7 +124,7 @@ func runOneOfGroup(
 }
 
 // runSingle executes a single transaction step and returns true if the
-// execution result is considered successful based on the execution flags, and
+// execution result is considered tolerated based on the execution flags, and
 // false otherwise. If the transaction reference is not found in the transactions
 // map, it is considered an invalid transaction result, and the function returns
 // true if the TolerateInvalid flag is set, and false otherwise.
