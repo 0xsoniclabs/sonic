@@ -472,7 +472,7 @@ func (f dropableFile) Drop() error {
 func MustRlpEncodeToByte(value any) []byte {
 	res, err := rlp.EncodeToBytes(value)
 	if err != nil {
-		panic("insert your favorite message here")
+		panic("failed to encode value to bytes: " + err.Error())
 	}
 	return res
 }
