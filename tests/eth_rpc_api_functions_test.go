@@ -276,11 +276,6 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 	UpdateNetworkRules(t, net, originalRules)
 	net.AdvanceEpoch(t, 1)
 
-	// get current block to confirm epoch advancement
-	currentBlock, err := client.BlockByNumber(t.Context(), nil)
-	require.NoError(t, err, "could not get current block after epoch advancement")
-	require.Greater(t, currentBlock.NumberU64(), block1.NumberU64(), "block number did not advance after epoch advancement")
-
 	// get new config
 	err = client.Client().Call(&response, "eth_config")
 	require.NoError(t, err, "eth_config failed")
@@ -297,6 +292,12 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 	heightString := response["current"]["blockHeight"].(string)
 	heightUint, err := hexutil.DecodeUint64(heightString)
 	require.NoError(t, err, "could not decode block height from hex string")
+
+	// get current block to confirm epoch advancement
+	activationBlock, err := client.HeaderByNumber(t.Context(), big.NewInt(int64(heightUint)))
+	require.NoError(t, err)
+	require.Equal(t, activationBlock.Time, uint64(response["current"]["activationTime"].(float64)),
+		"activation block time should be greater than the activation time in config")
 
 	upgradeHeight = opera.UpgradeHeight{
 		Upgrades: originalRules.Upgrades,
