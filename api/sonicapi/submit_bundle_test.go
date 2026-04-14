@@ -512,7 +512,7 @@ func Test_parseRPCBlockNumber(t *testing.T) {
 				}
 			}
 
-			got, err := parseRPCBlockNumber(tt.num, mock)
+			got, err := parseRPCBlockNumber(mock, tt.num)
 			if tt.wantErrSubstr != "" {
 				require.ErrorContains(t, err, tt.wantErrSubstr)
 			} else {

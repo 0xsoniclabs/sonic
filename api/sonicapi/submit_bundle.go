@@ -44,6 +44,7 @@ type SubmitBundleArgs struct {
 }
 
 // SubmitBundle implements the `sonic_submitBundle` RPC method, which submits a prepared bundle for execution.
+// Returns the hash of the execution plan and an error if any.
 func (a *PublicBundleAPI) SubmitBundle(
 	ctx context.Context,
 	args SubmitBundleArgs,
@@ -53,12 +54,12 @@ func (a *PublicBundleAPI) SubmitBundle(
 		return common.Hash{}, fmt.Errorf("signedTransactions must not be empty")
 	}
 
-	earliest, err := parseRPCBlockNumber(args.ExecutionPlan.Earliest, a.b)
+	earliest, err := parseRPCBlockNumber(a.b, args.ExecutionPlan.Earliest)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("invalid earliest block number: %w", err)
 	}
 
-	latest, err := parseRPCBlockNumber(args.ExecutionPlan.Latest, a.b)
+	latest, err := parseRPCBlockNumber(a.b, args.ExecutionPlan.Latest)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("invalid latest block number: %w", err)
 	}
@@ -105,7 +106,7 @@ func (a *PublicBundleAPI) SubmitBundle(
 	// Make a one use key to sign the bundle
 	key, err := crypto.GenerateKey()
 	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to generate signing key: %w", err)
+		return common.Hash{}, fmt.Errorf("failed to generate single use signing key: %w", err)
 	}
 
 	// Sign the bundle transaction with the one-use key and send it to the network
@@ -129,12 +130,16 @@ func (a *PublicBundleAPI) SubmitBundle(
 
 	// Submit the transaction to the network
 	_, err = ethapi.SubmitTransaction(ctx, a.b, tx)
-	return plan.Hash(), err
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to submit bundle transaction: %w", err)
+	}
+
+	return plan.Hash(), nil
 }
 
 // parseRPCBlockNumber converts an RPC block number (which can be a specific block number
 // or a tag like "latest") into a uint64 block number.
-func parseRPCBlockNumber(num rpc.BlockNumber, b BundleApiBackend) (uint64, error) {
+func parseRPCBlockNumber(b BundleApiBackend, num rpc.BlockNumber) (uint64, error) {
 
 	if num == rpc.PendingBlockNumber ||
 		num == rpc.LatestBlockNumber ||
