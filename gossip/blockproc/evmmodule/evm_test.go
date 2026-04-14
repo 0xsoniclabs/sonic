@@ -216,7 +216,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 	}
 
 	stateProcessor.EXPECT().Process(
-		any, any, any, any, any, any,
+		any, any, any, any, any, any, any,
 	).Return(summary).Times(2)
 
 	processor := &OperaEVMProcessor{
@@ -260,7 +260,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorProducesTransactionsAndBundles_
 		},
 	}
 
-	stateProcessor.EXPECT().Process(any, any, any, any, any, any).Return(summary)
+	stateProcessor.EXPECT().Process(any, any, any, any, any, any, any).Return(summary)
 	processor := &OperaEVMProcessor{
 		processorFactory: factory,
 	}
@@ -300,7 +300,7 @@ func TestOperaEVMProcessor_Execute_UsesLengthOfProcessedTransactionsAsTransactio
 			factory.EXPECT().NewStateProcessor(any, any, any).Return(stateProcessor)
 
 			stateProcessor.EXPECT().
-				Process(any, any, any, any, any, any).
+				Process(any, any, any, any, any, any, any).
 				Return(evmcore.ProcessSummary{
 					ProcessedTransactions: []evmcore.ProcessedTransaction{
 						{Receipt: &types.Receipt{TransactionIndex: 0}},
@@ -321,6 +321,51 @@ func TestOperaEVMProcessor_Execute_UsesLengthOfProcessedTransactionsAsTransactio
 				want := len(processedTransactions) + i
 				require.EqualValues(t, want, got)
 			}
+		})
+	}
+}
+
+func TestOperaEVMProcessor_Execute_UsesNumberOfTransactionsWithReceiptsAsTransactionOffsetInEvmProcessor(t *testing.T) {
+	tests := map[string][]evmcore.ProcessedTransaction{
+		"nil":   nil,
+		"empty": {},
+		"one with receipt": {
+			{Transaction: &types.Transaction{}, Receipt: &types.Receipt{}},
+		},
+		"one without receipt": {
+			{Transaction: &types.Transaction{}},
+		},
+		"mix with and without receipts": {
+			{Transaction: &types.Transaction{}, Receipt: &types.Receipt{}},
+			{Transaction: &types.Transaction{}},
+			{Transaction: &types.Transaction{}},
+			{Transaction: &types.Transaction{}, Receipt: &types.Receipt{}},
+		},
+	}
+
+	for name, processedTransactions := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			factory := NewMock_stateProcessorFactory(ctrl)
+			stateProcessor := NewMock_stateProcessor(ctrl)
+
+			any := gomock.Any()
+			factory.EXPECT().NewStateProcessor(any, any, any).Return(stateProcessor)
+
+			wantedOffset := 0
+			for _, cur := range processedTransactions {
+				if cur.Receipt != nil {
+					wantedOffset++
+				}
+			}
+			stateProcessor.EXPECT().Process(any, any, any, any, any, wantedOffset, any)
+
+			processor := &OperaEVMProcessor{
+				processorFactory: factory,
+				processedTxs:     processedTransactions,
+			}
+
+			processor.Execute(nil, 0)
 		})
 	}
 }
