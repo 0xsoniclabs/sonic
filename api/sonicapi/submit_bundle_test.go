@@ -42,11 +42,9 @@ func Test_SubmitBundle_ValidBundle_ReturnsExecutionPlanHash(t *testing.T) {
 		flags    bundle.ExecutionFlags
 		numSteps int
 	}{
-		{"single tx, AllOf", bundle.EF_AllOf, 1},
-		{"two txs, AllOf", bundle.EF_AllOf, 2},
-		{"three txs, AllOf", bundle.EF_AllOf, 3},
-		{"single tx, OneOf", bundle.EF_OneOf, 1},
-		{"two txs, OneOf", bundle.EF_OneOf, 2},
+		{"single tx, default flags", bundle.EF_Default, 1},
+		{"two txs, default flags", bundle.EF_Default, 2},
+		{"three txs, default flags", bundle.EF_Default, 3},
 		{"single tx, TolerateFailed", bundle.EF_TolerateFailed, 1},
 		{"two txs, TolerateFailed", bundle.EF_TolerateFailed, 2},
 		{"single tx, TolerateInvalid", bundle.EF_TolerateInvalid, 1},
@@ -65,7 +63,7 @@ func Test_SubmitBundle_ValidBundle_ReturnsExecutionPlanHash(t *testing.T) {
 			be := rpctest.NewBackendBuilder(t).WithPool(pool).Build()
 			signer := types.LatestSignerForChainID(be.ChainID())
 
-			steps := make([]bundle.BundleStep, tt.numSteps)
+			steps := make([]bundle.BuilderStep, tt.numSteps)
 			for i := range steps {
 				key, err := crypto.GenerateKey()
 				require.NoError(t, err)
@@ -80,33 +78,18 @@ func Test_SubmitBundle_ValidBundle_ReturnsExecutionPlanHash(t *testing.T) {
 			hash, err := NewPublicBundleAPI(be).SubmitBundle(t.Context(), args)
 			require.NoError(t, err)
 
-			// Returned hash must match the execution plan hash derived from the args.
-			plan := args.ExecutionPlan
-			execPlan := bundle.ExecutionPlan{
-				Flags: plan.Flags,
-				Range: bundle.BlockRange{
-					Earliest: uint64(plan.Earliest),
-					Latest:   uint64(plan.Latest),
-				},
-				Steps: make([]bundle.ExecutionStep, len(plan.Steps)),
-			}
-			for i, s := range plan.Steps {
-				execPlan.Steps[i] = bundle.ExecutionStep{From: s.From, Hash: s.Hash}
-			}
-			require.Equal(t, execPlan.Hash(), hash)
-
-			// Submitted transaction must be a valid bundle envelope corresponding to the same execution plan.
+			// Submitted transaction must be a valid bundle envelope.
 			require.NotNil(t, submitted)
 			require.True(t, bundle.IsEnvelope(submitted))
-			decoded, err := bundle.OpenEnvelope(submitted)
-			require.NoError(t, err)
-			require.Equal(t, execPlan.Flags, decoded.Flags)
-			require.EqualValues(t, execPlan.Range.Earliest, decoded.Range.Earliest)
-			require.EqualValues(t, execPlan.Range.Latest, decoded.Range.Latest)
-			poolPlan, err := bundle.ExtractExecutionPlan(signer, submitted)
-			require.NoError(t, err)
-			require.Equal(t, execPlan.Hash(), poolPlan.Hash())
 
+			// Returned hash must match the execution plan extracted from the submitted envelope.
+			_, submittedPlan, err := bundle.ValidateEnvelope(signer, submitted)
+			require.NoError(t, err)
+			require.Equal(t, submittedPlan.Hash(), hash)
+
+			// Block range must be preserved.
+			require.EqualValues(t, 1, submittedPlan.Range.Earliest)
+			require.EqualValues(t, 100, submittedPlan.Range.Latest)
 		})
 	}
 }
@@ -134,7 +117,7 @@ func Test_SubmitBundle_InvalidTxEncoding_ReturnsError(t *testing.T) {
 			require.NoError(t, err)
 			addr := common.Address{2}
 
-			validArgs := buildSubmitBundleArgs(signer, bundle.EF_AllOf, 1, 100,
+			validArgs := buildSubmitBundleArgs(signer, bundle.EF_Default, 1, 100,
 				bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas}),
 			)
 
@@ -163,7 +146,7 @@ func Test_SubmitBundle_PoolError_ReturnsError(t *testing.T) {
 	require.NoError(t, err)
 	addr := common.Address{2}
 
-	args := buildSubmitBundleArgs(signer, bundle.EF_AllOf, 1, 100,
+	args := buildSubmitBundleArgs(signer, bundle.EF_Default, 1, 100,
 		bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas}),
 	)
 
@@ -190,7 +173,7 @@ func Test_SubmitBundle_SubmittedEnvelopeMatchesBundleContents(t *testing.T) {
 	require.NoError(t, err)
 
 	addr := common.Address{2}
-	args := buildSubmitBundleArgs(signer, bundle.EF_AllOf, 10, 20,
+	args := buildSubmitBundleArgs(signer, bundle.EF_Default, 10, 20,
 		bundle.Step(key1, &types.DynamicFeeTx{To: &addr, Nonce: 0, Gas: params.TxGas}),
 		bundle.Step(key2, &types.DynamicFeeTx{To: &addr, Nonce: 0, Gas: params.TxGas}),
 	)
@@ -200,12 +183,11 @@ func Test_SubmitBundle_SubmittedEnvelopeMatchesBundleContents(t *testing.T) {
 	require.NotNil(t, submitted)
 
 	require.True(t, bundle.IsEnvelope(submitted))
-	decoded, err := bundle.OpenEnvelope(submitted)
+	decoded, err := bundle.OpenEnvelope(signer, submitted)
 	require.NoError(t, err)
 	require.Len(t, decoded.Transactions, 2)
-	require.Equal(t, bundle.EF_AllOf, decoded.Flags)
-	require.EqualValues(t, 10, decoded.Range.Earliest)
-	require.EqualValues(t, 20, decoded.Range.Latest)
+	require.EqualValues(t, 10, decoded.Plan.Range.Earliest)
+	require.EqualValues(t, 20, decoded.Plan.Range.Latest)
 }
 
 func Test_SubmitBundle_EnvelopeGasCoversAllBundledTxs(t *testing.T) {
@@ -224,7 +206,7 @@ func Test_SubmitBundle_EnvelopeGasCoversAllBundledTxs(t *testing.T) {
 	addr := common.Address{2}
 	highGas := uint64(200_000)
 
-	steps := make([]bundle.BundleStep, 3)
+	steps := make([]bundle.BuilderStep, 3)
 	for i := range steps {
 		key, err := crypto.GenerateKey()
 		require.NoError(t, err)
@@ -235,7 +217,7 @@ func Test_SubmitBundle_EnvelopeGasCoversAllBundledTxs(t *testing.T) {
 		})
 	}
 
-	args := buildSubmitBundleArgs(signer, bundle.EF_AllOf, 1, 50, steps...)
+	args := buildSubmitBundleArgs(signer, bundle.EF_Default, 1, 50, steps...)
 
 	expectedMinGas := uint64(0)
 	for _, b := range args.SignedTransactions {
@@ -279,7 +261,7 @@ func Test_SubmitBundle_BlockRangeIsPreservedInPool(t *testing.T) {
 			require.NoError(t, err)
 			addr := common.Address{2}
 
-			args := buildSubmitBundleArgs(signer, bundle.EF_AllOf, tt.earliest, tt.latest,
+			args := buildSubmitBundleArgs(signer, bundle.EF_Default, tt.earliest, tt.latest,
 				bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas}),
 			)
 
@@ -287,10 +269,10 @@ func Test_SubmitBundle_BlockRangeIsPreservedInPool(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, submitted)
 
-			decoded, err := bundle.OpenEnvelope(submitted)
+			decoded, err := bundle.OpenEnvelope(signer, submitted)
 			require.NoError(t, err)
-			require.Equal(t, tt.earliest, decoded.Range.Earliest)
-			require.Equal(t, tt.latest, decoded.Range.Latest)
+			require.Equal(t, tt.earliest, decoded.Plan.Range.Earliest)
+			require.Equal(t, tt.latest, decoded.Plan.Range.Latest)
 		})
 	}
 }
@@ -330,14 +312,16 @@ func Test_SubmitBundle_InvalidBlockRange_ReturnsError(t *testing.T) {
 			addr := common.Address{2}
 
 			// Build args with a valid range, then override to invalid.
-			tb, plan := bundle.NewBuilder(signer).
+			tb, plan := bundle.NewBuilder().
+				WithSigner(signer).
 				SetEarliest(1).
 				SetLatest(10).
 				With(bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas})).
 				BuildBundleAndPlan()
 
-			signedTxs := make([]hexutil.Bytes, len(tb.Transactions))
-			for i, tx := range tb.Transactions {
+			txsInOrder := tb.GetTransactionsInReferencedOrder()
+			signedTxs := make([]hexutil.Bytes, len(txsInOrder))
+			for i, tx := range txsInOrder {
 				data, err := tx.MarshalBinary()
 				require.NoError(t, err)
 				signedTxs[i] = data
@@ -399,7 +383,7 @@ func Test_SubmitBundle_InvalidExecutionPlanBlockNumbers_ReturnsError(t *testing.
 			key, err := crypto.GenerateKey()
 			require.NoError(t, err)
 			addr := common.Address{2}
-			args := buildSubmitBundleArgs(signer, bundle.EF_AllOf, 1, 100,
+			args := buildSubmitBundleArgs(signer, bundle.EF_Default, 1, 100,
 				bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas}),
 			)
 			args.ExecutionPlan.Earliest = tt.earliest
@@ -529,21 +513,35 @@ func makeEvmBlock(number uint64) *evmcore.EvmBlock {
 }
 
 // buildSubmitBundleArgs creates a valid SubmitBundleArgs using the bundle builder.
+// The flags are applied to each transaction step individually.
 func buildSubmitBundleArgs(
 	signer types.Signer,
 	flags bundle.ExecutionFlags,
 	earliest, latest uint64,
-	steps ...bundle.BundleStep,
+	steps ...bundle.BuilderStep,
 ) SubmitBundleArgs {
-	tb, plan := bundle.NewBuilder(signer).
-		SetFlags(flags).
+	stepsWithFlags := make([]bundle.BuilderStep, len(steps))
+	for i, s := range steps {
+		stepsWithFlags[i] = s.WithFlags(flags)
+	}
+
+	var root bundle.BuilderStep
+	if len(stepsWithFlags) == 1 {
+		root = stepsWithFlags[0]
+	} else {
+		root = bundle.AllOf(stepsWithFlags...)
+	}
+
+	tb, plan := bundle.NewBuilder().
+		WithSigner(signer).
 		SetEarliest(earliest).
 		SetLatest(latest).
-		With(steps...).
+		With(root).
 		BuildBundleAndPlan()
 
-	signedTxs := make([]hexutil.Bytes, len(tb.Transactions))
-	for i, tx := range tb.Transactions {
+	txsInOrder := tb.GetTransactionsInReferencedOrder()
+	signedTxs := make([]hexutil.Bytes, len(txsInOrder))
+	for i, tx := range txsInOrder {
 		data, err := tx.MarshalBinary()
 		if err != nil {
 			panic(err)

@@ -94,7 +94,9 @@ func (tb *TransactionBundle) GetTransactionsInReferencedOrder() []*types.Transac
 	return txs
 }
 
-func (tb *TransactionBundle) encode() ([]byte, error) {
+// Encode encodes the transaction bundle into a byte slice for use in an
+// envelope transaction's data field.
+func (tb *TransactionBundle) Encode() ([]byte, error) {
 	return encodeInternal(bundleEncodingVersion, tb)
 }
 

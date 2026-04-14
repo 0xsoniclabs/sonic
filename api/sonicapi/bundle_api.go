@@ -41,7 +41,20 @@ type RPCExecutionPlan struct {
 }
 
 // NewRPCExecutionPlan converts a bundle.ExecutionPlan to an RPCExecutionPlan for JSON-RPC responses.
+// This produces a flat representation of the plan's transaction references.
+// Note: hierarchical execution plans with nested groups cannot be fully represented
+// in this flat format. Only plans with a single level of transaction references are
+// fully supported.
 func NewRPCExecutionPlan(plan bundle.ExecutionPlan) RPCExecutionPlan {
-	// TODO: This needs to be re-implemented reflecting the new execution plan structure.
-	panic("not implemented yet")
+	refs := plan.Root.GetTransactionReferencesInReferencedOrder()
+	steps := make([]RPCExecutionStep, len(refs))
+	for i, ref := range refs {
+		steps[i] = RPCExecutionStep{From: ref.From, Hash: ref.Hash}
+	}
+	return RPCExecutionPlan{
+		Flags:    plan.Root.Flags(),
+		Steps:    steps,
+		Earliest: rpc.BlockNumber(plan.Range.Earliest),
+		Latest:   rpc.BlockNumber(plan.Range.Latest),
+	}
 }

@@ -443,7 +443,7 @@ func newEnvelope(
 	bundle *TransactionBundle,
 ) *types.Transaction {
 
-	payload, err := bundle.encode()
+	payload, err := bundle.Encode()
 	if err != nil {
 		panic(fmt.Sprintf("failed to encode bundle: %v", err))
 	}

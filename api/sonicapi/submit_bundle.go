@@ -68,31 +68,53 @@ func (a *PublicBundleAPI) SubmitBundle(
 		return common.Hash{}, fmt.Errorf("latest block number cannot be smaller than earliest block number")
 	}
 
-	txBundle := bundle.TransactionBundle{
-		Transactions: make(types.Transactions, len(args.SignedTransactions)),
-		Flags:        args.ExecutionPlan.Flags,
-		Range: bundle.BlockRange{
-			Earliest: earliest,
-			Latest:   latest,
-		},
+	if len(args.ExecutionPlan.Steps) != len(args.SignedTransactions) {
+		return common.Hash{}, fmt.Errorf("executionPlan steps count (%d) must match signedTransactions count (%d)",
+			len(args.ExecutionPlan.Steps), len(args.SignedTransactions))
 	}
 
-	// Decode bundled transactions and compute total gas requirement
+	// Decode bundled transactions and build TxReference map and execution steps.
+	transactions := make(map[bundle.TxReference]*types.Transaction, len(args.SignedTransactions))
+	steps := make([]bundle.ExecutionStep, len(args.SignedTransactions))
 	var totalGas uint64
 	for i, encodedTx := range args.SignedTransactions {
-
 		tx := new(types.Transaction)
 		if err := tx.UnmarshalBinary(encodedTx); err != nil {
 			return common.Hash{}, fmt.Errorf("failed to decode bundled transaction %d: %w", i, err)
 		}
-
-		txBundle.Transactions[i] = tx
+		txRef := bundle.TxReference{
+			From: args.ExecutionPlan.Steps[i].From,
+			Hash: args.ExecutionPlan.Steps[i].Hash,
+		}
+		transactions[txRef] = tx
+		steps[i] = bundle.NewTxStep(txRef).WithFlags(args.ExecutionPlan.Flags)
 		totalGas += tx.Gas()
+	}
+
+	var root bundle.ExecutionStep
+	if len(steps) == 1 {
+		root = steps[0]
+	} else {
+		root = bundle.NewAllOfStep(steps...)
+	}
+
+	txBundle := bundle.TransactionBundle{
+		Transactions: transactions,
+		Plan: bundle.ExecutionPlan{
+			Range: bundle.BlockRange{
+				Earliest: earliest,
+				Latest:   latest,
+			},
+			Root: root,
+		},
 	}
 
 	// Encode the bundle and compute if gas limits are sufficient to cover
 	// both the payload and the data-related gas costs.
-	data := txBundle.Encode()
+	data, err := txBundle.Encode()
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to encode bundle: %w", err)
+	}
 	minGas, err := core.IntrinsicGas(data, nil, nil, false, true, true, true)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to finalize bundle: could not calculate intrinsic gas: %w", err)
