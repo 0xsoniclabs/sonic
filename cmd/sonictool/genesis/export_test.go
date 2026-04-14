@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math/big"
 	"os"
 	"sync"
 	"testing"
@@ -244,6 +245,37 @@ func TestExportBundles_HistoryHashAlwaysWrittenFirst(t *testing.T) {
 
 	require.Greater(t, writerWithBundles.uncompressedSize, histOnlySize,
 		"bundles should add data beyond just the history hash")
+}
+
+func TestMustRlpEncodeToByte_PanicsOnError(t *testing.T) {
+	require.Panics(t, func() {
+		MustRlpEncodeToByte(new(big.Int).Sub(big.NewInt(0), big.NewInt(1)))
+	}, "MustRlpEncodeToByte should panic on encoding error")
+}
+
+func TestMustRlpEncodeToByte_CanEncodeHistoryHashAndExecutionInfo(t *testing.T) {
+
+	tests := map[string]any{
+		"history hash": bundle.HistoryHash{
+			BlockNumber: 123,
+			Hash:        common.HexToHash("0xdeadbeef"),
+		},
+		"execution info": bundle.ExecutionInfo{
+			BlockNumber:       123,
+			ExecutionPlanHash: common.Hash{0x42},
+			Position:          bundle.PositionInBlock{Offset: 1, Count: 2},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			expected, err := rlp.EncodeToBytes(test)
+			require.NoError(t, err)
+
+			result := MustRlpEncodeToByte(test)
+			require.Equal(t, expected, result, "MustRlpEncodeToByte should return correct encoded bytes")
+		})
+	}
 }
 
 // ------------- tooling for tests -------------

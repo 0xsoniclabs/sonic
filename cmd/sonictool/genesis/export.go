@@ -290,7 +290,7 @@ func exportBundles(ctx context.Context, gdb *gossip.Store, writer *unitWriter, l
 
 	// write the history hash as the first item.
 	blockNum, histHash := gdb.GetProcessedBundleHistoryHash()
-	b, _ := rlp.EncodeToBytes(bundle.HistoryHash{
+	b := MustRlpEncodeToByte(bundle.HistoryHash{
 		BlockNumber: blockNum,
 		Hash:        histHash,
 	})
@@ -301,7 +301,7 @@ func exportBundles(ctx context.Context, gdb *gossip.Store, writer *unitWriter, l
 	// write all the execution info from the store.
 	count := 0
 	for _, info := range gdb.EnumerateProcessedBundles() {
-		b, _ := rlp.EncodeToBytes(info)
+		b := MustRlpEncodeToByte(info)
 		if _, err := writer.Write(b); err != nil {
 			return err
 		}
@@ -447,4 +447,12 @@ type dropableFile struct {
 
 func (f dropableFile) Drop() error {
 	return os.Remove(f.path)
+}
+
+func MustRlpEncodeToByte(value any) []byte {
+	res, err := rlp.EncodeToBytes(value)
+	if err != nil {
+		panic("insert your favorite message here")
+	}
+	return res
 }
