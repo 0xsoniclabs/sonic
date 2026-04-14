@@ -23,6 +23,7 @@ import (
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -323,7 +324,7 @@ func TestCarmenStateDB_RevertToInterTxSnapshot_DelegatesToUnderlyingDbAndPrunesI
 }
 
 func TestCarmenStateDB_RevertToInterTxSnapshot_InvalidSnapshotIdCreatesIssue(t *testing.T) {
-	for _, invalidId := range []int{-1, 0, 1} {
+	for _, invalidId := range []int{-1, 0, 1, state.InvalidSnapshotID} {
 		require := require.New(t)
 		ctrl := gomock.NewController(t)
 

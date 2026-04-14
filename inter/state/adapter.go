@@ -27,6 +27,14 @@ import (
 
 //go:generate mockgen -source adapter.go -destination adapter_mock.go -package state
 
+const (
+	// InvalidSnapshotID is a special snapshot ID that can be used to trigger an
+	// invalid revert in the StateDB. This can be used to keep track of invalid
+	// reverts, such that they can be handled when checking for errors in the
+	// StateDB after the block processing.
+	InvalidSnapshotID = int(-1)
+)
+
 type StateDB interface {
 	vm.StateDB
 

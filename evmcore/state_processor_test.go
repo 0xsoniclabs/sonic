@@ -2455,20 +2455,28 @@ func TestBundleTransactionRunner_Run_IncrementsOffsetByNumberOfNonNullReceiptsIf
 	require.Equal(t, bundleTransactionRunner.txOffset, startOffset+1+2)
 }
 
-func TestBundleTransactionRunner_CreateSnapshot_CallsInterTxSnapshotOnStateDb(t *testing.T) {
+func TestBundleTransactionRunner_CreateSnapshot_CallsInterTxSnapshotOnStateDbAndRecordsLocalState(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
 
 	state.EXPECT().InterTxSnapshot().Return(123)
 
 	ctxt := &runContext{statedb: state}
-	bundleTransactionRunner := &bundleTransactionRunner{ctxt: ctxt}
+	bundleTransactionRunner := &bundleTransactionRunner{
+		ctxt:                  ctxt,
+		txOffset:              12,
+		processedTransactions: make([]ProcessedTransaction, 14),
+	}
 
 	snapshotId := bundleTransactionRunner.CreateSnapshot()
-	require.Equal(t, 123, snapshotId)
+	require.Equal(t, 0, snapshotId)
+	require.Len(t, bundleTransactionRunner.snapshots, 1)
+	require.Equal(t, 123, bundleTransactionRunner.snapshots[0].stateDbSnapshot)
+	require.Equal(t, 12, bundleTransactionRunner.snapshots[0].txOffset)
+	require.Equal(t, 14, bundleTransactionRunner.snapshots[0].processedTransactionListLength)
 }
 
-func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOnStateDb(t *testing.T) {
+func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOnStateDbAndResetsLocalState(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
 
@@ -2476,9 +2484,236 @@ func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOn
 	state.EXPECT().RevertToInterTxSnapshot(snapshotId)
 
 	ctxt := &runContext{statedb: state}
-	bundleTransactionRunner := &bundleTransactionRunner{ctxt: ctxt}
+	bundleTransactionRunner := &bundleTransactionRunner{
+		ctxt:                  ctxt,
+		txOffset:              50,
+		processedTransactions: make([]ProcessedTransaction, 100),
+	}
 
-	bundleTransactionRunner.RevertToSnapshot(snapshotId)
+	bundleTransactionRunner.snapshots = []bundleTransactionRunnerSnapshot{{
+		stateDbSnapshot:                snapshotId,
+		txOffset:                       14,
+		processedTransactionListLength: 5,
+	}}
+	bundleTransactionRunner.RevertToSnapshot(0)
+
+	require.Len(t, bundleTransactionRunner.snapshots, 0)
+	require.Equal(t, 14, bundleTransactionRunner.txOffset)
+	require.Len(t, bundleTransactionRunner.processedTransactions, 5)
+}
+
+func TestBundleTransactionRunner_RevertToSnapshot_InvalidId_TriggerInvalidRevertInStateDB(t *testing.T) {
+	tests := []int{-10, -1, 5, 10}
+	for _, id := range tests {
+		t.Run(fmt.Sprintf("snapshot id %d", id), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			db := state.NewMockStateDB(ctrl)
+
+			runner := &bundleTransactionRunner{
+				ctxt:      &runContext{statedb: db},
+				snapshots: make([]bundleTransactionRunnerSnapshot, 5),
+			}
+
+			db.EXPECT().RevertToInterTxSnapshot(state.InvalidSnapshotID)
+
+			runner.RevertToSnapshot(id)
+		})
+	}
+}
+
+func TestBundleTransactionRunner_Run_ForwardsCurrentTransactionOffsetToTxCall(t *testing.T) {
+	for _, offset := range []int{0, 5, 10} {
+		t.Run(fmt.Sprintf("offset %d", offset), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMock_transactionRunner(ctrl)
+
+			ctxt := &runContext{runner: runner}
+			bundleTransactionRunner := &bundleTransactionRunner{ctxt: ctxt, txOffset: offset}
+
+			tx := getRegularTransaction(t)
+
+			runner.EXPECT().runRegularTransaction(ctxt, tx, offset)
+			bundleTransactionRunner.Run(tx)
+		})
+	}
+}
+
+func TestBundleTransactionRunner_Run_UpdatesTxIndexBasedOnNumberOfAcceptedTransactions(t *testing.T) {
+	tests := map[string]struct {
+		execResult []ProcessedTransaction
+	}{
+		"empty result": {
+			execResult: []ProcessedTransaction{},
+		},
+		"one accepted transaction": {
+			execResult: []ProcessedTransaction{
+				{Receipt: &types.Receipt{}},
+			},
+		},
+		"multiple transactions with mixed acceptance": {
+			execResult: []ProcessedTransaction{
+				{Receipt: &types.Receipt{}},
+				{Receipt: nil},
+				{Receipt: &types.Receipt{}},
+				{Receipt: nil},
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMock_transactionRunner(ctrl)
+
+			startOffset := 5
+
+			ctxt := &runContext{runner: runner, upgrades: opera.Upgrades{GasSubsidies: true}}
+			bundleTransactionRunner := &bundleTransactionRunner{ctxt: ctxt, txOffset: startOffset}
+
+			tx := getSponsorshipRequest(t)
+
+			runner.EXPECT().runSponsoredTransaction(ctxt, tx, startOffset).Return(
+				test.execResult,
+				core_types.TransactionResultSuccessful,
+			)
+
+			bundleTransactionRunner.Run(tx)
+
+			acceptedCount := uint32(0)
+			for _, result := range test.execResult {
+				if result.Receipt != nil {
+					acceptedCount++
+				}
+			}
+			require.Equal(t, startOffset+int(acceptedCount), bundleTransactionRunner.txOffset)
+		})
+	}
+}
+
+func TestBundleTransactionRunner_Snapshot_CoversTxOffset(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	state.EXPECT().InterTxSnapshot().AnyTimes()
+	state.EXPECT().RevertToInterTxSnapshot(gomock.Any()).AnyTimes()
+
+	runner := &bundleTransactionRunner{
+		ctxt:     &runContext{statedb: state},
+		txOffset: 5,
+	}
+
+	s1 := runner.CreateSnapshot()
+	runner.txOffset = 10
+	_ = runner.CreateSnapshot()
+	runner.txOffset = 15
+	s3 := runner.CreateSnapshot()
+	runner.txOffset = 20
+
+	// revert a single snapshot to check that the transaction index is covered
+	runner.RevertToSnapshot(s3)
+	require.Equal(t, 15, runner.txOffset)
+
+	// revert two snapshots in one go and check the recovered state
+	runner.RevertToSnapshot(s1)
+	require.Equal(t, 5, runner.txOffset)
+}
+
+func TestBundleTransactionRunner_Run_CollectsProcessedTransactionsInOrder(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	txRunner := NewMock_transactionRunner(ctrl)
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	// We simulate 4 sponsored transactions with variable length lists of
+	// processed transactions to check the correct aggregation of the processed
+	// transaction list.
+	txs := []*types.Transaction{
+		types.MustSignNewTx(key, signer, &types.LegacyTx{Nonce: 0, To: &common.Address{}}),
+		types.MustSignNewTx(key, signer, &types.LegacyTx{Nonce: 1, To: &common.Address{}}),
+		types.MustSignNewTx(key, signer, &types.LegacyTx{Nonce: 2, To: &common.Address{}}),
+		types.MustSignNewTx(key, signer, &types.LegacyTx{Nonce: 3, To: &common.Address{}}),
+	}
+
+	results := [][]ProcessedTransaction{
+		{{Transaction: txs[0], Receipt: &types.Receipt{}}},
+		{
+			{Transaction: txs[1], Receipt: &types.Receipt{}},
+			{Transaction: txs[2], Receipt: nil},
+		},
+		{},
+		{{Transaction: txs[3], Receipt: &types.Receipt{}}},
+	}
+
+	for i, tx := range txs {
+		require.True(t, subsidies.IsSponsorshipRequest(tx))
+		txRunner.EXPECT().runSponsoredTransaction(gomock.Any(), tx, gomock.Any()).Return(
+			results[i],
+			core_types.TransactionResultSuccessful,
+		)
+	}
+
+	ctxt := &runContext{runner: txRunner, upgrades: opera.Upgrades{GasSubsidies: true}}
+	runner := &bundleTransactionRunner{ctxt: ctxt}
+
+	var want []ProcessedTransaction
+	require.Equal(t, want, runner.processedTransactions)
+
+	for i := range txs {
+		runner.Run(txs[i])
+		want = append(want, results[i]...)
+		require.Equal(t, want, runner.processedTransactions)
+	}
+}
+
+func TestBundleTransactionRunner_Snapshot_CoversProcessedTransactions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	state.EXPECT().InterTxSnapshot().AnyTimes()
+	state.EXPECT().RevertToInterTxSnapshot(gomock.Any()).AnyTimes()
+
+	processedTransactions := []ProcessedTransaction{
+		{Receipt: &types.Receipt{CumulativeGasUsed: 1}},
+		{Receipt: &types.Receipt{CumulativeGasUsed: 2}},
+		{Receipt: &types.Receipt{CumulativeGasUsed: 3}},
+		{Receipt: &types.Receipt{CumulativeGasUsed: 4}},
+		{Receipt: &types.Receipt{CumulativeGasUsed: 5}},
+	}
+
+	runner := &bundleTransactionRunner{
+		ctxt:                  &runContext{statedb: state},
+		processedTransactions: processedTransactions[:1],
+	}
+
+	s1 := runner.CreateSnapshot()
+	runner.processedTransactions = append(
+		runner.processedTransactions,
+		processedTransactions[1],
+	)
+
+	_ = runner.CreateSnapshot()
+	runner.processedTransactions = append(
+		runner.processedTransactions,
+		processedTransactions[2],
+	)
+
+	s3 := runner.CreateSnapshot()
+	runner.processedTransactions = append(
+		runner.processedTransactions,
+		processedTransactions[3],
+		processedTransactions[4],
+	)
+
+	// revert a single snapshot to check that the list of processed transactions
+	// is covered
+	runner.RevertToSnapshot(s3)
+	require.Equal(t, processedTransactions[:3], runner.processedTransactions)
+
+	// revert two snapshots in one go and check the recovered state
+	runner.RevertToSnapshot(s1)
+	require.Equal(t, processedTransactions[:1], runner.processedTransactions)
+
 }
 
 // --- Utility functions for creating test transactions ---

@@ -403,6 +403,7 @@ type bundleTransactionRunner struct {
 	ctxt                  *runContext
 	txOffset              int
 	processedTransactions []ProcessedTransaction
+	snapshots             []bundleTransactionRunnerSnapshot
 }
 
 func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.TransactionResult {
@@ -421,11 +422,34 @@ func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.Transact
 }
 
 func (b *bundleTransactionRunner) CreateSnapshot() int {
-	return b.ctxt.statedb.InterTxSnapshot()
+	snapshot := bundleTransactionRunnerSnapshot{
+		stateDbSnapshot:                b.ctxt.statedb.InterTxSnapshot(),
+		txOffset:                       b.txOffset,
+		processedTransactionListLength: len(b.processedTransactions),
+	}
+	b.snapshots = append(b.snapshots, snapshot)
+	return len(b.snapshots) - 1
 }
 
 func (b *bundleTransactionRunner) RevertToSnapshot(id int) {
-	b.ctxt.statedb.RevertToInterTxSnapshot(id)
+	if id < 0 || id >= len(b.snapshots) {
+		// trigger an invalid revert in the StateDB to keep track of the invalid
+		// revert, such that it can be handled when checking for errors in the
+		// StateDB after the block processing.
+		b.ctxt.statedb.RevertToInterTxSnapshot(state.InvalidSnapshotID)
+		return
+	}
+	snapshot := b.snapshots[id]
+	b.ctxt.statedb.RevertToInterTxSnapshot(snapshot.stateDbSnapshot)
+	b.txOffset = snapshot.txOffset
+	b.processedTransactions = b.processedTransactions[:snapshot.processedTransactionListLength]
+	b.snapshots = b.snapshots[:id]
+}
+
+type bundleTransactionRunnerSnapshot struct {
+	stateDbSnapshot                int
+	txOffset                       int
+	processedTransactionListLength int
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single
