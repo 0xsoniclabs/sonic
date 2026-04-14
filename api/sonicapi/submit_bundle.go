@@ -17,7 +17,7 @@
 package sonicapi
 
 import (
-	context "context"
+	"context"
 	"fmt"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // SubmitBundleArgs represents the arguments for the `sonic_submitBundle` RPC method.
@@ -48,12 +49,30 @@ func (a *PublicBundleAPI) SubmitBundle(
 	args SubmitBundleArgs,
 ) (common.Hash, error) {
 
+	if len(args.SignedTransactions) == 0 {
+		return common.Hash{}, fmt.Errorf("signedTransactions must not be empty")
+	}
+
+	earliest, err := parseRPCBlockNumber(args.ExecutionPlan.Earliest, a.b)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("invalid earliest block number: %w", err)
+	}
+
+	latest, err := parseRPCBlockNumber(args.ExecutionPlan.Latest, a.b)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("invalid latest block number: %w", err)
+	}
+
+	if latest < earliest {
+		return common.Hash{}, fmt.Errorf("latest block number cannot be smaller than earliest block number")
+	}
+
 	txBundle := bundle.TransactionBundle{
 		Transactions: make(types.Transactions, len(args.SignedTransactions)),
 		Flags:        args.ExecutionPlan.Flags,
 		Range: bundle.BlockRange{
-			Earliest: uint64(args.ExecutionPlan.Earliest),
-			Latest:   uint64(args.ExecutionPlan.Latest),
+			Earliest: earliest,
+			Latest:   latest,
 		},
 	}
 
@@ -111,4 +130,28 @@ func (a *PublicBundleAPI) SubmitBundle(
 	// Submit the transaction to the network
 	_, err = ethapi.SubmitTransaction(ctx, a.b, tx)
 	return plan.Hash(), err
+}
+
+// parseRPCBlockNumber converts an RPC block number (which can be a specific block number
+// or a tag like "latest") into a uint64 block number.
+func parseRPCBlockNumber(num rpc.BlockNumber, b BundleApiBackend) (uint64, error) {
+
+	if num == rpc.PendingBlockNumber ||
+		num == rpc.LatestBlockNumber ||
+		num == rpc.FinalizedBlockNumber ||
+		num == rpc.SafeBlockNumber {
+
+		if current := b.CurrentBlock(); current != nil {
+			return current.NumberU64(), nil
+		}
+
+		return 0, fmt.Errorf("block number %s is not available: no current block", num)
+	}
+	if num == rpc.EarliestBlockNumber {
+		return 0, nil
+	}
+	if num < 0 {
+		return 0, fmt.Errorf("block number cannot be negative")
+	}
+	return uint64(num), nil
 }
