@@ -19,7 +19,6 @@ package bundle
 import (
 	"crypto/ecdsa"
 	"fmt"
-	"maps"
 	"math/big"
 
 	"github.com/0xsoniclabs/sonic/utils"
@@ -203,14 +202,18 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		b.signer = types.LatestSignerForChainID(big.NewInt(1))
 	}
 
+	// Create a deep copy of the user defined execution plan to avoid side
+	// effects of the build process to affect the input.
+	root := b.root.Clone()
+
 	// Collect all transactions from the steps, to be included in the bundle.
-	transactions := b.root.collectTransactions(b.signer)
+	txReferences := root.collectTxReferences()
 
 	// Add the costs for the additional marker to the gas limit.
 	markerCosts := params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
-	for _, step := range transactions {
+	for _, ref := range txReferences {
 		// Fix the gas limit for nested envelops to be accurate.
-		tx := types.NewTx(step.tx)
+		tx := types.NewTx(ref.tx)
 		newGasLimit := tx.Gas() + markerCosts
 
 		// For nested envelopes, the gas limit needs to be accurately adjusted
@@ -228,7 +231,7 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 			}
 		}
 
-		switch data := step.tx.(type) {
+		switch data := ref.tx.(type) {
 		case *types.DynamicFeeTx:
 			data.Gas = newGasLimit
 		case *types.AccessListTx:
@@ -242,10 +245,6 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		}
 	}
 
-	// Update transaction references in hierarchy to match updated transactions.
-	root := b.root.updateTxReferences(b.signer, transactions)
-	transactions = root.collectTransactions(b.signer)
-
 	// Create an Execution Plan for the bundle.
 	plan := ExecutionPlan{
 		Root: root.toStep(b.signer),
@@ -255,14 +254,21 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		},
 	}
 
-	// Record the transaction hashes before adding the marker.
-	txReferences := make(map[common.Hash]TxReference)
-	for hash, step := range transactions {
+	// Prepare index of transactions to be signed.
+	type KeyAndData struct {
+		key    *ecdsa.PrivateKey
+		txData types.TxData
+	}
+	unsignedTxs := make(map[TxReference]KeyAndData)
+	for _, ref := range txReferences {
 		txRef := TxReference{
-			From: crypto.PubkeyToAddress(step.key.PublicKey),
-			Hash: b.signer.Hash(types.NewTx(step.tx)),
+			From: crypto.PubkeyToAddress(ref.key.PublicKey),
+			Hash: b.signer.Hash(types.NewTx(ref.tx)),
 		}
-		txReferences[hash] = txRef
+		unsignedTxs[txRef] = KeyAndData{
+			key:    ref.key,
+			txData: ref.tx,
+		}
 	}
 
 	// Get hash of execution plan and annotate transactions with it.
@@ -271,8 +277,8 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		Address:     BundleOnly,
 		StorageKeys: []common.Hash{execPlanHash},
 	}
-	for _, step := range transactions {
-		switch data := step.tx.(type) {
+	for _, entry := range unsignedTxs {
+		switch data := entry.txData.(type) {
 		case *types.DynamicFeeTx:
 			data.AccessList = append(data.AccessList, marker)
 		case *types.AccessListTx:
@@ -286,11 +292,10 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		}
 	}
 
-	// Sign the modified TxData instances.
+	// Sign the modified TxData instances to create the final index
 	txs := make(map[TxReference]*types.Transaction)
-	for hash, step := range transactions {
-		txRef := txReferences[hash]
-		txs[txRef] = types.MustSignNewTx(step.key, b.signer, step.tx)
+	for ref, entry := range unsignedTxs {
+		txs[ref] = types.MustSignNewTx(entry.key, b.signer, entry.txData)
 	}
 
 	return &TransactionBundle{
@@ -358,6 +363,20 @@ func (s BuilderStep) WithFlags(flags ExecutionFlags) BuilderStep {
 	return s
 }
 
+// Clone creates a deep-copy of this builder step.
+func (s BuilderStep) Clone() BuilderStep {
+	res := s
+	if res.txRef != nil {
+		res.txRef = &txReference{}
+		*res.txRef = *s.txRef
+		res.txRef.tx = utils.GetTxData(types.NewTx(res.txRef.tx))
+	}
+	for i := range res.steps {
+		res.steps[i] = res.steps[i].Clone()
+	}
+	return res
+}
+
 // Build is a utility function to directly build an envelope transaction from
 // this step. It is a shortcut for
 //
@@ -368,44 +387,18 @@ func (s BuilderStep) Build() *types.Transaction {
 	return NewBuilder().With(s).Build()
 }
 
-// collectTransactions recursively collects all transactions reachable from this
-// step, including nested steps.
-func (s *BuilderStep) collectTransactions(signer types.Signer) map[common.Hash]txReference {
-	txs := make(map[common.Hash]txReference)
+// collectTxReferences recursively collects all transaction references reachable
+// from this step, including nested steps.
+func (s *BuilderStep) collectTxReferences() []*txReference {
+	var txs []*txReference
 	if s.txRef != nil {
-		txs[s.txRef.hash(signer)] = *s.txRef
+		txs = append(txs, s.txRef)
 	} else {
 		for _, step := range s.steps {
-			maps.Copy(txs, step.collectTransactions(signer))
+			txs = append(txs, step.collectTxReferences()...)
 		}
 	}
 	return txs
-}
-
-// updateTxReferences recursively updates the transaction references in this step
-// according to the given map of updated transactions. This is used to propagate
-// changes in the transactions (e.g. gas adjustments) through the hierarchy of
-// steps while building bundles, so that the final execution plan correctly
-// references the updated transactions.
-func (s *BuilderStep) updateTxReferences(
-	signer types.Signer,
-	updatedTxs map[common.Hash]txReference,
-) BuilderStep {
-	if s.txRef != nil {
-		if updatedRef, ok := updatedTxs[s.txRef.hash(signer)]; ok {
-			return BuilderStep{txRef: &updatedRef}
-		}
-		return *s
-	}
-	updatedSteps := make([]BuilderStep, len(s.steps))
-	for i, step := range s.steps {
-		updatedSteps[i] = step.updateTxReferences(signer, updatedTxs)
-	}
-	return BuilderStep{
-		oneOf: s.oneOf,
-		flags: s.flags,
-		steps: updatedSteps,
-	}
 }
 
 // toStep converts this BuilderStep into an ExecutionStep, which is used in the
@@ -439,14 +432,6 @@ func (s *BuilderStep) toStep(
 type txReference struct {
 	key *ecdsa.PrivateKey
 	tx  types.TxData
-}
-
-// hash computes a unique hash for this transaction reference, to be used in
-// maps during the building process.
-func (r *txReference) hash(signer types.Signer) common.Hash {
-	sender := crypto.PubkeyToAddress(r.key.PublicKey)
-	txHash := signer.Hash(types.NewTx(r.tx))
-	return crypto.Keccak256Hash(sender.Bytes(), txHash.Bytes())
 }
 
 // Wraps the given bundle into an envelope transaction.

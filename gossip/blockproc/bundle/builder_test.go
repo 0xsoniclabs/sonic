@@ -145,6 +145,198 @@ func TestBundleBuilder_BuildComposedBundles(t *testing.T) {
 	require.EqualValues(t, 3, txs[5].Nonce())
 }
 
+func TestBundleBuilder_PlansReferenceIndexedTransactions(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	tests := map[string]*builder{
+		"single step": NewBuilder().With(
+			Step(key, &types.AccessListTx{Nonce: 1}),
+		),
+		"single group": NewBuilder().AllOf(
+			Step(key, &types.AccessListTx{Nonce: 1}),
+			Step(key, &types.AccessListTx{Nonce: 2}),
+		),
+		"nested groups": NewBuilder().OneOf(
+			AllOf(
+				Step(key, &types.AccessListTx{Nonce: 1}),
+				Step(key, &types.AccessListTx{Nonce: 2}),
+			),
+			AllOf(
+				Step(key, &types.AccessListTx{Nonce: 1}),
+				Step(key, &types.AccessListTx{Nonce: 3}),
+			),
+			AllOf(
+				Step(key, &types.AccessListTx{Nonce: 2}),
+				Step(key, &types.AccessListTx{Nonce: 3}),
+			),
+		),
+	}
+
+	for name, builder := range tests {
+		t.Run(name, func(t *testing.T) {
+			txBundle := builder.BuildBundle()
+			references := txBundle.Plan.Root.GetTransactionReferencesInReferencedOrder()
+			for _, ref := range references {
+				_, found := txBundle.Transactions[ref]
+				require.True(t, found)
+			}
+		})
+	}
+}
+
+func TestBundleBuilder_AliasingStepsReferencingTheSameDataAreIsolated(t *testing.T) {
+	require := require.New(t)
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+
+	step := Step(key, &types.AccessListTx{})
+
+	bundle := NewBuilder().AllOf(step, step, step).BuildBundle()
+
+	// the original step is not affected
+	require.Zero(types.NewTx(step.txRef.tx).Gas())
+
+	// there is only one entry in the index
+	require.Len(bundle.Transactions, 1)
+
+	// the marker costs have only been applied once
+	markerCosts := params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
+	for _, tx := range bundle.Transactions {
+		require.EqualValues(markerCosts, tx.Gas())
+	}
+}
+
+func TestBundleBuilder_TestExamplePlans(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		builder  *builder
+		expected string
+	}{
+		"empty all-of": {
+			builder:  NewBuilder().AllOf(),
+			expected: "AllOf()",
+		},
+		"empty one-of": {
+			builder:  NewBuilder().OneOf(),
+			expected: "OneOf()",
+		},
+		"non-empty all-of": {
+			builder: NewBuilder().AllOf(
+				Step(key, &types.AccessListTx{Nonce: 1}),
+				Step(key, &types.AccessListTx{Nonce: 2}),
+			),
+			expected: "AllOf(A,B)",
+		},
+		"non-empty one-of": {
+			builder: NewBuilder().OneOf(
+				Step(key, &types.AccessListTx{Nonce: 1}),
+				Step(key, &types.AccessListTx{Nonce: 2}),
+				Step(key, &types.AccessListTx{Nonce: 3}),
+			),
+			expected: "OneOf(A,B,C)",
+		},
+		"group with repetition": {
+			builder: NewBuilder().AllOf(
+				Step(key, &types.AccessListTx{Nonce: 1}),
+				Step(key, &types.AccessListTx{Nonce: 2}),
+				Step(key, &types.AccessListTx{Nonce: 1}),
+			),
+			expected: "AllOf(A,B,A)",
+		},
+		"nested groups with repetition": {
+			builder: NewBuilder().OneOf(
+				AllOf(
+					Step(key, &types.AccessListTx{Nonce: 1}),
+					Step(key, &types.AccessListTx{Nonce: 2}),
+				),
+				AllOf(
+					Step(key, &types.AccessListTx{Nonce: 1}),
+					Step(key, &types.AccessListTx{Nonce: 3}),
+				),
+				AllOf(
+					Step(key, &types.AccessListTx{Nonce: 2}),
+					Step(key, &types.AccessListTx{Nonce: 3}),
+				),
+			),
+			expected: "OneOf(AllOf(A,B),AllOf(A,C),AllOf(B,C))",
+		},
+		"single transaction": {
+			builder: NewBuilder().With(
+				Step(key, &types.AccessListTx{Nonce: 1}),
+			),
+			expected: "A",
+		},
+		"single transaction with tolerate failed": {
+			builder: NewBuilder().With(
+				Step(key, &types.AccessListTx{Nonce: 1}).
+					WithFlags(EF_TolerateFailed),
+			),
+			expected: "Step[TolerateFailed](A)",
+		},
+		"single transaction with tolerate invalid": {
+			builder: NewBuilder().With(
+				Step(key, &types.AccessListTx{Nonce: 1}).
+					WithFlags(EF_TolerateInvalid),
+			),
+			expected: "Step[TolerateInvalid](A)",
+		},
+		"single transaction with tolerate invalid and failed": {
+			builder: NewBuilder().With(
+				Step(key, &types.AccessListTx{Nonce: 1}).
+					WithFlags(EF_TolerateInvalid | EF_TolerateFailed),
+			),
+			expected: "Step[TolerateInvalid|TolerateFailed](A)",
+		},
+		"group with tolerate failed": {
+			builder: NewBuilder().With(
+				AllOf().WithFlags(EF_TolerateFailed),
+			),
+			expected: "TolerateFailed(AllOf())",
+		},
+		"group with tolerate failed and inner transaction with flags": {
+			builder: NewBuilder().AllOf(
+				AllOf(
+					Step(key, &types.AccessListTx{Nonce: 1}),
+					Step(key, &types.AccessListTx{Nonce: 2}).
+						WithFlags(EF_TolerateInvalid),
+					Step(key, &types.AccessListTx{Nonce: 3}),
+				).WithFlags(EF_TolerateFailed),
+			),
+			expected: "AllOf(TolerateFailed(AllOf(A,Step[TolerateInvalid](B),C)))",
+		},
+		"group with repeated elements but different flags": {
+			builder: NewBuilder().OneOf(
+				AllOf(
+					Step(key, &types.AccessListTx{Nonce: 1}),
+					Step(key, &types.AccessListTx{Nonce: 2}),
+					Step(key, &types.AccessListTx{Nonce: 3}),
+				),
+				AllOf(
+					Step(key, &types.AccessListTx{Nonce: 1}).
+						WithFlags(EF_TolerateFailed),
+					Step(key, &types.AccessListTx{Nonce: 2}).
+						WithFlags(EF_TolerateInvalid),
+					Step(key, &types.AccessListTx{Nonce: 3}),
+				),
+			),
+			expected: "OneOf(AllOf(A,B,C),AllOf(Step[TolerateFailed](A),Step[TolerateInvalid](B),C))",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			signer := types.LatestSignerForChainID(big.NewInt(123))
+			envelope := tc.builder.WithSigner(signer).Build()
+			bundle, err := OpenEnvelope(signer, envelope)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, bundle.Plan.Root.String())
+		})
+	}
+}
+
 func TestBundleBuilder_Step_AcceptsVariousInputTypes(t *testing.T) {
 	inputs := []any{
 		types.AccessListTx{},
@@ -302,13 +494,6 @@ func TestBundleBuilder_AutomaticallyAddsGasCostsForMarkers(t *testing.T) {
 		&types.SetCodeTx{Gas: 1000},
 	}
 
-	// The transaction data gets modified by the builder. So we keep a backup
-	// of the gas limits before passing them to the builder.
-	gasLimits := make([]uint64, len(txData))
-	for i, data := range txData {
-		gasLimits[i] = types.NewTx(data).Gas()
-	}
-
 	steps := make([]BuilderStep, len(txData))
 	for i, data := range txData {
 		steps[i] = Step(key, data)
@@ -321,9 +506,9 @@ func TestBundleBuilder_AutomaticallyAddsGasCostsForMarkers(t *testing.T) {
 	markerCosts := params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
 	for i, tx := range bundle.GetTransactionsInReferencedOrder() {
 		require.True(IsBundleOnly(tx))
-		cur := types.NewTx(txData[i])
-		require.Equal(tx.Type(), cur.Type())
-		require.Equal(gasLimits[i]+markerCosts, cur.Gas())
+		original := types.NewTx(txData[i])
+		require.Equal(original.Type(), tx.Type())
+		require.Equal(original.Gas()+markerCosts, tx.Gas())
 	}
 }
 
