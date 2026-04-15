@@ -1924,11 +1924,13 @@ func TestRunTransactionBundle_PreviouslyProcessedBundle_ReturnsEnvelopeAndResult
 	require.Equal(t, core_types.TransactionResultInvalid, result)
 }
 
-func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResultFailed(t *testing.T) {
+func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResultFailed_AndMarksBundleAsProcessed(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
 	evm := NewMock_evm(ctrl)
+
+	txOffset := 12
 
 	tx := bundle.OneOf().Build() // an empty bundle with OneOf flag will fail
 	_, plan, err := bundle.ValidateEnvelope(signer, tx)
@@ -1938,6 +1940,10 @@ func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResu
 		state.EXPECT().HasBundleRecentlyBeenProcessed(plan.Hash()),
 		state.EXPECT().InterTxSnapshot().Return(1),
 		state.EXPECT().RevertToInterTxSnapshot(1),
+		state.EXPECT().AddProcessedBundle(plan.Hash(), bundle.PositionInBlock{
+			Offset: uint32(txOffset),
+			Count:  0,
+		}),
 	)
 
 	gasPool := new(core.GasPool).AddGas(1_000_000)
@@ -1952,12 +1958,12 @@ func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResu
 
 	runner := &transactionRunner{evm: evm}
 
-	processedTransactions, result := runner.runTransactionBundle(context, tx, 0)
+	processedTransactions, result := runner.runTransactionBundle(context, tx, txOffset)
 	require.Len(t, processedTransactions, 0)
 	require.Equal(t, core_types.TransactionResultFailed, result)
 }
 
-func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAndResultSuccessful(t *testing.T) {
+func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAndResultSuccessful_AndMarksBundleAsProcessed(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
 	evm := NewMock_evm(ctrl)
