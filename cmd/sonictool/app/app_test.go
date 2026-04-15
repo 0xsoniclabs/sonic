@@ -18,7 +18,6 @@ package app_test
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"crypto/ecdsa"
 	"crypto/rand"
@@ -245,33 +244,8 @@ func TestSonicTool_genesis_ExportImport_WithBundles(t *testing.T) {
 	})
 
 	bundleHash, originalInfo := runBundle(t, net)
-	net.Stop()
 
-	// export genesis file
-	dir := net.GetDirectory()
-	stateDir := filepath.Join(dir, "state")
-	genesisFile := filepath.Join(dir, "testGenesis.g")
-	err := sonictool.RunWithArgs([]string{
-		"sonictool",
-		"--datadir", stateDir,
-		"genesis", "export", genesisFile,
-	})
-	require.NoError(t, err)
-
-	// clean client state
-	err = os.RemoveAll(stateDir)
-	require.NoError(t, err)
-
-	// import genesis file
-	err = sonictool.RunWithArgs([]string{
-		"sonictool",
-		"--datadir", stateDir,
-		"genesis", "--experimental", genesisFile,
-	})
-	require.NoError(t, err)
-
-	// start the network again.
-	require.NoError(t, net.Restart())
+	require.NoError(t, net.RestartWithExportImport())
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -647,8 +621,6 @@ func runBundle(t *testing.T, net *tests.IntegrationTestNet) (
 	require.NoError(t, err)
 	defer client.Close()
 
-	account := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-	address := account.Address()
 	signer := types.LatestSignerForChainID(net.GetChainId())
 	envelope, plan := bundle.NewBuilder().
 		WithSigner(signer).
@@ -656,7 +628,7 @@ func runBundle(t *testing.T, net *tests.IntegrationTestNet) (
 			bundle.Step(
 				net.GetSessionSponsor().PrivateKey,
 				tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-					To:    &address,
+					To:    &common.Address{0x42},
 					Value: big.NewInt(1),
 				}, net.GetSessionSponsor()),
 			),
