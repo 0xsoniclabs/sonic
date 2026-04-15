@@ -18,6 +18,7 @@ package app_test
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"crypto/ecdsa"
 	"crypto/rand"
@@ -28,14 +29,18 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/api/sonicapi"
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
 	ogenesis "github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/sonic/tests/bundles"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/prompt"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -229,6 +234,54 @@ func TestSonicTool_genesis_ExportsAndSigns_WithoutErrors(t *testing.T) {
 	// Note, this how far we can get without the actual key
 	require.ErrorContains(t, err, "genesis signature does not match any trusted signer")
 	revertPrompt()
+}
+
+func TestSonicTool_genesis_ExportImport_WithBundles(t *testing.T) {
+	// Create a history by running some transactions
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
+
+	bundleHash, originalInfo := runBundle(t, net)
+	net.Stop()
+
+	// export genesis file
+	dir := net.GetDirectory()
+	stateDir := filepath.Join(dir, "state")
+	genesisFile := filepath.Join(dir, "testGenesis.g")
+	err := sonictool.RunWithArgs([]string{
+		"sonictool",
+		"--datadir", stateDir,
+		"genesis", "export", genesisFile,
+	})
+	require.NoError(t, err)
+
+	// clean client state
+	err = os.RemoveAll(stateDir)
+	require.NoError(t, err)
+
+	// import genesis file
+	err = sonictool.RunWithArgs([]string{
+		"sonictool",
+		"--datadir", stateDir,
+		"genesis", "--experimental", genesisFile,
+	})
+	require.NoError(t, err)
+
+	// start the network again.
+	require.NoError(t, net.Restart())
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	// check that the bundle is still there after the export-import process
+	info, err := bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash)
+	require.NoError(t, err)
+	require.Equal(t, originalInfo, info,
+		"bundle info mismatch after genesis export-import")
 }
 
 func TestSonicTool_heal_ExecutesWithoutErrors(t *testing.T) {
@@ -581,4 +634,48 @@ func replaceUserPrompter(newPrompt prompt.UserPrompter) (cleanup func()) {
 	prompt.UserPrompt = newPrompt
 	cleanup = func() { prompt.UserPrompt = oldPrompt }
 	return
+}
+
+// runBundle runs a simple bundle in the provided network and returns the hash
+// of the execution plan and the info about the execution of the bundle.
+func runBundle(t *testing.T, net *tests.IntegrationTestNet) (
+	common.Hash,
+	*sonicapi.RPCBundleInfo,
+) {
+	t.Helper()
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	senderA := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	addrA := senderA.Address()
+
+	signer := types.LatestSignerForChainID(net.GetChainId())
+
+	// Create a bundle where sender A and B exchange 1 token each.
+	envelope, plan := bundle.NewBuilder().
+		WithSigner(signer).
+		AllOf(
+			bundle.Step(
+				net.GetSessionSponsor().PrivateKey,
+				tests.SetTransactionDefaults(t, net, &types.AccessListTx{
+					To:    &addrA,
+					Value: big.NewInt(1),
+				}, net.GetSessionSponsor()),
+			),
+		).
+		BuildEnvelopeAndPlan()
+
+	// Check bundle status before submission.
+	_, err = bundles.GetBundleInfo(t.Context(), client.Client(), plan.Hash())
+	require.ErrorIs(t, err, ethereum.NotFound)
+
+	// Run the bundle.
+	require.NoError(t, client.SendTransaction(t.Context(), envelope))
+
+	// Wait for the bundle to be processed.
+	info, err := bundles.WaitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+	require.NoError(t, err)
+
+	return plan.Hash(), info
 }
