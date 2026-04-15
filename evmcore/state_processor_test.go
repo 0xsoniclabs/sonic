@@ -596,7 +596,7 @@ func TestProcess_ForwardsCorrectIndexToTransactionProcessor(t *testing.T) {
 			state.EXPECT().HasBundleRecentlyBeenProcessed(any).AnyTimes()
 			state.EXPECT().InterTxSnapshot().AnyTimes()
 
-			// create a block with a an empty bundle
+			// create a block with n empty bundle
 			block := &EvmBlock{
 				EvmHeader: EvmHeader{
 					Number: big.NewInt(1),
@@ -743,7 +743,7 @@ type processFunction = func(
 	cfg vm.Config,
 	gasLimit uint64,
 	usedGas *uint64,
-	trueTxOffest int,
+	trueTxOffset int,
 	onNewLog func(*types.Log),
 ) ProcessSummary
 
@@ -2956,7 +2956,7 @@ func TestTransactionGenerationUtilities(t *testing.T) {
 }
 
 func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
-	// This test a kind of integration test of most of the functions in the
+	// This test is a kind of integration test of most of the functions in the
 	// state processor involved in tracking the legacy and actual transaction
 	// index. It sets up a few example bundles with expectations on the seen
 	// transaction indices that are then verified during a test execution.

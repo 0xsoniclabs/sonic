@@ -204,7 +204,7 @@ func runTransactions(
 		// implications of fixing it are not fully clear, thus it is kept until
 		// a thorough investigation can be conducted.
 		//
-		// The trueTxIndexOffset counts the number of actually transactions
+		// The trueTxIndexOffset counts the number of transactions actually
 		// included in the block before the current transaction. It is used to
 		// identify the position of bundles in blocks. In the future, if the
 		// impact of the counting of skipped transactions in the
