@@ -272,6 +272,59 @@ func TestOperaEVMProcessor_Execute_StateProcessorProducesTransactionsAndBundles_
 	require.Equal(summary, result)
 }
 
+func TestOperaEVMProcessor_Execute_UsesLengthOfProcessedTransactionsAsTransactionIndexOffsetInReceipts(t *testing.T) {
+	tests := map[string][]evmcore.ProcessedTransaction{
+		"nil":   nil,
+		"empty": {},
+		"one with receipt": {
+			{Transaction: &types.Transaction{}, Receipt: &types.Receipt{}},
+		},
+		"one without receipt": {
+			{Transaction: &types.Transaction{}},
+		},
+		"mix with and without receipts": {
+			{Transaction: &types.Transaction{}, Receipt: &types.Receipt{}},
+			{Transaction: &types.Transaction{}},
+			{Transaction: &types.Transaction{}},
+			{Transaction: &types.Transaction{}, Receipt: &types.Receipt{}},
+		},
+	}
+
+	for name, processedTransactions := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			factory := NewMock_stateProcessorFactory(ctrl)
+			stateProcessor := NewMock_stateProcessor(ctrl)
+
+			any := gomock.Any()
+			factory.EXPECT().NewStateProcessor(any, any, any).Return(stateProcessor)
+
+			stateProcessor.EXPECT().
+				Process(any, any, any, any, any, any).
+				Return(evmcore.ProcessSummary{
+					ProcessedTransactions: []evmcore.ProcessedTransaction{
+						{Receipt: &types.Receipt{TransactionIndex: 0}},
+						{Receipt: &types.Receipt{TransactionIndex: 1}},
+					},
+				})
+
+			processor := &OperaEVMProcessor{
+				processorFactory: factory,
+				processedTxs:     processedTransactions,
+			}
+
+			summary := processor.Execute(nil, 0)
+
+			require.Len(t, summary.ProcessedTransactions, 2)
+			for i, cur := range summary.ProcessedTransactions {
+				got := cur.Receipt.TransactionIndex
+				want := len(processedTransactions) + i
+				require.EqualValues(t, want, got)
+			}
+		})
+	}
+}
+
 func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
