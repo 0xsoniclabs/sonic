@@ -100,7 +100,7 @@ func TestOpenEnvelope_SuccessfullyDecodesEnvelopes(t *testing.T) {
 
 	for name, bundle := range tests {
 		t.Run(name, func(t *testing.T) {
-			payload, err := bundle.encode()
+			payload, err := bundle.Encode()
 			require.NoError(t, err)
 			envelope := types.NewTx(&types.LegacyTx{
 				To:   &BundleProcessor,
@@ -604,7 +604,7 @@ func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
 	for name, bundle := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			encoded, err := bundle.encode()
+			encoded, err := bundle.Encode()
 			require.NoError(err)
 			restored, err := decode(signer, encoded)
 			require.NoError(err)
@@ -666,7 +666,7 @@ func TestEncode_NonEncodableTransactions_ReturnsError(t *testing.T) {
 		},
 	}
 
-	_, err := bundle.encode()
+	_, err := bundle.Encode()
 	require.ErrorIs(err, issue)
 	require.ErrorContains(err, "failed to encode transaction bundle")
 }
@@ -699,7 +699,7 @@ func TestDecode_LegacyTxDataInBundle_FailsDecodingSinceBundleOnlyMarkCanNotBeRem
 		},
 	}
 
-	encoded, err := bundle.encode()
+	encoded, err := bundle.Encode()
 	require.NoError(t, err)
 
 	_, err = decode(signer, encoded)
@@ -713,7 +713,7 @@ func TestDecode_CorruptedExecutionPlanEncoding_DetectedDuringDecoding(t *testing
 		},
 	}
 
-	encoded, err := bundle.encode()
+	encoded, err := bundle.Encode()
 	require.NoError(t, err)
 
 	_, err = decode(nil, encoded)

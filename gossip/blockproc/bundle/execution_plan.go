@@ -148,6 +148,20 @@ func (s ExecutionStep) WithFlags(flags ExecutionFlags) ExecutionStep {
 	return res
 }
 
+// Flags returns the execution flags for this step. For single transaction
+// steps it returns the step's own flags. For group steps it recurses into the
+// first child step, which enables callers to retrieve the common flags for a
+// flat plan where all transaction steps carry the same flags.
+func (s *ExecutionStep) Flags() ExecutionFlags {
+	if s.single != nil {
+		return s.single.flags
+	}
+	if s.group != nil && len(s.group.steps) > 0 {
+		return s.group.steps[0].Flags()
+	}
+	return EF_Default
+}
+
 // valid returns true if the step is valid, meaning that it is either a single
 // step or a group step, but not both or neither. This is a basic validation to
 // ensure the integrity of the execution plan structure.

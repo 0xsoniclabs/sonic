@@ -96,7 +96,7 @@ func TestValidateEnvelope_DetectsErrorInIntrinsicGasCalculation(t *testing.T) {
 	signer := types.LatestSignerForChainID(testChainID)
 
 	bundle := NewBuilder().AllOf().BuildBundle()
-	encoded, err := bundle.encode()
+	encoded, err := bundle.Encode()
 	require.NoError(t, err)
 
 	envelope := types.NewTx(&types.LegacyTx{
@@ -121,7 +121,7 @@ func TestValidateEnvelope_DetectsErrorInFloorDataGasCalculation(t *testing.T) {
 	signer := types.LatestSignerForChainID(testChainID)
 
 	bundle := NewBuilder().AllOf().BuildBundle()
-	encoded, err := bundle.encode()
+	encoded, err := bundle.Encode()
 	require.NoError(t, err)
 
 	envelope := types.NewTx(&types.LegacyTx{
@@ -210,7 +210,7 @@ func TestValidateEnvelope_AcceptsValidBlockRanges(t *testing.T) {
 						Latest:   test.To,
 					}},
 			}
-			encoded, err := bundle.encode()
+			encoded, err := bundle.Encode()
 			require.NoError(t, err)
 			tx := types.NewTx(&types.LegacyTx{
 				To:   &BundleProcessor,
@@ -253,7 +253,7 @@ func TestValidateEnvelope_IdentifiesInvalidBlockRanges(t *testing.T) {
 						Latest:   test.To,
 					}},
 			}
-			encoded, err := bundle.encode()
+			encoded, err := bundle.Encode()
 			require.NoError(t, err)
 			tx := types.NewTx(&types.LegacyTx{
 				To:   &BundleProcessor,
@@ -349,7 +349,7 @@ func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transact
 		},
 	}
 
-	data, err := bundle.encode()
+	data, err := bundle.Encode()
 	require.NoError(t, err)
 	floorGas, err := core.FloorDataGas(data)
 	require.NoError(t, err)
@@ -394,7 +394,7 @@ func (gen testBundleGenerator) makeBundleTxWithWronglySignedTx(t testing.TB) *ty
 		},
 	}
 
-	encoded, err := bundle.encode()
+	encoded, err := bundle.Encode()
 	require.NoError(t, err)
 
 	return types.NewTx(&types.LegacyTx{
@@ -428,7 +428,7 @@ func (gen testBundleGenerator) makeBundleTxWithoutEnoughFloorGas(t testing.TB) *
 		},
 	}
 
-	data, err := bundle.encode()
+	data, err := bundle.Encode()
 	require.NoError(t, err)
 	floorGas, err := core.FloorDataGas(data)
 	require.NoError(t, err)
