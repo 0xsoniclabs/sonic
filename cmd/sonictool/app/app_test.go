@@ -647,19 +647,16 @@ func runBundle(t *testing.T, net *tests.IntegrationTestNet) (
 	require.NoError(t, err)
 	defer client.Close()
 
-	senderA := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-	addrA := senderA.Address()
-
+	account := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	address := account.Address()
 	signer := types.LatestSignerForChainID(net.GetChainId())
-
-	// Create a bundle where sender A and B exchange 1 token each.
 	envelope, plan := bundle.NewBuilder().
 		WithSigner(signer).
 		AllOf(
 			bundle.Step(
 				net.GetSessionSponsor().PrivateKey,
 				tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-					To:    &addrA,
+					To:    &address,
 					Value: big.NewInt(1),
 				}, net.GetSessionSponsor()),
 			),
