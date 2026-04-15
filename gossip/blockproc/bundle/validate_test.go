@@ -451,6 +451,74 @@ func (gen testBundleGenerator) makeBundleTxWithoutEnoughGasForAllTransactions() 
 	})
 }
 
+func TestValidateRange_AcceptsValidRanges(t *testing.T) {
+	tests := []BlockRange{
+		{0, 0},
+		{0, 100},
+		{0, MaxBlockRange - 1},
+		{10, 10},
+		{10, 100},
+		{10, MaxBlockRange + 9},
+	}
+
+	for _, tc := range tests {
+		require.NoError(t, validateRange(tc))
+	}
+}
+
+func TestValidateRange_DetectsInvalidRanges(t *testing.T) {
+	tests := []struct {
+		blockRange BlockRange
+		issue      string
+	}{
+		{
+			blockRange: BlockRange{1, 0},
+			issue:      "empty block range",
+		},
+		{
+			blockRange: BlockRange{10, 9},
+			issue:      "empty block range",
+		},
+		{
+			blockRange: BlockRange{MaxBlockRange, 0},
+			issue:      "empty block range",
+		},
+		{
+			blockRange: BlockRange{0, MaxBlockRange},
+			issue:      "invalid block range",
+		},
+		{
+			blockRange: BlockRange{10, MaxBlockRange + 10},
+			issue:      "invalid block range",
+		},
+		{
+			blockRange: BlockRange{10, MaxBlockRange + 100},
+			issue:      "invalid block range",
+		},
+	}
+
+	for _, tc := range tests {
+		require.ErrorContains(t, validateRange(tc.blockRange), tc.issue)
+	}
+}
+
+func TestValidateRange_ComprehensiveRangeChecks(t *testing.T) {
+	for earliest := range 2 * MaxBlockRange {
+		for latest := range 2 * MaxBlockRange {
+			r := BlockRange{earliest, latest}
+			if size := r.Size(); size > 0 && size <= MaxBlockRange {
+				require.NoError(t, validateRange(r),
+					"earliest=%d, latest=%d", earliest, latest,
+				)
+			} else {
+				require.Error(t, validateRange(r),
+					"earliest=%d, latest=%d", earliest, latest,
+				)
+			}
+		}
+	}
+}
+
 func TestBelongsToExecutionPlan_IdentifiesTransactionsWhichSignTheExecutionPlan(t *testing.T) {
 
 	executionPlanHash := common.Hash{0x01, 0x02, 0x03}

@@ -82,7 +82,7 @@ func validateEnvelopeInternal(
 	//  - etc. ...
 
 	plan := txBundle.Plan
-	if err := ValidateRange(plan.Range); err != nil {
+	if err := validateRange(plan.Range); err != nil {
 		return nil, nil, err
 	}
 
@@ -133,9 +133,9 @@ func validateEnvelopeInternal(
 	return &txBundle, &plan, nil
 }
 
-// ValidateRange checks that the given block range is valid, i.e. that it is not
+// validateRange checks that the given block range is valid, i.e. that it is not
 // empty and does not exceed the maximum allowed range.
-func ValidateRange(r BlockRange) error {
+func validateRange(r BlockRange) error {
 	size := r.Size()
 	if size == 0 {
 		return fmt.Errorf("invalid empty block range [%d,%d]", r.Earliest, r.Latest)
