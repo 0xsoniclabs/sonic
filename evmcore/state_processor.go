@@ -375,6 +375,13 @@ func (r *transactionRunner) runTransactionBundleInternal(
 	// Run the bundle and collect the processed transactions.
 	runner := bundleTransactionRunner{ctxt: ctxt, txOffset: txIndex}
 	if success := bundle.RunBundle(txBundle, &runner); !success {
+		// Mark the execution plan as processed in the StateDB to prevent processing
+		// another bundle with the same execution plan in the same block. Also keep
+		// track of the position of the bundle in the block.
+		// Note: it is sufficient to mark the execution plan of a bundle after the
+		// execution of the bundle as used since nested bundles can not contain
+		// copies of themselves without finding a hash-function collision.
+		ctxt.statedb.AddProcessedBundle(planHash, positionInBlock)
 		return []ProcessedTransaction{}, core_types.TransactionResultFailed
 	}
 
