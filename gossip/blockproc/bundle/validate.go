@@ -26,6 +26,11 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
+const (
+	// MaxNestingDepth defines the maximum allowed nesting depth of execution steps.
+	MaxNestingDepth = 16
+)
+
 var ErrWrongEnvelopeGasLimit = errors.New("gas limit of envelope does not match gas limit of payload")
 
 // ValidateEnvelope validates an envelope and its contents.
@@ -131,6 +136,46 @@ func validateEnvelopeInternal(
 	}
 
 	return &txBundle, &plan, nil
+}
+
+// validateStep checks that the given execution step is valid.
+func validateStep(step ExecutionStep) error {
+	return validateStepInternal(step, 0)
+}
+
+func validateStepInternal(
+	step ExecutionStep,
+	depth int,
+) error {
+
+	// Check limit of maximum nesting.
+	if depth > MaxNestingDepth {
+		return fmt.Errorf("exceeds maximum nesting depth of execution steps")
+	}
+
+	// The step must be either a single or a group, not neither or both.
+	if !step.valid() {
+		return fmt.Errorf("malformed execution step")
+	}
+
+	// Check properties of the single step variant.
+	if single := step.single; single != nil {
+		if !single.flags.Valid() {
+			return fmt.Errorf("invalid execution flags in step")
+		}
+		return nil
+	}
+
+	// Check properties of the group step variant.
+	if group := step.group; group != nil {
+		for _, subStep := range group.steps {
+			if err := validateStepInternal(subStep, depth+1); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // validateRange checks that the given block range is valid, i.e. that it is not
