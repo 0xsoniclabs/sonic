@@ -19,11 +19,17 @@ package bundle
 import (
 	"errors"
 	"fmt"
+	"math/big"
 	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+)
+
+const (
+	// MaxNestingDepth defines the maximum allowed nesting depth of execution steps.
+	MaxNestingDepth = 5
 )
 
 var ErrWrongEnvelopeGasLimit = errors.New("gas limit of envelope does not match gas limit of payload")
@@ -41,8 +47,8 @@ func ValidateEnvelope(
 		envelopeTx,
 		func(data []byte, accessList types.AccessList) (uint64, error) {
 			return core.IntrinsicGas(
-				envelopeTx.Data(),
-				envelopeTx.AccessList(),
+				data,
+				accessList,
 				nil,   // code auth is not used in the bundle transaction
 				false, // bundle transaction is not a contract creation
 				true,  // is homestead
@@ -71,22 +77,17 @@ func validateEnvelopeInternal(
 		return nil, nil, fmt.Errorf("failed to decode transaction bundle: %v", err)
 	}
 
-	// TODO: this function shall validate bundle correctness,
-	// the current implementation is preliminary to enable prototyping.
-	// This code needs to be developed
-	// Things to be checked include: (not complete)
-	//  - consistent use of chain IDs
-	//  - all bundled transactions are marked as bundle-only
-	//  - all transactions referenced in the plan are included in the bundle
-	//  - all transactions in the bundle are referenced in the plan
-	//  - etc. ...
-
-	plan := txBundle.Plan
-	if err := validateRange(plan.Range); err != nil {
+	// Check that the decoded bundle is valid.
+	if err := validateBundle(txBundle); err != nil {
 		return nil, nil, err
 	}
 
+	// TODO: check nested bundles
+
+	// -- check envelope properties --
+
 	bundleGas := envelopeTx.Gas()
+
 	// Ensure the transaction has more gas than the basic tx fee.
 	intrGas, err := calculateIntrinsicGas(
 		envelopeTx.Data(),
@@ -98,11 +99,12 @@ func validateEnvelopeInternal(
 	if envelopeTx.Gas() < intrGas {
 		return nil, nil, fmt.Errorf("%w, gas should be more than intrinsic gas %v", core.ErrIntrinsicGas, intrGas)
 	}
+
 	// gas limit of the bundle has to be exactly the aggregated gas of all the
-	// transactions in the bundle or the intrinsic gas of the bundle
+	// transactions in the bundle or the intrinsic gas of the envelope
 	// transaction, whichever is higher.
 	gasLimit := uint64(0)
-	for _, innerTx := range txBundle.Transactions {
+	for _, innerTx := range txBundle.GetTransactionsInReferencedOrder() {
 		gasLimit += innerTx.Gas()
 	}
 
@@ -121,16 +123,105 @@ func validateEnvelopeInternal(
 		return nil, nil, fmt.Errorf("%w: envelope gas limit is %d but should be %d", ErrWrongEnvelopeGasLimit, envelopeTx.Gas(), gasNeeded)
 	}
 
-	// Check consistency of the execution plan.
-	planHash := plan.Hash()
+	return &txBundle, &txBundle.Plan, nil
+}
+
+// validateBundle performs static validation checks for bundles. These checks
+// restrict the valid composition of bundles in an attempt to identify and
+// filter out invalid bundles.
+func validateBundle(txBundle TransactionBundle) error {
+
+	// TODO: this function shall validate bundle correctness,
+	// the current implementation is preliminary to enable prototyping.
+	// This code needs to be developed
+	// Things to be checked include: (not complete)
+	//  - etc. ...
+
+	// Validate the stated block range.
+	plan := txBundle.Plan
+	if err := validateRange(plan.Range); err != nil {
+		return err
+	}
+
+	// Validate the execution steps.
+	if err := validateStep(plan.Root); err != nil {
+		return fmt.Errorf("invalid execution plan: %v", err)
+	}
+
+	// Check that all transactions use the same chain ID.
+	var chainId *big.Int
 	for _, tx := range txBundle.Transactions {
-		// check that all transactions in the bundle belong to the same execution plan
-		if !belongsToExecutionPlan(tx, planHash) {
-			return nil, nil, fmt.Errorf("transaction %s does not belong to the execution plan", tx.Hash().Hex())
+		if chainId == nil {
+			chainId = tx.ChainId()
+		} else if tx.ChainId() == nil || tx.ChainId().Cmp(chainId) != 0 {
+			return fmt.Errorf("transactions in the bundle have different chain IDs")
 		}
 	}
 
-	return &txBundle, &plan, nil
+	// Check that all contained transactions agree to the execution plan.
+	planHash := plan.Hash()
+	for _, tx := range txBundle.Transactions {
+		if !belongsToExecutionPlan(tx, planHash) {
+			return fmt.Errorf("bundle contains transaction not approving the execution plan")
+		}
+	}
+
+	// Check that all transactions referenced in the plan are present.
+	txInReferenceOrder := txBundle.GetTransactionsInReferencedOrder()
+	for _, tx := range txInReferenceOrder {
+		if tx == nil {
+			return fmt.Errorf("missing transaction referenced in the execution plan")
+		}
+	}
+
+	// Check that no non-referenced transactions are present.
+	for _, tx := range txBundle.Transactions {
+		if !slices.Contains(txInReferenceOrder, tx) {
+			return fmt.Errorf("non-referenced transaction in bundle")
+		}
+	}
+
+	return nil
+}
+
+// validateSteps checks that the given execution step is valid.
+func validateStep(step ExecutionStep) error {
+	return validateStepInternal(step, 0)
+}
+
+func validateStepInternal(
+	step ExecutionStep,
+	depth int,
+) error {
+
+	// Check limit of maximum nesting.
+	if depth > MaxNestingDepth {
+		return fmt.Errorf("exceeded maximum nesting depth of execution steps")
+	}
+
+	// The step must be either a single or a group, not neither or both.
+	if !step.valid() {
+		return fmt.Errorf("malformed execution step")
+	}
+
+	// Check properties of the single step variant.
+	if single := step.single; single != nil {
+		if !single.flags.Valid() {
+			return fmt.Errorf("invalid execution flags in step")
+		}
+		return nil
+	}
+
+	// Check properties of the group step variant.
+	if group := step.group; group != nil {
+		for _, subStep := range group.steps {
+			if err := validateStepInternal(subStep, depth+1); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // validateRange checks that the given block range is valid, i.e. that it is not
