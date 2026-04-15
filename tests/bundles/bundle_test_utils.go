@@ -20,12 +20,17 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"testing"
 
 	"github.com/0xsoniclabs/sonic/api/sonicapi"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/sonic/tests/contracts/revert"
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/stretchr/testify/require"
 )
 
 // GetBundleInfo calls the sonic_getBundleInfo RPC method to retrieve
@@ -94,4 +99,34 @@ func WaitForBundleExecutions(
 		return !slices.Contains(infos, nil), nil
 	})
 	return infos, err
+}
+
+// deployContract deploys a contract using the provided deploy function and prepares the input for calling the specified method.
+//
+//nolint:unused
+func deployContract[T any](
+	t testing.TB, session tests.IntegrationTestNetSession,
+	getABI func() (*abi.ABI, error),
+	deployFunc tests.ContractDeployer[T],
+	methodName string,
+) (common.Address, []byte) {
+	t.Helper()
+	abi, err := getABI()
+	require.NoError(t, err, "failed to get counter abi; %v", err)
+
+	_, receipt, err := tests.DeployContract(session, deployFunc)
+	require.NoError(t, err, "failed to deploy contract; %v", err)
+	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
+
+	input, err := abi.Pack(methodName)
+	require.NoError(t, err, "failed to pack input for method %s; %v", methodName, err)
+
+	return receipt.ContractAddress, input
+}
+
+// prepareRevertContract deploys the Revert contract and prepares the input for calling the doCrash method, which always reverts.
+//
+//nolint:unused
+func deployRevertContract(t testing.TB, session tests.IntegrationTestNetSession) (common.Address, []byte) {
+	return deployContract(t, session, revert.RevertMetaData.GetAbi, revert.DeployRevert, "doCrash")
 }

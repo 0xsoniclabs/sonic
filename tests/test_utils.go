@@ -143,30 +143,39 @@ func SetTransactionDefaults[T types.TxData](
 
 	switch tx := types.TxData(txPayload).(type) {
 	case *types.LegacyTx:
-		tx.Nonce = nonce
-		tx.Gas = gas
-		tx.GasPrice = gasPrice
+		copied := *tx
+		copied.Nonce = nonce
+		copied.Gas = gas
+		copied.GasPrice = gasPrice
+		return any(&copied).(T)
 	case *types.AccessListTx:
-		tx.Nonce = nonce
-		tx.Gas = gas
-		tx.GasPrice = big.NewInt(500e9)
+		copied := *tx
+		copied.Nonce = nonce
+		copied.Gas = gas
+		copied.GasPrice = gasPrice
+		return any(&copied).(T)
 	case *types.DynamicFeeTx:
-		tx.Nonce = nonce
-		tx.Gas = gas
-		tx.GasFeeCap = gasPrice
+		copied := *tx
+		copied.Nonce = nonce
+		copied.Gas = gas
+		copied.GasFeeCap = gasPrice
+		return any(&copied).(T)
 	case *types.BlobTx:
-		tx.Nonce = nonce
-		tx.Gas = gas
-		tx.GasFeeCap = uint256.MustFromBig(gasPrice)
+		copied := *tx
+		copied.Nonce = nonce
+		copied.Gas = gas
+		copied.GasFeeCap = uint256.MustFromBig(gasPrice)
+		return any(&copied).(T)
 	case *types.SetCodeTx:
-		tx.Nonce = nonce
-		tx.Gas = gas
-		tx.GasFeeCap = uint256.MustFromBig(gasPrice)
+		copied := *tx
+		copied.Nonce = nonce
+		copied.Gas = gas
+		copied.GasFeeCap = uint256.MustFromBig(gasPrice)
+		return any(&copied).(T)
 	default:
 		t.Fatalf("unexpected transaction type: %T", tx)
+		return txPayload
 	}
-
-	return txPayload
 }
 
 // WaitUntilTransactionIsRetiredFromPool waits until the transaction no longer exists in the transaction pool.
