@@ -2960,6 +2960,18 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 	// state processor involved in tracking the legacy and actual transaction
 	// index. It sets up a few example bundles with expectations on the seen
 	// transaction indices that are then verified during a test execution.
+	//
+	// The idea is to build bundles of transactions where the individual
+	// transactions encode the expected legacy and true transaction index
+	// to be expected when being executed. This encoding happens by placing
+	// the legacy transaction index into the nonce field of transactions and
+	// the true transaction index into the value field. A mock implementation
+	// of the transaction runner intercepts those transactions, decodes the
+	// expected values for the transaction indices, and checks that they match
+	// the actually encountered values.
+	//
+	// The following functions provide some utilities to improve the readability
+	// the test case specifications.
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
@@ -2993,8 +3005,7 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 	fail := bundle.OneOf()
 
 	// The test runner below is set up to check that when running each of those
-	// bundles the reported transaction index matches the nonce of the
-	// individual transactions.
+	// bundles the transaction indices are checked in each step.
 	tests := map[string]*types.Transaction{
 		"all-of sequence": bundle.AllOf(
 			wantTxIndex(0, 0),
@@ -3109,12 +3120,18 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 
 			any := gomock.Any()
 
+			// Keep track of seen transactions to make sure all transactions
+			// in the bundle have actually been processed in the expected order.
+			// It is also a neat, readable primitive for debugging this test.
 			var seenTxNonces []int
 
 			// regular transactions all pass, but the we check whether the
 			// given nonce matches the transaction index.
 			runner.EXPECT().runRegularTransaction(any, any, any, any).DoAndReturn(
-				func(ctxt *runContext, tx *types.Transaction, legacyTxOffset int, trueTxOffset int) (ProcessedTransaction, core_types.TransactionResult) {
+				func(
+					ctxt *runContext, tx *types.Transaction,
+					legacyTxOffset int, trueTxOffset int,
+				) (ProcessedTransaction, core_types.TransactionResult) {
 					require.Equal(int(tx.Nonce()), legacyTxOffset)
 					require.Equal(int(tx.Value().Int64()), trueTxOffset)
 					seenTxNonces = append(seenTxNonces, int(tx.Nonce()))
@@ -3136,7 +3153,10 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 			// sponsored transactions all pass and produce two successful
 			// processed transactions, the sponsored and the payment tx
 			runner.EXPECT().runSponsoredTransaction(any, any, any, any).DoAndReturn(
-				func(ctxt *runContext, tx *types.Transaction, legacyTxOffset int, trueTxOffset int) ([]ProcessedTransaction, core_types.TransactionResult) {
+				func(
+					ctxt *runContext, tx *types.Transaction,
+					legacyTxOffset int, trueTxOffset int,
+				) ([]ProcessedTransaction, core_types.TransactionResult) {
 					require.Equal(int(tx.Nonce()), legacyTxOffset)
 					require.Equal(int(tx.Value().Int64()), trueTxOffset)
 					seenTxNonces = append(seenTxNonces, int(tx.Nonce()))
@@ -3160,6 +3180,9 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 				new(transactionRunner).runTransactionBundle,
 			).AnyTimes()
 
+			// The execution of the transactions does not really reach the
+			// StateDB, but some operations are triggered while processing the
+			// bundles. These are not the objective of this test.
 			stateDb := state.NewMockStateDB(ctrl)
 			stateDb.EXPECT().HasBundleRecentlyBeenProcessed(any).AnyTimes()
 			stateDb.EXPECT().InterTxSnapshot().AnyTimes()
@@ -3175,6 +3198,8 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 				statedb:     stateDb,
 				runner:      runner,
 			}
+
+			// the actual execution of the test case
 			runTransaction(ctxt, tx, 0, 0)
 
 			// make sure that all transactions have indeed been processed

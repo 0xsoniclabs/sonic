@@ -200,17 +200,17 @@ func runTransactions(
 		// The legacyTxIndexOffset is retained for backward compatibility. It
 		// counts all attempted transactions, thus including skipped
 		// transactions. It is assumed to be a bug in the original
-		// implementation, but this could not be verified yet. Also, the
-		// implications of fixing it are not fully clear, thus it is kept until
-		// a thorough investigation can be conducted.
+		// implementation, however, the implications of fixing it are not fully
+		// clear, and beyond the scope of the current roadmap. Thus it is kept
+		// until a thorough investigation can be conducted.
 		//
 		// The trueTxIndexOffset counts the number of transactions actually
 		// included in the block before the current transaction. It is used to
 		// identify the position of bundles in blocks. In the future, if the
 		// impact of the counting of skipped transactions in the
-		// legacyTxIndexOffset is better understood and it is decided to fix it,
-		// the legacyTxIndexOffset could be removed and the trueTxIndexOffset
-		// becomes the only transaction index offset to be tracked.
+		// legacyTxIndexOffset is better understood  the legacyTxIndexOffset
+		// could be removed and the trueTxIndexOffset becomes the only
+		// transaction index offset to be tracked.
 
 		nextId := legacyTxIndexOffset + len(processedTxs) // < counts also skipped transactions
 		txs, _ := runTransaction(context, tx, nextId, trueTxIndexOffset)
