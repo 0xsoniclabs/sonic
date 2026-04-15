@@ -19,7 +19,10 @@ package gossip
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
@@ -147,6 +150,40 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 		}
 		return true
 	})
+
+	if g.ProcessedBundles != nil {
+
+		// accumulate all execution infos based on the block where they were processed
+		bundlesByBlock := make(map[uint64][]bundle.ExecutionInfo)
+		g.ProcessedBundles.ForEach(func(info bundle.ExecutionInfo) bool {
+			bundlesByBlock[info.BlockNumber] = append(bundlesByBlock[info.BlockNumber], info)
+			return true
+		})
+
+		// Import bundles grouped by block number in ascending order.
+		for _, bn := range slices.Sorted(maps.Keys(bundlesByBlock)) {
+			bundlesPerBlock := map[common.Hash]bundle.PositionInBlock{}
+			for _, info := range bundlesByBlock[bn] {
+				if _, exists := bundlesPerBlock[info.ExecutionPlanHash]; exists {
+					s.Log.Crit("Duplicate execution plan hash in genesis",
+						"blockNumber", bn,
+						"hash", info.ExecutionPlanHash)
+					return fmt.Errorf(
+						"duplicate execution plan hash in genesis: block %d, hash %s",
+						bn, info.ExecutionPlanHash)
+				}
+				bundlesPerBlock[info.ExecutionPlanHash] = info.Position
+			}
+			s.AddProcessedBundles(bn, bundlesPerBlock)
+		}
+
+		// last overwrite of the history hash, to ensure it is consistent with
+		// the exported hash. This is needed because the history hash is affected
+		// by bundles that could have been deleted from the store out of old age.
+		if h, found := g.ProcessedBundles.GetHistoryHash(); found {
+			s.SetProcessedBundlesHistoryHash(h.BlockNumber, h.Hash)
+		}
+	}
 
 	return nil
 }

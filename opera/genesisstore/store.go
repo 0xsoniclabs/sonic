@@ -51,6 +51,14 @@ func SccBlockSection(i int) string {
 	return getSectionName("scc_bc", i)
 }
 
+func BundleHashSection(i int) string {
+	return getSectionName("bh", i)
+}
+
+func BundlesSection(i int) string {
+	return getSectionName("bundles", i)
+}
+
 type FilesMap func(string) (io.Reader, error)
 
 // Store is a node persistent storage working over a physical zip archive.

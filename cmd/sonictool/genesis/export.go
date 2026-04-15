@@ -24,6 +24,7 @@ import (
 	"path"
 
 	"github.com/0xsoniclabs/sonic/gossip"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
@@ -114,6 +115,24 @@ func ExportGenesis(ctx context.Context, gdb *gossip.Store, includeArchive bool, 
 		return err
 	}
 	if err := exportBlockCertificates(ctx, gdb, writer, lastBlock); err != nil {
+		return err
+	}
+
+	// bundles hash
+	writer = newUnitWriter(out)
+	if err := writer.Start(header, "bh", tmpPath); err != nil {
+		return err
+	}
+	if err := exportBundlesHash(ctx, gdb, writer, lastBlock); err != nil {
+		return err
+	}
+
+	// bundles
+	writer = newUnitWriter(out)
+	if err := writer.Start(header, "bundles", tmpPath); err != nil {
+		return err
+	}
+	if err := exportBundles(ctx, gdb, writer, lastBlock); err != nil {
 		return err
 	}
 
@@ -275,6 +294,52 @@ func exportFwaSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter
 	return nil
 }
 
+func exportBundlesHash(ctx context.Context, gdb *gossip.Store, writer *unitWriter, lastBlock idx.Block) error {
+	log.Info("Exporting processed bundles history hash")
+
+	// write the history hash as the first item.
+	blockNum, histHash := gdb.GetProcessedBundleHistoryHash()
+	b := MustRlpEncodeToByte(bundle.HistoryHash{
+		BlockNumber: blockNum,
+		Hash:        histHash,
+	})
+	if _, err := writer.Write(b); err != nil {
+		return err
+	}
+	hash, err := writer.Flush()
+	if err != nil {
+		return err
+	}
+	log.Info("Exported processed bundles history hash", "blockNum", blockNum, "hash", histHash)
+	fmt.Printf("- Processed bundles history hash: %v \n", hash.String())
+	return nil
+}
+
+func exportBundles(ctx context.Context, gdb *gossip.Store, writer *unitWriter, lastBlock idx.Block) error {
+	log.Info("Exporting processed bundles")
+
+	// write all the execution info from the store.
+	count := 0
+	for _, info := range gdb.EnumerateProcessedBundles() {
+		b := MustRlpEncodeToByte(info)
+		if _, err := writer.Write(b); err != nil {
+			return err
+		}
+		count++
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+
+	hash, err := writer.Flush()
+	if err != nil {
+		return err
+	}
+	log.Info("Exported processed bundles", "count", count)
+	fmt.Printf("- Processed bundles hash: %v \n", hash.String())
+	return nil
+}
+
 func getEpochBlock(epoch idx.Epoch, store *gossip.Store) idx.Block {
 	bs, _ := store.GetHistoryBlockEpochState(epoch)
 	if bs == nil {
@@ -402,4 +467,12 @@ type dropableFile struct {
 
 func (f dropableFile) Drop() error {
 	return os.Remove(f.path)
+}
+
+func MustRlpEncodeToByte(value any) []byte {
+	res, err := rlp.EncodeToBytes(value)
+	if err != nil {
+		panic("failed to encode value to bytes: " + err.Error())
+	}
+	return res
 }
