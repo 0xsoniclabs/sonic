@@ -27,7 +27,20 @@ import (
 )
 
 const (
-	// MaxNestingDepth defines the maximum allowed nesting depth of execution steps.
+	// MaxNestingDepth defines the maximum allowed nesting depth of execution
+	// steps. This constant is critical to consensus, as it influences the
+	// decision of whether a bundle is valid and can be computed or invalid and
+	// must be rejected. It can thus only be altered as part of a hard-fork.
+	//
+	// The main intention of adding a limit to the number of nesting levels is
+	// to provide a guaranteed upper limit for nesting valid execution plans to
+	// implementations, enabling them to reason about implementation trade-offs.
+	// In particular, the resource usage of recursive operations can be
+	// considered bound and effectively tested.
+	//
+	// The chosen value of 16 is somewhat arbitrary, but motivated by providing
+	// generous room for nesting while keeping the number of levels low enough
+	// to be easily testable and to not cause issues for implementations.
 	MaxNestingDepth = 16
 )
 
