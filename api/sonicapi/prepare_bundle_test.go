@@ -186,7 +186,8 @@ func Test_resolveBlockRange(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			r := resolveBlockRange(tc.currentBlock, tc.earliest, tc.latest)
+			r, err := resolveBlockRange(tc.currentBlock, tc.earliest, tc.latest)
+			require.NoError(t, err)
 			require.EqualValues(t, tc.wantEarliest, r.Earliest)
 			require.EqualValues(t, tc.wantLatest, r.Latest)
 		})
@@ -312,12 +313,24 @@ func Test_asTransaction_TxType(t *testing.T) {
 			wantType: types.DynamicFeeTxType,
 		},
 		{
-			name: "zero gas price returns dynamic fee tx",
+			name: "zero gas price with gas fee cap returns dynamic fee tx",
 			msg: &core.Message{
-				To:       &to,
-				GasPrice: big.NewInt(0),
-				GasLimit: params.TxGas,
-				Value:    big.NewInt(0),
+				To:        &to,
+				GasPrice:  big.NewInt(0),
+				GasFeeCap: big.NewInt(1),
+				GasLimit:  params.TxGas,
+				Value:     big.NewInt(0),
+			},
+			wantType: types.DynamicFeeTxType,
+		},
+		{
+			name: "zero gas price with gas tip cap returns dynamic fee tx",
+			msg: &core.Message{
+				To:        &to,
+				GasPrice:  big.NewInt(0),
+				GasTipCap: big.NewInt(1),
+				GasLimit:  params.TxGas,
+				Value:     big.NewInt(0),
 			},
 			wantType: types.DynamicFeeTxType,
 		},
@@ -376,8 +389,9 @@ func Test_PrepareBundle_SingleTx_GasAndPriceEstimated(t *testing.T) {
 
 	args := PrepareBundleArgs{
 		Transactions: []ethapi.TransactionArgs{{
-			From: &addr1,
-			To:   &addr2,
+			From:  &addr1,
+			To:    &addr2,
+			Nonce: rpctest.ToHexUint64(0),
 		}},
 	}
 
@@ -405,8 +419,9 @@ func Test_PrepareBundle_SingleTx_AccessListContainsPlanHash(t *testing.T) {
 
 	args := PrepareBundleArgs{
 		Transactions: []ethapi.TransactionArgs{{
-			From: &addr1,
-			To:   &addr2,
+			From:  &addr1,
+			To:    &addr2,
+			Nonce: rpctest.ToHexUint64(0),
 		}},
 	}
 
@@ -439,9 +454,10 @@ func Test_PrepareBundle_ExplicitGasLimit_NotOverwritten(t *testing.T) {
 
 	args := PrepareBundleArgs{
 		Transactions: []ethapi.TransactionArgs{{
-			From: &addr1,
-			To:   &addr2,
-			Gas:  &explicitGas,
+			From:  &addr1,
+			To:    &addr2,
+			Nonce: rpctest.ToHexUint64(0),
+			Gas:   &explicitGas,
 		}},
 	}
 
@@ -464,8 +480,9 @@ func Test_PrepareBundle_DefaultBlockRange_IsCurrentBlockPlusOne(t *testing.T) {
 
 	args := PrepareBundleArgs{
 		Transactions: []ethapi.TransactionArgs{{
-			From: &addr1,
-			To:   &addr2,
+			From:  &addr1,
+			To:    &addr2,
+			Nonce: rpctest.ToHexUint64(0),
 		}},
 	}
 
@@ -490,8 +507,9 @@ func Test_PrepareBundle_ExplicitBlockRange_IsRespected(t *testing.T) {
 
 	args := PrepareBundleArgs{
 		Transactions: []ethapi.TransactionArgs{{
-			From: &addr1,
-			To:   &addr2,
+			From:  &addr1,
+			To:    &addr2,
+			Nonce: rpctest.ToHexUint64(0),
 		}},
 		EarliestBlock: &earliest,
 		LatestBlock:   &latest,
@@ -502,6 +520,27 @@ func Test_PrepareBundle_ExplicitBlockRange_IsRespected(t *testing.T) {
 
 	require.EqualValues(t, earliest, result.ExecutionPlan.Earliest)
 	require.EqualValues(t, latest, result.ExecutionPlan.Latest)
+}
+
+func Test_PrepareBundle_MissingNonce_ReturnsError(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	args := PrepareBundleArgs{
+		Transactions: []ethapi.TransactionArgs{{
+			From: &addr1,
+			To:   &addr2,
+		}},
+	}
+
+	_, err := api.PrepareBundle(t.Context(), args)
+	require.ErrorContains(t, err, "transaction 0 is missing nonce")
 }
 
 func Test_PrepareBundle_MultipleTxs_AllOfPlan(t *testing.T) {

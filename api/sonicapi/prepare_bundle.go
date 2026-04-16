@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
+	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/ethereum/go-ethereum/common"
@@ -52,12 +53,12 @@ type PrepareBundleArgs struct {
 // RPCPreparedBundle is the return type of the `sonic_prepareBundle` RPC method
 type RPCPreparedBundle struct {
 	// Transactions specifies the ordered list of transactions to be included in the bundle.
-	// These must be signed exactly as provided by the bundle_prepare RPC method; any modification
+	// These must be signed exactly as provided by the `sonic_prepareBundle` RPC method; any modification
 	// will invalidate the execution plan and result in an ill-formed bundle.
 	Transactions []ethapi.TransactionArgs `json:"transactions"`
 	// ExecutionPlan contains the execution plan that each bundled transaction references. This is provided
 	// for verification purposes; users may independently compute and validate the execution plan hash.
-	ExecutionPlan RPCExecutionPlan `json:"executionPlan,omitempty"`
+	ExecutionPlan RPCExecutionPlan `json:"executionPlan"`
 }
 
 // PrepareBundle implements the `sonic_prepareBundle` RPC method.
@@ -101,7 +102,14 @@ func (a *PublicBundleAPI) PrepareBundle(
 		}
 	}
 
-	gasPrice := a.suggestGasPrice()
+	var currentBlock *evmcore.EvmBlock
+	if block := a.b.CurrentBlock(); block != nil {
+		currentBlock = block
+	} else {
+		return nil, fmt.Errorf("failed to prepare bundle: unable to retrieve current block number")
+	}
+
+	gasPrice := a.suggestGasPrice(currentBlock)
 	fillTransactionDefaults(args.Transactions, gasLimits, gasPrice)
 
 	chainID := a.b.ChainID()
@@ -110,6 +118,11 @@ func (a *PublicBundleAPI) PrepareBundle(
 	// Build execution steps and TxReference map.
 	steps := make([]bundle.ExecutionStep, len(args.Transactions))
 	for i, txArgs := range args.Transactions {
+
+		if txArgs.Nonce == nil {
+			return nil, fmt.Errorf("failed to prepare bundle: transaction %d is missing nonce", i)
+		}
+
 		msg, err := txArgs.ToMessage(gasCap, basefee, log.Root())
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare bundle: transaction %d conversion error: %w", i, err)
@@ -126,13 +139,10 @@ func (a *PublicBundleAPI) PrepareBundle(
 		})
 	}
 
-	var currentBlockNumber uint64
-	if block := a.b.CurrentBlock(); block != nil {
-		currentBlockNumber = block.NumberU64()
-	} else {
-		return nil, fmt.Errorf("failed to prepare bundle: unable to retrieve current block number")
+	blockRange, err := resolveBlockRange(currentBlock.NumberU64(), args.EarliestBlock, args.LatestBlock)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare bundle: %w", err)
 	}
-	blockRange := resolveBlockRange(currentBlockNumber, args.EarliestBlock, args.LatestBlock)
 
 	var root bundle.ExecutionStep
 	if len(steps) == 1 {
@@ -156,11 +166,11 @@ func (a *PublicBundleAPI) PrepareBundle(
 }
 
 // fillTransactionDefaults fills missing gas limits and gas price fields.
-// Gas limits are set from gasLimits only when tx.Gas is nil. Gas price fields are
+// Gas limits are set from gasLimits only when tx.Gas is nil or zero. Gas price fields are
 // set from gasPrice only when both tx.GasPrice and tx.MaxFeePerGas are unset.
 func fillTransactionDefaults(txs []ethapi.TransactionArgs, gasLimits []hexutil.Uint64, gasPrice *hexutil.Big) {
 	for i := range txs {
-		if i < len(gasLimits) && txs[i].Gas == nil {
+		if i < len(gasLimits) && (txs[i].Gas == nil || *txs[i].Gas == 0) {
 			txs[i].Gas = &gasLimits[i]
 		}
 		if txs[i].GasPrice == nil && txs[i].MaxFeePerGas == nil {
@@ -175,17 +185,29 @@ func fillTransactionDefaults(txs []ethapi.TransactionArgs, gasLimits []hexutil.U
 
 // resolveBlockRange computes the effective block range for a bundle given the current
 // block number and optional earliest/latest overrides from the user.
-func resolveBlockRange(currentBlock uint64, earliest, latest *hexutil.Uint64) bundle.BlockRange {
+func resolveBlockRange(currentBlock uint64, earliest, latest *hexutil.Uint64) (bundle.BlockRange, error) {
 
-	e := currentBlock + 1
+	if latest != nil && earliest != nil {
+		if uint64(*latest) < uint64(*earliest) {
+			return bundle.BlockRange{}, fmt.Errorf("invalid block range: latest block %d is earlier than earliest block %d", *latest, *earliest)
+		}
+		if uint64(*latest)-uint64(*earliest)+1 > bundle.MaxBlockRange {
+			return bundle.BlockRange{}, fmt.Errorf("invalid block range: range %d is too large; must be at most %d blocks", uint64(*latest)-uint64(*earliest)+1, bundle.MaxBlockRange)
+		}
+	}
+
+	var r bundle.BlockRange
 	if earliest != nil {
-		e = uint64(*earliest)
+		r = bundle.MakeMaxRangeStartingAt(uint64(*earliest))
+	} else {
+		r = bundle.MakeMaxRangeStartingAt(currentBlock + 1)
 	}
-	l := e + bundle.MaxBlockRange - 1
+
 	if latest != nil {
-		l = uint64(*latest)
+		r.Latest = uint64(*latest)
 	}
-	return bundle.BlockRange{Earliest: e, Latest: l}
+
+	return r, nil
 }
 
 // injectPlanHashIntoAccessLists appends the bundle-only access list entry carrying
@@ -242,10 +264,10 @@ func asTransaction(msg *core.Message) (*types.Transaction, error) {
 	}
 }
 
-// suggestGasPrice returns the current suggested gas price for new transactions,
+// suggestGasPrice returns the suggested gas price for new transactions,
 // which is used to fill in missing gas price fields in bundled transactions.
-func (a *PublicBundleAPI) suggestGasPrice() *hexutil.Big {
-	price := a.b.CurrentBlock().Header().BaseFee
+func (a *PublicBundleAPI) suggestGasPrice(block *evmcore.EvmBlock) *hexutil.Big {
+	price := block.Header().BaseFee
 	price = gaspricelimits.GetSuggestedGasPriceForNewTransactions(price)
 	return (*hexutil.Big)(price)
 }
