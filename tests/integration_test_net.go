@@ -867,7 +867,7 @@ func (n *IntegrationTestNet) AdvanceEpoch(t testing.TB, epochs int) {
 	//send a noop transaction to trigger a block
 	sendNoop := func() {
 		noopTx := CreateTransaction(t, n, &types.LegacyTx{Gas: 100_000}, n.GetSessionSponsor())
-		// this transaction can failed because the new epoch has new rules,
+		// This transaction can fail because the new epoch has new rules,
 		// hence invalidating the values assigned during the transaction creation.
 		// Since the transaction is only meant to trigger a block,
 		// the error is safe to ignore and move on with the epoch change.
