@@ -419,6 +419,7 @@ func (s *State) ApplyBlock(
 		vmConfig,
 		gasLimit,
 		&usedGas,
+		0, // tx index offset
 		nil,
 	).ProcessedTransactions
 

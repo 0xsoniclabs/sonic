@@ -44,48 +44,48 @@ func (m *Mock_transactionRunner) EXPECT() *Mock_transactionRunnerMockRecorder {
 }
 
 // runRegularTransaction mocks base method.
-func (m *Mock_transactionRunner) runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, core_types.TransactionResult) {
+func (m *Mock_transactionRunner) runRegularTransaction(ctxt *runContext, tx *types.Transaction, legacyTxIndexOffset, trueTxIndexOffset int) (ProcessedTransaction, core_types.TransactionResult) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "runRegularTransaction", ctxt, tx, txIndex)
+	ret := m.ctrl.Call(m, "runRegularTransaction", ctxt, tx, legacyTxIndexOffset, trueTxIndexOffset)
 	ret0, _ := ret[0].(ProcessedTransaction)
 	ret1, _ := ret[1].(core_types.TransactionResult)
 	return ret0, ret1
 }
 
 // runRegularTransaction indicates an expected call of runRegularTransaction.
-func (mr *Mock_transactionRunnerMockRecorder) runRegularTransaction(ctxt, tx, txIndex any) *gomock.Call {
+func (mr *Mock_transactionRunnerMockRecorder) runRegularTransaction(ctxt, tx, legacyTxIndexOffset, trueTxIndexOffset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runRegularTransaction", reflect.TypeOf((*Mock_transactionRunner)(nil).runRegularTransaction), ctxt, tx, txIndex)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runRegularTransaction", reflect.TypeOf((*Mock_transactionRunner)(nil).runRegularTransaction), ctxt, tx, legacyTxIndexOffset, trueTxIndexOffset)
 }
 
 // runSponsoredTransaction mocks base method.
-func (m *Mock_transactionRunner) runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, core_types.TransactionResult) {
+func (m *Mock_transactionRunner) runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, legacyTxIndexOffset, trueTxIndexOffset int) ([]ProcessedTransaction, core_types.TransactionResult) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "runSponsoredTransaction", ctxt, tx, txIndex)
+	ret := m.ctrl.Call(m, "runSponsoredTransaction", ctxt, tx, legacyTxIndexOffset, trueTxIndexOffset)
 	ret0, _ := ret[0].([]ProcessedTransaction)
 	ret1, _ := ret[1].(core_types.TransactionResult)
 	return ret0, ret1
 }
 
 // runSponsoredTransaction indicates an expected call of runSponsoredTransaction.
-func (mr *Mock_transactionRunnerMockRecorder) runSponsoredTransaction(ctxt, tx, txIndex any) *gomock.Call {
+func (mr *Mock_transactionRunnerMockRecorder) runSponsoredTransaction(ctxt, tx, legacyTxIndexOffset, trueTxIndexOffset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runSponsoredTransaction", reflect.TypeOf((*Mock_transactionRunner)(nil).runSponsoredTransaction), ctxt, tx, txIndex)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runSponsoredTransaction", reflect.TypeOf((*Mock_transactionRunner)(nil).runSponsoredTransaction), ctxt, tx, legacyTxIndexOffset, trueTxIndexOffset)
 }
 
 // runTransactionBundle mocks base method.
-func (m *Mock_transactionRunner) runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, core_types.TransactionResult) {
+func (m *Mock_transactionRunner) runTransactionBundle(ctxt *runContext, tx *types.Transaction, legacyTxIndexOffset, trueTxIndexOffset int) ([]ProcessedTransaction, core_types.TransactionResult) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "runTransactionBundle", ctxt, tx, txIndex)
+	ret := m.ctrl.Call(m, "runTransactionBundle", ctxt, tx, legacyTxIndexOffset, trueTxIndexOffset)
 	ret0, _ := ret[0].([]ProcessedTransaction)
 	ret1, _ := ret[1].(core_types.TransactionResult)
 	return ret0, ret1
 }
 
 // runTransactionBundle indicates an expected call of runTransactionBundle.
-func (mr *Mock_transactionRunnerMockRecorder) runTransactionBundle(ctxt, tx, txIndex any) *gomock.Call {
+func (mr *Mock_transactionRunnerMockRecorder) runTransactionBundle(ctxt, tx, legacyTxIndexOffset, trueTxIndexOffset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runTransactionBundle", reflect.TypeOf((*Mock_transactionRunner)(nil).runTransactionBundle), ctxt, tx, txIndex)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runTransactionBundle", reflect.TypeOf((*Mock_transactionRunner)(nil).runTransactionBundle), ctxt, tx, legacyTxIndexOffset, trueTxIndexOffset)
 }
 
 // Mock_evm is a mock of _evm interface.
