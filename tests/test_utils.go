@@ -31,6 +31,8 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	"github.com/0xsoniclabs/sonic/tests/contracts/revert"
+
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -487,4 +489,46 @@ func GetCurrentEpoch(t *testing.T, client *PooledEhtClient) uint64 {
 	err := client.Client().Call(&epoch, "eth_currentEpoch")
 	require.NoError(t, err)
 	return uint64(epoch)
+}
+
+// MustDeployContract deploys a contract using the provided deploy function and
+// returns its address.
+func MustDeployContract[T any](
+	t testing.TB,
+	session IntegrationTestNetSession,
+	deployFunc ContractDeployer[T],
+) common.Address {
+	t.Helper()
+
+	_, receipt, err := DeployContract(session, deployFunc)
+	require.NoError(t, err, "failed to deploy contract; %v", err)
+	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
+
+	return receipt.ContractAddress
+}
+
+// MustGetMethodParameters retrieves the ABI of a contract and packs the input
+// parameters for a specified method and returns the packed input data.
+func MustGetMethodParameters(
+	t testing.TB,
+	bindMetadata *bind.MetaData,
+	methodName string,
+) []byte {
+	t.Helper()
+
+	abi, err := bindMetadata.GetAbi()
+	require.NoError(t, err, "failed to get counter abi; %v", err)
+	input, err := abi.Pack(methodName)
+	require.NoError(t, err, "failed to pack input for method %s; %v", methodName, err)
+
+	return input
+}
+
+// MustDeployRevertContractAndGetMethodCallParameters deploys the Revert
+// contract and prepares the input for calling the doCrash method, which always
+// reverts. It returns the address of the deployed contract and the input data.
+func MustDeployRevertContractAndGetMethodCallParameters(t testing.TB, session IntegrationTestNetSession) (common.Address, []byte) {
+	addr := MustDeployContract(t, session, revert.DeployRevert)
+	input := MustGetMethodParameters(t, revert.RevertMetaData, "doCrash")
+	return addr, input
 }
