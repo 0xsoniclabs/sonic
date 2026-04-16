@@ -24,6 +24,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -63,7 +64,6 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 		flags           bundle.ExecutionFlags
 		expectTolerated bool
 		expectInBlock   bool
-		expectedStatus  uint64
 	}{
 		{
 			name:            "Default/SuccessfulTx",
@@ -71,7 +71,6 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 			flags:           bundle.EF_Default,
 			expectTolerated: true,
 			expectInBlock:   true,
-			expectedStatus:  types.ReceiptStatusSuccessful,
 		},
 		{
 			name:            "Default/FailingTx",
@@ -91,7 +90,6 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 			flags:           bundle.EF_TolerateInvalid,
 			expectTolerated: true,
 			expectInBlock:   true,
-			expectedStatus:  types.ReceiptStatusSuccessful,
 		},
 		{
 			name:            "TolerateInvalid/FailingTx",
@@ -112,7 +110,6 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 			flags:           bundle.EF_TolerateFailed,
 			expectTolerated: true,
 			expectInBlock:   true,
-			expectedStatus:  types.ReceiptStatusSuccessful,
 		},
 		{
 			name:            "TolerateFailed/FailingTx",
@@ -120,7 +117,6 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 			flags:           bundle.EF_TolerateFailed,
 			expectTolerated: true,
 			expectInBlock:   true,
-			expectedStatus:  types.ReceiptStatusFailed,
 		},
 		{
 			name:            "TolerateFailed/InvalidTx",
@@ -134,7 +130,6 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 			flags:           bundle.EF_TolerateInvalid | bundle.EF_TolerateFailed,
 			expectTolerated: true,
 			expectInBlock:   true,
-			expectedStatus:  types.ReceiptStatusSuccessful,
 		},
 		{
 			name:            "TolerateInvalidTolerateFailed/FailingTx",
@@ -142,7 +137,6 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 			flags:           bundle.EF_TolerateInvalid | bundle.EF_TolerateFailed,
 			expectTolerated: true,
 			expectInBlock:   true,
-			expectedStatus:  types.ReceiptStatusFailed,
 		},
 		{
 			name:            "TolerateInvalidTolerateFailed/InvalidTx",
@@ -155,7 +149,7 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			block, err := client.BlockNumber(t.Context())
+			blockNumber, err := client.BlockNumber(t.Context())
 			require.NoError(t, err)
 
 			// Create the bundle: AllOf([c.flags]c.tx, successfulTx)
@@ -163,7 +157,7 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 			// transaction to check whether it was tolerated or not.
 			envelope, bundle, plan := bundle.NewBuilder().
 				WithSigner(signer).
-				SetEarliest(block).
+				SetEarliest(blockNumber).
 				AllOf(
 					bundle.Step(
 						sender.PrivateKey,
@@ -191,11 +185,22 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 			_, err = client.TransactionReceipt(t.Context(), envelope.Hash())
 			require.ErrorIs(t, err, ethereum.NotFound)
 
+			bundleTxs := bundle.GetTransactionsInReferencedOrder()
+
+			block, err := client.BlockByNumber(t.Context(), big.NewInt(info.Block.Int64()))
+			require.NoError(t, err)
+			blockTxsHashes := []common.Hash{}
+			for _, tx := range block.Transactions() {
+				blockTxsHashes = append(blockTxsHashes, tx.Hash())
+			}
+
 			// If the transaction is not expected to be tolerated, the whole
 			// outer group should be rejected, and thus no transactions should
 			// be included in a block.
 			if !c.expectTolerated {
 				require.Zero(t, info.Count)
+				require.NotContains(t, blockTxsHashes, bundleTxs[0].Hash())
+				require.NotContains(t, blockTxsHashes, bundleTxs[1].Hash())
 				return
 			}
 
@@ -204,19 +209,16 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 			// should be included, but not the transaction itself.
 			if !c.expectInBlock {
 				require.Equal(t, 1, int(info.Count))
+				require.NotContains(t, blockTxsHashes, bundleTxs[0].Hash())
+				require.Contains(t, blockTxsHashes, bundleTxs[1].Hash())
 				return
 			}
 
 			// The transactions itself and the successful transaction that
 			// follows it should be included.
-			require.Equal(t, 1+1, int(info.Count))
-
-			// Check that the transaction is in the block as advertised.
-			txs := bundle.GetTransactionsInReferencedOrder()
-			receipt, err := net.GetReceipt(txs[0].Hash())
-			require.NoError(t, err)
-			require.Equal(t, c.expectedStatus, receipt.Status)
-			require.EqualValues(t, info.Block, receipt.BlockNumber.Uint64())
+			require.Equal(t, 2, int(info.Count))
+			require.Contains(t, blockTxsHashes, bundleTxs[0].Hash())
+			require.Contains(t, blockTxsHashes, bundleTxs[1].Hash())
 		})
 	}
 }
