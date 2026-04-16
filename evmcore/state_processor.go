@@ -208,7 +208,7 @@ func runTransactions(
 		// included in the block before the current transaction. It is used to
 		// identify the position of bundles in blocks. In the future, if the
 		// impact of the counting of skipped transactions in the
-		// legacyTxIndexOffset is better understood  the legacyTxIndexOffset
+		// legacyTxIndexOffset is better understood the legacyTxIndexOffset
 		// could be removed and the trueTxIndexOffset becomes the only
 		// transaction index offset to be tracked.
 

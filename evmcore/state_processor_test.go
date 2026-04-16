@@ -596,7 +596,7 @@ func TestProcess_ForwardsCorrectIndexToTransactionProcessor(t *testing.T) {
 			state.EXPECT().HasBundleRecentlyBeenProcessed(any).AnyTimes()
 			state.EXPECT().InterTxSnapshot().AnyTimes()
 
-			// create a block with n empty bundle
+			// create a block with an empty bundle
 			block := &EvmBlock{
 				EvmHeader: EvmHeader{
 					Number: big.NewInt(1),
@@ -2971,7 +2971,7 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 	// the actually encountered values.
 	//
 	// The following functions provide some utilities to improve the readability
-	// the test case specifications.
+	// of the test case specifications.
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
