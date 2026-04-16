@@ -3125,7 +3125,7 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 			// It is also a neat, readable primitive for debugging this test.
 			var seenTxNonces []int
 
-			// regular transactions all pass, but the we check whether the
+			// regular transactions all pass, but we check whether the
 			// given nonce matches the transaction index.
 			runner.EXPECT().runRegularTransaction(any, any, any, any).DoAndReturn(
 				func(
