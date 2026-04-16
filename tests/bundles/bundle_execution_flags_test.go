@@ -18,13 +18,13 @@ package bundles
 
 import (
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -165,7 +165,7 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 			_, err = GetBundleInfo(t.Context(), client.Client(), plan.Hash())
 			require.ErrorIs(t, err, ethereum.NotFound)
 
-			// Run the bundle.
+			// Send the bundle.
 			require.NoError(t, client.SendTransaction(t.Context(), envelope))
 
 			// Wait for the bundle to be processed.
@@ -176,13 +176,7 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 			_, err = client.TransactionReceipt(t.Context(), envelope.Hash())
 			require.ErrorIs(t, err, ethereum.NotFound)
 
-			block, err := client.BlockByNumber(t.Context(), big.NewInt(info.Block.Int64()))
-			require.NoError(t, err)
-			blockTxsHashes := []common.Hash{}
-			for _, tx := range block.Transactions() {
-				blockTxsHashes = append(blockTxsHashes, tx.Hash())
-			}
-
+			blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(info.Block.Int64()))
 			bundleTxs := bundle.GetTransactionsInReferencedOrder()
 
 			// If the bundle is expected to be rolled back no transactions
@@ -208,6 +202,294 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 			require.Equal(t, 2, int(info.Count))
 			require.Contains(t, blockTxsHashes, bundleTxs[0].Hash())
 			require.Contains(t, blockTxsHashes, bundleTxs[1].Hash())
+		})
+	}
+}
+
+func TestBundle_AllOfGroupSucceedsIfAllStepsTolerated(t *testing.T) {
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	signer := types.LatestSignerForChainID(net.GetChainId())
+
+	sender1 := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	sender2 := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	sender3 := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+
+	revertAddress, revertInput := tests.MustDeployRevertContractAndGetMethodCallParameters(t, net)
+
+	successfulTx := types.AccessListTx{}
+	failingTx := types.AccessListTx{
+		To:   &revertAddress,
+		Gas:  1_000_000,
+		Data: revertInput,
+	}
+
+	cases := map[string]struct {
+		tolerateFailed       bool
+		tx                   types.AccessListTx
+		expectGroupTolerated bool
+		expectGroupInBlock   bool
+	}{
+		"Default/SuccessfulStep": {
+			tolerateFailed:       false,
+			tx:                   successfulTx,
+			expectGroupTolerated: true,
+			expectGroupInBlock:   true,
+		},
+		"Default/FailingStep": {
+			tolerateFailed: false,
+			// It does not matter whether the transaction fails or is invalid,
+			// since it will be reported as non-tolerated in both cases.
+			tx:                   failingTx,
+			expectGroupTolerated: false,
+		},
+		"TolerateFailed/SuccessfulStep": {
+			tolerateFailed:       true,
+			tx:                   successfulTx,
+			expectGroupTolerated: true,
+			expectGroupInBlock:   true,
+		},
+		"TolerateFailed/FailingStep": {
+			tolerateFailed: true,
+			// It does not matter whether the transaction fails or is invalid,
+			// since it will be reported as non-tolerated in both cases.
+			tx:                   failingTx,
+			expectGroupTolerated: true,
+			expectGroupInBlock:   false,
+		},
+	}
+
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			blockNumber, err := client.BlockNumber(t.Context())
+			require.NoError(t, err)
+
+			flags := bundle.EF_Default
+			if c.tolerateFailed {
+				flags = bundle.EF_TolerateFailed
+			}
+
+			// Create the bundle: AllOf(AllOf[c.tolerateFailed](successfulTx, c.tx), successfulTx)
+			// The group under test is the inner AllOf.
+			// The successful transaction in the inner group is needed for the
+			// cases with a successful transaction to check that the group continues
+			// executing after a tolerated step.
+			// The successful transaction in the outer group is needed to check
+			// whether the inner group was tolerated or not.
+			envelope, bundle, plan := bundle.NewBuilder().
+				WithSigner(signer).
+				SetEarliest(blockNumber).
+				AllOf(
+					bundle.AllOf(
+						bundle.Step(
+							sender1.PrivateKey,
+							tests.SetTransactionDefaults(t, net, &successfulTx, sender1),
+						),
+						bundle.Step(
+							sender2.PrivateKey,
+							tests.SetTransactionDefaults(t, net, &c.tx, sender2),
+						),
+					).WithFlags(flags),
+					bundle.Step(
+						sender3.PrivateKey,
+						tests.SetTransactionDefaults(t, net, &successfulTx, sender3),
+					),
+				).
+				BuildEnvelopeBundleAndPlan()
+
+			// Check bundle status before submission.
+			_, err = GetBundleInfo(t.Context(), client.Client(), plan.Hash())
+			require.ErrorIs(t, err, ethereum.NotFound)
+
+			// Send the bundle.
+			require.NoError(t, client.SendTransaction(t.Context(), envelope))
+
+			// Wait for the bundle to be processed.
+			info, err := WaitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+			require.NoError(t, err)
+
+			// Verify that there is no receipt for the envelope itself.
+			_, err = client.TransactionReceipt(t.Context(), envelope.Hash())
+			require.ErrorIs(t, err, ethereum.NotFound)
+
+			bundleTxs := bundle.GetTransactionsInReferencedOrder()
+			blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(info.Block.Int64()))
+
+			// If the group is not expected to be tolerated, the outer/root
+			// group will fail and no transactions should be included in a block.
+			if !c.expectGroupTolerated {
+				require.Zero(t, info.Count)
+				require.NotContains(t, blockTxsHashes, bundleTxs[0].Hash())
+				require.NotContains(t, blockTxsHashes, bundleTxs[1].Hash())
+				require.NotContains(t, blockTxsHashes, bundleTxs[2].Hash())
+				return
+			}
+
+			// If the group is expected to be tolerated but not included in the
+			// block, only the successful transaction that follows the group
+			// should be included.
+			if !c.expectGroupInBlock {
+				require.Equal(t, 1, int(info.Count))
+				require.NotContains(t, blockTxsHashes, bundleTxs[0].Hash())
+				require.NotContains(t, blockTxsHashes, bundleTxs[1].Hash())
+				require.Contains(t, blockTxsHashes, bundleTxs[2].Hash())
+				return
+			}
+
+			// The transactions itself and the two successful transactions
+			// should be included.
+			require.Equal(t, 3, int(info.Count))
+			require.Contains(t, blockTxsHashes, bundleTxs[0].Hash())
+			require.Contains(t, blockTxsHashes, bundleTxs[1].Hash())
+			require.Contains(t, blockTxsHashes, bundleTxs[2].Hash())
+		})
+	}
+}
+
+func TestBundle_OneOfGroupSucceedsOnFirstToleratedStep(t *testing.T) {
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	signer := types.LatestSignerForChainID(net.GetChainId())
+
+	sender1 := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	sender2 := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	sender3 := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+
+	revertAddress, revertInput := tests.MustDeployRevertContractAndGetMethodCallParameters(t, net)
+
+	successfulTx := types.AccessListTx{}
+	failingTx := types.AccessListTx{
+		To:   &revertAddress,
+		Gas:  1_000_000,
+		Data: revertInput,
+	}
+
+	// The bundle structure is: AllOf(OneOf[flags](firstTx, secondTx), successfulTx)
+	// The group under test is the inner OneOf. The trailing successful
+	// transaction in the outer group is needed to check whether the inner
+	// group was tolerated or not.
+	// expectCount is the expected number of transactions included in the
+	// block. expectInBlock is indexed by the position of the transaction in
+	// the bundle, in reference order.
+	cases := map[string]struct {
+		tolerateFailed bool
+		firstTx        types.AccessListTx
+		secondTx       types.AccessListTx
+		expectInBlock  [3]bool
+	}{
+		"Default/FirstTolerated": {
+			tolerateFailed: false,
+			firstTx:        successfulTx,
+			secondTx:       successfulTx,
+			expectInBlock:  [3]bool{true, false, true},
+		},
+		"Default/SecondTolerated": {
+			tolerateFailed: false,
+			firstTx:        failingTx,
+			secondTx:       successfulTx,
+			expectInBlock:  [3]bool{true, true, true},
+		},
+		"Default/OnlyNonTolerated": {
+			tolerateFailed: false,
+			firstTx:        failingTx,
+			secondTx:       failingTx,
+			expectInBlock:  [3]bool{false, false, false},
+		},
+		"TolerateFailed/FirstTolerated": {
+			tolerateFailed: true,
+			firstTx:        successfulTx,
+			secondTx:       successfulTx,
+			expectInBlock:  [3]bool{true, false, true},
+		},
+		"TolerateFailed/SecondTolerated": {
+			tolerateFailed: true,
+			firstTx:        failingTx,
+			secondTx:       successfulTx,
+			expectInBlock:  [3]bool{true, true, true},
+		},
+		"TolerateFailed/OnlyNonTolerated": {
+			tolerateFailed: true,
+			firstTx:        failingTx,
+			secondTx:       failingTx,
+			expectInBlock:  [3]bool{false, false, true},
+		},
+	}
+
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			blockNumber, err := client.BlockNumber(t.Context())
+			require.NoError(t, err)
+
+			flags := bundle.EF_Default
+			if c.tolerateFailed {
+				flags = bundle.EF_TolerateFailed
+			}
+
+			envelope, bundle, plan := bundle.NewBuilder().
+				WithSigner(signer).
+				SetEarliest(blockNumber).
+				AllOf(
+					bundle.OneOf(
+						bundle.Step(
+							sender1.PrivateKey,
+							tests.SetTransactionDefaults(t, net, &c.firstTx, sender1),
+						),
+						bundle.Step(
+							sender2.PrivateKey,
+							tests.SetTransactionDefaults(t, net, &c.secondTx, sender2),
+						),
+					).WithFlags(flags),
+					bundle.Step(
+						sender3.PrivateKey,
+						tests.SetTransactionDefaults(t, net, &successfulTx, sender3),
+					),
+				).
+				BuildEnvelopeBundleAndPlan()
+
+			// Check bundle status before submission.
+			_, err = GetBundleInfo(t.Context(), client.Client(), plan.Hash())
+			require.ErrorIs(t, err, ethereum.NotFound)
+
+			// Send the bundle.
+			require.NoError(t, client.SendTransaction(t.Context(), envelope))
+
+			// Wait for the bundle to be processed.
+			info, err := WaitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+			require.NoError(t, err)
+
+			// Verify that there is no receipt for the envelope itself.
+			_, err = client.TransactionReceipt(t.Context(), envelope.Hash())
+			require.ErrorIs(t, err, ethereum.NotFound)
+
+			bundleTxs := bundle.GetTransactionsInReferencedOrder()
+			blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(info.Block.Int64()))
+
+			expectedCount := 0
+			for i, tx := range bundleTxs {
+				require.Equal(t, c.expectInBlock[i], slices.Contains(blockTxsHashes, tx.Hash()))
+				if c.expectInBlock[i] {
+					expectedCount++
+				}
+			}
+			require.Equal(t, expectedCount, int(info.Count))
 		})
 	}
 }
