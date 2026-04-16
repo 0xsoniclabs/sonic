@@ -1150,7 +1150,30 @@ func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 				return true, nil // receipt available, stop waiting
 			})
 			if err != nil {
-				return fmt.Errorf("failed to get transaction receipt: %w", err)
+				// Collect diagnostic info: check whether blocks are
+				// being produced to distinguish between "emitter not
+				// started" and "transaction skipped/dropped".
+				block, blockErr := client.BlockByNumber(context.Background(), nil)
+				if blockErr != nil {
+					return fmt.Errorf(
+						"failed to get transaction receipt (also failed to query block number: %v): %w",
+						blockErr, err,
+					)
+				}
+
+				for _, tx := range block.Transactions() {
+					if tx.Hash() == hash {
+						return fmt.Errorf(
+							"transaction found in block %d but receipt is missing: %w",
+							block.NumberU64(), err,
+						)
+					}
+				}
+
+				return fmt.Errorf(
+					"failed to get transaction receipt (current block number: %d): %w",
+					block.NumberU64(), err,
+				)
 			}
 			return nil
 		},
