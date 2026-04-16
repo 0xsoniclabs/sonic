@@ -26,7 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/revert"
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -101,32 +101,50 @@ func WaitForBundleExecutions(
 	return infos, err
 }
 
-// deployContract deploys a contract using the provided deploy function and prepares the input for calling the specified method.
+// deployContract deploys a contract using the provided deploy function and
+// returns its address.
 //
 //nolint:unused
 func deployContract[T any](
-	t testing.TB, session tests.IntegrationTestNetSession,
-	getABI func() (*abi.ABI, error),
+	t testing.TB,
+	session tests.IntegrationTestNetSession,
 	deployFunc tests.ContractDeployer[T],
-	methodName string,
-) (common.Address, []byte) {
+) common.Address {
 	t.Helper()
-	abi, err := getABI()
-	require.NoError(t, err, "failed to get counter abi; %v", err)
 
 	_, receipt, err := tests.DeployContract(session, deployFunc)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 
+	return receipt.ContractAddress
+}
+
+// getMethodParameters retrieves the ABI of a contract and packs the input
+// parameters for a specified method and returns the packed input data.
+//
+//nolint:unused
+func getMethodParameters(
+	t testing.TB,
+	bindMetadata *bind.MetaData,
+	methodName string,
+) []byte {
+	t.Helper()
+
+	abi, err := bindMetadata.GetAbi()
+	require.NoError(t, err, "failed to get counter abi; %v", err)
 	input, err := abi.Pack(methodName)
 	require.NoError(t, err, "failed to pack input for method %s; %v", methodName, err)
 
-	return receipt.ContractAddress, input
+	return input
 }
 
-// prepareRevertContract deploys the Revert contract and prepares the input for calling the doCrash method, which always reverts.
+// prepareRevertContract deploys the Revert contract and prepares the input
+// for calling the doCrash method, which always reverts.
+// It returns the address of the deployed contract and the input data.
 //
 //nolint:unused
-func deployRevertContract(t testing.TB, session tests.IntegrationTestNetSession) (common.Address, []byte) {
-	return deployContract(t, session, revert.RevertMetaData.GetAbi, revert.DeployRevert, "doCrash")
+func deployRevertContractAndGetMethodCallParameters(t testing.TB, session tests.IntegrationTestNetSession) (common.Address, []byte) {
+	addr := deployContract(t, session, revert.DeployRevert)
+	input := getMethodParameters(t, revert.RevertMetaData, "doCrash")
+	return addr, input
 }
