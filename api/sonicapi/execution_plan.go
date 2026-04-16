@@ -102,7 +102,7 @@ type RPCRange struct {
 // NewRPCExecutionPlanComposable converts a bundle.ExecutionPlan to an RPCExecutionPlan that can be returned by the API.
 func NewRPCExecutionPlanComposable(plan bundle.ExecutionPlan) RPCExecutionPlanComposable {
 
-	visitor := newToJsonExecutionPlanVisitor()
+	visitor := &toJsonExecutionPlanVisitor{}
 	plan.Root.Visit(visitor)
 
 	var root RPCExecutionPlanLevel
@@ -177,11 +177,6 @@ func toBundleExecutionPlanLevel(rpcLevel RPCExecutionPlanLevel) (bundle.Executio
 type toJsonExecutionPlanVisitor struct {
 	levelStack []RPCExecutionPlanLevel
 	groupStack []*RPCExecutionPlanGroup
-}
-
-// newRPCExecutionPlanVisitor creates a new instance of toJsonExecutionPlanVisitor.
-func newToJsonExecutionPlanVisitor() *toJsonExecutionPlanVisitor {
-	return &toJsonExecutionPlanVisitor{}
 }
 
 func (v *toJsonExecutionPlanVisitor) Step(flags bundle.ExecutionFlags, txRef bundle.TxReference) {
