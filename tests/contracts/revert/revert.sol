@@ -27,7 +27,7 @@ contract RevertContract {
         // and the address of the sender. This revert should not be reliably
         // statically predictable.
         count++;
-        uint256 rand = uint256(uint160(msg.sender)) | count;
+        uint256 rand = uint256(uint160(msg.sender)) ^ count;
         if (rand % 2 == 0) {
             revert("Probabilistic revert");
         }
