@@ -411,5 +411,4 @@ func TestRPCExecutionPlan_ConvertCanReturnErrors(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
-
 }

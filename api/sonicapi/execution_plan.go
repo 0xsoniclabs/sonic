@@ -21,7 +21,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 // RPCExecutionPlanComposable is the JSON-serializable representation of the execution plan
@@ -95,8 +95,8 @@ type RPCExecutionPlanLevel struct {
 
 // RPCRange represents the block range for which the execution plan is valid.
 type RPCRange struct {
-	Earliest rpc.BlockNumber `json:"earliest"`
-	Latest   rpc.BlockNumber `json:"latest"`
+	Earliest hexutil.Uint64 `json:"earliest"`
+	Latest   hexutil.Uint64 `json:"latest"`
 }
 
 // NewRPCExecutionPlanComposable converts a bundle.ExecutionPlan to an RPCExecutionPlan that can be returned by the API.
@@ -112,8 +112,8 @@ func NewRPCExecutionPlanComposable(plan bundle.ExecutionPlan) RPCExecutionPlanCo
 
 	return RPCExecutionPlanComposable{
 		BlockRange: RPCRange{
-			Earliest: rpc.BlockNumber(plan.Range.Earliest),
-			Latest:   rpc.BlockNumber(plan.Range.Latest),
+			Earliest: hexutil.Uint64(plan.Range.Earliest),
+			Latest:   hexutil.Uint64(plan.Range.Latest),
 		},
 		Root: root,
 	}
