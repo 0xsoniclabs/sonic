@@ -105,17 +105,12 @@ func NewRPCExecutionPlanComposable(plan bundle.ExecutionPlan) RPCExecutionPlanCo
 	visitor := &toJsonExecutionPlanVisitor{}
 	plan.Root.Visit(visitor)
 
-	var root RPCExecutionPlanLevel
-	if len(visitor.levelStack) > 0 {
-		root = visitor.levelStack[0]
-	}
-
 	return RPCExecutionPlanComposable{
 		BlockRange: RPCRange{
 			Earliest: hexutil.Uint64(plan.Range.Earliest),
 			Latest:   hexutil.Uint64(plan.Range.Latest),
 		},
-		Root: root,
+		Root: visitor.result,
 	}
 }
 
@@ -146,7 +141,7 @@ func toBundleExecutionPlanLevel(rpcLevel RPCExecutionPlanLevel) (bundle.Executio
 			From: rpcLevel.Single.From,
 			Hash: rpcLevel.Single.Hash,
 		})
-		flags := bundle.ExecutionFlags(0)
+		flags := bundle.EF_Default
 		if rpcLevel.Single.TolerateFailed {
 			flags |= bundle.EF_TolerateFailed
 		}
@@ -175,7 +170,7 @@ func toBundleExecutionPlanLevel(rpcLevel RPCExecutionPlanLevel) (bundle.Executio
 
 // toJsonExecutionPlanVisitor is an implementation of the ExecutionPlanVisitor interface
 type toJsonExecutionPlanVisitor struct {
-	levelStack []RPCExecutionPlanLevel
+	result     RPCExecutionPlanLevel
 	groupStack []*RPCExecutionPlanGroup
 }
 
@@ -193,9 +188,9 @@ func (v *toJsonExecutionPlanVisitor) Step(flags bundle.ExecutionFlags, txRef bun
 			Single: &step,
 		})
 	} else {
-		v.levelStack = append(v.levelStack, RPCExecutionPlanLevel{
+		v.result = RPCExecutionPlanLevel{
 			Single: &step,
-		})
+		}
 	}
 }
 
@@ -217,8 +212,8 @@ func (v *toJsonExecutionPlanVisitor) EndGroup() {
 			Group: closedGroup,
 		})
 	} else {
-		v.levelStack = append(v.levelStack, RPCExecutionPlanLevel{
+		v.result = RPCExecutionPlanLevel{
 			Group: closedGroup,
-		})
+		}
 	}
 }
