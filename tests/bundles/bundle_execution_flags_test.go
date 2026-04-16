@@ -58,97 +58,88 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 		Gas: 1, // insufficient gas
 	}
 
-	cases := []struct {
-		name            string
-		tx              types.AccessListTx
-		flags           bundle.ExecutionFlags
-		expectTolerated bool
-		expectInBlock   bool
+	cases := map[string]struct {
+		tx    types.AccessListTx
+		flags bundle.ExecutionFlags
+		// Whether the whole bundle is expected to be rolled back. If this is
+		// the case, further expectations are ignored.
+		expectRollback bool
+		// The bundle contains case.tx and a successful transaction. This flag
+		// sets the expectation for the first transaction only.
+		expectInBlock bool
 	}{
-		{
-			name:            "Default/SuccessfulTx",
-			tx:              successfulTx,
-			flags:           bundle.EF_Default,
-			expectTolerated: true,
-			expectInBlock:   true,
+		"Default/SuccessfulTx": {
+			tx:             successfulTx,
+			flags:          bundle.EF_Default,
+			expectRollback: false,
+			expectInBlock:  true,
 		},
-		{
-			name:            "Default/FailingTx",
-			tx:              failingTx,
-			flags:           bundle.EF_Default,
-			expectTolerated: false,
+		"Default/FailingTx": {
+			tx:             failingTx,
+			flags:          bundle.EF_Default,
+			expectRollback: true,
 		},
-		{
-			name:            "Default/InvalidTx",
-			tx:              invalidTx,
-			flags:           bundle.EF_Default,
-			expectTolerated: false,
+		"Default/InvalidTx": {
+			tx:             invalidTx,
+			flags:          bundle.EF_Default,
+			expectRollback: true,
 		},
-		{
-			name:            "TolerateInvalid/SuccessfulTx",
-			tx:              successfulTx,
-			flags:           bundle.EF_TolerateInvalid,
-			expectTolerated: true,
-			expectInBlock:   true,
+		"TolerateInvalid/SuccessfulTx": {
+			tx:             successfulTx,
+			flags:          bundle.EF_TolerateInvalid,
+			expectRollback: false,
+			expectInBlock:  true,
 		},
-		{
-			name:            "TolerateInvalid/FailingTx",
-			tx:              failingTx,
-			flags:           bundle.EF_TolerateInvalid,
-			expectTolerated: false,
+		"TolerateInvalid/FailingTx": {
+			tx:             failingTx,
+			flags:          bundle.EF_TolerateInvalid,
+			expectRollback: true,
 		},
-		{
-			name:            "TolerateInvalid/InvalidTx",
-			tx:              invalidTx,
-			flags:           bundle.EF_TolerateInvalid,
-			expectTolerated: true,
-			expectInBlock:   false,
+		"TolerateInvalid/InvalidTx": {
+			tx:             invalidTx,
+			flags:          bundle.EF_TolerateInvalid,
+			expectRollback: false,
+			expectInBlock:  false,
 		},
-		{
-			name:            "TolerateFailed/SuccessfulTx",
-			tx:              successfulTx,
-			flags:           bundle.EF_TolerateFailed,
-			expectTolerated: true,
-			expectInBlock:   true,
+		"TolerateFailed/SuccessfulTx": {
+			tx:             successfulTx,
+			flags:          bundle.EF_TolerateFailed,
+			expectRollback: false,
+			expectInBlock:  true,
 		},
-		{
-			name:            "TolerateFailed/FailingTx",
-			tx:              failingTx,
-			flags:           bundle.EF_TolerateFailed,
-			expectTolerated: true,
-			expectInBlock:   true,
+		"TolerateFailed/FailingTx": {
+			tx:             failingTx,
+			flags:          bundle.EF_TolerateFailed,
+			expectRollback: false,
+			expectInBlock:  true,
 		},
-		{
-			name:            "TolerateFailed/InvalidTx",
-			tx:              invalidTx,
-			flags:           bundle.EF_TolerateFailed,
-			expectTolerated: false,
+		"TolerateFailed/InvalidTx": {
+			tx:             invalidTx,
+			flags:          bundle.EF_TolerateFailed,
+			expectRollback: true,
 		},
-		{
-			name:            "TolerateInvalidTolerateFailed/SuccessfulTx",
-			tx:              successfulTx,
-			flags:           bundle.EF_TolerateInvalid | bundle.EF_TolerateFailed,
-			expectTolerated: true,
-			expectInBlock:   true,
+		"TolerateInvalidTolerateFailed/SuccessfulTx": {
+			tx:             successfulTx,
+			flags:          bundle.EF_TolerateInvalid | bundle.EF_TolerateFailed,
+			expectRollback: false,
+			expectInBlock:  true,
 		},
-		{
-			name:            "TolerateInvalidTolerateFailed/FailingTx",
-			tx:              failingTx,
-			flags:           bundle.EF_TolerateInvalid | bundle.EF_TolerateFailed,
-			expectTolerated: true,
-			expectInBlock:   true,
+		"TolerateInvalidTolerateFailed/FailingTx": {
+			tx:             failingTx,
+			flags:          bundle.EF_TolerateInvalid | bundle.EF_TolerateFailed,
+			expectRollback: false,
+			expectInBlock:  true,
 		},
-		{
-			name:            "TolerateInvalidTolerateFailed/InvalidTx",
-			tx:              invalidTx,
-			flags:           bundle.EF_TolerateInvalid | bundle.EF_TolerateFailed,
-			expectTolerated: true,
-			expectInBlock:   false,
+		"TolerateInvalidTolerateFailed/InvalidTx": {
+			tx:             invalidTx,
+			flags:          bundle.EF_TolerateInvalid | bundle.EF_TolerateFailed,
+			expectRollback: false,
+			expectInBlock:  false,
 		},
 	}
 
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
 			blockNumber, err := client.BlockNumber(t.Context())
 			require.NoError(t, err)
 
@@ -185,8 +176,6 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 			_, err = client.TransactionReceipt(t.Context(), envelope.Hash())
 			require.ErrorIs(t, err, ethereum.NotFound)
 
-			bundleTxs := bundle.GetTransactionsInReferencedOrder()
-
 			block, err := client.BlockByNumber(t.Context(), big.NewInt(info.Block.Int64()))
 			require.NoError(t, err)
 			blockTxsHashes := []common.Hash{}
@@ -194,19 +183,19 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 				blockTxsHashes = append(blockTxsHashes, tx.Hash())
 			}
 
-			// If the transaction is not expected to be tolerated, the whole
-			// outer group should be rejected, and thus no transactions should
-			// be included in a block.
-			if !c.expectTolerated {
+			bundleTxs := bundle.GetTransactionsInReferencedOrder()
+
+			// If the bundle is expected to be rolled back no transactions
+			// should be included in a block.
+			if c.expectRollback {
 				require.Zero(t, info.Count)
 				require.NotContains(t, blockTxsHashes, bundleTxs[0].Hash())
 				require.NotContains(t, blockTxsHashes, bundleTxs[1].Hash())
 				return
 			}
 
-			// If the transaction is expected to be tolerated but not included
-			// in a block, only the successful transaction that follows it
-			// should be included, but not the transaction itself.
+			// If the transaction is expected to not be included in the block,
+			// only the successful transaction that follows it should be included.
 			if !c.expectInBlock {
 				require.Equal(t, 1, int(info.Count))
 				require.NotContains(t, blockTxsHashes, bundleTxs[0].Hash())
