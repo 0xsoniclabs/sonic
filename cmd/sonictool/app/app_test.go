@@ -245,16 +245,28 @@ func TestSonicTool_genesis_ExportImport_WithBundles(t *testing.T) {
 
 	bundleHash, originalInfo := runBundle(t, net)
 
+	client, err := net.GetClient()
+	require.NoError(t, err)
+
+	// check that the bundle is still there after the export-import process
+	infoBeforeRestart, err := bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash)
+	require.NoError(t, err)
+	require.Equal(t, originalInfo, infoBeforeRestart,
+		"bundle info mismatch after genesis export-import")
+
+	// close client before restarting the net
+	client.Close()
+
 	require.NoError(t, net.RestartWithExportImport())
 
-	client, err := net.GetClient()
+	client, err = net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
 	// check that the bundle is still there after the export-import process
-	info, err := bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash)
+	infoAfterRestart, err := bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash)
 	require.NoError(t, err)
-	require.Equal(t, originalInfo, info,
+	require.Equal(t, originalInfo, infoAfterRestart,
 		"bundle info mismatch after genesis export-import")
 }
 
