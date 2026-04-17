@@ -103,7 +103,8 @@ type RPCRange struct {
 func NewRPCExecutionPlanComposable(plan bundle.ExecutionPlan) RPCExecutionPlanComposable {
 
 	visitor := &toJsonExecutionPlanVisitor{}
-	plan.Root.Visit(visitor)
+	// current use does not return error
+	_ = plan.Root.Accept(visitor)
 
 	return RPCExecutionPlanComposable{
 		BlockRange: RPCRange{
@@ -174,7 +175,7 @@ type toJsonExecutionPlanVisitor struct {
 	groupStack []*RPCExecutionPlanGroup
 }
 
-func (v *toJsonExecutionPlanVisitor) Step(flags bundle.ExecutionFlags, txRef bundle.TxReference) {
+func (v *toJsonExecutionPlanVisitor) Step(flags bundle.ExecutionFlags, txRef bundle.TxReference) error {
 	step := RPCExecutionStepComposable{
 		TolerateFailed:  flags&bundle.EF_TolerateFailed != 0,
 		TolerateInvalid: flags&bundle.EF_TolerateInvalid != 0,
@@ -192,6 +193,7 @@ func (v *toJsonExecutionPlanVisitor) Step(flags bundle.ExecutionFlags, txRef bun
 			Single: &step,
 		}
 	}
+	return nil
 }
 
 func (v *toJsonExecutionPlanVisitor) BeginGroup(oneOf bool, tolerateFailed bool) {
