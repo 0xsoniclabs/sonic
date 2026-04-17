@@ -74,15 +74,15 @@ type RPCExecutionPlanComposable struct {
 
 // RPCExecutionPlanGroup represents a group of execution steps in the JSON-serializable execution plan.
 type RPCExecutionPlanGroup struct {
-	TolerateFailures bool                    `json:"tolerateFailures"`
-	OneOf            bool                    `json:"oneOf"`
-	Steps            []RPCExecutionPlanLevel `json:"steps,omitempty"`
+	TolerateFailures bool                    `json:"tolerateFailures,omitempty"`
+	OneOf            bool                    `json:"oneOf,omitempty"`
+	Steps            []RPCExecutionPlanLevel `json:"steps"`
 }
 
 // RPCExecutionStepComposable represents a single execution step in the JSON-serializable execution plan.
 type RPCExecutionStepComposable struct {
-	TolerateFailed  bool           `json:"tolerateFailed"`
-	TolerateInvalid bool           `json:"tolerateInvalid"`
+	TolerateFailed  bool           `json:"tolerateFailed,omitempty"`
+	TolerateInvalid bool           `json:"tolerateInvalid,omitempty"`
 	From            common.Address `json:"from"`
 	Hash            common.Hash    `json:"hash"`
 }
