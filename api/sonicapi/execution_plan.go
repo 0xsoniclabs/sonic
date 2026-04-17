@@ -34,7 +34,7 @@ import (
 //	   	"blockRange":{
 //				"earliest":"0xa",
 //				"latest":"0x15"
-//			},
+//		},
 //		"root":{
 //			"group":{
 //				"oneOf":true,
