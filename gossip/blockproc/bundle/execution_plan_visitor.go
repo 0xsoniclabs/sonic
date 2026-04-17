@@ -19,8 +19,8 @@ package bundle
 //go:generate mockgen -source=execution_plan_visitor.go -destination=execution_plan_visitor_mock.go -package=bundle
 
 // ExecutionPlanVisitor is the visitor interface for traversing the execution plan.
-// It allows to keep the internal
-// implementation of the execution plan hidden from the users.
+// It allows keeping the internal implementation of the execution plan hidden
+// from users.
 type ExecutionPlanVisitor interface {
 	Step(flags ExecutionFlags, txRef TxReference) error
 	BeginGroup(oneOf bool, tolerateFailed bool)
