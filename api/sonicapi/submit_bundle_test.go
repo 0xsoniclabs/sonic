@@ -17,6 +17,7 @@
 package sonicapi
 
 import (
+	"crypto/ecdsa"
 	"errors"
 	"math/big"
 	"testing"
@@ -29,7 +30,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -277,6 +277,95 @@ func Test_SubmitBundle_BlockRangeIsPreservedInPool(t *testing.T) {
 	}
 }
 
+func Test_SubmitBundle_EmptySignedTransactions_ReturnsError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	pool := rpctest.NewMockTxPool(ctrl)
+	be := rpctest.NewBackendBuilder(t).WithPool(pool).Build()
+
+	args := SubmitBundleArgs{
+		SignedTransactions: []hexutil.Bytes{},
+		ExecutionPlan:      RPCExecutionPlanComposable{},
+	}
+
+	_, err := NewPublicBundleAPI(be).SubmitBundle(t.Context(), args)
+	require.ErrorContains(t, err, "signedTransactions must not be empty")
+}
+
+func Test_SubmitBundle_InvalidExecutionPlan_ReturnsError(t *testing.T) {
+	addr := common.Address{1}
+	hash := common.Hash{2}
+
+	singleStep := &RPCExecutionStepComposable{From: addr, Hash: hash}
+	groupStep := &RPCExecutionPlanGroup[RPCExecutionStepComposable]{
+		Steps: []RPCExecutionPlanLevel[RPCExecutionStepComposable]{
+			{Single: singleStep},
+		},
+	}
+
+	tests := []struct {
+		name   string
+		root   RPCExecutionPlanLevel[RPCExecutionStepComposable]
+		errMsg string
+	}{
+		{
+			name:   "root has neither single nor group",
+			root:   RPCExecutionPlanLevel[RPCExecutionStepComposable]{},
+			errMsg: "invalid execution plan root",
+		},
+		{
+			name: "root has both single and group",
+			root: RPCExecutionPlanLevel[RPCExecutionStepComposable]{
+				Single: singleStep,
+				Group:  groupStep,
+			},
+			errMsg: "invalid execution plan root",
+		},
+		{
+			name: "nested step has neither single nor group",
+			root: RPCExecutionPlanLevel[RPCExecutionStepComposable]{
+				Group: &RPCExecutionPlanGroup[RPCExecutionStepComposable]{
+					Steps: []RPCExecutionPlanLevel[RPCExecutionStepComposable]{
+						{Single: singleStep},
+						{}, // invalid nested level
+					},
+				},
+			},
+			errMsg: "invalid execution plan root",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			pool := rpctest.NewMockTxPool(ctrl)
+			be := rpctest.NewBackendBuilder(t).WithPool(pool).Build()
+
+			// Need at least one signed tx so the empty-slice guard doesn't trigger first.
+			key, err := crypto.GenerateKey()
+			require.NoError(t, err)
+			signer := types.LatestSignerForChainID(be.ChainID())
+			tx, err := types.SignNewTx(key, signer, &types.DynamicFeeTx{
+				To:  &addr,
+				Gas: params.TxGas,
+			})
+			require.NoError(t, err)
+			txData, err := tx.MarshalBinary()
+			require.NoError(t, err)
+
+			args := SubmitBundleArgs{
+				SignedTransactions: []hexutil.Bytes{txData},
+				ExecutionPlan: RPCExecutionPlanComposable{
+					BlockRange: RPCRange{Earliest: 1, Latest: 100},
+					Root:       tt.root,
+				},
+			}
+
+			_, err = NewPublicBundleAPI(be).SubmitBundle(t.Context(), args)
+			require.ErrorContains(t, err, tt.errMsg)
+		})
+	}
+}
+
 func Test_SubmitBundle_InvalidBlockRange_ReturnsError(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -311,7 +400,7 @@ func Test_SubmitBundle_InvalidBlockRange_ReturnsError(t *testing.T) {
 			require.NoError(t, err)
 			addr := common.Address{2}
 
-			// Build args with a valid range, then override to invalid.
+			// Build valid args, then override block range to invalid values.
 			tb, plan := bundle.NewBuilder().
 				WithSigner(signer).
 				SetEarliest(1).
@@ -327,9 +416,10 @@ func Test_SubmitBundle_InvalidBlockRange_ReturnsError(t *testing.T) {
 				signedTxs[i] = data
 			}
 
-			rpcPlan := NewRPCExecutionPlan(plan)
-			rpcPlan.Earliest = rpc.BlockNumber(tt.earliest)
-			rpcPlan.Latest = rpc.BlockNumber(tt.latest)
+			rpcPlan, err := NewRPCExecutionPlanComposable(plan)
+			require.NoError(t, err)
+			rpcPlan.BlockRange.Earliest = hexutil.Uint64(tt.earliest)
+			rpcPlan.BlockRange.Latest = hexutil.Uint64(tt.latest)
 
 			args := SubmitBundleArgs{
 				SignedTransactions: signedTxs,
@@ -342,167 +432,189 @@ func Test_SubmitBundle_InvalidBlockRange_ReturnsError(t *testing.T) {
 	}
 }
 
-func Test_SubmitBundle_InvalidExecutionPlanBlockNumbers_ReturnsError(t *testing.T) {
+func Test_SubmitBundle_HierarchicalPlan_ReturnsExecutionPlanHash(t *testing.T) {
+	var submitted *types.Transaction
+
+	ctrl := gomock.NewController(t)
+	pool := rpctest.NewMockTxPool(ctrl)
+	pool.EXPECT().AddLocal(gomock.Any()).DoAndReturn(func(tx *types.Transaction) error {
+		submitted = tx
+		return nil
+	})
+
+	be := rpctest.NewBackendBuilder(t).WithPool(pool).Build()
+	signer := types.LatestSignerForChainID(be.ChainID())
+
+	addr := common.Address{2}
+	key1, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	key2, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	key3, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	// Build a hierarchical plan: AllOf(tx1, OneOf(tx2, tx3))
+	// where tx2 and tx3 are in a OneOf group with TolerateFailed.
+	inner := bundle.OneOf(
+		bundle.Step(key2, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas}).WithFlags(bundle.EF_TolerateFailed),
+		bundle.Step(key3, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas}).WithFlags(bundle.EF_TolerateFailed),
+	)
+	root := bundle.AllOf(
+		bundle.Step(key1, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas}),
+		inner,
+	)
+
+	tb, plan := bundle.NewBuilder().
+		WithSigner(signer).
+		SetEarliest(5).
+		SetLatest(50).
+		With(root).
+		BuildBundleAndPlan()
+
+	txsInOrder := tb.GetTransactionsInReferencedOrder()
+	signedTxs := make([]hexutil.Bytes, len(txsInOrder))
+	for i, tx := range txsInOrder {
+		data, err := tx.MarshalBinary()
+		require.NoError(t, err)
+		signedTxs[i] = data
+	}
+
+	rpcPlan, err := NewRPCExecutionPlanComposable(plan)
+	require.NoError(t, err)
+
+	args := SubmitBundleArgs{
+		SignedTransactions: signedTxs,
+		ExecutionPlan:      rpcPlan,
+	}
+
+	hash, err := NewPublicBundleAPI(be).SubmitBundle(t.Context(), args)
+	require.NoError(t, err)
+	require.NotNil(t, submitted)
+	require.True(t, bundle.IsEnvelope(submitted))
+
+	_, submittedPlan, err := bundle.ValidateEnvelope(signer, submitted)
+	require.NoError(t, err)
+	require.Equal(t, submittedPlan.Hash(), hash)
+	require.EqualValues(t, 5, submittedPlan.Range.Earliest)
+	require.EqualValues(t, 50, submittedPlan.Range.Latest)
+}
+
+func Test_SubmitBundle_PlanTxCountMismatch_ReturnsError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	pool := rpctest.NewMockTxPool(ctrl)
+
+	be := rpctest.NewBackendBuilder(t).WithPool(pool).Build()
+	signer := types.LatestSignerForChainID(be.ChainID())
+
+	addr := common.Address{2}
+	key1, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	key2, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	// Build plan with 2 txs but only provide 1 signed transaction.
+	tb, plan := bundle.NewBuilder().
+		WithSigner(signer).
+		SetEarliest(1).
+		SetLatest(10).
+		With(bundle.AllOf(
+			bundle.Step(key1, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas}),
+			bundle.Step(key2, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas}),
+		)).
+		BuildBundleAndPlan()
+
+	txsInOrder := tb.GetTransactionsInReferencedOrder()
+	data, err := txsInOrder[0].MarshalBinary()
+	require.NoError(t, err)
+
+	rpcPlan, err := NewRPCExecutionPlanComposable(plan)
+	require.NoError(t, err)
+
+	args := SubmitBundleArgs{
+		SignedTransactions: []hexutil.Bytes{data}, // only 1, plan has 2
+		ExecutionPlan:      rpcPlan,
+	}
+
+	_, err = NewPublicBundleAPI(be).SubmitBundle(t.Context(), args)
+	require.ErrorContains(t, err, "must match signedTransactions count")
+}
+
+func Test_SubmitBundle_TxNotBelongingToExecutionPlan_ReturnsError(t *testing.T) {
 	tests := []struct {
-		name     string
-		earliest rpc.BlockNumber
+		name   string
+		makeTx func(t *testing.T, key *ecdsa.PrivateKey, signer types.Signer, addr common.Address) *types.Transaction
+		errMsg string
 	}{
 		{
-			name:     "latest as earliest",
-			earliest: rpc.LatestBlockNumber,
+			name: "plain tx without bundle-only mark",
+			makeTx: func(t *testing.T, key *ecdsa.PrivateKey, signer types.Signer, addr common.Address) *types.Transaction {
+				tx, err := types.SignNewTx(key, signer, &types.DynamicFeeTx{
+					To:  &addr,
+					Gas: params.TxGas,
+				})
+				require.NoError(t, err)
+				return tx
+			},
+			errMsg: "failed to validate bundle transaction",
 		},
 		{
-			name:     "pending as earliest",
-			earliest: rpc.PendingBlockNumber,
-		},
-		{
-			name:     "finalized as earliest",
-			earliest: rpc.FinalizedBlockNumber,
-		},
-		{
-			name:     "safe as earliest",
-			earliest: rpc.SafeBlockNumber,
+			name: "tx with bundle-only mark but wrong plan hash",
+			makeTx: func(t *testing.T, key *ecdsa.PrivateKey, signer types.Signer, addr common.Address) *types.Transaction {
+				wrongPlanHash := common.Hash{0xff}
+				tx, err := types.SignNewTx(key, signer, &types.DynamicFeeTx{
+					To:  &addr,
+					Gas: params.TxGas,
+					AccessList: types.AccessList{
+						{
+							Address:     bundle.BundleOnly,
+							StorageKeys: []common.Hash{wrongPlanHash},
+						},
+					},
+				})
+				require.NoError(t, err)
+				return tx
+			},
+			errMsg: "failed to validate bundle transaction",
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			// AddLocal must not be called, request validation fails before submission.
 			pool := rpctest.NewMockTxPool(ctrl)
-			be := rpctest.NewBackendBuilder(t).
-				WithPool(pool).
-				WithBlockHistory(
-					[]rpctest.Block{
-						{Number: 1},
-						{Number: 5},
-						{Number: 10},
-					},
-				).
-				Build()
+			be := rpctest.NewBackendBuilder(t).WithPool(pool).Build()
 			signer := types.LatestSignerForChainID(be.ChainID())
+
 			key, err := crypto.GenerateKey()
 			require.NoError(t, err)
 			addr := common.Address{2}
-			args := buildSubmitBundleArgs(signer, bundle.EF_Default, 1, 100,
-				bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas}),
-			)
-			args.ExecutionPlan.Earliest = tt.earliest
-			args.ExecutionPlan.Latest = rpc.BlockNumber(1)
+
+			tx := tt.makeTx(t, key, signer, addr)
+			from, err := types.Sender(signer, tx)
+			require.NoError(t, err)
+
+			// Build plan referencing this tx. For a tx without the bundle-only mark,
+			// the plan hash equals signer.Hash(tx) since removeBundleOnlyMark is a no-op.
+			rpcPlan := RPCExecutionPlanComposable{
+				BlockRange: RPCRange{Earliest: 1, Latest: 100},
+				Root: RPCExecutionPlanLevel[RPCExecutionStepComposable]{
+					Single: &RPCExecutionStepComposable{
+						From: from,
+						Hash: signer.Hash(tx),
+					},
+				},
+			}
+
+			txData, err := tx.MarshalBinary()
+			require.NoError(t, err)
+
+			args := SubmitBundleArgs{
+				SignedTransactions: []hexutil.Bytes{txData},
+				ExecutionPlan:      rpcPlan,
+			}
+
 			_, err = NewPublicBundleAPI(be).SubmitBundle(t.Context(), args)
-			require.ErrorContains(t, err, "latest block number cannot be smaller than earliest block number")
-		})
-	}
-}
-
-func Test_parseRPCBlockNumber(t *testing.T) {
-	tests := []struct {
-		name          string
-		num           rpc.BlockNumber
-		currentBlock  *evmcore.EvmBlock
-		wantNum       uint64
-		wantErrSubstr string
-	}{
-		{
-			name:    "explicit block number",
-			num:     rpc.BlockNumber(42),
-			wantNum: 42,
-		},
-		{
-			name:    "block number zero",
-			num:     rpc.BlockNumber(0),
-			wantNum: 0,
-		},
-		{
-			name:    "large block number",
-			num:     rpc.BlockNumber(1_000_000),
-			wantNum: 1_000_000,
-		},
-		{
-			name:    "earliest block number returns zero",
-			num:     rpc.EarliestBlockNumber,
-			wantNum: 0,
-		},
-		{
-			name:         "latest with current block",
-			num:          rpc.LatestBlockNumber,
-			currentBlock: makeEvmBlock(99),
-			wantNum:      99,
-		},
-		{
-			name:         "pending with current block",
-			num:          rpc.PendingBlockNumber,
-			currentBlock: makeEvmBlock(5),
-			wantNum:      5,
-		},
-		{
-			name:         "finalized with current block",
-			num:          rpc.FinalizedBlockNumber,
-			currentBlock: makeEvmBlock(77),
-			wantNum:      77,
-		},
-		{
-			name:         "safe with current block",
-			num:          rpc.SafeBlockNumber,
-			currentBlock: makeEvmBlock(33),
-			wantNum:      33,
-		},
-		{
-			name:          "latest without current block returns error",
-			num:           rpc.LatestBlockNumber,
-			currentBlock:  nil,
-			wantErrSubstr: "no current block",
-		},
-		{
-			name:          "pending without current block returns error",
-			num:           rpc.PendingBlockNumber,
-			currentBlock:  nil,
-			wantErrSubstr: "no current block",
-		},
-		{
-			name:          "finalized without current block returns error",
-			num:           rpc.FinalizedBlockNumber,
-			currentBlock:  nil,
-			wantErrSubstr: "no current block",
-		},
-		{
-			name:          "safe without current block returns error",
-			num:           rpc.SafeBlockNumber,
-			currentBlock:  nil,
-			wantErrSubstr: "no current block",
-		},
-		{
-			name:          "arbitrary negative number returns error",
-			num:           rpc.BlockNumber(-100),
-			wantErrSubstr: "block number cannot be negative",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			mock := NewMockBundleApiBackend(ctrl)
-
-			needsCurrentBlock := tt.num == rpc.PendingBlockNumber ||
-				tt.num == rpc.LatestBlockNumber ||
-				tt.num == rpc.FinalizedBlockNumber ||
-				tt.num == rpc.SafeBlockNumber
-			if needsCurrentBlock {
-				// parseRPCBlockNumber calls CurrentBlock() twice: once for the nil
-				// guard and once to read the block number (only when block != nil).
-				if tt.currentBlock != nil {
-					mock.EXPECT().CurrentBlock().Return(tt.currentBlock).Times(1)
-				} else {
-					mock.EXPECT().CurrentBlock().Return(nil).Times(1)
-				}
-			}
-
-			got, err := parseRPCBlockNumber(mock, tt.num)
-			if tt.wantErrSubstr != "" {
-				require.ErrorContains(t, err, tt.wantErrSubstr)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.wantNum, got)
-			}
+			require.ErrorContains(t, err, tt.errMsg)
 		})
 	}
 }
@@ -549,8 +661,13 @@ func buildSubmitBundleArgs(
 		signedTxs[i] = data
 	}
 
+	rpcPlan, err := NewRPCExecutionPlanComposable(plan)
+	if err != nil {
+		panic(err)
+	}
+
 	return SubmitBundleArgs{
 		SignedTransactions: signedTxs,
-		ExecutionPlan:      NewRPCExecutionPlan(plan),
+		ExecutionPlan:      rpcPlan,
 	}
 }
