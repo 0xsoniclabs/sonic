@@ -18,65 +18,69 @@ package sonicapi
 
 import (
 	"fmt"
-	"math/big"
+	big "math/big"
 	"slices"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
+	types "github.com/ethereum/go-ethereum/core/types"
 )
 
 // RPCExecutionProposal is the JSON-serializable representation of the execution proposal
 // that is returned by the API. It is designed to be easily serializable to JSON
 // and human-readable for integration purposes.
 //
-// An example of the JSON representation of an execution proposal is as follows:
+// Each leaf step contains the same fields as the eth_call transaction arguments,
+// with the addition of the tolerateFailed and tolerateInvalid flags that
+// indicate whether a transaction is allowed to fail or be invalid without
+// causing the entire proposal to be rejected.
+//
+// Steps can be nested into groups with optional oneOf and tolerateFailures
+// semantics. An example of the JSON representation:
 //
 //	{
-//	   	"blockRange":{
-//				"earliest":"0xa",
-//				"latest":"0x15"
-//		},
-//		"root":{
-//			"group":{
-//				"oneOf":true,
-//				"steps":[
-//					{"group":{
-//						"tolerateFailed": false,
-//						"oneOf": true,
-//						"steps":[
-//							{"single":{
-//
-//								"tolerateFailed": false,
-//								"tolerateInvalid": false,
-//
-//								"chainId":"0x1"
-//								"from":"0x0100000000000000000000000000000000000000",
-//								"to":"0x0200000000000000000000000000000000000000",
-//								"gas":"0x5208",
-//								"value":"0xde0b6b3a7640000",
-//							}}
-//						]
-//					}}
-//				]
-//			}
-//		}
+//	  "blockRange": {
+//	    "earliest": "0xbc614e",
+//	    "latest": "0xbc61b2"
+//	  },
+//	  "steps": [
+//	    {
+//	      "from": "0xabc1230000000000000000000000000000000001",
+//	      "to": "0xdef4560000000000000000000000000000000002",
+//	      "gas": "0x5208",
+//	      "value": "0xde0b6b3a7640000",
+//	      "chainId": "0x1"
+//	    },
+//	    {
+//	      "oneOf": true,
+//	      "steps": [
+//	        {
+//	          "tolerateFailed": true,
+//	          "from": "0xabc1230000000000000000000000000000000001",
+//	          "to": "0x1111111111111111111111111111111111111111",
+//	          "data": "0xa9059cbb",
+//	          "chainId": "0x1"
+//	        },
+//	        {
+//	          "tolerateInvalid": true,
+//	          "from": "0xabc1230000000000000000000000000000000001",
+//	          "to": "0x2222222222222222222222222222222222222222",
+//	          "data": "0xa9059cbb",
+//	          "chainId": "0x1"
+//	        }
+//	      ]
+//	    }
+//	  ]
 //	}
-//
-// This type uses the same single transactions description as the eth_call arguments,
-// with the addition of the tolerateFailed and tolerateInvalid flags that are
-// used to indicate if a transaction is allowed to fail or be invalid without
-// causing the entire proposal to be rejected.
 type RPCExecutionProposal struct {
-	BlockRange RPCRange                                        `json:"blockRange"`
-	Root       RPCExecutionPlanLevel[RPCExecutionStepProposal] `json:"root"`
+	BlockRange RPCRange `json:"blockRange"`
+	RPCExecutionPlanGroup
 }
 
 type RPCExecutionStepProposal struct {
 	TolerateFailed  bool `json:"tolerateFailed,omitempty"`
 	TolerateInvalid bool `json:"tolerateInvalid,omitempty"`
-
 	ethapi.TransactionArgs
 }
 
@@ -86,10 +90,12 @@ type RPCExecutionStepProposal struct {
 func createProposalRequestFromBundle(signer types.Signer, txBundle *bundle.TransactionBundle) (*RPCExecutionProposal, error) {
 	plan := txBundle.Plan
 
-	visitor := makeExecutionPlanVisitor(func(flags bundle.ExecutionFlags, txRef bundle.TxReference) (*RPCExecutionStepProposal, error) {
-
+	visitor := makeExecutionPlanVisitor(func(flags bundle.ExecutionFlags, txRef bundle.TxReference) (any, error) {
 		// FIXME: return error if not found
-		tx := txBundle.Transactions[txRef]
+		tx, ok := txBundle.Transactions[txRef]
+		if !ok {
+			return nil, fmt.Errorf("transaction reference not found in bundle transactions: %v", txRef)
+		}
 		txArgs, err := convertToTransactonArgs(signer, tx)
 		if err != nil {
 			return nil, err
@@ -126,7 +132,7 @@ func createProposalRequestFromBundle(signer types.Signer, txBundle *bundle.Trans
 			Earliest: hexutil.Uint64(plan.Range.Earliest),
 			Latest:   hexutil.Uint64(plan.Range.Latest),
 		},
-		Root: visitor.result,
+		RPCExecutionPlanGroup: visitor.result,
 	}
 
 	return proposal, nil

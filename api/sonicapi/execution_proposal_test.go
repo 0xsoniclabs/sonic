@@ -38,6 +38,39 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
+	// txStep generates a JSON object for a standard AccessListTx step
+	// with optional flag prefix (e.g. `"tolerateFailed": true`).
+	txStep := func(flags string) string {
+		prefix := ""
+		if flags != "" {
+			prefix = flags + ","
+		}
+		return fmt.Sprintf(`{
+			%s
+			"from": "REPLACE_ADDRESS",
+			"to": null,
+			"gas": "0x10cc",
+			"gasPrice": null,
+			"maxFeePerGas": null,
+			"maxPriorityFeePerGas": null,
+			"value": null,
+			"nonce": null,
+			"data": null,
+			"input": null,
+			"chainId": "0x2",
+			"maxFeePerBlobGas": null,
+			"blobs": null,
+			"commitments": null,
+			"proofs": null,
+			"authorizationList": null
+		}`, prefix)
+	}
+
+	s := txStep("")
+	sTF := txStep(`"tolerateFailed": true`)
+	sTI := txStep(`"tolerateInvalid": true`)
+	sTFI := txStep(`"tolerateFailed": true, "tolerateInvalid": true`)
+
 	tests := map[string]struct {
 		bundle bundle.TransactionBundle
 		json   string
@@ -45,25 +78,19 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 		"empty bundle": {
 			bundle: bundle.NewBuilder().WithSigner(signer).BuildBundle(),
 			json: `{
-		 		"blockRange":{"earliest":"0x0","latest":"0x3ff"},
-		 		"root":{"group":{}}
-		 	}`,
+				"blockRange":{"earliest":"0x0","latest":"0x3ff"},
+				"steps":[{"steps":null}]
+			}`,
 		},
 		"simple bundle": {
 			bundle: bundle.NewBuilder().
 				WithSigner(signer).
 				With(bundle.Step(key, &types.AccessListTx{})).
 				BuildBundle(),
-			json: `{
-		 		"blockRange":{"earliest":"0x0","latest":"0x3ff"},
-		 		"root":{
-		 			"single":{
-		 				"chainId": "0x2",
-		 				"from": "REPLACE_ADDRESS",
-		 				"gas": "0x10cc"
-		 			}
-		 		}
-		 	}`,
+			json: fmt.Sprintf(`{
+				"blockRange":{"earliest":"0x0","latest":"0x3ff"},
+				"steps":[%s]
+			}`, s),
 		},
 		"bundle with two transactions": {
 			bundle: bundle.NewBuilder().
@@ -75,29 +102,10 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 					),
 				).
 				BuildBundle(),
-			json: `{
+			json: fmt.Sprintf(`{
 				"blockRange":{"earliest":"0x0","latest":"0x3ff"},
-				"root":{
-					"group":{
-						"steps":[
-							{
-								"single":{
-									"chainId": "0x2",
-									"from": "REPLACE_ADDRESS",
-									"gas": "0x10cc"
-								}
-							},
-							{
-								"single":{
-									"chainId": "0x2",
-									"from": "REPLACE_ADDRESS",
-									"gas": "0x10cc"
-								}
-							}
-						]
-					}
-				}
-			}`,
+				"steps":[{"steps":[%s,%s]}]
+			}`, s, s),
 		},
 		"nested bundle": {
 			bundle: bundle.NewBuilder().
@@ -110,29 +118,10 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 					),
 				).
 				BuildBundle(),
-			json: `{
+			json: fmt.Sprintf(`{
 				"blockRange":{"earliest":"0x0","latest":"0x3ff"},
-				"root":{
-					"group":{
-						"oneOf": true,
-						"steps":[
-							{
-								"group":{
-									"steps":[
-										{
-											"single":{
-												"chainId": "0x2",
-												"from": "REPLACE_ADDRESS",
-												"gas": "0x10cc"
-											}
-										}
-									]
-								}
-							}
-						]
-					}
-				}
-			}`,
+				"steps":[{"oneOf":true,"steps":[{"steps":[%s]}]}]
+			}`, s),
 		},
 		"bundle with flags in transactions": {
 			bundle: bundle.NewBuilder().
@@ -148,40 +137,10 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 					),
 				).
 				BuildBundle(),
-			json: `{
+			json: fmt.Sprintf(`{
 				"blockRange":{"earliest":"0x0","latest":"0x3ff"},
-				"root":{
-					"group":{
-						"steps":[
-							{
-								"single":{
-									"chainId": "0x2",
-									"from": "REPLACE_ADDRESS",
-									"gas": "0x10cc",
-									"tolerateFailed": true
-								}
-							},
-							{
-								"single":{
-									"chainId": "0x2",
-									"from": "REPLACE_ADDRESS",
-									"gas": "0x10cc",
-									"tolerateInvalid": true
-								}
-							},
-							{
-								"single":{
-									"chainId": "0x2",
-									"from": "REPLACE_ADDRESS",
-									"gas": "0x10cc",
-									"tolerateFailed": true,
-									"tolerateInvalid": true
-								}
-							}
-						]
-					}
-				}
-			}`,
+				"steps":[{"steps":[%s,%s,%s]}]
+			}`, sTF, sTI, sTFI),
 		},
 		"bundle with flags in groups": {
 			bundle: bundle.NewBuilder().
@@ -203,71 +162,15 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 					),
 				).
 				BuildBundle(),
-			json: `{
+			json: fmt.Sprintf(`{
 				"blockRange":{"earliest":"0x0","latest":"0x3ff"},
-				"root":{
-					"group":{
-						"steps":[
-							{
-								"group":{
-									"oneOf": true,
-									"steps":[
-										{
-											"single":{
-												"chainId": "0x2",
-												"from": "REPLACE_ADDRESS",
-												"gas": "0x10cc"
-											}
-										}
-									]
-								}
-							},
-							{
-								"group":{
-									"oneOf": true,
-									"tolerateFailures": true,
-									"steps":[
-										{
-											"single":{
-												"chainId": "0x2",
-												"from": "REPLACE_ADDRESS",
-												"gas": "0x10cc"
-											}
-										}
-									]
-								}
-							},
-							{
-								"group":{
-									"steps":[
-										{
-											"single":{
-												"chainId": "0x2",
-												"from": "REPLACE_ADDRESS",
-												"gas": "0x10cc"
-											}
-										}
-									]
-								}
-							},
-							{
-								"group":{
-									"tolerateFailures": true,
-									"steps":[
-										{
-											"single":{
-												"chainId": "0x2",
-												"from": "REPLACE_ADDRESS",
-												"gas": "0x10cc"
-											}
-										}
-									]
-								}
-							}
-						]
-					}
-				}
-			}`,
+				"steps":[{"steps":[
+					{"oneOf":true,"steps":[%s]},
+					{"tolerateFailures":true,"oneOf":true,"steps":[%s]},
+					{"steps":[%s]},
+					{"tolerateFailures":true,"steps":[%s]}
+				]}]
+			}`, s, s, s, s),
 		},
 	}
 
@@ -285,7 +188,7 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, proposal)
 
-			json := strings.ReplaceAll(tt.json, "REPLACE_ADDRESS", crypto.PubkeyToAddress(key.PublicKey).Hex())
+			json := strings.ReplaceAll(tt.json, "REPLACE_ADDRESS", strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex()))
 
 			expectJsonEqual(t, json, proposal)
 		})
@@ -307,39 +210,39 @@ func TestConvertToTransactionArgs(t *testing.T) {
 		"empty legacy tx": {
 			tx: types.NewTx(&types.LegacyTx{}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s"
+ 			}`,
 		},
 		"empty access list tx": {
 			tx: types.NewTx(&types.AccessListTx{}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s"
+ 			}`,
 		},
 		"empty dynamic fee tx": {
 			tx: types.NewTx(&types.DynamicFeeTx{}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s"
+ 			}`,
 		},
 		"empty blob tx": {
 			tx: types.NewTx(&types.BlobTx{}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"to": "0x0000000000000000000000000000000000000000"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0000000000000000000000000000000000000000"
+ 			}`,
 		},
 		"empty set code tx": {
 			tx: types.NewTx(&types.SetCodeTx{}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"to": "0x0000000000000000000000000000000000000000"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0000000000000000000000000000000000000000"
+ 			}`,
 		},
 		// trivial transactions
 		"trivial legacy tx": {
@@ -350,13 +253,13 @@ func TestConvertToTransactionArgs(t *testing.T) {
 				Data:  []byte{0xAB, 0xCD},
 			}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"to": "0x0100000000000000000000000000000000000000",
-				"nonce": "0xa",
-				"value": "0x2f5b",
-				"data": "0xabcd"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0100000000000000000000000000000000000000",
+ 				"nonce": "0xa",
+ 				"value": "0x2f5b",
+ 				"data": "0xabcd"
+ 			}`,
 		},
 		"trivial access list tx": {
 			tx: types.NewTx(&types.AccessListTx{
@@ -366,13 +269,13 @@ func TestConvertToTransactionArgs(t *testing.T) {
 				Data:  []byte{0xAB, 0xCD},
 			}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"to": "0x0100000000000000000000000000000000000000",
-				"nonce": "0xa",
-				"value": "0x7b",
-				"data": "0xabcd"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0100000000000000000000000000000000000000",
+ 				"nonce": "0xa",
+ 				"value": "0x7b",
+ 				"data": "0xabcd"
+ 			}`,
 		},
 		"trivial dynamic fee tx": {
 			tx: types.NewTx(&types.DynamicFeeTx{
@@ -382,13 +285,13 @@ func TestConvertToTransactionArgs(t *testing.T) {
 				Data:  []byte{0xAB, 0xCD},
 			}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"to": "0x0100000000000000000000000000000000000000",
-				"nonce": "0xa",
-				"value": "0x7b",
-				"data": "0xabcd"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0100000000000000000000000000000000000000",
+ 				"nonce": "0xa",
+ 				"value": "0x7b",
+ 				"data": "0xabcd"
+ 			}`,
 		},
 		"trivial blob tx": {
 			tx: types.NewTx(&types.BlobTx{
@@ -398,13 +301,13 @@ func TestConvertToTransactionArgs(t *testing.T) {
 				Data:  []byte{0xAB, 0xCD},
 			}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"to": "0x0100000000000000000000000000000000000000",
-				"nonce": "0xa",
-				"value": "0x7b",
-				"data": "0xabcd"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0100000000000000000000000000000000000000",
+ 				"nonce": "0xa",
+ 				"value": "0x7b",
+ 				"data": "0xabcd"
+ 			}`,
 		},
 		"trivial set code tx": {
 			tx: types.NewTx(&types.SetCodeTx{
@@ -414,13 +317,13 @@ func TestConvertToTransactionArgs(t *testing.T) {
 				Data:  []byte{0xAB, 0xCD},
 			}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"to": "0x0100000000000000000000000000000000000000",
-				"nonce": "0xa",
-				"value": "0x7b",
-				"data": "0xabcd"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0100000000000000000000000000000000000000",
+ 				"nonce": "0xa",
+ 				"value": "0x7b",
+ 				"data": "0xabcd"
+ 			}`,
 		},
 		// Data vs Input semantics
 		"contract create": {
@@ -428,10 +331,10 @@ func TestConvertToTransactionArgs(t *testing.T) {
 				Data: slices.Repeat([]byte{0xAB}, 4),
 			}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"input": "0xabababab"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"input": "0xabababab"
+ 			}`,
 		},
 		"no create": {
 			tx: types.NewTx(&types.LegacyTx{
@@ -439,11 +342,11 @@ func TestConvertToTransactionArgs(t *testing.T) {
 				Data: slices.Repeat([]byte{0xAB}, 4),
 			}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"to": "0x0100000000000000000000000000000000000000",
-				"data": "0xabababab"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0100000000000000000000000000000000000000",
+ 				"data": "0xabababab"
+ 			}`,
 		},
 		// GasLimit
 		"With Gas limit": {
@@ -451,10 +354,10 @@ func TestConvertToTransactionArgs(t *testing.T) {
 				Gas: 21000,
 			}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"gas": "0x5208"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"gas": "0x5208"
+ 			}`,
 		},
 		// Access list semantics
 		"Access list with entries": {
@@ -467,15 +370,15 @@ func TestConvertToTransactionArgs(t *testing.T) {
 				},
 			}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"accessList": [
-					{
-						"address": "0x0100000000000000000000000000000000000000",
-						"storageKeys": ["0x0100000000000000000000000000000000000000000000000000000000000000"]
-					}
-				]
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"accessList": [
+ 					{
+ 						"address": "0x0100000000000000000000000000000000000000",
+ 						"storageKeys": ["0x0100000000000000000000000000000000000000000000000000000000000000"]
+ 					}
+ 				]
+ 			}`,
 		},
 		// Gas price semantics
 		"Legacy tx with gas price": {
@@ -483,20 +386,20 @@ func TestConvertToTransactionArgs(t *testing.T) {
 				GasPrice: big.NewInt(100_000_000_000),
 			}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"gasPrice": "0x174876e800"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"gasPrice": "0x174876e800"
+ 			}`,
 		},
 		"Access list tx with gas price": {
 			tx: types.NewTx(&types.AccessListTx{
 				GasPrice: big.NewInt(100_000_000_000),
 			}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"gasPrice": "0x174876e800"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"gasPrice": "0x174876e800"
+ 			}`,
 		},
 		"Dynamic fee tx with max fee per gas and max priority fee per gas": {
 			tx: types.NewTx(&types.DynamicFeeTx{
@@ -504,11 +407,11 @@ func TestConvertToTransactionArgs(t *testing.T) {
 				GasTipCap: big.NewInt(2_000_000_000),
 			}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"maxFeePerGas": "0x174876e800",
-				"maxPriorityFeePerGas": "0x77359400"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"maxFeePerGas": "0x174876e800",
+ 				"maxPriorityFeePerGas": "0x77359400"
+ 			}`,
 		},
 		"Blob tx with max fee per gas and max priority fee per gas": {
 			tx: types.NewTx(&types.BlobTx{
@@ -516,12 +419,12 @@ func TestConvertToTransactionArgs(t *testing.T) {
 				GasTipCap: uint256.NewInt(2_000_000_000),
 			}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"to": "0x0000000000000000000000000000000000000000",
-				"maxFeePerGas": "0x174876e800",
-				"maxPriorityFeePerGas": "0x77359400"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0000000000000000000000000000000000000000",
+ 				"maxFeePerGas": "0x174876e800",
+ 				"maxPriorityFeePerGas": "0x77359400"
+ 			}`,
 		},
 		"Set code tx with max fee per gas and max priority fee per gas": {
 			tx: types.NewTx(&types.SetCodeTx{
@@ -529,12 +432,12 @@ func TestConvertToTransactionArgs(t *testing.T) {
 				GasTipCap: uint256.NewInt(2_000_000_000),
 			}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"to": "0x0000000000000000000000000000000000000000",
-				"maxFeePerGas": "0x174876e800",
-				"maxPriorityFeePerGas": "0x77359400"
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0000000000000000000000000000000000000000",
+ 				"maxFeePerGas": "0x174876e800",
+ 				"maxPriorityFeePerGas": "0x77359400"
+ 			}`,
 		},
 		// Set code tx autorizations
 		"set code tx with authorization": {
@@ -545,20 +448,20 @@ func TestConvertToTransactionArgs(t *testing.T) {
 				},
 			}),
 			json: `{
-				"chainId": "0x1",
-				"from": "%s",
-				"to": "0x0100000000000000000000000000000000000000",
-				"authorizationList": [
-					{
-						"chainId": "0x0",
-						"address": "0x0000000000000000000000000000000000000000",
-						"nonce": "0x0",
-						"yParity": "0x0",
-						"r": "0x0",
-						"s": "0x0"
-					}
-				]
-			}`,
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0100000000000000000000000000000000000000",
+ 				"authorizationList": [
+ 					{
+ 						"chainId": "0x0",
+ 						"address": "0x0000000000000000000000000000000000000000",
+ 						"nonce": "0x0",
+ 						"yParity": "0x0",
+ 						"r": "0x0",
+ 						"s": "0x0"
+ 					}
+ 				]
+ 			}`,
 		},
 	}
 
