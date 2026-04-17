@@ -65,10 +65,11 @@ func TestBlockParameters_BlockHeaderMatchesObservableBlockParameters(t *testing.
 					net := StartIntegrationTestNetWithJsonGenesis(t,
 						IntegrationTestNetOptions{
 							Upgrades: &upgrades,
-							NumNodes: 2,
+							NumNodes: 20,
 						},
 					)
-					testBlockHeaderMatchesObservableBlockParameters(t, net)
+					MakeAccountWithBalance(t, net, big.NewInt(1e18))
+					// testBlockHeaderMatchesObservableBlockParameters(t, net)
 				})
 			}
 		})

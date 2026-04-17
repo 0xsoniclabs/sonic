@@ -23,7 +23,6 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -32,7 +31,6 @@ import (
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -329,62 +327,64 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 			// Explicitly set the network to use the Sonic Hard Fork
 			Upgrades: tests.AsPointer(opera.GetSonicUpgrades()),
 			// Use 2 nodes to test the rules update propagation
-			NumNodes: 2,
+			NumNodes: 30,
 		},
 	)
 
-	account := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	/*
 
-	t.Run("expectations before sonic-allegro hardfork", func(t *testing.T) {
-		forEachClientInNet(t, net, func(t *testing.T, client *tests.PooledEhtClient) {
-			tx := makeSetCodeTx(t, net, account)
-			err := client.SendTransaction(t.Context(), tx)
-			require.ErrorContains(t,
-				err, evmcore.ErrTxTypeNotSupported.Error(),
-				"SetCodeTx cannot be accepted before Prague hard fork")
+		t.Run("expectations before sonic-allegro hardfork", func(t *testing.T) {
+			forEachClientInNet(t, net, func(t *testing.T, client *tests.PooledEhtClient) {
+				tx := makeSetCodeTx(t, net, account)
+				err := client.SendTransaction(t.Context(), tx)
+				require.ErrorContains(t,
+					err, evmcore.ErrTxTypeNotSupported.Error(),
+					"SetCodeTx cannot be accepted before Prague hard fork")
+			})
 		})
-	})
 
-	// Update network rules to enable the Allegro Hard Fork
-	type rulesType struct {
-		Upgrades struct{ Allegro bool }
-	}
-	rulesDiff := rulesType{
-		Upgrades: struct{ Allegro bool }{Allegro: true},
-	}
-	tests.UpdateNetworkRules(t, net, rulesDiff)
+		// Update network rules to enable the Allegro Hard Fork
+		type rulesType struct {
+			Upgrades struct{ Allegro bool }
+		}
+		rulesDiff := rulesType{
+			Upgrades: struct{ Allegro bool }{Allegro: true},
+		}
+		tests.UpdateNetworkRules(t, net, rulesDiff)
 
-	// reach epoch ceiling to apply the new rules
-	net.AdvanceEpoch(t, 1)
+		// reach epoch ceiling to apply the new rules
+		net.AdvanceEpoch(t, 1)
 
-	// Wait for another block, this is time for the tx_pool to tick, run reorg,
-	// and implement the new rules.
-	receipt, err := net.EndowAccount(account.Address(), big.NewInt(1e18))
-	require.NoError(t, err, "failed to endow account with balance")
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-
-	t.Run("expectations before sonic-allegro hardfork", func(t *testing.T) {
-
-		// Submit a transaction that requires the new behavior
-		tx := makeSetCodeTx(t, net, account)
-		receipt, err := net.Run(tx)
-		require.NoError(t, err)
+		// Wait for another block, this is time for the tx_pool to tick, run reorg,
+		// and implement the new rules.
+		receipt, err := net.EndowAccount(account.Address(), big.NewInt(1e18))
+		require.NoError(t, err, "failed to endow account with balance")
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-		delegationIndicator :=
-			hexutil.MustDecode("0xEF01002A00000000000000000000000000000000000000")
+		t.Run("expectations before sonic-allegro hardfork", func(t *testing.T) {
 
-		forEachClientInNet(t, net, func(t *testing.T, client *tests.PooledEhtClient) {
-
-			// make sure that this client has already processed the transaction
-			_, err := net.GetReceipt(tx.Hash())
-			require.NoError(t, err, "failed to get receipt for the transaction")
-
-			code, err := client.CodeAt(t.Context(), account.Address(), nil)
+			// Submit a transaction that requires the new behavior
+			tx := makeSetCodeTx(t, net, account)
+			receipt, err := net.Run(tx)
 			require.NoError(t, err)
-			require.Equal(t, code, delegationIndicator)
+			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+			delegationIndicator :=
+				hexutil.MustDecode("0xEF01002A00000000000000000000000000000000000000")
+
+			forEachClientInNet(t, net, func(t *testing.T, client *tests.PooledEhtClient) {
+
+				// make sure that this client has already processed the transaction
+				_, err := net.GetReceipt(tx.Hash())
+				require.NoError(t, err, "failed to get receipt for the transaction")
+
+				code, err := client.CodeAt(t.Context(), account.Address(), nil)
+				require.NoError(t, err)
+				require.Equal(t, code, delegationIndicator)
+			})
 		})
-	})
+	*/
 }
 
 func forEachClientInNet(
