@@ -20,11 +20,14 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"testing"
 
 	"github.com/0xsoniclabs/sonic/api/sonicapi"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -94,4 +97,18 @@ func WaitForBundleExecutions(
 		return !slices.Contains(infos, nil), nil
 	})
 	return infos, err
+}
+
+// Step is a helper function to create a bundle builder step prefilled with
+// information from the network
+func Step[T types.TxData](
+	t *testing.T,
+	net tests.IntegrationTestNetSession,
+	account *tests.Account,
+	txData T,
+) bundle.BuilderStep {
+	return bundle.Step(
+		account.PrivateKey,
+		tests.SetTransactionDefaults(t, net, txData, account),
+	)
 }
