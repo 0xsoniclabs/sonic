@@ -34,7 +34,7 @@ import (
 //	   	"blockRange":{
 //				"earliest":"0xa",
 //				"latest":"0x15"
-//			},
+//		},
 //		"root":{
 //			"group":{
 //				"oneOf":true,
@@ -68,15 +68,15 @@ import (
 //		}
 //	}
 type RPCExecutionPlanComposable struct {
-	BlockRange RPCRange              `json:"blockRange"`
-	Root       RPCExecutionPlanLevel `json:"root"`
+	BlockRange RPCRange                                          `json:"blockRange"`
+	Root       RPCExecutionPlanLevel[RPCExecutionStepComposable] `json:"root"`
 }
 
 // RPCExecutionPlanGroup represents a group of execution steps in the JSON-serializable execution plan.
-type RPCExecutionPlanGroup struct {
-	TolerateFailures bool                    `json:"tolerateFailures,omitempty"`
-	OneOf            bool                    `json:"oneOf,omitempty"`
-	Steps            []RPCExecutionPlanLevel `json:"steps"`
+type RPCExecutionPlanGroup[T any] struct {
+	TolerateFailures bool                       `json:"tolerateFailures,omitempty"`
+	OneOf            bool                       `json:"oneOf,omitempty"`
+	Steps            []RPCExecutionPlanLevel[T] `json:"steps"`
 }
 
 // RPCExecutionStepComposable represents a single execution step in the JSON-serializable execution plan.
@@ -88,9 +88,9 @@ type RPCExecutionStepComposable struct {
 }
 
 // RPCExecutionPlanLevel represents a level in the execution plan, which can be either a single step or a group of steps.
-type RPCExecutionPlanLevel struct {
-	Single *RPCExecutionStepComposable `json:"single,omitempty"`
-	Group  *RPCExecutionPlanGroup      `json:"group,omitempty"`
+type RPCExecutionPlanLevel[T any] struct {
+	Single *T                        `json:"single,omitempty"`
+	Group  *RPCExecutionPlanGroup[T] `json:"group,omitempty"`
 }
 
 // RPCRange represents the block range for which the execution plan is valid.
@@ -100,10 +100,20 @@ type RPCRange struct {
 }
 
 // NewRPCExecutionPlanComposable converts a bundle.ExecutionPlan to an RPCExecutionPlan that can be returned by the API.
-func NewRPCExecutionPlanComposable(plan bundle.ExecutionPlan) RPCExecutionPlanComposable {
+func NewRPCExecutionPlanComposable(plan bundle.ExecutionPlan) (RPCExecutionPlanComposable, error) {
 
-	visitor := &toJsonExecutionPlanVisitor{}
-	plan.Root.Visit(visitor)
+	visitor := makeExecutionPlanVisitor(
+		func(flags bundle.ExecutionFlags, txRef bundle.TxReference) (*RPCExecutionStepComposable, error) {
+			return &RPCExecutionStepComposable{
+				TolerateFailed:  flags&bundle.EF_TolerateFailed != 0,
+				TolerateInvalid: flags&bundle.EF_TolerateInvalid != 0,
+				From:            txRef.From,
+				Hash:            txRef.Hash,
+			}, nil
+		})
+
+	// because the conversion bundle.TxReference -> RPCExecutionStepComposable cannot fail, we can ignore the error here
+	_ = plan.Root.Accept(visitor)
 
 	return RPCExecutionPlanComposable{
 		BlockRange: RPCRange{
@@ -111,7 +121,7 @@ func NewRPCExecutionPlanComposable(plan bundle.ExecutionPlan) RPCExecutionPlanCo
 			Latest:   hexutil.Uint64(plan.Range.Latest),
 		},
 		Root: visitor.result,
-	}
+	}, nil
 }
 
 func toBundleExecutionPlan(rpcPlan RPCExecutionPlanComposable) (bundle.ExecutionPlan, error) {
@@ -130,7 +140,7 @@ func toBundleExecutionPlan(rpcPlan RPCExecutionPlanComposable) (bundle.Execution
 	}, nil
 }
 
-func toBundleExecutionPlanLevel(rpcLevel RPCExecutionPlanLevel) (bundle.ExecutionStep, error) {
+func toBundleExecutionPlanLevel(rpcLevel RPCExecutionPlanLevel[RPCExecutionStepComposable]) (bundle.ExecutionStep, error) {
 	if rpcLevel.Single != nil && rpcLevel.Group != nil {
 		return bundle.ExecutionStep{},
 			fmt.Errorf("invalid execution plan level: cannot have both single and group")
@@ -168,52 +178,56 @@ func toBundleExecutionPlanLevel(rpcLevel RPCExecutionPlanLevel) (bundle.Executio
 	return bundle.ExecutionStep{}, fmt.Errorf("invalid execution plan level: must have either single or group")
 }
 
-// toJsonExecutionPlanVisitor is an implementation of the ExecutionPlanVisitor interface
-type toJsonExecutionPlanVisitor struct {
-	result     RPCExecutionPlanLevel
-	groupStack []*RPCExecutionPlanGroup
+// makeExecutionPlanVisitor creates a new instance of toJsonExecutionPlanVisitor with the provided toLeaf function.
+// This visitor can be used to convert a bundle.ExecutionPlan into a json capable
+// structure where the leaf nodes are customizable.
+// This allows to create the same structure for different use cases, such as
+// an execution plan or a proposal of a plan where all the transactions are txArguments
+func makeExecutionPlanVisitor[T any](toLeaf func(flags bundle.ExecutionFlags, txRef bundle.TxReference) (*T, error)) *toJsonExecutionPlanVisitor[T] {
+	return &toJsonExecutionPlanVisitor[T]{
+		toLeaf: toLeaf,
+	}
 }
 
-func (v *toJsonExecutionPlanVisitor) Step(flags bundle.ExecutionFlags, txRef bundle.TxReference) {
-	step := RPCExecutionStepComposable{
-		TolerateFailed:  flags&bundle.EF_TolerateFailed != 0,
-		TolerateInvalid: flags&bundle.EF_TolerateInvalid != 0,
-		From:            txRef.From,
-		Hash:            txRef.Hash,
-	}
+type toJsonExecutionPlanVisitor[T any] struct {
+	toLeaf     func(flags bundle.ExecutionFlags, txRef bundle.TxReference) (*T, error)
+	result     RPCExecutionPlanLevel[T]
+	groupStack []*RPCExecutionPlanGroup[T]
+}
 
+func (v *toJsonExecutionPlanVisitor[T]) Step(flags bundle.ExecutionFlags, txRef bundle.TxReference) error {
+	leaf, err := v.toLeaf(flags, txRef)
+	if err != nil {
+		return fmt.Errorf("failed to convert execution step to JSON: %w", err)
+	}
+	level := RPCExecutionPlanLevel[T]{Single: leaf}
 	if len(v.groupStack) > 0 {
 		currentGroup := v.groupStack[len(v.groupStack)-1]
-		currentGroup.Steps = append(currentGroup.Steps, RPCExecutionPlanLevel{
-			Single: &step,
-		})
+		currentGroup.Steps = append(currentGroup.Steps, level)
 	} else {
-		v.result = RPCExecutionPlanLevel{
-			Single: &step,
-		}
+		v.result = level
 	}
+	return nil
 }
 
-func (v *toJsonExecutionPlanVisitor) BeginGroup(oneOf bool, tolerateFailed bool) {
-	group := &RPCExecutionPlanGroup{
+func (v *toJsonExecutionPlanVisitor[T]) BeginGroup(oneOf bool, tolerateFailed bool) {
+	group := &RPCExecutionPlanGroup[T]{
 		OneOf:            oneOf,
 		TolerateFailures: tolerateFailed,
 	}
 	v.groupStack = append(v.groupStack, group)
 }
 
-func (v *toJsonExecutionPlanVisitor) EndGroup() {
+func (v *toJsonExecutionPlanVisitor[T]) EndGroup() {
 	closedGroup := v.groupStack[len(v.groupStack)-1]
 	v.groupStack = v.groupStack[:len(v.groupStack)-1]
 
 	if len(v.groupStack) > 0 {
 		currentGroup := v.groupStack[len(v.groupStack)-1]
-		currentGroup.Steps = append(currentGroup.Steps, RPCExecutionPlanLevel{
+		currentGroup.Steps = append(currentGroup.Steps, RPCExecutionPlanLevel[T]{
 			Group: closedGroup,
 		})
 	} else {
-		v.result = RPCExecutionPlanLevel{
-			Group: closedGroup,
-		}
+		v.result = RPCExecutionPlanLevel[T]{Group: closedGroup}
 	}
 }

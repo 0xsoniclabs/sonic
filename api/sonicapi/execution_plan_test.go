@@ -17,6 +17,7 @@
 package sonicapi
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -24,7 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewRPCExecutionPlan_CanBeConstructedFromBundleExecutionPlan(t *testing.T) {
+func TestNewRPCExecutionPlan_NewRPCExecutionPlanComposable_CanBeConstructedFromBundleExecutionPlan(t *testing.T) {
 
 	ref1 := bundle.TxReference{
 		From: common.Address{1},
@@ -351,7 +352,8 @@ func TestNewRPCExecutionPlan_CanBeConstructedFromBundleExecutionPlan(t *testing.
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			rpcPlan := NewRPCExecutionPlanComposable(tc.plan)
+			rpcPlan, err := NewRPCExecutionPlanComposable(tc.plan)
+			require.NoError(t, err)
 
 			if tc.expectedJson != "" {
 				expectJsonEqual(t, tc.expectedJson, rpcPlan)
@@ -369,33 +371,37 @@ func TestNewRPCExecutionPlan_CanBeConstructedFromBundleExecutionPlan(t *testing.
 
 func TestRPCExecutionPlan_ConvertCanReturnErrors(t *testing.T) {
 
+	type leaf = RPCExecutionStepComposable
+	type level = RPCExecutionPlanLevel[leaf]
+	type group = RPCExecutionPlanGroup[leaf]
+
 	tests := map[string]RPCExecutionPlanComposable{
 		"both single and group": {
-			Root: RPCExecutionPlanLevel{
-				Single: &RPCExecutionStepComposable{},
-				Group:  &RPCExecutionPlanGroup{},
+			Root: level{
+				Single: &leaf{},
+				Group:  &group{},
 			},
 		},
 		"both single and group nested": {
-			Root: RPCExecutionPlanLevel{
-				Group: &RPCExecutionPlanGroup{
-					Steps: []RPCExecutionPlanLevel{
+			Root: level{
+				Group: &group{
+					Steps: []level{
 						{
-							Single: &RPCExecutionStepComposable{},
-							Group:  &RPCExecutionPlanGroup{},
+							Single: &leaf{},
+							Group:  &group{},
 						},
 					},
 				},
 			},
 		},
 		"missing single and group": {
-			Root: RPCExecutionPlanLevel{},
+			Root: level{},
 		},
 
 		"missing single and group nested": {
-			Root: RPCExecutionPlanLevel{
-				Group: &RPCExecutionPlanGroup{
-					Steps: []RPCExecutionPlanLevel{
+			Root: level{
+				Group: &group{
+					Steps: []level{
 						{
 							// invalid level
 						},
@@ -411,4 +417,17 @@ func TestRPCExecutionPlan_ConvertCanReturnErrors(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+}
+
+func Test_toJsonExecutionPlanVisitor_CanReturnErrors(t *testing.T) {
+
+	visitor := &toJsonExecutionPlanVisitor[int]{
+		toLeaf: func(flags bundle.ExecutionFlags, txRef bundle.TxReference) (*int, error) {
+			return nil, fmt.Errorf("test error")
+		},
+	}
+
+	err := visitor.Step(0, bundle.TxReference{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "test error")
 }
