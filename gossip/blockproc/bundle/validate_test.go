@@ -19,10 +19,13 @@ package bundle
 import (
 	"crypto/ecdsa"
 	"fmt"
+	"maps"
 	"math/big"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -450,6 +453,317 @@ func (gen testBundleGenerator) makeBundleTxWithoutEnoughGasForAllTransactions() 
 		Data: tx.Data(),
 		Gas:  38_000, // not enough gas for all transactions in the bundle
 	})
+}
+
+func TestValidateBundle_ValidBundles_AreAccepted(t *testing.T) {
+	key1, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	key2, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	validBundles := []*builder{
+		NewBuilder().AllOf(),
+		NewBuilder().OneOf(),
+		NewBuilder().AllOf(
+			Step(key1, &types.AccessListTx{}),
+			Step(key2, &types.AccessListTx{}),
+		),
+		NewBuilder().OneOf(
+			AllOf(
+				Step(key1, &types.AccessListTx{}),
+				Step(key2, &types.AccessListTx{}),
+			),
+			AllOf(
+				Step(key2, &types.AccessListTx{}),
+				Step(key1, &types.AccessListTx{}),
+			),
+		),
+	}
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	for _, builder := range validBundles {
+		bundle := builder.WithSigner(signer).BuildBundle()
+		require.NoError(t, validateBundle(signer, bundle))
+	}
+}
+
+func TestValidateBundle_InvalidPlan_Rejected(t *testing.T) {
+	bundle := TransactionBundle{}
+
+	issue := validatePlan(bundle.Plan)
+	require.Error(t, issue)
+
+	got := validateBundle(nil, bundle)
+	require.ErrorContains(t, got, "invalid execution plan")
+	require.ErrorContains(t, got, issue.Error())
+}
+
+func TestValidateBundle_NilTransaction_Rejected(t *testing.T) {
+	tests := map[string][]*types.Transaction{
+		"single nil transaction": {nil},
+		"nil and non-nil transactions": {
+			types.NewTx(&types.AccessListTx{}),
+			nil,
+			types.NewTx(&types.AccessListTx{}),
+		},
+	}
+
+	for name, transactions := range tests {
+		t.Run(name, func(t *testing.T) {
+			validPlan := ExecutionPlan{
+				Range: BlockRange{Earliest: 10, Latest: 20},
+				Root:  NewTxStep(TxReference{}),
+			}
+			require.NoError(t, validatePlan(validPlan))
+
+			index := map[TxReference]*types.Transaction{}
+			for i, tx := range transactions {
+				index[TxReference{From: common.Address{byte(i + 1)}}] = tx
+			}
+
+			bundle := TransactionBundle{
+				Plan:         validPlan,
+				Transactions: index,
+			}
+
+			require.ErrorContains(t, validateBundle(nil, bundle),
+				"invalid nil transaction in bundle",
+			)
+		})
+	}
+}
+
+func TestValidateBundle_InconsistentChainIds_Rejected(t *testing.T) {
+	tests := map[string][]*types.Transaction{
+		"two different chain IDs": {
+			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(12)}),
+			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(14)}),
+		},
+		"multiple different chain IDs": {
+			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(12)}),
+			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(14)}),
+			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(15)}),
+		},
+		"first different": {
+			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(12)}),
+			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(14)}),
+			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(14)}),
+		},
+		"middle different": {
+			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(12)}),
+			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(14)}),
+			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(12)}),
+		},
+		"last different": {
+			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(12)}),
+			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(12)}),
+			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(14)}),
+		},
+	}
+
+	for name, transactions := range tests {
+		t.Run(name, func(t *testing.T) {
+			validPlan := ExecutionPlan{
+				Range: BlockRange{Earliest: 10, Latest: 20},
+				Root:  NewTxStep(TxReference{}),
+			}
+			require.NoError(t, validatePlan(validPlan))
+
+			index := map[TxReference]*types.Transaction{}
+			for i, tx := range transactions {
+				index[TxReference{From: common.Address{byte(i + 1)}}] = tx
+			}
+
+			bundle := TransactionBundle{
+				Plan:         validPlan,
+				Transactions: index,
+			}
+
+			require.ErrorContains(t, validateBundle(nil, bundle),
+				"transactions in bundle have different chain IDs",
+			)
+		})
+	}
+}
+
+func TestValidateBundle_MissingSigner_ProducesAnError(t *testing.T) {
+	validPlan := ExecutionPlan{
+		Range: BlockRange{Earliest: 10, Latest: 20},
+		Root:  NewTxStep(TxReference{}),
+	}
+
+	bundle := TransactionBundle{
+		Plan: validPlan,
+	}
+
+	require.ErrorContains(t, validateBundle(nil, bundle), "signer is nil")
+}
+
+func TestValidateBundle_InvalidIndex_Rejected(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(123))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	bundle := NewBuilder().AllOf(
+		Step(key, &types.AccessListTx{Nonce: 1}),
+	).WithSigner(signer).BuildBundle()
+
+	require.NoError(t, validateBundle(signer, bundle))
+
+	ref := slices.Collect(maps.Keys(bundle.Transactions))[0]
+	validTxData := utils.GetTxData(bundle.Transactions[ref]).(*types.AccessListTx)
+
+	// using an unsigned transaction in the index is detected
+	validTxData.R = nil
+	unsignedTx := types.NewTx(validTxData)
+	bundle.Transactions[ref] = unsignedTx
+	require.ErrorContains(t, validateBundle(signer, bundle),
+		"invalid transaction in bundle",
+	)
+
+	// Changing the signer of the transaction is detected
+	otherKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	otherTx := types.MustSignNewTx(otherKey, signer, validTxData)
+	bundle.Transactions[ref] = otherTx
+
+	require.ErrorContains(t, validateBundle(signer, bundle),
+		"sender in transaction reference does not match actual sender",
+	)
+
+	// Change in the transaction data is detected
+	validTxData.Value = big.NewInt(1234)
+	changedDataTx := types.MustSignNewTx(key, signer, validTxData)
+	bundle.Transactions[ref] = changedDataTx
+
+	require.ErrorContains(t, validateBundle(signer, bundle),
+		"content of transaction does not match transaction hash",
+	)
+}
+
+func TestValidateBundle_UsageOfLegacyTransaction_Rejected(t *testing.T) {
+	validPlan := ExecutionPlan{
+		Range: BlockRange{Earliest: 10, Latest: 20},
+		Root:  NewTxStep(TxReference{}),
+	}
+	require.NoError(t, validatePlan(validPlan))
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	signer := types.LatestSignerForChainID(big.NewInt(123))
+	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{})
+
+	ref := TxReference{
+		From: crypto.PubkeyToAddress(key.PublicKey),
+		Hash: signer.Hash(tx),
+	}
+
+	index := map[TxReference]*types.Transaction{
+		ref: tx,
+	}
+
+	bundle := TransactionBundle{
+		Plan:         validPlan,
+		Transactions: index,
+	}
+
+	require.ErrorContains(t, validateBundle(signer, bundle),
+		"invalid transaction in bundle: unsupported transaction type: 0",
+	)
+}
+
+func TestValidateBundle_TransactionNotAgreeingToPlan_Rejected(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(123))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	bundle := NewBuilder().AllOf(
+		Step(key, &types.AccessListTx{}),
+	).WithSigner(signer).BuildBundle()
+
+	require.NoError(t, validateBundle(signer, bundle))
+
+	originalTx := bundle.GetTransactionsInReferencedOrder()[0]
+
+	// removing the agreement to the execution plan is detected
+	noAgreementData := utils.GetTxData(originalTx).(*types.AccessListTx)
+	noAgreementData.AccessList = []types.AccessTuple{{Address: BundleOnly}}
+	noAgreement := types.MustSignNewTx(key, signer, noAgreementData)
+	require.True(t, IsBundleOnly(noAgreement))
+
+	ref := slices.Collect(maps.Keys(bundle.Transactions))[0]
+	bundle.Transactions[ref] = noAgreement
+
+	require.ErrorContains(t, validateBundle(signer, bundle),
+		"contains transaction not approving the execution plan",
+	)
+
+	// restore the valid bundle
+	bundle.Transactions[ref] = originalTx
+	require.NoError(t, validateBundle(signer, bundle))
+
+	// replacing the agreement with another execution hash is also detected
+	otherAgreementData := utils.GetTxData(originalTx).(*types.AccessListTx)
+	otherAgreementData.AccessList = []types.AccessTuple{{
+		Address:     BundleOnly,
+		StorageKeys: []common.Hash{{0x99}},
+	}}
+	otherAgreement := types.MustSignNewTx(key, signer, otherAgreementData)
+	require.True(t, IsBundleOnly(otherAgreement))
+
+	bundle.Transactions[ref] = otherAgreement
+
+	require.ErrorContains(t, validateBundle(signer, bundle),
+		"contains transaction not approving the execution plan",
+	)
+}
+
+func TestValidateBundle_MissingTransactionInIndex_Rejected(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(123))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	bundle := NewBuilder().AllOf(
+		Step(key, &types.AccessListTx{Nonce: 1}),
+		Step(key, &types.AccessListTx{Nonce: 2}),
+	).WithSigner(signer).BuildBundle()
+
+	require.NoError(t, validateBundle(signer, bundle))
+
+	ref1 := slices.Collect(maps.Keys(bundle.Transactions))[0]
+	delete(bundle.Transactions, ref1)
+	require.ErrorContains(t, validateBundle(signer, bundle),
+		"missing transaction referenced by the execution plan",
+	)
+}
+
+func TestValidateBundle_AdditionalTransactionInIndex_Rejected(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(123))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	bundle := NewBuilder().AllOf(
+		Step(key, &types.AccessListTx{Nonce: 1}),
+		Step(key, &types.AccessListTx{Nonce: 2}),
+	).WithSigner(signer).BuildBundle()
+
+	require.NoError(t, validateBundle(signer, bundle))
+
+	key2, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	ref1 := slices.Collect(maps.Keys(bundle.Transactions))[0]
+	validTx := bundle.Transactions[ref1]
+
+	extraTx := types.MustSignNewTx(key2, signer, utils.GetTxData(validTx))
+	refExtra := TxReference{
+		From: crypto.PubkeyToAddress(key2.PublicKey),
+		Hash: ref1.Hash,
+	}
+	bundle.Transactions[refExtra] = extraTx
+
+	require.ErrorContains(t, validateBundle(signer, bundle),
+		"contains transaction not referenced by the execution plan",
+	)
 }
 
 func TestValidatePlan_AcceptsValidPlans(t *testing.T) {
