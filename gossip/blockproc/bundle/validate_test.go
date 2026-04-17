@@ -452,6 +452,68 @@ func (gen testBundleGenerator) makeBundleTxWithoutEnoughGasForAllTransactions() 
 	})
 }
 
+func TestValidatePlan_AcceptsValidPlans(t *testing.T) {
+	validPlans := []ExecutionPlan{
+		{
+			Root:  NewTxStep(TxReference{}),
+			Range: BlockRange{Earliest: 10, Latest: 10},
+		},
+		{
+			Root:  NewAllOfStep(NewTxStep(TxReference{}), NewTxStep(TxReference{})),
+			Range: BlockRange{Earliest: 10, Latest: 20},
+		},
+		{
+			Root:  NewOneOfStep(NewTxStep(TxReference{}), NewTxStep(TxReference{})),
+			Range: BlockRange{Earliest: 0, Latest: MaxBlockRange - 1},
+		},
+	}
+
+	for _, plan := range validPlans {
+		require.NoError(t, validatePlan(plan))
+	}
+}
+
+func TestValidatePlan_DetectsInvalidPlans(t *testing.T) {
+	tests := map[string]struct {
+		plan  ExecutionPlan
+		issue string
+	}{
+		"empty plan": {
+			plan:  ExecutionPlan{},
+			issue: "invalid execution plan",
+		},
+		"invalid root step": {
+			plan: ExecutionPlan{
+				Root:  ExecutionStep{}, // invalid step
+				Range: BlockRange{Earliest: 10, Latest: 20},
+			},
+			issue: "invalid execution plan",
+		},
+		"invalid block range": {
+			plan: ExecutionPlan{
+				Root:  NewTxStep(TxReference{}),
+				Range: BlockRange{Earliest: 20, Latest: 10}, // invalid range
+			},
+			issue: "invalid block range",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorContains(t, validatePlan(test.plan), test.issue)
+		})
+	}
+
+	invalidPlanAndRange := ExecutionPlan{
+		Root:  ExecutionStep{},                      // invalid step
+		Range: BlockRange{Earliest: 20, Latest: 10}, // invalid range
+	}
+
+	require.Error(t, validateStep(invalidPlanAndRange.Root))
+	require.Error(t, validateRange(invalidPlanAndRange.Range))
+	require.Error(t, validatePlan(invalidPlanAndRange))
+}
+
 func TestValidateStep_AcceptsValidSteps(t *testing.T) {
 	validSteps := []ExecutionStep{
 		// -- atomic steps --

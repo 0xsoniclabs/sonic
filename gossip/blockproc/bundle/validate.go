@@ -151,6 +151,17 @@ func validateEnvelopeInternal(
 	return &txBundle, &plan, nil
 }
 
+// validatePlan checks that the given execution plan is valid.
+func validatePlan(plan ExecutionPlan) error {
+	if err := validateStep(plan.Root); err != nil {
+		return fmt.Errorf("invalid execution plan: %v", err)
+	}
+	if err := validateRange(plan.Range); err != nil {
+		return fmt.Errorf("invalid block range: %v", err)
+	}
+	return nil
+}
+
 // validateStep checks that the given execution step is valid.
 func validateStep(step ExecutionStep) error {
 	return validateStepInternal(step, 0)
