@@ -17,7 +17,6 @@
 package bundle
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 
@@ -26,10 +25,27 @@ import (
 )
 
 const (
-	// MaxNestingDepth defines the maximum allowed nesting depth of execution
-	// steps. This constant is critical to consensus, as it influences the
-	// decision of whether a bundle is valid and can be computed or invalid and
-	// must be rejected. It can thus only be altered as part of a hard-fork.
+	// MaxBundleNestingDepth defines the maximum allowed nesting depth of
+	// bundles, thus envelopes of bundles being referenced by enclosing bundles.
+	// This constant is critical to consensus, as it influences the decision of
+	// whether a bundle is valid and can be computed or invalid and must be
+	// rejected. It can thus only be altered as part of a hard-fork.
+	//
+	// The main intention of adding a limit to the number of nesting levels is
+	// to provide a guaranteed upper limit for nesting valid bundles to
+	// implementations, enabling them to reason about implementation trade-offs.
+	// In particular, the resource usage of recursive operations can be
+	// considered bound and effectively tested.
+	//
+	// The chosen value of 2 is somewhat arbitrary, but motivated by providing
+	// some room for nesting while keeping the number of levels low enough
+	// to be easily testable and to not cause issues for implementations.
+	MaxBundleNestingDepth = 2
+
+	// MaxGroupNestingDepth defines the maximum allowed nesting depth of
+	// execution steps. This constant is critical to consensus, as it influences
+	// the decision of whether a bundle is valid and can be computed or invalid
+	// and must be rejected. It can thus only be altered as part of a hard-fork.
 	//
 	// The main intention of adding a limit to the number of nesting levels is
 	// to provide a guaranteed upper limit for nesting valid execution plans to
@@ -37,86 +53,87 @@ const (
 	// In particular, the resource usage of recursive operations can be
 	// considered bound and effectively tested.
 	//
-	// The chosen value of 16 is somewhat arbitrary, but motivated by providing
-	// generous room for nesting while keeping the number of levels low enough
+	// The chosen value of 8 is somewhat arbitrary, but motivated by providing
+	// some room for nesting while keeping the number of levels low enough
 	// to be easily testable and to not cause issues for implementations.
-	MaxNestingDepth = 16
+	MaxGroupNestingDepth = 8
 )
 
-var ErrWrongEnvelopeGasLimit = errors.New("gas limit of envelope does not match gas limit of payload")
-
-// ValidateEnvelope validates an envelope and its contents.
-// It checks that the transaction is a valid bundle transaction and that all transactions in the bundle belong to the same execution plan.
-// If the transaction is a valid transaction bundle, it returns the decoded transaction bundle and nil (no error).
-// If the transaction is not a bundle transaction, or if bundle transactions are not enabled, it returns nil,nil (no bundle, no error).
+// ValidateEnvelope validates an envelope and its contents. Among others, it
+// checks whether the envelope contains the encoding of a valid bundle and that
+// the gas limit for the envelope matches the maximum processing costs of the
+// bundle. If the encoded bundle contains nested bundles, those are checked
+// recursively as well.
 func ValidateEnvelope(
 	signer types.Signer,
 	envelopeTx *types.Transaction,
 ) (*TransactionBundle, *ExecutionPlan, error) {
-	return validateEnvelopeInternal(
-		signer,
-		envelopeTx,
-		calculateEnvelopeGas,
-	)
+	return validateEnvelopeInternal(signer, envelopeTx, 0)
 }
 
-// validateEnvelopeInternal is an internal version of ValidateEnvelope enabling
-// the injection of custom steps for testing.
 func validateEnvelopeInternal(
 	signer types.Signer,
 	envelopeTx *types.Transaction,
-	calculateEnvelopeGas func(
-		TransactionBundle,
-		[]byte,
-		types.AccessList,
-		[]types.SetCodeAuthorization,
-	) (uint64, error),
+	depth int,
 ) (*TransactionBundle, *ExecutionPlan, error) {
-	if !IsEnvelope(envelopeTx) {
+	if depth > MaxBundleNestingDepth {
+		return nil, nil, fmt.Errorf("exceeds maximum nesting depth of bundles")
+	}
+
+	// Everything that is not an envelope can be sorted out quickly.
+	if envelopeTx == nil || !IsEnvelope(envelopeTx) {
 		return nil, nil, fmt.Errorf("not an envelope transaction")
 	}
 
-	txBundle, err := decode(signer, envelopeTx.Data())
+	// Input validation - the signer must not be nil.
+	if signer == nil {
+		return nil, nil, fmt.Errorf("signer is nil")
+	}
+
+	// Next, we check whether the bundle can be decoded.
+	bundle, err := OpenEnvelope(signer, envelopeTx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to decode transaction bundle: %v", err)
+		return nil, nil, fmt.Errorf("invalid bundle encoding: %w", err)
 	}
 
-	// TODO: this function shall validate bundle correctness,
-	// the current implementation is preliminary to enable prototyping.
-	// This code needs to be developed
-	// Things to be checked include: (not complete)
-	//  - consistent use of chain IDs
-	//  - all bundled transactions are marked as bundle-only
-	//  - all transactions referenced in the plan are included in the bundle
-	//  - all transactions in the bundle are referenced in the plan
-	//  - etc. ...
-
-	plan := txBundle.Plan
-	if err := validateRange(plan.Range); err != nil {
-		return nil, nil, err
+	// Check that the bundle is valid.
+	if err := validateBundle(signer, bundle); err != nil {
+		return nil, nil, fmt.Errorf("invalid bundle: %w", err)
 	}
 
-	envelopeGas := envelopeTx.Gas()
-	neededGas, err := calculateEnvelopeGas(
-		txBundle, envelopeTx.Data(), envelopeTx.AccessList(), envelopeTx.SetCodeAuthorizations(),
+	// Check that the envelope's ChainID matches the signer's ChainID.
+	envelopeChainId := envelopeTx.ChainId()
+	signerChainId := signer.ChainID()
+	if envelopeChainId != nil && signerChainId != nil && envelopeChainId.Cmp(signerChainId) != 0 {
+		return nil, nil, fmt.Errorf("envelope signed for wrong chain ID")
+	}
+
+	// Check that the bundle's gas limit matches the required gas limit.
+	have := envelopeTx.Gas()
+	want, err := calculateEnvelopeGas(
+		bundle,
+		envelopeTx.Data(),
+		envelopeTx.AccessList(),
+		envelopeTx.SetCodeAuthorizations(),
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("invalid gas limit: %w", err)
 	}
-	if envelopeGas != neededGas {
-		return nil, nil, fmt.Errorf("%w: envelope gas limit is %d but should be %d", ErrWrongEnvelopeGasLimit, envelopeGas, neededGas)
+	if have != want {
+		return nil, nil, fmt.Errorf("invalid gas limit: have %d, want %d", have, want)
 	}
 
-	// Check consistency of the execution plan.
-	planHash := plan.Hash()
-	for _, tx := range txBundle.Transactions {
-		// check that all transactions in the bundle belong to the same execution plan
-		if !belongsToExecutionPlan(tx, planHash) {
-			return nil, nil, fmt.Errorf("transaction %s does not belong to the execution plan", tx.Hash().Hex())
+	// Check that nested envelopes are fine.
+	for _, tx := range bundle.Transactions {
+		if IsEnvelope(tx) {
+			if _, _, err := validateEnvelopeInternal(signer, tx, depth+1); err != nil {
+				return nil, nil, fmt.Errorf("invalid nested envelope: %w", err)
+			}
 		}
 	}
 
-	return &txBundle, &plan, nil
+	// All checks passed, return temporaries.
+	return &bundle, &bundle.Plan, nil
 }
 
 // validateBundle checks that the given transaction bundle is valid, meaning
@@ -213,7 +230,7 @@ func validateStepInternal(
 ) error {
 
 	// Check limit of maximum nesting.
-	if depth > MaxNestingDepth {
+	if depth > MaxGroupNestingDepth {
 		return fmt.Errorf("exceeds maximum nesting depth of execution steps")
 	}
 

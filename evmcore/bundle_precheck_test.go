@@ -56,6 +56,7 @@ func Test_GetBundleState_BundlesDisabled_ReturnsNonExecutable(t *testing.T) {
 }
 
 func Test_GetBundleState_InvalidBundle_ReturnsNonExecutable(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(123))
 	ctrl := gomock.NewController(t)
 	chainState := NewMockChainStateForBundleEval(ctrl)
 	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
@@ -64,7 +65,7 @@ func Test_GetBundleState_InvalidBundle_ReturnsNonExecutable(t *testing.T) {
 	}).AnyTimes()
 
 	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleProcessor})
-	_, _, err := bundle.ValidateEnvelope(nil, invalidBundle)
+	_, _, err := bundle.ValidateEnvelope(signer, invalidBundle)
 	require.Error(t, err)
 
 	state := GetBundleState(chainState, invalidBundle)
