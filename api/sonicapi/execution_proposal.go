@@ -18,13 +18,13 @@ package sonicapi
 
 import (
 	"fmt"
-	big "math/big"
+	"math/big"
 	"slices"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	types "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 // RPCExecutionProposal is the JSON-serializable representation of the execution proposal
