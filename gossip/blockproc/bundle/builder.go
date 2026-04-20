@@ -497,3 +497,11 @@ func getGasLimitForEnvelope(
 
 	return max(intrinsic, floorDataGas, txGasSum)
 }
+
+func MustWrapIntoEnvelope(signer types.Signer, bundle *TransactionBundle) *types.Transaction {
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		panic(fmt.Sprintf("failed to generate new key: %v", err))
+	}
+	return newEnvelope(signer, key, 0, &big.Int{}, bundle)
+}
