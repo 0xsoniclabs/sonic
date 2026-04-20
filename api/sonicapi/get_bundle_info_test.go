@@ -18,7 +18,6 @@ package sonicapi
 
 import (
 	"encoding/json"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -90,12 +89,12 @@ func expectJsonEqual[T any](t testing.TB, expected string, value T) {
 	err = json.Unmarshal([]byte(expected), &j2)
 	require.NoError(t, err, "failed to unmarshal JSON back to %T", value)
 	v := reflect.DeepEqual(j1, j2)
-	expected = strings.ReplaceAll(expected, " ", "")
-	expected = strings.ReplaceAll(expected, "\n", "")
-	expected = strings.ReplaceAll(expected, "\t", "")
 	if !v {
-		fmt.Println("Expected JSON", expected)
-		fmt.Println("Actual   JSON", string(encoded))
+		expected = strings.ReplaceAll(expected, " ", "")
+		expected = strings.ReplaceAll(expected, "\n", "")
+		expected = strings.ReplaceAll(expected, "\t", "")
+		t.Logf("Expected JSON: %s", expected)
+		t.Logf("Actual JSON:   %s", string(encoded))
 		t.FailNow()
 	}
 }

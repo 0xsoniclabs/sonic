@@ -126,3 +126,14 @@ func TestBundleExecutionPlanVisitor_ForwardsErrors(t *testing.T) {
 	err := plan.Root.Accept(visitor)
 	require.ErrorIs(t, err, expectedError)
 }
+
+func TestBundleExecutionPlanVisitor_ReturnsErrorForInvalidPlan(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	visitor := NewMockExecutionPlanVisitor(ctrl)
+
+	step := &ExecutionStep{}
+
+	err := step.Accept(visitor)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid execution plan")
+}
