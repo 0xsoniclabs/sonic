@@ -535,30 +535,37 @@ func TestValidateBundle_NilTransaction_Rejected(t *testing.T) {
 }
 
 func TestValidateBundle_InconsistentChainIds_Rejected(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	signer12 := types.LatestSignerForChainID(big.NewInt(12))
+	signer14 := types.LatestSignerForChainID(big.NewInt(14))
+	signer16 := types.LatestSignerForChainID(big.NewInt(16))
+
 	tests := map[string][]*types.Transaction{
 		"two different chain IDs": {
-			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(12)}),
-			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(14)}),
+			types.MustSignNewTx(key, signer12, &types.AccessListTx{Nonce: 1}),
+			types.MustSignNewTx(key, signer14, &types.AccessListTx{Nonce: 2}),
 		},
 		"multiple different chain IDs": {
-			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(12)}),
-			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(14)}),
-			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(15)}),
+			types.MustSignNewTx(key, signer12, &types.AccessListTx{Nonce: 1}),
+			types.MustSignNewTx(key, signer14, &types.AccessListTx{Nonce: 2}),
+			types.MustSignNewTx(key, signer16, &types.AccessListTx{Nonce: 3}),
 		},
 		"first different": {
-			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(12)}),
-			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(14)}),
-			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(14)}),
+			types.MustSignNewTx(key, signer14, &types.AccessListTx{Nonce: 1}),
+			types.MustSignNewTx(key, signer12, &types.AccessListTx{Nonce: 2}),
+			types.MustSignNewTx(key, signer12, &types.AccessListTx{Nonce: 3}),
 		},
 		"middle different": {
-			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(12)}),
-			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(14)}),
-			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(12)}),
+			types.MustSignNewTx(key, signer12, &types.AccessListTx{Nonce: 1}),
+			types.MustSignNewTx(key, signer14, &types.AccessListTx{Nonce: 2}),
+			types.MustSignNewTx(key, signer12, &types.AccessListTx{Nonce: 3}),
 		},
 		"last different": {
-			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(12)}),
-			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(12)}),
-			types.NewTx(&types.AccessListTx{ChainID: big.NewInt(14)}),
+			types.MustSignNewTx(key, signer12, &types.AccessListTx{Nonce: 1}),
+			types.MustSignNewTx(key, signer12, &types.AccessListTx{Nonce: 2}),
+			types.MustSignNewTx(key, signer14, &types.AccessListTx{Nonce: 3}),
 		},
 	}
 
@@ -570,9 +577,20 @@ func TestValidateBundle_InconsistentChainIds_Rejected(t *testing.T) {
 			}
 			require.NoError(t, validatePlan(validPlan))
 
+			signer := signer12
+			sender := crypto.PubkeyToAddress(key.PublicKey)
+
 			index := map[TxReference]*types.Transaction{}
-			for i, tx := range transactions {
-				index[TxReference{From: common.Address{byte(i + 1)}}] = tx
+			for _, tx := range transactions {
+				stripped, err := removeBundleOnlyMark(tx)
+				require.NoError(t, err)
+				hash := signer.Hash(stripped)
+
+				ref := TxReference{
+					From: sender,
+					Hash: hash,
+				}
+				index[ref] = tx
 			}
 
 			bundle := TransactionBundle{
@@ -580,8 +598,8 @@ func TestValidateBundle_InconsistentChainIds_Rejected(t *testing.T) {
 				Transactions: index,
 			}
 
-			require.ErrorContains(t, validateBundle(nil, bundle),
-				"transactions in bundle have different chain IDs",
+			require.ErrorContains(t, validateBundle(signer12, bundle),
+				"invalid transaction in bundle: invalid chain id",
 			)
 		})
 	}

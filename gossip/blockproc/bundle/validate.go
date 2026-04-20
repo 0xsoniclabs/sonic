@@ -19,7 +19,6 @@ package bundle
 import (
 	"errors"
 	"fmt"
-	"math/big"
 	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -168,16 +167,6 @@ func validateBundle(
 	for _, tx := range bundle.Transactions {
 		if tx == nil {
 			return fmt.Errorf("invalid nil transaction in bundle")
-		}
-	}
-
-	// check that all transactions use the same Chain ID
-	var chainId *big.Int
-	for _, tx := range bundle.Transactions {
-		if chainId == nil {
-			chainId = tx.ChainId()
-		} else if id := tx.ChainId(); id == nil || chainId.Cmp(id) != 0 {
-			return fmt.Errorf("transactions in bundle have different chain IDs")
 		}
 	}
 
