@@ -115,12 +115,11 @@ func convertVisitorLeafIntoRPCExecutionPlanProposalLeaf(
 	flags bundle.ExecutionFlags,
 	txRef bundle.TxReference,
 ) (*RPCExecutionStepProposal, error) {
-	// FIXME: return error if not found
 	tx, ok := txBundle.Transactions[txRef]
 	if !ok {
 		return nil, fmt.Errorf("transaction reference not found in bundle transactions: %v", txRef)
 	}
-	txArgs, err := convertToTransactonArgs(signer, tx)
+	txArgs, err := convertToTransactionArgs(signer, tx)
 	if err != nil {
 		return nil, err
 	}
@@ -147,11 +146,11 @@ func convertVisitorLeafIntoRPCExecutionPlanProposalLeaf(
 	}, nil
 }
 
-// convertToTransactonArgs converts a types.Transaction to ethapi.TransactionArgs, which is the format used in the execution proposal.
+// convertToTransactionArgs converts a types.Transaction to ethapi.TransactionArgs, which is the format used in the execution proposal.
 // If members of the transaction are not set (e.g. GasPrice for a type 2 transaction), they will be omitted from the resulting TransactionArgs.
 //
 // This function is meant for testing purposes, therefore not exported
-func convertToTransactonArgs(signer types.Signer, tx *types.Transaction) (ethapi.TransactionArgs, error) {
+func convertToTransactionArgs(signer types.Signer, tx *types.Transaction) (ethapi.TransactionArgs, error) {
 
 	sender, err := types.Sender(signer, tx)
 	if err != nil {
@@ -165,28 +164,28 @@ func convertToTransactonArgs(signer types.Signer, tx *types.Transaction) (ethapi
 	}
 
 	if tx.Nonce() != 0 {
-		res.Nonce = ToPtr(hexutil.Uint64(tx.Nonce()))
+		res.Nonce = toPtr(hexutil.Uint64(tx.Nonce()))
 	}
 
 	if tx.To() == nil && tx.Data() != nil {
-		res.Input = ToPtr(hexutil.Bytes(tx.Data()))
+		res.Input = toPtr(hexutil.Bytes(tx.Data()))
 	}
 	if tx.To() != nil && tx.Data() != nil {
-		res.Data = ToPtr(hexutil.Bytes(tx.Data()))
+		res.Data = toPtr(hexutil.Bytes(tx.Data()))
 	}
 
 	if tx.Value() != nil && tx.Value().Cmp(big.NewInt(0)) > 0 {
-		res.Value = ToPtr(hexutil.Big(*tx.Value()))
+		res.Value = toPtr(hexutil.Big(*tx.Value()))
 	}
 
 	if tx.Gas() != 0 {
-		res.Gas = ToPtr(hexutil.Uint64(tx.Gas()))
+		res.Gas = toPtr(hexutil.Uint64(tx.Gas()))
 	}
 
 	// Type 1 tx
 
 	if tx.Type() >= types.AccessListTxType && len(tx.AccessList()) > 0 {
-		res.AccessList = ToPtr(tx.AccessList())
+		res.AccessList = toPtr(tx.AccessList())
 	}
 
 	// Type 2 txs, dynamic fees
@@ -194,14 +193,14 @@ func convertToTransactonArgs(signer types.Signer, tx *types.Transaction) (ethapi
 	switch tx.Type() {
 	case types.LegacyTxType, types.AccessListTxType:
 		if tx.GasPrice().Cmp(big.NewInt(0)) > 0 {
-			res.GasPrice = ToPtr(hexutil.Big(*tx.GasPrice()))
+			res.GasPrice = toPtr(hexutil.Big(*tx.GasPrice()))
 		}
 	case types.DynamicFeeTxType, types.BlobTxType, types.SetCodeTxType:
 		if tx.GasTipCap().Cmp(big.NewInt(0)) > 0 {
-			res.MaxPriorityFeePerGas = ToPtr(hexutil.Big(*tx.GasTipCap()))
+			res.MaxPriorityFeePerGas = toPtr(hexutil.Big(*tx.GasTipCap()))
 		}
 		if tx.GasFeeCap().Cmp(big.NewInt(0)) > 0 {
-			res.MaxFeePerGas = ToPtr(hexutil.Big(*tx.GasFeeCap()))
+			res.MaxFeePerGas = toPtr(hexutil.Big(*tx.GasFeeCap()))
 		}
 	}
 
@@ -220,6 +219,6 @@ func convertToTransactonArgs(signer types.Signer, tx *types.Transaction) (ethapi
 	return res, nil
 }
 
-func ToPtr[T any](v T) *T {
+func toPtr[T any](v T) *T {
 	return &v
 }

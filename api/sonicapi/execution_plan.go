@@ -37,24 +37,20 @@ import (
 //	  },
 //	  "steps": [
 //	    {
-//	      "from": "0xabc123...",
-//	      "hash": "0xdef456...",
-//	      "tolerateFailed": false,
-//	      "tolerateInvalid": false
+//	      "from": "0xabc123abc123abc123abc123abc123abc123abc1",
+//	      "hash": "0xdef456def456def456def456def456def456def456def456def456def456def4",
 //	    },
 //	    {
 //	      "oneOf": true,
 //	      "steps": [
 //	        {
-//	          "from": "0xabc123...",
-//	          "hash": "0xdef456...",
+//	          "from": "0xabc123abc123abc123abc123abc123abc123abc1",
+//	          "hash": "0xdef456def456def456def456def456def456def456def456def456def456def4",
 //	          "tolerateFailed": true,
-//	          "tolerateInvalid": false
 //	        },
 //	        {
-//	          "from": "0xabc123...",
-//	          "hash": "0xdef456...",
-//	          "tolerateFailed": false,
+//	          "from": "0xabc123abc123abc123abc123abc123abc123abc1",
+//	          "hash": "0xdef456def456def456def456def456def456def456def456def456def456def4",
 //	          "tolerateInvalid": true
 //	        }
 //	      ]

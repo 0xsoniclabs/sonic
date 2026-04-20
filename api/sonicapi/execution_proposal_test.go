@@ -441,7 +441,7 @@ func TestConvertToTransactionArgs_convertsTxsToTransactionArgs(t *testing.T) {
  				"maxPriorityFeePerGas": "0x77359400"
  			}`,
 		},
-		// Set code tx autorizations
+		// Set code tx authorization
 		"set code tx with authorization": {
 			tx: types.NewTx(&types.SetCodeTx{
 				To: address,
@@ -472,7 +472,7 @@ func TestConvertToTransactionArgs_convertsTxsToTransactionArgs(t *testing.T) {
 			tx, err := types.SignTx(tt.tx, signer, key)
 			require.NoError(t, err)
 
-			args, err := convertToTransactonArgs(signer, tx)
+			args, err := convertToTransactionArgs(signer, tx)
 			require.NoError(t, err)
 
 			_, err = json.Marshal(args)
@@ -484,7 +484,7 @@ func TestConvertToTransactionArgs_convertsTxsToTransactionArgs(t *testing.T) {
 	}
 }
 
-func TestConvertToTransactionArgs_retunrsErrors(t *testing.T) {
+func TestConvertToTransactionArgs_returnsErrors(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	otherChainSigner := types.LatestSignerForChainID(big.NewInt(2))
 
@@ -507,7 +507,7 @@ func TestConvertToTransactionArgs_retunrsErrors(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 
-			_, err = convertToTransactonArgs(signer, tt.tx)
+			_, err = convertToTransactionArgs(signer, tt.tx)
 			require.Error(t, err)
 		})
 	}
@@ -566,7 +566,7 @@ func TestCreateProposalRequestFromBundle_CanYieldErrors(t *testing.T) {
 	tests := map[string]struct {
 		bundle bundle.TransactionBundle
 	}{
-		"pan references missing transaction": {
+		"plan references missing transaction": {
 			bundle: bundle.TransactionBundle{
 				Plan: bundle.ExecutionPlan{
 					Root: bundle.NewTxStep(bundle.TxReference{
