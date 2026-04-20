@@ -19,6 +19,7 @@ package tests
 import (
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -82,6 +83,13 @@ func TestPendingTransactionSubscription_ReturnsHashes(t *testing.T) {
 	err = client.SendTransaction(t.Context(), tx)
 	require.NoError(t, err, "failed to send transaction ", err)
 
-	got := <-pendingTxs
-	require.Equal(t, tx.Hash(), got, "transaction hash does not match")
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+
+	select {
+	case got := <-pendingTxs:
+		require.Equal(t, tx.Hash(), got, "transaction hash does not match")
+	case <-timer.C:
+		t.Fatal("timeout waiting for pending transaction")
+	}
 }
