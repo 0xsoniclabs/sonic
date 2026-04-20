@@ -30,22 +30,22 @@ type U64 struct {
 	overflow bool
 }
 
-// Uint64 creates a new checked Uint64 with the given value.
+// Uint64 creates a new checked U64 with the given value.
 func Uint64(value uint64) U64 {
 	return U64{value: value}
 }
 
-// Overflow creates a new checked Uint64 that has overflowed.
+// Overflow creates a new checked U64 that has overflowed.
 func Overflow() U64 {
 	return U64{overflow: true}
 }
 
-// IsOverflown returns true if the checked Uint64 has overflowed, and false otherwise.
+// IsOverflown returns true if the checked U64 has overflowed, and false otherwise.
 func (s U64) IsOverflown() bool {
 	return s.overflow
 }
 
-// Unwrap returns the value of the checked Uint64 if it has not overflowed, and
+// Unwrap returns the value of the checked U64 if it has not overflowed, and
 // an [ErrOverflow] otherwise.
 func (s U64) Unwrap() (uint64, error) {
 	if s.overflow {
@@ -54,11 +54,11 @@ func (s U64) Unwrap() (uint64, error) {
 	return s.value, nil
 }
 
-// Add returns the sum of a and b as a checked Uint64 that can be used for
+// Add returns the sum of a and b as a checked U64 that can be used for
 // further arithmetic operations. If the sum overflows, the returned checked
-// Uint64 will be in an overflowed state. If any of the inputs is in an
+// U64 will be in an overflowed state. If any of the inputs is in an
 // overflowed state, the result will also be in an overflowed state.
-func Add[A, B arg](a A, b B) U64 {
+func Add[A, B unsignedInt](a A, b B) U64 {
 	x := from(a)
 	y := from(b)
 	if x.overflow || y.overflow || x.value > math.MaxUint64-y.value {
@@ -67,11 +67,11 @@ func Add[A, B arg](a A, b B) U64 {
 	return Uint64(x.value + y.value)
 }
 
-// Mul returns the product of a and b as a checked Uint64 that can be used for
+// Mul returns the product of a and b as a checked U64 that can be used for
 // further arithmetic operations. If the product overflows, the returned checked
-// Uint64 will be in an overflowed state. If any of the inputs is in an
+// U64 will be in an overflowed state. If any of the inputs is in an
 // overflowed state, the result will also be in an overflowed state.
-func Mul[A, B arg](a A, b B) U64 {
+func Mul[A, B unsignedInt](a A, b B) U64 {
 	x := from(a)
 	y := from(b)
 	if x.overflow || y.overflow {
@@ -83,13 +83,13 @@ func Mul[A, B arg](a A, b B) U64 {
 	return Uint64(x.value * y.value)
 }
 
-type arg interface {
+type unsignedInt interface {
 	uint8 | uint16 | uint32 | uint64 | uint | U64
 }
 
 // from is an internal convenience utility that converts arithmetic values or
 // checked U64 instances into U64 values.
-func from[T arg](a T) U64 {
+func from[T unsignedInt](a T) U64 {
 	var res U64
 	switch x := any(a).(type) {
 	case uint:
