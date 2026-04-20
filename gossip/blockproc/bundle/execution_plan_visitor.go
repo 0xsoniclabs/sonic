@@ -16,6 +16,8 @@
 
 package bundle
 
+import "errors"
+
 //go:generate mockgen -source=execution_plan_visitor.go -destination=execution_plan_visitor_mock.go -package=bundle
 
 // ExecutionPlanVisitor is the visitor interface for traversing the execution plan.
@@ -30,6 +32,11 @@ type ExecutionPlanVisitor interface {
 // Accept accepts a visitor and traverses the execution plan,
 // calling the appropriate methods on the visitor.
 func (s *ExecutionStep) Accept(visitor ExecutionPlanVisitor) error {
+
+	if !s.valid() {
+		return errors.New("invalid execution plan")
+	}
+
 	var err error
 	if s.single != nil {
 		return visitor.Step(s.single.flags, s.single.txRef)
