@@ -176,7 +176,7 @@ func validateBundle(
 	for _, tx := range bundle.Transactions {
 		if chainId == nil {
 			chainId = tx.ChainId()
-		} else if id := tx.ChainId(); id == nil || chainId.Cmp(tx.ChainId()) != 0 {
+		} else if id := tx.ChainId(); id == nil || chainId.Cmp(id) != 0 {
 			return fmt.Errorf("transactions in bundle have different chain IDs")
 		}
 	}
