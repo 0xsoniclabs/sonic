@@ -55,7 +55,7 @@ func TestBundle_NestedBundlesCanBeExecuted(t *testing.T) {
 		AllOf(bundle.Step(sender.PrivateKey, tx)).
 		BuildEnvelopeBundleAndPlan()
 
-	outerEnvelope, _, outerPlan := bundle.NewBuilder().
+	outerEnvelope, outerBundle, outerPlan := bundle.NewBuilder().
 		WithSigner(signer).
 		SetEarliest(blockNumber).
 		AllOf(bundle.Step(sender.PrivateKey, innerEnvelope)).
@@ -79,6 +79,9 @@ func TestBundle_NestedBundlesCanBeExecuted(t *testing.T) {
 	_, err = client.TransactionReceipt(t.Context(), outerEnvelope.Hash())
 	require.ErrorIs(t, err, ethereum.NotFound)
 	_, err = client.TransactionReceipt(t.Context(), innerEnvelope.Hash())
+	require.ErrorIs(t, err, ethereum.NotFound)
+	innerEnvelopeWithBundleOnlyMarker := outerBundle.GetTransactionsInReferencedOrder()[0]
+	_, err = client.TransactionReceipt(t.Context(), innerEnvelopeWithBundleOnlyMarker.Hash())
 	require.ErrorIs(t, err, ethereum.NotFound)
 
 	blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(outerInfo.Block.Int64()))
