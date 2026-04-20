@@ -88,7 +88,7 @@ type arg interface {
 }
 
 // from is an internal convenience utility that converts arithmetic values or
-// checked uint64 instances into checkedUint64 values.
+// checked U64 instances into U64 values.
 func from[T arg](a T) U64 {
 	var res U64
 	switch x := any(a).(type) {
