@@ -1,3 +1,19 @@
+// Copyright 2026 Sonic Operations Ltd
+// This file is part of the Sonic Client
+//
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
 package checked
 
 import (
@@ -6,32 +22,32 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common"
 )
 
-// ErrOverflow is returned when unwrapping a checked Uint64 that has overflowed.
+// ErrOverflow is returned when unwrapping a U64 that has overflowed.
 const ErrOverflow = common.ConstError("arithmetic overflow")
 
-type checkedUint64 struct {
+type U64 struct {
 	value    uint64
 	overflow bool
 }
 
 // Uint64 creates a new checked Uint64 with the given value.
-func Uint64(value uint64) checkedUint64 {
-	return checkedUint64{value: value}
+func Uint64(value uint64) U64 {
+	return U64{value: value}
 }
 
 // Overflow creates a new checked Uint64 that has overflowed.
-func Overflow() checkedUint64 {
-	return checkedUint64{overflow: true}
+func Overflow() U64 {
+	return U64{overflow: true}
 }
 
 // IsOverflown returns true if the checked Uint64 has overflowed, and false otherwise.
-func (s checkedUint64) IsOverflown() bool {
+func (s U64) IsOverflown() bool {
 	return s.overflow
 }
 
 // Unwrap returns the value of the checked Uint64 if it has not overflowed, and
 // an [ErrOverflow] otherwise.
-func (s checkedUint64) Unwrap() (uint64, error) {
+func (s U64) Unwrap() (uint64, error) {
 	if s.overflow {
 		return 0, ErrOverflow
 	}
@@ -42,7 +58,7 @@ func (s checkedUint64) Unwrap() (uint64, error) {
 // further arithmetic operations. If the sum overflows, the returned checked
 // Uint64 will be in an overflowed state. If any of the inputs is in an
 // overflowed state, the result will also be in an overflowed state.
-func Add[A, B arg](a A, b B) checkedUint64 {
+func Add[A, B arg](a A, b B) U64 {
 	x := from(a)
 	y := from(b)
 	if x.overflow || y.overflow || x.value > math.MaxUint64-y.value {
@@ -55,7 +71,7 @@ func Add[A, B arg](a A, b B) checkedUint64 {
 // further arithmetic operations. If the product overflows, the returned checked
 // Uint64 will be in an overflowed state. If any of the inputs is in an
 // overflowed state, the result will also be in an overflowed state.
-func Mul[A, B arg](a A, b B) checkedUint64 {
+func Mul[A, B arg](a A, b B) U64 {
 	x := from(a)
 	y := from(b)
 	if x.overflow || y.overflow {
@@ -68,13 +84,13 @@ func Mul[A, B arg](a A, b B) checkedUint64 {
 }
 
 type arg interface {
-	uint8 | uint16 | uint32 | uint64 | uint | checkedUint64
+	uint8 | uint16 | uint32 | uint64 | uint | U64
 }
 
 // from is an internal convenience utility that converts arithmetic values or
 // checked uint64 instances into checkedUint64 values.
-func from[T arg](a T) checkedUint64 {
-	var res checkedUint64
+func from[T arg](a T) U64 {
+	var res U64
 	switch x := any(a).(type) {
 	case uint:
 		res = Uint64(uint64(x))
@@ -86,7 +102,7 @@ func from[T arg](a T) checkedUint64 {
 		res = Uint64(uint64(x))
 	case uint64:
 		res = Uint64(x)
-	case checkedUint64:
+	case U64:
 		res = x
 	}
 	return res
