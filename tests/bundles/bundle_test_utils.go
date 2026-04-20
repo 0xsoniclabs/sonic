@@ -19,6 +19,7 @@ package bundles
 import (
 	"context"
 	"errors"
+	"math/big"
 	"slices"
 	"testing"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/stretchr/testify/require"
 )
 
 // GetBundleInfo calls the sonic_getBundleInfo RPC method to retrieve
@@ -111,4 +113,15 @@ func Step[T types.TxData](
 		account.PrivateKey,
 		tests.SetTransactionDefaults(t, net, txData, account),
 	)
+}
+
+// getBlockTxsHashes returns the hashes of all transactions in block with the given block number.
+func getBlockTxsHashes(t *testing.T, client *tests.PooledEhtClient, blockNumber *big.Int) []common.Hash {
+	block, err := client.BlockByNumber(t.Context(), blockNumber)
+	require.NoError(t, err)
+	blockTxsHashes := []common.Hash{}
+	for _, tx := range block.Transactions() {
+		blockTxsHashes = append(blockTxsHashes, tx.Hash())
+	}
+	return blockTxsHashes
 }
