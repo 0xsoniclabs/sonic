@@ -386,9 +386,7 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			expectJsonEqual(t, tc.expectedJson, rpcPlan)
 
 			recreated, err := toBundleExecutionPlan(rpcPlan)
-			if err != nil {
-				t.Fatalf("failed to convert back to bundle.ExecutionPlan: %v", err)
-			}
+			require.NoError(t, err)
 			require.Equal(t, recreated, tc.plan)
 		})
 	}
