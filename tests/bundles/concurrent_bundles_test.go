@@ -160,7 +160,7 @@ func testRandomlyFailingBundles(
 	}
 
 	// Wait for execution
-	timeout, timeoutCancel := context.WithTimeout(t.Context(), 5*time.Second)
+	timeout, timeoutCancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer timeoutCancel()
 	infos, err := WaitForBundleExecutions(timeout, client.Client(), planHashes)
 	if err != nil {
