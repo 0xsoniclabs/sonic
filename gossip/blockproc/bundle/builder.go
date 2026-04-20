@@ -155,6 +155,13 @@ func (b *builder) WithSigner(signer types.Signer) *builder {
 	return b
 }
 
+func (b *builder) GetSigner() types.Signer {
+	if b.signer != nil {
+		return b.signer
+	}
+	return types.LatestSignerForChainID(big.NewInt(1))
+}
+
 func (b *builder) With(root BuilderStep) *builder {
 	b.root = root
 	return b
@@ -185,6 +192,7 @@ func (b *builder) SetEnvelopeGasPrice(gasPrice *big.Int) *builder {
 	b.envelopeGasPrice = gasPrice
 	return b
 }
+
 func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 
 	// Set up defaults for meta flags.
@@ -198,9 +206,7 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		latest = *b.latest
 	}
 
-	if b.signer == nil {
-		b.signer = types.LatestSignerForChainID(big.NewInt(1))
-	}
+	signer := b.GetSigner()
 
 	// Create a deep copy of the user defined execution plan to avoid side
 	// effects of the build process to affect the input.
@@ -219,7 +225,7 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		// For nested envelopes, the gas limit needs to be accurately adjusted
 		// to pass the bundle validation test.
 		if IsEnvelope(tx) {
-			innerBundle, _, err := ValidateEnvelope(b.signer, tx)
+			innerBundle, _, err := ValidateEnvelope(signer, tx)
 			if err == nil {
 				marker := types.AccessTuple{
 					Address:     BundleOnly,
@@ -247,7 +253,7 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 
 	// Create an Execution Plan for the bundle.
 	plan := ExecutionPlan{
-		Root: root.toStep(b.signer),
+		Root: root.toStep(signer),
 		Range: BlockRange{
 			Earliest: earliest,
 			Latest:   latest,
@@ -263,7 +269,7 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 	for _, ref := range txReferences {
 		txRef := TxReference{
 			From: crypto.PubkeyToAddress(ref.key.PublicKey),
-			Hash: b.signer.Hash(types.NewTx(ref.tx)),
+			Hash: signer.Hash(types.NewTx(ref.tx)),
 		}
 		unsignedTxs[txRef] = KeyAndData{
 			key:    ref.key,
@@ -295,7 +301,7 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 	// Sign the modified TxData instances to create the final index
 	txs := make(map[TxReference]*types.Transaction)
 	for ref, entry := range unsignedTxs {
-		txs[ref] = types.MustSignNewTx(entry.key, b.signer, entry.txData)
+		txs[ref] = types.MustSignNewTx(entry.key, signer, entry.txData)
 	}
 
 	return &TransactionBundle{
@@ -321,7 +327,8 @@ func (b *builder) BuildEnvelopeBundleAndPlan() (
 		key = newKey
 	}
 	bundle, plan := b.BuildBundleAndPlan()
-	return newEnvelope(b.signer, key, b.envelopeNonce, b.envelopeGasPrice, bundle), bundle, plan
+	signer := b.GetSigner()
+	return newEnvelope(signer, key, b.envelopeNonce, b.envelopeGasPrice, bundle), bundle, plan
 }
 
 // BuildEnvelope returns an envelope transaction and its execution plan
