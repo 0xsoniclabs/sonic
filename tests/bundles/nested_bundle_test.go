@@ -49,7 +49,7 @@ func TestBundle_NestedBundlesCanBeExecuted(t *testing.T) {
 
 	tx := tests.SetTransactionDefaults(t, net, &types.AccessListTx{}, sender)
 
-	innerEnvelope, innerBundle, _ := bundle.NewBuilder().
+	innerEnvelope, innerBundle, innerPlan := bundle.NewBuilder().
 		WithSigner(signer).
 		SetEarliest(blockNumber).
 		AllOf(bundle.Step(sender.PrivateKey, tx)).
@@ -61,16 +61,19 @@ func TestBundle_NestedBundlesCanBeExecuted(t *testing.T) {
 		AllOf(bundle.Step(sender.PrivateKey, innerEnvelope)).
 		BuildEnvelopeBundleAndPlan()
 
-	// Check bundle status before submission.
-	_, err = GetBundleInfo(t.Context(), client.Client(), outerPlan.Hash())
-	require.ErrorIs(t, err, ethereum.NotFound)
-
 	// Run the bundle.
 	require.NoError(t, client.SendTransaction(t.Context(), outerEnvelope))
 
 	// Wait for the bundle to be processed.
-	info, err := WaitForBundleExecution(t.Context(), client.Client(), outerPlan.Hash())
+	outerInfo, err := WaitForBundleExecution(t.Context(), client.Client(), outerPlan.Hash())
 	require.NoError(t, err)
+
+	innerInfo, err := WaitForBundleExecution(t.Context(), client.Client(), innerPlan.Hash())
+	require.NoError(t, err)
+
+	// The outer bundle only contains the inner bundle, so they should have the
+	// same execution info.
+	require.Equal(t, outerInfo, innerInfo)
 
 	// Verify that there is no receipt for the envelopes themselves.
 	_, err = client.TransactionReceipt(t.Context(), outerEnvelope.Hash())
@@ -78,10 +81,10 @@ func TestBundle_NestedBundlesCanBeExecuted(t *testing.T) {
 	_, err = client.TransactionReceipt(t.Context(), innerEnvelope.Hash())
 	require.ErrorIs(t, err, ethereum.NotFound)
 
-	blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(info.Block.Int64()))
+	blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(outerInfo.Block.Int64()))
 
 	bundleTxs := innerBundle.GetTransactionsInReferencedOrder()
 
-	require.Equal(t, 1, int(info.Count))
+	require.Equal(t, 1, int(innerInfo.Count))
 	require.Contains(t, blockTxsHashes, bundleTxs[0].Hash())
 }
