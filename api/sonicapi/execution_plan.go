@@ -145,7 +145,7 @@ func toBundleExecutionPlanLevel(level any) (bundle.ExecutionStep, error) {
 	case *RPCExecutionPlanGroup:
 		return toBundleExecutionGroup(*l)
 	}
-	return bundle.ExecutionStep{}, fmt.Errorf("invalid execution plan level: must have either single or group")
+	return bundle.ExecutionStep{}, fmt.Errorf("invalid execution plan level: must have either executionStep or group")
 }
 
 func toBundleExecutionGroup(l RPCExecutionPlanGroup) (bundle.ExecutionStep, error) {

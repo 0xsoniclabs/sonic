@@ -24,6 +24,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/api/ethapi"
+	rpctest "github.com/0xsoniclabs/sonic/api/rpc_test"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -195,7 +197,7 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 	}
 }
 
-func TestConvertToTransactionArgs(t *testing.T) {
+func TestConvertToTransactionArgs_convertsTxsToTransactionArgs(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
@@ -478,6 +480,283 @@ func TestConvertToTransactionArgs(t *testing.T) {
 
 			json := fmt.Sprintf(tt.json, crypto.PubkeyToAddress(key.PublicKey).Hex())
 			expectJsonEqual(t, json, args)
+		})
+	}
+}
+
+func TestConvertToTransactionArgs_retunrsErrors(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	otherChainSigner := types.LatestSignerForChainID(big.NewInt(2))
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		tx *types.Transaction
+	}{
+		"invalid signature": {
+			tx: types.MustSignNewTx(key, otherChainSigner, &types.LegacyTx{}),
+		},
+		"blob tx with invalid blob hash": {
+			tx: types.MustSignNewTx(key, signer, &types.BlobTx{
+				BlobHashes: []common.Hash{{1}},
+			}),
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			_, err = convertToTransactonArgs(signer, tt.tx)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestCreateProposalRequestFromBundle(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	// Build a simple bundle with one transaction
+	tx := types.MustSignNewTx(key, signer, &types.AccessListTx{
+		Nonce:   1,
+		Value:   big.NewInt(100),
+		Gas:     21000,
+		ChainID: big.NewInt(1),
+	})
+	bndl := bundle.NewBuilder().
+		WithSigner(signer).
+		With(bundle.Step(key, tx)).
+		BuildBundle()
+
+	proposal, err := createProposalRequestFromBundle(signer, &bndl)
+	require.NoError(t, err)
+	require.NotNil(t, proposal)
+
+	// Check that the proposal contains the expected block range and steps
+	require.EqualValues(t, *rpctest.ToHexUint64(0), proposal.BlockRange.Earliest)
+	require.EqualValues(t, *rpctest.ToHexUint64(1023), proposal.BlockRange.Latest)
+	require.Len(t, proposal.Steps, 1)
+
+	// Nested bundle (AllOf with two steps)
+	tx2 := types.MustSignNewTx(key, signer, &types.AccessListTx{
+		Nonce:   2,
+		Value:   big.NewInt(200),
+		Gas:     22000,
+		ChainID: big.NewInt(1),
+	})
+	nestedBndl := bundle.NewBuilder().
+		WithSigner(signer).
+		With(bundle.AllOf(
+			bundle.Step(key, tx),
+			bundle.Step(key, tx2),
+		)).
+		BuildBundle()
+
+	proposal2, err := createProposalRequestFromBundle(signer, &nestedBndl)
+	require.NoError(t, err)
+	require.NotNil(t, proposal2)
+	require.Len(t, proposal2.Steps, 1)
+}
+
+func TestCreateProposalRequestFromBundle_CanYieldErrors(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	tests := map[string]struct {
+		bundle bundle.TransactionBundle
+	}{
+		"pan references missing transaction": {
+			bundle: bundle.TransactionBundle{
+				Plan: bundle.ExecutionPlan{
+					Root: bundle.NewTxStep(bundle.TxReference{
+						Hash: common.Hash{123},
+					}),
+				},
+			},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := createProposalRequestFromBundle(signer, &tt.bundle)
+			require.Error(t, err)
+		})
+	}
+}
+
+func Test_convertVisitorLeafIntoRPCExecutionPlanProposalLeaf_ConvertsToProposalLeaf(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	sender := crypto.PubkeyToAddress(key.PublicKey)
+
+	tx1 := types.MustSignNewTx(key, signer, &types.AccessListTx{
+		Nonce: 1,
+		Value: big.NewInt(100),
+	})
+
+	tests := map[string]struct {
+		txBundle bundle.TransactionBundle
+		expected []RPCExecutionStepProposal
+	}{
+		"simple bundle": {
+			txBundle: bundle.NewBuilder().
+				WithSigner(signer).
+				With(bundle.Step(key, tx1)).
+				BuildBundle(),
+			expected: []RPCExecutionStepProposal{{
+				TransactionArgs: ethapi.TransactionArgs{
+					ChainID: rpctest.ToHexBigInt(big.NewInt(1)),
+					From:    &sender,
+					Nonce:   rpctest.ToHexUint64(1),
+					Value:   rpctest.ToHexBigInt(big.NewInt(100)),
+					Gas:     rpctest.ToHexUint64(4300),
+				},
+			}},
+		},
+		"bundle with transaction including access list": {
+			txBundle: bundle.NewBuilder().
+				WithSigner(signer).
+				With(bundle.Step(key, types.MustSignNewTx(key, signer, &types.AccessListTx{
+					Nonce: 1,
+					Value: big.NewInt(100),
+					AccessList: types.AccessList{
+						{
+							Address:     common.Address{1},
+							StorageKeys: []common.Hash{{1}},
+						},
+					},
+				}))).
+				BuildBundle(),
+			expected: []RPCExecutionStepProposal{{
+				TransactionArgs: ethapi.TransactionArgs{
+					ChainID: rpctest.ToHexBigInt(big.NewInt(1)),
+					From:    &sender,
+					Nonce:   rpctest.ToHexUint64(1),
+					Value:   rpctest.ToHexBigInt(big.NewInt(100)),
+					Gas:     rpctest.ToHexUint64(4300),
+					AccessList: &types.AccessList{
+						{
+							Address:     common.Address{1},
+							StorageKeys: []common.Hash{{1}},
+						},
+					},
+				},
+			}},
+		},
+		"bundle with transaction including access list with marker": {
+			txBundle: bundle.NewBuilder().
+				WithSigner(signer).
+				With(bundle.Step(key, types.MustSignNewTx(key, signer, &types.AccessListTx{
+					Nonce: 1,
+					Value: big.NewInt(100),
+					AccessList: types.AccessList{
+						{
+							Address: bundle.BundleOnly,
+						},
+					},
+				}))).
+				BuildBundle(),
+			expected: []RPCExecutionStepProposal{{
+				TransactionArgs: ethapi.TransactionArgs{
+					ChainID: rpctest.ToHexBigInt(big.NewInt(1)),
+					From:    &sender,
+					Nonce:   rpctest.ToHexUint64(1),
+					Value:   rpctest.ToHexBigInt(big.NewInt(100)),
+					Gas:     rpctest.ToHexUint64(4300),
+				},
+			}},
+		},
+		"bundle with transaction including access list with marker and other access list entries": {
+			txBundle: bundle.NewBuilder().
+				WithSigner(signer).
+				With(bundle.Step(key, types.MustSignNewTx(key, signer, &types.AccessListTx{
+					Nonce: 1,
+					Value: big.NewInt(100),
+					AccessList: types.AccessList{
+						{
+							Address: bundle.BundleOnly,
+						},
+						{
+							Address:     common.Address{1},
+							StorageKeys: []common.Hash{{1}},
+						},
+					},
+				}))).
+				BuildBundle(),
+			expected: []RPCExecutionStepProposal{{
+				TransactionArgs: ethapi.TransactionArgs{
+					ChainID: rpctest.ToHexBigInt(big.NewInt(1)),
+					From:    &sender,
+					Nonce:   rpctest.ToHexUint64(1),
+					Value:   rpctest.ToHexBigInt(big.NewInt(100)),
+					Gas:     rpctest.ToHexUint64(4300),
+					AccessList: &types.AccessList{
+						{
+							Address:     common.Address{1},
+							StorageKeys: []common.Hash{{1}},
+						},
+					},
+				},
+			}},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			for i, ref := range tt.txBundle.Plan.Root.GetTransactionReferencesInReferencedOrder() {
+
+				result, err := convertVisitorLeafIntoRPCExecutionPlanProposalLeaf(
+					signer,
+					&tt.txBundle,
+					0,
+					ref,
+				)
+				require.NoError(t, err)
+				require.Equal(t, tt.expected[i], *result)
+
+			}
+		})
+	}
+}
+
+func Test_convertVisitorLeafIntoRPCExecutionPlanProposalLeaf_canReturnErrors(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	txBundle := bundle.NewBuilder().
+		WithSigner(signer).
+		//  Blob tx with hashes is not supported
+		With(bundle.Step(key, &types.BlobTx{BlobHashes: []common.Hash{{}}})).
+		BuildBundle()
+
+	tests := map[string]struct {
+		txBundle      bundle.TransactionBundle
+		txRef         bundle.TxReference
+		expectedError string
+	}{
+		"transaction reference not found in bundle transactions returns error": {
+			txBundle:      txBundle,
+			txRef:         bundle.TxReference{Hash: common.Hash{123}},
+			expectedError: "transaction reference not found in bundle transactions",
+		},
+		"bundle with non-convertible transaction type returns error": {
+			txBundle:      txBundle,
+			txRef:         txBundle.Plan.Root.GetTransactionReferencesInReferencedOrder()[0],
+			expectedError: "blob transactions are not supported in execution proposals",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := convertVisitorLeafIntoRPCExecutionPlanProposalLeaf(signer, &tt.txBundle, 0, tt.txRef)
+			if tt.expectedError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError)
+			}
 		})
 	}
 }

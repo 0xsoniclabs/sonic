@@ -406,3 +406,31 @@ func Test_toJsonExecutionPlanVisitor_CanReturnErrors(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "test error")
 }
+
+func Test_toBundleExecutionPlan_CanReturnErrors(t *testing.T) {
+
+	invalidStep := map[string]any{
+		"unexpectedField": "unexpectedValue",
+	}
+
+	rpcPlan := RPCExecutionPlanComposable{
+		BlockRange: RPCRange{Earliest: 10, Latest: 20},
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{invalidStep},
+		},
+	}
+
+	_, err := toBundleExecutionPlan(rpcPlan)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid execution plan level: must have either executionStep or group")
+}
+
+func TestNewRPCExecutionPlanComposable_ReturnsErrorWithInvalidPlan(t *testing.T) {
+
+	plan := bundle.ExecutionPlan{}
+
+	_, err := NewRPCExecutionPlanComposable(plan)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to convert execution plan")
+	require.Contains(t, err.Error(), "invalid execution plan")
+}

@@ -91,36 +91,7 @@ func createProposalRequestFromBundle(signer types.Signer, txBundle *bundle.Trans
 	plan := txBundle.Plan
 
 	visitor := makeExecutionPlanVisitor(func(flags bundle.ExecutionFlags, txRef bundle.TxReference) (any, error) {
-		// FIXME: return error if not found
-		tx, ok := txBundle.Transactions[txRef]
-		if !ok {
-			return nil, fmt.Errorf("transaction reference not found in bundle transactions: %v", txRef)
-		}
-		txArgs, err := convertToTransactonArgs(signer, tx)
-		if err != nil {
-			return nil, err
-		}
-
-		// remove bundle markers from access list
-		if txArgs.AccessList != nil {
-			cleaned := make(types.AccessList, 0, len(*txArgs.AccessList))
-			for _, entry := range *txArgs.AccessList {
-				if entry.Address != bundle.BundleOnly {
-					cleaned = append(cleaned, entry)
-				}
-			}
-			if len(cleaned) == 0 {
-				txArgs.AccessList = nil
-			} else {
-				txArgs.AccessList = &cleaned
-			}
-		}
-
-		return &RPCExecutionStepProposal{
-			TolerateFailed:  flags&bundle.EF_TolerateFailed != 0,
-			TolerateInvalid: flags&bundle.EF_TolerateInvalid != 0,
-			TransactionArgs: txArgs,
-		}, nil
+		return convertVisitorLeafIntoRPCExecutionPlanProposalLeaf(signer, txBundle, flags, txRef)
 	})
 	err := plan.Root.Accept(visitor)
 	if err != nil {
@@ -136,6 +107,44 @@ func createProposalRequestFromBundle(signer types.Signer, txBundle *bundle.Trans
 	}
 
 	return proposal, nil
+}
+
+func convertVisitorLeafIntoRPCExecutionPlanProposalLeaf(
+	signer types.Signer,
+	txBundle *bundle.TransactionBundle,
+	flags bundle.ExecutionFlags,
+	txRef bundle.TxReference,
+) (*RPCExecutionStepProposal, error) {
+	// FIXME: return error if not found
+	tx, ok := txBundle.Transactions[txRef]
+	if !ok {
+		return nil, fmt.Errorf("transaction reference not found in bundle transactions: %v", txRef)
+	}
+	txArgs, err := convertToTransactonArgs(signer, tx)
+	if err != nil {
+		return nil, err
+	}
+
+	// remove bundle markers from access list
+	if txArgs.AccessList != nil {
+		cleaned := make(types.AccessList, 0, len(*txArgs.AccessList))
+		for _, entry := range *txArgs.AccessList {
+			if entry.Address != bundle.BundleOnly {
+				cleaned = append(cleaned, entry)
+			}
+		}
+		if len(cleaned) == 0 {
+			txArgs.AccessList = nil
+		} else {
+			txArgs.AccessList = &cleaned
+		}
+	}
+
+	return &RPCExecutionStepProposal{
+		TolerateFailed:  flags&bundle.EF_TolerateFailed != 0,
+		TolerateInvalid: flags&bundle.EF_TolerateInvalid != 0,
+		TransactionArgs: txArgs,
+	}, nil
 }
 
 // convertToTransactonArgs converts a types.Transaction to ethapi.TransactionArgs, which is the format used in the execution proposal.
