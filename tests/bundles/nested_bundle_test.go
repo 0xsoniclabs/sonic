@@ -68,7 +68,8 @@ func TestBundle_NestedBundlesCanBeExecuted(t *testing.T) {
 	outerInfo, err := WaitForBundleExecution(t.Context(), client.Client(), outerPlan.Hash())
 	require.NoError(t, err)
 
-	innerInfo, err := WaitForBundleExecution(t.Context(), client.Client(), innerPlan.Hash())
+	// The inner bundle info should be already available.
+	innerInfo, err := GetBundleInfo(t.Context(), client.Client(), innerPlan.Hash())
 	require.NoError(t, err)
 
 	// The outer bundle only contains the inner bundle, so they should have the
