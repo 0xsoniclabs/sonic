@@ -21,7 +21,7 @@ import (
 	"fmt"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
-	evmcore "github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/ethereum/go-ethereum/common"
@@ -207,6 +207,10 @@ func resolveBlockRange(currentBlock uint64, earliest, latest *hexutil.Uint64) (b
 		r.Latest = uint64(*latest)
 	}
 
+	if r.Latest-r.Earliest+1 > bundle.MaxBlockRange {
+		return bundle.BlockRange{}, fmt.Errorf("invalid block range: range %d is too large; must be at most %d blocks", r.Latest-r.Earliest+1, bundle.MaxBlockRange)
+	}
+
 	return r, nil
 }
 
@@ -230,6 +234,11 @@ func injectPlanHashIntoAccessLists(txs []ethapi.TransactionArgs, planHash common
 // asTransaction converts a Message to a Transaction, ensuring that unsupported
 // transaction types (e.g. blob transactions) are not included in bundles.
 func asTransaction(msg *core.Message) (*types.Transaction, error) {
+
+	// when gasprice and gas fee cap or gas tip cap are both set, return error
+	if msg.GasPrice != nil && msg.GasPrice.Sign() != 0 && (msg.GasFeeCap != nil || msg.GasTipCap != nil) {
+		return nil, fmt.Errorf("cannot set both gas price and gas fee cap or gas tip cap")
+	}
 
 	if len(msg.BlobHashes) != 0 || msg.BlobGasFeeCap != nil {
 		return nil, fmt.Errorf("blob transactions are not supported in bundles")

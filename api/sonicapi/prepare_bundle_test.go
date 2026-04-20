@@ -48,7 +48,7 @@ func Test_fillTransactionDefaults(t *testing.T) {
 		check     func(t *testing.T, txs []ethapi.TransactionArgs)
 	}{
 		{
-			name:      "nil gas limits sets gas price",
+			name:      "nil gas limits fixed gas price",
 			txs:       []ethapi.TransactionArgs{{From: &addr}},
 			gasLimits: nil,
 			gasPrice:  gasPrice,
@@ -58,7 +58,7 @@ func Test_fillTransactionDefaults(t *testing.T) {
 			},
 		},
 		{
-			name:      "gas limits provided fills nil gas",
+			name:      "gas limits provided fills gas",
 			txs:       []ethapi.TransactionArgs{{From: &addr}},
 			gasLimits: []hexutil.Uint64{21000},
 			gasPrice:  rpctest.ToHexBigInt(big.NewInt(1)),
@@ -138,15 +138,16 @@ func Test_fillTransactionDefaults(t *testing.T) {
 }
 
 func Test_resolveBlockRange(t *testing.T) {
-	hexN := func(n int64) *hexutil.Uint64 { b := hexutil.Uint64(n); return &b }
+	hexN := func(n uint64) *hexutil.Uint64 { b := hexutil.Uint64(n); return &b }
 
 	tests := []struct {
-		name         string
-		currentBlock uint64
-		earliest     *hexutil.Uint64
-		latest       *hexutil.Uint64
-		wantEarliest uint64
-		wantLatest   uint64
+		name          string
+		currentBlock  uint64
+		earliest      *hexutil.Uint64
+		latest        *hexutil.Uint64
+		wantEarliest  uint64
+		wantLatest    uint64
+		errorContains string
 	}{
 		{
 			name:         "nil both defaults from current block",
@@ -169,6 +170,12 @@ func Test_resolveBlockRange(t *testing.T) {
 			wantLatest:   200,
 		},
 		{
+			name:          "explicit latest greater than MaxBlockRange",
+			currentBlock:  10,
+			latest:        hexN(10 + bundle.MaxBlockRange + 100),
+			errorContains: "invalid block range",
+		},
+		{
 			name:         "both explicit",
 			currentBlock: 100,
 			earliest:     hexN(5),
@@ -182,14 +189,32 @@ func Test_resolveBlockRange(t *testing.T) {
 			wantEarliest: 1,
 			wantLatest:   bundle.MaxBlockRange,
 		},
+		{
+			name:          "latest is less than earliest",
+			currentBlock:  100,
+			earliest:      hexN(50),
+			latest:        hexN(40),
+			errorContains: "invalid block range",
+		},
+		{
+			name:          "greater than Max block range",
+			currentBlock:  100,
+			earliest:      hexN(50),
+			latest:        hexN(50 + bundle.MaxBlockRange + 1),
+			errorContains: "invalid block range",
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			r, err := resolveBlockRange(tc.currentBlock, tc.earliest, tc.latest)
-			require.NoError(t, err)
-			require.EqualValues(t, tc.wantEarliest, r.Earliest)
-			require.EqualValues(t, tc.wantLatest, r.Latest)
+			if tc.errorContains != "" {
+				require.ErrorContains(t, err, tc.errorContains)
+			} else {
+				require.NoError(t, err)
+				require.EqualValues(t, tc.wantEarliest, r.Earliest)
+				require.EqualValues(t, tc.wantLatest, r.Latest)
+			}
 		})
 	}
 }
@@ -297,9 +322,10 @@ func Test_asTransaction_TxType(t *testing.T) {
 	to := common.Address{2}
 
 	tests := []struct {
-		name     string
-		msg      *core.Message
-		wantType int
+		name          string
+		msg           *core.Message
+		wantType      int
+		errorContains string
 	}{
 		{
 			name: "nil gas price returns dynamic fee tx",
@@ -344,13 +370,27 @@ func Test_asTransaction_TxType(t *testing.T) {
 			},
 			wantType: types.AccessListTxType,
 		},
+		{
+			name: "positive gas price and gas fee cap returns dynamic fee tx",
+			msg: &core.Message{
+				To:        &to,
+				GasPrice:  big.NewInt(1e9),
+				GasFeeCap: big.NewInt(1e9),
+				Value:     big.NewInt(0),
+			},
+			errorContains: "cannot set both gas price",
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			tx, err := asTransaction(tc.msg)
-			require.NoError(t, err)
-			require.Equal(t, tc.wantType, int(tx.Type()))
+			if tc.errorContains != "" {
+				require.ErrorContains(t, err, tc.errorContains)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.wantType, int(tx.Type()))
+			}
 		})
 	}
 }
@@ -407,7 +447,44 @@ func Test_PrepareBundle_SingleTx_GasAndPriceEstimated(t *testing.T) {
 	require.True(t, hasPriceField, "gas price must be set")
 }
 
-func Test_PrepareBundle_SingleTx_AccessListContainsPlanHash(t *testing.T) {
+func Test_PrepareBundle_PlanHashConsistentAcrossTxs(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(addr2, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	args := PrepareBundleArgs{
+		Transactions: []ethapi.TransactionArgs{
+			{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
+			{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
+		},
+	}
+
+	result, err := api.PrepareBundle(t.Context(), args)
+	require.NoError(t, err)
+
+	// All txs must carry the same plan hash.
+	var planHash common.Hash
+	for i, tx := range result.Transactions {
+		for _, entry := range *tx.AccessList {
+			if entry.Address == bundle.BundleOnly {
+				require.Len(t, entry.StorageKeys, 1)
+				if i == 0 {
+					planHash = entry.StorageKeys[0]
+				} else {
+					require.Equal(t, planHash, entry.StorageKeys[0], "tx %d has different plan hash", i)
+				}
+			}
+		}
+	}
+}
+
+func Test_PrepareBundle_AccessListContainsConsistentPlanHash(t *testing.T) {
 	addr1 := common.Address{1}
 	addr2 := common.Address{2}
 
@@ -418,27 +495,32 @@ func Test_PrepareBundle_SingleTx_AccessListContainsPlanHash(t *testing.T) {
 	api := NewPublicBundleAPI(be)
 
 	args := PrepareBundleArgs{
-		Transactions: []ethapi.TransactionArgs{{
-			From:  &addr1,
-			To:    &addr2,
-			Nonce: rpctest.ToHexUint64(0),
-		}},
+		Transactions: []ethapi.TransactionArgs{
+			{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
+			{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
+		},
 	}
 
 	result, err := api.PrepareBundle(t.Context(), args)
 	require.NoError(t, err)
+	require.Len(t, result.Transactions, 2)
 
-	tx := result.Transactions[0]
-	require.NotNil(t, tx.AccessList)
-
-	var found bool
-	for _, entry := range *tx.AccessList {
-		if entry.Address == bundle.BundleOnly {
-			found = true
-			require.Len(t, entry.StorageKeys, 1, "plan hash must be in storage keys")
+	// All txs must carry the same plan hash.
+	var planHash common.Hash
+	for i, tx := range result.Transactions {
+		require.NotNil(t, tx.AccessList)
+		for _, entry := range *tx.AccessList {
+			require.NotNil(t, entry.Address)
+			if entry.Address == bundle.BundleOnly {
+				require.Len(t, entry.StorageKeys, 1)
+				if i == 0 {
+					planHash = entry.StorageKeys[0]
+				} else {
+					require.Equal(t, planHash, entry.StorageKeys[0], "tx %d has different plan hash", i)
+				}
+			}
 		}
 	}
-	require.True(t, found, "BundleOnly marker not found in access list")
 }
 
 func Test_PrepareBundle_ExplicitGasLimit_NotOverwritten(t *testing.T) {
@@ -576,43 +658,6 @@ func Test_PrepareBundle_MultipleTxs_AllOfPlan(t *testing.T) {
 			}
 		}
 		require.True(t, found, "tx %d missing BundleOnly marker", i)
-	}
-}
-
-func Test_PrepareBundle_PlanHashConsistentAcrossTxs(t *testing.T) {
-	addr1 := common.Address{1}
-	addr2 := common.Address{2}
-
-	be := rpctest.NewBackendBuilder(t).
-		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
-		WithAccount(addr2, rpctest.AccountState{Balance: big.NewInt(1e18)}).
-		Build()
-
-	api := NewPublicBundleAPI(be)
-
-	args := PrepareBundleArgs{
-		Transactions: []ethapi.TransactionArgs{
-			{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
-			{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
-		},
-	}
-
-	result, err := api.PrepareBundle(t.Context(), args)
-	require.NoError(t, err)
-
-	// All txs must carry the same plan hash.
-	var planHash common.Hash
-	for i, tx := range result.Transactions {
-		for _, entry := range *tx.AccessList {
-			if entry.Address == bundle.BundleOnly {
-				require.Len(t, entry.StorageKeys, 1)
-				if i == 0 {
-					planHash = entry.StorageKeys[0]
-				} else {
-					require.Equal(t, planHash, entry.StorageKeys[0], "tx %d has different plan hash", i)
-				}
-			}
-		}
 	}
 }
 
