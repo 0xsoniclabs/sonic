@@ -70,8 +70,6 @@ func TestPendingTransactionSubscription_ReturnsHashes(t *testing.T) {
 	require.NoError(t, err, "failed to get client ", err)
 	defer client.Close()
 
-	tx := CreateTransaction(t, session, &types.LegacyTx{To: &common.Address{0x42}, Value: big.NewInt(2)}, session.GetSessionSponsor())
-
 	pendingTxs := make(chan common.Hash)
 	defer close(pendingTxs)
 
@@ -79,6 +77,7 @@ func TestPendingTransactionSubscription_ReturnsHashes(t *testing.T) {
 	require.NoError(t, err, "failed to subscribe to pending transactions ", err)
 	defer subs.Unsubscribe()
 
+	tx := CreateTransaction(t, session, &types.LegacyTx{To: &common.Address{0x42}, Value: big.NewInt(2)}, session.GetSessionSponsor())
 	err = client.SendTransaction(t.Context(), tx)
 	require.NoError(t, err, "failed to send transaction ", err)
 

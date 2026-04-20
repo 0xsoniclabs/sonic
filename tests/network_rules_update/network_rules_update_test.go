@@ -18,7 +18,6 @@ package network_rules_update
 
 import (
 	"encoding/json"
-	"fmt"
 	"math/big"
 	"testing"
 
@@ -32,7 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -327,7 +325,7 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 			// Explicitly set the network to use the Sonic Hard Fork
 			Upgrades: tests.AsPointer(opera.GetSonicUpgrades()),
 			// Use 2 nodes to test the rules update propagation
-			NumNodes: 30,
+			NumNodes: 10,
 		},
 	)
 
@@ -387,43 +385,43 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 	*/
 }
 
-func forEachClientInNet(
-	t *testing.T,
-	net *tests.IntegrationTestNet,
-	fn func(t *testing.T, client *tests.PooledEhtClient),
-) {
-	for i := 0; i < net.NumNodes(); i++ {
-		t.Run(fmt.Sprintf("client%d", i), func(t *testing.T) {
-			client, err := net.GetClientConnectedToNode(i)
-			require.NoError(t, err)
-			defer client.Close()
-			fn(t, client)
-		})
-	}
-}
+// func forEachClientInNet(
+// 	t *testing.T,
+// 	net *tests.IntegrationTestNet,
+// 	fn func(t *testing.T, client *tests.PooledEhtClient),
+// ) {
+// 	for i := 0; i < net.NumNodes(); i++ {
+// 		t.Run(fmt.Sprintf("client%d", i), func(t *testing.T) {
+// 			client, err := net.GetClientConnectedToNode(i)
+// 			require.NoError(t, err)
+// 			defer client.Close()
+// 			fn(t, client)
+// 		})
+// 	}
+// }
 
-func makeSetCodeTx(
-	t *testing.T,
-	net *tests.IntegrationTestNet,
-	account *tests.Account,
-) *types.Transaction {
-	chainID := net.GetChainId()
-	client, err := net.GetClient()
-	require.NoError(t, err, "failed to get client for the network")
-	nonce, err := client.PendingNonceAt(t.Context(), account.Address())
-	require.NoError(t, err, "failed to get nonce for the account")
-	authorization, err := types.SignSetCode(account.PrivateKey, types.SetCodeAuthorization{
-		ChainID: *uint256.MustFromBig(chainID),
-		Address: common.Address{42},
-		Nonce:   nonce + 1,
-	})
-	require.NoError(t, err, "failed to sign SetCode authorization")
+// func makeSetCodeTx(
+// 	t *testing.T,
+// 	net *tests.IntegrationTestNet,
+// 	account *tests.Account,
+// ) *types.Transaction {
+// 	chainID := net.GetChainId()
+// 	client, err := net.GetClient()
+// 	require.NoError(t, err, "failed to get client for the network")
+// 	nonce, err := client.PendingNonceAt(t.Context(), account.Address())
+// 	require.NoError(t, err, "failed to get nonce for the account")
+// 	authorization, err := types.SignSetCode(account.PrivateKey, types.SetCodeAuthorization{
+// 		ChainID: *uint256.MustFromBig(chainID),
+// 		Address: common.Address{42},
+// 		Nonce:   nonce + 1,
+// 	})
+// 	require.NoError(t, err, "failed to sign SetCode authorization")
 
-	txData := &types.SetCodeTx{
-		AuthList: []types.SetCodeAuthorization{authorization},
-	}
-	return tests.CreateTransaction(t, net, txData, account)
-}
+// 	txData := &types.SetCodeTx{
+// 		AuthList: []types.SetCodeAuthorization{authorization},
+// 	}
+// 	return tests.CreateTransaction(t, net, txData, account)
+// }
 
 func TestNetworkRulesUpdate_BrioFeaturesBecomeAvailable_WhenBrioUpgradesEnabled(t *testing.T) {
 	// This Test verifies that the Brio upgrade features (namely CLZ opcode)

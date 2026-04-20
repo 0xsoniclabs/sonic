@@ -57,6 +57,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	geth_crypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -186,6 +187,7 @@ type IntegrationTestNetOptions struct {
 	// SkipCleanUp indicates whether the network should add its stop function
 	// to t.Cleanup or not.
 	SkipCleanUp bool
+	logging     bool
 }
 
 // IntegrationTestNet is a in-process test network for integration tests. When
@@ -415,9 +417,11 @@ func startIntegrationTestNet(
 
 	startHeapProfiler(t)
 
-	// if verbosityVariable := os.Getenv("SONIC_VERBOSITY"); verbosityVariable == "" {
-	// 	require.NoError(t, os.Setenv("SONIC_VERBOSITY", "1"), "failed to set verbosity")
-	// }
+	if !options.logging {
+		if verbosityVariable := os.Getenv("SONIC_VERBOSITY"); verbosityVariable == "" {
+			require.NoError(t, os.Setenv("SONIC_VERBOSITY", "1"), "failed to set verbosity")
+		}
+	}
 
 	// start the integration test nodes
 	for i := range net.nodes {
@@ -525,8 +529,8 @@ func (n *IntegrationTestNet) start() error {
 			}
 
 			// Enable faster event emission to speed up integration tests.
-			loadedConfig.Emitter.EmitIntervals.Min = time.Millisecond
-			loadedConfig.Emitter.EmitIntervals.Confirming = time.Millisecond
+			loadedConfig.Emitter.EmitIntervals.Min = 10 * time.Millisecond
+			loadedConfig.Emitter.EmitIntervals.Confirming = 10 * time.Millisecond
 
 			if n.options.ModifyConfig != nil {
 				n.options.ModifyConfig(&loadedConfig)
@@ -654,27 +658,29 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 		}
 		defer client.Close()
 
+		// Expect each node to be connected to the previous and next nodes,
+		// except for the first node which will only be connected to the
+		// next at this point in time, and each node in a 2-nodes
+		// network which can only have one connection each.
+		expectedConnections := 1
+		if i > 0 {
+			// min is for the 2-nodes network special case
+			expectedConnections = min(len(n.nodes)-1, 2)
+		}
+		gotPeers := 0
 		err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
 			// Fetch the list of connected peers
 			var res []map[string]any
 			if err := client.Client().Call(&res, "admin_peers"); err != nil {
 				return false, fmt.Errorf("failed to query peers on node %d: %v", i, err)
 			}
-
-			// Expect each node to be connected to the previous and next nodes,
-			// except for the first node which will only be connected to the
-			// next at this point in time, and each node in a 2-nodes
-			// network which can only have one connection each.
-			expectedConnections := 1
-			if i > 0 {
-				// min is for the 2-nodes network special case
-				expectedConnections = min(len(n.nodes)-1, 2)
-			}
+			gotPeers = len(res)
 			return len(res) >= expectedConnections, nil
 		})
 		if err != nil {
 			return fmt.Errorf("failed to wait for node %d to be connected: %v", i, err)
 		}
+		log.Info("Node connected to peers", "node", i, "expectedConnections", expectedConnections, "gotPeers", gotPeers)
 	}
 	return nil
 }
@@ -1103,8 +1109,11 @@ func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
 
 func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
 	hashes := make([]common.Hash, len(tx))
+	// wait enough for 4 blocks to be produced.
+	timeout, timeoutCancel := context.WithTimeout(context.Background(), 16*time.Second)
+	defer timeoutCancel()
 	err := runParallelWithClient(s.net, len(tx), func(client *PooledEhtClient, i int) error {
-		err := client.SendTransaction(context.Background(), tx[i])
+		err := client.SendTransaction(timeout, tx[i])
 		if err != nil {
 			return fmt.Errorf("failed to send transaction %d: %w", i, err)
 		}
