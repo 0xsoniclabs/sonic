@@ -513,8 +513,6 @@ func TestBundleBuilder_AutomaticallyAddsGasCostsForMarkers(t *testing.T) {
 }
 
 func TestBundleBuilder_AdjustsNestedEnvelopeGasToPassValidation(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
-
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
@@ -526,6 +524,7 @@ func TestBundleBuilder_AdjustsNestedEnvelopeGasToPassValidation(t *testing.T) {
 		Step(key, inner),
 	).Build()
 
+	signer := NewBuilder().GetSigner()
 	bundle, _, err := ValidateEnvelope(signer, outer)
 	require.NoError(t, err)
 
@@ -559,14 +558,12 @@ func TestBundleBuilder_DefaultsSignerIfUnspecified(t *testing.T) {
 		AllOf(Step(key, types.NewTx(&types.LegacyTx{}))).
 		Build()
 
-	signer := types.LatestSignerForChainID(big.NewInt(1))
+	signer := NewBuilder().GetSigner()
 	_, _, err = ValidateEnvelope(signer, tx)
 	require.NoError(t, err)
 }
 
 func TestBundleBuilder_CanSetGasPrice(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
-
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
@@ -581,6 +578,7 @@ func TestBundleBuilder_CanSetGasPrice(t *testing.T) {
 				).
 				Build()
 
+			signer := NewBuilder().GetSigner()
 			_, _, err = ValidateEnvelope(signer, tx)
 			require.NoError(t, err)
 
@@ -594,7 +592,6 @@ func TestBundleBuilder_CanSetGasPrice(t *testing.T) {
 }
 
 func TestBundleBuilder_DefaultsGasPriceToZero(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
@@ -606,6 +603,7 @@ func TestBundleBuilder_DefaultsGasPriceToZero(t *testing.T) {
 		).
 		Build()
 
+	signer := NewBuilder().GetSigner()
 	_, _, err = ValidateEnvelope(signer, tx)
 	require.NoError(t, err)
 
@@ -613,7 +611,6 @@ func TestBundleBuilder_DefaultsGasPriceToZero(t *testing.T) {
 }
 
 func TestBundleBuilder_SetEnvelopeNonce_SetsNonce(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
@@ -626,6 +623,7 @@ func TestBundleBuilder_SetEnvelopeNonce_SetsNonce(t *testing.T) {
 		).
 		Build()
 
+	signer := NewBuilder().GetSigner()
 	_, _, err = ValidateEnvelope(signer, tx)
 	require.NoError(t, err)
 
@@ -633,7 +631,6 @@ func TestBundleBuilder_SetEnvelopeNonce_SetsNonce(t *testing.T) {
 }
 
 func TestBundleBuilder_SetEnvelopeSenderKey_DefaultsNonceWhenUnset(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
@@ -646,6 +643,7 @@ func TestBundleBuilder_SetEnvelopeSenderKey_DefaultsNonceWhenUnset(t *testing.T)
 		).
 		Build()
 
+	signer := NewBuilder().GetSigner()
 	_, _, err = ValidateEnvelope(signer, tx)
 	require.NoError(t, err)
 
