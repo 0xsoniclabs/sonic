@@ -18,6 +18,7 @@ package sonicapi
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -120,4 +121,23 @@ func Test_GetBundleInfo_ReturnsNilIfBlockIsNotAvailable(t *testing.T) {
 	res, err := api.GetBundleInfo(t.Context(), hash)
 	require.NoError(t, err)
 	require.Nil(t, res)
+}
+
+func Test_GetBundleInfo_ReturnsErrorIfBlockReturnsError(t *testing.T) {
+	ctr := gomock.NewController(t)
+	be := NewMockBundleApiBackend(ctr)
+	api := NewPublicBundleAPI(be)
+
+	hash := common.Hash{123}
+	be.EXPECT().GetBundleExecutionInfo(hash).Return(&bundle.ExecutionInfo{
+		BlockNumber: 123,
+		Position: bundle.PositionInBlock{
+			Offset: 1,
+			Count:  2,
+		},
+	})
+	expectedErr := errors.New("some error")
+	be.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(123)).Return(nil, expectedErr)
+	_, err := api.GetBundleInfo(t.Context(), hash)
+	require.ErrorIs(t, err, expectedErr)
 }

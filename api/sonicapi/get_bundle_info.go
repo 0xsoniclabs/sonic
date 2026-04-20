@@ -50,20 +50,19 @@ func (a *PublicBundleAPI) GetBundleInfo(
 		return nil, nil
 	}
 
-	result := &RPCBundleInfo{
-		Block:    rpc.BlockNumber(info.BlockNumber),
-		Position: hexutil.Uint(info.Position.Offset),
-		Count:    hexutil.Uint(info.Position.Count),
-	}
-
-	if block, err := a.b.BlockByNumber(ctx, result.Block); err != nil || block == nil {
+	blockNumber := rpc.BlockNumber(info.BlockNumber)
+	if block, err := a.b.BlockByNumber(ctx, blockNumber); err != nil || block == nil {
 		// althoug store has been notified about the bundle execution, the block is
 		// not yet available. To avoid returning potentially stale information,
 		// nil is returned, forcing the caller to retry until the block becomes available.
-		return nil, nil
+		return nil, err
 	}
 
-	return result, nil
+	return &RPCBundleInfo{
+		Block:    blockNumber,
+		Position: hexutil.Uint(info.Position.Offset),
+		Count:    hexutil.Uint(info.Position.Count),
+	}, nil
 }
 
 // RPCBundleInfo is the JSON RPC message returned by the GetBundleInfo API, which
