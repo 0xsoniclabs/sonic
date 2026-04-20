@@ -45,16 +45,25 @@ func (a *PublicBundleAPI) GetBundleInfo(
 
 	// Check whether the given execution plan got already executed.
 	info := a.b.GetBundleExecutionInfo(executionPlanHash)
-	if info != nil {
-		return &RPCBundleInfo{
-			Block:    rpc.BlockNumber(info.BlockNumber),
-			Position: hexutil.Uint(info.Position.Offset),
-			Count:    hexutil.Uint(info.Position.Count),
-		}, nil
+	if info == nil {
+		// bundle is unknown,
+		return nil, nil
 	}
 
-	// Otherwise, the state is unknown (default).
-	return nil, nil
+	result := &RPCBundleInfo{
+		Block:    rpc.BlockNumber(info.BlockNumber),
+		Position: hexutil.Uint(info.Position.Offset),
+		Count:    hexutil.Uint(info.Position.Count),
+	}
+
+	if block, err := a.b.BlockByNumber(ctx, result.Block); err != nil || block == nil {
+		// althoug store has been notified about the bundle execution, the block is
+		// not yet available. To avoid returning potentially stale information,
+		// nil is returned, forcing the caller to retry until the block becomes available.
+		return nil, nil
+	}
+
+	return result, nil
 }
 
 // RPCBundleInfo is the JSON RPC message returned by the GetBundleInfo API, which
