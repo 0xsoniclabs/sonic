@@ -23,6 +23,8 @@ import (
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -96,4 +98,71 @@ func Test_TraceSimpleTransfer(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, state)
 	require.Equal(t, uint256.NewInt(0), state.GetBalance(*acc2.Address()))
+}
+
+func Test_TraceTransaction_MustProcessWithBaseFeeSet(t *testing.T) {
+
+	var chainId uint64 = 123
+	signer := types.LatestSignerForChainID(new(big.Int).SetUint64(chainId))
+
+	toAddr := common.HexToAddress("0x1234567890123456789012345678901234567890")
+
+	txData := &types.DynamicFeeTx{
+		Nonce:     0,
+		Gas:       8_000_000,
+		GasFeeCap: big.NewInt(0), // no fee
+		GasTipCap: big.NewInt(0), // no tip
+		Value:     big.NewInt(1e17),
+		To:        &toAddr,
+	}
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	sender := crypto.PubkeyToAddress(key.PublicKey)
+
+	tx1 := types.MustSignNewTx(key, signer, txData)
+
+	receipt := &types.Receipt{
+		Type:              types.LegacyTxType,
+		Status:            types.ReceiptStatusSuccessful,
+		CumulativeGasUsed: 21000,
+		GasUsed:           21000,
+	}
+	txs := map[common.Hash]*Transaction{
+		tx1.Hash(): {
+			tx:          tx1,
+			blockNumber: 2,
+			txIndex:     0,
+			receipt:     receipt,
+		},
+	}
+
+	be := NewBackendBuilder(t).
+		WithChainID(chainId).
+		WithAccount(sender, AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(toAddr, AccountState{}).
+		WithBlockHistory(
+			[]Block{
+				{
+					Number: 1,
+					Hash:   common.HexToHash("0x1"),
+				},
+				{
+					Number:       2,
+					Hash:         common.HexToHash("0x2"),
+					ParentHash:   common.HexToHash("0x1"),
+					Transactions: txs,
+					BaseFee:      big.NewInt(200), // base fee for block is set
+				},
+			},
+		).
+		Build()
+
+	api := ethapi.NewPublicTxTraceAPI(be, 100_000)
+
+	// trace call should succeed and not error out due to base fee set in block
+	res, err := api.Transaction(t.Context(), tx1.Hash())
+	require.NoError(t, err)
+	require.NotNil(t, res)
+
 }
