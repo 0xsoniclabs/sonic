@@ -17,6 +17,7 @@
 package evmcore
 
 import (
+	"crypto/rand"
 	"fmt"
 	"maps"
 	big "math/big"
@@ -335,14 +336,88 @@ func (t *nonceTracker) restore(backup *nonceTracker) {
 
 // --- Trial Run Logic ---
 
+// trialRunBundle performs a trial run of the bundle on the EVM to check whether
+// it can succeed or not. It returns true if the trial run results in at least
+// one accepted transaction, and false otherwise.
 func trialRunBundle(
 	envelope *types.Transaction,
 	chain ChainStateForBundleEval,
 	stateDb state.StateDB,
 ) bool {
-	// TODO: implement the actual trial-run logic, which should attempt to
-	// execute the bundle on the given state using the EVM.
-	return true
+	return trialRunBundleInternal(
+		envelope,
+		chain,
+		stateDb,
+		realTransactionProcessorFactory{},
+		rand.Read,
+	)
+}
+
+// trialRunBundleInternal is the internal version of trialRunBundle, allowing to
+// inject a custom transaction processor factory to simplify testing.
+func trialRunBundleInternal(
+	envelope *types.Transaction,
+	chain ChainStateForBundleEval,
+	stateDb state.StateDB,
+	factory transactionProcessorFactory,
+	readRandom func([]byte) (int, error),
+) bool {
+	latestHeader := chain.GetLatestHeader()
+	blobBaseFee := GetBlobBaseFee()
+
+	// Create a random fake-PrevRandao for the trial run.
+	var fakePrevRandao common.Hash
+	if n, err := readRandom(fakePrevRandao[:]); n != len(fakePrevRandao) || err != nil {
+		return false
+	}
+
+	// Make sure that everything this function does is reverted at the end.
+	snapshost := stateDb.InterTxSnapshot()
+	defer stateDb.RevertToInterTxSnapshot(snapshost)
+
+	// Create next block header state to trail-run against. This must cover
+	// all fields that are accessible within the EVM.
+	nextBlock := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number:      new(big.Int).Add(latestHeader.Number, big.NewInt(1)),
+			Time:        latestHeader.Time + 1, // < minimum increase in each block
+			GasLimit:    latestHeader.GasLimit, // < assume approximately uniform blocks
+			Coinbase:    GetCoinbase(),
+			PrevRandao:  fakePrevRandao,
+			BaseFee:     latestHeader.BaseFee, // < assume base fee is not changing much
+			BlobBaseFee: blobBaseFee.ToBig(),
+		},
+	}
+
+	transactionProcessor := factory.newTransactionProcessor(chain, stateDb, nextBlock)
+	summary := transactionProcessor.Run(0, envelope)
+
+	// Check if the bundle lead to any accepted transactions. If so, it is
+	// a success, otherwise it is a failure.
+	for _, tx := range summary.ProcessedTransactions {
+		if tx.Receipt != nil {
+			return true
+		}
+	}
+	return false
+}
+
+type transactionProcessorFactory interface {
+	newTransactionProcessor(ChainState, state.StateDB, *EvmBlock) transactionProcessor
+}
+
+type transactionProcessor interface {
+	Run(int, *types.Transaction) ProcessSummary
+}
+
+type realTransactionProcessorFactory struct{}
+
+func (realTransactionProcessorFactory) newTransactionProcessor(
+	chain ChainState,
+	stateDb state.StateDB,
+	block *EvmBlock,
+) transactionProcessor {
+	return NewTransactionProcessorForBlock(chain, stateDb, block)
 }
 
 func makeRunnableState() BundleState {
