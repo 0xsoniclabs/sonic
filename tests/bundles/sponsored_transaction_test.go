@@ -69,7 +69,7 @@ func TestBundle_SponsoredTransactionsAreAcceptedAndExecuted(t *testing.T) {
 	sponsoredTxData1 := *sponsoredTxData0
 	sponsoredTxData1.Nonce += 1
 
-	// Create a bundle with a sponsored txs.
+	// Create a bundle with sponsored txs.
 	envelope, bundleTx, plan := bundle.NewBuilder().
 		WithSigner(signer).
 		SetEarliest(block).
