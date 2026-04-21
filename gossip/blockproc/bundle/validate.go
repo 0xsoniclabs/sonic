@@ -151,6 +151,78 @@ func validateEnvelopeInternal(
 	return &txBundle, &plan, nil
 }
 
+// validateBundle checks that the given transaction bundle is valid, meaning
+// that it is well-formed and consistent.
+func validateBundle(
+	signer types.Signer,
+	bundle TransactionBundle,
+) error {
+
+	// check the execution plan for validity
+	if err := validatePlan(bundle.Plan); err != nil {
+		return err
+	}
+
+	// check that there are no nil transactions in the bundle
+	for _, tx := range bundle.Transactions {
+		if tx == nil {
+			return fmt.Errorf("invalid nil transaction in bundle")
+		}
+	}
+
+	// check that signer is not nil before using it
+	if signer == nil {
+		return fmt.Errorf("signer is nil")
+	}
+
+	// make sure that the reference keys in the index match the transactions
+	for ref, tx := range bundle.Transactions {
+		sender, err := types.Sender(signer, tx)
+		if err != nil {
+			return fmt.Errorf("invalid transaction in bundle: %v", err)
+		}
+		if ref.From != sender {
+			return fmt.Errorf("sender in transaction reference does not match actual sender")
+		}
+
+		strippedTx, err := removeBundleOnlyMark(tx)
+		if err != nil {
+			return fmt.Errorf("invalid transaction in bundle: %v", err)
+		}
+		if ref.Hash != signer.Hash(strippedTx) {
+			return fmt.Errorf("content of transaction does not match transaction hash")
+		}
+	}
+
+	// check that all transactions in the bundle agree to the execution plan
+	planHash := bundle.Plan.Hash()
+	for _, tx := range bundle.Transactions {
+		if !belongsToExecutionPlan(tx, planHash) {
+			return fmt.Errorf("contains transaction not approving the execution plan")
+		}
+	}
+
+	// check that all transactions referenced by the plan are present in the bundle
+	references := map[TxReference]struct{}{}
+	for _, ref := range bundle.Plan.Root.GetTransactionReferencesInReferencedOrder() {
+		references[ref] = struct{}{}
+	}
+	for ref := range references {
+		if _, found := bundle.Transactions[ref]; !found {
+			return fmt.Errorf("missing transaction referenced by the execution plan")
+		}
+	}
+
+	// check that there are no extra transactions not referenced by the plan
+	for ref := range bundle.Transactions {
+		if _, found := references[ref]; !found {
+			return fmt.Errorf("contains transaction not referenced by the execution plan")
+		}
+	}
+
+	return nil
+}
+
 // validatePlan checks that the given execution plan is valid.
 func validatePlan(plan ExecutionPlan) error {
 	if err := validateStep(plan.Root); err != nil {
