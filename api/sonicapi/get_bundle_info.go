@@ -52,7 +52,7 @@ func (a *PublicBundleAPI) GetBundleInfo(
 
 	blockNumber := rpc.BlockNumber(info.BlockNumber)
 	if block, err := a.b.BlockByNumber(ctx, blockNumber); err != nil || block == nil {
-		// althoug store has been notified about the bundle execution, the block is
+		// Although the store has been notified about the bundle execution, the block is
 		// not yet available. To avoid returning potentially stale information,
 		// nil is returned, forcing the caller to retry until the block becomes available.
 		return nil, err
