@@ -19,6 +19,7 @@ package evmcore
 import (
 	"crypto/ecdsa"
 	"fmt"
+	"math"
 	"math/big"
 	"slices"
 	"testing"
@@ -27,9 +28,12 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	params "github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -565,10 +569,150 @@ func Test_makePermanentlyBlockedState_ReturnsPermanentlyBlockedState(t *testing.
 	}, state)
 }
 
-func Test_trialRunBundle_DummyTest(t *testing.T) {
-	// TODO: replace this test once the actual trial run logic is implemented.
-	// For now, this just verifies that the function can be called without errors.
-	require.True(t, trialRunBundle(nil, nil, nil))
+func Test_trialRunBundle_ReturnsTrueWhenBundleContainsSuccessfulTransaction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	// Build a bundle with one simple transfer. The builder signs inner
+	// transactions with chain ID 1 by default, so the chain config must match.
+	envelope := bundle.AllOf(bundle.Step(key, &types.AccessListTx{
+		Nonce: 0,
+		To:    &common.Address{1},
+		Gas:   21_000,
+	})).Build()
+
+	chainState := NewMockChainState(ctrl)
+	chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+		Number:  big.NewInt(0),
+		BaseFee: new(big.Int),
+	}).AnyTimes()
+	chainState.EXPECT().GetEvmChainConfig(gomock.Any()).Return(&params.ChainConfig{
+		ChainID: big.NewInt(1),
+	}).AnyTimes()
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		Upgrades: opera.Upgrades{TransactionBundles: true},
+	}).AnyTimes()
+
+	any := gomock.Any()
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(any).Return(false)
+	stateDb.EXPECT().InterTxSnapshot().Return(0).AnyTimes()
+	stateDb.EXPECT().RevertToInterTxSnapshot(any).AnyTimes()
+	stateDb.EXPECT().AddProcessedBundle(any, any)
+	stateDb.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+	stateDb.EXPECT().SetTxContext(any, any).AnyTimes()
+	stateDb.EXPECT().GetNonce(any).Return(uint64(0)).AnyTimes()
+	stateDb.EXPECT().SetNonce(any, any, any).AnyTimes()
+	stateDb.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
+	stateDb.EXPECT().SubBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().AddBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().Snapshot().Return(1).AnyTimes()
+	stateDb.EXPECT().RevertToSnapshot(any).AnyTimes()
+	stateDb.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
+	stateDb.EXPECT().GetCode(any).Return(nil).AnyTimes()
+	stateDb.EXPECT().GetCodeSize(any).Return(0).AnyTimes()
+	stateDb.EXPECT().Exist(any).Return(true).AnyTimes()
+	stateDb.EXPECT().GetRefund().Return(uint64(0)).AnyTimes()
+	stateDb.EXPECT().AddRefund(any).AnyTimes()
+	stateDb.EXPECT().SubRefund(any).AnyTimes()
+	stateDb.EXPECT().GetLogs(any, any).Return(nil).AnyTimes()
+	stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
+	stateDb.EXPECT().EndTransaction().AnyTimes()
+
+	require.True(t, trialRunBundle(envelope, chainState, stateDb))
+}
+
+func Test_trialRunBundle_ReturnsFalseWhenNoTransactionSucceeds(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	// An already-processed bundle causes runTransactionBundleInternal to return
+	// early with one ProcessedTransaction{Receipt: nil} for the envelope itself,
+	// so the loop in trialRunBundle executes once but finds no receipt.
+	envelope := bundle.NewBuilder().Build()
+
+	chainState := NewMockChainState(ctrl)
+	chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{Number: big.NewInt(0)}).AnyTimes()
+	chainState.EXPECT().GetEvmChainConfig(gomock.Any()).Return(&params.ChainConfig{
+		ChainID: big.NewInt(1),
+	}).AnyTimes()
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		Upgrades: opera.Upgrades{TransactionBundles: true},
+	}).AnyTimes()
+
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(true)
+
+	require.False(t, trialRunBundle(envelope, chainState, stateDb))
+}
+
+func Test_trialRunBundle_UsesNextBlockHeightToLookUpChainConfig(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	// Use the already-processed path to return cheaply — the important assertion
+	// is that GetEvmChainConfig receives the NEXT block's number, not the current
+	// one, so that version-sensitive EVM rules are evaluated for the block the
+	// bundle would actually be included in.
+	envelope := bundle.NewBuilder().Build()
+
+	chainState := NewMockChainState(ctrl)
+	chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{Number: big.NewInt(42)}).AnyTimes()
+	chainState.EXPECT().GetEvmChainConfig(idx.Block(43)).Return(&params.ChainConfig{ChainID: big.NewInt(1)})
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		Upgrades: opera.Upgrades{TransactionBundles: true},
+	}).AnyTimes()
+
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(true)
+
+	trialRunBundle(envelope, chainState, stateDb)
+}
+
+func Test_trialRunBundle_PropagatesBaseFeeFromLatestHeader(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	// Build a bundle with an inner transaction whose gas price is below the
+	// latest header's base fee. With London enforcement active, the base fee
+	// check in preCheck() will reject the transaction before reaching buyGas(),
+	// so no GetBalance call is needed.
+	envelope := bundle.AllOf(bundle.Step(key, &types.AccessListTx{
+		Nonce:    0,
+		To:       &common.Address{1},
+		Gas:      21_000,
+		GasPrice: big.NewInt(500), // < below latestHeader.BaseFee
+	})).Build()
+
+	chainState := NewMockChainState(ctrl)
+	chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+		Number:  big.NewInt(0),
+		BaseFee: big.NewInt(1000),
+	}).AnyTimes()
+	chainState.EXPECT().GetEvmChainConfig(gomock.Any()).Return(&params.ChainConfig{
+		ChainID:     big.NewInt(1),
+		LondonBlock: big.NewInt(0), // enables base fee enforcement
+	}).AnyTimes()
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		Upgrades: opera.Upgrades{TransactionBundles: true},
+	}).AnyTimes()
+
+	any := gomock.Any()
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(any).Return(false)
+	stateDb.EXPECT().InterTxSnapshot().Return(0)
+	stateDb.EXPECT().SetTxContext(any, any)
+	stateDb.EXPECT().GetNonce(any).Return(uint64(0))
+	stateDb.EXPECT().GetCode(any).Return(nil) // sender EOA check before base fee check
+	stateDb.EXPECT().EndTransaction()
+	stateDb.EXPECT().RevertToInterTxSnapshot(0)
+	stateDb.EXPECT().AddProcessedBundle(any, any)
+
+	// GasPrice (500) < BaseFee (1000): the transaction is rejected by the EVM,
+	// so the bundle produces no receipts and trialRunBundle returns false.
+	require.False(t, trialRunBundle(envelope, chainState, stateDb))
 }
 
 // --- Utility functions to build test bundles ---

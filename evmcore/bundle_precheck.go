@@ -19,6 +19,7 @@ package evmcore
 import (
 	"fmt"
 	"maps"
+	"math"
 	big "math/big"
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
@@ -346,11 +347,43 @@ func trialRunBundle(
 	chain ChainState,
 	stateDb state.StateDB,
 ) bool {
-	// TODO: implement the actual trial-run logic, which should attempt to
-	// execute the bundle on the given state using the EVM.
-	return true
-}
+	latestHeader := chain.GetLatestHeader()
+	blobBaseFee := GetBlobBaseFee()
 
+	// Create next block header state to trail-run against.
+	nextBlock := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number:      new(big.Int).Add(latestHeader.Number, big.NewInt(1)),
+			Time:        latestHeader.Time + 1,
+			GasLimit:    math.MaxInt64, // < assume limit high enough
+			Coinbase:    GetCoinbase(),
+			PrevRandao:  common.Hash{1, 2, 3}, // < can not be predicted
+			BaseFee:     latestHeader.BaseFee, // < assume base fee is not changing much
+			BlobBaseFee: blobBaseFee.ToBig(),
+		},
+	}
+
+	// TODO: follow-up task - align this with c_block_callbacks.go and single
+	// proposer scheduler code. Ideally, they would share a common code base.
+	chainCfg := chain.GetEvmChainConfig(idx.Block(nextBlock.Header().Number.Uint64()))
+	vmConfig := opera.GetVmConfig(chain.GetCurrentNetworkRules())
+
+	gasLimit := uint64(math.MaxUint64)
+	stateProcessor := NewStateProcessor(
+		chainCfg, chain, chain.GetCurrentNetworkRules().Upgrades,
+	)
+	transactionProcessor := stateProcessor.BeginBlock(nextBlock, stateDb, vmConfig, gasLimit, nil)
+	summary := transactionProcessor.Run(0, envelope)
+
+	// Check if the bundle lead to any accepted transactions. If so, it is
+	// a success, otherwise it is a failure.
+	for _, tx := range summary.ProcessedTransactions {
+		if tx.Receipt != nil {
+			return true
+		}
+	}
+	return false
+}
 func makeRunnableState() BundleState {
 	return BundleState{Executable: true}
 }
