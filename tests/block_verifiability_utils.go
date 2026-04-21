@@ -63,8 +63,7 @@ func VerifyBlocks(
 	// Verify all blocks by replaying them on the state-DB.
 	for i, block := range blocks {
 		receipts, err := state.ApplyBlock(
-			genesis.Rules.NetworkID,
-			genesis.Rules.Upgrades,
+			genesis.Rules,
 			block,
 		)
 		require.NoError(err, "failed to apply block %d", block.NumberU64())
@@ -79,6 +78,7 @@ func VerifyBlocks(
 		usedGas := uint64(0)
 		for _, r := range receipts {
 			usedGas += r.GasUsed
+			require.Equal(usedGas, r.CumulativeGasUsed)
 		}
 		require.Equal(block.GasUsed(), usedGas,
 			"block %d, tx %d: gas used mismatch", block.NumberU64(), i,
@@ -100,9 +100,7 @@ func VerifyBlocks(
 			WithDuration(duration).
 			WithGasLimit(block.GasLimit()).
 			WithBaseFee(block.BaseFee()).
-			WithPrevRandao(block.MixDigest())
-
-		builder.
+			WithPrevRandao(block.MixDigest()).
 			WithStateRoot(state.GetStateRoot()).
 			WithGasUsed(usedGas)
 		for i, tx := range block.Transactions() {
@@ -212,19 +210,19 @@ func (s *State) ApplyGenesis(genesis *makefakegenesis.GenesisJson) error {
 // and updating the state accordingly. It returns the receipts of the transactions
 // in the block, or an error if the block could not be processed.
 func (s *State) ApplyBlock(
-	chainId uint64,
-	upgrades opera.Upgrades,
+	rules opera.Rules,
 	block *types.Block,
 ) (types.Receipts, error) {
 
 	chainConfig := opera.CreateTransientEvmChainConfig(
-		chainId,
-		nil,
+		rules.NetworkID,
+		[]opera.UpgradeHeight{{Height: 2, Upgrades: rules.Upgrades}},
 		idx.Block(block.NumberU64()),
 	)
 
 	// In verification mode, gas subsidies are disabled to avoid introducing
 	// a second charge for sponsored transactions.
+	upgrades := rules.Upgrades
 	upgrades.GasSubsidies = false
 
 	processor := evmcore.NewStateProcessor(
@@ -248,7 +246,7 @@ func (s *State) ApplyBlock(
 
 	stateDb := evmstore.CreateCarmenStateDb(s.db, nil)
 
-	vmConfig := opera.GetVmConfig(opera.Rules{})
+	vmConfig := opera.GetVmConfig(rules)
 	gasLimit := block.GasLimit()
 
 	s.blockHashHistory.SetBlockHash(block.NumberU64()-1, block.ParentHash())
@@ -267,7 +265,7 @@ func (s *State) ApplyBlock(
 
 	if false { // Debug
 		fmt.Printf("block %d: used gas %d / %d\n", block.NumberU64(), usedGas, block.GasUsed())
-		signer := types.LatestSignerForChainID(big.NewInt(int64(chainId)))
+		signer := types.LatestSignerForChainID(big.NewInt(int64(rules.NetworkID)))
 		for _, cur := range processed {
 			from, _ := signer.Sender(cur.Transaction)
 			to := cur.Transaction.To()
