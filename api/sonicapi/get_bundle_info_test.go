@@ -18,10 +18,12 @@ package sonicapi
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -57,6 +59,9 @@ func Test_GetBundleInfo_KnownBundle_ReturnsInfo(t *testing.T) {
 			Count:  2,
 		},
 	})
+	be.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(123)).
+		Return(&evmcore.EvmBlock{}, nil)
+
 	res, err := api.GetBundleInfo(t.Context(), hash)
 	require.NoError(t, err)
 	require.NotNil(t, res)
@@ -97,4 +102,42 @@ func expectJsonEqual[T any](t testing.TB, expected string, value T) {
 		t.Logf("Actual JSON:   %s", string(encoded))
 		t.FailNow()
 	}
+}
+
+func Test_GetBundleInfo_ReturnsNilIfBlockIsNotAvailable(t *testing.T) {
+	ctr := gomock.NewController(t)
+	be := NewMockBundleApiBackend(ctr)
+	api := NewPublicBundleAPI(be)
+
+	hash := common.Hash{123}
+	be.EXPECT().GetBundleExecutionInfo(hash).Return(&bundle.ExecutionInfo{
+		BlockNumber: 123,
+		Position: bundle.PositionInBlock{
+			Offset: 1,
+			Count:  2,
+		},
+	})
+	be.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(123)).Return(nil, nil)
+	res, err := api.GetBundleInfo(t.Context(), hash)
+	require.NoError(t, err)
+	require.Nil(t, res)
+}
+
+func Test_GetBundleInfo_ReturnsErrorIfBlockReturnsError(t *testing.T) {
+	ctr := gomock.NewController(t)
+	be := NewMockBundleApiBackend(ctr)
+	api := NewPublicBundleAPI(be)
+
+	hash := common.Hash{123}
+	be.EXPECT().GetBundleExecutionInfo(hash).Return(&bundle.ExecutionInfo{
+		BlockNumber: 123,
+		Position: bundle.PositionInBlock{
+			Offset: 1,
+			Count:  2,
+		},
+	})
+	expectedErr := errors.New("some error")
+	be.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(123)).Return(nil, expectedErr)
+	_, err := api.GetBundleInfo(t.Context(), hash)
+	require.ErrorIs(t, err, expectedErr)
 }
