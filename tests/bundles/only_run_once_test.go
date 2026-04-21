@@ -47,8 +47,6 @@ func TestBundle_RunOnlyOnce_ExecutionPlanSubmittedMultipleTimesInDifferentEnvelo
 
 	senders := tests.MakeAccountsWithBalance(t, net, 2, big.NewInt(1e18))
 
-	successfulTx := types.AccessListTx{}
-
 	// This test creates multiple envelopes with the same transaction bundle
 	// of the following shape:
 	//
@@ -66,8 +64,8 @@ func TestBundle_RunOnlyOnce_ExecutionPlanSubmittedMultipleTimesInDifferentEnvelo
 	b := bundle.NewBuilder().
 		WithSigner(signer).
 		OneOf(
-			Step(t, net, senders[0], &successfulTx),
-			Step(t, net, senders[1], &successfulTx),
+			Step(t, net, senders[0], &types.AccessListTx{}),
+			Step(t, net, senders[1], &types.AccessListTx{}),
 		).BuildBundle()
 
 	// Pack the same bundle into multiple envelopes.
@@ -92,7 +90,7 @@ func TestBundle_RunOnlyOnce_ExecutionPlanSubmittedMultipleTimesInDifferentEnvelo
 	require.ErrorIs(err, ethereum.NotFound, "Got receipt A: %+v, receipt B: %+v", receiptA, receiptB)
 }
 
-func TestBundle_RunOnlyOnce_ExecutionPlanSubmittedMultipleTimesInSameBundleIsOnlyProcessedOnce(t *testing.T) {
+func TestBundle_RunOnlyOnce_NestedBundleSubmittedMultipleTimesInSameBundleIsOnlyProcessedOnce(t *testing.T) {
 	t.Parallel()
 	require := require.New(t)
 	upgrades := opera.GetBrioUpgrades()
@@ -110,8 +108,6 @@ func TestBundle_RunOnlyOnce_ExecutionPlanSubmittedMultipleTimesInSameBundleIsOnl
 
 	senders := tests.MakeAccountsWithBalance(t, net, 4, big.NewInt(1e18))
 
-	successfulTx := types.AccessListTx{}
-
 	// This test creates multiple envelopes with a transaction bundle of
 	// the following shape:
 	//
@@ -126,8 +122,8 @@ func TestBundle_RunOnlyOnce_ExecutionPlanSubmittedMultipleTimesInSameBundleIsOnl
 	innerEnvelope, innerBundle, _ := bundle.NewBuilder().
 		WithSigner(signer).
 		OneOf(
-			Step(t, net, senders[0], &successfulTx),
-			Step(t, net, senders[1], &successfulTx),
+			Step(t, net, senders[0], &types.AccessListTx{}),
+			Step(t, net, senders[1], &types.AccessListTx{}),
 		).BuildEnvelopeBundleAndPlan()
 
 	// Create execution plan running the inner bundle multiple times.
