@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -29,12 +28,7 @@ import (
 )
 
 func TestBundle_NestedBundlesCanBeExecuted(t *testing.T) {
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
-
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	net := GetIntegrationTestNetWithBundlesEnabled(t)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -47,12 +41,10 @@ func TestBundle_NestedBundlesCanBeExecuted(t *testing.T) {
 	blockNumber, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
 
-	tx := tests.SetTransactionDefaults(t, net, &types.AccessListTx{}, sender)
-
 	innerEnvelope, innerBundle, innerPlan := bundle.NewBuilder().
 		WithSigner(signer).
 		SetEarliest(blockNumber).
-		AllOf(bundle.Step(sender.PrivateKey, tx)).
+		AllOf(Step(t, net, sender, &types.AccessListTx{})).
 		BuildEnvelopeBundleAndPlan()
 
 	outerEnvelope, outerBundle, outerPlan := bundle.NewBuilder().
@@ -62,7 +54,8 @@ func TestBundle_NestedBundlesCanBeExecuted(t *testing.T) {
 		BuildEnvelopeBundleAndPlan()
 
 	// Run the bundle.
-	require.NoError(t, client.SendTransaction(t.Context(), outerEnvelope))
+	_, err = net.Send(outerEnvelope)
+	require.NoError(t, err)
 
 	// Wait for the bundle to be processed.
 	outerInfo, err := WaitForBundleExecution(t.Context(), client.Client(), outerPlan.Hash())

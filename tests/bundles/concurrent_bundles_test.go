@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/revert"
 	"github.com/ethereum/go-ethereum"
@@ -34,12 +33,7 @@ import (
 
 func TestBundles_RunBundlesInParallel(t *testing.T) {
 	// Create a list of successful and failing bundles.
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
-
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	net := GetIntegrationTestNetWithBundlesEnabled(t)
 
 	t.Run("succeeding bundles", func(t *testing.T) {
 		testSucceedingConcurrentBundles(t, net)
@@ -64,13 +58,7 @@ func testSucceedingConcurrentBundles(
 	defer client.Close()
 
 	// Create all needed accounts and endow in parallel.
-	accounts := tests.NewAccounts(N * W)
-	addresses := make([]common.Address, len(accounts))
-	for i, cur := range accounts {
-		addresses[i] = cur.Address()
-	}
-	_, err = net.EndowAccounts(addresses, big.NewInt(1e18))
-	require.NoError(err)
+	accounts := tests.MakeAccountsWithBalance(t, net, N*W, big.NewInt(1e18))
 
 	envelopes := make([]*types.Transaction, N)
 	planHashes := make([]common.Hash, N)
@@ -86,7 +74,7 @@ func testSucceedingConcurrentBundles(
 		planHashes[i] = plan.Hash()
 	}
 
-	// Submit all envelops to be processed in parallel.
+	// Submit all envelopes to be processed in parallel.
 	_, err = net.SendAll(envelopes)
 	require.NoError(err)
 
@@ -119,23 +107,14 @@ func testRandomlyFailingBundles(
 
 	require := require.New(t)
 
-	_, receipt, err := tests.DeployContract(net, revert.DeployRevert)
-	require.NoError(err)
-	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
-	revertContractAddress := receipt.ContractAddress
+	revertContractAddress := tests.MustDeployContract(t, net, revert.DeployRevert)
 
 	client, err := net.GetClient()
 	require.NoError(err)
 	defer client.Close()
 
 	// Create all needed accounts and endow in parallel.
-	accounts := tests.NewAccounts(N * W)
-	addresses := make([]common.Address, len(accounts))
-	for i, cur := range accounts {
-		addresses[i] = cur.Address()
-	}
-	_, err = net.EndowAccounts(addresses, big.NewInt(1e18))
-	require.NoError(err)
+	accounts := tests.MakeAccountsWithBalance(t, net, N*W, big.NewInt(1e18))
 
 	envelopes := make([]*types.Transaction, N)
 	planHashes := make([]common.Hash, N)

@@ -24,19 +24,13 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
-
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	net := GetIntegrationTestNetWithBundlesEnabled(t)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -156,7 +150,8 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 				BuildEnvelopeBundleAndPlan()
 
 			// Send the bundle.
-			require.NoError(t, client.SendTransaction(t.Context(), envelope))
+			_, err = net.Send(envelope)
+			require.NoError(t, err)
 
 			if c.expectRollback {
 				timeoutCtx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
@@ -193,12 +188,7 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 }
 
 func TestBundle_AllOfGroupSucceedsIfAllStepsTolerated(t *testing.T) {
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
-
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	net := GetIntegrationTestNetWithBundlesEnabled(t)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -289,7 +279,8 @@ func TestBundle_AllOfGroupSucceedsIfAllStepsTolerated(t *testing.T) {
 				BuildEnvelopeBundleAndPlan()
 
 			// Send the bundle.
-			require.NoError(t, client.SendTransaction(t.Context(), envelope))
+			_, err = net.Send(envelope)
+			require.NoError(t, err)
 
 			// Wait for the bundle to be processed.
 			info, err := WaitForBundleExecution(t.Context(), client.Client(), plan.Hash())
@@ -312,12 +303,7 @@ func TestBundle_AllOfGroupSucceedsIfAllStepsTolerated(t *testing.T) {
 }
 
 func TestBundle_OneOfGroupSucceedsOnFirstToleratedStep(t *testing.T) {
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
-
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	net := GetIntegrationTestNetWithBundlesEnabled(t)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -410,7 +396,8 @@ func TestBundle_OneOfGroupSucceedsOnFirstToleratedStep(t *testing.T) {
 				BuildEnvelopeBundleAndPlan()
 
 			// Send the bundle.
-			require.NoError(t, client.SendTransaction(t.Context(), envelope))
+			_, err = net.Send(envelope)
+			require.NoError(t, err)
 
 			if !slices.Contains(c.expectInBlock[:], true) {
 				timeoutCtx, cancel := context.WithTimeout(t.Context(), 3*time.Second)

@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -30,12 +29,7 @@ import (
 )
 
 func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
-
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	net := GetIntegrationTestNetWithBundlesEnabled(t)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -57,20 +51,14 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 		WithSigner(signer).
 		SetEarliest(block).
 		AllOf(
-			bundle.Step(
-				senderA.PrivateKey,
-				tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-					To:    &addrB,
-					Value: big.NewInt(1),
-				}, senderA),
-			),
-			bundle.Step(
-				senderB.PrivateKey,
-				tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-					To:    &addrA,
-					Value: big.NewInt(1),
-				}, senderB),
-			),
+			Step(t, net, senderA, &types.AccessListTx{
+				To:    &addrB,
+				Value: big.NewInt(1),
+			}),
+			Step(t, net, senderB, &types.AccessListTx{
+				To:    &addrA,
+				Value: big.NewInt(1),
+			}),
 		).
 		BuildEnvelopeBundleAndPlan()
 
@@ -79,7 +67,8 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	require.ErrorIs(t, err, ethereum.NotFound)
 
 	// Run the bundle.
-	require.NoError(t, client.SendTransaction(t.Context(), envelope))
+	_, err = net.Send(envelope)
+	require.NoError(t, err)
 
 	// Wait for the bundle to be processed.
 	info, err := WaitForBundleExecution(t.Context(), client.Client(), plan.Hash())

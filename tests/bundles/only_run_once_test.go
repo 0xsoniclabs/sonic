@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -30,12 +29,9 @@ import (
 )
 
 func TestBundle_RunOnlyOnce_ExecutionPlanSubmittedMultipleTimesInDifferentEnvelopesIsOnlyProcessedOnce(t *testing.T) {
-	t.Parallel()
 	require := require.New(t)
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
 
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{Upgrades: &upgrades})
+	net := GetIntegrationTestNetWithBundlesEnabled(t)
 
 	client, err := net.GetClient()
 	require.NoError(err)
@@ -102,14 +98,9 @@ func TestBundle_RunOnlyOnce_ExecutionPlanSubmittedMultipleTimesInDifferentEnvelo
 }
 
 func TestBundle_RunOnlyOnce_NestedBundleSubmittedMultipleTimesInSameBundleIsOnlyProcessedOnce(t *testing.T) {
-	t.Parallel()
 	require := require.New(t)
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
 
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	net := GetIntegrationTestNetWithBundlesEnabled(t)
 
 	client, err := net.GetClient()
 	require.NoError(err)
@@ -171,14 +162,9 @@ func TestBundle_RunOnlyOnce_NestedBundleSubmittedMultipleTimesInSameBundleIsOnly
 }
 
 func TestBundle_RunOnlyOnce_FailedGroupsCanBeRetried(t *testing.T) {
-	t.Parallel()
 	require := require.New(t)
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
 
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	net := GetIntegrationTestNetWithBundlesEnabled(t)
 
 	client, err := net.GetClient()
 	require.NoError(err)
