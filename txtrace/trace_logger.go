@@ -147,7 +147,7 @@ func (tr *TraceStructLogger) Hooks() *tracing.Hooks {
 func (tr *TraceStructLogger) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from common.Address) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Error("Tracer OnTxStart failed", r)
+			log.Error("Tracer OnTxStart failed", "error", r)
 		}
 	}()
 
@@ -167,7 +167,7 @@ func (tr *TraceStructLogger) OnTxStart(env *tracing.VMContext, tx *types.Transac
 func (tr *TraceStructLogger) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Error("Tracer OnEnter failed", r)
+			log.Error("Tracer OnEnter failed", "error", r)
 		}
 	}()
 	var (
@@ -220,7 +220,7 @@ func (tr *TraceStructLogger) OnEnter(depth int, typ byte, from common.Address, t
 func (tr *TraceStructLogger) OnExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Error("Tracer OnExit failed", r)
+			log.Error("Tracer OnExit failed", "error", r)
 		}
 	}()
 
@@ -259,7 +259,7 @@ func (tr *TraceStructLogger) OnExit(depth int, output []byte, gasUsed uint64, er
 func (tr *TraceStructLogger) OnTxEnd(receipt *types.Receipt, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Error("Tracer OnTxEnd failed", r)
+			log.Error("Tracer OnTxEnd failed", "error", r)
 		}
 	}()
 
