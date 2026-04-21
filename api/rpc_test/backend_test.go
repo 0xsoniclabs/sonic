@@ -206,3 +206,253 @@ func Test_FakeBackend_GetNetworkRules(t *testing.T) {
 		})
 	}
 }
+
+func Test_FakeBackend_BlockByNumber(t *testing.T) {
+	be := NewBackendBuilder(t).
+		WithBlockHistory([]Block{
+			{Number: 1, Hash: common.HexToHash("0x1")},
+			{Number: 2, Hash: common.HexToHash("0x2")},
+			{Number: 3, Hash: common.HexToHash("0x3")},
+		}).
+		Build()
+
+	tests := []struct {
+		name          string
+		blockNumber   rpc.BlockNumber
+		expected      uint64
+		errorContains string
+	}{
+		{name: "Latest block", blockNumber: rpc.LatestBlockNumber, expected: 3},
+		{name: "Pending block", blockNumber: rpc.PendingBlockNumber, expected: 3},
+		{name: "Safe block", blockNumber: rpc.SafeBlockNumber, expected: 3},
+		{name: "Finalized block", blockNumber: rpc.FinalizedBlockNumber, expected: 3},
+		{name: "Earliest block", blockNumber: rpc.EarliestBlockNumber, expected: 1},
+		{name: "Specific block number", blockNumber: 1, expected: 1},
+		{name: "Specific block number", blockNumber: 2, expected: 2},
+		{name: "Specific block number", blockNumber: 3, expected: 3},
+		{name: "Non-existent block number", blockNumber: 4, errorContains: "block number not found"},
+		{name: "Negative block number", blockNumber: -10, errorContains: "block number not found"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			block, err := be.BlockByNumber(t.Context(), tt.blockNumber)
+			if tt.errorContains != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errorContains)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, block)
+			require.EqualValues(t, tt.expected, block.NumberU64())
+		})
+	}
+}
+
+func Test_FakeBackend_GetReceiptsByNumber(t *testing.T) {
+
+	be := NewBackendBuilder(t).
+		WithBlockHistory([]Block{
+			{
+				Number: 1,
+				Hash:   common.HexToHash("0x1"),
+				Transactions: map[common.Hash]*Transaction{
+					common.HexToHash("0xabc"): {
+						tx: types.NewTx(
+							&types.LegacyTx{},
+						),
+						blockNumber: 2,
+						txIndex:     0,
+						receipt:     &types.Receipt{},
+					},
+					common.HexToHash("0xdef"): {
+						tx: types.NewTx(
+							&types.LegacyTx{},
+						),
+						blockNumber: 2,
+						txIndex:     0,
+						receipt:     &types.Receipt{},
+					},
+				},
+			},
+			{
+				Number: 2,
+				Hash:   common.HexToHash("0x2"),
+				Transactions: map[common.Hash]*Transaction{
+					common.HexToHash("0xijk"): {
+						tx: types.NewTx(
+							&types.LegacyTx{},
+						),
+						blockNumber: 2,
+						txIndex:     0,
+						receipt:     &types.Receipt{},
+					},
+				},
+			},
+		}).
+		Build()
+
+	tests := []struct {
+		name          string
+		blockNumber   rpc.BlockNumber
+		expectedCount int
+		errorContains string
+	}{
+		{name: "Receipts for block 1", blockNumber: 1, expectedCount: 2},
+		{name: "Receipts for block 2", blockNumber: 2, expectedCount: 1},
+		{name: "Non-existent block number", blockNumber: 3, errorContains: "block number not found"},
+		{name: "Negative block number", blockNumber: -10, errorContains: "block number not found"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			receipts, err := be.GetReceiptsByNumber(t.Context(), tt.blockNumber)
+			if tt.errorContains != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errorContains)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, receipts)
+			require.Len(t, receipts, tt.expectedCount)
+		})
+	}
+}
+
+func Test_FakeBackend_GetTransaction(t *testing.T) {
+
+	tx := types.NewTx(&types.LegacyTx{})
+
+	be := NewBackendBuilder(t).
+		WithBlockHistory([]Block{
+			{
+				Number: 2,
+				Hash:   common.HexToHash("0x1"),
+				Transactions: map[common.Hash]*Transaction{
+					tx.Hash(): {
+						tx:          tx,
+						blockNumber: 2,
+						txIndex:     0,
+						receipt:     &types.Receipt{},
+					},
+				},
+			},
+		}).
+		Build()
+
+	tests := []struct {
+		name                string
+		txHash              common.Hash
+		expectedFound       bool
+		expectedBlockNumber uint64
+		expectedTxIndex     uint64
+	}{
+		{name: "Existing transaction", txHash: tx.Hash(), expectedFound: true, expectedBlockNumber: 2, expectedTxIndex: 0},
+		{name: "Non-existent transaction", txHash: common.HexToHash("0xdef"), expectedFound: false, expectedBlockNumber: 0, expectedTxIndex: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tx, blockNr, txIndex, err := be.GetTransaction(t.Context(), tt.txHash)
+
+			if tt.expectedFound {
+				require.NoError(t, err)
+				require.NotNil(t, tx)
+				require.Equal(t, tt.expectedBlockNumber, blockNr)
+				require.Equal(t, tt.expectedTxIndex, txIndex)
+			} else {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "transaction not found")
+				require.Nil(t, tx)
+				require.Equal(t, tt.expectedBlockNumber, blockNr)
+				require.Equal(t, tt.expectedTxIndex, txIndex)
+			}
+		})
+	}
+}
+
+func Test_FakeBackend_HeaderByNumber(t *testing.T) {
+
+	be := NewBackendBuilder(t).
+		WithBlockHistory([]Block{
+			{Number: 1, Hash: common.HexToHash("0x1")},
+			{Number: 2, Hash: common.HexToHash("0x2")},
+			{Number: 3, Hash: common.HexToHash("0x3")},
+		}).
+		Build()
+
+	tests := []struct {
+		name          string
+		blockNumber   rpc.BlockNumber
+		expected      uint64
+		errorContains string
+	}{
+		{name: "Latest block", blockNumber: rpc.LatestBlockNumber, expected: 3},
+		{name: "Pending block", blockNumber: rpc.PendingBlockNumber, expected: 3},
+		{name: "Safe block", blockNumber: rpc.SafeBlockNumber, expected: 3},
+		{name: "Finalized block", blockNumber: rpc.FinalizedBlockNumber, expected: 3},
+		{name: "Earliest block", blockNumber: rpc.EarliestBlockNumber, expected: 1},
+		{name: "Specific block number", blockNumber: 1, expected: 1},
+		{name: "Specific block number", blockNumber: 2, expected: 2},
+		{name: "Specific block number", blockNumber: 3, expected: 3},
+		{name: "Non-existent block number", blockNumber: 4, errorContains: "block number not found"},
+		{name: "Negative block number", blockNumber: -10, errorContains: "block number not found"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			header, err := be.HeaderByNumber(t.Context(), tt.blockNumber)
+			if tt.errorContains != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errorContains)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, header)
+			require.EqualValues(t, tt.expected, header.Number.Uint64())
+		})
+	}
+}
+
+func Test_ToEvmHeader_BaseFee_included(t *testing.T) {
+	tests := []struct {
+		name            string
+		block           Block
+		expectedBaseFee *big.Int
+	}{
+		{
+			name: "Base fee included",
+			block: Block{
+				Number:  1,
+				Hash:    common.HexToHash("0x1"),
+				BaseFee: big.NewInt(100),
+			},
+			expectedBaseFee: big.NewInt(100),
+		},
+		{
+			name: "Base fee not included (zero)",
+			block: Block{
+				Number:  2,
+				Hash:    common.HexToHash("0x2"),
+				BaseFee: big.NewInt(0),
+			},
+			expectedBaseFee: big.NewInt(0),
+		},
+		{
+			name: "Base fee not specified (nil)",
+			block: Block{
+				Number: 2,
+				Hash:   common.HexToHash("0x2"),
+			},
+			expectedBaseFee: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			evmHeader := ToEvmHeader(tt.block)
+			require.NotNil(t, evmHeader)
+			require.Equal(t, tt.expectedBaseFee, evmHeader.BaseFee)
+		})
+	}
+}

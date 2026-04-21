@@ -66,7 +66,17 @@ type Block struct {
 	// PrevRandao is the previous block's RANDAO value.
 	// If non zero, it enables Shanghai, Cancun, Prague, and Osaka features
 	// depending on the chain config.
-	PrevRandao common.Hash
+	PrevRandao   common.Hash
+	BaseFee      *big.Int
+	Transactions map[common.Hash]*Transaction
+}
+
+// Transaction represents a transaction in the fake backend's block history.
+type Transaction struct {
+	tx          *types.Transaction
+	blockNumber uint64
+	txIndex     uint64
+	receipt     *types.Receipt
 }
 
 type backendBuilder struct {
@@ -236,21 +246,11 @@ func (b *fakeBackend) GetEVM(
 
 func (b *fakeBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmHeader, error) {
 
-	if number == rpc.LatestBlockNumber ||
-		number == rpc.PendingBlockNumber ||
-		number == rpc.FinalizedBlockNumber ||
-		number == rpc.SafeBlockNumber {
-
-		block := b.blockHistory[len(b.blockHistory)-1]
-		return ToEvmHeader(block), nil
+	block, err := b.blockByNumber(number)
+	if err != nil {
+		return nil, err
 	}
-	n := number.Int64()
-	for _, block := range b.blockHistory {
-		if int64(block.Number) == n {
-			return ToEvmHeader(block), nil
-		}
-	}
-	return nil, errors.New("block header not found")
+	return ToEvmHeader(*block), nil
 }
 
 func (b *fakeBackend) HeaderByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmHeader, error) {
@@ -263,12 +263,15 @@ func (b *fakeBackend) HeaderByHash(ctx context.Context, hash common.Hash) (*evmc
 }
 
 func (b *fakeBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmBlock, error) {
-	header, err := b.HeaderByNumber(ctx, number)
+
+	block, err := b.blockByNumber(number)
 	if err != nil {
 		return nil, err
 	}
+	header := ToEvmHeader(*block)
 	return &evmcore.EvmBlock{
-		EvmHeader: *header,
+		EvmHeader:    *header,
+		Transactions: getBlockTransactions(block),
 	}, nil
 }
 
@@ -382,6 +385,65 @@ func (b *fakeBackend) UnprotectedAllowed() bool {
 // GetBundleExecutionInfo returns nil — not used in fake backend tests.
 func (b *fakeBackend) GetBundleExecutionInfo(_ common.Hash) *bundle.ExecutionInfo {
 	panic("not implemented")
+}
+
+// GetTransaction looks up a transaction by its hash in the fake backend's block history,
+// returning the transaction, the block number it was included in, and its index within that block.
+//
+// If the transaction is not found in any block, it returns an error.
+func (b *fakeBackend) GetTransaction(ctx context.Context, hash common.Hash) (*types.Transaction, uint64, uint64, error) {
+	for _, block := range b.blockHistory {
+		for _, tx := range block.Transactions {
+			if tx.tx.Hash() == hash {
+				return tx.tx, block.Number, tx.txIndex, nil
+			}
+		}
+	}
+	return nil, 0, 0, errors.New("transaction not found")
+}
+
+// GetReceiptsByNumber looks up a block by its number in the fake backend's block history,
+// and returns the receipts of all transactions included in that block.
+//
+// If the block is not found, it returns an error.
+func (b *fakeBackend) GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error) {
+	block, err := b.blockByNumber(number)
+	if err != nil {
+		return nil, err
+	}
+
+	receipts := make(types.Receipts, 0, len(block.Transactions))
+	for _, tx := range block.Transactions {
+		receipts = append(receipts, tx.receipt)
+	}
+	return receipts, nil
+}
+
+// blockByNumber is a helper function that looks up a block by its number in the fake backend's block history.
+func (b *fakeBackend) blockByNumber(rpcNumber rpc.BlockNumber) (*Block, error) {
+	switch rpcNumber {
+	case rpc.LatestBlockNumber, rpc.PendingBlockNumber, rpc.FinalizedBlockNumber, rpc.SafeBlockNumber:
+		return &b.blockHistory[len(b.blockHistory)-1], nil
+	case rpc.EarliestBlockNumber:
+		return &b.blockHistory[0], nil
+	default:
+		n := rpcNumber.Int64()
+		for _, block := range b.blockHistory {
+			if int64(block.Number) == n {
+				return &block, nil
+			}
+		}
+		return nil, errors.New("block number not found")
+	}
+}
+
+// getBlockTransactions is a helper function that extracts the transactions from a given block in the fake backend's block history.
+func getBlockTransactions(block *Block) types.Transactions {
+	var txs types.Transactions
+	for _, tx := range block.Transactions {
+		txs = append(txs, tx.tx)
+	}
+	return txs
 }
 
 // TxPool is a minimal interface for the transaction pool, only including the methods needed for testing.

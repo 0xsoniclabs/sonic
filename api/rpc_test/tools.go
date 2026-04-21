@@ -87,6 +87,7 @@ func ToEvmHeader(block Block) *evmcore.EvmHeader {
 		Hash:       block.Hash,
 		ParentHash: block.ParentHash,
 		PrevRandao: block.PrevRandao,
+		BaseFee:    block.BaseFee,
 	}
 }
 
