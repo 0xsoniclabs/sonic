@@ -373,6 +373,9 @@ func (callTrace *CallTrace) lastTrace() *ActionTrace {
 // processTraces initiates final information distribution
 // accros result traces
 func (callTrace *CallTrace) processTraces() {
+	if len(callTrace.Actions) == 0 {
+		return
+	}
 	trace := &callTrace.Actions[len(callTrace.Actions)-1]
 	callTrace.processTrace(trace, []uint32{})
 }
