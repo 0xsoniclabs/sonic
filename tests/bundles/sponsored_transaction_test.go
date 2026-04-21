@@ -51,12 +51,6 @@ func TestBundle_SponsoredTransactionsAreAcceptedAndExecuted(t *testing.T) {
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 	counterAddr := receipt.ContractAddress
 
-	// Build the ABI call data for incrementCounter().
-	counterABI, err := counter.CounterMetaData.GetAbi()
-	require.NoError(t, err)
-	incrementData, err := counterABI.Pack("incrementCounter")
-	require.NoError(t, err)
-
 	// Create a sponsored sender and fund its sponsorship.
 	sponsoredSender := tests.NewAccount()
 	gas_subsidies.Fund(t, net, sponsoredSender.Address(), big.NewInt(1e18))
@@ -67,7 +61,7 @@ func TestBundle_SponsoredTransactionsAreAcceptedAndExecuted(t *testing.T) {
 	// Build the sponsored transaction data with gas price = 0.
 	sponsoredTxData0 := tests.SetTransactionDefaults(t, net, &types.AccessListTx{
 		To:   &counterAddr,
-		Data: incrementData,
+		Data: tests.MustGetMethodParameters(t, counter.CounterMetaData, "incrementCounter"),
 		Gas:  50_000,
 	}, sponsoredSender)
 	sponsoredTxData0.GasPrice = big.NewInt(0)
@@ -140,15 +134,6 @@ func TestBundle_RevertedBundleDoesNotConsumeSponsoredFunds(t *testing.T) {
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 	counterAddr := receipt.ContractAddress
 
-	// Build the ABI call data for incrementCounter().
-	counterABI, err := counter.CounterMetaData.GetAbi()
-	require.NoError(t, err)
-	incrementData, err := counterABI.Pack("incrementCounter")
-	require.NoError(t, err)
-
-	// Deploy the revert contract and get the call parameters for the method that reverts.
-	revertAddress, revertInput := tests.MustDeployRevertContractAndGetMethodCallParameters(t, net)
-
 	// Create a sponsored sender and fund its sponsorship.
 	sponsoredSender := tests.NewAccount()
 	fundsForOneExecution := big.NewInt(5e15)
@@ -163,7 +148,7 @@ func TestBundle_RevertedBundleDoesNotConsumeSponsoredFunds(t *testing.T) {
 	// Build the sponsored transaction data with gas price = 0.
 	sponsoredTxData := tests.SetTransactionDefaults(t, net, &types.AccessListTx{
 		To:   &counterAddr,
-		Data: incrementData,
+		Data: tests.MustGetMethodParameters(t, counter.CounterMetaData, "incrementCounter"),
 		Gas:  50_000,
 	}, sponsoredSender)
 	sponsoredTxData.GasPrice = big.NewInt(0)
@@ -177,14 +162,8 @@ func TestBundle_RevertedBundleDoesNotConsumeSponsoredFunds(t *testing.T) {
 				sponsoredSender.PrivateKey,
 				sponsoredTxData,
 			),
-			bundle.Step(
-				sender.PrivateKey,
-				tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-					To:   &revertAddress,
-					Gas:  100_000,
-					Data: revertInput,
-				}, sender),
-			),
+			// This transaction will revert due to insufficient gas
+			Step(t, net, sender, &types.AccessListTx{Gas: 1}),
 		).
 		BuildEnvelopeBundleAndPlan()
 
