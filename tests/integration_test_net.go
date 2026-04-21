@@ -186,6 +186,13 @@ type IntegrationTestNetOptions struct {
 	// SkipCleanUp indicates whether the network should add its stop function
 	// to t.Cleanup or not.
 	SkipCleanUp bool
+	// Shareable indicates that this network may be shared with other tests
+	// that have the same configuration. When set to true, the network pool
+	// will return a reference to an existing network with matching
+	// configuration rather than creating a new one. Only use this for
+	// tests that do not mutate global network state (e.g. no Restart,
+	// AdvanceEpoch, UpdateNetworkRules, or Stop calls).
+	Shareable bool
 }
 
 // IntegrationTestNet is a in-process test network for integration tests. When
@@ -213,6 +220,10 @@ type IntegrationTestNet struct {
 	genesis   *makefakegenesis.GenesisJson
 	genesisId common.Hash
 	nodes     []integrationTestNode
+	// directory is the top-level temporary directory containing all node
+	// data. It is set during network creation and removed when the last
+	// reference to the network is released.
+	directory string
 
 	sessionsMutex sync.Mutex
 	Session
@@ -294,14 +305,48 @@ func startHeapProfiler(tb testing.TB) {
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-// StartIntegrationTestNet starts a single-node test network for integration tests.
-// The node serving the network is started in the same process as the caller. This
-// is intended to facilitate debugging of client code in the context of a running
-// node.
+// StartIntegrationTestNet starts a dedicated test network for integration
+// tests. By default each caller gets its own exclusive network instance.
+// Set Shareable: true in the options to opt in to the reference-counted
+// pool, which reuses networks with identical configuration across tests
+// and only stops them when the last user's test ends. Options that use
+// ModifyConfig or Accounts are never shareable even if Shareable is set.
 //
 // The network start procedure will create a temporary directory and populate with
 // a network genesis block. To retrieve the directory path, use the GetDirectory.
 func StartIntegrationTestNet(
+	t testing.TB,
+	options ...IntegrationTestNetOptions,
+) *IntegrationTestNet {
+	t.Helper()
+
+	var opts IntegrationTestNetOptions
+	if len(options) > 0 {
+		opts = options[0]
+	}
+
+	if !isShareable(opts) {
+		return newIntegrationTestNet(t, opts)
+	}
+
+	// Force SkipCleanUp because the pool manages the lifecycle.
+	opts.SkipCleanUp = true
+	key := hashOptions(opts)
+
+	if net := globalNetworkPool.acquire(key); net != nil {
+		t.Cleanup(func() { globalNetworkPool.release(key) })
+		return net
+	}
+
+	net := newIntegrationTestNet(t, opts)
+	globalNetworkPool.register(key, net)
+	t.Cleanup(func() { globalNetworkPool.release(key) })
+	return net
+}
+
+// newIntegrationTestNet always creates a fresh network using JSON genesis.
+// This is the underlying constructor used by StartIntegrationTestNet.
+func newIntegrationTestNet(
 	t testing.TB,
 	options ...IntegrationTestNetOptions,
 ) *IntegrationTestNet {
@@ -404,7 +449,8 @@ func startIntegrationTestNet(
 ) (*IntegrationTestNet, error) {
 
 	net := &IntegrationTestNet{
-		options: options,
+		options:   options,
+		directory: directory,
 		Session: Session{
 			account: Account{evmcore.FakeKey(1)},
 		},
@@ -438,7 +484,10 @@ func startIntegrationTestNet(
 	require.NoError(t, net.start(), "failed to start the integration test network")
 
 	if !options.SkipCleanUp {
-		t.Cleanup(net.Stop)
+		t.Cleanup(func() {
+			net.Stop()
+			net.removeDirectory()
+		})
 	}
 	return net, nil
 }
@@ -701,7 +750,18 @@ func (n *IntegrationTestNet) Stop() {
 	for i := range n.nodes {
 		n.nodes[i].clients = nil
 	}
+}
 
+// removeDirectory removes the top-level temporary directory containing node
+// data and genesis files. This is separated from Stop so that callers like
+// Restart or sonictool tests can stop the network and still access the data
+// directory afterwards. The per-node /tmp/sonic_integration_test_* directories
+// (used for IPC sockets and config) are already cleaned by their respective
+// goroutines via defer.
+func (n *IntegrationTestNet) removeDirectory() {
+	if n.directory != "" {
+		_ = os.RemoveAll(n.directory)
+	}
 }
 
 // Restart stops and restarts the single node on the test network.
