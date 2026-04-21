@@ -109,6 +109,7 @@ func getBundleState(
 	// the bundle. This is a quicker check than actually running the bundle in
 	// full to determine whether it can succeed or not.
 	stateDb := chain.StateDB()
+	defer stateDb.Release()
 	state := checkForNonceConflicts(bundle, signer, stateDb)
 	if !state.Executable {
 		return state
@@ -144,7 +145,9 @@ type ChainState interface {
 	GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig
 
 	// StateDB returns a context for running transactions on the head state of
-	// the chain. A non-committable state-DB instance is sufficient.
+	// the chain. A non-committable state-DB instance is sufficient. The user
+	// takes ownership of the returned StateDB and is responsible for releasing
+	// it when it is no longer needed.
 	StateDB() state.StateDB
 
 	// GetLatestHeader returns the latest block header of the chain.

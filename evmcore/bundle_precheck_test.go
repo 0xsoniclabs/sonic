@@ -136,7 +136,8 @@ func Test_GetBundleState_FailedTrialRun_ReturnsNonExecutable(t *testing.T) {
 		NetworkID: 1,
 		Upgrades:  opera.Upgrades{TransactionBundles: true},
 	}).AnyTimes()
-	chainState.EXPECT().StateDB().Return(stateDb).AnyTimes()
+	chainState.EXPECT().StateDB().Return(stateDb)
+	stateDb.EXPECT().Release()
 
 	envelope := bundle.NewBuilder().
 		SetEarliest(currentBlock - 5).
@@ -167,7 +168,8 @@ func Test_GetBundleState_ValidBundle_ReturnsRunnable(t *testing.T) {
 		NetworkID: 1,
 		Upgrades:  opera.Upgrades{TransactionBundles: true},
 	}).AnyTimes()
-	chainState.EXPECT().StateDB().Return(stateDb).AnyTimes()
+	chainState.EXPECT().StateDB().Return(stateDb)
+	stateDb.EXPECT().Release()
 
 	// Build a bundle with a valid block window.
 	envelope := bundle.NewBuilder().
@@ -238,7 +240,8 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 				NetworkID: 1,
 				Upgrades:  opera.Upgrades{TransactionBundles: true},
 			}).AnyTimes()
-			chainState.EXPECT().StateDB().Return(db).AnyTimes()
+			chainState.EXPECT().StateDB().Return(db)
+			db.EXPECT().Release()
 
 			chainId := big.NewInt(1)
 			signer := types.LatestSignerForChainID(chainId)
