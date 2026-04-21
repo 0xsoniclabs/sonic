@@ -241,7 +241,7 @@ func (em *Emitter) isValidBundleTx(tx *types.Transaction) bool {
 
 func (em *Emitter) isRunnableBundleTxInternal(
 	tx *types.Transaction,
-	getBundleState func(evmcore.ChainState, *types.Transaction) evmcore.BundleState,
+	getBundleState func(evmcore.ChainStateForBundleEval, *types.Transaction) evmcore.BundleState,
 ) bool {
 	// Ignore if bundled transactions are not enabled.
 	if !em.world.GetRules().Upgrades.TransactionBundles {

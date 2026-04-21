@@ -31,6 +31,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
+	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -3226,4 +3227,45 @@ func collectAllReferencedTransactionNonces(
 		res = append(res, int(tx.Nonce()))
 	}
 	return res
+}
+
+func TestNewTransactionProcessorForBlock_ConfiguresTransactionProcessorWithValuesFromParameters(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+
+	block := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number: big.NewInt(123),
+		},
+	}
+
+	chainCfg := &params.ChainConfig{
+		ChainID: big.NewInt(456),
+	}
+	currentRules := opera.Rules{
+		Name: "unit-test-net",
+		Upgrades: opera.Upgrades{
+			Berlin: true,
+			Brio:   true,
+		},
+	}
+
+	chain := NewMockChainState(ctrl)
+	chain.EXPECT().GetEvmChainConfig(idx.Block(block.Number.Uint64())).Return(chainCfg)
+	chain.EXPECT().GetCurrentNetworkRules().Return(currentRules).AnyTimes()
+
+	state := state.NewMockStateDB(ctrl)
+
+	processor := NewTransactionProcessorForBlock(chain, state, block)
+
+	require.Equal(block.Number, processor.blockNumber)
+	require.NotNil(processor.gp)
+	require.Equal(uint64(math.MaxUint64), processor.gp.Gas())
+	require.Equal(block.Header(), processor.header)
+	require.Nil(processor.onNewLog)
+	require.Equal(types.LatestSignerForChainID(chainCfg.ChainID), processor.signer)
+	require.Equal(state, processor.stateDb)
+	require.EqualValues(0, processor.usedGas)
+	require.NotNil(processor.vmEnvironment)
+	require.Equal(currentRules.Upgrades, processor.upgrades)
 }

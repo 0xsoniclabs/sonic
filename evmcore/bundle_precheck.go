@@ -24,11 +24,8 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	state "github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	params "github.com/ethereum/go-ethereum/params"
 )
 
 //go:generate mockgen -source=bundle_precheck.go -destination=bundle_precheck_mock.go -package=evmcore
@@ -69,7 +66,7 @@ type BundleState struct {
 // GetBundleState determines the state of the bundle based on the current state
 // of the blockchain and the transactions in the bundle.
 func GetBundleState(
-	chain ChainState,
+	chain ChainStateForBundleEval,
 	envelope *types.Transaction,
 ) BundleState {
 	return getBundleState(chain, envelope, trialRunBundle)
@@ -78,9 +75,9 @@ func GetBundleState(
 // getBundleState is the internal version of GetBundleState, allowing to inject
 // a custom trial-run function to simplify testing.
 func getBundleState(
-	chain ChainState,
+	chain ChainStateForBundleEval,
 	envelope *types.Transaction,
-	trialRunner func(*types.Transaction, ChainState, state.StateDB) bool,
+	trialRunner func(*types.Transaction, ChainStateForBundleEval, state.StateDB) bool,
 ) BundleState {
 	chainId := big.NewInt(int64(chain.GetCurrentNetworkRules().NetworkID))
 	signer := types.LatestSignerForChainID(chainId)
@@ -133,16 +130,10 @@ func getBundleState(
 	return makeRunnableState()
 }
 
-type ChainState interface {
-	// DummyChain needs to be implemented in order to resolve past block hashes.
-	DummyChain
-
-	// GetCurrentNetworkRules returns the current network rules for the EVM.
-	GetCurrentNetworkRules() opera.Rules
-
-	// GetEvmChainConfig returns the chain configuration for the EVM at the
-	// given block height
-	GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig
+// ChainStateForBundleEval is an extension of the ChainState interface providing
+// extra chain state information for trial-running bundles.
+type ChainStateForBundleEval interface {
+	ChainState
 
 	// StateDB returns a context for running transactions on the head state of
 	// the chain. A non-committable state-DB instance is sufficient. The user
@@ -346,7 +337,7 @@ func (t *nonceTracker) restore(backup *nonceTracker) {
 
 func trialRunBundle(
 	envelope *types.Transaction,
-	chain ChainState,
+	chain ChainStateForBundleEval,
 	stateDb state.StateDB,
 ) bool {
 	// TODO: implement the actual trial-run logic, which should attempt to

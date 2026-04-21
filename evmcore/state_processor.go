@@ -18,8 +18,10 @@ package evmcore
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -576,6 +578,46 @@ func (e evm) _runTransaction(
 		return ProcessedTransaction{Transaction: tx}
 	}
 	return ProcessedTransaction{Transaction: tx, Receipt: receipt}
+}
+
+// ---
+
+// ChainState provides access to the chain state retained by the client required
+// for test-running transactions.
+type ChainState interface {
+	// DummyChain needs to be implemented in order to resolve past block hashes.
+	// TODO: follow-up task - simplify this to a GetBlockHash(idx.Block) method.
+	DummyChain
+
+	// GetCurrentNetworkRules returns the current network rules for the EVM.
+	GetCurrentNetworkRules() opera.Rules
+
+	// GetEvmChainConfig returns the chain configuration for the EVM at the
+	// given block height
+	GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig
+}
+
+// NewTransactionProcessorForBlock creates a new transaction processor to be used
+// for trial-running transaction sequences (e.g. in the emitter) in the context
+// of the given block.
+func NewTransactionProcessorForBlock(
+	chain ChainState,
+	state state.StateDB,
+	block *EvmBlock,
+) *TransactionProcessor {
+	// TODO: follow-up task - align this with c_block_callbacks.go
+	// see https://github.com/0xsoniclabs/sonic-admin/issues/227
+	chainCfg := chain.GetEvmChainConfig(idx.Block(block.Header().Number.Uint64()))
+	vmConfig := opera.GetVmConfig(chain.GetCurrentNetworkRules())
+
+	// The gas limit for transactions is enforced on a per-transaction level
+	// in the scheduler. See the scheduler.Schedule method for details. The
+	// total gas used for attempting to schedule transactions is not limited.
+	gasLimit := uint64(math.MaxUint64)
+	stateProcessor := NewStateProcessor(
+		chainCfg, chain, chain.GetCurrentNetworkRules().Upgrades,
+	)
+	return stateProcessor.BeginBlock(block, state, vmConfig, gasLimit, nil)
 }
 
 // BeginBlock starts the processing of a new block and returns a function to
