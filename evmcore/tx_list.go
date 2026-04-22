@@ -195,9 +195,9 @@ func (m *txSortedMap) Remove(nonce uint64) bool {
 	return true
 }
 
-// Ready pops a contiguous run of transactions whose nonces begin at start and
-// are sequentially increasing, returning them for promotion from the queued
-// list into the pending list. Each candidate is passed through isExecutable;
+// Ready pops a contiguous list of transactions with incremental nonces,
+// returning them for promotion from the queued list into the pending list.
+// Each candidate is passed through isExecutable;
 // the run stops at the first transaction that returns false. This gate is
 // used to keep bundle envelope transactions in the queue when a trial-run
 // against the current state shows they are not yet executable (e.g. an
@@ -426,26 +426,25 @@ func (l *txList) Filter(
 	// If the list was strict, filter anything above the lowest nonce
 	var invalids types.Transactions
 	if l.strict {
-		maxExecutableNonce := uint64(math.MaxUint64)
+		firstInvalidNonce := uint64(math.MaxUint64)
 		for _, tx := range removed {
-			maxExecutableNonce = min(maxExecutableNonce, tx.Nonce())
+			firstInvalidNonce = min(firstInvalidNonce, tx.Nonce())
 		}
 
-		// invalidate any pending bundle with nonce less than the
-		// nonce of any removed transaction which is temporarily blocked
+		// bundles with valid nonces but non-pending status are also invalidated
 		invalidBundles := l.txs.filter(func(tx *types.Transaction) bool {
 			return bundle.IsEnvelope(tx) &&
-				tx.Nonce() < maxExecutableNonce &&
+				tx.Nonce() < firstInvalidNonce &&
 				evaluateBundleStatus(tx) == bundleQueued
 		})
 		for _, tx := range invalidBundles {
-			maxExecutableNonce = min(maxExecutableNonce, tx.Nonce())
+			firstInvalidNonce = min(firstInvalidNonce, tx.Nonce())
 		}
 
 		// invalidate any transaction with nonce greater than any
 		// removed transaction
 		invalids = l.txs.filter(func(tx *types.Transaction) bool {
-			return tx.Nonce() > maxExecutableNonce
+			return tx.Nonce() > firstInvalidNonce
 		})
 
 		// invalids are to be demoted from pending to queued, and therefore

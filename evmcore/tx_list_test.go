@@ -406,7 +406,7 @@ func TestTxList_Filter_RemovesAndInvalidatesTransactions(t *testing.T) {
 	}
 }
 
-func TestTxList_Filter_ShortCircuitIfAllTransacitonsAreBellowThresshold(t *testing.T) {
+func TestTxList_Filter_ShortCircuitIfAllTransactionsAreBelowThreshold(t *testing.T) {
 	require := require.New(t)
 	key, err := crypto.GenerateKey()
 	require.NoError(err)
