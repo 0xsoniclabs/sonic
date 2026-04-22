@@ -79,10 +79,16 @@ func TestBundle_RunOnlyOnce_ExecutionPlanSubmittedMultipleTimesInDifferentEnvelo
 	}
 
 	// Submit the same bundle multiple times using different envelopes.
-	sentHashes, _, err := net.TrySendAll(envelopes)
+	sentHashes, rejected, err := net.TrySendAll(envelopes)
 	require.NoError(err)
-	require.GreaterOrEqual(len(sentHashes), 2,
-		"For this test to be meanigfull, at least 2 envelopes should have been accepted for processing simultaneously")
+	acceptedCount := 0
+	for _, hash := range sentHashes {
+		if hash != (common.Hash{}) {
+			acceptedCount++
+		}
+	}
+	require.GreaterOrEqual(acceptedCount, 2,
+		"For this test to be meaningful, at least 2 envelopes should have been accepted for processing simultaneously; rejected=%v", rejected)
 
 	bundleTxs := b.GetTransactionsInReferencedOrder()
 

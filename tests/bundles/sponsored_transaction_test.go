@@ -166,12 +166,11 @@ func TestBundle_RevertedBundleDoesNotConsumeSponsoredFunds(t *testing.T) {
 				// This transaction will revert due to insufficient gas
 				Step(t, net, senders[0], &types.AccessListTx{Gas: 1}),
 			),
-			// this transaction makes sure that the bundle yields results
-			// even if the inner group is reverted
+			// This fallback transaction ensures the bundle as a whole is still executable,
+			// so the test verifies that only the sponsored transaction's group is reverted,
+			// not the entire bundle.
 			Step(t, net, senders[1], &types.AccessListTx{}),
 		).
-		// AllOf(
-		// ).
 		BuildEnvelopeBundleAndPlan()
 
 	// Run the bundle.
