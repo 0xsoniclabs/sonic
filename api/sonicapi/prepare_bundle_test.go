@@ -336,7 +336,7 @@ func Test_asTransaction_UnsupportedTypes_ReturnsError(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := asTransaction(tc.msg)
+			_, err := asTransaction(ethapi.TransactionArgs{}, tc.msg)
 			require.ErrorContains(t, err, tc.wantErr)
 		})
 	}
@@ -344,15 +344,18 @@ func Test_asTransaction_UnsupportedTypes_ReturnsError(t *testing.T) {
 
 func Test_asTransaction_TxType(t *testing.T) {
 	to := common.Address{2}
+	maxFee := rpctest.ToHexBigInt(big.NewInt(1e9))
+	gasPrice := rpctest.ToHexBigInt(big.NewInt(1e9))
 
 	tests := []struct {
-		name          string
-		msg           *core.Message
-		wantType      int
-		errorContains string
+		name     string
+		args     ethapi.TransactionArgs
+		msg      *core.Message
+		wantType int
 	}{
 		{
-			name: "nil gas price returns dynamic fee tx",
+			name: "MaxFeePerGas set returns dynamic fee tx",
+			args: ethapi.TransactionArgs{MaxFeePerGas: maxFee},
 			msg: &core.Message{
 				To:        &to,
 				GasLimit:  params.TxGas,
@@ -363,58 +366,27 @@ func Test_asTransaction_TxType(t *testing.T) {
 			wantType: types.DynamicFeeTxType,
 		},
 		{
-			name: "zero gas price with gas fee cap returns dynamic fee tx",
-			msg: &core.Message{
-				To:        &to,
-				GasPrice:  big.NewInt(0),
-				GasFeeCap: big.NewInt(1),
-				GasLimit:  params.TxGas,
-				Value:     big.NewInt(0),
-			},
-			wantType: types.DynamicFeeTxType,
-		},
-		{
-			name: "zero gas price with gas tip cap returns dynamic fee tx",
-			msg: &core.Message{
-				To:        &to,
-				GasPrice:  big.NewInt(0),
-				GasTipCap: big.NewInt(1),
-				GasLimit:  params.TxGas,
-				Value:     big.NewInt(0),
-			},
-			wantType: types.DynamicFeeTxType,
-		},
-		{
-			name: "positive gas price returns access list tx",
-			msg: &core.Message{
-				To:       &to,
-				GasPrice: big.NewInt(1e9),
-				GasLimit: params.TxGas,
-				Value:    big.NewInt(0),
-			},
-			wantType: types.AccessListTxType,
-		},
-		{
-			name: "positive gas price and gas fee cap returns dynamic fee tx",
+			// ToMessage normalizes legacy txs: GasFeeCap = GasTipCap = GasPrice.
+			// asTransaction must still produce AccessListTx based on args, not message fields.
+			name: "GasPrice only returns access list tx even when ToMessage sets GasFeeCap",
+			args: ethapi.TransactionArgs{GasPrice: gasPrice},
 			msg: &core.Message{
 				To:        &to,
 				GasPrice:  big.NewInt(1e9),
 				GasFeeCap: big.NewInt(1e9),
+				GasTipCap: big.NewInt(1e9),
+				GasLimit:  params.TxGas,
 				Value:     big.NewInt(0),
 			},
-			errorContains: "cannot set both gas price",
+			wantType: types.AccessListTxType,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			tx, err := asTransaction(tc.msg)
-			if tc.errorContains != "" {
-				require.ErrorContains(t, err, tc.errorContains)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tc.wantType, int(tx.Type()))
-			}
+			tx, err := asTransaction(tc.args, tc.msg)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantType, int(tx.Type()))
 		})
 	}
 }
@@ -422,6 +394,7 @@ func Test_asTransaction_TxType(t *testing.T) {
 func Test_asTransaction_PreservesFields(t *testing.T) {
 	to := common.Address{0xde}
 	accessList := types.AccessList{{Address: common.Address{0xaa}}}
+	args := ethapi.TransactionArgs{MaxFeePerGas: rpctest.ToHexBigInt(big.NewInt(2e9))}
 	msg := &core.Message{
 		To:         &to,
 		Nonce:      7,
@@ -432,7 +405,7 @@ func Test_asTransaction_PreservesFields(t *testing.T) {
 		Data:       []byte{0x01, 0x02},
 		AccessList: accessList,
 	}
-	tx, err := asTransaction(msg)
+	tx, err := asTransaction(args, msg)
 	require.NoError(t, err)
 	require.Equal(t, to, *tx.To())
 	require.EqualValues(t, 7, tx.Nonce())

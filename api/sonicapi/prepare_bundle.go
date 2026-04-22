@@ -199,6 +199,7 @@ type prepareBundleBuilder struct {
 	signer     types.Signer
 }
 
+// buildStep builds an ExecutionStep from the current PrepareBundleEntry, dispatching to buildTxStep or buildGroupStep as appropriate.
 func (b *prepareBundleBuilder) buildStep(step PrepareBundleEntry) (bundle.ExecutionStep, error) {
 	if step.Tx != nil {
 		return b.buildTxStep(step.Tx)
@@ -206,6 +207,7 @@ func (b *prepareBundleBuilder) buildStep(step PrepareBundleEntry) (bundle.Execut
 	return b.buildGroupStep(step.Group)
 }
 
+// buildTxStep converts the TransactionArgs at the current cursor position into a TxStep, then advances the cursor.
 func (b *prepareBundleBuilder) buildTxStep(tx *PrepareBundleTxStep) (bundle.ExecutionStep, error) {
 	idx := b.cursor
 	txArgs := b.flatTxArgs[idx]
@@ -220,7 +222,7 @@ func (b *prepareBundleBuilder) buildTxStep(tx *PrepareBundleTxStep) (bundle.Exec
 		return bundle.ExecutionStep{}, fmt.Errorf("failed to prepare bundle: transaction %d conversion error: %w", idx, err)
 	}
 
-	bundleTx, err := asTransaction(msg)
+	bundleTx, err := asTransaction(txArgs, msg)
 	if err != nil {
 		return bundle.ExecutionStep{}, fmt.Errorf("failed to prepare bundle: transaction %d conversion error: %w", idx, err)
 	}
@@ -345,14 +347,9 @@ func injectPlanHashIntoAccessLists(txs []ethapi.TransactionArgs, planHash common
 }
 
 // asTransaction converts a Message to a Transaction, rejecting blob and set-code types.
-func asTransaction(msg *core.Message) (*types.Transaction, error) {
-
-	feecapSet := msg.GasFeeCap != nil && msg.GasFeeCap.Sign() > 0
-	tipcapSet := msg.GasTipCap != nil && msg.GasTipCap.Sign() > 0
-	if msg.GasPrice != nil && msg.GasPrice.Sign() != 0 && (feecapSet || tipcapSet) {
-		return nil, fmt.Errorf("cannot set both gas price and gas fee cap or gas tip cap")
-	}
-
+// args is used to determine the tx type: MaxFeePerGas present → DynamicFee, else AccessList.
+// Conflict validation (GasPrice + MaxFeePerGas) is handled by TransactionArgs.ToMessage.
+func asTransaction(args ethapi.TransactionArgs, msg *core.Message) (*types.Transaction, error) {
 	if len(msg.BlobHashes) != 0 || msg.BlobGasFeeCap != nil {
 		return nil, fmt.Errorf("blob transactions are not supported in bundles")
 	}
@@ -360,8 +357,7 @@ func asTransaction(msg *core.Message) (*types.Transaction, error) {
 		return nil, fmt.Errorf("transactions with set code authorization are not supported in bundles")
 	}
 
-	if msg.GasPrice == nil || msg.GasPrice.Sign() == 0 {
-		// use dynamic fee transaction
+	if args.MaxFeePerGas != nil {
 		return types.NewTx(&types.DynamicFeeTx{
 			To:         msg.To,
 			Nonce:      msg.Nonce,
@@ -372,18 +368,16 @@ func asTransaction(msg *core.Message) (*types.Transaction, error) {
 			Data:       msg.Data,
 			AccessList: msg.AccessList,
 		}), nil
-	} else {
-		// use access list transaction
-		return types.NewTx(&types.AccessListTx{
-			To:         msg.To,
-			Nonce:      msg.Nonce,
-			Gas:        msg.GasLimit,
-			GasPrice:   msg.GasPrice,
-			Value:      msg.Value,
-			Data:       msg.Data,
-			AccessList: msg.AccessList,
-		}), nil
 	}
+	return types.NewTx(&types.AccessListTx{
+		To:         msg.To,
+		Nonce:      msg.Nonce,
+		Gas:        msg.GasLimit,
+		GasPrice:   msg.GasPrice,
+		Value:      msg.Value,
+		Data:       msg.Data,
+		AccessList: msg.AccessList,
+	}), nil
 }
 
 // suggestGasPrice returns the suggested gas price based on the current block's base fee.
