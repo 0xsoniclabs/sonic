@@ -221,6 +221,12 @@ func Test_resolveBlockRange(t *testing.T) {
 			errorContains: "invalid block range",
 		},
 		{
+			name:          "latest before implicit earliest from current block",
+			currentBlock:  10,
+			latest:        hexN(5),
+			errorContains: "invalid block range",
+		},
+		{
 			name:          "greater than Max block range",
 			currentBlock:  100,
 			earliest:      hexN(50),
@@ -531,7 +537,6 @@ func Test_PrepareBundle_AccessListContainsConsistentPlanHash(t *testing.T) {
 	for i, tx := range result.Transactions {
 		require.NotNil(t, tx.AccessList)
 		for _, entry := range *tx.AccessList {
-			require.NotNil(t, entry.Address)
 			if entry.Address == bundle.BundleOnly {
 				require.Len(t, entry.StorageKeys, 1)
 				if i == 0 {
