@@ -23,6 +23,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/sonic/tests/contracts/add"
 	"github.com/0xsoniclabs/sonic/tests/contracts/store"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -111,54 +112,75 @@ func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	// Deploy the store contract.
-	storeAddr := tests.MustDeployContract(t, net, store.DeployStore)
-	storeFillInput := tests.MustGetMethodParameters(
-		t, store.StoreMetaData, "fill",
-		// arguments: from, until, value (1100 slots is about the maximum
-		// number of slots that can be filled within the block gas limit)
-		big.NewInt(0), big.NewInt(1100), big.NewInt(1),
-	)
-
-	signer := types.LatestSignerForChainID(net.GetChainId())
-
 	// Create all needed accounts and endow in parallel.
 	accounts := tests.MakeAccountsWithBalance(t, net, B*3, big.NewInt(1e18))
 
-	envelopes := make([]*types.Transaction, B)
-	planHashes := make([]common.Hash, B)
-
-	// Create B bundles.
-	for i := range B {
-		envelope, _, plan := bundle.NewBuilder().
-			WithSigner(signer).
-			AllOf(
-				bundle.AllOf(
-					Step(t, net, accounts[i*3], &types.AccessListTx{
-						To:   &storeAddr,
-						Data: storeFillInput,
-					}),
-					Step(t, net, accounts[i*3+1], &types.AccessListTx{Gas: 1}),
-				).WithFlags(bundle.EF_TolerateFailed),
-				Step(t, net, accounts[i*3+2], &types.AccessListTx{}),
-			).
-			BuildEnvelopeBundleAndPlan()
-
-		envelopes[i] = envelope
-		planHashes[i] = plan.Hash()
+	cases := map[string]struct {
+		contractAddr  common.Address
+		contractInput []byte
+	}{
+		"ComputeHeavy": {
+			contractAddr: tests.MustDeployContract(t, net, add.DeployAdd),
+			contractInput: tests.MustGetMethodParameters(
+				t, add.AddMetaData, "add",
+				// arguments: iter (128_000 iterations is about the maximum
+				// number of iterations that can be executed within the
+				// block gas limit)
+				big.NewInt(128_000),
+			),
+		},
+		"DbHeavy": {
+			contractAddr: tests.MustDeployContract(t, net, store.DeployStore),
+			contractInput: tests.MustGetMethodParameters(
+				t, store.StoreMetaData, "fill",
+				// arguments: from, until, value (1100 slots is about the
+				// maximum number of slots that can be filled within the
+				// block gas limit)
+				big.NewInt(0), big.NewInt(1100), big.NewInt(1),
+			),
+		},
 	}
 
-	// Send all bundles.
-	_, err = net.SendAll(envelopes)
-	require.NoError(t, err)
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			signer := types.LatestSignerForChainID(net.GetChainId())
 
-	// Wait for all bundles to be processed.
-	infos, err := WaitForBundleExecutions(t.Context(), client.Client(), planHashes)
-	require.NoError(t, err)
+			envelopes := make([]*types.Transaction, B)
+			planHashes := make([]common.Hash, B)
 
-	// Check that all bundles were executed successfully but only the last
-	// outer transaction ended up in the block.
-	for _, info := range infos {
-		require.EqualValues(t, 1, info.Count)
+			// Create B bundles.
+			for i := range B {
+				envelope, _, plan := bundle.NewBuilder().
+					WithSigner(signer).
+					AllOf(
+						bundle.AllOf(
+							Step(t, net, accounts[i*3], &types.AccessListTx{
+								To:   &tc.contractAddr,
+								Data: tc.contractInput,
+							}),
+							Step(t, net, accounts[i*3+1], &types.AccessListTx{Gas: 1}),
+						).WithFlags(bundle.EF_TolerateFailed),
+						Step(t, net, accounts[i*3+2], &types.AccessListTx{}),
+					).
+					BuildEnvelopeBundleAndPlan()
+
+				envelopes[i] = envelope
+				planHashes[i] = plan.Hash()
+			}
+
+			// Send all bundles.
+			_, err = net.SendAll(envelopes)
+			require.NoError(t, err)
+
+			// Wait for all bundles to be processed.
+			infos, err := WaitForBundleExecutions(t.Context(), client.Client(), planHashes)
+			require.NoError(t, err)
+
+			// Check that all bundles were executed successfully but only the
+			// last outer transaction ended up in the block.
+			for _, info := range infos {
+				require.EqualValues(t, 1, info.Count)
+			}
+		})
 	}
 }
