@@ -200,7 +200,7 @@ func Test_calculateEnvelopeGasInternal_UsesMaximumOfIntrinsicFloorAndTransaction
 				require.Greater(txGasSum, floorDataGas)
 				require.Greater(txGasSum, intrinsic)
 			default:
-				require.True(false, "unsupported test case spec")
+				require.FailNow("unsupported test case spec")
 			}
 
 			want := max(intrinsic, floorDataGas, txGasSum)
@@ -510,8 +510,8 @@ func Test_calculateFloorDataGas_DetectsOverflows(t *testing.T) {
 			numNonZeroBytes: (math.MaxUint64-params.TxGas)/params.TxCostFloorPerToken/params.TxTokenPerNonZeroByte + 1,
 		},
 		"overflow from combined zero and non-zero bytes": {
-			numZeroBytes:    math.MaxUint64 / 2,
-			numNonZeroBytes: math.MaxUint64 / 2,
+			numZeroBytes:    math.MaxUint64 / 12,
+			numNonZeroBytes: math.MaxUint64 / 50,
 		},
 	}
 
