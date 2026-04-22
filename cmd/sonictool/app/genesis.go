@@ -174,6 +174,9 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 		upgrades = opera.GetAllegroUpgrades()
 	case "brio":
 		upgrades = opera.GetBrioUpgrades()
+	case "brio-bundles":
+		upgrades = opera.GetBrioUpgrades()
+		upgrades.TransactionBundles = true
 	default:
 		return fmt.Errorf("invalid profile %v - must be 'sonic', 'allegro', or 'brio'", upgradesString)
 	}
