@@ -96,7 +96,7 @@ func Test_calculateEnvelopeGas_ComputesGasBasedOnProvidedParameters(t *testing.T
 				uint64(len(tc.authList)),
 			)
 			require.NoError(err)
-			require.Equal(int(tc.expected), int(want))
+			require.Equal(tc.expected, want)
 
 			// test that function produces expected value
 			have, err := calculateEnvelopeGas(
@@ -106,7 +106,7 @@ func Test_calculateEnvelopeGas_ComputesGasBasedOnProvidedParameters(t *testing.T
 				tc.authList,
 			)
 			require.NoError(err)
-			require.Equal(int(tc.expected), int(have))
+			require.Equal(tc.expected, have)
 		})
 	}
 }
@@ -293,7 +293,8 @@ func Test_calculateEnvelopeGasInternal_DetectsIntrinsicGasOverflow(t *testing.T)
 func Test_calculateEnvelopeGasInternal_DetectsFloorDataGasOverflow(t *testing.T) {
 	// low enough to pass the intrinsic gas computation, but high enough to fail
 	// in the floor data gas computation, where non-zero bytes are more expensive
-	numNonZeroBytesInData := uint64(math.MaxUint64/40 + 1)
+	floorDataGasPerNonZeroByte := params.TxTokenPerNonZeroByte * params.TxCostFloorPerToken
+	numNonZeroBytesInData := uint64((math.MaxUint64-params.TxGas)/floorDataGasPerNonZeroByte + 1)
 
 	_, err := calculateEnvelopeGasInternal(nil, 0, numNonZeroBytesInData, 0, 0, 0)
 	require.ErrorContains(t, err, "floor data gas")
