@@ -203,12 +203,12 @@ func TestStore_AddProcessedBundles_AddsNewBundlesToStorage(t *testing.T) {
 
 func TestStore_AddProcessedBundles_LogsOnBatchPutNewEntryError(t *testing.T) {
 	store, table, log, batch, _ := storeTableLogMocks(t)
-
 	injectedErr := errors.New("new entry put error")
 	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErr)
 
 	table.EXPECT().NewBatch().Return(batch)
-	table.EXPECT().Get(gomock.Any()).Return(nil, nil)
+	oldHistoryEntry := []byte{8 + 32 - 1: 0x42}
+	table.EXPECT().Get(gomock.Any()).Return(oldHistoryEntry, nil)
 
 	expectCrit(log, "failed to update hash of processed bundles", "error", injectedErr)
 	// In production, a Crit log call causes the logger to exit the process.
@@ -226,7 +226,8 @@ func TestStore_AddProcessedBundles_LogsOnBatchWriteError(t *testing.T) {
 	batch.EXPECT().Write().Return(injectedErr)
 
 	table.EXPECT().NewBatch().Return(batch)
-	table.EXPECT().Get(gomock.Any()).Return(nil, nil)
+	oldHistoryEntry := []byte{8 + 32 - 1: 0x42}
+	table.EXPECT().Get(gomock.Any()).Return(oldHistoryEntry, nil)
 
 	expectCrit(log, "failed to write batch for updating processed bundles", "error", injectedErr)
 	// In production, a Crit log call causes the logger to exit the process.
@@ -536,10 +537,7 @@ func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 				}
 			}
 
-			hash := store.deleteOutdatedBundles(c.finishingBlock, batch)
-			if c.expectDeleted {
-				require.Equal(t, existingBundleHash, hash)
-			}
+			store.deleteOutdatedBundles(c.finishingBlock, batch)
 		})
 	}
 }
@@ -567,68 +565,6 @@ func TestStore_deleteOutdatedBundles_RemovesMultipleEntries_WhenNotCleanedForToo
 	store.deleteOutdatedBundles(bundle.MaxBlockRange+10, batch)
 }
 
-func TestStore_deleteOutdatedBundles_ReturnsXorHashOfDeletedEntries(t *testing.T) {
-
-	cases := map[string]struct {
-		storedBundles map[common.Hash]bundle.PositionInBlock
-	}{
-		"empty list": {
-			storedBundles: map[common.Hash]bundle.PositionInBlock{},
-		},
-		"single bundle": {
-			storedBundles: map[common.Hash]bundle.PositionInBlock{
-				{1, 2, 3}: {},
-			},
-		},
-		"two bundles": {
-			storedBundles: map[common.Hash]bundle.PositionInBlock{
-				{1, 2, 3}: {},
-				{4, 5, 6}: {},
-			},
-		},
-		"more than two bundles": {
-			storedBundles: map[common.Hash]bundle.PositionInBlock{
-				{1, 2, 3}: {},
-				{4, 5, 6}: {},
-				{7, 8, 9}: {},
-			},
-		},
-	}
-
-	for name, c := range cases {
-		t.Run(name, func(t *testing.T) {
-
-			store, table, _, batch, it := storeTableLogMocks(t)
-			existingBundleKeys := make(map[common.Hash][]byte, len(c.storedBundles))
-			for hash := range c.storedBundles {
-				existingBundleKeys[hash] = getIndexKey(1, hash)
-			}
-
-			table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it)
-
-			for hash, key := range existingBundleKeys {
-				gomock.InOrder(
-					it.EXPECT().Next().Return(true),
-					it.EXPECT().Key().Return(key),
-					batch.EXPECT().Delete(getIndexKey(1, hash)).Return(nil),
-					batch.EXPECT().Delete(getEntryKey(hash)).Return(nil),
-				)
-			}
-
-			it.EXPECT().Next().Return(false)
-			it.EXPECT().Release()
-
-			deletedHash := store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch)
-
-			expectedDeletedHash := common.Hash{}
-			for hash := range c.storedBundles {
-				expectedDeletedHash = xorHash(expectedDeletedHash, hash)
-			}
-			require.Equal(t, expectedDeletedHash, deletedHash)
-		})
-	}
-}
-
 func TestStore_deleteOutdatedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
 	// log mock is ignored because no log called should be triggered.
 	store, table, _, batch, it := storeTableLogMocks(t)
@@ -642,7 +578,7 @@ func TestStore_deleteOutdatedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
 	)
 	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it)
 
-	require.Zero(t, store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch))
+	store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch)
 }
 
 func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
@@ -771,8 +707,8 @@ func TestStore_computeNewBundleStateHash_CorrectlyProcessesEdgeCases(t *testing.
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			got := computeNewBundleStateHash(tc.oldHash, tc.addedHash, tc.deletedHash, tc.blockNum)
-			ref := referenceComputeStateHash(tc.blockNum, tc.oldHash, tc.addedHash, tc.deletedHash)
+			got := computeNewBundleStateHash(tc.oldHash, tc.addedHash, tc.blockNum)
+			ref := referenceComputeStateHash(tc.blockNum, tc.oldHash, tc.addedHash)
 			require.Equal(t, ref, got, "actual implementation should match alternative implementation")
 		})
 	}
@@ -822,6 +758,27 @@ func TestStore_ProcessedBundles_TablesAreInitiallyEmpty(t *testing.T) {
 	require.NoError(iter.Error())
 }
 
+func TestStore_ProcessedBundles_ZeroHistoryHashIsPreserve_WhenNoBundlesAreExecuted(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	for i := range bundle.MaxBlockRange + 2 {
+		// nil bundles executed
+		store.AddProcessedBundles(i, nil)
+		blockNum, hash := store.GetProcessedBundleHistoryHash()
+		require.Equal(uint64(0), blockNum)
+		require.Equal(common.Hash{}, hash)
+
+		// empty block bundles executed
+		store.AddProcessedBundles(i, map[common.Hash]bundle.PositionInBlock{})
+		blockNum, hash = store.GetProcessedBundleHistoryHash()
+		require.Equal(uint64(0), blockNum)
+		require.Equal(common.Hash{}, hash)
+
+	}
+}
+
 func TestStore_ProcessedBundles_UpdatesHistoryHash(t *testing.T) {
 	require := require.New(t)
 
@@ -832,9 +789,6 @@ func TestStore_ProcessedBundles_UpdatesHistoryHash(t *testing.T) {
 	cases := map[string]struct {
 		bundles map[common.Hash]bundle.PositionInBlock
 	}{
-		"empty block": {
-			bundles: map[common.Hash]bundle.PositionInBlock{},
-		},
 		"single new bundle": {
 			bundles: map[common.Hash]bundle.PositionInBlock{
 				hash1: {Offset: 0, Count: 1},
@@ -859,7 +813,7 @@ func TestStore_ProcessedBundles_UpdatesHistoryHash(t *testing.T) {
 			for hash := range tc.bundles {
 				addedHash = xorHash(addedHash, hash)
 			}
-			expectedHash := referenceComputeStateHash(1, initialHash, addedHash, common.Hash{})
+			expectedHash := referenceComputeStateHash(1, initialHash, addedHash)
 			_, gotHash := store.GetProcessedBundleHistoryHash()
 			require.Equal(expectedHash, gotHash)
 		})
@@ -1080,19 +1034,184 @@ func TestStore_EnumerateProcessedBundles_LogsOnCrit_IteratorWrongSize(t *testing
 	}
 }
 
+func TestStore_ProcessedBundles_HistoryHashConverges_ForStoresStartingAtDifferentBlocks(t *testing.T) {
+	// This test verifies that two stores processing the same bundles converge
+	// to the same history hash regardless of where each store begins.
+	require := require.New(t)
+
+	blockHistory := map[uint64]map[common.Hash]bundle.PositionInBlock{
+		0: nil,
+		1: nil,
+		2: nil,
+		3: nil,
+		4: nil,
+		5: nil,
+		6: nil,
+		7: nil,
+		8: nil,
+		9: nil,
+		10: {
+			common.Hash{1, 2, 3}: {Offset: 0, Count: 1},
+		},
+		11: nil,
+	}
+
+	store1, err := NewMemStore(t)
+	require.NoError(err)
+
+	// Step 1: Store 1 processes blocks 0-11, first bundle is executed at block 10.
+	for block := range blockHistory {
+		if block < 10 {
+			store1.AddProcessedBundles(uint64(block), blockHistory[block])
+			_, hash := store1.GetProcessedBundleHistoryHash()
+			// Check 1: History hash remains zero before the first bundle is executed.
+			require.Equal(common.Hash{}, hash,
+				"store1 history hash should remain zero before first bundle at block %d", block)
+		}
+	}
+
+	store1.AddProcessedBundles(10, blockHistory[10])
+	_, hashAt10 := store1.GetProcessedBundleHistoryHash()
+	require.NotEqual(common.Hash{}, hashAt10, "store1 hash should be non-zero after first bundle at block 10")
+
+	store1.AddProcessedBundles(11, blockHistory[11])
+	_, hashAt11 := store1.GetProcessedBundleHistoryHash()
+
+	require.NotEqual(hashAt10, hashAt11, "after the first bundle is executed history hash should always vary")
+
+	// Step 2: Store 2 starts at block 5 with history hash zero, then runs the same blocks.
+	store2, err := NewMemStore(t)
+	require.NoError(err)
+
+	for block := uint64(5); block < 10; block++ {
+		store2.AddProcessedBundles(uint64(block), blockHistory[block])
+		_, hash := store2.GetProcessedBundleHistoryHash()
+		require.Equal(common.Hash{}, hash,
+			"store2 history hash should remain zero before first bundle at block %d", block)
+	}
+
+	store2.AddProcessedBundles(10, blockHistory[10])
+	_, store2HashAt10 := store2.GetProcessedBundleHistoryHash()
+
+	store2.AddProcessedBundles(11, blockHistory[11])
+	_, store2HashAt11 := store2.GetProcessedBundleHistoryHash()
+
+	// Check 2: Both stores share the same history hash from block 10 to 11.
+	require.Equal(hashAt10, store2HashAt10, "both stores should have the same hash at block 10")
+	require.Equal(hashAt11, store2HashAt11, "both stores should have the same hash at block 11")
+}
+
+func TestStore_ProcessedBundles_EmptyBundlesChangeHash_AfterFirstBundleExecuted(t *testing.T) {
+	// This test verifies that once the history hash becomes non-zero
+	// (i.e. after the first bundle is executed), adding an empty bundle list
+	// or nil still causes the hash to change.
+	require := require.New(t)
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	// Adding nil or empty bundles before the first execution keeps the hash zero.
+	store.AddProcessedBundles(1, nil)
+	_, hash := store.GetProcessedBundleHistoryHash()
+	require.Equal(common.Hash{}, hash, "hash should remain zero with nil bundles before first execution")
+
+	store.AddProcessedBundles(2, map[common.Hash]bundle.PositionInBlock{})
+	_, hash = store.GetProcessedBundleHistoryHash()
+	require.Equal(common.Hash{}, hash, "hash should remain zero with empty map before first execution")
+
+	// Execute the first bundle — hash becomes non-zero.
+	store.AddProcessedBundles(3, map[common.Hash]bundle.PositionInBlock{
+		{1, 2, 3}: {Offset: 0, Count: 1},
+	})
+	_, hashAfterFirstBundle := store.GetProcessedBundleHistoryHash()
+	require.NotEqual(common.Hash{}, hashAfterFirstBundle, "hash should be non-zero after first bundle")
+
+	// Once the hash is non-zero, nil and empty bundle lists must still advance the hash.
+	store.AddProcessedBundles(4, nil)
+	_, hashAfterNil := store.GetProcessedBundleHistoryHash()
+	require.NotEqual(hashAfterFirstBundle, hashAfterNil,
+		"nil bundle list should change the hash once history hash is non-zero")
+
+	store.AddProcessedBundles(5, map[common.Hash]bundle.PositionInBlock{})
+	_, hashAfterEmpty := store.GetProcessedBundleHistoryHash()
+	require.NotEqual(hashAfterNil, hashAfterEmpty,
+		"empty bundle map should change the hash once history hash is non-zero")
+}
+
+func TestStore_ProcessedBundles_HistoryHashRemainsZero_WhenNoBundlesAreEverProcessed(t *testing.T) {
+	// This test verifies that the history hash stays zero across an arbitrary
+	// number of blocks when no bundles are ever executed, including blocks
+	// that would trigger the pruning of old entries.
+
+	require := require.New(t)
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	for block := range 3 * bundle.MaxBlockRange {
+		store.AddProcessedBundles(uint64(block), nil)
+		_, hash := store.GetProcessedBundleHistoryHash()
+		require.Equal(common.Hash{}, hash,
+			"history hash should remain zero at block %d (nil)", block)
+
+		store.AddProcessedBundles(uint64(block), map[common.Hash]bundle.PositionInBlock{})
+		_, hash = store.GetProcessedBundleHistoryHash()
+		require.Equal(common.Hash{}, hash,
+			"history hash should remain zero at block %d (empty map)", block)
+	}
+}
+
+func TestStore_ProcessedBundles_DeletingEntries_DoesNotAffectHistoryHash(t *testing.T) {
+	// This test verifies that the automatic pruning of old bundle entries
+	// (triggered once enough blocks have passed) does not alter the history hash.
+
+	require := require.New(t)
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	// Execute the first bundle at block 0 so the history hash becomes non-zero.
+	firstBundleHash := common.Hash{1, 2, 3}
+	store.AddProcessedBundles(0, map[common.Hash]bundle.PositionInBlock{
+		firstBundleHash: {Offset: 0, Count: 1},
+	})
+	_, hashAt0 := store.GetProcessedBundleHistoryHash()
+	require.NotEqual(common.Hash{}, hashAt0)
+
+	// Compute the expected hash by replaying the same updates manually,
+	// independent of any internal pruning.
+	expectedHash := hashAt0
+	for block := uint64(1); block <= bundle.MaxBlockRange; block++ {
+		expectedHash = referenceComputeStateHash(block, expectedHash, common.Hash{})
+	}
+
+	// Advance enough blocks to trigger pruning of the entry at block 0.
+	for block := uint64(1); block <= bundle.MaxBlockRange; block++ {
+		store.AddProcessedBundles(block, nil)
+	}
+
+	// The entry from block 0 must have been pruned.
+	require.False(store.HasBundleRecentlyBeenProcessed(firstBundleHash),
+		"entry from block 0 should have been pruned after MaxBlockRange blocks")
+
+	// The history hash must match the manually computed value — pruning must not affect it.
+	_, actualHash := store.GetProcessedBundleHistoryHash()
+	require.Equal(expectedHash, actualHash,
+		"history hash should not be affected by the deletion of old entries")
+}
+
 // --- helper functions ---
 
 // referenceComputeStateHash is a reference implementation of the hash
 // computation for the processed bundles state. To be used by tests.
 func referenceComputeStateHash(
 	blockNum uint64,
-	oldHash, addedHash, deletedHash common.Hash,
+	oldHash, addedHash common.Hash,
 ) common.Hash {
 
 	var data []byte
 	data = append(data, oldHash.Bytes()...)
 	data = append(data, addedHash.Bytes()...)
-	data = append(data, deletedHash.Bytes()...)
 	data = binary.BigEndian.AppendUint64(data, blockNum)
 	return common.Hash(crypto.Keccak256(data))
 }
