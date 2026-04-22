@@ -41,56 +41,59 @@ type PrepareBundleTxStep struct {
 	TolerateInvalid bool                   `json:"tolerateInvalid,omitempty"`
 }
 
-// PrepareBundleGroupStep is an interior node in the structured bundle input,
-// grouping child steps as either AllOf (default) or OneOf.
-type PrepareBundleGroupStep struct {
-	OneOf            bool                `json:"oneOf,omitempty"`
-	TolerateFailures bool                `json:"tolerateFailures,omitempty"`
-	Steps            []PrepareBundleStep `json:"steps"`
+// PrepareBundleGroup is an interior node in the structured bundle input,
+// grouping child entries as either AllOf (default) or OneOf.
+type PrepareBundleGroup struct {
+	OneOf            bool                 `json:"oneOf,omitempty"`
+	TolerateFailures bool                 `json:"tolerateFailures,omitempty"`
+	Entries          []PrepareBundleEntry `json:"entries,omitempty"`
 }
 
-// PrepareBundleStep is a polymorphic step in the structured bundle input.
+// PrepareBundleEntry is a polymorphic step in the structured bundle input.
 // A step is either a transaction leaf (has a "transaction" JSON field) or
-// a group of sub-steps (has a "steps" JSON field).
-type PrepareBundleStep struct {
+// a group of sub-entries (has a "entries" JSON field).
+type PrepareBundleEntry struct {
 	Tx    *PrepareBundleTxStep
-	Group *PrepareBundleGroupStep
+	Group *PrepareBundleGroup
 }
 
 // UnmarshalJSON discriminates between a leaf tx step and a group step
-// based on the presence of "transaction" vs "steps" in the JSON object.
-func (s *PrepareBundleStep) UnmarshalJSON(data []byte) error {
+// based on the presence of "transaction" vs "entries" in the JSON object.
+func (s *PrepareBundleEntry) UnmarshalJSON(data []byte) error {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return fmt.Errorf("failed to parse bundle step: %w", err)
 	}
 	_, hasTx := raw["transaction"]
-	_, hasSteps := raw["steps"]
+	_, hasEntries := raw["entries"]
 	switch {
-	case hasTx && !hasSteps:
+	case hasTx && !hasEntries:
 		s.Tx = new(PrepareBundleTxStep)
 		return json.Unmarshal(data, s.Tx)
-	case hasSteps && !hasTx:
-		s.Group = new(PrepareBundleGroupStep)
+	case hasEntries && !hasTx:
+		s.Group = new(PrepareBundleGroup)
 		return json.Unmarshal(data, s.Group)
-	case hasTx && hasSteps:
-		return fmt.Errorf("bundle step must have either 'transaction' or 'steps', not both")
+	case hasTx && hasEntries:
+		return fmt.Errorf("bundle step must have either 'transaction' or 'entries', not both")
 	default:
-		return fmt.Errorf("bundle step must have either 'transaction' or 'steps'")
+		return fmt.Errorf("bundle step must have either 'transaction' or 'entries'")
 	}
 }
 
 // PrepareBundleArgs represents the arguments for the `sonic_prepareBundle` RPC method.
-// The root level is a group (embeds PrepareBundleGroupStep) whose Steps contain
+// The root level is a group (embeds PrepareBundleGroup) whose Entries contain
 // transaction leaves and/or nested groups.
 type PrepareBundleArgs struct {
-	PrepareBundleGroupStep
+	PrepareBundleGroup
+	// Transactions is a flat list of unsigned transactions as a shorthand for a simple
+	// all-of bundle. Mutually exclusive with Entries in PrepareBundleGroup.
+	Transactions []ethapi.TransactionArgs `json:"transactions,omitempty"`
 	// EarliestBlock specifies the earliest block number at which the bundle can be executed.
 	// If left unspecified, defaults to the next block after submission.
-	EarliestBlock *hexutil.Uint64 `json:"earliestBlock"`
+	EarliestBlock *hexutil.Uint64 `json:"earliestBlock,omitempty"`
 	// LatestBlock specifies the latest block number at which the bundle can be executed.
 	// If left unspecified, defaults to EarliestBlock + MaxBlockRange - 1.
-	LatestBlock *hexutil.Uint64 `json:"latestBlock"`
+	LatestBlock *hexutil.Uint64 `json:"latestBlock,omitempty"`
 }
 
 // RPCPreparedBundle is the return type of the `sonic_prepareBundle` RPC method.
@@ -120,7 +123,19 @@ func (a *PublicBundleAPI) PrepareBundle(
 	args PrepareBundleArgs,
 ) (*RPCPreparedBundle, error) {
 
-	flatTxs := collectLeafTxArgsFromGroup(args.PrepareBundleGroupStep)
+	if len(args.Transactions) > 0 && len(args.Entries) > 0 {
+		return nil, fmt.Errorf("cannot specify both 'transactions' and 'entries' in bundle input")
+	}
+	if len(args.Transactions) > 0 {
+		entries := make([]PrepareBundleEntry, len(args.Transactions))
+		for i, tx := range args.Transactions {
+			tx := tx
+			entries[i] = PrepareBundleEntry{Tx: &PrepareBundleTxStep{Transaction: tx}}
+		}
+		args.Entries = entries
+	}
+
+	flatTxs := collectLeafTxArgsFromGroup(args.PrepareBundleGroup)
 
 	if len(flatTxs) == 0 {
 		return &RPCPreparedBundle{}, nil
@@ -161,7 +176,7 @@ func (a *PublicBundleAPI) PrepareBundle(
 		basefee:    basefee,
 		signer:     signer,
 	}
-	root, err := builder.buildGroupStep(&args.PrepareBundleGroupStep)
+	root, err := builder.buildGroupStep(&args.PrepareBundleGroup)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +214,7 @@ type prepareBundleBuilder struct {
 	signer     types.Signer
 }
 
-func (b *prepareBundleBuilder) buildStep(step PrepareBundleStep) (bundle.ExecutionStep, error) {
+func (b *prepareBundleBuilder) buildStep(step PrepareBundleEntry) (bundle.ExecutionStep, error) {
 	if step.Tx != nil {
 		return b.buildTxStep(step.Tx)
 	}
@@ -243,9 +258,9 @@ func (b *prepareBundleBuilder) buildTxStep(tx *PrepareBundleTxStep) (bundle.Exec
 	return step, nil
 }
 
-func (b *prepareBundleBuilder) buildGroupStep(g *PrepareBundleGroupStep) (bundle.ExecutionStep, error) {
-	subSteps := make([]bundle.ExecutionStep, len(g.Steps))
-	for i, s := range g.Steps {
+func (b *prepareBundleBuilder) buildGroupStep(g *PrepareBundleGroup) (bundle.ExecutionStep, error) {
+	subSteps := make([]bundle.ExecutionStep, len(g.Entries))
+	for i, s := range g.Entries {
 		sub, err := b.buildStep(s)
 		if err != nil {
 			return bundle.ExecutionStep{}, err
@@ -267,21 +282,23 @@ func (b *prepareBundleBuilder) buildGroupStep(g *PrepareBundleGroupStep) (bundle
 
 // collectLeafTxArgsFromGroup does a depth-first walk of the group, collecting
 // all leaf TransactionArgs in order for gas estimation and default-filling.
-func collectLeafTxArgsFromGroup(g PrepareBundleGroupStep) []ethapi.TransactionArgs {
+func collectLeafTxArgsFromGroup(g PrepareBundleGroup) []ethapi.TransactionArgs {
 	var out []ethapi.TransactionArgs
-	for _, step := range g.Steps {
+	for _, step := range g.Entries {
 		collectLeafTxArgs(step, &out)
 	}
 	return out
 }
 
-func collectLeafTxArgs(step PrepareBundleStep, out *[]ethapi.TransactionArgs) {
+// collectLeafTxArgs does a depth-first walk of the step, appending any leaf TransactionArgs
+// to the output slice.
+func collectLeafTxArgs(step PrepareBundleEntry, out *[]ethapi.TransactionArgs) {
 	if step.Tx != nil {
 		*out = append(*out, step.Tx.Transaction)
 		return
 	}
 	if step.Group != nil {
-		for _, sub := range step.Group.Steps {
+		for _, sub := range step.Group.Entries {
 			collectLeafTxArgs(sub, out)
 		}
 	}
