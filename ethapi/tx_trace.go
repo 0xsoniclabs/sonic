@@ -478,7 +478,7 @@ func (s *PublicTxTraceAPI) traceTx(
 	index uint64,
 	status uint64,
 ) (*[]txtrace.ActionTrace, error) {
-	tracedEVM, cancel, err := setupTracedEVM(ctx, s.b, block, statedb, index, true, false, false)
+	tracedEVM, cancel, err := setupTracedEVM(ctx, s.b, block, statedb, index, true, false, true)
 	if err != nil {
 		return nil, err
 	}
@@ -495,7 +495,7 @@ func (s *PublicTxTraceAPI) traceTx(
 		errTrace := txtrace.GetErrorTraceFromMsg(msg, block.Hash, *block.Number, tx.Hash(), index, err)
 		at := []txtrace.ActionTrace{*errTrace}
 		if status == 1 {
-			return nil, fmt.Errorf("invalid transaction replay state at %s", tx.Hash().String())
+			return nil, fmt.Errorf("invalid transaction replay state at %s, error: %s", tx.Hash().String(), err.Error())
 		}
 		return &at, nil
 	}
