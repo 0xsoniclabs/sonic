@@ -323,6 +323,10 @@ func resolveBlockRange(currentBlock uint64, earliest, latest *hexutil.Uint64) (b
 		r.Latest = uint64(*latest)
 	}
 
+	if r.Latest < r.Earliest {
+		return bundle.BlockRange{}, fmt.Errorf("invalid block range: latest block %d is earlier than earliest block %d", r.Latest, r.Earliest)
+	}
+
 	if r.Latest-r.Earliest+1 > bundle.MaxBlockRange {
 		return bundle.BlockRange{}, fmt.Errorf("invalid block range: range %d is too large; must be at most %d blocks", r.Latest-r.Earliest+1, bundle.MaxBlockRange)
 	}
