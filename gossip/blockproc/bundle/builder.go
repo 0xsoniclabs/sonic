@@ -20,10 +20,10 @@ import (
 	"crypto/ecdsa"
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
@@ -231,9 +231,14 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 					Address:     BundleOnly,
 					StorageKeys: []common.Hash{{1, 2, 3}}, // < value not relevant
 				}
-				newGasLimit = getGasLimitForEnvelope(
-					innerBundle, tx.Data(), []types.AccessTuple{marker},
+				accessList := slices.Clone(tx.AccessList())
+				accessList = append(accessList, marker)
+				newGasLimit, err = calculateEnvelopeGas(
+					*innerBundle, tx.Data(), accessList, tx.SetCodeAuthorizations(),
 				)
+				if err != nil {
+					panic(err)
+				}
 			}
 		}
 
@@ -454,7 +459,10 @@ func newEnvelope(
 	if err != nil {
 		panic(fmt.Sprintf("failed to encode bundle: %v", err))
 	}
-	gasLimit := getGasLimitForEnvelope(bundle, payload, nil)
+	gasLimit, err := calculateEnvelopeGas(*bundle, payload, nil, nil)
+	if err != nil {
+		panic(err)
+	}
 
 	return types.MustSignNewTx(key, signer, &types.AccessListTx{
 		To:       &BundleProcessor,
@@ -463,39 +471,6 @@ func newEnvelope(
 		Gas:      gasLimit,
 		GasPrice: gasPrice,
 	})
-}
-
-// getGasLimitForEnvelope calculates the gas limit for an envelope transaction
-// based on the given payload and access list.
-func getGasLimitForEnvelope(
-	bundle *TransactionBundle,
-	payload []byte,
-	accessList []types.AccessTuple,
-) uint64 {
-	intrinsic, err := core.IntrinsicGas(
-		payload,
-		accessList,
-		nil,   // code auth is not used in the bundle transaction
-		false, // bundle transaction is not a contract creation
-		true,  // is homestead
-		true,  // is istanbul
-		true,  // is shanghai
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	floorDataGas, err := core.FloorDataGas(payload)
-	if err != nil {
-		panic(err)
-	}
-
-	txGasSum := uint64(0)
-	for _, tx := range bundle.Transactions {
-		txGasSum += tx.Gas()
-	}
-
-	return max(intrinsic, floorDataGas, txGasSum)
 }
 
 func MustWrapIntoEnvelope(signer types.Signer, bundle *TransactionBundle) *types.Transaction {
