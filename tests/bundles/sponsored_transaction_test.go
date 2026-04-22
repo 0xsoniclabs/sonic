@@ -140,7 +140,7 @@ func TestBundle_RevertedBundleDoesNotConsumeSponsoredFunds(t *testing.T) {
 	gas_subsidies.Fund(t, net, sponsoredSender.Address(), fundsForOneExecution)
 
 	// Create a regular sender with funds.
-	sender := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	senders := tests.MakeAccountsWithBalance(t, net, 2, big.NewInt(1e18))
 
 	blockNumber, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
@@ -157,13 +157,19 @@ func TestBundle_RevertedBundleDoesNotConsumeSponsoredFunds(t *testing.T) {
 	envelope, _, plan := bundle.NewBuilder().
 		WithSigner(signer).
 		SetEarliest(blockNumber).
-		AllOf(
-			bundle.Step(
-				sponsoredSender.PrivateKey,
-				sponsoredTxData,
+		OneOf(
+			bundle.AllOf(
+				bundle.Step(
+					sponsoredSender.PrivateKey,
+					sponsoredTxData,
+				),
+				// This transaction will revert due to insufficient gas
+				Step(t, net, senders[0], &types.AccessListTx{Gas: 1}),
 			),
-			// This transaction will revert due to insufficient gas
-			Step(t, net, sender, &types.AccessListTx{Gas: 1}),
+			// This fallback transaction ensures the bundle as a whole is still executable,
+			// so the test verifies that only the sponsored transaction's group is reverted,
+			// not the entire bundle.
+			Step(t, net, senders[1], &types.AccessListTx{}),
 		).
 		BuildEnvelopeBundleAndPlan()
 

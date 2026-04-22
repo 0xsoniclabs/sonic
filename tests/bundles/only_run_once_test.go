@@ -35,9 +35,7 @@ func TestBundle_RunOnlyOnce_ExecutionPlanSubmittedMultipleTimesInDifferentEnvelo
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.TransactionBundles = true
 
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{Upgrades: &upgrades})
 
 	client, err := net.GetClient()
 	require.NoError(err)
@@ -75,8 +73,16 @@ func TestBundle_RunOnlyOnce_ExecutionPlanSubmittedMultipleTimesInDifferentEnvelo
 	}
 
 	// Submit the same bundle multiple times using different envelopes.
-	_, err = net.SendAll(envelopes)
+	sentHashes, rejected, err := net.TrySendAll(envelopes)
 	require.NoError(err)
+	acceptedCount := 0
+	for _, hash := range sentHashes {
+		if hash != (common.Hash{}) {
+			acceptedCount++
+		}
+	}
+	require.GreaterOrEqual(acceptedCount, 2,
+		"For this test to be meaningful, at least 2 envelopes should have been accepted for processing simultaneously; rejected=%v", rejected)
 
 	bundleTxs := b.GetTransactionsInReferencedOrder()
 
@@ -88,6 +94,11 @@ func TestBundle_RunOnlyOnce_ExecutionPlanSubmittedMultipleTimesInDifferentEnvelo
 	// Transaction B should not be executed.
 	receiptB, err := client.TransactionReceipt(t.Context(), bundleTxs[1].Hash())
 	require.ErrorIs(err, ethereum.NotFound, "Got receipt A: %+v, receipt B: %+v", receiptA, receiptB)
+
+	// Bundle has been registered
+	info, err := GetBundleInfo(t.Context(), client.Client(), b.Plan.Hash())
+	require.NoError(err)
+	require.EqualValues(1, info.Count)
 }
 
 func TestBundle_RunOnlyOnce_NestedBundleSubmittedMultipleTimesInSameBundleIsOnlyProcessedOnce(t *testing.T) {
