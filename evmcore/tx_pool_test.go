@@ -29,6 +29,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -337,6 +338,18 @@ func pricedSetCodeTxWithAuth(nonce uint64, gaslimit uint64, gasFee, tip *uint256
 		AccessList: nil,
 		AuthList:   authList,
 	})
+}
+
+// bundleTx creates a transaction that is part of a bundle with the given key and nonce.
+// the name follows the convention of other transaction creation tools in the tx pool tests.
+func bundleTx(nonce uint64, key *ecdsa.PrivateKey) *types.Transaction {
+	signer := types.LatestSignerForChainID(params.TestChainConfig.ChainID)
+	return bundle.NewBuilder().
+		WithSigner(signer).
+		SetEnvelopeSenderKey(key).
+		SetEnvelopeNonce(nonce).
+		With(bundle.Step(key, &types.AccessListTx{Nonce: nonce})).
+		Build()
 }
 
 func setupTxPool() (*TxPool, *ecdsa.PrivateKey) {
