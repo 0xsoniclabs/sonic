@@ -119,6 +119,15 @@ func Test_fillTransactionDefaults(t *testing.T) {
 			},
 		},
 		{
+			name:     "MaxPriorityFeePerGas with existing MaxFeePerGas skips price fill",
+			txs:      []ethapi.TransactionArgs{{From: &addr, MaxPriorityFeePerGas: tip, MaxFeePerGas: existingMaxFee}},
+			gasPrice: gasPrice,
+			check: func(t *testing.T, txs []ethapi.TransactionArgs) {
+				require.Equal(t, existingMaxFee, txs[0].MaxFeePerGas, "existing MaxFeePerGas must not be overwritten")
+				require.Nil(t, txs[0].GasPrice)
+			},
+		},
+		{
 			name:      "multiple txs each filled with correct limit and price",
 			txs:       []ethapi.TransactionArgs{{From: &addr}, {From: &addr}, {From: &addr}},
 			gasLimits: []hexutil.Uint64{21000, 42000, 63000},
@@ -185,7 +194,7 @@ func Test_resolveBlockRange(t *testing.T) {
 			wantLatest:   200,
 		},
 		{
-			name:          "explicit latest greater than MaxBlockRange",
+			name:          "range exceeds MaxBlockRange when only latest set",
 			currentBlock:  10,
 			latest:        hexN(10 + bundle.MaxBlockRange + 100),
 			errorContains: "invalid block range",
@@ -522,45 +531,6 @@ func Test_PrepareBundle_SingleTx_GasAndPriceEstimated(t *testing.T) {
 	require.True(t, hasPriceField, "gas price must be set")
 }
 
-func Test_PrepareBundle_PlanHashConsistentAcrossTxs(t *testing.T) {
-	addr1 := common.Address{1}
-	addr2 := common.Address{2}
-
-	be := rpctest.NewBackendBuilder(t).
-		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
-		WithAccount(addr2, rpctest.AccountState{Balance: big.NewInt(1e18)}).
-		Build()
-
-	api := NewPublicBundleAPI(be)
-
-	args := PrepareBundleArgs{
-		PrepareBundleGroup: PrepareBundleGroup{
-			Entries: []PrepareBundleEntry{
-				txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
-				txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
-			},
-		},
-	}
-
-	result, err := api.PrepareBundle(t.Context(), args)
-	require.NoError(t, err)
-
-	// All txs must carry the same plan hash.
-	var planHash common.Hash
-	for i, tx := range result.Transactions {
-		for _, entry := range *tx.AccessList {
-			if entry.Address == bundle.BundleOnly {
-				require.Len(t, entry.StorageKeys, 1)
-				if i == 0 {
-					planHash = entry.StorageKeys[0]
-				} else {
-					require.Equal(t, planHash, entry.StorageKeys[0], "tx %d has different plan hash", i)
-				}
-			}
-		}
-	}
-}
-
 func Test_PrepareBundle_AccessListContainsConsistentPlanHash(t *testing.T) {
 	addr1 := common.Address{1}
 	addr2 := common.Address{2}
@@ -771,6 +741,7 @@ func Test_PrepareBundle_EmptyTransactions_ReturnsEmptyBundle(t *testing.T) {
 	result, err := api.PrepareBundle(t.Context(), args)
 	require.NoError(t, err)
 	require.Empty(t, result.Transactions)
+	require.Empty(t, result.ExecutionPlan.Steps)
 }
 
 func Test_PrepareBundle_OneOfGroup_BuildsOneOfPlan(t *testing.T) {
@@ -1055,4 +1026,39 @@ func Test_PrepareBundle_FlatTransactions_ConflictError(t *testing.T) {
 	_, err := api.PrepareBundle(t.Context(), args)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "cannot specify both 'transactions' and 'entries' in bundle input")
+}
+
+func Test_PrepareBundle_SingleChildGroup_TolerateFailures_NotUnwrapped(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	args := PrepareBundleArgs{
+		PrepareBundleGroup: PrepareBundleGroup{
+			Entries: []PrepareBundleEntry{
+				{Group: &PrepareBundleGroup{
+					TolerateFailures: true,
+					Entries: []PrepareBundleEntry{
+						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
+					},
+				}},
+			},
+		},
+	}
+
+	result, err := api.PrepareBundle(t.Context(), args)
+	require.NoError(t, err)
+	require.Len(t, result.Transactions, 1)
+
+	// TolerateFailures flag must prevent single-child unwrap.
+	require.Len(t, result.ExecutionPlan.Steps, 1)
+	group, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
+	require.True(t, ok, "expected group, not leaf")
+	require.False(t, group.OneOf)
+	require.Len(t, group.Steps, 1)
 }

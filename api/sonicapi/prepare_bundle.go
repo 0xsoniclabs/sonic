@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -33,32 +34,27 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-// PrepareBundleTxStep is a leaf node in the structured bundle input, representing
-// a single transaction together with its execution flags.
+// PrepareBundleTxStep is a leaf node: one transaction with its execution flags.
 type PrepareBundleTxStep struct {
 	Transaction     ethapi.TransactionArgs `json:"transaction"`
 	TolerateFailed  bool                   `json:"tolerateFailed,omitempty"`
 	TolerateInvalid bool                   `json:"tolerateInvalid,omitempty"`
 }
 
-// PrepareBundleGroup is an interior node in the structured bundle input,
-// grouping child entries as either AllOf (default) or OneOf.
+// PrepareBundleGroup is an interior node grouping child entries as AllOf (default) or OneOf.
 type PrepareBundleGroup struct {
 	OneOf            bool                 `json:"oneOf,omitempty"`
 	TolerateFailures bool                 `json:"tolerateFailures,omitempty"`
 	Entries          []PrepareBundleEntry `json:"entries,omitempty"`
 }
 
-// PrepareBundleEntry is a polymorphic step in the structured bundle input.
-// A step is either a transaction leaf (has a "transaction" JSON field) or
-// a group of sub-entries (has a "entries" JSON field).
+// PrepareBundleEntry is a polymorphic bundle step: either a tx leaf or a group.
 type PrepareBundleEntry struct {
 	Tx    *PrepareBundleTxStep
 	Group *PrepareBundleGroup
 }
 
-// UnmarshalJSON discriminates between a leaf tx step and a group step
-// based on the presence of "transaction" vs "entries" in the JSON object.
+// UnmarshalJSON discriminates between a tx leaf ("transaction") and a group ("entries").
 func (s *PrepareBundleEntry) UnmarshalJSON(data []byte) error {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -80,30 +76,21 @@ func (s *PrepareBundleEntry) UnmarshalJSON(data []byte) error {
 	}
 }
 
-// PrepareBundleArgs represents the arguments for the `sonic_prepareBundle` RPC method.
-// The root level is a group (embeds PrepareBundleGroup) whose Entries contain
-// transaction leaves and/or nested groups.
+// PrepareBundleArgs are the arguments for the sonic_prepareBundle RPC method.
 type PrepareBundleArgs struct {
 	PrepareBundleGroup
-	// Transactions is a flat list of unsigned transactions as a shorthand for a simple
-	// all-of bundle. Mutually exclusive with Entries in PrepareBundleGroup.
+	// Transactions is a flat all-of shorthand; mutually exclusive with Entries.
 	Transactions []ethapi.TransactionArgs `json:"transactions,omitempty"`
-	// EarliestBlock specifies the earliest block number at which the bundle can be executed.
-	// If left unspecified, defaults to the next block after submission.
+	// EarliestBlock defaults to currentBlock+1 if unset.
 	EarliestBlock *hexutil.Uint64 `json:"earliestBlock,omitempty"`
-	// LatestBlock specifies the latest block number at which the bundle can be executed.
-	// If left unspecified, defaults to EarliestBlock + MaxBlockRange - 1.
+	// LatestBlock defaults to EarliestBlock+MaxBlockRange-1 if unset.
 	LatestBlock *hexutil.Uint64 `json:"latestBlock,omitempty"`
 }
 
-// RPCPreparedBundle is the return type of the `sonic_prepareBundle` RPC method.
+// RPCPreparedBundle is the return type of the sonic_prepareBundle RPC method.
 type RPCPreparedBundle struct {
-	// Transactions is the flat ordered list of transactions (depth-first leaf order)
-	// to be signed. They must be signed without altering any fields; any modification
-	// will invalidate the execution plan.
-	Transactions []ethapi.TransactionArgs `json:"transactions"`
-	// ExecutionPlan contains the structured execution plan that each bundled transaction
-	// references. This is provided for verification purposes.
+	// Transactions is the flat depth-first ordered list; must be signed without modification.
+	Transactions  []ethapi.TransactionArgs   `json:"transactions"`
 	ExecutionPlan RPCExecutionPlanComposable `json:"executionPlan"`
 }
 
@@ -146,15 +133,14 @@ func (a *PublicBundleAPI) PrepareBundle(
 
 	// Estimate gas for all transactions if any has an uninitialized gas limit.
 	var gasLimits []hexutil.Uint64
-	for _, tx := range flatTxs {
-		if tx.Gas == nil || *tx.Gas == 0 {
-			estimated, err := a.EstimateGasForTransactions(ctx, flatTxs, nil, nil, nil)
-			if err != nil {
-				return nil, fmt.Errorf("failed to prepare bundle: gas estimation failed: %w", err)
-			}
-			gasLimits = estimated.GasLimits
-			break
+	if slices.ContainsFunc(flatTxs, func(tx ethapi.TransactionArgs) bool {
+		return tx.Gas == nil || *tx.Gas == 0
+	}) {
+		estimated, err := a.EstimateGasForTransactions(ctx, flatTxs, nil, nil, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to prepare bundle: gas estimation failed: %w", err)
 		}
+		gasLimits = estimated.GasLimits
 	}
 
 	var currentBlock *evmcore.EvmBlock
@@ -204,8 +190,7 @@ func (a *PublicBundleAPI) PrepareBundle(
 	}, nil
 }
 
-// prepareBundleBuilder threads a cursor through the flat filled tx list while
-// recursively building the bundle.ExecutionStep tree from the structured input.
+// prepareBundleBuilder threads a cursor through flatTxArgs while building the ExecutionStep tree.
 type prepareBundleBuilder struct {
 	flatTxArgs []ethapi.TransactionArgs
 	cursor     int
@@ -268,7 +253,7 @@ func (b *prepareBundleBuilder) buildGroupStep(g *PrepareBundleGroup) (bundle.Exe
 		subSteps[i] = sub
 	}
 
-	// Unwrap single child with no group modifiers — mirrors toBundleExecutionGroup convention.
+	// No-modifier single-child group is elided so the RPC output matches the internal plan shape.
 	if !g.OneOf && !g.TolerateFailures && len(subSteps) == 1 {
 		return subSteps[0], nil
 	}
@@ -280,8 +265,7 @@ func (b *prepareBundleBuilder) buildGroupStep(g *PrepareBundleGroup) (bundle.Exe
 	return group, nil
 }
 
-// collectLeafTxArgsFromGroup does a depth-first walk of the group, collecting
-// all leaf TransactionArgs in order for gas estimation and default-filling.
+// collectLeafTxArgsFromGroup returns all leaf TransactionArgs in depth-first order.
 func collectLeafTxArgsFromGroup(g PrepareBundleGroup) []ethapi.TransactionArgs {
 	var out []ethapi.TransactionArgs
 	for _, step := range g.Entries {
@@ -290,8 +274,7 @@ func collectLeafTxArgsFromGroup(g PrepareBundleGroup) []ethapi.TransactionArgs {
 	return out
 }
 
-// collectLeafTxArgs does a depth-first walk of the step, appending any leaf TransactionArgs
-// to the output slice.
+// collectLeafTxArgs appends leaf TransactionArgs from step in depth-first order.
 func collectLeafTxArgs(step PrepareBundleEntry, out *[]ethapi.TransactionArgs) {
 	if step.Tx != nil {
 		*out = append(*out, step.Tx.Transaction)
@@ -304,9 +287,7 @@ func collectLeafTxArgs(step PrepareBundleEntry, out *[]ethapi.TransactionArgs) {
 	}
 }
 
-// fillTransactionDefaults fills missing gas limits and gas price fields.
-// Gas limits are set from gasLimits only when tx.Gas is nil or zero. Gas price fields are
-// set from gasPrice only when both tx.GasPrice and tx.MaxFeePerGas are unset.
+// fillTransactionDefaults fills missing Gas and gas-price fields without overwriting explicit values.
 func fillTransactionDefaults(txs []ethapi.TransactionArgs, gasLimits []hexutil.Uint64, gasPrice *hexutil.Big) {
 	for i := range txs {
 		if i < len(gasLimits) && (txs[i].Gas == nil || *txs[i].Gas == 0) {
@@ -322,17 +303,11 @@ func fillTransactionDefaults(txs []ethapi.TransactionArgs, gasLimits []hexutil.U
 	}
 }
 
-// resolveBlockRange computes the effective block range for a bundle given the current
-// block number and optional earliest/latest overrides from the user.
+// resolveBlockRange computes the effective block range from optional earliest/latest overrides.
 func resolveBlockRange(currentBlock uint64, earliest, latest *hexutil.Uint64) (bundle.BlockRange, error) {
 
-	if latest != nil && earliest != nil {
-		if uint64(*latest) < uint64(*earliest) {
-			return bundle.BlockRange{}, fmt.Errorf("invalid block range: latest block %d is earlier than earliest block %d", *latest, *earliest)
-		}
-		if uint64(*latest)-uint64(*earliest)+1 > bundle.MaxBlockRange {
-			return bundle.BlockRange{}, fmt.Errorf("invalid block range: range %d is too large; must be at most %d blocks", uint64(*latest)-uint64(*earliest)+1, bundle.MaxBlockRange)
-		}
+	if latest != nil && earliest != nil && uint64(*latest) < uint64(*earliest) {
+		return bundle.BlockRange{}, fmt.Errorf("invalid block range: latest block %d is earlier than earliest block %d", *latest, *earliest)
 	}
 
 	var r bundle.BlockRange
@@ -353,8 +328,7 @@ func resolveBlockRange(currentBlock uint64, earliest, latest *hexutil.Uint64) (b
 	return r, nil
 }
 
-// injectPlanHashIntoAccessLists appends the bundle-only access list entry carrying
-// the execution plan hash to every transaction in-place.
+// injectPlanHashIntoAccessLists appends the BundleOnly access-list entry with planHash to every tx.
 func injectPlanHashIntoAccessLists(txs []ethapi.TransactionArgs, planHash common.Hash) {
 	for i, tx := range txs {
 		var accessList types.AccessList
@@ -370,12 +344,12 @@ func injectPlanHashIntoAccessLists(txs []ethapi.TransactionArgs, planHash common
 	}
 }
 
-// asTransaction converts a Message to a Transaction, ensuring that unsupported
-// transaction types (e.g. blob transactions) are not included in bundles.
+// asTransaction converts a Message to a Transaction, rejecting blob and set-code types.
 func asTransaction(msg *core.Message) (*types.Transaction, error) {
 
-	// when gasprice and gas fee cap or gas tip cap are both set, return error
-	if msg.GasPrice != nil && msg.GasPrice.Sign() != 0 && (msg.GasFeeCap != nil || msg.GasTipCap != nil) {
+	feecapSet := msg.GasFeeCap != nil && msg.GasFeeCap.Sign() > 0
+	tipcapSet := msg.GasTipCap != nil && msg.GasTipCap.Sign() > 0
+	if msg.GasPrice != nil && msg.GasPrice.Sign() != 0 && (feecapSet || tipcapSet) {
 		return nil, fmt.Errorf("cannot set both gas price and gas fee cap or gas tip cap")
 	}
 
@@ -412,8 +386,7 @@ func asTransaction(msg *core.Message) (*types.Transaction, error) {
 	}
 }
 
-// suggestGasPrice returns the suggested gas price for new transactions,
-// which is used to fill in missing gas price fields in bundled transactions.
+// suggestGasPrice returns the suggested gas price based on the current block's base fee.
 func (a *PublicBundleAPI) suggestGasPrice(block *evmcore.EvmBlock) *hexutil.Big {
 	price := block.Header().BaseFee
 	price = gaspricelimits.GetSuggestedGasPriceForNewTransactions(price)
