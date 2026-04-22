@@ -47,10 +47,10 @@ import (
 //
 // The hash of the processed bundle's history is computed as follows:
 //  - initially, the hash is zero
-//  - for every update, the hash is updated as follows:
+//  - the zero hash is kept until the first executed bundle
+//  - thereafter, for every block, the hash is updated as follows:
 //      addedExecPlanHash = Xor(<hashes of newly added execution plans>)
-//      deletedExecPlanHash = Xor(<hashes of deleted execution plans>)
-//      newHash = Keccak256(oldHash || addedExecPlanHash || deletedExecPlanHash || blockNum)
+//      newHash = Keccak256(oldHash || addedExecPlanHash || blockNum)
 //
 // The hash can be used to verify that validators remain aligned on their bundle
 // processing history.
@@ -72,12 +72,18 @@ func (s *Store) AddProcessedBundles(
 	addedHash := s.addNewBundles(blockNum, executedBundles, batch)
 
 	// Delete outdated hashes.
-	deletedHash := s.deleteOutdatedBundles(blockNum, batch)
+	s.deleteOutdatedBundles(blockNum, batch)
 
 	// Update the state hash.
 	_, oldHash := s.GetProcessedBundleHistoryHash()
 
-	newHash := computeNewBundleStateHash(oldHash, addedHash, deletedHash, blockNum)
+	// keep the zero hash until a bundle is executed and from then onwards,
+	// compute it for every block.
+	if oldHash == (common.Hash{}) && len(executedBundles) == 0 {
+		return
+	}
+
+	newHash := computeNewBundleStateHash(oldHash, addedHash, blockNum)
 
 	err := batch.Put(nil, append(
 		bigendian.Uint64ToBytes(blockNum),
@@ -123,8 +129,7 @@ func (s *Store) addNewBundles(
 // deleteOutdatedBundles deletes the entries of processed bundles that got
 // processed too far in the past, and returns the XOR of their hashes to update the
 // history hash.
-func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) common.Hash {
-	deletedHash := common.Hash{}
+func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) {
 	if blockNum >= bundle.MaxBlockRange-1 {
 		// enough blocks have passed to start cleaning up the store
 		highestOutdatedBlockNumber := blockNum - bundle.MaxBlockRange + 1
@@ -152,34 +157,28 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) common.
 			if err != nil {
 				s.Log.Crit("failed to delete old processed bundle hash", "error", err)
 			}
-			deletedHash = xorHash(deletedHash, hash)
 		}
 	}
-	return deletedHash
 }
 
 // computeNewBundleStateHash computes the new hash of the processed bundles history
-// based on the previous hash, the added and deleted execution plan hashes, and
-// the block number of the update.
+// based on the previous hash, the added and the block number of the update.
 //
 // This hash is used to verify than clients remain aligned on their bundle
 // processing history
 func computeNewBundleStateHash(
 	oldHash common.Hash,
 	addedPlans common.Hash,
-	removedPlans common.Hash,
 	blockNumber uint64,
 ) common.Hash {
 	// size of the update buffer is:
 	//  - 32 bytes for the previous hash
 	//  - 32 bytes for the added hashes
-	//  - 32 bytes for the deleted hashes
 	//  - 8 bytes for the block number
-	update := make([]byte, 3*32+8)
+	update := make([]byte, 2*32+8)
 	copy(update[:32], oldHash.Bytes())
 	copy(update[32:64], addedPlans.Bytes())
-	copy(update[64:96], removedPlans.Bytes())
-	binary.BigEndian.PutUint64(update[96:], blockNumber)
+	binary.BigEndian.PutUint64(update[64:], blockNumber)
 	newHash := common.Hash(crypto.Keccak256(update))
 
 	return newHash
