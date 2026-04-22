@@ -17,9 +17,11 @@
 package bundles
 
 import (
+	"context"
 	"math/big"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -156,21 +158,21 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 			// Send the bundle.
 			require.NoError(t, client.SendTransaction(t.Context(), envelope))
 
+			if c.expectRollback {
+				timeoutCtx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+				defer cancel()
+
+				_, err := WaitForBundleExecution(timeoutCtx, client.Client(), plan.Hash())
+				require.ErrorIs(t, err, context.DeadlineExceeded)
+				return
+			}
+
 			// Wait for the bundle to be processed.
 			info, err := WaitForBundleExecution(t.Context(), client.Client(), plan.Hash())
 			require.NoError(t, err)
 
 			blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(info.Block.Int64()))
 			bundleTxs := bundle.GetTransactionsInReferencedOrder()
-
-			// If the bundle is expected to be rolled back no transactions
-			// should be included in a block.
-			if c.expectRollback {
-				require.Zero(t, info.Count)
-				require.NotContains(t, blockTxsHashes, bundleTxs[0].Hash())
-				require.NotContains(t, blockTxsHashes, bundleTxs[1].Hash())
-				return
-			}
 
 			// If the transaction is expected to not be included in the block,
 			// only the successful transaction that follows it should be included.
@@ -204,7 +206,7 @@ func TestBundle_AllOfGroupSucceedsIfAllStepsTolerated(t *testing.T) {
 
 	signer := types.LatestSignerForChainID(net.GetChainId())
 
-	senders := tests.MakeAccountsWithBalance(t, net, 3, big.NewInt(1e18))
+	senders := tests.MakeAccountsWithBalance(t, net, 4, big.NewInt(1e18))
 
 	revertAddress, revertInput := tests.MustDeployRevertContractAndGetMethodCallParameters(t, net)
 
@@ -215,42 +217,34 @@ func TestBundle_AllOfGroupSucceedsIfAllStepsTolerated(t *testing.T) {
 		Data: revertInput,
 	}
 
-	// The bundle structure is: AllOf(AllOf[c.tolerateFailed](successfulTx, c.tx), successfulTx)
-	// The group under test is the inner AllOf. The successful transaction
-	// in the inner group is needed for the cases with a successful transaction
-	// to check that the group continues executing after a tolerated step.
-	// The successful transaction in the outer group is needed to check
-	// whether the inner group was tolerated or not.
-	// expectInBlock is indexed by the position of the transaction in the
-	// bundle, in reference order.
 	cases := map[string]struct {
 		tolerateFailed bool
 		secondTx       types.AccessListTx
-		expectInBlock  [3]bool
+		expectInBlock  []bool
 	}{
 		"Default/SuccessfulStep": {
 			tolerateFailed: false,
 			secondTx:       successfulTx,
-			expectInBlock:  [3]bool{true, true, true},
+			expectInBlock:  []bool{true, true, true, true},
 		},
 		"Default/FailingStep": {
 			tolerateFailed: false,
 			// It does not matter whether the transaction fails or is invalid,
 			// since it will be reported as non-tolerated in both cases.
 			secondTx:      failingTx,
-			expectInBlock: [3]bool{false, false, false},
+			expectInBlock: []bool{false, false, false, true},
 		},
 		"TolerateFailed/SuccessfulStep": {
 			tolerateFailed: true,
 			secondTx:       successfulTx,
-			expectInBlock:  [3]bool{true, true, true},
+			expectInBlock:  []bool{true, true, true, true},
 		},
 		"TolerateFailed/FailingStep": {
 			tolerateFailed: true,
 			// It does not matter whether the transaction fails or is invalid,
 			// since it will be reported as non-tolerated in both cases.
 			secondTx:      failingTx,
-			expectInBlock: [3]bool{false, false, true},
+			expectInBlock: []bool{false, false, true, true},
 		},
 	}
 
@@ -264,15 +258,33 @@ func TestBundle_AllOfGroupSucceedsIfAllStepsTolerated(t *testing.T) {
 				flags = bundle.EF_TolerateFailed
 			}
 
+			// The bundle structure adds transactions and groups
+			// to guarantee that the bundle yields observable results
 			envelope, bundle, plan := bundle.NewBuilder().
 				WithSigner(signer).
 				SetEarliest(blockNumber).
-				AllOf(
+				With(
 					bundle.AllOf(
-						Step(t, net, senders[0], &successfulTx),
-						Step(t, net, senders[1], &c.secondTx),
-					).WithFlags(flags),
-					Step(t, net, senders[2], &successfulTx),
+						bundle.AllOf(
+							// This is the group under test
+							bundle.AllOf(
+								// This transaction is needed to check the AllOf
+								// does not stop after first successful step.
+								// It also serves to check that the transaction
+								// is reverted if a later tx fails
+								Step(t, net, senders[0], &successfulTx),
+								// Input transaction defining the failing condition
+								// of the group under test
+								Step(t, net, senders[1], &c.secondTx),
+							).WithFlags(flags),
+							// This tx is needed to detect when the group under
+							// test was tolerated
+							Step(t, net, senders[2], &successfulTx),
+						).WithFlags(bundle.EF_TolerateFailed),
+						// This tx is needed to produce observable results
+						// in case the group under test was not tolerated
+						Step(t, net, senders[3], &successfulTx),
+					),
 				).
 				BuildEnvelopeBundleAndPlan()
 
@@ -349,6 +361,7 @@ func TestBundle_OneOfGroupSucceedsOnFirstToleratedStep(t *testing.T) {
 			expectInBlock:  [3]bool{true, true, true},
 		},
 		"Default/OnlyNonTolerated": {
+			// Note: this test does not yield anything observable, timeout expected
 			tolerateFailed: false,
 			firstTx:        failingTx,
 			secondTx:       failingTx,
@@ -398,6 +411,16 @@ func TestBundle_OneOfGroupSucceedsOnFirstToleratedStep(t *testing.T) {
 
 			// Send the bundle.
 			require.NoError(t, client.SendTransaction(t.Context(), envelope))
+
+			if !slices.Contains(c.expectInBlock[:], true) {
+				timeoutCtx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+				defer cancel()
+
+				_, err := WaitForBundleExecution(timeoutCtx, client.Client(), plan.Hash())
+				require.ErrorIs(t, err, context.DeadlineExceeded)
+
+				return
+			}
 
 			// Wait for the bundle to be processed.
 			info, err := WaitForBundleExecution(t.Context(), client.Client(), plan.Hash())
