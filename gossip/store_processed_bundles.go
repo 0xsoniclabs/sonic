@@ -66,15 +66,6 @@ func (s *Store) AddProcessedBundles(
 	s.processedBundleMutex.Lock()
 	defer s.processedBundleMutex.Unlock()
 
-	// Register and index new hashes.
-	table := s.table.ProcessedBundles
-	batch := table.NewBatch()
-	addedHash := s.addNewBundles(blockNum, executedBundles, batch)
-
-	// Delete outdated hashes.
-	s.deleteOutdatedBundles(blockNum, batch)
-
-	// Update the state hash.
 	_, oldHash := s.GetProcessedBundleHistoryHash()
 
 	// keep the zero hash until a bundle is executed and from then onwards,
@@ -83,6 +74,15 @@ func (s *Store) AddProcessedBundles(
 		return
 	}
 
+	// Register and index new hashes.
+	table := s.table.ProcessedBundles
+	batch := table.NewBatch()
+	addedHash := s.addNewBundles(blockNum, executedBundles, batch)
+
+	// Delete outdated hashes.
+	s.deleteOutdatedBundles(blockNum, batch)
+
+	// Update the history hash of processed bundles.
 	newHash := computeNewBundleStateHash(oldHash, addedHash, blockNum)
 
 	err := batch.Put(nil, append(
@@ -126,9 +126,8 @@ func (s *Store) addNewBundles(
 	return addedHash
 }
 
-// deleteOutdatedBundles deletes the entries of processed bundles that got
-// processed too far in the past, and returns the XOR of their hashes to update the
-// history hash.
+// deleteOutdatedBundles deletes the entries of processed bundles that were
+// processed too far in the past.
 func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) {
 	if blockNum >= bundle.MaxBlockRange-1 {
 		// enough blocks have passed to start cleaning up the store
@@ -162,9 +161,9 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) {
 }
 
 // computeNewBundleStateHash computes the new hash of the processed bundles history
-// based on the previous hash, the added and the block number of the update.
+// based on the previous hash, the added plans hash and the block number of the update.
 //
-// This hash is used to verify than clients remain aligned on their bundle
+// This hash is used to verify that clients remain aligned on their bundle
 // processing history
 func computeNewBundleStateHash(
 	oldHash common.Hash,
