@@ -17,6 +17,7 @@
 package sonicapi
 
 import (
+	"encoding/json"
 	"math/big"
 	"testing"
 
@@ -30,6 +31,20 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 )
+
+// txStep is a test helper that wraps a TransactionArgs as a leaf PrepareBundleStep.
+func txStep(tx ethapi.TransactionArgs) PrepareBundleStep {
+	return PrepareBundleStep{Tx: &PrepareBundleTxStep{Transaction: tx}}
+}
+
+// txStepWithFlags wraps a TransactionArgs as a leaf step with execution flags.
+func txStepWithFlags(tx ethapi.TransactionArgs, tolerateFailed, tolerateInvalid bool) PrepareBundleStep {
+	return PrepareBundleStep{Tx: &PrepareBundleTxStep{
+		Transaction:     tx,
+		TolerateFailed:  tolerateFailed,
+		TolerateInvalid: tolerateInvalid,
+	}}
+}
 
 func Test_fillTransactionDefaults(t *testing.T) {
 	addr := common.Address{1}
@@ -417,6 +432,62 @@ func Test_asTransaction_PreservesFields(t *testing.T) {
 	require.Equal(t, []byte{0x01, 0x02}, tx.Data())
 }
 
+func Test_PrepareBundleStep_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name          string
+		json          string
+		wantTx        bool
+		wantGroup     bool
+		errorContains string
+	}{
+		{
+			name:   "transaction field to leaf",
+			json:   `{"transaction":{"from":"0x0100000000000000000000000000000000000000"}}`,
+			wantTx: true,
+		},
+		{
+			name:      "steps field to group",
+			json:      `{"steps":[]}`,
+			wantGroup: true,
+		},
+		{
+			name:          "both fields to error",
+			json:          `{"transaction":{},"steps":[]}`,
+			errorContains: "not both",
+		},
+		{
+			name:          "neither field to error",
+			json:          `{"tolerateFailed":true}`,
+			errorContains: "must have either 'transaction' or 'steps'",
+		},
+		{
+			name:          "invalid JSON to error",
+			json:          `not-json`,
+			errorContains: "invalid character",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var step PrepareBundleStep
+			err := json.Unmarshal([]byte(tc.json), &step)
+			if tc.errorContains != "" {
+				require.ErrorContains(t, err, tc.errorContains)
+				return
+			}
+			require.NoError(t, err)
+			if tc.wantTx {
+				require.NotNil(t, step.Tx)
+				require.Nil(t, step.Group)
+			}
+			if tc.wantGroup {
+				require.NotNil(t, step.Group)
+				require.Nil(t, step.Tx)
+			}
+		})
+	}
+}
+
 func Test_PrepareBundle_SingleTx_GasAndPriceEstimated(t *testing.T) {
 	addr1 := common.Address{1}
 	addr2 := common.Address{2}
@@ -428,11 +499,15 @@ func Test_PrepareBundle_SingleTx_GasAndPriceEstimated(t *testing.T) {
 	api := NewPublicBundleAPI(be)
 
 	args := PrepareBundleArgs{
-		Transactions: []ethapi.TransactionArgs{{
-			From:  &addr1,
-			To:    &addr2,
-			Nonce: rpctest.ToHexUint64(0),
-		}},
+		PrepareBundleGroupStep: PrepareBundleGroupStep{
+			Steps: []PrepareBundleStep{
+				txStep(ethapi.TransactionArgs{
+					From:  &addr1,
+					To:    &addr2,
+					Nonce: rpctest.ToHexUint64(0),
+				}),
+			},
+		},
 	}
 
 	result, err := api.PrepareBundle(t.Context(), args)
@@ -459,9 +534,11 @@ func Test_PrepareBundle_PlanHashConsistentAcrossTxs(t *testing.T) {
 	api := NewPublicBundleAPI(be)
 
 	args := PrepareBundleArgs{
-		Transactions: []ethapi.TransactionArgs{
-			{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
-			{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
+		PrepareBundleGroupStep: PrepareBundleGroupStep{
+			Steps: []PrepareBundleStep{
+				txStep(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+				txStep(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+			},
 		},
 	}
 
@@ -495,9 +572,11 @@ func Test_PrepareBundle_AccessListContainsConsistentPlanHash(t *testing.T) {
 	api := NewPublicBundleAPI(be)
 
 	args := PrepareBundleArgs{
-		Transactions: []ethapi.TransactionArgs{
-			{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
-			{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
+		PrepareBundleGroupStep: PrepareBundleGroupStep{
+			Steps: []PrepareBundleStep{
+				txStep(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+				txStep(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+			},
 		},
 	}
 
@@ -505,7 +584,6 @@ func Test_PrepareBundle_AccessListContainsConsistentPlanHash(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Transactions, 2)
 
-	// All txs must carry the same plan hash.
 	var planHash common.Hash
 	for i, tx := range result.Transactions {
 		require.NotNil(t, tx.AccessList)
@@ -535,12 +613,16 @@ func Test_PrepareBundle_ExplicitGasLimit_NotOverwritten(t *testing.T) {
 	api := NewPublicBundleAPI(be)
 
 	args := PrepareBundleArgs{
-		Transactions: []ethapi.TransactionArgs{{
-			From:  &addr1,
-			To:    &addr2,
-			Nonce: rpctest.ToHexUint64(0),
-			Gas:   &explicitGas,
-		}},
+		PrepareBundleGroupStep: PrepareBundleGroupStep{
+			Steps: []PrepareBundleStep{
+				txStep(ethapi.TransactionArgs{
+					From:  &addr1,
+					To:    &addr2,
+					Nonce: rpctest.ToHexUint64(0),
+					Gas:   &explicitGas,
+				}),
+			},
+		},
 	}
 
 	result, err := api.PrepareBundle(t.Context(), args)
@@ -561,18 +643,22 @@ func Test_PrepareBundle_DefaultBlockRange_IsCurrentBlockPlusOne(t *testing.T) {
 	currentBlock := be.CurrentBlock().NumberU64()
 
 	args := PrepareBundleArgs{
-		Transactions: []ethapi.TransactionArgs{{
-			From:  &addr1,
-			To:    &addr2,
-			Nonce: rpctest.ToHexUint64(0),
-		}},
+		PrepareBundleGroupStep: PrepareBundleGroupStep{
+			Steps: []PrepareBundleStep{
+				txStep(ethapi.TransactionArgs{
+					From:  &addr1,
+					To:    &addr2,
+					Nonce: rpctest.ToHexUint64(0),
+				}),
+			},
+		},
 	}
 
 	result, err := api.PrepareBundle(t.Context(), args)
 	require.NoError(t, err)
 
-	require.EqualValues(t, currentBlock+1, result.ExecutionPlan.Earliest)
-	require.EqualValues(t, currentBlock+bundle.MaxBlockRange, result.ExecutionPlan.Latest)
+	require.EqualValues(t, currentBlock+1, result.ExecutionPlan.BlockRange.Earliest)
+	require.EqualValues(t, currentBlock+bundle.MaxBlockRange, result.ExecutionPlan.BlockRange.Latest)
 }
 
 func Test_PrepareBundle_ExplicitBlockRange_IsRespected(t *testing.T) {
@@ -588,11 +674,15 @@ func Test_PrepareBundle_ExplicitBlockRange_IsRespected(t *testing.T) {
 	api := NewPublicBundleAPI(be)
 
 	args := PrepareBundleArgs{
-		Transactions: []ethapi.TransactionArgs{{
-			From:  &addr1,
-			To:    &addr2,
-			Nonce: rpctest.ToHexUint64(0),
-		}},
+		PrepareBundleGroupStep: PrepareBundleGroupStep{
+			Steps: []PrepareBundleStep{
+				txStep(ethapi.TransactionArgs{
+					From:  &addr1,
+					To:    &addr2,
+					Nonce: rpctest.ToHexUint64(0),
+				}),
+			},
+		},
 		EarliestBlock: &earliest,
 		LatestBlock:   &latest,
 	}
@@ -600,8 +690,8 @@ func Test_PrepareBundle_ExplicitBlockRange_IsRespected(t *testing.T) {
 	result, err := api.PrepareBundle(t.Context(), args)
 	require.NoError(t, err)
 
-	require.EqualValues(t, earliest, result.ExecutionPlan.Earliest)
-	require.EqualValues(t, latest, result.ExecutionPlan.Latest)
+	require.EqualValues(t, earliest, result.ExecutionPlan.BlockRange.Earliest)
+	require.EqualValues(t, latest, result.ExecutionPlan.BlockRange.Latest)
 }
 
 func Test_PrepareBundle_MissingNonce_ReturnsError(t *testing.T) {
@@ -615,10 +705,14 @@ func Test_PrepareBundle_MissingNonce_ReturnsError(t *testing.T) {
 	api := NewPublicBundleAPI(be)
 
 	args := PrepareBundleArgs{
-		Transactions: []ethapi.TransactionArgs{{
-			From: &addr1,
-			To:   &addr2,
-		}},
+		PrepareBundleGroupStep: PrepareBundleGroupStep{
+			Steps: []PrepareBundleStep{
+				txStep(ethapi.TransactionArgs{
+					From: &addr1,
+					To:   &addr2,
+				}),
+			},
+		},
 	}
 
 	_, err := api.PrepareBundle(t.Context(), args)
@@ -637,16 +731,24 @@ func Test_PrepareBundle_MultipleTxs_AllOfPlan(t *testing.T) {
 	api := NewPublicBundleAPI(be)
 
 	args := PrepareBundleArgs{
-		Transactions: []ethapi.TransactionArgs{
-			{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
-			{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
+		PrepareBundleGroupStep: PrepareBundleGroupStep{
+			Steps: []PrepareBundleStep{
+				txStep(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+				txStep(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+			},
 		},
 	}
 
 	result, err := api.PrepareBundle(t.Context(), args)
 	require.NoError(t, err)
 	require.Len(t, result.Transactions, 2)
-	require.Len(t, result.ExecutionPlan.Steps, 2)
+
+	// Two txs at root produce an AllOf group: outer Steps has 1 group, inner has 2 steps.
+	require.Len(t, result.ExecutionPlan.Steps, 1)
+	innerGroup, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
+	require.True(t, ok, "expected inner AllOf group")
+	require.False(t, innerGroup.OneOf)
+	require.Len(t, innerGroup.Steps, 2)
 
 	// Each tx must have the BundleOnly marker.
 	for i, tx := range result.Transactions {
@@ -665,8 +767,162 @@ func Test_PrepareBundle_EmptyTransactions_ReturnsEmptyBundle(t *testing.T) {
 	be := rpctest.NewBackendBuilder(t).Build()
 	api := NewPublicBundleAPI(be)
 
-	args := PrepareBundleArgs{Transactions: []ethapi.TransactionArgs{}}
+	args := PrepareBundleArgs{PrepareBundleGroupStep: PrepareBundleGroupStep{Steps: []PrepareBundleStep{}}}
 	result, err := api.PrepareBundle(t.Context(), args)
 	require.NoError(t, err)
 	require.Empty(t, result.Transactions)
+}
+
+func Test_PrepareBundle_OneOfGroup_BuildsOneOfPlan(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(addr2, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	args := PrepareBundleArgs{
+		PrepareBundleGroupStep: PrepareBundleGroupStep{
+			Steps: []PrepareBundleStep{
+				{Group: &PrepareBundleGroupStep{
+					OneOf: true,
+					Steps: []PrepareBundleStep{
+						txStep(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+						txStep(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+					},
+				}},
+			},
+		},
+	}
+
+	result, err := api.PrepareBundle(t.Context(), args)
+	require.NoError(t, err)
+	require.Len(t, result.Transactions, 2)
+
+	// Single root step is the OneOf group (unwrapped since root has 1 child with no modifiers).
+	require.Len(t, result.ExecutionPlan.Steps, 1)
+	oneOfGroup, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
+	require.True(t, ok)
+	require.True(t, oneOfGroup.OneOf, "expected OneOf group")
+	require.Len(t, oneOfGroup.Steps, 2)
+}
+
+func Test_PrepareBundle_TolerateFailed_Flag(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	args := PrepareBundleArgs{
+		PrepareBundleGroupStep: PrepareBundleGroupStep{
+			Steps: []PrepareBundleStep{
+				txStepWithFlags(ethapi.TransactionArgs{
+					From:  &addr1,
+					To:    &addr2,
+					Nonce: rpctest.ToHexUint64(0),
+				}, true, false),
+			},
+		},
+	}
+
+	result, err := api.PrepareBundle(t.Context(), args)
+	require.NoError(t, err)
+	require.Len(t, result.ExecutionPlan.Steps, 1)
+
+	leaf, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionStepComposable)
+	require.True(t, ok, "expected leaf step")
+	require.True(t, leaf.TolerateFailed, "TolerateFailed must be set")
+	require.False(t, leaf.TolerateInvalid)
+}
+
+func Test_PrepareBundle_TolerateInvalid_Flag(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	args := PrepareBundleArgs{
+		PrepareBundleGroupStep: PrepareBundleGroupStep{
+			Steps: []PrepareBundleStep{
+				txStepWithFlags(ethapi.TransactionArgs{
+					From:  &addr1,
+					To:    &addr2,
+					Nonce: rpctest.ToHexUint64(0),
+				}, false, true),
+			},
+		},
+	}
+
+	result, err := api.PrepareBundle(t.Context(), args)
+	require.NoError(t, err)
+	require.Len(t, result.ExecutionPlan.Steps, 1)
+
+	leaf, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionStepComposable)
+	require.True(t, ok, "expected leaf step")
+	require.False(t, leaf.TolerateFailed)
+	require.True(t, leaf.TolerateInvalid, "TolerateInvalid must be set")
+}
+
+func Test_PrepareBundle_NestedGroups(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(addr2, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	// OneOf(AllOf(tx1, tx2), tx3-alike via addr1 again)
+	args := PrepareBundleArgs{
+		PrepareBundleGroupStep: PrepareBundleGroupStep{
+			Steps: []PrepareBundleStep{
+				{Group: &PrepareBundleGroupStep{
+					OneOf: true,
+					Steps: []PrepareBundleStep{
+						{Group: &PrepareBundleGroupStep{
+							Steps: []PrepareBundleStep{
+								txStep(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+								txStep(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+							},
+						}},
+						txStep(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(1), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+					},
+				}},
+			},
+		},
+	}
+
+	result, err := api.PrepareBundle(t.Context(), args)
+	require.NoError(t, err)
+	require.Len(t, result.Transactions, 3)
+
+	// Root: 1 element (OneOf group)
+	require.Len(t, result.ExecutionPlan.Steps, 1)
+	oneOf, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
+	require.True(t, ok)
+	require.True(t, oneOf.OneOf)
+	require.Len(t, oneOf.Steps, 2)
+
+	// First alt is an AllOf group
+	allOf, ok := oneOf.Steps[0].(*RPCExecutionPlanGroup)
+	require.True(t, ok)
+	require.False(t, allOf.OneOf)
+	require.Len(t, allOf.Steps, 2)
+
+	// Second alt is a leaf
+	_, ok = oneOf.Steps[1].(*RPCExecutionStepComposable)
+	require.True(t, ok)
 }
