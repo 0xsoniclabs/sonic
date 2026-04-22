@@ -171,6 +171,8 @@ func TestBundle_RevertedBundleDoesNotConsumeSponsoredFunds(t *testing.T) {
 			// not the entire bundle.
 			Step(t, net, senders[1], &types.AccessListTx{}),
 		).
+		// AllOf(
+		// ).
 		BuildEnvelopeBundleAndPlan()
 
 	// Run the bundle.
