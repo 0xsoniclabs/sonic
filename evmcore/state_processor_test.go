@@ -2591,7 +2591,8 @@ func TestBundleTransactionRunner_CreateSnapshot_CallsInterTxSnapshotOnStateDbAnd
 
 	state.EXPECT().InterTxSnapshot().Return(123)
 
-	ctxt := &runContext{statedb: state}
+	usedGas := uint64(11)
+	ctxt := &runContext{statedb: state, usedGas: &usedGas}
 	bundleTransactionRunner := &bundleTransactionRunner{
 		ctxt:                  ctxt,
 		legacyTxOffset:        12,
@@ -2606,6 +2607,7 @@ func TestBundleTransactionRunner_CreateSnapshot_CallsInterTxSnapshotOnStateDbAnd
 	require.Equal(t, 12, bundleTransactionRunner.snapshots[0].legacyTxOffset)
 	require.Equal(t, 13, bundleTransactionRunner.snapshots[0].trueTxOffset)
 	require.Equal(t, 14, bundleTransactionRunner.snapshots[0].processedTransactionListLength)
+	require.EqualValues(t, 11, bundleTransactionRunner.snapshots[0].usedGas)
 }
 
 func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOnStateDbAndResetsLocalState(t *testing.T) {
@@ -2615,7 +2617,8 @@ func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOn
 	snapshotId := 123
 	state.EXPECT().RevertToInterTxSnapshot(snapshotId)
 
-	ctxt := &runContext{statedb: state}
+	usedGas := uint64(11)
+	ctxt := &runContext{statedb: state, usedGas: &usedGas}
 	bundleTransactionRunner := &bundleTransactionRunner{
 		ctxt:                  ctxt,
 		legacyTxOffset:        50,
@@ -2628,6 +2631,7 @@ func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOn
 		legacyTxOffset:                 14,
 		trueTxOffset:                   15,
 		processedTransactionListLength: 5,
+		usedGas:                        6,
 	}}
 	bundleTransactionRunner.RevertToSnapshot(0)
 
@@ -2635,6 +2639,7 @@ func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOn
 	require.Equal(t, 14, bundleTransactionRunner.legacyTxOffset)
 	require.Equal(t, 15, bundleTransactionRunner.trueTxOffset)
 	require.Len(t, bundleTransactionRunner.processedTransactions, 5)
+	require.EqualValues(t, 6, *ctxt.usedGas)
 }
 
 func TestBundleTransactionRunner_RevertToSnapshot_InvalidId_TriggerInvalidRevertInStateDB(t *testing.T) {
