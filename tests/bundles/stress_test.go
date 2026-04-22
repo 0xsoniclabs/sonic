@@ -64,12 +64,10 @@ func TestBundle_StressWithManyNonceBlockedBundles(t *testing.T) {
 		planHashes[i] = plan.Hash()
 	}
 
-	// Iteratively send in all bundles except the first one (with nonce 0)
-	// which will be blocked until the transaction with nonce 0 is executed.
-	for i := range N {
-		_, err = net.Send(envelopes[i+1])
-		require.NoError(t, err)
-	}
+	// Send in all bundles except the first one (with nonce 0) which will be
+	// blocked until the transaction with nonce 0 is executed.
+	_, err = net.SendAll(envelopes[1:])
+	require.NoError(t, err)
 
 	// Send the bundle containing the transaction with nonce 0 which unblocks
 	// all the other bundles.
