@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -29,7 +30,25 @@ import (
 )
 
 func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
-	net := GetIntegrationTestNetWithBundlesEnabled(t)
+	testCases := map[string]bool{
+		"distributed_block_formation": false,
+		"single_proposer":             true,
+	}
+
+	for name, mode := range testCases {
+		t.Run(name, func(t *testing.T) {
+			upgrades := opera.GetBrioUpgrades()
+			upgrades.TransactionBundles = true
+			upgrades.SingleProposerBlockFormation = mode
+			testBundle_CanBeProcessedByTheNetworkUsing(t, tests.IntegrationTestNetOptions{
+				Upgrades: &upgrades,
+			})
+		})
+	}
+}
+
+func testBundle_CanBeProcessedByTheNetworkUsing(t *testing.T, options tests.IntegrationTestNetOptions) {
+	net := tests.StartIntegrationTestNet(t, options)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)

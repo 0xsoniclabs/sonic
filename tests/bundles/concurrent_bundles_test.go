@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/revert"
 	"github.com/ethereum/go-ethereum"
@@ -32,8 +33,25 @@ import (
 )
 
 func TestBundles_RunBundlesInParallel(t *testing.T) {
-	// Create a list of successful and failing bundles.
-	net := GetIntegrationTestNetWithBundlesEnabled(t)
+	testCases := map[string]bool{
+		"distributed_block_formation": false,
+		"single_proposer":             true,
+	}
+
+	for name, mode := range testCases {
+		t.Run(name, func(t *testing.T) {
+			upgrades := opera.GetBrioUpgrades()
+			upgrades.TransactionBundles = true
+			upgrades.SingleProposerBlockFormation = mode
+			testBundles_RunBundlesInParallel(t, tests.IntegrationTestNetOptions{
+				Upgrades: &upgrades,
+			})
+		})
+	}
+}
+
+func testBundles_RunBundlesInParallel(t *testing.T, options tests.IntegrationTestNetOptions) {
+	net := tests.StartIntegrationTestNet(t, options)
 
 	t.Run("succeeding bundles", func(t *testing.T) {
 		testSucceedingConcurrentBundles(t, net)
