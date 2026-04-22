@@ -23,6 +23,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/sonic/tests/contracts/store"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -93,9 +94,11 @@ func TestBundle_StressWithManyNonceBlockedBundles(t *testing.T) {
 }
 
 func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
-	// Increase these numbers for profiling to increase load on the system.
+	// This test runs `B` bundles of the shape:
+	// AllOf(AllOf[TolerateFailed](expensive tx, failing tx), successful tx).
+
+	// Increase this number for profiling to increase load on the system.
 	const B = 1 // Number of bundles
-	const S = 1 // Number of expensive steps per bundle
 
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.TransactionBundles = true
@@ -108,28 +111,36 @@ func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
+	// Deploy the store contract.
+	storeAddr := tests.MustDeployContract(t, net, store.DeployStore)
+	storeFillInput := tests.MustGetMethodParameters(
+		t, store.StoreMetaData, "fill",
+		// arguments: from, until, value (1100 slots is about the maximum
+		// number of slots that can be filled within the block gas limit)
+		big.NewInt(0), big.NewInt(1100), big.NewInt(1),
+	)
+
 	signer := types.LatestSignerForChainID(net.GetChainId())
 
 	// Create all needed accounts and endow in parallel.
-	accounts := tests.MakeAccountsWithBalance(t, net, B*(S+2), big.NewInt(1e18))
+	accounts := tests.MakeAccountsWithBalance(t, net, B*3, big.NewInt(1e18))
 
 	envelopes := make([]*types.Transaction, B)
 	planHashes := make([]common.Hash, B)
 
 	// Create B bundles.
 	for i := range B {
-		// Create S expensive successful steps and 1 invalid step causing the whole layer to roll back.
-		steps := make([]bundle.BuilderStep, S+1)
-		for j := range S {
-			steps[j] = Step(t, net, accounts[S*i+j], &types.AccessListTx{})
-		}
-		steps[S] = Step(t, net, accounts[S*i+S], &types.AccessListTx{Gas: 1})
-
 		envelope, _, plan := bundle.NewBuilder().
 			WithSigner(signer).
 			AllOf(
-				bundle.AllOf(steps...).WithFlags(bundle.EF_TolerateFailed),
-				Step(t, net, accounts[S*i+S+1], &types.AccessListTx{}),
+				bundle.AllOf(
+					Step(t, net, accounts[i*3], &types.AccessListTx{
+						To:   &storeAddr,
+						Data: storeFillInput,
+					}),
+					Step(t, net, accounts[i*3+1], &types.AccessListTx{Gas: 1}),
+				).WithFlags(bundle.EF_TolerateFailed),
+				Step(t, net, accounts[i*3+2], &types.AccessListTx{}),
 			).
 			BuildEnvelopeBundleAndPlan()
 

@@ -513,12 +513,13 @@ func MustGetMethodParameters(
 	t testing.TB,
 	bindMetadata *bind.MetaData,
 	methodName string,
+	args ...any,
 ) []byte {
 	t.Helper()
 
 	abi, err := bindMetadata.GetAbi()
 	require.NoError(t, err, "failed to get counter abi; %v", err)
-	input, err := abi.Pack(methodName)
+	input, err := abi.Pack(methodName, args...)
 	require.NoError(t, err, "failed to pack input for method %s; %v", methodName, err)
 
 	return input
