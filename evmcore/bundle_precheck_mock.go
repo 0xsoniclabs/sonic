@@ -20,32 +20,32 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockChainState is a mock of ChainState interface.
-type MockChainState struct {
+// MockChainStateForBundleEval is a mock of ChainStateForBundleEval interface.
+type MockChainStateForBundleEval struct {
 	ctrl     *gomock.Controller
-	recorder *MockChainStateMockRecorder
+	recorder *MockChainStateForBundleEvalMockRecorder
 	isgomock struct{}
 }
 
-// MockChainStateMockRecorder is the mock recorder for MockChainState.
-type MockChainStateMockRecorder struct {
-	mock *MockChainState
+// MockChainStateForBundleEvalMockRecorder is the mock recorder for MockChainStateForBundleEval.
+type MockChainStateForBundleEvalMockRecorder struct {
+	mock *MockChainStateForBundleEval
 }
 
-// NewMockChainState creates a new mock instance.
-func NewMockChainState(ctrl *gomock.Controller) *MockChainState {
-	mock := &MockChainState{ctrl: ctrl}
-	mock.recorder = &MockChainStateMockRecorder{mock}
+// NewMockChainStateForBundleEval creates a new mock instance.
+func NewMockChainStateForBundleEval(ctrl *gomock.Controller) *MockChainStateForBundleEval {
+	mock := &MockChainStateForBundleEval{ctrl: ctrl}
+	mock.recorder = &MockChainStateForBundleEvalMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockChainState) EXPECT() *MockChainStateMockRecorder {
+func (m *MockChainStateForBundleEval) EXPECT() *MockChainStateForBundleEvalMockRecorder {
 	return m.recorder
 }
 
 // GetCurrentNetworkRules mocks base method.
-func (m *MockChainState) GetCurrentNetworkRules() opera.Rules {
+func (m *MockChainStateForBundleEval) GetCurrentNetworkRules() opera.Rules {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCurrentNetworkRules")
 	ret0, _ := ret[0].(opera.Rules)
@@ -53,13 +53,13 @@ func (m *MockChainState) GetCurrentNetworkRules() opera.Rules {
 }
 
 // GetCurrentNetworkRules indicates an expected call of GetCurrentNetworkRules.
-func (mr *MockChainStateMockRecorder) GetCurrentNetworkRules() *gomock.Call {
+func (mr *MockChainStateForBundleEvalMockRecorder) GetCurrentNetworkRules() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentNetworkRules", reflect.TypeOf((*MockChainState)(nil).GetCurrentNetworkRules))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentNetworkRules", reflect.TypeOf((*MockChainStateForBundleEval)(nil).GetCurrentNetworkRules))
 }
 
 // GetEvmChainConfig mocks base method.
-func (m *MockChainState) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig {
+func (m *MockChainStateForBundleEval) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEvmChainConfig", blockHeight)
 	ret0, _ := ret[0].(*params.ChainConfig)
@@ -67,13 +67,13 @@ func (m *MockChainState) GetEvmChainConfig(blockHeight idx.Block) *params.ChainC
 }
 
 // GetEvmChainConfig indicates an expected call of GetEvmChainConfig.
-func (mr *MockChainStateMockRecorder) GetEvmChainConfig(blockHeight any) *gomock.Call {
+func (mr *MockChainStateForBundleEvalMockRecorder) GetEvmChainConfig(blockHeight any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEvmChainConfig", reflect.TypeOf((*MockChainState)(nil).GetEvmChainConfig), blockHeight)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEvmChainConfig", reflect.TypeOf((*MockChainStateForBundleEval)(nil).GetEvmChainConfig), blockHeight)
 }
 
 // GetLatestHeader mocks base method.
-func (m *MockChainState) GetLatestHeader() *EvmHeader {
+func (m *MockChainStateForBundleEval) GetLatestHeader() *EvmHeader {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLatestHeader")
 	ret0, _ := ret[0].(*EvmHeader)
@@ -81,13 +81,13 @@ func (m *MockChainState) GetLatestHeader() *EvmHeader {
 }
 
 // GetLatestHeader indicates an expected call of GetLatestHeader.
-func (mr *MockChainStateMockRecorder) GetLatestHeader() *gomock.Call {
+func (mr *MockChainStateForBundleEvalMockRecorder) GetLatestHeader() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestHeader", reflect.TypeOf((*MockChainState)(nil).GetLatestHeader))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestHeader", reflect.TypeOf((*MockChainStateForBundleEval)(nil).GetLatestHeader))
 }
 
 // Header mocks base method.
-func (m *MockChainState) Header(hash common.Hash, number uint64) *EvmHeader {
+func (m *MockChainStateForBundleEval) Header(hash common.Hash, number uint64) *EvmHeader {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Header", hash, number)
 	ret0, _ := ret[0].(*EvmHeader)
@@ -95,13 +95,13 @@ func (m *MockChainState) Header(hash common.Hash, number uint64) *EvmHeader {
 }
 
 // Header indicates an expected call of Header.
-func (mr *MockChainStateMockRecorder) Header(hash, number any) *gomock.Call {
+func (mr *MockChainStateForBundleEvalMockRecorder) Header(hash, number any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockChainState)(nil).Header), hash, number)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockChainStateForBundleEval)(nil).Header), hash, number)
 }
 
 // StateDB mocks base method.
-func (m *MockChainState) StateDB() state.StateDB {
+func (m *MockChainStateForBundleEval) StateDB() state.StateDB {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StateDB")
 	ret0, _ := ret[0].(state.StateDB)
@@ -109,9 +109,9 @@ func (m *MockChainState) StateDB() state.StateDB {
 }
 
 // StateDB indicates an expected call of StateDB.
-func (mr *MockChainStateMockRecorder) StateDB() *gomock.Call {
+func (mr *MockChainStateForBundleEvalMockRecorder) StateDB() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StateDB", reflect.TypeOf((*MockChainState)(nil).StateDB))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StateDB", reflect.TypeOf((*MockChainStateForBundleEval)(nil).StateDB))
 }
 
 // MockNonceSource is a mock of NonceSource interface.

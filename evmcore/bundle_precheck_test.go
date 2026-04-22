@@ -36,7 +36,7 @@ import (
 
 func Test_GetBundleState_BundlesDisabled_ReturnsNonExecutable(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	chainState := NewMockChainState(ctrl)
+	chainState := NewMockChainStateForBundleEval(ctrl)
 	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
 		NetworkID: 1,
 		Upgrades:  opera.Upgrades{TransactionBundles: false},
@@ -52,7 +52,7 @@ func Test_GetBundleState_BundlesDisabled_ReturnsNonExecutable(t *testing.T) {
 
 func Test_GetBundleState_InvalidBundle_ReturnsNonExecutable(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	chainState := NewMockChainState(ctrl)
+	chainState := NewMockChainStateForBundleEval(ctrl)
 	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
 		NetworkID: 1,
 		Upgrades:  opera.Upgrades{TransactionBundles: true},
@@ -68,7 +68,7 @@ func Test_GetBundleState_InvalidBundle_ReturnsNonExecutable(t *testing.T) {
 
 func Test_GetBundleState_OutdatedBundle_ReturnsNonExecutable(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	chainState := NewMockChainState(ctrl)
+	chainState := NewMockChainStateForBundleEval(ctrl)
 
 	currentBlock := uint64(100)
 	currentHeader := &EvmHeader{
@@ -93,7 +93,7 @@ func Test_GetBundleState_OutdatedBundle_ReturnsNonExecutable(t *testing.T) {
 
 func Test_GetBundleState_FutureBundle_ReturnsTemporaryBlocked(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	chainState := NewMockChainState(ctrl)
+	chainState := NewMockChainStateForBundleEval(ctrl)
 
 	currentBlock := uint64(100)
 	currentHeader := &EvmHeader{
@@ -122,7 +122,7 @@ func Test_GetBundleState_FutureBundle_ReturnsTemporaryBlocked(t *testing.T) {
 func Test_GetBundleState_FailedTrialRun_ReturnsNonExecutable(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
-	chainState := NewMockChainState(ctrl)
+	chainState := NewMockChainStateForBundleEval(ctrl)
 	stateDb := state.NewMockStateDB(ctrl)
 	stateDb.EXPECT().InterTxSnapshot().Return(12)
 	stateDb.EXPECT().RevertToInterTxSnapshot(12)
@@ -144,7 +144,7 @@ func Test_GetBundleState_FailedTrialRun_ReturnsNonExecutable(t *testing.T) {
 		SetLatest(currentBlock + 5).
 		Build()
 
-	rejectEverything := func(*types.Transaction, ChainState, state.StateDB) bool {
+	rejectEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) bool {
 		return false
 	}
 
@@ -154,7 +154,7 @@ func Test_GetBundleState_FailedTrialRun_ReturnsNonExecutable(t *testing.T) {
 
 func Test_GetBundleState_ValidBundle_ReturnsRunnable(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	chainState := NewMockChainState(ctrl)
+	chainState := NewMockChainStateForBundleEval(ctrl)
 	stateDb := state.NewMockStateDB(ctrl)
 	stateDb.EXPECT().InterTxSnapshot().Return(12)
 	stateDb.EXPECT().RevertToInterTxSnapshot(12)
@@ -177,7 +177,7 @@ func Test_GetBundleState_ValidBundle_ReturnsRunnable(t *testing.T) {
 		SetLatest(currentBlock + 5).
 		Build()
 
-	acceptEverything := func(*types.Transaction, ChainState, state.StateDB) bool {
+	acceptEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) bool {
 		return true
 	}
 
@@ -234,7 +234,7 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 			currentHeader := &EvmHeader{
 				Number: big.NewInt(0),
 			}
-			chainState := NewMockChainState(ctrl)
+			chainState := NewMockChainStateForBundleEval(ctrl)
 			chainState.EXPECT().GetLatestHeader().Return(currentHeader).AnyTimes()
 			chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
 				NetworkID: 1,
@@ -250,7 +250,7 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 			_, _, err := bundle.ValidateEnvelope(signer, envelope)
 			require.NoError(t, err)
 
-			acceptEverything := func(*types.Transaction, ChainState, state.StateDB) bool {
+			acceptEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) bool {
 				return true
 			}
 

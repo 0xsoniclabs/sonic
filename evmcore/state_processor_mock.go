@@ -13,8 +13,11 @@ import (
 	reflect "reflect"
 
 	core_types "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	opera "github.com/0xsoniclabs/sonic/opera"
+	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
+	params "github.com/ethereum/go-ethereum/params"
 	uint256 "github.com/holiman/uint256"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -154,6 +157,72 @@ func (m *Mock_evm) runWithoutBaseFeeCheck(arg0 *runContext, arg1 *types.Transact
 func (mr *Mock_evmMockRecorder) runWithoutBaseFeeCheck(arg0, arg1, arg2 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runWithoutBaseFeeCheck", reflect.TypeOf((*Mock_evm)(nil).runWithoutBaseFeeCheck), arg0, arg1, arg2)
+}
+
+// MockChainState is a mock of ChainState interface.
+type MockChainState struct {
+	ctrl     *gomock.Controller
+	recorder *MockChainStateMockRecorder
+	isgomock struct{}
+}
+
+// MockChainStateMockRecorder is the mock recorder for MockChainState.
+type MockChainStateMockRecorder struct {
+	mock *MockChainState
+}
+
+// NewMockChainState creates a new mock instance.
+func NewMockChainState(ctrl *gomock.Controller) *MockChainState {
+	mock := &MockChainState{ctrl: ctrl}
+	mock.recorder = &MockChainStateMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockChainState) EXPECT() *MockChainStateMockRecorder {
+	return m.recorder
+}
+
+// GetCurrentNetworkRules mocks base method.
+func (m *MockChainState) GetCurrentNetworkRules() opera.Rules {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCurrentNetworkRules")
+	ret0, _ := ret[0].(opera.Rules)
+	return ret0
+}
+
+// GetCurrentNetworkRules indicates an expected call of GetCurrentNetworkRules.
+func (mr *MockChainStateMockRecorder) GetCurrentNetworkRules() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentNetworkRules", reflect.TypeOf((*MockChainState)(nil).GetCurrentNetworkRules))
+}
+
+// GetEvmChainConfig mocks base method.
+func (m *MockChainState) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEvmChainConfig", blockHeight)
+	ret0, _ := ret[0].(*params.ChainConfig)
+	return ret0
+}
+
+// GetEvmChainConfig indicates an expected call of GetEvmChainConfig.
+func (mr *MockChainStateMockRecorder) GetEvmChainConfig(blockHeight any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEvmChainConfig", reflect.TypeOf((*MockChainState)(nil).GetEvmChainConfig), blockHeight)
+}
+
+// Header mocks base method.
+func (m *MockChainState) Header(hash common.Hash, number uint64) *EvmHeader {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Header", hash, number)
+	ret0, _ := ret[0].(*EvmHeader)
+	return ret0
+}
+
+// Header indicates an expected call of Header.
+func (mr *MockChainStateMockRecorder) Header(hash, number any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockChainState)(nil).Header), hash, number)
 }
 
 // Mocklogger is a mock of logger interface.

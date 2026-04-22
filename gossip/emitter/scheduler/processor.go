@@ -17,14 +17,9 @@
 package scheduler
 
 import (
-	"math"
-
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
 )
 
 //go:generate mockgen -source=processor.go -destination=processor_mock.go -package=scheduler
@@ -53,16 +48,7 @@ type processor interface {
 // Chain provides access to the chain state retained by the client required for
 // test-running transactions.
 type Chain interface {
-	// DummyChain needs to be implemented in order to resolve past block hashes.
-	// TODO: follow-up task - simplify this to a GetBlockHash(idx.Block) method.
-	evmcore.DummyChain
-
-	// GetCurrentNetworkRules returns the current network rules for the EVM.
-	GetCurrentNetworkRules() opera.Rules
-
-	// GetEvmChainConfig returns the chain configuration for the EVM at the
-	// given block height
-	GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig
+	evmcore.ChainState
 
 	// StateDB returns a context for running transactions on the head state of
 	// the chain. A non-committable state-DB instance is sufficient.
@@ -80,20 +66,9 @@ type evmProcessorFactory struct {
 func (p *evmProcessorFactory) beginBlock(
 	block *evmcore.EvmBlock,
 ) processor {
-	// TODO: follow-up task - align this with c_block_callbacks.go
-	chainCfg := p.chain.GetEvmChainConfig(idx.Block(block.Header().Number.Uint64()))
-	vmConfig := opera.GetVmConfig(p.chain.GetCurrentNetworkRules())
 	state := p.chain.StateDB()
-
-	// The gas limit for transactions is enforced on a per-transaction level
-	// in the scheduler. See the scheduler.Schedule method for details. The
-	// total gas used for attempting to schedule transactions is not limited.
-	gasLimit := uint64(math.MaxUint64)
-	stateProcessor := evmcore.NewStateProcessor(
-		chainCfg, p.chain, p.chain.GetCurrentNetworkRules().Upgrades,
-	)
 	return &evmProcessor{
-		processor: stateProcessor.BeginBlock(block, state, vmConfig, gasLimit, nil),
+		processor: evmcore.NewTransactionProcessorForBlock(p.chain, state, block),
 		stateDb:   state,
 	}
 }
