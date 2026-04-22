@@ -92,10 +92,10 @@ func TestBundle_StressWithManyNonceBlockedBundles(t *testing.T) {
 	}
 }
 
-func TestBundle_StressWithManyRollingBackBundles(t *testing.T) {
+func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
 	// Increase these numbers for profiling to increase load on the system.
-	const B = 2 // Number of bundles
-	const S = 1 // Number of steps per bundle
+	const B = 1 // Number of bundles
+	const S = 1 // Number of expensive steps per bundle
 
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.TransactionBundles = true
@@ -111,23 +111,26 @@ func TestBundle_StressWithManyRollingBackBundles(t *testing.T) {
 	signer := types.LatestSignerForChainID(net.GetChainId())
 
 	// Create all needed accounts and endow in parallel.
-	accounts := tests.MakeAccountsWithBalance(t, net, B, big.NewInt(1e18))
+	accounts := tests.MakeAccountsWithBalance(t, net, B*(S+2), big.NewInt(1e18))
 
 	envelopes := make([]*types.Transaction, B)
 	planHashes := make([]common.Hash, B)
 
-	// Create B bundles that will roll back.
+	// Create B bundles.
 	for i := range B {
-		// Create S-1 successful steps and 1 invalid step causing the whole bundle to roll back.
-		steps := make([]bundle.BuilderStep, S)
-		for j := range S - 1 {
-			steps[j] = Step(t, net, accounts[i], &types.AccessListTx{Nonce: uint64(j)})
+		// Create S expensive successful steps and 1 invalid step causing the whole layer to roll back.
+		steps := make([]bundle.BuilderStep, S+1)
+		for j := range S {
+			steps[j] = Step(t, net, accounts[S*i+j], &types.AccessListTx{})
 		}
-		steps[S-1] = Step(t, net, accounts[i], &types.AccessListTx{Nonce: uint64(S - 1), Gas: 1})
+		steps[S] = Step(t, net, accounts[S*i+S], &types.AccessListTx{Gas: 1})
 
 		envelope, _, plan := bundle.NewBuilder().
 			WithSigner(signer).
-			AllOf(steps...).
+			AllOf(
+				bundle.AllOf(steps...).WithFlags(bundle.EF_TolerateFailed),
+				Step(t, net, accounts[S*i+S+1], &types.AccessListTx{}),
+			).
 			BuildEnvelopeBundleAndPlan()
 
 		envelopes[i] = envelope
@@ -142,8 +145,9 @@ func TestBundle_StressWithManyRollingBackBundles(t *testing.T) {
 	infos, err := WaitForBundleExecutions(t.Context(), client.Client(), planHashes)
 	require.NoError(t, err)
 
-	// Check that all bundles were rolled back.
+	// Check that all bundles were executed successfully but only the last
+	// outer transaction ended up in the block.
 	for _, info := range infos {
-		require.Zero(t, info.Count)
+		require.EqualValues(t, 1, info.Count)
 	}
 }
