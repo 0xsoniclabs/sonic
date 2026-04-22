@@ -203,6 +203,7 @@ func TestStore_AddProcessedBundles_AddsNewBundlesToStorage(t *testing.T) {
 
 func TestStore_AddProcessedBundles_LogsOnBatchPutNewEntryError(t *testing.T) {
 	store, table, log, batch, _ := storeTableLogMocks(t)
+
 	injectedErr := errors.New("new entry put error")
 	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErr)
 
@@ -665,7 +666,7 @@ func TestStore_xorHash_ReturnsExpectedResult(t *testing.T) {
 func TestStore_computeNewBundleStateHash_CorrectlyProcessesEdgeCases(t *testing.T) {
 	// this test checks that the computeNewBundleStateHash function correctly processes edge cases, such as:
 	//  - blockNum being zero or very large
-	//  - oldHash, addedHash, and deletedHash having specific patterns (e.g., all zeros, all 0xff, etc.)
+	//  - oldHash and addedHash having specific patterns (e.g., all zeros, all 0xff, etc.)
 	//  - combinations of the above
 
 	hashDomain := []common.Hash{
@@ -682,24 +683,20 @@ func TestStore_computeNewBundleStateHash_CorrectlyProcessesEdgeCases(t *testing.
 		math.MaxUint64}
 
 	type testCase struct {
-		oldHash     common.Hash
-		addedHash   common.Hash
-		deletedHash common.Hash
-		blockNum    uint64
+		oldHash   common.Hash
+		addedHash common.Hash
+		blockNum  uint64
 	}
 	testCases := map[string]testCase{}
 	for _, oldHash := range hashDomain {
 		for _, addedHash := range hashDomain {
-			for _, deletedHash := range hashDomain {
-				for _, blockNum := range blockNumberDomain {
-					name := fmt.Sprintf("oldHash=%s/addedHash=%s/deletedHash=%s/blockNum=%d",
-						oldHash.Hex(), addedHash.Hex(), deletedHash.Hex(), blockNum)
-					testCases[name] = testCase{
-						oldHash:     oldHash,
-						addedHash:   addedHash,
-						deletedHash: deletedHash,
-						blockNum:    blockNum,
-					}
+			for _, blockNum := range blockNumberDomain {
+				name := fmt.Sprintf("oldHash=%s/addedHash=%s/blockNum=%d",
+					oldHash.Hex(), addedHash.Hex(), blockNum)
+				testCases[name] = testCase{
+					oldHash:   oldHash,
+					addedHash: addedHash,
+					blockNum:  blockNum,
 				}
 			}
 		}
@@ -708,7 +705,7 @@ func TestStore_computeNewBundleStateHash_CorrectlyProcessesEdgeCases(t *testing.
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 			got := computeNewBundleStateHash(tc.oldHash, tc.addedHash, tc.blockNum)
-			ref := referenceComputeStateHash(tc.blockNum, tc.oldHash, tc.addedHash)
+			ref := referenceComputeStateHash(tc.oldHash, tc.addedHash, tc.blockNum)
 			require.Equal(t, ref, got, "actual implementation should match alternative implementation")
 		})
 	}
@@ -758,7 +755,7 @@ func TestStore_ProcessedBundles_TablesAreInitiallyEmpty(t *testing.T) {
 	require.NoError(iter.Error())
 }
 
-func TestStore_ProcessedBundles_ZeroHistoryHashIsPreserve_WhenNoBundlesAreExecuted(t *testing.T) {
+func TestStore_ProcessedBundles_ZeroHistoryHashIsPreserved_WhenNoBundlesAreExecuted(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -813,7 +810,7 @@ func TestStore_ProcessedBundles_UpdatesHistoryHash(t *testing.T) {
 			for hash := range tc.bundles {
 				addedHash = xorHash(addedHash, hash)
 			}
-			expectedHash := referenceComputeStateHash(1, initialHash, addedHash)
+			expectedHash := referenceComputeStateHash(initialHash, addedHash, 1)
 			_, gotHash := store.GetProcessedBundleHistoryHash()
 			require.Equal(expectedHash, gotHash)
 		})
@@ -1059,17 +1056,16 @@ func TestStore_ProcessedBundles_HistoryHashConverges_ForStoresStartingAtDifferen
 	store1, err := NewMemStore(t)
 	require.NoError(err)
 
-	// Step 1: Store 1 processes blocks 0-11, first bundle is executed at block 10.
-	for block := range blockHistory {
-		if block < 10 {
-			store1.AddProcessedBundles(uint64(block), blockHistory[block])
-			_, hash := store1.GetProcessedBundleHistoryHash()
-			// Check 1: History hash remains zero before the first bundle is executed.
-			require.Equal(common.Hash{}, hash,
-				"store1 history hash should remain zero before first bundle at block %d", block)
-		}
+	// Step 1: Store 1 processes blocks 0-9 without bundles
+	for block := range uint64(10) {
+		store1.AddProcessedBundles(uint64(block), blockHistory[block])
+		_, hash := store1.GetProcessedBundleHistoryHash()
+		// Check 1: History hash remains zero before the first bundle is executed.
+		require.Equal(common.Hash{}, hash,
+			"store1 history hash should remain zero before first bundle at block %d", block)
 	}
 
+	// first bundle is executed at block 10.
 	store1.AddProcessedBundles(10, blockHistory[10])
 	_, hashAt10 := store1.GetProcessedBundleHistoryHash()
 	require.NotEqual(common.Hash{}, hashAt10, "store1 hash should be non-zero after first bundle at block 10")
@@ -1182,7 +1178,7 @@ func TestStore_ProcessedBundles_DeletingEntries_DoesNotAffectHistoryHash(t *test
 	// independent of any internal pruning.
 	expectedHash := hashAt0
 	for block := uint64(1); block <= bundle.MaxBlockRange; block++ {
-		expectedHash = referenceComputeStateHash(block, expectedHash, common.Hash{})
+		expectedHash = referenceComputeStateHash(expectedHash, common.Hash{}, block)
 	}
 
 	// Advance enough blocks to trigger pruning of the entry at block 0.
@@ -1205,8 +1201,8 @@ func TestStore_ProcessedBundles_DeletingEntries_DoesNotAffectHistoryHash(t *test
 // referenceComputeStateHash is a reference implementation of the hash
 // computation for the processed bundles state. To be used by tests.
 func referenceComputeStateHash(
-	blockNum uint64,
 	oldHash, addedHash common.Hash,
+	blockNum uint64,
 ) common.Hash {
 
 	var data []byte
