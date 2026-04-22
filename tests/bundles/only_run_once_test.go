@@ -35,13 +35,7 @@ func TestBundle_RunOnlyOnce_ExecutionPlanSubmittedMultipleTimesInDifferentEnvelo
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.TransactionBundles = true
 
-	net := tests.StartIntegrationTestNet(t,
-		tests.IntegrationTestNetOptions{
-			Upgrades: &upgrades,
-			ClientExtraArguments: []string{
-				"--disable-txPool-validation",
-			},
-		})
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{Upgrades: &upgrades})
 
 	client, err := net.GetClient()
 	require.NoError(err)
