@@ -22,7 +22,6 @@ import (
 	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -57,18 +56,7 @@ func ValidateEnvelope(
 	return validateEnvelopeInternal(
 		signer,
 		envelopeTx,
-		func(data []byte, accessList types.AccessList) (uint64, error) {
-			return core.IntrinsicGas(
-				envelopeTx.Data(),
-				envelopeTx.AccessList(),
-				nil,   // code auth is not used in the bundle transaction
-				false, // bundle transaction is not a contract creation
-				true,  // is homestead
-				true,  // is istanbul
-				true,  // is shanghai
-			)
-		},
-		core.FloorDataGas,
+		calculateEnvelopeGas,
 	)
 }
 
@@ -77,8 +65,12 @@ func ValidateEnvelope(
 func validateEnvelopeInternal(
 	signer types.Signer,
 	envelopeTx *types.Transaction,
-	calculateIntrinsicGas func(data []byte, accessList types.AccessList) (uint64, error),
-	calculateFloorGas func(data []byte) (uint64, error),
+	calculateEnvelopeGas func(
+		TransactionBundle,
+		[]byte,
+		types.AccessList,
+		[]types.SetCodeAuthorization,
+	) (uint64, error),
 ) (*TransactionBundle, *ExecutionPlan, error) {
 	if !IsEnvelope(envelopeTx) {
 		return nil, nil, fmt.Errorf("not an envelope transaction")
@@ -104,39 +96,15 @@ func validateEnvelopeInternal(
 		return nil, nil, err
 	}
 
-	bundleGas := envelopeTx.Gas()
-	// Ensure the transaction has more gas than the basic tx fee.
-	intrGas, err := calculateIntrinsicGas(
-		envelopeTx.Data(),
-		envelopeTx.AccessList(),
+	envelopeGas := envelopeTx.Gas()
+	neededGas, err := calculateEnvelopeGas(
+		txBundle, envelopeTx.Data(), envelopeTx.AccessList(), envelopeTx.SetCodeAuthorizations(),
 	)
 	if err != nil {
 		return nil, nil, err
 	}
-	if envelopeTx.Gas() < intrGas {
-		return nil, nil, fmt.Errorf("%w, gas should be more than intrinsic gas %v", core.ErrIntrinsicGas, intrGas)
-	}
-	// gas limit of the bundle has to be exactly the aggregated gas of all the
-	// transactions in the bundle or the intrinsic gas of the bundle
-	// transaction, whichever is higher.
-	gasLimit := uint64(0)
-	for _, innerTx := range txBundle.Transactions {
-		gasLimit += innerTx.Gas()
-	}
-
-	// EIP-7623 part of Prague revision: Floor data gas
-	// see: https://eips.ethereum.org/EIPS/eip-7623
-	floorDataGas, err := calculateFloorGas(envelopeTx.Data())
-	if err != nil {
-		return nil, nil, err
-	}
-	if envelopeTx.Gas() < floorDataGas {
-		return nil, nil, fmt.Errorf("%w: gas should be more than floor gas %d", core.ErrFloorDataGas, floorDataGas)
-	}
-
-	gasNeeded := max(gasLimit, intrGas, floorDataGas)
-	if bundleGas != gasNeeded {
-		return nil, nil, fmt.Errorf("%w: envelope gas limit is %d but should be %d", ErrWrongEnvelopeGasLimit, envelopeTx.Gas(), gasNeeded)
+	if envelopeGas != neededGas {
+		return nil, nil, fmt.Errorf("%w: envelope gas limit is %d but should be %d", ErrWrongEnvelopeGasLimit, envelopeGas, neededGas)
 	}
 
 	// Check consistency of the execution plan.

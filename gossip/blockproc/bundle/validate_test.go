@@ -112,35 +112,7 @@ func TestValidateEnvelope_DetectsErrorInIntrinsicGasCalculation(t *testing.T) {
 	_, _, err = validateEnvelopeInternal(
 		signer,
 		envelope,
-		func(data []byte, accessList types.AccessList) (uint64, error) {
-			return 0, injectedError
-		},
-		nil,
-	)
-
-	require.ErrorIs(t, err, injectedError)
-}
-
-func TestValidateEnvelope_DetectsErrorInFloorDataGasCalculation(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
-
-	bundle := NewBuilder().AllOf().BuildBundle()
-	encoded, err := bundle.Encode()
-	require.NoError(t, err)
-
-	envelope := types.NewTx(&types.LegacyTx{
-		To:   &BundleProcessor,
-		Data: encoded,
-	})
-
-	injectedError := fmt.Errorf("injected error for test")
-	_, _, err = validateEnvelopeInternal(
-		signer,
-		envelope,
-		func(data []byte, accessList types.AccessList) (uint64, error) {
-			return 0, nil
-		},
-		func(data []byte) (uint64, error) {
+		func(TransactionBundle, []byte, types.AccessList, []types.SetCodeAuthorization) (uint64, error) {
 			return 0, injectedError
 		},
 	)
@@ -163,16 +135,8 @@ func TestValidateEnvelope_ReturnsErrorsOnValidationFailure(t *testing.T) {
 			tx:            generator.makeBundleTxWithWronglySignedTx(t),
 			expectedError: "invalid chain id for signer: have 0 want 1",
 		},
-		"bundle without enough gas for intrinsic cost": {
-			tx:            generator.makeBundleTxWithoutEnoughIntrinsicGas(),
-			expectedError: "gas should be more than intrinsic gas",
-		},
-		"bundle without enough gas for floor gas costs": {
-			tx:            generator.makeBundleTxWithoutEnoughFloorGas(t),
-			expectedError: "should be more than floor gas",
-		},
-		"bundle with wrong amount of gas for all transactions": {
-			tx:            generator.makeBundleTxWithoutEnoughGasForAllTransactions(),
+		"envelope with invalid gas": {
+			tx:            generator.makeEnvelopeWithoutEnoughGas(),
 			expectedError: "gas limit of envelope does not match gas limit of payload",
 		},
 	}
@@ -408,7 +372,7 @@ func (gen testBundleGenerator) makeBundleTxWithWronglySignedTx(t testing.TB) *ty
 	})
 }
 
-func (gen testBundleGenerator) makeBundleTxWithoutEnoughIntrinsicGas() *types.Transaction {
+func (gen testBundleGenerator) makeEnvelopeWithoutEnoughGas() *types.Transaction {
 	tx := gen.makeValidBundleTx()
 	// reduce the gas in tx
 	tx = types.NewTx(&types.LegacyTx{
@@ -417,42 +381,6 @@ func (gen testBundleGenerator) makeBundleTxWithoutEnoughIntrinsicGas() *types.Tr
 		Gas:  10_000, // not enough gas for the bundle
 	})
 	return tx
-}
-
-func (gen testBundleGenerator) makeBundleTxWithoutEnoughFloorGas(t testing.TB) *types.Transaction {
-	t.Helper()
-	bundle := TransactionBundle{
-		Transactions: map[TxReference]*types.Transaction{
-			{}: types.MustSignNewTx(gen.keys[0], gen.signer, &types.AccessListTx{
-				Data: make([]byte, 1<<10), // < high data usage
-			}),
-		},
-		Plan: ExecutionPlan{
-			Root: NewTxStep(TxReference{}),
-		},
-	}
-
-	data, err := bundle.Encode()
-	require.NoError(t, err)
-	floorGas, err := core.FloorDataGas(data)
-	require.NoError(t, err)
-
-	// reduce the gas in tx
-	return types.NewTx(&types.LegacyTx{
-		To:   &BundleProcessor,
-		Data: data,
-		Gas:  floorGas - 1,
-	})
-}
-
-func (gen testBundleGenerator) makeBundleTxWithoutEnoughGasForAllTransactions() *types.Transaction {
-	tx := gen.makeValidBundleTx()
-	// reduce the gas in tx
-	return types.NewTx(&types.LegacyTx{
-		To:   &BundleProcessor,
-		Data: tx.Data(),
-		Gas:  38_000, // not enough gas for all transactions in the bundle
-	})
 }
 
 func TestValidateBundle_ValidBundles_AreAccepted(t *testing.T) {
