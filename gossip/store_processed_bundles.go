@@ -133,34 +133,52 @@ func (s *Store) addNewBundles(
 // deleteOutdatedBundles deletes the entries of processed bundles that were
 // processed too far in the past.
 func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) {
-	if blockNum >= bundle.MaxBlockRange-1 {
-		// enough blocks have passed to start cleaning up the store
-		highestOutdatedBlockNumber := blockNum - bundle.MaxBlockRange + 1
-		it := s.table.ProcessedBundles.NewIterator([]byte{'i'}, nil)
-		defer it.Release()
-		for it.Next() {
-			key := it.Key()
-			// size of the key used to index processed bundle is:
-			//  - 1 byte for the prefix
-			//  - 8 bytes for the block number
-			//  - 32 bytes for the hash
-			if len(key) != 1+8+32 {
-				continue
-			}
-			oldBundleBlockNumber := binary.BigEndian.Uint64(key[1 : 1+8])
-			if oldBundleBlockNumber > highestOutdatedBlockNumber {
-				// the bundle is not old enough to be deleted
-				break
-			}
-			hash := common.BytesToHash(key[1+8:])
-			err := errors.Join(
-				batch.Delete(getIndexKey(oldBundleBlockNumber, hash)),
-				batch.Delete(getEntryKey(hash)),
-				batch.Delete(getBlockHistoryHashKey(oldBundleBlockNumber)),
-			)
-			if err != nil {
-				s.Log.Crit("failed to delete old processed bundle hash", "error", err)
-			}
+	if blockNum < bundle.MaxBlockRange-1 {
+		return
+	}
+
+	highestOutdatedBlockNumber := blockNum - bundle.MaxBlockRange + 1
+
+	// Prune bundle-index entries and all associated keys ('i', 'e', 'h').
+	// key layout for 'i': 1 byte prefix + 8 bytes blockNum + 32 bytes execPlanHash
+	it := s.table.ProcessedBundles.NewIterator([]byte{'i'}, nil)
+	defer it.Release()
+	for it.Next() {
+		key := it.Key()
+		if len(key) != 1+8+32 {
+			continue
+		}
+		oldBundleBlockNumber := binary.BigEndian.Uint64(key[1 : 1+8])
+		if oldBundleBlockNumber > highestOutdatedBlockNumber {
+			break
+		}
+		hash := common.BytesToHash(key[1+8:])
+		err := errors.Join(
+			batch.Delete(getIndexKey(oldBundleBlockNumber, hash)),
+			batch.Delete(getEntryKey(hash)),
+			batch.Delete(getBlockHistoryHashKey(oldBundleBlockNumber)),
+		)
+		if err != nil {
+			s.Log.Crit("failed to delete old processed bundle hash", "error", err)
+		}
+	}
+
+	// Also prune per-block history-hash entries for blocks that had no bundles
+	// (those blocks have an 'h' key but no 'i' key, so the loop above misses them).
+	// key layout for 'h': 1 byte prefix + 8 bytes blockNum
+	it2 := s.table.ProcessedBundles.NewIterator([]byte{'h'}, nil)
+	defer it2.Release()
+	for it2.Next() {
+		key := it2.Key()
+		if len(key) != 1+8 {
+			continue
+		}
+		oldBlockNumber := binary.BigEndian.Uint64(key[1:])
+		if oldBlockNumber > highestOutdatedBlockNumber {
+			break
+		}
+		if err := batch.Delete(getBlockHistoryHashKey(oldBlockNumber)); err != nil {
+			s.Log.Crit("failed to delete old block history hash", "error", err)
 		}
 	}
 }
@@ -257,8 +275,8 @@ func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
 
 // GetOldestRetainedBundleHistoryHash returns the block number and bundle
 // history hash for the oldest block still retained in the store.
-// Returns ok=false when no per-block hashes have been stored yet (i.e. no
-// bundle has ever been executed).
+// Returns ok=false when no retained per-block history-hash entries are
+// present in the store.
 func (s *Store) GetOldestRetainedBundleHistoryHash() (blockNum uint64, hash common.Hash, ok bool) {
 	it := s.table.ProcessedBundles.NewIterator([]byte{'h'}, nil)
 	defer it.Release()
@@ -270,8 +288,12 @@ func (s *Store) GetOldestRetainedBundleHistoryHash() (blockNum uint64, hash comm
 	if len(key) != 1+8 {
 		s.Log.Crit("invalid per-block history hash key length", "length", len(key))
 	}
+	value := it.Value()
+	if len(value) != 32 {
+		s.Log.Crit("invalid per-block history hash value length", "length", len(value))
+	}
 	blockNum = binary.BigEndian.Uint64(key[1:])
-	hash = common.BytesToHash(it.Value())
+	hash = common.BytesToHash(value)
 	return blockNum, hash, true
 }
 
