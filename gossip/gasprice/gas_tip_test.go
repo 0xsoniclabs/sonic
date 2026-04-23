@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package geth_compatibility
+package gasprice
 
 import (
 	"math/big"
@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGethDependency_EffectiveGasTipProducesUnchangedResults(t *testing.T) {
+func TestGasTip_EffectiveGasTipProducesUnchangedResults(t *testing.T) {
 	tests := map[string]struct {
 		baseFee     int64
 		gasTipCap   int64
@@ -76,14 +76,14 @@ func TestGethDependency_EffectiveGasTipProducesUnchangedResults(t *testing.T) {
 				GasFeeCap: big.NewInt(test.gasFeeCap),
 			}
 			tx := types.NewTx(txData)
-			effectiveTip, err := tx.EffectiveGasTip(big.NewInt(test.baseFee))
+			effectiveTip, err := EffectiveGasTip(tx, big.NewInt(test.baseFee))
 			require.NoError(t, err)
 			require.Zero(t, big.NewInt(test.expectedTip).Cmp(effectiveTip))
 		})
 	}
 }
 
-func TestGethDependency_EffectiveGasTipReturnsUnchangedErrors(t *testing.T) {
+func TestGasTip_EffectiveGasTipReturnsUnchangedErrors(t *testing.T) {
 	overflow := big.NewInt(0).Lsh(big.NewInt(1), 256) // 2^256 overflows uint256
 	tests := map[string]struct {
 		baseFee   *big.Int
@@ -121,7 +121,7 @@ func TestGethDependency_EffectiveGasTipReturnsUnchangedErrors(t *testing.T) {
 				GasFeeCap: test.gasFeeCap,
 			}
 			tx := types.NewTx(txData)
-			tip, err := tx.EffectiveGasTip(test.baseFee)
+			tip, err := EffectiveGasTip(tx, test.baseFee)
 			require.Error(t, err)
 
 			if test.expectedTip == nil {
