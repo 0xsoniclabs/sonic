@@ -2665,8 +2665,9 @@ func TestBundleTransactionRunner_CreatingAndRevertingSnapshotsDoesNotAlterUsedGa
 	address := ctxt.usedGas
 
 	snapshotId = bundleTransactionRunner.CreateSnapshot()
-	bundleTransactionRunner.RevertToSnapshot(snapshotId)
+	require.Same(t, address, ctxt.usedGas)
 
+	bundleTransactionRunner.RevertToSnapshot(snapshotId)
 	require.Same(t, address, ctxt.usedGas)
 }
 
