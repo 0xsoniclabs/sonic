@@ -66,12 +66,15 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 			external.EXPECT().GetLatestBlockIndex().Return(idx.Block(100)).AnyTimes()
 			external.EXPECT().StateDB().Return(state).AnyTimes()
 
+			signer := types.LatestSignerForChainID(big.NewInt(int64(rules.NetworkID)))
 			emitter := &Emitter{
-				world: World{External: external},
+				world: World{
+					External:          external,
+					TransactionSigner: signer,
+				},
 			}
 
-			signer := types.LatestSignerForChainID(big.NewInt(int64(rules.NetworkID)))
-			tx := bundle.NewBuilder().SetEarliest(50).SetLatest(150).Build()
+			tx := bundle.NewBuilder().SetEarliest(50).SetLatest(150).WithSigner(signer).Build()
 
 			_, _, err := bundle.ValidateEnvelope(signer, tx)
 			require.NoError(err)
@@ -145,11 +148,14 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 			external.EXPECT().GetLatestBlockIndex().Return(idx.Block(100)).AnyTimes()
 			external.EXPECT().StateDB().Return(state).AnyTimes()
 
+			signer := types.LatestSignerForChainID(big.NewInt(1))
 			emitter := &Emitter{
-				world: World{External: external},
+				world: World{
+					External:          external,
+					TransactionSigner: signer,
+				},
 			}
 
-			signer := types.LatestSignerForChainID(big.NewInt(1))
 			tx := bundle.NewBuilder().SetEarliest(50).SetLatest(150).Build()
 
 			_, _, err := bundle.ValidateEnvelope(signer, tx)

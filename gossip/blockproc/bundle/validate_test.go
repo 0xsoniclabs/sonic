@@ -17,9 +17,9 @@
 package bundle
 
 import (
-	"crypto/ecdsa"
 	"fmt"
 	"maps"
+	"math"
 	"math/big"
 	"slices"
 	"strings"
@@ -27,360 +27,297 @@ import (
 
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 )
 
-var testChainID = big.NewInt(1)
-
-func TestValidateEnvelope_ValidBundles_AreAccepted(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
+func TestValidateEnvelope_ValidEnvelopes_AreAcceptedAndReturnsBundleAndPlan(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	tests := map[string]*types.Transaction{
-		"empty AllOf bundle":     AllOf().Build(),
-		"empty OneOf bundle":     OneOf().Build(),
-		"non-empty AllOf bundle": AllOf(Step(key, &types.AccessListTx{})).Build(),
-		"non-empty OneOf bundle": OneOf(Step(key, &types.AccessListTx{})).Build(),
+	tests := map[string]*builder{
+		"empty": NewBuilder(),
+		"single transaction": NewBuilder().AllOf(
+			Step(key, types.AccessListTx{}),
+		),
+		"multiple transactions": NewBuilder().AllOf(
+			Step(key, types.AccessListTx{Nonce: 1}),
+			Step(key, types.AccessListTx{Nonce: 2}),
+		),
+		"composed bundles": NewBuilder().OneOf(
+			AllOf(
+				Step(key, types.AccessListTx{Nonce: 1}),
+				Step(key, types.AccessListTx{Nonce: 2}),
+			),
+			AllOf(
+				Step(key, types.AccessListTx{Nonce: 3}),
+				Step(key, types.AccessListTx{Nonce: 4}),
+			),
+		),
+		"nested bundles": NewBuilder().OneOf(
+			Step(key, AllOf(
+				Step(key, types.AccessListTx{Nonce: 1}),
+				Step(key, types.AccessListTx{Nonce: 2}),
+			).Build()),
+			Step(key, AllOf(
+				Step(key, types.AccessListTx{Nonce: 3}),
+				Step(key, types.AccessListTx{Nonce: 4}),
+			).Build()),
+		),
 	}
 
-	for name, tx := range tests {
+	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			bundle, plan, err := ValidateEnvelope(signer, tx)
-			require.NoError(err)
-			require.NotNil(bundle, "expected a bundle transaction")
-			require.NotNil(plan, "expected an execution plan")
+			signer := types.LatestSignerForChainID(big.NewInt(1))
+			envelope, wantBundle, wantPlan := tc.WithSigner(signer).
+				BuildEnvelopeBundleAndPlan()
 
-			wantedBundle, err := OpenEnvelope(signer, tx)
+			bundle, plan, err := ValidateEnvelope(signer, envelope)
 			require.NoError(err)
 
-			// types.Transactions can not be compared reliably using
-			// reflect.DeepEqual, therefore we compare the fields of the bundle
-			// separately.
-			require.Equal(wantedBundle.Plan, bundle.Plan)
-			require.Equal(len(wantedBundle.Transactions), len(bundle.Transactions))
-			for i, txRef := range wantedBundle.Transactions {
-				require.Equal(txRef.Hash(), bundle.Transactions[i].Hash())
+			require.Equal(wantPlan, bundle.Plan)
+			require.Equal(wantPlan, *plan)
+
+			// transactions can not be compared directly, so we compare their
+			// hashes to make sure the same transactions are present
+			require.Equal(len(wantBundle.Transactions), len(bundle.Transactions))
+			for ref, tx := range wantBundle.Transactions {
+				bundleTx, found := bundle.Transactions[ref]
+				require.True(found)
+				require.Equal(tx.Hash(), bundleTx.Hash())
 			}
-
-			require.Equal(wantedBundle.Plan, *plan)
 		})
 	}
 }
 
 func TestValidateEnvelope_RegularTransaction_RejectedAsNotBeingAnEnvelope(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
 	regularTx := types.NewTx(&types.LegacyTx{
 		To:   &common.Address{0x42},
 		Data: []byte("this is a regular transaction, not an envelope"),
 	})
 
-	bundle, plan, err := ValidateEnvelope(signer, regularTx)
+	bundle, plan, err := ValidateEnvelope(nil, regularTx)
 	require.ErrorContains(t, err, "not an envelope transaction")
 	require.Nil(t, bundle, "expected no bundle to be returned")
 	require.Nil(t, plan, "expected no execution plan to be returned")
 }
 
+func TestValidateEnvelope_NilTransaction_RejectedAsNotBeingAnEnvelope(t *testing.T) {
+	bundle, plan, err := ValidateEnvelope(nil, nil)
+	require.ErrorContains(t, err, "not an envelope transaction")
+	require.Nil(t, bundle, "expected no bundle to be returned")
+	require.Nil(t, plan, "expected no execution plan to be returned")
+}
+
+func TestValidateEnvelope_SignerNil_ReturnsError(t *testing.T) {
+	envelope := AllOf().Build()
+	_, _, err := ValidateEnvelope(nil, envelope)
+	require.ErrorContains(t, err, "signer is nil")
+}
+
 func TestValidateEnvelope_InvalidEncoding_ReturnsError(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
 	envelope := types.NewTx(&types.LegacyTx{
 		To:   &BundleProcessor,
 		Data: []byte("this is not a valid bundle encoding"),
 	})
 
 	_, _, err := ValidateEnvelope(signer, envelope)
-	require.ErrorContains(t, err, "failed to decode transaction bundle")
+	require.ErrorContains(t, err, "invalid bundle encoding")
 }
 
-func TestValidateEnvelope_DetectsErrorInIntrinsicGasCalculation(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
-
-	bundle := NewBuilder().AllOf().BuildBundle()
-	encoded, err := bundle.Encode()
+func TestValidateEnvelope_InvalidBundle_IsRejected(t *testing.T) {
+	// There are lots of reasons why a bundle can be invalid, we are just
+	// checking a few of them to make sure that validateBundle is called.
+	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
 
-	envelope := types.NewTx(&types.LegacyTx{
+	tests := map[string]TransactionBundle{
+		"invalid block range": NewBuilder().
+			SetEarliest(20).
+			SetLatest(10).
+			BuildBundle(),
+		"missing transactions": func() TransactionBundle {
+			bundle := NewBuilder().AllOf(
+				Step(key, &types.AccessListTx{Nonce: 1}),
+				Step(key, &types.AccessListTx{Nonce: 2}),
+			).BuildBundle()
+			bundle.Transactions = map[TxReference]*types.Transaction{}
+			return bundle
+		}(),
+	}
+
+	for name, bundle := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			issue := validateBundle(signer, bundle)
+			require.Error(issue)
+
+			encoded, err := bundle.Encode()
+			require.NoError(err)
+
+			envelope := types.NewTx(&types.AccessListTx{
+				To:   &BundleProcessor,
+				Data: encoded,
+			})
+
+			_, _, err = ValidateEnvelope(signer, envelope)
+			require.ErrorContains(err, "invalid bundle")
+			require.ErrorContains(err, issue.Error())
+		})
+	}
+}
+
+func TestValidateEnvelope_WrongChainId_IsRejected(t *testing.T) {
+	require := require.New(t)
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	valid := NewBuilder().AllOf(
+		Step(key, &types.AccessListTx{}),
+	).WithSigner(signer).Build()
+
+	_, _, err = ValidateEnvelope(signer, valid)
+	require.NoError(err)
+
+	wrongChainIdSigner := types.LatestSignerForChainID(big.NewInt(123))
+	repacked := types.MustSignNewTx(key, wrongChainIdSigner, &types.AccessListTx{
+		To:   valid.To(),
+		Data: valid.Data(),
+	})
+
+	_, _, err = ValidateEnvelope(signer, repacked)
+	require.ErrorContains(err, "envelope signed for wrong chain ID")
+}
+
+func TestValidateEnvelope_InvalidEnvelopeGasLimit_IsRejected(t *testing.T) {
+	for _, delta := range []int{-10, -1, 1, 10} {
+		t.Run(fmt.Sprintf("delta=%d", delta), func(t *testing.T) {
+			require := require.New(t)
+			signer := types.LatestSignerForChainID(big.NewInt(1))
+
+			validEnvelope := NewBuilder().AllOf().WithSigner(signer).Build()
+			_, _, err := ValidateEnvelope(signer, validEnvelope)
+			require.NoError(err)
+
+			key, err := crypto.GenerateKey()
+			require.NoError(err)
+
+			invalidGasEnvelope := types.MustSignNewTx(key, signer,
+				&types.AccessListTx{
+					To:   validEnvelope.To(),
+					Data: validEnvelope.Data(),
+					Gas:  uint64(int(validEnvelope.Gas()) + delta),
+				},
+			)
+
+			_, _, err = ValidateEnvelope(signer, invalidGasEnvelope)
+			require.ErrorContains(err, "invalid gas limit")
+		})
+	}
+}
+
+func TestValidateEnvelope_OverflowInGasLimit_IsDetected(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	require := require.New(t)
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+
+	bundle := NewBuilder().AllOf(
+		Step(key, &types.AccessListTx{Gas: math.MaxUint64 / 2}),
+		Step(key, &types.AccessListTx{Gas: math.MaxUint64 / 2}),
+		Step(key, &types.AccessListTx{Gas: math.MaxUint64 / 2}),
+	).WithSigner(signer).BuildBundle()
+
+	encoded, err := bundle.Encode()
+	require.NoError(err)
+
+	envelope := types.MustSignNewTx(key, signer, &types.AccessListTx{
 		To:   &BundleProcessor,
 		Data: encoded,
 	})
 
-	injectedError := fmt.Errorf("injected error for test")
-	_, _, err = validateEnvelopeInternal(
-		signer,
-		envelope,
-		func(TransactionBundle, []byte, types.AccessList, []types.SetCodeAuthorization) (uint64, error) {
-			return 0, injectedError
-		},
-	)
-
-	require.ErrorIs(t, err, injectedError)
+	_, _, err = ValidateEnvelope(signer, envelope)
+	require.ErrorContains(err, "invalid gas limit: failed transaction gas sum calculation")
 }
 
-func TestValidateEnvelope_ReturnsErrorsOnValidationFailure(t *testing.T) {
-	generator := newTestBundleGenerator(t, 2)
+func TestValidateEnvelope_NestedInvalidEnvelope_IsRejected(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	require := require.New(t)
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
 
-	tests := map[string]struct {
-		tx            *types.Transaction
-		expectedError string
-	}{
-		"unsound bundle": {
-			tx:            generator.makeUnsoundBundleTx(t),
-			expectedError: "does not belong to the execution plan",
-		},
-		"wrongly signed bundle": {
-			tx:            generator.makeBundleTxWithWronglySignedTx(t),
-			expectedError: "invalid chain id for signer: have 0 want 1",
-		},
-		"envelope with invalid gas": {
-			tx:            generator.makeEnvelopeWithoutEnoughGas(),
-			expectedError: "gas limit of envelope does not match gas limit of payload",
-		},
-	}
+	invalidInner := NewBuilder().
+		SetEarliest(20).
+		SetLatest(10).
+		WithSigner(signer).
+		Build()
 
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			_, _, err := ValidateEnvelope(generator.signer, test.tx)
-			require.ErrorContains(t, err, test.expectedError)
-		})
-	}
+	outer := NewBuilder().AllOf(
+		Step(key, invalidInner),
+	).WithSigner(signer).Build()
+
+	_, _, innerErr := ValidateEnvelope(signer, invalidInner)
+	require.Error(innerErr)
+
+	_, _, outerErr := ValidateEnvelope(signer, outer)
+	require.ErrorContains(outerErr, "invalid nested envelope")
+	require.ErrorContains(outerErr, innerErr.Error())
 }
 
-func TestValidateEnvelope_AcceptsValidBlockRanges(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
+func TestValidateEnvelope_DetectsExcessiveNesting(t *testing.T) {
+	require := require.New(t)
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
 
-	tests := map[string]struct {
-		From uint64
-		To   uint64
-		Gas  uint64
-	}{
-		"single-block range": {
-			From: 10, To: 10, Gas: 22240,
-		},
-		"multi-block range": {
-			From: 7, To: 42, Gas: 22240,
-		},
-		"max-size block range": {
-			From: 100, To: 100 + MaxBlockRange - 1, Gas: 22320,
-		},
-	}
+	require.Equal(2, MaxBundleNestingDepth)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
 
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			bundle := TransactionBundle{
-				Plan: ExecutionPlan{
-					Root: NewTxStep(TxReference{}),
-					Range: BlockRange{
-						Earliest: test.From,
-						Latest:   test.To,
-					}},
-			}
-			encoded, err := bundle.Encode()
-			require.NoError(t, err)
-			tx := types.NewTx(&types.LegacyTx{
-				To:   &BundleProcessor,
-				Data: encoded,
-				Gas:  test.Gas,
-			})
-			require.True(t, IsEnvelope(tx))
+	// Number of nested bundles: 0
+	cur := NewBuilder().AllOf(
+		Step(key, &types.AccessListTx{}),
+	).WithSigner(signer).Build()
 
-			_, _, err = ValidateEnvelope(signer, tx)
-			require.NoError(t, err)
-		})
-	}
-}
+	_, _, err = ValidateEnvelope(signer, cur)
+	require.NoError(err)
 
-func TestValidateEnvelope_IdentifiesInvalidBlockRanges(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
+	// Number of nested bundles: 1
+	cur = NewBuilder().AllOf(
+		Step(key, cur),
+	).WithSigner(signer).Build()
 
-	tests := map[string]struct {
-		From  uint64
-		To    uint64
-		Issue string
-	}{
-		"empty block range": {
-			From: 10, To: 5,
-			Issue: "invalid empty block range [10,5]",
-		},
-		"too large block range": {
-			From: 7, To: 7 + MaxBlockRange,
-			Issue: "invalid block range, duration 1025, limit 1024",
-		},
-	}
+	_, _, err = ValidateEnvelope(signer, cur)
+	require.NoError(err)
 
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			bundle := TransactionBundle{
-				Plan: ExecutionPlan{
-					Root: NewTxStep(TxReference{}),
-					Range: BlockRange{
-						Earliest: test.From,
-						Latest:   test.To,
-					}},
-			}
-			encoded, err := bundle.Encode()
-			require.NoError(t, err)
-			tx := types.NewTx(&types.LegacyTx{
-				To:   &BundleProcessor,
-				Data: encoded,
-			})
-			require.True(t, IsEnvelope(tx))
+	// Number of nested bundles: 2
+	cur = NewBuilder().AllOf(
+		Step(key, cur),
+	).WithSigner(signer).Build()
 
-			_, _, err = ValidateEnvelope(signer, tx)
-			require.ErrorContains(t, err, test.Issue)
-		})
-	}
-}
+	_, _, err = ValidateEnvelope(signer, cur)
+	require.NoError(err)
 
-// testBundleGenerator allows to generate different types of bundle transactions
-// for testing purposes.
-// These include valid and invalid bundles, as well as non-bundle transactions.
-type testBundleGenerator struct {
-	keys   []*ecdsa.PrivateKey
-	n      int
-	signer types.Signer
-}
+	// Number of nested bundles: 3
+	cur = NewBuilder().AllOf(
+		Step(key, cur),
+	).WithSigner(signer).Build()
 
-// newTestBundleGenerator creates a new testBundleGenerator with n keys and a signer.
-// the valid bundles generated by this generator will contain n transactions signed by the generated keys.
-func newTestBundleGenerator(t testing.TB, n int) testBundleGenerator {
-	t.Helper()
-	keys := make([]*ecdsa.PrivateKey, n)
-	for i := range keys {
-		key, err := crypto.GenerateKey()
-		require.NoError(t, err)
-		keys[i] = key
-	}
+	_, _, err = ValidateEnvelope(signer, cur)
+	require.ErrorContains(err, "exceeds maximum nesting depth of bundles")
 
-	return testBundleGenerator{
-		keys:   keys,
-		n:      n,
-		signer: types.LatestSignerForChainID(testChainID),
-	}
-}
+	// Number of nested bundles: 4
+	cur = NewBuilder().AllOf(
+		Step(key, cur),
+	).WithSigner(signer).Build()
 
-func (gen testBundleGenerator) makeValidBundleTx() *types.Transaction {
-	receiver := common.Address{0x42}
-	gasPerTx := uint64(20_000)
+	_, _, err = ValidateEnvelope(signer, cur)
+	require.ErrorContains(err, "exceeds maximum nesting depth of bundles")
 
-	steps := make([]BuilderStep, 0, gen.n)
-	for i := range gen.n {
-		steps = append(steps, Step(gen.keys[i], &types.AccessListTx{
-			Nonce: uint64(1),
-			To:    &receiver,
-			Value: big.NewInt(1234),
-			Gas:   gasPerTx,
-		}))
-	}
-
-	return AllOf(steps...).Build()
-}
-
-func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transaction {
-	t.Helper()
-	receiver := common.Address{0x42}
-
-	// Generate n metaTransactions from n different senders
-	// execution plan hash is not correct, therefore the bundle is unsound
-	invalidExecutionPlanHash := common.Hash{0x99}
-	signedTransactions := make(map[TxReference]*types.Transaction, gen.n)
-	for i := range gen.n {
-		tx := types.AccessListTx{
-			Nonce: uint64(1),
-			To:    &receiver,
-			Value: big.NewInt(1234),
-			AccessList: []types.AccessTuple{
-				{
-					Address: BundleOnly,
-					StorageKeys: []common.Hash{
-						invalidExecutionPlanHash,
-					},
-				},
-			},
-		}
-
-		signedTx, err := types.SignTx(types.NewTx(&tx), gen.signer, gen.keys[i])
-		require.NoError(t, err)
-
-		txRef := TxReference{From: crypto.PubkeyToAddress(gen.keys[i].PublicKey)}
-		signedTransactions[txRef] = signedTx
-	}
-
-	// prepare the bundle
-	bundle := TransactionBundle{
-		Transactions: signedTransactions,
-		Plan: ExecutionPlan{
-			Root: NewTxStep(TxReference{}),
-		},
-	}
-
-	data, err := bundle.Encode()
-	require.NoError(t, err)
-	floorGas, err := core.FloorDataGas(data)
-	require.NoError(t, err)
-
-	return types.NewTx(&types.LegacyTx{
-		To:   &BundleProcessor,
-		Data: data,
-		Gas:  floorGas,
-	})
-
-}
-
-func (gen testBundleGenerator) makeBundleTxWithWronglySignedTx(t testing.TB) *types.Transaction {
-	t.Helper()
-	receiver := common.Address{0x42}
-
-	ExecutionPlanHash := common.Hash{0x99}
-	tx := types.AccessListTx{
-		Nonce: uint64(1),
-		To:    &receiver,
-		Value: big.NewInt(1234),
-		AccessList: []types.AccessTuple{
-			{
-				Address: BundleOnly,
-				StorageKeys: []common.Hash{
-					ExecutionPlanHash,
-				},
-			},
-		},
-	}
-
-	// Transaction is not really signed, therefore the sender cannot be derived
-	unsignedTransaction := types.NewTx(&tx)
-
-	// prepare the bundle
-	bundle := TransactionBundle{
-		Transactions: map[TxReference]*types.Transaction{
-			{}: unsignedTransaction,
-		},
-		Plan: ExecutionPlan{
-			Root: NewTxStep(TxReference{}),
-		},
-	}
-
-	encoded, err := bundle.Encode()
-	require.NoError(t, err)
-
-	return types.NewTx(&types.LegacyTx{
-		To:   &BundleProcessor,
-		Data: encoded,
-		Gas:  21096,
-	})
-}
-
-func (gen testBundleGenerator) makeEnvelopeWithoutEnoughGas() *types.Transaction {
-	tx := gen.makeValidBundleTx()
-	// reduce the gas in tx
-	tx = types.NewTx(&types.LegacyTx{
-		To:   &BundleProcessor,
-		Data: tx.Data(),
-		Gas:  10_000, // not enough gas for the bundle
-	})
-	return tx
 }
 
 func TestValidateBundle_ValidBundles_AreAccepted(t *testing.T) {
@@ -874,20 +811,20 @@ func TestValidateStep_DetectsInvalidSteps(t *testing.T) {
 
 func TestValidateStep_DetectsExcessiveNesting(t *testing.T) {
 	require.NoError(t, validateStep(NewAllOfStep(
-		wrapInNested(NewTxStep(TxReference{}), MaxNestingDepth-1),
-		wrapInNested(NewTxStep(TxReference{}), MaxNestingDepth-1),
-		wrapInNested(NewTxStep(TxReference{}), MaxNestingDepth-1),
+		wrapInNested(NewTxStep(TxReference{}), MaxGroupNestingDepth-1),
+		wrapInNested(NewTxStep(TxReference{}), MaxGroupNestingDepth-1),
+		wrapInNested(NewTxStep(TxReference{}), MaxGroupNestingDepth-1),
 	)))
 
 	require.ErrorContains(t, validateStep(NewAllOfStep(
-		wrapInNested(NewTxStep(TxReference{}), MaxNestingDepth-1),
-		wrapInNested(NewTxStep(TxReference{}), MaxNestingDepth),
-		wrapInNested(NewTxStep(TxReference{}), MaxNestingDepth-1),
+		wrapInNested(NewTxStep(TxReference{}), MaxGroupNestingDepth-1),
+		wrapInNested(NewTxStep(TxReference{}), MaxGroupNestingDepth),
+		wrapInNested(NewTxStep(TxReference{}), MaxGroupNestingDepth-1),
 	)), "exceeds maximum nesting depth")
 
-	for depth := range MaxNestingDepth + 2 {
+	for depth := range MaxGroupNestingDepth + 2 {
 		step := wrapInNested(NewTxStep(TxReference{}), depth)
-		if depth <= MaxNestingDepth {
+		if depth <= MaxGroupNestingDepth {
 			require.NoError(t, validateStep(step))
 		} else {
 			require.ErrorContains(t, validateStep(step), "exceeds maximum nesting depth")
@@ -897,15 +834,15 @@ func TestValidateStep_DetectsExcessiveNesting(t *testing.T) {
 
 func TestValidateStep_MaximumNestingDepthMatchesConstant(t *testing.T) {
 	inner := NewTxStep(TxReference{})
-	allowed := wrapInNested(inner, MaxNestingDepth)
-	invalid := wrapInNested(inner, MaxNestingDepth+1)
+	allowed := wrapInNested(inner, MaxGroupNestingDepth)
+	invalid := wrapInNested(inner, MaxGroupNestingDepth+1)
 
 	// make sure wrapInNested produces the correct number of nested groups
 	count := strings.Count(allowed.String(), "OneOf")
-	require.Equal(t, MaxNestingDepth, count)
+	require.Equal(t, MaxGroupNestingDepth, count)
 
 	count = strings.Count(invalid.String(), "OneOf")
-	require.Equal(t, MaxNestingDepth+1, count)
+	require.Equal(t, MaxGroupNestingDepth+1, count)
 
 	require.NoError(t, validateStep(allowed))
 	require.ErrorContains(t, validateStep(invalid), "exceeds maximum nesting depth")

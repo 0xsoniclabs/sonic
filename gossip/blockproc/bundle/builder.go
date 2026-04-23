@@ -225,7 +225,7 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		// For nested envelopes, the gas limit needs to be accurately adjusted
 		// to pass the bundle validation test.
 		if IsEnvelope(tx) {
-			innerBundle, _, err := ValidateEnvelope(signer, tx)
+			innerBundle, err := OpenEnvelope(signer, tx)
 			if err == nil {
 				marker := types.AccessTuple{
 					Address:     BundleOnly,
@@ -234,7 +234,7 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 				accessList := slices.Clone(tx.AccessList())
 				accessList = append(accessList, marker)
 				newGasLimit, err = calculateEnvelopeGas(
-					*innerBundle, tx.Data(), accessList, tx.SetCodeAuthorizations(),
+					innerBundle, tx.Data(), accessList, tx.SetCodeAuthorizations(),
 				)
 				if err != nil {
 					panic(err)
