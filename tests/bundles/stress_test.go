@@ -218,8 +218,7 @@ func TestBundle_StressWithLargeBundleAndGroupNesting(t *testing.T) {
 			// Create B bundles.
 			for i := range B {
 				leafTx := types.NewTx(tests.SetTransactionDefaults(t, net, &types.AccessListTx{}, accounts[i*3]))
-				rootStep := nestInSteps(accounts[i*3], leafTx, tc.groupNestingDepth)
-				envelope, plan := nestInBundles(signer, accounts[i*3], rootStep, tc.bundleNestingDepth)
+				envelope, plan := nestInStepsAndBundles(signer, accounts[i*3], leafTx, tc.groupNestingDepth, tc.bundleNestingDepth)
 
 				envelopes[i] = envelope
 				planHashes[i] = plan.Hash()
@@ -246,34 +245,21 @@ func TestBundle_StressWithLargeBundleAndGroupNesting(t *testing.T) {
 	}
 }
 
-func nestInSteps(
-	sender *tests.Account,
-	tx *types.Transaction,
-	depth int,
-) bundle.BuilderStep {
-	if depth == 0 {
-		return bundle.Step(sender.PrivateKey, tx)
-	}
-
-	return bundle.AllOf(nestInSteps(sender, tx, depth-1))
-}
-
-func nestInBundles(
+func nestInStepsAndBundles(
 	signer types.Signer,
 	sender *tests.Account,
-	rootStep bundle.BuilderStep,
-	depth int,
+	tx *types.Transaction,
+	stepDepth int,
+	bundleDepth int,
 ) (*types.Transaction, bundle.ExecutionPlan) {
-	if depth == 0 {
-		return bundle.NewBuilder().
-			WithSigner(signer).
-			With(rootStep).
-			BuildEnvelopeAndPlan()
+	var plan bundle.ExecutionPlan
+	for _ = range bundleDepth + 1 {
+		step := bundle.Step(sender.PrivateKey, tx)
+		for _ = range stepDepth {
+			step = bundle.AllOf(step)
+		}
+		tx, plan = bundle.NewBuilder().WithSigner(signer).With(step).BuildEnvelopeAndPlan()
 	}
 
-	nestedEnvelope, _ := nestInBundles(signer, sender, rootStep, depth-1)
-	return bundle.NewBuilder().
-		WithSigner(signer).
-		AllOf(bundle.Step(sender.PrivateKey, nestedEnvelope)).
-		BuildEnvelopeAndPlan()
+	return tx, plan
 }
