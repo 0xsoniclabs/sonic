@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -182,7 +183,7 @@ func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
 		return tx.GasPrice()
 	}
 	// EffectiveGasTip returns an error for negative values, this is no problem here
-	gasTip, _ := tx.EffectiveGasTip(baseFee)
+	gasTip, _ := gasprice.EffectiveGasTip(tx, baseFee)
 	return new(big.Int).Add(baseFee, gasTip)
 }
 
