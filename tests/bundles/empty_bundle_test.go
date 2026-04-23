@@ -23,13 +23,22 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBundle_BundleContainingAnyEmptyGroupIsRejected(t *testing.T) {
-	net := GetIntegrationTestNetWithBundlesEnabled(t)
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+		ClientExtraArguments: []string{
+			"--disable-txPool-validation",
+		},
+	})
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
