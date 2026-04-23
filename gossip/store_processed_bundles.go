@@ -43,6 +43,7 @@ import (
 // In the underlying table, the following keys are used:
 //  - key: [] 							 -> [uint64, hash]          // last block and hash for which the processed bundles have been stored
 //  - key: ['e']<execPlanHash> 			 -> [block,position,count]  // for a recently processed bundle (auto-pruned)
+//  - key: ['h']<blockNum> 				 -> hash                    // cumulative history hash at that block (auto-pruned)
 //  - key: ['i']<blockNum, execPlanHash> -> []         				// for a processed bundle at a specific block number, to handle cleanups
 //
 // The hash of the processed bundle's history is computed as follows:
@@ -85,10 +86,13 @@ func (s *Store) AddProcessedBundles(
 	// Update the history hash of processed bundles.
 	newHash := computeNewBundleStateHash(oldHash, addedHash, blockNum)
 
-	err := batch.Put(nil, append(
-		bigendian.Uint64ToBytes(blockNum),
-		newHash.Bytes()...,
-	))
+	err := errors.Join(
+		batch.Put(nil, append(
+			bigendian.Uint64ToBytes(blockNum),
+			newHash.Bytes()...,
+		)),
+		batch.Put(getBlockHistoryHashKey(blockNum), newHash.Bytes()),
+	)
 	if err != nil {
 		s.Log.Crit("failed to update hash of processed bundles", "error", err)
 	}
@@ -152,6 +156,7 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) {
 			err := errors.Join(
 				batch.Delete(getIndexKey(oldBundleBlockNumber, hash)),
 				batch.Delete(getEntryKey(hash)),
+				batch.Delete(getBlockHistoryHashKey(oldBundleBlockNumber)),
 			)
 			if err != nil {
 				s.Log.Crit("failed to delete old processed bundle hash", "error", err)
@@ -250,6 +255,26 @@ func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
 	return blockNum, hash
 }
 
+// GetOldestRetainedBundleHistoryHash returns the block number and bundle
+// history hash for the oldest block still retained in the store.
+// Returns ok=false when no per-block hashes have been stored yet (i.e. no
+// bundle has ever been executed).
+func (s *Store) GetOldestRetainedBundleHistoryHash() (blockNum uint64, hash common.Hash, ok bool) {
+	it := s.table.ProcessedBundles.NewIterator([]byte{'h'}, nil)
+	defer it.Release()
+	if !it.Next() {
+		return 0, common.Hash{}, false
+	}
+	key := it.Key()
+	// key layout: 1 byte prefix + 8 bytes block number
+	if len(key) != 1+8 {
+		s.Log.Crit("invalid per-block history hash key length", "length", len(key))
+	}
+	blockNum = binary.BigEndian.Uint64(key[1:])
+	hash = common.BytesToHash(it.Value())
+	return blockNum, hash, true
+}
+
 // SetProcessedBundlesHistoryHash sets the block number and hash of the
 // processed bundles history. This should be used only during genesis initialization.
 func (s *Store) SetProcessedBundlesHistoryHash(blockNum uint64, hash common.Hash) {
@@ -317,6 +342,12 @@ func getIndexKey(blockNum uint64, hash common.Hash) []byte {
 	return append(
 		append([]byte{'i'}, bigendian.Uint64ToBytes(blockNum)...),
 		hash.Bytes()...)
+}
+
+// getBlockHistoryHashKey returns the key used to store the cumulative history hash
+// for a specific block number.
+func getBlockHistoryHashKey(blockNum uint64) []byte {
+	return append([]byte{'h'}, bigendian.Uint64ToBytes(blockNum)...)
 }
 
 // xorHash returns the XOR of two hashes.
