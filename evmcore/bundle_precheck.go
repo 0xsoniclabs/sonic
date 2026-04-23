@@ -64,19 +64,25 @@ type BundleState struct {
 	Reasons            []string // A list of human-readable strings describing why the bundle is not executable or is blocked.
 }
 
-// GetBundleState determines the state of the bundle based on the current state
-// of the blockchain and the transactions in the bundle.
+// GetBundleState determines the state of the bundle based on the current
+// chain state, state, and the transactions in the bundle.
+//
+// both chain and stateDb shall be non-nil and properly initialized.
+// The lifetime of the chainDb object is not managed by this function and
+// callers are responsible from releasing it when it is no longer needed.
 func GetBundleState(
 	chain ChainStateForBundleEval,
+	stateDb state.StateDB,
 	envelope *types.Transaction,
 ) BundleState {
-	return getBundleState(chain, envelope, trialRunBundle)
+	return getBundleState(chain, stateDb, envelope, trialRunBundle)
 }
 
 // getBundleState is the internal version of GetBundleState, allowing to inject
 // a custom trial-run function to simplify testing.
 func getBundleState(
 	chain ChainStateForBundleEval,
+	stateDb state.StateDB,
 	envelope *types.Transaction,
 	trialRunner func(*types.Transaction, ChainStateForBundleEval, state.StateDB) bool,
 ) BundleState {
@@ -106,8 +112,6 @@ func getBundleState(
 	// Next, check whether there are any nonce conflicts in the execution of
 	// the bundle. This is a quicker check than actually running the bundle in
 	// full to determine whether it can succeed or not.
-	stateDb := chain.StateDB()
-	defer stateDb.Release()
 	state := checkForNonceConflicts(bundle, signer, stateDb)
 	if !state.Executable {
 		return state
@@ -135,12 +139,6 @@ func getBundleState(
 // extra chain state information for trial-running bundles.
 type ChainStateForBundleEval interface {
 	ChainState
-
-	// StateDB returns a context for running transactions on the head state of
-	// the chain. A non-committable state-DB instance is sufficient. The user
-	// takes ownership of the returned StateDB and is responsible for releasing
-	// it when it is no longer needed.
-	StateDB() state.StateDB
 
 	// GetLatestHeader returns the latest block header of the chain.
 	GetLatestHeader() *EvmHeader

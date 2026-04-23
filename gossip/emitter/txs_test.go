@@ -58,13 +58,13 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 				},
 			}
 
-			state := state.NewMockStateDB(ctrl)
-			state.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).AnyTimes()
+			db := state.NewMockStateDB(ctrl)
+			db.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).AnyTimes()
 
 			external := NewMockExternal(ctrl)
 			external.EXPECT().GetRules().Return(rules).AnyTimes()
 			external.EXPECT().GetLatestBlockIndex().Return(idx.Block(100)).AnyTimes()
-			external.EXPECT().StateDB().Return(state).AnyTimes()
+			external.EXPECT().StateDB().Return(db).AnyTimes()
 
 			signer := types.LatestSignerForChainID(big.NewInt(int64(rules.NetworkID)))
 			emitter := &Emitter{
@@ -79,7 +79,7 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 			_, _, err := bundle.ValidateEnvelope(signer, tx)
 			require.NoError(err)
 
-			allBundlesRunnable := func(evmcore.ChainStateForBundleEval, *types.Transaction) evmcore.BundleState {
+			allBundlesRunnable := func(evmcore.ChainStateForBundleEval, state.StateDB, *types.Transaction) evmcore.BundleState {
 				return evmcore.BundleState{Executable: true}
 			}
 
@@ -140,13 +140,13 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 				},
 			}
 
-			state := state.NewMockStateDB(ctrl)
-			state.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(processed).AnyTimes()
+			db := state.NewMockStateDB(ctrl)
+			db.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(processed).AnyTimes()
 
 			external := NewMockExternal(ctrl)
 			external.EXPECT().GetRules().Return(rules).AnyTimes()
 			external.EXPECT().GetLatestBlockIndex().Return(idx.Block(100)).AnyTimes()
-			external.EXPECT().StateDB().Return(state).AnyTimes()
+			external.EXPECT().StateDB().Return(db).AnyTimes()
 
 			signer := types.LatestSignerForChainID(big.NewInt(1))
 			emitter := &Emitter{
@@ -161,7 +161,7 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 			_, _, err := bundle.ValidateEnvelope(signer, tx)
 			require.NoError(t, err)
 
-			getBundleState := func(evmcore.ChainStateForBundleEval, *types.Transaction) evmcore.BundleState {
+			getBundleState := func(evmcore.ChainStateForBundleEval, state.StateDB, *types.Transaction) evmcore.BundleState {
 				return evmcore.BundleState{Executable: true}
 			}
 
@@ -183,20 +183,6 @@ func Test_preCheckStateAdapter_ForwardsNetworkRuleRequest(t *testing.T) {
 	returnedRules := adapter.GetCurrentNetworkRules()
 
 	require.Equal(t, rules, returnedRules)
-}
-
-func Test_preCheckStateAdapter_ForwardsStateDBRequest(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	stateDB := state.NewMockStateDB(ctrl)
-	stateDB.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).AnyTimes()
-
-	external := NewMockExternal(ctrl)
-	external.EXPECT().StateDB().Return(stateDB)
-
-	adapter := &preCheckChainStateAdapter{external: external}
-	returnedStateDB := adapter.StateDB()
-
-	require.Same(t, stateDB, returnedStateDB)
 }
 
 func Test_preCheckStateAdapter_ForwardsHeaderRequest(t *testing.T) {

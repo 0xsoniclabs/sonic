@@ -101,20 +101,6 @@ func (mr *MockChainStateForBundleEvalMockRecorder) Header(hash, number any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockChainStateForBundleEval)(nil).Header), hash, number)
 }
 
-// StateDB mocks base method.
-func (m *MockChainStateForBundleEval) StateDB() state.StateDB {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StateDB")
-	ret0, _ := ret[0].(state.StateDB)
-	return ret0
-}
-
-// StateDB indicates an expected call of StateDB.
-func (mr *MockChainStateForBundleEvalMockRecorder) StateDB() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StateDB", reflect.TypeOf((*MockChainStateForBundleEval)(nil).StateDB))
-}
-
 // MockNonceSource is a mock of NonceSource interface.
 type MockNonceSource struct {
 	ctrl     *gomock.Controller

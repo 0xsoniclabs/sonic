@@ -241,7 +241,7 @@ func (em *Emitter) isValidBundleTx(tx *types.Transaction) bool {
 
 func (em *Emitter) isRunnableBundleTxInternal(
 	tx *types.Transaction,
-	getBundleState func(evmcore.ChainStateForBundleEval, *types.Transaction) evmcore.BundleState,
+	getBundleState func(evmcore.ChainStateForBundleEval, state.StateDB, *types.Transaction) evmcore.BundleState,
 ) bool {
 	// Ignore if bundled transactions are not enabled.
 	if !em.world.GetRules().Upgrades.TransactionBundles {
@@ -273,7 +273,9 @@ func (em *Emitter) isRunnableBundleTxInternal(
 
 	// Skip bundles that are not runnable in the current state.
 	adapter := &preCheckChainStateAdapter{external: em.world}
-	return getBundleState(adapter, tx).Executable
+	stateDb := em.world.StateDB()
+	defer stateDb.Release()
+	return getBundleState(adapter, stateDb, tx).Executable
 }
 
 type preCheckChainStateAdapter struct {
@@ -282,10 +284,6 @@ type preCheckChainStateAdapter struct {
 
 func (a *preCheckChainStateAdapter) GetCurrentNetworkRules() opera.Rules {
 	return a.external.GetRules()
-}
-
-func (a *preCheckChainStateAdapter) StateDB() state.StateDB {
-	return a.external.StateDB()
 }
 
 func (a *preCheckChainStateAdapter) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
