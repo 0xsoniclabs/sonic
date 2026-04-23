@@ -78,7 +78,7 @@ func TestEvmProcessor_Run_IfExecutionProducesMultipleProcessedTransactions_SumsU
 	require.Equal(t, uint64(30), gasUsed)
 }
 
-func TestEvmProcessor_Run_IfRequestedTransactionIsNotExecuted_AFailedExecutionIsReported(t *testing.T) {
+func TestEvmProcessor_Run_IfRequestedTransactionIsNotExecuted_TheTransactionIsStillAccepted(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockevmProcessorRunner(ctrl)
 
@@ -92,7 +92,7 @@ func TestEvmProcessor_Run_IfRequestedTransactionIsNotExecuted_AFailedExecutionIs
 
 	processor := &evmProcessor{processor: runner}
 	success, _ := processor.run(tx)
-	require.False(t, success)
+	require.True(t, success)
 }
 
 func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecution(t *testing.T) {
@@ -119,20 +119,21 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecution(t *testing.T
 		require.False(t, success)
 	})
 
-	t.Run("different transaction", func(t *testing.T) {
+	t.Run("multiple failed transactions", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		runner := NewMockevmProcessorRunner(ctrl)
 		txA := &types.Transaction{}
 		txB := &types.Transaction{}
 		runner.EXPECT().Run(0, gomock.Any()).Return(evmcore.ProcessSummary{
 			ProcessedTransactions: []evmcore.ProcessedTransaction{
-				{Transaction: txB, Receipt: &types.Receipt{GasUsed: 10}},
+				{Transaction: txA, Receipt: nil},
+				{Transaction: txB, Receipt: nil},
 			},
 		})
 		processor := &evmProcessor{processor: runner}
 		success, gasUsed := processor.run(txA)
 		require.False(t, success)
-		require.Equal(t, uint64(10), gasUsed)
+		require.Equal(t, uint64(0), gasUsed)
 	})
 }
 

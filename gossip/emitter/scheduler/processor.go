@@ -94,20 +94,23 @@ func (p *evmProcessor) run(tx *types.Transaction) (
 
 	// A single input transaction can lead to multiple processed transactions.
 	// For instance, a sponsored transaction may be accompanied by a fee
-	// charging transaction. We consider the transaction successful if the
-	// provided transaction was executed, and we sum up the gas used by all
-	// non-skipped transactions, as this is the total gas cost of running the
-	// provided transaction.
-	txWasProcessed := false
+	// charging transaction. Or a bundle envelope may result in an arbitrary
+	// number of transactions to be processed. We consider the input transaction
+	// successful if it results in at least one accepted transaction. We also
+	// sum up the gas used by all accepted transactions, as this is the total
+	// gas cost of running the input transaction.
+	//
+	// TODO: add a minimum efficiency filter to avoid very inefficient bundles
+	// to be distributed in the network
+	// (see https://github.com/0xsoniclabs/sonic-admin/issues/740).
+	hasAcceptedTransaction := false
 	for _, pt := range processed {
 		if pt.Receipt != nil {
+			hasAcceptedTransaction = true
 			gasUsed += pt.Receipt.GasUsed
-			if pt.Transaction == tx {
-				txWasProcessed = true
-			}
 		}
 	}
-	return txWasProcessed, gasUsed
+	return hasAcceptedTransaction, gasUsed
 }
 
 func (p *evmProcessor) release() {
