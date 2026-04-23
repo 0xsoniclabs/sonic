@@ -27,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // SubmitBundleArgs represents the arguments for the `sonic_submitBundle` RPC method.
@@ -40,7 +39,7 @@ type SubmitBundleArgs struct {
 	// ExecutionPlan contains the execution plan that each bundled transaction references.
 	// This value must be provided as returned by the `sonic_prepareBundle` method;
 	// any modification will invalidate the execution plan and result in an ill-formed bundle.
-	ExecutionPlan RPCExecutionPlan `json:"executionPlan,omitempty"`
+	ExecutionPlan RPCExecutionPlanComposable `json:"executionPlan,omitempty"`
 }
 
 // SubmitBundle implements the `sonic_submitBundle` RPC method, which submits a prepared bundle for execution.
@@ -54,59 +53,36 @@ func (a *PublicBundleAPI) SubmitBundle(
 		return common.Hash{}, fmt.Errorf("signedTransactions must not be empty")
 	}
 
-	earliest, err := parseRPCBlockNumber(a.b, args.ExecutionPlan.Earliest)
+	execPlan, err := toBundleExecutionPlan(args.ExecutionPlan)
 	if err != nil {
-		return common.Hash{}, fmt.Errorf("invalid earliest block number: %w", err)
+		return common.Hash{}, fmt.Errorf("invalid execution plan: %w", err)
 	}
 
-	latest, err := parseRPCBlockNumber(a.b, args.ExecutionPlan.Latest)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("invalid latest block number: %w", err)
-	}
-
-	if latest < earliest {
+	if execPlan.Range.Latest < execPlan.Range.Earliest {
 		return common.Hash{}, fmt.Errorf("latest block number cannot be smaller than earliest block number")
 	}
 
-	if len(args.ExecutionPlan.Steps) != len(args.SignedTransactions) {
+	refs := execPlan.Root.GetTransactionReferencesInReferencedOrder()
+	if len(refs) != len(args.SignedTransactions) {
 		return common.Hash{}, fmt.Errorf("executionPlan steps count (%d) must match signedTransactions count (%d)",
-			len(args.ExecutionPlan.Steps), len(args.SignedTransactions))
+			len(refs), len(args.SignedTransactions))
 	}
 
-	// Decode bundled transactions and build TxReference map and execution steps.
+	// Decode bundled transactions and build TxReference map.
 	transactions := make(map[bundle.TxReference]*types.Transaction, len(args.SignedTransactions))
-	steps := make([]bundle.ExecutionStep, len(args.SignedTransactions))
 	var totalGas uint64
 	for i, encodedTx := range args.SignedTransactions {
 		tx := new(types.Transaction)
 		if err := tx.UnmarshalBinary(encodedTx); err != nil {
 			return common.Hash{}, fmt.Errorf("failed to decode bundled transaction %d: %w", i, err)
 		}
-		txRef := bundle.TxReference{
-			From: args.ExecutionPlan.Steps[i].From,
-			Hash: args.ExecutionPlan.Steps[i].Hash,
-		}
-		transactions[txRef] = tx
-		steps[i] = bundle.NewTxStep(txRef).WithFlags(args.ExecutionPlan.Flags)
+		transactions[refs[i]] = tx
 		totalGas += tx.Gas()
-	}
-
-	var root bundle.ExecutionStep
-	if len(steps) == 1 {
-		root = steps[0]
-	} else {
-		root = bundle.NewAllOfStep(steps...)
 	}
 
 	txBundle := bundle.TransactionBundle{
 		Transactions: transactions,
-		Plan: bundle.ExecutionPlan{
-			Range: bundle.BlockRange{
-				Earliest: earliest,
-				Latest:   latest,
-			},
-			Root: root,
-		},
+		Plan:         execPlan,
 	}
 
 	// Encode the bundle and compute if gas limits are sufficient to cover
@@ -159,26 +135,3 @@ func (a *PublicBundleAPI) SubmitBundle(
 	return plan.Hash(), nil
 }
 
-// parseRPCBlockNumber converts an RPC block number (which can be a specific block number
-// or a tag like "latest") into a uint64 block number.
-func parseRPCBlockNumber(b BundleApiBackend, num rpc.BlockNumber) (uint64, error) {
-
-	if num == rpc.PendingBlockNumber ||
-		num == rpc.LatestBlockNumber ||
-		num == rpc.FinalizedBlockNumber ||
-		num == rpc.SafeBlockNumber {
-
-		if current := b.CurrentBlock(); current != nil {
-			return current.NumberU64(), nil
-		}
-
-		return 0, fmt.Errorf("block number %s is not available: no current block", num)
-	}
-	if num == rpc.EarliestBlockNumber {
-		return 0, nil
-	}
-	if num < 0 {
-		return 0, fmt.Errorf("block number cannot be negative")
-	}
-	return uint64(num), nil
-}

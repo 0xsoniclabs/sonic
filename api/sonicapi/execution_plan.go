@@ -17,6 +17,7 @@
 package sonicapi
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -79,6 +80,70 @@ type RPCExecutionStepComposable struct {
 type RPCRange struct {
 	Earliest hexutil.Uint64 `json:"earliest"`
 	Latest   hexutil.Uint64 `json:"latest"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler for RPCExecutionPlanComposable.
+// Required because the embedded RPCExecutionPlanGroup.Steps is []any — standard
+// JSON decoding would produce map[string]interface{} elements, breaking
+// toBundleExecutionPlanLevel's type switch.
+func (p *RPCExecutionPlanComposable) UnmarshalJSON(data []byte) error {
+	var br struct {
+		BlockRange RPCRange `json:"blockRange"`
+	}
+	if err := json.Unmarshal(data, &br); err != nil {
+		return err
+	}
+	p.BlockRange = br.BlockRange
+	return json.Unmarshal(data, &p.RPCExecutionPlanGroup)
+}
+
+// UnmarshalJSON implements json.Unmarshaler for RPCExecutionPlanGroup.
+// Discriminates each step by the presence of a "steps" key: if present it is
+// a nested group (*RPCExecutionPlanGroup), otherwise a leaf (*RPCExecutionStepComposable).
+func (g *RPCExecutionPlanGroup) UnmarshalJSON(data []byte) error {
+	type plain struct {
+		TolerateFailures bool              `json:"tolerateFailures"`
+		OneOf            bool              `json:"oneOf"`
+		Steps            []json.RawMessage `json:"steps"`
+	}
+	var raw plain
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	g.TolerateFailures = raw.TolerateFailures
+	g.OneOf = raw.OneOf
+	g.Steps = make([]any, len(raw.Steps))
+	for i, stepData := range raw.Steps {
+		step, err := unmarshalComposableStep(stepData)
+		if err != nil {
+			return fmt.Errorf("step %d: %w", i, err)
+		}
+		g.Steps[i] = step
+	}
+	return nil
+}
+
+// unmarshalComposableStep deserializes one execution step from JSON.
+// Presence of the "steps" key indicates a group; absence indicates a leaf.
+func unmarshalComposableStep(data []byte) (any, error) {
+	var probe struct {
+		Steps *json.RawMessage `json:"steps"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return nil, err
+	}
+	if probe.Steps != nil {
+		var group RPCExecutionPlanGroup
+		if err := json.Unmarshal(data, &group); err != nil {
+			return nil, err
+		}
+		return &group, nil
+	}
+	var leaf RPCExecutionStepComposable
+	if err := json.Unmarshal(data, &leaf); err != nil {
+		return nil, err
+	}
+	return &leaf, nil
 }
 
 // NewRPCExecutionPlanComposable converts a bundle.ExecutionPlan to an RPCExecutionPlan that can be returned by the API.
