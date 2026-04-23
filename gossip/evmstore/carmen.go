@@ -87,6 +87,10 @@ type processedExecPlan struct {
 	position     bundle.PositionInBlock
 }
 
+func (c *CarmenStateDB) EmitLogsForBurnAccounts() {
+	// TODO: implement eip-7708 for Amsterdam hard fork.
+}
+
 func (c *CarmenStateDB) Error() error {
 	return nil
 }
