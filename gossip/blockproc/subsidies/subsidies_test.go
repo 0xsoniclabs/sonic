@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -247,7 +248,7 @@ func TestIsCovered_ConsultsSubsidiesRegistry(t *testing.T) {
 			blockContext := vm.BlockContext{
 				BlockNumber: big.NewInt(123),
 				BaseFee:     baseFee,
-				Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int) {
+				Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int, _ *params.Rules) {
 					require.Equal(0, amount.Sign())
 				},
 				Random: &common.Hash{}, // < signals Revision >= Merge
@@ -309,7 +310,7 @@ func TestIsCovered_RegistryNotAvailable_ReturnsError(t *testing.T) {
 	blockContext := vm.BlockContext{
 		BlockNumber: big.NewInt(123),
 		BaseFee:     baseFee,
-		Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int) {
+		Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int, _ *params.Rules) {
 			require.Equal(0, amount.Sign())
 		},
 		Random: &common.Hash{}, // < signals Revision >= Merge

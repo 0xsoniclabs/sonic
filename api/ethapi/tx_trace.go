@@ -244,7 +244,7 @@ func (s *PublicTxTraceAPI) traceCallExec(
 	tracedEVM.vmenv.SetTxContext(evmcore.NewEVMTxContext(msg))
 
 	// Execute the transaction using core.ApplyMessage to capture raw return data.
-	result, applyErr := core.ApplyMessage(tracedEVM.vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
+	result, applyErr := core.ApplyMessage(tracedEVM.vmenv, msg, core.NewGasPool(msg.GasLimit))
 
 	// Finalize the transaction state regardless of execution outcome.
 	tracedEVM.activeState.EndTransaction()
@@ -434,7 +434,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 				evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, state)
 			}
 
-			res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
+			res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
 			failed := false
 			if err != nil {
 				failed = true
@@ -486,7 +486,7 @@ func (s *PublicTxTraceAPI) traceTx(
 
 	statedb.SetTxContext(tx.Hash(), int(index))
 	chainConfig := s.b.ChainConfig(idx.Block(block.Number.Uint64()))
-	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, new(core.GasPool).AddGas(msg.GasLimit), statedb, block.Number, block.Hash, tx, &index, tracedEVM.vmenv)
+	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, core.NewGasPool(msg.GasLimit), statedb, block.Number, block.Hash, tx, &index, tracedEVM.vmenv)
 
 	traceActions := tracedEVM.txTracer.GetResult()
 	statedb.EndTransaction()

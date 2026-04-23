@@ -20,7 +20,7 @@ go 1.25.0
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20260413073511-38e882c830d4
-	github.com/0xsoniclabs/tosca v0.0.0-20260327130322-2d1aa839a807
+	github.com/0xsoniclabs/tosca v0.0.0-20260423115228-f81e8c56bb3a
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
 	github.com/consensys/gnark-crypto v0.18.1
@@ -43,7 +43,7 @@ require (
 	github.com/tyler-smith/go-bip39 v1.1.0
 	go.uber.org/mock v0.4.0
 	golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d
-	golang.org/x/sys v0.39.0
+	golang.org/x/sys v0.40.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/urfave/cli.v1 v1.20.0
 )
@@ -66,7 +66,7 @@ require (
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
-	github.com/crate-crypto/go-eth-kzg v1.4.0 // indirect
+	github.com/crate-crypto/go-eth-kzg v1.5.0 // indirect
 	github.com/deckarep/golang-set/v2 v2.6.0 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0 // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
@@ -100,7 +100,7 @@ require (
 	github.com/influxdata/influxdb1-client v0.0.0-20220302092344-a9ab5670611c // indirect
 	github.com/influxdata/line-protocol v0.0.0-20210922203350-b1ad95c89adf // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
-	github.com/karalabe/hid v1.0.1-0.20240306101548-573246063e52 // indirect
+	github.com/karalabe/hid v1.0.1-0.20260315100226-f5d04adeffeb // indirect
 	github.com/klauspost/compress v1.17.10 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
@@ -136,9 +136,9 @@ require (
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/otel v1.39.0 // indirect
-	go.opentelemetry.io/otel/metric v1.39.0 // indirect
-	go.opentelemetry.io/otel/trace v1.39.0 // indirect
+	go.opentelemetry.io/otel v1.40.0 // indirect
+	go.opentelemetry.io/otel/metric v1.40.0 // indirect
+	go.opentelemetry.io/otel/trace v1.40.0 // indirect
 	golang.org/x/crypto v0.44.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
@@ -150,6 +150,6 @@ require (
 	pgregory.net/rand v1.0.2 // indirect
 )
 
-replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20260316131102-1779772a79a7
+replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20260423113856-3e6aaf62fe9f
 
-replace github.com/Fantom-foundation/lachesis-base => github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20250701061954-44075d09185c
+replace github.com/Fantom-foundation/lachesis-base => github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20260423124551-e7f95d0a4cf3
