@@ -25,6 +25,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/api/sonicapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -124,4 +125,13 @@ func getBlockTxsHashes(t *testing.T, client *tests.PooledEhtClient, blockNumber 
 		blockTxsHashes = append(blockTxsHashes, tx.Hash())
 	}
 	return blockTxsHashes
+}
+
+func GetIntegrationTestNetWithBundlesEnabled(t *testing.T) *tests.IntegrationTestNet {
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+
+	return tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
 }

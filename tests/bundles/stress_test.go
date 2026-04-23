@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/add"
 	"github.com/0xsoniclabs/sonic/tests/contracts/store"
@@ -34,12 +33,7 @@ func TestBundle_StressWithManyNonceBlockedBundles(t *testing.T) {
 	// Increase this number for profiling to increase load on the system.
 	const N = 2 // Number of blocked bundles
 
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
-
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	net := GetIntegrationTestNetWithBundlesEnabled(t)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -101,12 +95,7 @@ func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
 	// Increase this number for profiling to increase load on the system.
 	const B = 1 // Number of bundles
 
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
-
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	net := GetIntegrationTestNetWithBundlesEnabled(t)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)

@@ -35,14 +35,13 @@ import (
 // not standalone). The RPC must preserve it so the bundle constraint survives
 // access-list recreation by wallets or tooling.
 func TestCreateAccessList_PreservesBundleOnlyMarker(t *testing.T) {
+	net := tests.StartIntegrationTestNet(t)
 
-	session := tests.StartIntegrationTestNet(t)
-
-	client, err := session.GetClient()
+	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
-	sender := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
+	sender := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	// callCreateAccessList is a helper that calls eth_createAccessList with the
 	// given access list and returns the resulting access list.
