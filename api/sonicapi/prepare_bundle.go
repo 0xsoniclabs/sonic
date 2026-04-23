@@ -167,6 +167,14 @@ func (a *PublicBundleAPI) PrepareBundle(
 		return nil, err
 	}
 
+	if builder.cursor != len(flatTxs) {
+		return nil, fmt.Errorf(
+			"failed to prepare bundle: execution plan consumed %d of %d transactions",
+			builder.cursor,
+			len(flatTxs),
+		)
+	}
+
 	blockRange, err := resolveBlockRange(currentBlock.NumberU64(), args.EarliestBlock, args.LatestBlock)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare bundle: %w", err)
@@ -210,6 +218,13 @@ func (b *prepareBundleBuilder) buildStep(step PrepareBundleEntry) (bundle.Execut
 // buildTxStep converts the TransactionArgs at the current cursor position into a TxStep, then advances the cursor.
 func (b *prepareBundleBuilder) buildTxStep(tx *PrepareBundleTxStep) (bundle.ExecutionStep, error) {
 	idx := b.cursor
+	if idx >= len(b.flatTxArgs) {
+		return bundle.ExecutionStep{}, fmt.Errorf(
+			"failed to prepare bundle: transaction index %d out of range (have %d transactions)",
+			idx,
+			len(b.flatTxArgs),
+		)
+	}
 	txArgs := b.flatTxArgs[idx]
 	b.cursor++
 
@@ -245,6 +260,8 @@ func (b *prepareBundleBuilder) buildTxStep(tx *PrepareBundleTxStep) (bundle.Exec
 	return step, nil
 }
 
+// buildGroupStep recursively builds ExecutionSteps for each child entry,
+// then combines them into a GroupStep with the appropriate modifier.
 func (b *prepareBundleBuilder) buildGroupStep(g *PrepareBundleGroup) (bundle.ExecutionStep, error) {
 	subSteps := make([]bundle.ExecutionStep, len(g.Entries))
 	for i, s := range g.Entries {
