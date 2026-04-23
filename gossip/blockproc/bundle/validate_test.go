@@ -71,21 +71,19 @@ func TestValidateEnvelope_ValidEnvelopes_AreAcceptedAndReturnsBundleAndPlan(t *t
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			signer := types.LatestSignerForChainID(big.NewInt(1))
-			envelope := tc.WithSigner(signer).Build()
+			envelope, wantBundle, wantPlan := tc.WithSigner(signer).
+				BuildEnvelopeBundleAndPlan()
 
 			bundle, plan, err := ValidateEnvelope(signer, envelope)
 			require.NoError(err)
 
-			want, err := OpenEnvelope(signer, envelope)
-			require.NoError(err)
-
-			require.Equal(want.Plan, bundle.Plan)
-			require.Equal(want.Plan, *plan)
+			require.Equal(wantPlan, bundle.Plan)
+			require.Equal(wantPlan, *plan)
 
 			// transactions can not be compared directly, so we compare their
 			// hashes to make sure the same transactions are present
-			require.Equal(len(want.Transactions), len(bundle.Transactions))
-			for ref, tx := range want.Transactions {
+			require.Equal(len(wantBundle.Transactions), len(bundle.Transactions))
+			for ref, tx := range wantBundle.Transactions {
 				bundleTx, found := bundle.Transactions[ref]
 				require.True(found)
 				require.Equal(tx.Hash(), bundleTx.Hash())
