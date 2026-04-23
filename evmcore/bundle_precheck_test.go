@@ -51,7 +51,7 @@ func Test_GetBundleState_BundlesDisabled_ReturnsNonExecutable(t *testing.T) {
 	_, _, err := bundle.ValidateEnvelope(nil, invalidBundle)
 	require.Error(t, err)
 
-	state := GetBundleState(chainState, invalidBundle)
+	state := GetBundleState(chainState, nil, invalidBundle)
 	require.Equal(t, state, makePermanentlyBlockedState("transaction bundles are not enabled on this network"))
 }
 
@@ -68,7 +68,7 @@ func Test_GetBundleState_InvalidBundle_ReturnsNonExecutable(t *testing.T) {
 	_, _, err := bundle.ValidateEnvelope(signer, invalidBundle)
 	require.Error(t, err)
 
-	state := GetBundleState(chainState, invalidBundle)
+	state := GetBundleState(chainState, nil, invalidBundle)
 	require.Equal(t, state, makePermanentlyBlockedState(fmt.Sprintf("invalid bundle: %v", err)))
 }
 
@@ -93,7 +93,7 @@ func Test_GetBundleState_OutdatedBundle_ReturnsNonExecutable(t *testing.T) {
 	_, _, err := bundle.ValidateEnvelope(signer, envelope)
 	require.NoError(t, err)
 
-	state := GetBundleState(chainState, envelope)
+	state := GetBundleState(chainState, nil, envelope)
 	require.Equal(t, state, makePermanentlyBlockedState("bundle has expired"))
 }
 
@@ -121,7 +121,7 @@ func Test_GetBundleState_FutureBundle_ReturnsTemporaryBlocked(t *testing.T) {
 	_, _, err := bundle.ValidateEnvelope(signer, envelop)
 	require.NoError(t, err)
 
-	state := GetBundleState(chainState, envelop)
+	state := GetBundleState(chainState, nil, envelop)
 	require.Equal(t, state, makeTemporaryBlockedState("bundle targets future blocks"))
 }
 
@@ -142,8 +142,6 @@ func Test_GetBundleState_FailedTrialRun_ReturnsNonExecutable(t *testing.T) {
 		NetworkID: 1,
 		Upgrades:  opera.Upgrades{TransactionBundles: true},
 	}).AnyTimes()
-	chainState.EXPECT().StateDB().Return(stateDb)
-	stateDb.EXPECT().Release()
 
 	envelope := bundle.NewBuilder().
 		SetEarliest(currentBlock - 5).
@@ -154,7 +152,7 @@ func Test_GetBundleState_FailedTrialRun_ReturnsNonExecutable(t *testing.T) {
 		return false
 	}
 
-	state := getBundleState(chainState, envelope, rejectEverything)
+	state := getBundleState(chainState, stateDb, envelope, rejectEverything)
 	require.Equal(t, state, makePermanentlyBlockedState("bundle trial-run failed"))
 }
 
@@ -174,8 +172,6 @@ func Test_GetBundleState_ValidBundle_ReturnsRunnable(t *testing.T) {
 		NetworkID: 1,
 		Upgrades:  opera.Upgrades{TransactionBundles: true},
 	}).AnyTimes()
-	chainState.EXPECT().StateDB().Return(stateDb)
-	stateDb.EXPECT().Release()
 
 	// Build a bundle with a valid block window.
 	envelope := bundle.NewBuilder().
@@ -187,7 +183,7 @@ func Test_GetBundleState_ValidBundle_ReturnsRunnable(t *testing.T) {
 		return true
 	}
 
-	state := getBundleState(chainState, envelope, acceptEverything)
+	state := getBundleState(chainState, stateDb, envelope, acceptEverything)
 	require.Equal(t, state, makeRunnableState())
 }
 
@@ -246,8 +242,6 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 				NetworkID: 1,
 				Upgrades:  opera.Upgrades{TransactionBundles: true},
 			}).AnyTimes()
-			chainState.EXPECT().StateDB().Return(db)
-			db.EXPECT().Release()
 
 			chainId := big.NewInt(1)
 			signer := types.LatestSignerForChainID(chainId)
@@ -260,7 +254,7 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 				return true
 			}
 
-			got := getBundleState(chainState, envelope, acceptEverything)
+			got := getBundleState(chainState, db, envelope, acceptEverything)
 			require.Equal(t, test.result, got)
 		})
 	}
