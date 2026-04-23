@@ -119,15 +119,15 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecution(t *testing.T
 		require.False(t, success)
 	})
 
-	t.Run("no gas consumed", func(t *testing.T) {
+	t.Run("multiple failed transactions", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		runner := NewMockevmProcessorRunner(ctrl)
 		txA := &types.Transaction{}
 		txB := &types.Transaction{}
 		runner.EXPECT().Run(0, gomock.Any()).Return(evmcore.ProcessSummary{
 			ProcessedTransactions: []evmcore.ProcessedTransaction{
-				{Transaction: txA, Receipt: &types.Receipt{GasUsed: 0}},
-				{Transaction: txB, Receipt: &types.Receipt{GasUsed: 0}},
+				{Transaction: txA, Receipt: nil},
+				{Transaction: txB, Receipt: nil},
 			},
 		})
 		processor := &evmProcessor{processor: runner}

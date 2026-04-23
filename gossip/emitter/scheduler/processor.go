@@ -103,12 +103,14 @@ func (p *evmProcessor) run(tx *types.Transaction) (
 	// TODO: add a minimum efficiency filter to avoid very inefficient bundles
 	// to be distributed in the network
 	// (see https://github.com/0xsoniclabs/sonic-admin/issues/740).
+	hasAcceptedTransaction := false
 	for _, pt := range processed {
 		if pt.Receipt != nil {
+			hasAcceptedTransaction = true
 			gasUsed += pt.Receipt.GasUsed
 		}
 	}
-	return gasUsed > 0, gasUsed
+	return hasAcceptedTransaction, gasUsed
 }
 
 func (p *evmProcessor) release() {
