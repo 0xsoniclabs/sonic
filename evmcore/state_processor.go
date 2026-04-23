@@ -517,7 +517,7 @@ func (b *bundleTransactionRunner) RevertToSnapshot(id int) {
 	b.legacyTxOffset = snapshot.legacyTxOffset
 	b.trueTxOffset = snapshot.trueTxOffset
 	b.processedTransactions = b.processedTransactions[:snapshot.processedTransactionListLength]
-	b.ctxt.usedGas = &snapshot.usedGas
+	*b.ctxt.usedGas = snapshot.usedGas
 	b.snapshots = b.snapshots[:id]
 }
 

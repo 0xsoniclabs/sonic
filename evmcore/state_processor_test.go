@@ -2645,6 +2645,31 @@ func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOn
 	require.EqualValues(t, 6, *ctxt.usedGas)
 }
 
+func TestBundleTransactionRunner_CreatingAndRevertingSnapshotsDoesNotAlterUsedGasAddressOfContext(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+
+	snapshotId := 123
+	state.EXPECT().InterTxSnapshot().Return(snapshotId)
+	state.EXPECT().RevertToInterTxSnapshot(snapshotId)
+
+	usedGas := uint64(11)
+	ctxt := &runContext{statedb: state, usedGas: &usedGas}
+	bundleTransactionRunner := &bundleTransactionRunner{
+		ctxt:                  ctxt,
+		legacyTxOffset:        50,
+		trueTxOffset:          51,
+		processedTransactions: make([]ProcessedTransaction, 100),
+	}
+
+	address := ctxt.usedGas
+
+	snapshotId = bundleTransactionRunner.CreateSnapshot()
+	bundleTransactionRunner.RevertToSnapshot(snapshotId)
+
+	require.Same(t, address, ctxt.usedGas)
+}
+
 func TestBundleTransactionRunner_RevertToSnapshot_InvalidId_TriggerInvalidRevertInStateDB(t *testing.T) {
 	tests := []int{-10, -1, 5, 10}
 	for _, id := range tests {
