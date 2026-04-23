@@ -266,15 +266,16 @@ func (em *Emitter) isRunnableBundleTxInternal(
 		return false
 	}
 
+	stateDb := em.world.StateDB()
+	defer stateDb.Release()
+
 	// Ignore if the same bundle has already been processed.
-	if em.world.StateDB().HasBundleRecentlyBeenProcessed(plan.Hash()) {
+	if stateDb.HasBundleRecentlyBeenProcessed(plan.Hash()) {
 		return false
 	}
 
 	// Skip bundles that are not runnable in the current state.
 	adapter := &preCheckChainStateAdapter{external: em.world}
-	stateDb := em.world.StateDB()
-	defer stateDb.Release()
 	return getBundleState(adapter, stateDb, tx).Executable
 }
 

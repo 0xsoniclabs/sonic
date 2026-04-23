@@ -60,6 +60,7 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 
 			db := state.NewMockStateDB(ctrl)
 			db.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).AnyTimes()
+			db.EXPECT().Release().AnyTimes()
 
 			external := NewMockExternal(ctrl)
 			external.EXPECT().GetRules().Return(rules).AnyTimes()
@@ -142,6 +143,7 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 
 			db := state.NewMockStateDB(ctrl)
 			db.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(processed).AnyTimes()
+			db.EXPECT().Release().AnyTimes()
 
 			external := NewMockExternal(ctrl)
 			external.EXPECT().GetRules().Return(rules).AnyTimes()
