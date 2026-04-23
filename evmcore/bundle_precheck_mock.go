@@ -16,6 +16,7 @@ import (
 	opera "github.com/0xsoniclabs/sonic/opera"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	common "github.com/ethereum/go-ethereum/common"
+	types "github.com/ethereum/go-ethereum/core/types"
 	params "github.com/ethereum/go-ethereum/params"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -150,4 +151,80 @@ func (m *MockNonceSource) GetNonce(addr common.Address) uint64 {
 func (mr *MockNonceSourceMockRecorder) GetNonce(addr any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNonce", reflect.TypeOf((*MockNonceSource)(nil).GetNonce), addr)
+}
+
+// MocktransactionProcessorFactory is a mock of transactionProcessorFactory interface.
+type MocktransactionProcessorFactory struct {
+	ctrl     *gomock.Controller
+	recorder *MocktransactionProcessorFactoryMockRecorder
+	isgomock struct{}
+}
+
+// MocktransactionProcessorFactoryMockRecorder is the mock recorder for MocktransactionProcessorFactory.
+type MocktransactionProcessorFactoryMockRecorder struct {
+	mock *MocktransactionProcessorFactory
+}
+
+// NewMocktransactionProcessorFactory creates a new mock instance.
+func NewMocktransactionProcessorFactory(ctrl *gomock.Controller) *MocktransactionProcessorFactory {
+	mock := &MocktransactionProcessorFactory{ctrl: ctrl}
+	mock.recorder = &MocktransactionProcessorFactoryMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MocktransactionProcessorFactory) EXPECT() *MocktransactionProcessorFactoryMockRecorder {
+	return m.recorder
+}
+
+// newTransactionProcessor mocks base method.
+func (m *MocktransactionProcessorFactory) newTransactionProcessor(arg0 ChainState, arg1 state.StateDB, arg2 *EvmBlock) transactionProcessor {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "newTransactionProcessor", arg0, arg1, arg2)
+	ret0, _ := ret[0].(transactionProcessor)
+	return ret0
+}
+
+// newTransactionProcessor indicates an expected call of newTransactionProcessor.
+func (mr *MocktransactionProcessorFactoryMockRecorder) newTransactionProcessor(arg0, arg1, arg2 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "newTransactionProcessor", reflect.TypeOf((*MocktransactionProcessorFactory)(nil).newTransactionProcessor), arg0, arg1, arg2)
+}
+
+// MocktransactionProcessor is a mock of transactionProcessor interface.
+type MocktransactionProcessor struct {
+	ctrl     *gomock.Controller
+	recorder *MocktransactionProcessorMockRecorder
+	isgomock struct{}
+}
+
+// MocktransactionProcessorMockRecorder is the mock recorder for MocktransactionProcessor.
+type MocktransactionProcessorMockRecorder struct {
+	mock *MocktransactionProcessor
+}
+
+// NewMocktransactionProcessor creates a new mock instance.
+func NewMocktransactionProcessor(ctrl *gomock.Controller) *MocktransactionProcessor {
+	mock := &MocktransactionProcessor{ctrl: ctrl}
+	mock.recorder = &MocktransactionProcessorMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MocktransactionProcessor) EXPECT() *MocktransactionProcessorMockRecorder {
+	return m.recorder
+}
+
+// Run mocks base method.
+func (m *MocktransactionProcessor) Run(arg0 int, arg1 *types.Transaction) ProcessSummary {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Run", arg0, arg1)
+	ret0, _ := ret[0].(ProcessSummary)
+	return ret0
+}
+
+// Run indicates an expected call of Run.
+func (mr *MocktransactionProcessorMockRecorder) Run(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MocktransactionProcessor)(nil).Run), arg0, arg1)
 }

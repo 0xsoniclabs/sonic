@@ -18,7 +18,9 @@ package evmcore
 
 import (
 	"crypto/ecdsa"
+	"crypto/rand"
 	"fmt"
+	"math"
 	"math/big"
 	"slices"
 	"testing"
@@ -29,7 +31,10 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -568,10 +573,435 @@ func Test_makePermanentlyBlockedState_ReturnsPermanentlyBlockedState(t *testing.
 	}, state)
 }
 
-func Test_trialRunBundle_DummyTest(t *testing.T) {
-	// TODO: replace this test once the actual trial run logic is implemented.
-	// For now, this just verifies that the function can be called without errors.
-	require.True(t, trialRunBundle(nil, nil, nil))
+func Test_trialRunBundle_DoesRunTransactionsThroughEVMAndReturnsIfTransactionsGotAccepted(t *testing.T) {
+	// This is an integration test for the trialRunBundle function that
+	// performs an actual run on the EVM.
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		envelope       *types.Transaction
+		expectedResult bool
+	}{
+		"empty all-of is rejected": {
+			envelope:       bundle.AllOf().Build(),
+			expectedResult: false,
+		},
+		"empty one-of is rejected": {
+			envelope:       bundle.OneOf().Build(),
+			expectedResult: false,
+		},
+		"single transaction that gets accepted": {
+			envelope: bundle.AllOf(
+				bundle.Step(key, &types.AccessListTx{
+					To:  &common.Address{},
+					Gas: 21_000,
+				}),
+			).Build(),
+			expectedResult: true,
+		},
+		"single transaction that is skipped": {
+			envelope: bundle.AllOf(
+				bundle.Step(key, &types.AccessListTx{
+					To:  &common.Address{},
+					Gas: 0, // < not enough gas
+				}),
+			).Build(),
+			expectedResult: false,
+		},
+		"multiple accepted transactions": {
+			envelope: bundle.AllOf(
+				bundle.Step(key, &types.AccessListTx{
+					To:  &common.Address{},
+					Gas: 21_000,
+				}),
+				bundle.Step(key, &types.AccessListTx{
+					To:  &common.Address{1},
+					Gas: 21_000,
+				}),
+			).Build(),
+			expectedResult: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			chainState := NewMockChainStateForBundleEval(ctrl)
+			chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+				Number:  big.NewInt(0),
+				BaseFee: new(big.Int),
+			}).AnyTimes()
+			chainState.EXPECT().GetEvmChainConfig(gomock.Any()).Return(&params.ChainConfig{
+				ChainID: big.NewInt(1),
+			}).AnyTimes()
+			chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+				Upgrades: opera.Upgrades{TransactionBundles: true},
+			}).AnyTimes()
+
+			// setup of the state DB to support the EVM execution, the actual
+			// values are not relevant for this test;
+			any := gomock.Any()
+			stateDb := state.NewMockStateDB(ctrl)
+			stateDb.EXPECT().HasBundleRecentlyBeenProcessed(any)
+			stateDb.EXPECT().InterTxSnapshot().AnyTimes()
+			stateDb.EXPECT().RevertToInterTxSnapshot(any).AnyTimes()
+			stateDb.EXPECT().AddProcessedBundle(any, any)
+			stateDb.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+			stateDb.EXPECT().SetTxContext(any, any).AnyTimes()
+			stateDb.EXPECT().GetNonce(any).AnyTimes()
+			stateDb.EXPECT().SetNonce(any, any, any).AnyTimes()
+			stateDb.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
+			stateDb.EXPECT().SubBalance(any, any, any).AnyTimes()
+			stateDb.EXPECT().AddBalance(any, any, any).AnyTimes()
+			stateDb.EXPECT().Snapshot().AnyTimes()
+			stateDb.EXPECT().RevertToSnapshot(any).AnyTimes()
+			stateDb.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
+			stateDb.EXPECT().GetCode(any).AnyTimes()
+			stateDb.EXPECT().GetCodeSize(any).AnyTimes()
+			stateDb.EXPECT().Exist(any).Return(true).AnyTimes()
+			stateDb.EXPECT().GetRefund().AnyTimes()
+			stateDb.EXPECT().AddRefund(any).AnyTimes()
+			stateDb.EXPECT().SubRefund(any).AnyTimes()
+			stateDb.EXPECT().GetLogs(any, any).AnyTimes()
+			stateDb.EXPECT().TxIndex().AnyTimes()
+			stateDb.EXPECT().EndTransaction().AnyTimes()
+
+			// run the bundle through the EVM and check the result
+			got := trialRunBundle(tc.envelope, chainState, stateDb)
+			require.Equal(t, tc.expectedResult, got)
+		})
+	}
+}
+
+func Test_trialRunBundle_UsesRandomPrevRandaoValue(t *testing.T) {
+	// This test verifies that the trialRunBundle function indeed uses a random
+	// source for determining PrevRandao values. It does so by running code
+	// that reads the PrevRandao and stores it in a storage slot at position 0.
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+
+	targetAddress := common.Address{1}
+	envelope := bundle.NewBuilder().AllOf(
+		bundle.Step(key, types.AccessListTx{
+			To:  &targetAddress,
+			Gas: 50_000,
+		}),
+	).Build()
+
+	code := []byte{
+		byte(vm.PREVRANDAO),
+		byte(vm.PUSH0),
+		byte(vm.SSTORE),
+	}
+
+	// setup of the state DB to support the EVM execution, the actual
+	// values are not relevant for this test;
+	any := gomock.Any()
+	db := state.NewMockStateDB(ctrl)
+	db.EXPECT().InterTxSnapshot().AnyTimes()
+	db.EXPECT().RevertToInterTxSnapshot(any).AnyTimes()
+	db.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+	db.EXPECT().SetTxContext(any, any).AnyTimes()
+	db.EXPECT().GetNonce(any).AnyTimes()
+	db.EXPECT().SetNonce(any, any, any).AnyTimes()
+	db.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
+	db.EXPECT().SubBalance(any, any, any).AnyTimes()
+	db.EXPECT().AddBalance(any, any, any).AnyTimes()
+	db.EXPECT().Snapshot().AnyTimes()
+	db.EXPECT().RevertToSnapshot(any).AnyTimes()
+	db.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
+	db.EXPECT().Exist(any).Return(true).AnyTimes()
+	db.EXPECT().GetRefund().AnyTimes()
+	db.EXPECT().AddRefund(any).AnyTimes()
+	db.EXPECT().SubRefund(any).AnyTimes()
+	db.EXPECT().GetLogs(any, any).AnyTimes()
+	db.EXPECT().TxIndex().AnyTimes()
+	db.EXPECT().EndTransaction().AnyTimes()
+	db.EXPECT().HasBundleRecentlyBeenProcessed(any).AnyTimes()
+	db.EXPECT().AddProcessedBundle(any, any).AnyTimes()
+	db.EXPECT().SlotInAccessList(any, any).AnyTimes()
+	db.EXPECT().AddSlotToAccessList(any, any).AnyTimes()
+	db.EXPECT().GetStateAndCommittedState(any, any).AnyTimes()
+
+	// The critical parts causing the code execution:
+	db.EXPECT().GetCode(targetAddress).Return(code).AnyTimes()
+	db.EXPECT().GetCode(any).AnyTimes()
+
+	// Track values being stored into values
+	seenHashes := map[common.Hash]struct{}{}
+	db.EXPECT().SetState(any, any, any).DoAndReturn(
+		func(_ common.Address, key common.Hash, value common.Hash) common.Hash {
+			require.Zero(key)
+			_, seen := seenHashes[value]
+			require.False(seen, "seen hash %v multiple times", value)
+			seenHashes[value] = struct{}{}
+			return common.Hash{}
+		},
+	).AnyTimes()
+
+	chainState := NewMockChainStateForBundleEval(ctrl)
+	chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+		Number:  big.NewInt(0),
+		BaseFee: new(big.Int),
+	}).AnyTimes()
+	chainState.EXPECT().GetEvmChainConfig(any).Return(&params.ChainConfig{
+		ChainID:            big.NewInt(1),
+		LondonBlock:        new(big.Int).SetUint64(0),
+		MergeNetsplitBlock: new(big.Int).SetUint64(0),
+		ShanghaiTime:       new(uint64),
+		CancunTime:         new(uint64),
+	}).AnyTimes()
+	rules := opera.GetBrioUpgrades()
+	rules.TransactionBundles = true
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		Upgrades: rules,
+	}).AnyTimes()
+
+	const N = 10
+	for range N {
+		trialRunBundle(envelope, chainState, db)
+	}
+	require.Len(seenHashes, N)
+}
+
+func Test_trialRunBundleInternal_CreatesSnapshotAndRevertsAfterExecution(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	any := gomock.Any()
+	processor := NewMocktransactionProcessor(ctrl)
+	processor.EXPECT().Run(any, any)
+
+	factory := NewMocktransactionProcessorFactory(ctrl)
+	factory.EXPECT().newTransactionProcessor(any, any, any).DoAndReturn(
+		func(_ ChainState, db state.StateDB, _ *EvmBlock) transactionProcessor {
+			db.GetNonce(common.Address{12})
+			return processor
+		},
+	)
+
+	db := state.NewMockStateDB(ctrl)
+	gomock.InOrder(
+		db.EXPECT().InterTxSnapshot().Return(42), // created before use
+		db.EXPECT().GetNonce(common.Address{12}), // simulated use
+		db.EXPECT().RevertToInterTxSnapshot(42),  // reverted after use
+	)
+
+	chainState := NewMockChainStateForBundleEval(ctrl)
+	chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+		Number: big.NewInt(0),
+	})
+
+	trialRunBundleInternal(nil, chainState, db, factory, rand.Read)
+}
+
+func Test_trialRunBundleInternal_UsesRandomSourceToFillPrevRandao(t *testing.T) {
+	require := require.New(t)
+	var randomHash common.Hash
+	_, err := rand.Read(randomHash[:])
+	require.NoError(err)
+
+	values := map[string]common.Hash{
+		"zero":   {},
+		"one":    {1},
+		"random": randomHash,
+	}
+
+	for name, prevRandao := range values {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			called := false
+			read := func(trg []byte) (int, error) {
+				called = true
+				return copy(trg, prevRandao[:]), nil
+			}
+
+			any := gomock.Any()
+			processor := NewMocktransactionProcessor(ctrl)
+			processor.EXPECT().Run(any, any)
+
+			factory := NewMocktransactionProcessorFactory(ctrl)
+			factory.EXPECT().newTransactionProcessor(any, any, any).DoAndReturn(
+				func(_ ChainState, _ state.StateDB, block *EvmBlock) transactionProcessor {
+					require.Equal(prevRandao, block.PrevRandao)
+					return processor
+				},
+			)
+
+			db := state.NewMockStateDB(ctrl)
+			gomock.InOrder(
+				db.EXPECT().InterTxSnapshot().Return(42),
+				db.EXPECT().RevertToInterTxSnapshot(42),
+			)
+
+			chainState := NewMockChainStateForBundleEval(ctrl)
+			chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+				Number: big.NewInt(0),
+			})
+
+			trialRunBundleInternal(nil, chainState, db, factory, read)
+			require.True(called)
+		})
+	}
+}
+
+func Test_trialRunBundleInternal_FailsIfRandomSourceFails(t *testing.T) {
+	tests := map[string]struct {
+		n   int
+		err error
+	}{
+		"wrong length": {n: 10}, // should be length of hash = 32
+		"with error":   {err: fmt.Errorf("injected error")},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chain := NewMockChainStateForBundleEval(ctrl)
+			chain.EXPECT().GetLatestHeader().Return(&EvmHeader{})
+
+			readRandom := func([]byte) (int, error) {
+				return tc.n, tc.err
+			}
+
+			require.False(t, trialRunBundleInternal(nil, chain, nil, nil, readRandom))
+		})
+	}
+}
+
+func Test_trialRunBundleInternal_DerivesHeaderFieldsFromChainState(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+
+	latestHeader := &EvmHeader{
+		Number:  big.NewInt(123),
+		Time:    456,
+		BaseFee: big.NewInt(789),
+	}
+
+	chainState := NewMockChainStateForBundleEval(ctrl)
+	chainState.EXPECT().GetLatestHeader().Return(latestHeader)
+
+	any := gomock.Any()
+	processor := NewMocktransactionProcessor(ctrl)
+	processor.EXPECT().Run(any, any)
+
+	factory := NewMocktransactionProcessorFactory(ctrl)
+	factory.EXPECT().newTransactionProcessor(any, any, any).DoAndReturn(
+		func(_ ChainState, _ state.StateDB, block *EvmBlock) transactionProcessor {
+
+			// check all the header fields forwarded to the EVM
+			require.Equal(new(big.Int).Add(latestHeader.Number, big.NewInt(1)), block.Number) // latest header number + 1
+			require.Equal(latestHeader.Time+1, block.Time)
+			require.Equal(latestHeader.GasLimit, block.GasLimit)
+			require.Equal(GetCoinbase(), block.Coinbase)
+			require.NotZero(block.PrevRandao)
+			require.Equal(latestHeader.BaseFee, block.BaseFee)
+
+			blobBaseFee := GetBlobBaseFee()
+			require.Equal(blobBaseFee.ToBig(), block.BlobBaseFee)
+
+			return processor
+		},
+	)
+
+	db := state.NewMockStateDB(ctrl)
+	db.EXPECT().InterTxSnapshot()
+	db.EXPECT().RevertToInterTxSnapshot(any)
+
+	trialRunBundleInternal(nil, chainState, db, factory, rand.Read)
+}
+
+func Test_trialRunBundleInternal_ForwardsEnvelopeToProcessor(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	myEnvelope := &types.Transaction{}
+
+	latestHeader := &EvmHeader{
+		Number: big.NewInt(123),
+	}
+
+	chainState := NewMockChainStateForBundleEval(ctrl)
+	chainState.EXPECT().GetLatestHeader().Return(latestHeader)
+
+	any := gomock.Any()
+	processor := NewMocktransactionProcessor(ctrl)
+	processor.EXPECT().Run(0, myEnvelope) // < test target
+
+	factory := NewMocktransactionProcessorFactory(ctrl)
+	factory.EXPECT().newTransactionProcessor(any, any, any).Return(processor)
+
+	db := state.NewMockStateDB(ctrl)
+	db.EXPECT().InterTxSnapshot()
+	db.EXPECT().RevertToInterTxSnapshot(any)
+
+	trialRunBundleInternal(myEnvelope, chainState, db, factory, rand.Read)
+}
+
+func Test_trialRunBundleInternal_UsesPresentsOfReceiptToDecideResult(t *testing.T) {
+
+	tests := map[string]struct {
+		processedTxs   []ProcessedTransaction
+		expectedResult bool
+	}{
+		"no result": {
+			processedTxs:   nil,
+			expectedResult: false,
+		},
+		"single result without receipt": {
+			processedTxs:   []ProcessedTransaction{{}},
+			expectedResult: false,
+		},
+		"single result with receipt": {
+			processedTxs:   []ProcessedTransaction{{Receipt: &types.Receipt{}}},
+			expectedResult: true,
+		},
+		"multiple results without receipt": {
+			processedTxs:   []ProcessedTransaction{{}, {}, {}},
+			expectedResult: false,
+		},
+		"multiple results with some receipt": {
+			processedTxs:   []ProcessedTransaction{{}, {Receipt: &types.Receipt{}}, {}},
+			expectedResult: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			myEnvelope := &types.Transaction{}
+
+			latestHeader := &EvmHeader{
+				Number: big.NewInt(123),
+			}
+
+			chainState := NewMockChainStateForBundleEval(ctrl)
+			chainState.EXPECT().GetLatestHeader().Return(latestHeader)
+
+			any := gomock.Any()
+			processor := NewMocktransactionProcessor(ctrl)
+			processor.EXPECT().Run(any, any).Return(ProcessSummary{
+				ProcessedTransactions: tc.processedTxs,
+			})
+
+			factory := NewMocktransactionProcessorFactory(ctrl)
+			factory.EXPECT().newTransactionProcessor(any, any, any).Return(processor)
+
+			db := state.NewMockStateDB(ctrl)
+			db.EXPECT().InterTxSnapshot()
+			db.EXPECT().RevertToInterTxSnapshot(any)
+
+			got := trialRunBundleInternal(myEnvelope, chainState, db, factory, rand.Read)
+			require.Equal(t, tc.expectedResult, got)
+		})
+	}
 }
 
 // --- Utility functions to build test bundles ---
