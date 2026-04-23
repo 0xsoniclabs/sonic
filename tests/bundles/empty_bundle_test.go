@@ -23,21 +23,13 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBundle_BundleContainingAnyEmptyGroupIsRejected(t *testing.T) {
-	t.Parallel()
-
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
-
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	net := GetIntegrationTestNetWithBundlesEnabled(t)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -55,10 +47,7 @@ func TestBundle_BundleContainingAnyEmptyGroupIsRejected(t *testing.T) {
 	}{
 		"AllOf/NonEmpty": {
 			root: bundle.AllOf(
-				bundle.Step(
-					senders[0].PrivateKey,
-					tests.SetTransactionDefaults(t, net, &tx, senders[0]),
-				),
+				Step(t, net, senders[0], &tx),
 			),
 			ExpectReject: false,
 		},
@@ -68,10 +57,7 @@ func TestBundle_BundleContainingAnyEmptyGroupIsRejected(t *testing.T) {
 		},
 		"OneOf/NonEmpty": {
 			root: bundle.OneOf(
-				bundle.Step(
-					senders[1].PrivateKey,
-					tests.SetTransactionDefaults(t, net, &tx, senders[1]),
-				),
+				Step(t, net, senders[1], &tx),
 			),
 			ExpectReject: false,
 		},
@@ -82,10 +68,7 @@ func TestBundle_BundleContainingAnyEmptyGroupIsRejected(t *testing.T) {
 		"Layered/NonEmpty": {
 			root: bundle.AllOf(
 				bundle.AllOf(
-					bundle.Step(
-						senders[2].PrivateKey,
-						tests.SetTransactionDefaults(t, net, &tx, senders[2]),
-					),
+					Step(t, net, senders[2], &tx),
 				),
 			),
 			ExpectReject: false,
@@ -93,10 +76,7 @@ func TestBundle_BundleContainingAnyEmptyGroupIsRejected(t *testing.T) {
 		"Layered/EmptyAndNonEmptySubGroups": {
 			root: bundle.AllOf(
 				bundle.AllOf(
-					bundle.Step(
-						senders[3].PrivateKey,
-						tests.SetTransactionDefaults(t, net, &tx, senders[3]),
-					),
+					Step(t, net, senders[3], &tx),
 				),
 				bundle.AllOf(),
 			),
@@ -122,7 +102,8 @@ func TestBundle_BundleContainingAnyEmptyGroupIsRejected(t *testing.T) {
 				BuildEnvelopeBundleAndPlan()
 
 			// Send the bundle.
-			require.NoError(t, client.SendTransaction(t.Context(), envelope))
+			_, err = net.Send(envelope)
+			require.NoError(t, err)
 
 			// Wait for the bundle to be processed.
 			timeout, timeoutCancel := context.WithTimeout(t.Context(), 1*time.Second)
