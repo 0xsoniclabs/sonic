@@ -2056,6 +2056,7 @@ func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResu
 		statedb:     state,
 		signer:      signer,
 		baseFee:     big.NewInt(1),
+		usedGas:     new(uint64),
 		gasPool:     gasPool,
 		upgrades:    opera.Upgrades{TransactionBundles: true},
 		blockNumber: big.NewInt(0),
@@ -2098,6 +2099,7 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 		statedb:     state,
 		signer:      signer,
 		baseFee:     big.NewInt(1),
+		usedGas:     new(uint64),
 		upgrades:    opera.Upgrades{TransactionBundles: true},
 		blockNumber: big.NewInt(0),
 		runner:      runner,
@@ -2216,6 +2218,7 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 			context := &runContext{
 				statedb: state,
 				signer:  signer,
+				usedGas: new(uint64),
 				upgrades: opera.Upgrades{
 					GasSubsidies:       true,
 					TransactionBundles: true,
@@ -2793,7 +2796,7 @@ func TestBundleTransactionRunner_Snapshot_CoversTxOffsets(t *testing.T) {
 	state.EXPECT().RevertToInterTxSnapshot(gomock.Any()).AnyTimes()
 
 	runner := &bundleTransactionRunner{
-		ctxt:           &runContext{statedb: state},
+		ctxt:           &runContext{statedb: state, usedGas: new(uint64)},
 		legacyTxOffset: 5,
 		trueTxOffset:   7,
 	}
@@ -2884,7 +2887,7 @@ func TestBundleTransactionRunner_Snapshot_CoversProcessedTransactions(t *testing
 	}
 
 	runner := &bundleTransactionRunner{
-		ctxt:                  &runContext{statedb: state},
+		ctxt:                  &runContext{statedb: state, usedGas: new(uint64)},
 		processedTransactions: processedTransactions[:1],
 	}
 
@@ -3199,6 +3202,7 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 			upgrades := opera.Upgrades{GasSubsidies: true, TransactionBundles: true}
 			ctxt := &runContext{
 				signer:      signer,
+				usedGas:     new(uint64),
 				upgrades:    upgrades,
 				blockNumber: big.NewInt(0),
 				statedb:     stateDb,
