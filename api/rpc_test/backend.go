@@ -384,6 +384,11 @@ func (b *fakeBackend) GetBundleExecutionInfo(_ common.Hash) *bundle.ExecutionInf
 	panic("not implemented")
 }
 
+// GetProcessedBundleHistoryHash returns zero values — not used in fake backend tests.
+func (b *fakeBackend) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
+	panic("not implemented")
+}
+
 // TxPool is a minimal interface for the transaction pool, only including the methods needed for testing.
 type TxPool interface {
 	AddLocal(*types.Transaction) error

@@ -97,6 +97,7 @@ func (s *Store) AddProcessedBundles(
 	if err := batch.Write(); err != nil {
 		s.Log.Crit("failed to write batch for updating processed bundles", "error", err)
 	}
+	s.Log.Info("updated processed bundles history hash", "blockNum", blockNum, "bundleHistoryHash", newHash)
 }
 
 // addNewBundles adds the given bundle execution information to the store, and returns

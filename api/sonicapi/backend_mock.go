@@ -11,7 +11,6 @@ package sonicapi
 
 import (
 	context "context"
-	iter "iter"
 	big "math/big"
 	reflect "reflect"
 	time "time"
@@ -23,9 +22,6 @@ import (
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	opera "github.com/0xsoniclabs/sonic/opera"
-	scc "github.com/0xsoniclabs/sonic/scc"
-	cert "github.com/0xsoniclabs/sonic/scc/cert"
-	result "github.com/0xsoniclabs/sonic/utils/result"
 	hash "github.com/Fantom-foundation/lachesis-base/hash"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	accounts "github.com/ethereum/go-ethereum/accounts"
@@ -42,6 +38,7 @@ import (
 type MockBundleApiBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockBundleApiBackendMockRecorder
+	isgomock struct{}
 }
 
 // MockBundleApiBackendMockRecorder is the mock recorder for MockBundleApiBackend.
@@ -76,18 +73,18 @@ func (mr *MockBundleApiBackendMockRecorder) AccountManager() *gomock.Call {
 }
 
 // BlockByHash mocks base method.
-func (m *MockBundleApiBackend) BlockByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmBlock, error) {
+func (m *MockBundleApiBackend) BlockByHash(ctx context.Context, arg1 common.Hash) (*evmcore.EvmBlock, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "BlockByHash", ctx, hash)
+	ret := m.ctrl.Call(m, "BlockByHash", ctx, arg1)
 	ret0, _ := ret[0].(*evmcore.EvmBlock)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // BlockByHash indicates an expected call of BlockByHash.
-func (mr *MockBundleApiBackendMockRecorder) BlockByHash(ctx, hash any) *gomock.Call {
+func (mr *MockBundleApiBackendMockRecorder) BlockByHash(ctx, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BlockByHash", reflect.TypeOf((*MockBundleApiBackend)(nil).BlockByHash), ctx, hash)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BlockByHash", reflect.TypeOf((*MockBundleApiBackend)(nil).BlockByHash), ctx, arg1)
 }
 
 // BlockByNumber mocks base method.
@@ -175,34 +172,6 @@ func (mr *MockBundleApiBackendMockRecorder) CurrentEpoch(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentEpoch", reflect.TypeOf((*MockBundleApiBackend)(nil).CurrentEpoch), ctx)
 }
 
-// EnumerateBlockCertificates mocks base method.
-func (m *MockBundleApiBackend) EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[cert.BlockCertificate]] {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EnumerateBlockCertificates", first)
-	ret0, _ := ret[0].(iter.Seq[result.T[cert.BlockCertificate]])
-	return ret0
-}
-
-// EnumerateBlockCertificates indicates an expected call of EnumerateBlockCertificates.
-func (mr *MockBundleApiBackendMockRecorder) EnumerateBlockCertificates(first any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnumerateBlockCertificates", reflect.TypeOf((*MockBundleApiBackend)(nil).EnumerateBlockCertificates), first)
-}
-
-// EnumerateCommitteeCertificates mocks base method.
-func (m *MockBundleApiBackend) EnumerateCommitteeCertificates(first scc.Period) iter.Seq[result.T[cert.CommitteeCertificate]] {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EnumerateCommitteeCertificates", first)
-	ret0, _ := ret[0].(iter.Seq[result.T[cert.CommitteeCertificate]])
-	return ret0
-}
-
-// EnumerateCommitteeCertificates indicates an expected call of EnumerateCommitteeCertificates.
-func (mr *MockBundleApiBackendMockRecorder) EnumerateCommitteeCertificates(first any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnumerateCommitteeCertificates", reflect.TypeOf((*MockBundleApiBackend)(nil).EnumerateCommitteeCertificates), first)
-}
-
 // ExtRPCEnabled mocks base method.
 func (m *MockBundleApiBackend) ExtRPCEnabled() bool {
 	m.ctrl.T.Helper()
@@ -262,9 +231,9 @@ func (mr *MockBundleApiBackendMockRecorder) GetDowntime(ctx, vid any) *gomock.Ca
 }
 
 // GetEVM mocks base method.
-func (m *MockBundleApiBackend) GetEVM(ctx context.Context, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
+func (m *MockBundleApiBackend) GetEVM(ctx context.Context, arg1 vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEVM", ctx, state, header, vmConfig, blockContext)
+	ret := m.ctrl.Call(m, "GetEVM", ctx, arg1, header, vmConfig, blockContext)
 	ret0, _ := ret[0].(*vm.EVM)
 	ret1, _ := ret[1].(func() error)
 	ret2, _ := ret[2].(error)
@@ -272,9 +241,9 @@ func (m *MockBundleApiBackend) GetEVM(ctx context.Context, state vm.StateDB, hea
 }
 
 // GetEVM indicates an expected call of GetEVM.
-func (mr *MockBundleApiBackendMockRecorder) GetEVM(ctx, state, header, vmConfig, blockContext any) *gomock.Call {
+func (mr *MockBundleApiBackendMockRecorder) GetEVM(ctx, arg1, header, vmConfig, blockContext any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEVM", reflect.TypeOf((*MockBundleApiBackend)(nil).GetEVM), ctx, state, header, vmConfig, blockContext)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEVM", reflect.TypeOf((*MockBundleApiBackend)(nil).GetEVM), ctx, arg1, header, vmConfig, blockContext)
 }
 
 // GetEpochBlockState mocks base method.
@@ -352,36 +321,6 @@ func (mr *MockBundleApiBackendMockRecorder) GetHeads(ctx, epoch any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHeads", reflect.TypeOf((*MockBundleApiBackend)(nil).GetHeads), ctx, epoch)
 }
 
-// GetLatestBlockCertificate mocks base method.
-func (m *MockBundleApiBackend) GetLatestBlockCertificate() (cert.BlockCertificate, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLatestBlockCertificate")
-	ret0, _ := ret[0].(cert.BlockCertificate)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetLatestBlockCertificate indicates an expected call of GetLatestBlockCertificate.
-func (mr *MockBundleApiBackendMockRecorder) GetLatestBlockCertificate() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestBlockCertificate", reflect.TypeOf((*MockBundleApiBackend)(nil).GetLatestBlockCertificate))
-}
-
-// GetLatestCommitteeCertificate mocks base method.
-func (m *MockBundleApiBackend) GetLatestCommitteeCertificate() (cert.CommitteeCertificate, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLatestCommitteeCertificate")
-	ret0, _ := ret[0].(cert.CommitteeCertificate)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetLatestCommitteeCertificate indicates an expected call of GetLatestCommitteeCertificate.
-func (mr *MockBundleApiBackendMockRecorder) GetLatestCommitteeCertificate() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestCommitteeCertificate", reflect.TypeOf((*MockBundleApiBackend)(nil).GetLatestCommitteeCertificate))
-}
-
 // GetNetworkRules mocks base method.
 func (m *MockBundleApiBackend) GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*opera.Rules, error) {
 	m.ctrl.T.Helper()
@@ -456,6 +395,21 @@ func (mr *MockBundleApiBackendMockRecorder) GetPoolTransactions() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPoolTransactions", reflect.TypeOf((*MockBundleApiBackend)(nil).GetPoolTransactions))
 }
 
+// GetProcessedBundleHistoryHash mocks base method.
+func (m *MockBundleApiBackend) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetProcessedBundleHistoryHash")
+	ret0, _ := ret[0].(uint64)
+	ret1, _ := ret[1].(common.Hash)
+	return ret0, ret1
+}
+
+// GetProcessedBundleHistoryHash indicates an expected call of GetProcessedBundleHistoryHash.
+func (mr *MockBundleApiBackendMockRecorder) GetProcessedBundleHistoryHash() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProcessedBundleHistoryHash", reflect.TypeOf((*MockBundleApiBackend)(nil).GetProcessedBundleHistoryHash))
+}
+
 // GetReceiptsByNumber mocks base method.
 func (m *MockBundleApiBackend) GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error) {
 	m.ctrl.T.Helper()
@@ -518,18 +472,18 @@ func (mr *MockBundleApiBackendMockRecorder) GetUptime(ctx, vid any) *gomock.Call
 }
 
 // HeaderByHash mocks base method.
-func (m *MockBundleApiBackend) HeaderByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmHeader, error) {
+func (m *MockBundleApiBackend) HeaderByHash(ctx context.Context, arg1 common.Hash) (*evmcore.EvmHeader, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HeaderByHash", ctx, hash)
+	ret := m.ctrl.Call(m, "HeaderByHash", ctx, arg1)
 	ret0, _ := ret[0].(*evmcore.EvmHeader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // HeaderByHash indicates an expected call of HeaderByHash.
-func (mr *MockBundleApiBackendMockRecorder) HeaderByHash(ctx, hash any) *gomock.Call {
+func (mr *MockBundleApiBackendMockRecorder) HeaderByHash(ctx, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HeaderByHash", reflect.TypeOf((*MockBundleApiBackend)(nil).HeaderByHash), ctx, hash)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HeaderByHash", reflect.TypeOf((*MockBundleApiBackend)(nil).HeaderByHash), ctx, arg1)
 }
 
 // HeaderByNumber mocks base method.

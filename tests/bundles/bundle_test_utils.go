@@ -101,6 +101,18 @@ func WaitForBundleExecutions(
 	return infos, err
 }
 
+// GetBundleHistoryHash calls the sonic_getBundleHistoryHash RPC method to
+// retrieve the block number of the last bundle history update and the
+// cumulative history hash over all processed bundles.
+func GetBundleHistoryHash(
+	ctxt context.Context,
+	client *rpc.Client,
+) (*sonicapi.RPCBundleHistoryHash, error) {
+	var result *sonicapi.RPCBundleHistoryHash
+	err := client.CallContext(ctxt, &result, "sonic_getBundleHistoryHash")
+	return result, err
+}
+
 // Step is a helper function to create a bundle builder step prefilled with
 // information from the network
 func Step[T types.TxData](

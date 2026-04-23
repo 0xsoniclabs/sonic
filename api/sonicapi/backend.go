@@ -32,4 +32,9 @@ type BundleApiBackend interface {
 	// GetBundleExecutionInfo returns information about the execution of a transaction bundle, if available.
 	// If the bundle is unknown, it returns nil.
 	GetBundleExecutionInfo(common.Hash) *bundle.ExecutionInfo
+
+	// GetProcessedBundleHistoryHash returns the block number of the last processed bundle history
+	// update and the current cumulative history hash. Both values are zero until the first bundle
+	// is executed.
+	GetProcessedBundleHistoryHash() (uint64, common.Hash)
 }

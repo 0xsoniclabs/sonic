@@ -158,13 +158,14 @@ func TestStore_AddProcessedBundles_AddsNewBundlesToStorage(t *testing.T) {
 		bundle.MaxBlockRange + 1,
 	} {
 		t.Run(fmt.Sprintf("BlockNumber=%d", block), func(t *testing.T) {
-			store, table, _, batch, it := storeTableLogMocks(t)
+			store, table, log, batch, it := storeTableLogMocks(t)
 
 			table.EXPECT().NewBatch().Return(batch)
 			table.EXPECT().Get(gomock.Any())
 
 			batch.EXPECT().Put(nil, BlockHashTableValueMatcher{blockNum: block})
 			batch.EXPECT().Write().Return(nil)
+			log.EXPECT().Info("updated processed bundles history hash", gomock.Any())
 
 			info1 := bundle.ExecutionInfo{
 				ExecutionPlanHash: uint64ToHash(block),
