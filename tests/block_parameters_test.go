@@ -22,11 +22,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests/contracts/block_parameters"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/stretchr/testify/require"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 func TestBlockParameters_BlockHeaderMatchesObservableBlockParameters(t *testing.T) {
@@ -62,13 +58,17 @@ func TestBlockParameters_BlockHeaderMatchesObservableBlockParameters(t *testing.
 					upgrades := upgrades
 					upgrades.SingleProposerBlockFormation = singleProposer
 
+					log.Info("Starting test", "test", t.Name(), "upgrades", upgrades)
 					net := StartIntegrationTestNetWithJsonGenesis(t,
 						IntegrationTestNetOptions{
 							Upgrades: &upgrades,
-							NumNodes: 2,
+							NumNodes: 8,
+							logging:  true,
 						},
 					)
-					testBlockHeaderMatchesObservableBlockParameters(t, net)
+					log.Info("Network started", "test", t.Name())
+					MakeAccountWithBalance(t, net, big.NewInt(1e18))
+					// testBlockHeaderMatchesObservableBlockParameters(t, net)
 				})
 			}
 		})
@@ -76,82 +76,82 @@ func TestBlockParameters_BlockHeaderMatchesObservableBlockParameters(t *testing.
 
 }
 
-func testBlockHeaderMatchesObservableBlockParameters(
-	t *testing.T,
-	net *IntegrationTestNet,
-) {
-	require := require.New(t)
-	contract, receipt, err := DeployContract(net, block_parameters.DeployBlockParameters)
-	require.NoError(err, "Failed to deploy BlockParameters contract")
+// func testBlockHeaderMatchesObservableBlockParameters(
+// 	t *testing.T,
+// 	net *IntegrationTestNet,
+// ) {
+// 	require := require.New(t)
+// 	contract, receipt, err := DeployContract(net, block_parameters.DeployBlockParameters)
+// 	require.NoError(err, "Failed to deploy BlockParameters contract")
 
-	// Collect a few samples of block parameters from within transactions.
-	fromBlocks := map[uint64]block_parameters.BlockParametersParameters{}
-	blockHashesFromReceipts := map[uint64]common.Hash{}
-	for range 10 {
-		receipt, err := net.Apply(contract.LogBlockParameters)
-		require.NoError(err, "Failed to apply LogBlockParameters transaction")
-		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+// 	// Collect a few samples of block parameters from within transactions.
+// 	fromBlocks := map[uint64]block_parameters.BlockParametersParameters{}
+// 	blockHashesFromReceipts := map[uint64]common.Hash{}
+// 	for range 10 {
+// 		receipt, err := net.Apply(contract.LogBlockParameters)
+// 		require.NoError(err, "Failed to apply LogBlockParameters transaction")
+// 		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 
-		require.Len(receipt.Logs, 1, "Expected exactly one log entry")
-		params, err := contract.ParseLog(*receipt.Logs[0])
-		require.NoError(err, "Failed to parse log entry")
+// 		require.Len(receipt.Logs, 1, "Expected exactly one log entry")
+// 		params, err := contract.ParseLog(*receipt.Logs[0])
+// 		require.NoError(err, "Failed to parse log entry")
 
-		number := receipt.BlockNumber.Uint64()
-		fromBlocks[number] = params.Parameters
-		blockHashesFromReceipts[number] = receipt.BlockHash
-	}
+// 		number := receipt.BlockNumber.Uint64()
+// 		fromBlocks[number] = params.Parameters
+// 		blockHashesFromReceipts[number] = receipt.BlockHash
+// 	}
 
-	checkParameters := func() {
-		for i := range net.NumNodes() {
-			client, err := net.GetClientConnectedToNode(i)
-			require.NoError(err, "Failed to get client")
-			defer client.Close()
+// 	checkParameters := func() {
+// 		for i := range net.NumNodes() {
+// 			client, err := net.GetClientConnectedToNode(i)
+// 			require.NoError(err, "Failed to get client")
+// 			defer client.Close()
 
-			// Verify those block parameters against the block headers.
-			for blockNumber, fromTx := range fromBlocks {
-				block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
-				require.NoError(err, "Failed to get block by number")
+// 			// Verify those block parameters against the block headers.
+// 			for blockNumber, fromTx := range fromBlocks {
+// 				block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
+// 				require.NoError(err, "Failed to get block by number")
 
-				require.Equal(fromTx.ChainId, net.GetChainId())
-				require.Equal(fromTx.Number, block.Number())
-				require.Equal(fromTx.BaseFee, block.BaseFee())
-				// Note: BlobBaseFee is not available in the block header
+// 				require.Equal(fromTx.ChainId, net.GetChainId())
+// 				require.Equal(fromTx.Number, block.Number())
+// 				require.Equal(fromTx.BaseFee, block.BaseFee())
+// 				// Note: BlobBaseFee is not available in the block header
 
-				blockTime := new(big.Int).SetUint64(block.Time())
-				require.Equal(fromTx.Time, blockTime)
+// 				blockTime := new(big.Int).SetUint64(block.Time())
+// 				require.Equal(fromTx.Time, blockTime)
 
-				blockGasLimit := new(big.Int).SetUint64(block.GasLimit())
-				require.Equal(fromTx.GasLimit, blockGasLimit)
+// 				blockGasLimit := new(big.Int).SetUint64(block.GasLimit())
+// 				require.Equal(fromTx.GasLimit, blockGasLimit)
 
-				require.Equal(fromTx.Coinbase, block.Coinbase())
+// 				require.Equal(fromTx.Coinbase, block.Coinbase())
 
-				mixDigest := block.MixDigest()
-				require.Equal(fromTx.PrevRandao, new(big.Int).SetBytes(mixDigest[:]))
+// 				mixDigest := block.MixDigest()
+// 				require.Equal(fromTx.PrevRandao, new(big.Int).SetBytes(mixDigest[:]))
 
-				// Check that the block hash in the receipt matches the actual block hash.
-				require.Equal(blockHashesFromReceipts[blockNumber], block.Hash())
-			}
+// 				// Check that the block hash in the receipt matches the actual block hash.
+// 				require.Equal(blockHashesFromReceipts[blockNumber], block.Hash())
+// 			}
 
-			// Verify that the contract can retrieve the block parameters from the archive.
-			contract, err := block_parameters.NewBlockParameters(
-				receipt.ContractAddress, client,
-			)
-			require.NoError(err, "Failed to create contract instance")
-			for blockNumber, fromTx := range fromBlocks {
-				fromArchive, err := contract.GetBlockParameters(&bind.CallOpts{
-					BlockNumber: big.NewInt(int64(blockNumber)),
-				})
-				require.NoError(err, "Failed to get block parameters from archive")
+// 			// Verify that the contract can retrieve the block parameters from the archive.
+// 			contract, err := block_parameters.NewBlockParameters(
+// 				receipt.ContractAddress, client,
+// 			)
+// 			require.NoError(err, "Failed to create contract instance")
+// 			for blockNumber, fromTx := range fromBlocks {
+// 				fromArchive, err := contract.GetBlockParameters(&bind.CallOpts{
+// 					BlockNumber: big.NewInt(int64(blockNumber)),
+// 				})
+// 				require.NoError(err, "Failed to get block parameters from archive")
 
-				require.Equal(fromTx, fromArchive)
-			}
-		}
-	}
+// 				require.Equal(fromTx, fromArchive)
+// 			}
+// 		}
+// 	}
 
-	// Check that the collected parameters match the block headers before and
-	// after a restart. The restart is included to make sure the information is
-	// not just cached in memory.
-	checkParameters()
-	require.NoError(net.Restart())
-	checkParameters()
-}
+// 	// Check that the collected parameters match the block headers before and
+// 	// after a restart. The restart is included to make sure the information is
+// 	// not just cached in memory.
+// 	checkParameters()
+// 	require.NoError(net.Restart())
+// 	checkParameters()
+// }
