@@ -760,3 +760,43 @@ func Test_convertVisitorLeafIntoRPCExecutionPlanProposalLeaf_canReturnErrors(t *
 		})
 	}
 }
+
+func Test_transform(t *testing.T) {
+
+	proposal := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
+				RPCExecutionStepProposal{},
+				RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{},
+					},
+				},
+				RPCExecutionStepProposal{},
+			},
+		},
+	}
+
+	newProposal, err := transform(proposal,
+		func(step RPCExecutionStepProposal) (RPCExecutionStepProposal, error) {
+			step.TolerateFailed = true
+			return step, nil
+		})
+	require.NoError(t, err)
+
+	expected := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
+				RPCExecutionStepProposal{TolerateFailed: true},
+				RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{TolerateFailed: true},
+					},
+				},
+				RPCExecutionStepProposal{TolerateFailed: true},
+			},
+		},
+	}
+
+	require.Equal(t, expected, newProposal)
+}
