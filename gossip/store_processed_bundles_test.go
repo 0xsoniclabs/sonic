@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -254,22 +255,41 @@ func TestStore_AddProcessedBundles_LogsOnBatchWriteError(t *testing.T) {
 }
 
 func TestStore_AddProcessedBundles_RemovesOldHistoryHash_EvenForBlockNumberWithoutBundles(t *testing.T) {
+	// This test verifies that as new blocks are added, the history hash of old
+	// blocks are removed even if those blocks don't have bundles.
+
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
+	// Run enough blocks that some 'h' entries from bundle-less blocks get pruned.
+	const totalBlocks = bundle.MaxBlockRange * 2
+	const firstBundle = bundle.MaxBlockRange / 2
+	for currentBlock := uint64(1); currentBlock <= totalBlocks; currentBlock++ {
+		for block := range currentBlock {
+			// add a single block with bundles
+			if block == firstBundle {
+				store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
+					uint64ToHash(block): {},
+				})
+			} else {
+				// add blocks without bundles to advance the block number and trigger pruning
+				store.AddProcessedBundles(block, nil)
+			}
+		}
 
-	// Populate the store with MaxBlockRange+1 blocks so the first entry gets pruned.
-	for block := range bundle.MaxBlockRange + 2 {
-		// add a single block with bundles
-		if block == 1 {
-			store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
-				uint64ToHash(block): {},
-			})
+		oldestBlock, _, ok := store.GetOldestRetainedBundleHistoryHash()
+		if currentBlock > firstBundle {
+			require.True(t, ok)
 		} else {
-			// add blocks without bundles to advance the block number and trigger pruning
-			store.AddProcessedBundles(block, nil)
+			// before the first bundle there should be no history hash
+			require.False(t, ok)
+		}
+		for block := range oldestBlock {
+			got, err := store.table.ProcessedBundles.Get(getBlockHistoryHashKey(block))
+			require.NoError(t, err)
+			require.Empty(t, got, "history hash entry for block %d should have been deleted", block)
 		}
 	}
-
+}
 
 func TestStore_AddProcessedBundles_HistoryHashIsConsistentWithPerBlockHash(t *testing.T) {
 	// This test verifies that as new bundles are added the history hash reported
@@ -387,27 +407,40 @@ func TestStore_GetOldestRetainedBundleHistoryHash_ReturnsZero_WhenNoBundlesExecu
 }
 
 func TestStore_GetOldestRetainedBundleHistoryHash_AdvancesAfterPruning(t *testing.T) {
+	// This test verifies that the oldest history hash advances as blocks
+	// are added and old ones are pruned.
+
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
-	var expectedOldestHash common.Hash
-	// Populate MaxBlockRange+1 blocks so the first entry gets pruned.
-	for block := range bundle.MaxBlockRange + 2 {
-		store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
-			uint64ToHash(block): {},
-		})
-		if block == 3 {
-			_, expectedOldestHash = store.GetProcessedBundleHistoryHash()
+	const totalBlocks = bundle.MaxBlockRange * 2
+	for currentBlock := uint64(1); currentBlock <= totalBlocks; currentBlock++ {
+		var expectedOldestHash common.Hash
+		expectedOldestBlock := uint64(0)
+		foundOldest := false
+		// Run enough blocks that some 'h' entries from bundle-less blocks get pruned.
+		for block := range currentBlock {
+			store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
+				uint64ToHash(block): {},
+			})
+			// stop recording the expected oldest block and hash once we encounter
+			// a block that is in range.
+			if !bundle.MakeMaxRangeStartingAt(block).IsInRange(currentBlock) || foundOldest {
+				continue
+			}
+			// Capture the first block not in range.
+			expectedOldestBlock, expectedOldestHash = store.GetProcessedBundleHistoryHash()
+			foundOldest = true
 		}
-	}
 
-	gotBlock, gotHash, ok := store.GetOldestRetainedBundleHistoryHash()
-	require.True(ok)
-	require.Equal(uint64(3), gotBlock,
-		"oldest retained block should be 3 after pruning the entry at block 0")
-	require.NotZero(gotHash, "history hash should not be zero after bundles have been executed")
-	require.Equal(expectedOldestHash, gotHash, "oldest retained hash should be the one at block 3")
+		gotBlock, gotHash, ok := store.GetOldestRetainedBundleHistoryHash()
+		require.True(ok)
+		require.Equal(expectedOldestBlock, gotBlock,
+			"oldest retained block should be the smallest block stored")
+		require.Equal(expectedOldestHash, gotHash,
+			"oldest retained hash should match the stored hash at that block")
+	}
 }
 
 func TestStore_addNewBundles_EncodesInfoCorrectly(t *testing.T) {
