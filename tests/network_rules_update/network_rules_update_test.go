@@ -486,7 +486,7 @@ func TestNetworkRulesUpdate_BrioFeaturesBecomeAvailable_WhenBrioUpgradesEnabled(
 	}
 }
 
-func TestNetworkRulesUpdate_AllegroAndBrioCanNotBeDisabledOnceEnabled(t *testing.T) {
+func TestNetworkRulesUpdate_AllegroAndBrioCannotBeDisabledOnceEnabled(t *testing.T) {
 	net := tests.StartIntegrationTestNetWithFakeGenesis(t,
 		tests.IntegrationTestNetOptions{
 			Upgrades: tests.AsPointer(opera.GetBrioUpgrades()),
@@ -498,7 +498,7 @@ func TestNetworkRulesUpdate_AllegroAndBrioCanNotBeDisabledOnceEnabled(t *testing
 	require.True(t, rules.Upgrades.Allegro, "Allegro should be enabled initially")
 	require.True(t, rules.Upgrades.Brio, "Brio should be enabled initially")
 
-	t.Run("Allegro upgrade can not be disabled", func(t *testing.T) {
+	t.Run("Allegro upgrade cannot be disabled", func(t *testing.T) {
 		type rulesType struct {
 			Upgrades struct{ Allegro bool }
 		}
@@ -512,7 +512,7 @@ func TestNetworkRulesUpdate_AllegroAndBrioCanNotBeDisabledOnceEnabled(t *testing
 			"Allegro should still be enabled after attempting to disable it")
 	})
 
-	t.Run("Brio upgrade can not be disabled", func(t *testing.T) {
+	t.Run("Brio upgrade cannot be disabled", func(t *testing.T) {
 		type rulesType struct {
 			Upgrades struct{ Brio bool }
 		}
