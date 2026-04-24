@@ -528,6 +528,10 @@ func TestUpgradesValidation_DetectsIssues(t *testing.T) {
 			upgrade: Upgrades{Brio: false},
 			issue:   "Brio upgrade cannot be disabled",
 		},
+		"BlockHashesOnEvents requires SingleProposerBlockFormation": {
+			upgrade: Upgrades{BlockHashesOnEvents: true},
+			issue:   "BlockHashesOnEvents requires SingleProposerBlockFormation",
+		},
 	}
 
 	for name, test := range issues {
@@ -547,6 +551,13 @@ func TestUpgradesValidation_AcceptsValidRules(t *testing.T) {
 		London:  true,
 		Sonic:   true,
 		Allegro: true,
+	}, {
+		Berlin:                       true,
+		London:                       true,
+		Sonic:                        true,
+		Allegro:                      true,
+		SingleProposerBlockFormation: true,
+		BlockHashesOnEvents:          true,
 	}}
 
 	for _, test := range upgrades {

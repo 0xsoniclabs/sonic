@@ -127,7 +127,7 @@ func getNodeService(t *testing.T) *gossip.Service {
 	defaultConfig := gossip.DefaultConfig(cacheRatio)
 	s, err := gossip.NewService(node, defaultConfig, store, gossip.BlockProc{}, engine, vecClock, func(_ evmcore.StateReader) gossip.TxPool {
 		return txPoolMock
-	}, nil)
+	}, nil, nil)
 	require.NoError(t, err)
 	return s
 }

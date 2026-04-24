@@ -518,7 +518,9 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	}
 
 	version := uint8(0)
-	if em.world.GetRules().Upgrades.SingleProposerBlockFormation {
+	if em.world.GetRules().Upgrades.BlockHashesOnEvents {
+		version = 4
+	} else if em.world.GetRules().Upgrades.SingleProposerBlockFormation {
 		version = 3
 	} else if em.world.GetRules().Upgrades.Sonic {
 		version = 2
@@ -552,7 +554,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 		return nil, nil
 	}
 
-	if version == 3 {
+	if version == 3 || version == 4 {
 		// add proposal sync state and an optional proposal
 		payload, err := em.createPayload(mutEvent, sortedTxs)
 		if err != nil {
@@ -560,6 +562,12 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 			return nil, err
 		}
 		mutEvent.SetPayload(payload)
+		if version == 4 {
+			// add block hashes from recently processed blocks
+			em.addBlockHashes(mutEvent)
+			// recalculate payload hash to include block hashes
+			mutEvent.SetPayloadHash(inter.CalcPayloadHash(mutEvent))
+		}
 	} else {
 		// Add txs
 		em.addTxs(mutEvent, sortedTxs)

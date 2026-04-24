@@ -76,10 +76,12 @@ func TestEventPayloadSerialization(t *testing.T) {
 		"empty1":  emptyEvent(1),
 		"empty2":  emptyEvent(2),
 		"empty3":  emptyEvent(3),
+		"empty4":  emptyEvent(4),
 		"event":   *event.Build(),
 		"random1": *FakeEvent(1, 12, 1, 1, true),
 		"random2": *FakeEvent(2, 12, 0, 0, false),
 		"random3": *FakeEvent(3, 12, 0, 0, false),
+		"random4": *FakeEvent(4, 12, 0, 0, false),
 	}
 
 	t.Run("ok", func(t *testing.T) {
@@ -240,6 +242,152 @@ func TestEventUnmarshalCSER_Version3DetectsUnsupportedPayload(t *testing.T) {
 			require.ErrorIs(err, ErrSerMalformedEvent)
 		})
 	}
+}
+
+func TestEventUnmarshalCSER_Version4AcceptsIfHashOfAnEmptyPayloadIsIncluded(t *testing.T) {
+	require := require.New(t)
+
+	builder := MutableEventPayload{}
+	builder.SetVersion(4)
+	builder.SetPayload(Payload{})
+	// For version 4, the payload hash includes both the payload and block
+	// hashes. SetPayload only sets payload.Hash(), so we must recalculate.
+	builder.SetPayloadHash(CalcPayloadHash(&builder))
+	event := builder.Build()
+
+	require.Equal(event.payloadHash, EmptyPayloadHash(4))
+
+	data, err := rlp.EncodeToBytes(&event)
+	require.NoError(err)
+
+	var recovered EventPayload
+	err = rlp.DecodeBytes(data, &recovered)
+	require.NoError(err)
+}
+
+func TestEventUnmarshalCSER_Version4DetectsUnsupportedPayload(t *testing.T) {
+	require := require.New(t)
+
+	tests := map[string]*EventPayload{
+		"with transactions": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(4)
+			builder.SetTxs([]*types.Transaction{
+				types.NewTx(&types.LegacyTx{Nonce: 12}),
+			})
+			return builder.Build()
+		}(),
+		"with epoch vote": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(4)
+			builder.SetEpochVote(LlrEpochVote{
+				Epoch: 1,
+			})
+			return builder.Build()
+		}(),
+		"with block votes": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(4)
+			builder.SetBlockVotes(LlrBlockVotes{
+				Start: 1,
+				Votes: []hash.Hash{{}, {}},
+			})
+			return builder.Build()
+		}(),
+		"with misbehavior proofs": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(4)
+			builder.SetMisbehaviourProofs([]MisbehaviourProof{
+				{
+					EventsDoublesign: &EventsDoublesign{
+						Pair: [2]SignedEventLocator{{}, {}},
+					},
+				},
+			})
+			return builder.Build()
+		}(),
+		"with proposal but missing has-proposal flag": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(4)
+			builder.SetPayload(Payload{
+				Proposal: &Proposal{
+					Number: 1,
+				},
+			})
+			builder.hasProposal = false
+			return builder.Build()
+		}(),
+		"without proposal but with has-proposal flag": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(4)
+			builder.hasProposal = true
+			return builder.Build()
+		}(),
+		"with block hashes but missing any-block-hashes flag": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(4)
+			builder.blockHashes = BlockHashes{
+				Start:  1,
+				Epoch:  1,
+				Hashes: []hash.Hash{{1}},
+			}
+			builder.anyBlockHashes = false
+			return builder.Build()
+		}(),
+		"without block hashes but with any-block-hashes flag": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(4)
+			builder.anyBlockHashes = true
+			return builder.Build()
+		}(),
+	}
+
+	for name, event := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := rlp.EncodeToBytes(event)
+			require.ErrorIs(err, ErrSerMalformedEvent)
+		})
+	}
+}
+
+func TestEventPayloadSerialization_Version4WithBlockHashes(t *testing.T) {
+	require := require.New(t)
+
+	builder := MutableEventPayload{}
+	builder.SetVersion(4)
+	builder.SetEpoch(1234)
+	builder.SetParents(hash.Events{})
+	builder.SetExtra([]byte{})
+	builder.SetPayload(Payload{
+		ProposalSyncState: ProposalSyncState{
+			LastSeenProposalTurn:  5,
+			LastSeenProposalFrame: 10,
+		},
+	})
+	builder.SetBlockHashes(BlockHashes{
+		Start: 100,
+		Epoch: 1234,
+		Hashes: []hash.Hash{
+			{1, 2, 3},
+			{4, 5, 6},
+		},
+	})
+	builder.SetPayloadHash(CalcPayloadHash(&builder))
+	event := builder.Build()
+
+	buf, err := rlp.EncodeToBytes(event)
+	require.NoError(err)
+
+	var decoded EventPayload
+	err = rlp.DecodeBytes(buf, &decoded)
+	require.NoError(err)
+
+	require.Equal(event.Version(), decoded.Version())
+	require.True(decoded.AnyBlockHashes())
+	require.Equal(idx.Block(100), decoded.BlockHashes().Start)
+	require.Equal(idx.Epoch(1234), decoded.BlockHashes().Epoch)
+	require.Len(decoded.BlockHashes().Hashes, 2)
+	require.Equal(event.PayloadHash(), decoded.PayloadHash())
 }
 
 func TestEventPayloadMarshalCSER_DetectsInvalidTransactionEncoding(t *testing.T) {
@@ -662,7 +810,7 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 		random.SetEpochVote(ers)
 	}
 
-	if version == 3 {
+	if version == 3 || version == 4 {
 		random.SetTxs(nil)
 		random.SetPayload(Payload{
 			ProposalSyncState: ProposalSyncState{
@@ -674,6 +822,18 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 				ParentHash:   common.Hash(randHash(r)),
 				RandaoReveal: randao.RandaoReveal(randBytes(r, 64)),
 				Transactions: txs,
+			},
+		})
+	}
+
+	if version == 4 {
+		random.SetBlockHashes(BlockHashes{
+			Start: 1 + idx.Block(rand.IntN(1000)),
+			Epoch: 1 + idx.Epoch(rand.IntN(1000)),
+			Hashes: []hash.Hash{
+				randHash(r),
+				randHash(r),
+				randHash(r),
 			},
 		})
 	}
@@ -695,9 +855,11 @@ func FuzzEventDeserialization(f *testing.F) {
 		emptyEvent(1),
 		emptyEvent(2),
 		emptyEvent(3),
+		emptyEvent(4),
 		*FakeEvent(1, 12, 1, 1, true),
 		*FakeEvent(2, 12, 0, 0, false),
 		*FakeEvent(3, 12, 0, 0, false),
+		*FakeEvent(4, 12, 0, 0, false),
 	}
 
 	for _, example := range examples {

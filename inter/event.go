@@ -51,6 +51,7 @@ type EventI interface {
 	AnyEpochVote() bool
 	AnyMisbehaviourProofs() bool
 	HasProposal() bool
+	AnyBlockHashes() bool
 	PayloadHash() hash.Hash
 }
 
@@ -89,11 +90,13 @@ type EventPayloadI interface {
 	EpochVote() LlrEpochVote
 	BlockVotes() LlrBlockVotes
 	MisbehaviourProofs() []MisbehaviourProof
+	BlockHashes() BlockHashes
 	Payload() *Payload
 }
 
 var emptyPayloadHash1 = CalcPayloadHash(&MutableEventPayload{extEventData: extEventData{version: 1}})
 var emptyPayloadHash3 = CalcPayloadHash(&MutableEventPayload{extEventData: extEventData{version: 3}})
+var emptyPayloadHash4 = CalcPayloadHash(&MutableEventPayload{extEventData: extEventData{version: 4}})
 
 func EmptyPayloadHash(version uint8) hash.Hash {
 	switch version {
@@ -101,6 +104,8 @@ func EmptyPayloadHash(version uint8) hash.Hash {
 		return emptyPayloadHash1
 	case 3:
 		return emptyPayloadHash3
+	case 4:
+		return emptyPayloadHash4
 	default:
 		return hash.Hash(types.EmptyRootHash)
 	}
@@ -129,6 +134,7 @@ type extEventData struct {
 	anyEpochVote          bool
 	anyMisbehaviourProofs bool
 	hasProposal           bool
+	anyBlockHashes        bool
 	payloadHash           hash.Hash
 }
 
@@ -142,6 +148,8 @@ type payloadData struct {
 
 	epochVote  LlrEpochVote
 	blockVotes LlrBlockVotes
+
+	blockHashes BlockHashes
 
 	payload Payload
 }
@@ -221,7 +229,8 @@ func (e *extEventData) AnyEpochVote() bool { return e.anyEpochVote }
 
 func (e *extEventData) AnyBlockVotes() bool { return e.anyBlockVotes }
 
-func (e *extEventData) HasProposal() bool { return e.hasProposal }
+func (e *extEventData) HasProposal() bool    { return e.hasProposal }
+func (e *extEventData) AnyBlockHashes() bool { return e.anyBlockHashes }
 
 func (e *extEventData) GasPowerLeft() GasPowerLeft { return e.gasPowerLeft }
 
@@ -243,6 +252,7 @@ func (e *payloadData) TransactionsToMeter() types.Transactions {
 func (e *payloadData) MisbehaviourProofs() []MisbehaviourProof { return e.misbehaviourProofs }
 
 func (e *payloadData) BlockVotes() LlrBlockVotes { return e.blockVotes }
+func (e *payloadData) BlockHashes() BlockHashes  { return e.blockHashes }
 
 func (e *payloadData) EpochVote() LlrEpochVote { return e.epochVote }
 
@@ -263,6 +273,9 @@ func CalcMisbehaviourProofsHash(mps []MisbehaviourProof) hash.Hash {
 func CalcPayloadHash(e EventPayloadI) hash.Hash {
 	if e.Version() == 1 {
 		return hash.Of(hash.Of(CalcTxHash(e.Transactions()).Bytes(), CalcMisbehaviourProofsHash(e.MisbehaviourProofs()).Bytes()).Bytes(), hash.Of(e.EpochVote().Hash().Bytes(), e.BlockVotes().Hash().Bytes()).Bytes())
+	}
+	if e.Version() == 4 {
+		return hash.Of(e.Payload().Hash().Bytes(), e.BlockHashes().Hash().Bytes())
 	}
 	if e.Version() == 3 {
 		return e.Payload().Hash()
@@ -303,6 +316,11 @@ func (e *MutableEventPayload) SetMisbehaviourProofs(v []MisbehaviourProof) {
 func (e *MutableEventPayload) SetBlockVotes(v LlrBlockVotes) {
 	e.blockVotes = v
 	e.anyBlockVotes = len(v.Votes) != 0
+}
+
+func (e *MutableEventPayload) SetBlockHashes(v BlockHashes) {
+	e.blockHashes = v
+	e.anyBlockHashes = len(v.Hashes) != 0
 }
 
 func (e *MutableEventPayload) SetEpochVote(v LlrEpochVote) {

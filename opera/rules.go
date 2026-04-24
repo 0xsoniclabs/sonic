@@ -49,6 +49,7 @@ const (
 	singleProposerBlockFormationBit = 1 << 63
 	gasSubsidiesBit                 = 1 << 62
 	transactionBundlesBit           = 1 << 61
+	blockHashesOnEventsBit          = 1 << 60
 
 	MinimumMaxBlockGas          = 5_000_000_000 // < must be large enough to allow internal transactions to seal blocks
 	MaximumMaxBlockGas          = math.MaxInt64 // < should fit into 64-bit signed integers to avoid parsing errors in third-party libraries
@@ -264,6 +265,18 @@ type Upgrades struct {
 	// It can be enabled or disabled at any time. Changes in the feature state
 	// become effective at the start of the next epoch.
 	TransactionBundles bool
+
+	// BlockHashesOnEvents enables the inclusion of block hashes from
+	// recently processed blocks in events. When enabled, the event format
+	// is extended to version 4 (building on version 3 single-proposer
+	// format) with an additional block hashes section.
+	//
+	// This feature requires SingleProposerBlockFormation to be enabled.
+	//
+	// Given the conditions stated above, the feature is considered optional.
+	// It can be enabled or disabled at any time. Changes in the feature state
+	// become effective at the start of the next epoch.
+	BlockHashesOnEvents bool
 }
 
 // UpgradeHeight contains the information about the block height at which

@@ -67,6 +67,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
+	"github.com/0xsoniclabs/sonic/utils/errlock"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 	"github.com/0xsoniclabs/sonic/utils/wgmutex"
 	"github.com/0xsoniclabs/sonic/valkeystore"
@@ -270,18 +271,21 @@ type Service struct {
 
 	bootstrapping bool
 
+	blockHashChecker *blockHashChecker
+
 	logger.Instance
 }
 
 func NewService(stack *node.Node, config Config, store *Store, blockProc BlockProc,
 	engine lachesis.Consensus, dagIndexer *vecmt.Index, newTxPool func(evmcore.StateReader) TxPool,
-	haltCheck func(oldEpoch, newEpoch idx.Epoch, age time.Time) bool) (*Service, error) {
+	haltCheck func(oldEpoch, newEpoch idx.Epoch, age time.Time) bool,
+	errorLock *errlock.ErrorLock) (*Service, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
 
 	localNodeId := enode.PubkeyToIDV4(&stack.Server().PrivateKey.PublicKey)
-	svc, err := newService(config, store, blockProc, engine, dagIndexer, newTxPool, localNodeId)
+	svc, err := newService(config, store, blockProc, engine, dagIndexer, newTxPool, localNodeId, errorLock)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +300,7 @@ func NewService(stack *node.Node, config Config, store *Store, blockProc BlockPr
 	return svc, nil
 }
 
-func newService(config Config, store *Store, blockProc BlockProc, engine lachesis.Consensus, dagIndexer *vecmt.Index, newTxPool func(evmcore.StateReader) TxPool, localId enode.ID) (*Service, error) {
+func newService(config Config, store *Store, blockProc BlockProc, engine lachesis.Consensus, dagIndexer *vecmt.Index, newTxPool func(evmcore.StateReader) TxPool, localId enode.ID, errorLock *errlock.ErrorLock) (*Service, error) {
 	svc := &Service{
 		config:             config,
 		blockProcTasksDone: make(chan struct{}),
@@ -319,6 +323,10 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	svc.dagIndexer.Reset(svc.store.GetValidators(), es.table.DagIndex, func(id hash.Event) dag.Event {
 		return svc.store.GetEvent(id)
 	})
+
+	// initialize block hash checker
+	svc.blockHashChecker = newBlockHashChecker(store, errorLock)
+	svc.blockHashChecker.reset(svc.store.GetEpoch(), svc.store.GetValidators())
 
 	// load caches for mutable values to avoid race condition
 	svc.store.GetBlockEpochState()
