@@ -217,9 +217,10 @@ func Test_preCheckStateAdapter_UsesNetworkRulesAndUpgradeHeights(t *testing.T) {
 	external := NewMockExternal(ctrl)
 	external.EXPECT().GetRules().Return(rules)
 	external.EXPECT().GetUpgradeHeights().Return(heights)
+	external.EXPECT().GetLatestBlockIndex().Return(blockHeight)
 
 	adapter := &preCheckChainStateAdapter{external: external}
-	got := adapter.GetEvmChainConfig(blockHeight)
+	got := adapter.GetCurrentChainConfig()
 
 	expected := opera.CreateTransientEvmChainConfig(rules.NetworkID, heights, blockHeight)
 	require.Equal(t, expected, got)

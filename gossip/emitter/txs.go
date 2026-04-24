@@ -291,11 +291,11 @@ func (a *preCheckChainStateAdapter) Header(hash common.Hash, number uint64) *evm
 	return a.external.Header(hash, number)
 }
 
-func (a *preCheckChainStateAdapter) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig {
+func (a *preCheckChainStateAdapter) GetCurrentChainConfig() *params.ChainConfig {
 	return opera.CreateTransientEvmChainConfig(
 		a.external.GetRules().NetworkID,
 		a.external.GetUpgradeHeights(),
-		blockHeight,
+		a.external.GetLatestBlockIndex(),
 	)
 }
 
