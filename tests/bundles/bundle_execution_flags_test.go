@@ -24,13 +24,23 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
-	net := GetIntegrationTestNetWithBundlesEnabled(t)
+
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+		// This tests submits clearly invalid bundles. TxPool will reject
+		// them directly, to test that they are correctly ignored, pool
+		// validation needs to be disabled.
+		ClientExtraArguments: []string{"--disable-txPool-validation"},
+	})
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -303,7 +313,15 @@ func TestBundle_AllOfGroupSucceedsIfAllStepsTolerated(t *testing.T) {
 }
 
 func TestBundle_OneOfGroupSucceedsOnFirstToleratedStep(t *testing.T) {
-	net := GetIntegrationTestNetWithBundlesEnabled(t)
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+		// This tests submits clearly invalid bundles. TxPool will reject
+		// them directly, to test that they are correctly ignored, pool
+		// validation needs to be disabled.
+		ClientExtraArguments: []string{"--disable-txPool-validation"},
+	})
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
