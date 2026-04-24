@@ -449,11 +449,8 @@ func (l *txList) Filter(
 		// invalids are to be demoted from pending to queued, and therefore
 		// are re-queued by the caller, who owns both tx lists.
 		invalids = append(demotedEnvelopes, invalids...)
-
-		if len(invalids) > 0 {
-			l.txs.reheap()
-		}
 	}
+	l.txs.reheap()
 	return removed, invalids
 }
 
