@@ -185,8 +185,8 @@ func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
 
 	// To ensure backwards compatibility the gas tip calculation has to be
 	// preserved in its current form. In case of an error due to a negative
-	// result, the tip is still computed correctly and is used in the
-	// codebase, so we ignore the error here.
+	// result, the computed tip still needs to be used as reported by the
+	// function for backward compatibility with previous client versions.
 	gasTip, _ := gasprice.EffectiveGasTip(tx, baseFee)
 	return new(big.Int).Add(baseFee, gasTip)
 }
