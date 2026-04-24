@@ -18,13 +18,13 @@ package sonicapi
 
 import (
 	"fmt"
-	"math/big"
+	big "math/big"
 	"slices"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
+	types "github.com/ethereum/go-ethereum/core/types"
 )
 
 // RPCExecutionProposal is the JSON-serializable representation of the execution proposal
@@ -217,6 +217,46 @@ func convertToTransactionArgs(signer types.Signer, tx *types.Transaction) (ethap
 	}
 
 	return res, nil
+}
+
+func transform(
+	proposal RPCExecutionProposal,
+	fn func(step RPCExecutionStepProposal) (RPCExecutionStepProposal, error),
+) (RPCExecutionProposal, error) {
+	if proposal.Steps == nil {
+		return proposal, nil
+	}
+
+	resultSteps := make([]any, 0, len(proposal.Steps))
+	for _, step := range proposal.Steps {
+		switch step := step.(type) {
+		case RPCExecutionStepProposal:
+			step, err := fn(step)
+			if err != nil {
+				return proposal, err
+			}
+			resultSteps = append(resultSteps, step)
+
+		case RPCExecutionPlanGroup:
+			result, err := transform(RPCExecutionProposal{
+				BlockRange:            proposal.BlockRange,
+				RPCExecutionPlanGroup: step,
+			}, fn)
+			if err != nil {
+				return result, err
+			}
+			resultSteps = append(resultSteps, result.RPCExecutionPlanGroup)
+
+		default:
+			return RPCExecutionProposal{}, fmt.Errorf("invalid execution plan level: must have either executionStep or group")
+		}
+	}
+	return RPCExecutionProposal{
+		BlockRange: proposal.BlockRange,
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: resultSteps,
+		},
+	}, nil
 }
 
 func toPtr[T any](v T) *T {

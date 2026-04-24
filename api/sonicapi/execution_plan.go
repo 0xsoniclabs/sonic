@@ -81,6 +81,13 @@ type RPCRange struct {
 	Latest   hexutil.Uint64 `json:"latest"`
 }
 
+func (r RPCRange) toBundleBlockRange() bundle.BlockRange {
+	return bundle.BlockRange{
+		Earliest: uint64(r.Earliest),
+		Latest:   uint64(r.Latest),
+	}
+}
+
 // NewRPCExecutionPlanComposable converts a bundle.ExecutionPlan to an RPCExecutionPlan that can be returned by the API.
 func NewRPCExecutionPlanComposable(plan bundle.ExecutionPlan) (RPCExecutionPlanComposable, error) {
 	visitor := makeExecutionPlanVisitor(
