@@ -36,6 +36,7 @@ import (
 type TxListener interface {
 	OnNewLog(*types.Log)
 	OnNewReceipt(tx *types.Transaction, r *types.Receipt, originator idx.ValidatorID, baseFee *big.Int, blobBaseFee *big.Int)
+	OnNewAcceptedTransaction(originator idx.ValidatorID, tx *types.Transaction, r *types.Receipt)
 	Finalize() iblockproc.BlockState
 	Update(bs iblockproc.BlockState, es iblockproc.EpochState)
 }

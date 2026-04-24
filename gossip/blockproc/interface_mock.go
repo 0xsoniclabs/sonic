@@ -75,6 +75,18 @@ func (mr *MockTxListenerMockRecorder) OnNewLog(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnNewLog", reflect.TypeOf((*MockTxListener)(nil).OnNewLog), arg0)
 }
 
+// OnNewAcceptedTransaction mocks base method.
+func (m *MockTxListener) OnNewAcceptedTransaction(originator idx.ValidatorID, tx *types.Transaction, r *types.Receipt) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "OnNewAcceptedTransaction", originator, tx, r)
+}
+
+// OnNewAcceptedTransaction indicates an expected call of OnNewAcceptedTransaction.
+func (mr *MockTxListenerMockRecorder) OnNewAcceptedTransaction(originator, tx, r any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnNewAcceptedTransaction", reflect.TypeOf((*MockTxListener)(nil).OnNewAcceptedTransaction), originator, tx, r)
+}
+
 // OnNewReceipt mocks base method.
 func (m *MockTxListener) OnNewReceipt(tx *types.Transaction, r *types.Receipt, originator idx.ValidatorID, baseFee, blobBaseFee *big.Int) {
 	m.ctrl.T.Helper()

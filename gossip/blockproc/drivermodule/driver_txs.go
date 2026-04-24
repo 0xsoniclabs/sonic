@@ -25,8 +25,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/holiman/uint256"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -175,6 +177,42 @@ func (p *DriverTxListener) OnNewReceipt(tx *types.Transaction, r *types.Receipt,
 	if notUsedGas != 0 {
 		p.bs.ValidatorStates[originatorIdx].DirtyGasRefund += notUsedGas
 	}
+}
+
+func (p *DriverTxListener) OnNewAcceptedTransaction(originator idx.ValidatorID, tx *types.Transaction, r *types.Receipt) {
+	if originator == 0 {
+		return
+	}
+	originatorIdx := p.es.Validators.GetIdx(originator)
+
+	fee := computeAcceptedTxFee(tx, r)
+	originated := p.bs.ValidatorStates[originatorIdx].Originated
+	originated.Add(originated, fee.ToBig())
+
+	notUsedGas := tx.Gas() - r.GasUsed
+	if notUsedGas != 0 {
+		p.bs.ValidatorStates[originatorIdx].DirtyGasRefund += notUsedGas
+	}
+}
+
+// computeAcceptedTxFee returns the transaction fee charged for the given
+// transaction and its receipt. For regular transactions, this is simply
+// gasUsed * effectiveGasPrice. For fee charge transactions, the fee is
+// extracted from the transaction input data.
+func computeAcceptedTxFee(tx *types.Transaction, r *types.Receipt) *uint256.Int {
+	if fee, err := subsidies.ParseFeeChargeAmount(tx); err == nil {
+		return fee
+	}
+	if r.EffectiveGasPrice == nil {
+		return uint256.NewInt(0)
+	}
+
+	gasPrice, overflow := uint256.FromBig(r.EffectiveGasPrice)
+	if overflow {
+		return uint256.NewInt(0)
+	}
+	gasUsed := uint256.NewInt(r.GasUsed)
+	return new(uint256.Int).Mul(gasUsed, gasPrice)
 }
 
 func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {

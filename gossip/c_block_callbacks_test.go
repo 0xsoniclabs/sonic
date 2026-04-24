@@ -1080,6 +1080,8 @@ func TestRlpEncodedMaxHeaderSizeInBytes_IsAnUpperBound(t *testing.T) {
 func TestProcessUserTransactions_ForwardsBlockGasLimitToEVMProcessor(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+	txListener := blockproc.NewMockTxListener(ctrl)
+	txListener.EXPECT().OnNewAcceptedTransaction(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	blockBuilder := inter.NewBlockBuilder()
 
 	// Create some dummy transactions with gas usage
@@ -1106,7 +1108,7 @@ func TestProcessUserTransactions_ForwardsBlockGasLimitToEVMProcessor(t *testing.
 		Return(evmcore.ProcessSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx3, Receipt: receipt3}}})
 
 	orderedTxs := []*types.Transaction{tx1, tx2, tx3}
-	processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
+	processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit, nil, txListener, nil)
 
 	// All transactions should be included
 	gotTxs := blockBuilder.GetTransactions()
@@ -1116,6 +1118,7 @@ func TestProcessUserTransactions_ForwardsBlockGasLimitToEVMProcessor(t *testing.
 func TestProcessUserTransactions_TransactionsWithNoReceiptAreNotIncluded(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+	txListener := blockproc.NewMockTxListener(ctrl)
 	blockBuilder := inter.NewBlockBuilder()
 
 	tx := types.NewTx(&types.LegacyTx{Nonce: 1})
@@ -1126,7 +1129,7 @@ func TestProcessUserTransactions_TransactionsWithNoReceiptAreNotIncluded(t *test
 		Return(evmcore.ProcessSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx, Receipt: nil}}})
 
 	skippedCount :=
-		processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{tx}, 10000)
+		processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{tx}, 10000, nil, txListener, nil)
 
 	require.Equal(t, 0, skippedCount,
 		"transactions with no receipt should be taking into account by the evm processor")
@@ -1139,6 +1142,7 @@ func TestProcessUserTransactions_TransactionsWithNoReceiptAreNotIncluded(t *test
 func TestProcessUserTransactions_DeductsInternalTxsSize(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+	txListener := blockproc.NewMockTxListener(ctrl)
 	blockBuilder := inter.NewBlockBuilder()
 
 	// Add an internal tx to blockBuilder
@@ -1147,7 +1151,7 @@ func TestProcessUserTransactions_DeductsInternalTxsSize(t *testing.T) {
 
 	// Create a user tx that would only fit without the internal tx
 	userTx := types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/2)})
-	skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
+	skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000, nil, txListener, nil)
 
 	// Both internal and user tx should be present
 	gotTxs := blockBuilder.GetTransactions()
@@ -1158,6 +1162,8 @@ func TestProcessUserTransactions_DeductsInternalTxsSize(t *testing.T) {
 func TestProcessUserTransactions_SkipsTxsExceedingSizeLimit(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+	txListener := blockproc.NewMockTxListener(ctrl)
+	txListener.EXPECT().OnNewAcceptedTransaction(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	blockBuilder := inter.NewBlockBuilder()
 
 	// Create a tx that exceeds the size limit
@@ -1175,7 +1181,7 @@ func TestProcessUserTransactions_SkipsTxsExceedingSizeLimit(t *testing.T) {
 		Return(evmcore.ProcessSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: &types.Receipt{}}}})
 
 	skippedCount :=
-		processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{largeTx, tx0, tx1}, 10000)
+		processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{largeTx, tx0, tx1}, 10000, nil, txListener, nil)
 
 	require.Equal(t, 1, skippedCount)
 
@@ -1186,6 +1192,8 @@ func TestProcessUserTransactions_SkipsTxsExceedingSizeLimit(t *testing.T) {
 
 func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransactionGas(t *testing.T) {
 	ctrl := gomock.NewController(t)
+	txListener := blockproc.NewMockTxListener(ctrl)
+	txListener.EXPECT().OnNewAcceptedTransaction(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	statedb := state.NewMockStateDB(ctrl)
 
 	statedb.EXPECT().BeginBlock(gomock.Any())
@@ -1232,7 +1240,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 	// the internal transaction gas is not counted towards it
 	userTransactionGasLimit := uint64(30_000)
 	skippedCount :=
-		processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx0, skippedTx}, userTransactionGasLimit)
+		processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx0, skippedTx}, userTransactionGasLimit, nil, txListener, nil)
 
 	// the skipped transaction is counted by the evm processor
 	require.Equal(t, 0, skippedCount)
@@ -1304,7 +1312,9 @@ func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.
 					ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx2, Receipt: &types.Receipt{}}},
 				}).AnyTimes()
 
-			skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{tx0, tx1, tx2}, 10000)
+			txListener := blockproc.NewMockTxListener(ctrl)
+			txListener.EXPECT().OnNewAcceptedTransaction(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+			skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{tx0, tx1, tx2}, 10000, nil, txListener, nil)
 
 			gotTxs := blockBuilder.GetTransactions()
 			require.Contains(t, gotTxs, tx0)
@@ -1342,6 +1352,7 @@ func TestProcessUserTransactions_SkipUserTransactionIfInternalTransactionsExceed
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+			txListener := blockproc.NewMockTxListener(ctrl)
 			blockBuilder := inter.NewBlockBuilder()
 
 			for _, internalTx := range internalTxs {
@@ -1351,7 +1362,7 @@ func TestProcessUserTransactions_SkipUserTransactionIfInternalTransactionsExceed
 
 			// Create a user tx that would only fit without the internal tx
 			userTx := types.NewTx(&types.LegacyTx{})
-			skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
+			skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000, nil, txListener, nil)
 
 			// Only internal tx should be present
 			gotTxs := blockBuilder.GetTransactions()

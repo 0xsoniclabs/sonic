@@ -423,9 +423,19 @@ func consensusCallbackBeginBlockFn(
 					orderedTxs := proposal.Transactions
 					numSkippedDueToBlockLimits := 0
 					if es.Rules.Upgrades.Brio {
+						// Link transactions to their creators to attribute
+						// fees to the correct validators in processUserTransactions.
+						txCreators := make(map[common.Hash]idx.ValidatorID)
+						for _, e := range blockEvents {
+							for _, tx := range e.Transactions() {
+								if _, ok := txCreators[tx.Hash()]; !ok {
+									txCreators[tx.Hash()] = e.Creator()
+								}
+							}
+						}
 						// Limit block size and gas while adding user transactions
 						numSkippedDueToBlockLimits =
-							processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
+							processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit, txCreators, txListener, es.Validators)
 					} else {
 						// Pre brio there were no limits on user transactions
 						processUserTransactionsNoLimits(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
@@ -480,13 +490,16 @@ func consensusCallbackBeginBlockFn(
 						txPositions[tx.Hash()] = position
 					}
 
-					// call OnNewReceipt
-					for i, r := range allReceipts {
-						creator := txPositions[r.TxHash].EventCreator
-						if creator != 0 && es.Validators.Get(creator) == 0 {
-							creator = 0
+					// call OnNewReceipt (pre-Brio path only; Brio handles
+					// attribution in processUserTransactions)
+					if !es.Rules.Upgrades.Brio {
+						for i, r := range allReceipts {
+							creator := txPositions[r.TxHash].EventCreator
+							if creator != 0 && es.Validators.Get(creator) == 0 {
+								creator = 0
+							}
+							txListener.OnNewReceipt(evmBlock.Transactions[i], r, creator, evmBlock.BaseFee, evmBlock.BlobBaseFee)
 						}
-						txListener.OnNewReceipt(evmBlock.Transactions[i], r, creator, evmBlock.BaseFee, evmBlock.BlobBaseFee)
 					}
 					bs = txListener.Finalize() // TODO: refactor to not mutate the bs
 					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
@@ -618,11 +631,16 @@ const rlpEncodedMaxHeaderSizeInBytes = 1024
 
 // processUserTransactions executes user transactions in order, adding them to the block
 // until all transactions are processed or the gas/block size limit is reached.
+// It attributes transaction fees to validators via txListener.OnNewAcceptedTransaction.
 func processUserTransactions(
 	evmProcessor blockproc.EVMProcessor,
 	blockBuilder *inter.BlockBuilder,
 	orderedTxs []*types.Transaction,
-	userTransactionGasLimit uint64) int {
+	userTransactionGasLimit uint64,
+	txCreators map[common.Hash]idx.ValidatorID,
+	txListener blockproc.TxListener,
+	validators *pos.Validators,
+) int {
 	remainingGas := userTransactionGasLimit
 	remainingSize := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
 	internalTxs := blockBuilder.GetTransactions()
@@ -639,15 +657,18 @@ func processUserTransactions(
 	for _, tx := range orderedTxs {
 		neededSpace := txSizeIncludingSubsidies(tx)
 		if neededSpace <= remainingSize {
+			creator := txCreators[tx.Hash()]
+			if creator != 0 && validators.Get(creator) == 0 {
+				creator = 0
+			}
 			for _, processed := range evmProcessor.Execute([]*types.Transaction{tx}, remainingGas).ProcessedTransactions {
-				if processed.Receipt != nil { // < nil if skipped
-					blockBuilder.AddTransaction(
-						processed.Transaction,
-						processed.Receipt,
-					)
-					remainingGas -= processed.Receipt.GasUsed
-					remainingSize -= processed.Transaction.Size()
+				if processed.Receipt == nil { // skipped
+					continue
 				}
+				blockBuilder.AddTransaction(processed.Transaction, processed.Receipt)
+				remainingGas -= processed.Receipt.GasUsed
+				remainingSize -= processed.Transaction.Size()
+				txListener.OnNewAcceptedTransaction(creator, processed.Transaction, processed.Receipt)
 			}
 		} else {
 			skippedCounter++

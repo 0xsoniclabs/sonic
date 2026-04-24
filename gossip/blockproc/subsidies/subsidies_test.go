@@ -664,6 +664,103 @@ func TestGetFeeChargeTransaction_FeeOverflows_ReturnsError(t *testing.T) {
 	require.ErrorContains(err, "fee calculation overflow")
 }
 
+func TestIsFeeChargeTransaction_ValidFeeChargeTransaction_ReturnsTrue(t *testing.T) {
+	addr := registry.GetAddress()
+	tx := types.NewTx(&types.LegacyTx{To: &addr, Data: createDeductFeesInput(FundId{}, uint256.Int{})})
+	require.True(t, internaltx.IsInternal(tx))
+	require.True(t, IsFeeChargeTransaction(tx))
+}
+
+func TestIsFeeChargeTransaction_NilTransaction_ReturnsFalse(t *testing.T) {
+	require.False(t, IsFeeChargeTransaction(nil))
+}
+
+func TestIsFeeChargeTransaction_NonInternalTransaction_ReturnsFalse(t *testing.T) {
+	addr := registry.GetAddress()
+	tx := types.NewTx(&types.LegacyTx{
+		To:   &addr,
+		Data: createDeductFeesInput(FundId{}, uint256.Int{}),
+		V:    big.NewInt(1),
+	})
+	require.False(t, internaltx.IsInternal(tx))
+	require.False(t, IsFeeChargeTransaction(tx))
+}
+
+func TestIsFeeChargeTransaction_NilRecipient_ReturnsFalse(t *testing.T) {
+	tx := types.NewTx(&types.LegacyTx{Data: createDeductFeesInput(FundId{}, uint256.Int{})})
+	require.True(t, internaltx.IsInternal(tx))
+	require.False(t, IsFeeChargeTransaction(tx))
+}
+
+func TestIsFeeChargeTransaction_WrongRecipient_ReturnsFalse(t *testing.T) {
+	addr := common.Address{0x42}
+	tx := types.NewTx(&types.LegacyTx{To: &addr, Data: createDeductFeesInput(FundId{}, uint256.Int{})})
+	require.True(t, internaltx.IsInternal(tx))
+	require.False(t, IsFeeChargeTransaction(tx))
+}
+
+func TestIsFeeChargeTransaction_WrongDataLength_ReturnsFalse(t *testing.T) {
+	addr := registry.GetAddress()
+	tests := map[string]int{
+		"too short": 4 + 2*32 - 1,
+		"too long":  4 + 2*32 + 1,
+	}
+	for name, length := range tests {
+		t.Run(name, func(t *testing.T) {
+			tx := types.NewTx(&types.LegacyTx{To: &addr, Data: make([]byte, length)})
+			require.True(t, internaltx.IsInternal(tx))
+			require.False(t, IsFeeChargeTransaction(tx))
+		})
+	}
+}
+
+func TestIsFeeChargeTransaction_WrongSelector_ReturnsFalse(t *testing.T) {
+	data := createDeductFeesInput(FundId{}, uint256.Int{})
+	binary.BigEndian.PutUint32(data, registry.DeductFeesFunctionSelector+1)
+	addr := registry.GetAddress()
+	tx := types.NewTx(&types.LegacyTx{To: &addr, Data: data})
+	require.True(t, internaltx.IsInternal(tx))
+	require.False(t, IsFeeChargeTransaction(tx))
+}
+
+func TestParseFeeChargeAmount_ValidInput_ReturnsFee(t *testing.T) {
+	tests := map[string]*uint256.Int{
+		"zero fee":  new(uint256.Int),
+		"small fee": uint256.NewInt(1_000),
+		"large fee": uint256.NewInt(0).Lsh(uint256.NewInt(1), 200),
+	}
+	for name, fee := range tests {
+		t.Run(name, func(t *testing.T) {
+			addr := registry.GetAddress()
+			tx := types.NewTx(&types.LegacyTx{
+				To:   &addr,
+				Data: createDeductFeesInput(FundId{}, *fee),
+			})
+			require.True(t, IsFeeChargeTransaction(tx))
+			got, err := ParseFeeChargeAmount(tx)
+			require.NoError(t, err)
+			require.Equal(t, fee, got)
+		})
+	}
+}
+
+func TestParseFeeChargeAmount_NotAFeeChargeTransaction_ReturnsError(t *testing.T) {
+	tests := map[string]*types.Transaction{
+		"nil transaction": nil,
+		"non-internal transaction": types.NewTx(&types.LegacyTx{
+			To:   &common.Address{},
+			Data: createDeductFeesInput(FundId{}, uint256.Int{}),
+			V:    big.NewInt(1),
+		}),
+	}
+	for name, tx := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParseFeeChargeAmount(tx)
+			require.ErrorContains(t, err, "transaction is not a fee charge transaction")
+		})
+	}
+}
+
 func TestGetGasConfig_ValidSetup_ReturnsExpectedConfig(t *testing.T) {
 	cases := []gasConfig{}
 	values := []uint64{0, 1, 42, 1000, 15000, 125000, 1_000_000, math.MaxUint64}
