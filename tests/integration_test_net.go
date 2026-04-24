@@ -415,9 +415,9 @@ func startIntegrationTestNet(
 
 	startHeapProfiler(t)
 
-	if verbosityVariable := os.Getenv("SONIC_VERBOSITY"); verbosityVariable == "" {
-		require.NoError(t, os.Setenv("SONIC_VERBOSITY", "1"), "failed to set verbosity")
-	}
+	// if verbosityVariable := os.Getenv("SONIC_VERBOSITY"); verbosityVariable == "" {
+	// 	require.NoError(t, os.Setenv("SONIC_VERBOSITY", "1"), "failed to set verbosity")
+	// }
 
 	// start the integration test nodes
 	for i := range net.nodes {

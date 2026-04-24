@@ -160,29 +160,66 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 			return true
 		})
 
-		// Import bundles grouped by block number in ascending order.
-		for _, bn := range slices.Sorted(maps.Keys(bundlesByBlock)) {
+		if len(bundlesByBlock) == 0 {
+			s.Log.Info("No processed bundles in genesis, skipping import")
+			return nil
+		}
+		s.Log.Info("Importing processed bundles from genesis", "count", len(bundlesByBlock))
+
+		recreateBundlesPerBlock := func(blockNumber uint64) (map[common.Hash]bundle.PositionInBlock, error) {
 			bundlesPerBlock := map[common.Hash]bundle.PositionInBlock{}
-			for _, info := range bundlesByBlock[bn] {
+			for _, info := range bundlesByBlock[blockNumber] {
 				if _, exists := bundlesPerBlock[info.ExecutionPlanHash]; exists {
 					s.Log.Crit("Duplicate execution plan hash in genesis",
-						"blockNumber", bn,
+						"blockNumber", blockNumber,
 						"hash", info.ExecutionPlanHash)
-					return fmt.Errorf(
+					return nil, fmt.Errorf(
 						"duplicate execution plan hash in genesis: block %d, hash %s",
-						bn, info.ExecutionPlanHash)
+						blockNumber, info.ExecutionPlanHash)
 				}
 				bundlesPerBlock[info.ExecutionPlanHash] = info.Position
+			}
+			return bundlesPerBlock, nil
+		}
+
+		// add the first entry and then reset the history hash to ensure it can be reproduced.
+		blockNumbers := slices.Sorted(maps.Keys(bundlesByBlock))
+		bundlesPerBlock, err := recreateBundlesPerBlock(0)
+		if err != nil {
+			return err
+		}
+		s.AddProcessedBundles(blockNumbers[0], bundlesPerBlock)
+
+		// get history hashes from genesis so that the earliest can be overwritten
+		// and the latest can be used for verification.
+		hh, found := g.ProcessedBundles.GetHistoryHashes()
+		if !found {
+			s.Log.Crit("Bundles were processed but no history hash was found in genesis")
+		}
+		s.Log.Info("found bundle history hashes in genesis",
+			"blockNum", hh.Oldest.BlockNumber, "hash", hh.Oldest.Hash,
+			"latestBlockNum", hh.Latest.BlockNumber, "latestHash", hh.Latest.Hash)
+		s.SetProcessedBundlesHistoryHash(hh.Oldest.BlockNumber, hh.Oldest.Hash)
+
+		// Import bundles grouped by block number in ascending order.
+		for _, bn := range blockNumbers[1:] {
+			bundlesPerBlock, err := recreateBundlesPerBlock(bn)
+			if err != nil {
+				return err
 			}
 			s.AddProcessedBundles(bn, bundlesPerBlock)
 		}
 
-		// last overwrite of the history hash, to ensure it is consistent with
-		// the exported hash. This is needed because the history hash is affected
-		// by bundles that could have been deleted from the store out of old age.
-		if h, found := g.ProcessedBundles.GetHistoryHash(); found {
-			s.SetProcessedBundlesHistoryHash(h.BlockNumber, h.Hash)
+		// verify that the cumulative history hash for the latest block matches
+		// the expected hash from the genesis file, confirming that the imported
+		// entries are correct and complete.
+		latestBlock, latestHash := s.GetProcessedBundleHistoryHash()
+		if latestBlock != hh.Latest.BlockNumber || latestHash != hh.Latest.Hash {
+			return errors.New(
+				"reproduced bundle history hash does not match the expected hash from genesis")
 		}
+		s.Log.Info("Processed bundles imported successfully, latest history hash verified",
+			"latestBlockNum", latestBlock, "latestHash", latestHash)
 	}
 
 	return nil
