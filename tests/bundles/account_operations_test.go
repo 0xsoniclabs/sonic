@@ -63,7 +63,7 @@ func TestBundles_ContractExecutionsAreRevertedInCaseOfBundleRevert(t *testing.T)
 	// The AllOf group reverts because the invalid tx fails, rolling
 	// back the contract creation. The fallback ensures the bundle itself
 	// lands on-chain so we can inspect state at that block.
-	envelope, _, plan := bundle.NewBuilder().
+	envelope, plan := bundle.NewBuilder().
 		WithSigner(signer).
 		SetEarliest(blockNumber).
 		OneOf(
@@ -80,7 +80,7 @@ func TestBundles_ContractExecutionsAreRevertedInCaseOfBundleRevert(t *testing.T)
 			),
 			Step(t, net, fallbackSender, &types.AccessListTx{}),
 		).
-		BuildEnvelopeBundleAndPlan()
+		BuildEnvelopeAndPlan()
 
 	// Submit the bundle.
 	require.NoError(t, client.SendTransaction(t.Context(), envelope))
@@ -147,14 +147,14 @@ func TestBundles_TransactionsInBundleAreSeparateTransactions(t *testing.T) {
 	destroyTxData.Data = destroyInput
 
 	// Bundle: deploy contract, then call destroyContract on it.
-	envelope, _, plan := bundle.NewBuilder().
+	envelope, plan := bundle.NewBuilder().
 		WithSigner(signer).
 		SetEarliest(blockNumber).
 		AllOf(
 			bundle.Step(sender.PrivateKey, deployTxData),
 			bundle.Step(sender.PrivateKey, &destroyTxData),
 		).
-		BuildEnvelopeBundleAndPlan()
+		BuildEnvelopeAndPlan()
 
 	require.NoError(t, client.SendTransaction(t.Context(), envelope))
 
