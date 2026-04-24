@@ -260,33 +260,31 @@ func TestStore_AddProcessedBundles_RemovesOldHistoryHash_EvenForBlockNumberWitho
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
 	// Run enough blocks that some 'h' entries from bundle-less blocks get pruned.
-	const totalBlocks = bundle.MaxBlockRange * 2
+	const currentBlock = bundle.MaxBlockRange * 2
 	const firstBundle = bundle.MaxBlockRange / 2
-	for currentBlock := uint64(1); currentBlock <= totalBlocks; currentBlock++ {
-		for block := range currentBlock {
-			// add a single block with bundles
-			if block == firstBundle {
-				store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
-					uint64ToHash(block): {},
-				})
-			} else {
-				// add blocks without bundles to advance the block number and trigger pruning
-				store.AddProcessedBundles(block, nil)
-			}
-		}
-
-		oldestBlock, _, ok := store.GetOldestRetainedBundleHistoryHash()
-		if currentBlock > firstBundle {
-			require.True(t, ok)
+	for block := range currentBlock {
+		// add a single block with bundles
+		if block == firstBundle {
+			store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
+				uint64ToHash(block): {},
+			})
 		} else {
-			// before the first bundle there should be no history hash
-			require.False(t, ok)
+			// add blocks without bundles to advance the block number and trigger pruning
+			store.AddProcessedBundles(block, nil)
 		}
-		for block := range oldestBlock {
-			got, err := store.table.ProcessedBundles.Get(getBlockHistoryHashKey(block))
-			require.NoError(t, err)
-			require.Empty(t, got, "history hash entry for block %d should have been deleted", block)
-		}
+	}
+
+	oldestBlock, _, ok := store.GetOldestRetainedBundleHistoryHash()
+	if currentBlock > firstBundle {
+		require.True(t, ok)
+	} else {
+		// before the first bundle there should be no history hash
+		require.False(t, ok)
+	}
+	for block := range oldestBlock {
+		got, err := store.table.ProcessedBundles.Get(getBlockHistoryHashKey(block))
+		require.NoError(t, err)
+		require.Empty(t, got, "history hash entry for block %d should have been deleted", block)
 	}
 }
 
@@ -298,6 +296,7 @@ func TestStore_AddProcessedBundles_HistoryHashIsConsistentWithPerBlockHash(t *te
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
 
+	var historicHashes []common.Hash
 	for block := range bundle.MaxBlockRange * 2 {
 		// randomly add bundles to some blocks, but not all
 		if rand.Uint64()%2 == 0 {
@@ -309,12 +308,14 @@ func TestStore_AddProcessedBundles_HistoryHashIsConsistentWithPerBlockHash(t *te
 		}
 
 		_, currentHistoryHash := store.GetProcessedBundleHistoryHash()
-		historyHashForBlock, err := store.table.ProcessedBundles.Get(getBlockHistoryHashKey(block))
-		require.NoError(t, err)
-		if len(historyHashForBlock) == 0 {
-			require.Zero(t, currentHistoryHash)
-		} else {
-			require.Equal(t, currentHistoryHash.Bytes(), historyHashForBlock)
+		historicHashes = append(historicHashes, currentHistoryHash)
+
+		for past := range block + 1 {
+			historyHashForBlock, err := store.table.ProcessedBundles.Get(getBlockHistoryHashKey(past))
+			require.NoError(t, err)
+			if len(historyHashForBlock) > 0 {
+				require.Equal(t, historicHashes[past].Bytes(), historyHashForBlock)
+			}
 		}
 	}
 }
@@ -414,6 +415,8 @@ func TestStore_GetOldestRetainedBundleHistoryHash_AdvancesAfterPruning(t *testin
 	require.NoError(err)
 
 	const totalBlocks = bundle.MaxBlockRange * 2
+	// The iteration over total blocks is to show that at different block heights
+	// the same block number can be retained, oldest or pruned.
 	for currentBlock := uint64(1); currentBlock <= totalBlocks; currentBlock++ {
 		var expectedOldestHash common.Hash
 		expectedOldestBlock := uint64(0)
