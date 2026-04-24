@@ -216,7 +216,7 @@ func (s *State) ApplyBlock(
 
 	chainConfig := opera.CreateTransientEvmChainConfig(
 		rules.NetworkID,
-		[]opera.UpgradeHeight{{Height: 1, Upgrades: rules.Upgrades}},
+		[]opera.UpgradeHeight{{Height: 0, Upgrades: rules.Upgrades}},
 		idx.Block(block.NumberU64()),
 	)
 
