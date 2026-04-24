@@ -271,7 +271,7 @@ func FuzzValidateTransaction(f *testing.F) {
 		msg, err := core.TransactionToMessage(signedTx, signer, evm.Context.BaseFee)
 		require.NoError(t, err)
 
-		gp := new(core.GasPool).AddGas(maxGas)
+		gp := core.NewGasPool(maxGas)
 		var usedGas uint64
 		_, _, processorError := applyTransaction(msg, gp, state, big.NewInt(blockNum),
 			signedTx, &usedGas, evm, nil)
@@ -479,7 +479,7 @@ func makeTestEvm(blockNum, basefee int64, evmGasPrice uint64, state vm.StateDB, 
 			Random:      &random,
 			Time:        blockTime,
 
-			Transfer:    vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
+			Transfer:    vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int, _ *params.Rules) {}),
 			CanTransfer: vm.CanTransferFunc(func(sd vm.StateDB, a1 common.Address, i *uint256.Int) bool { return true }),
 			GetHash:     func(i uint64) common.Hash { return common.Hash{} },
 		},

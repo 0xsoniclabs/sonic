@@ -1182,7 +1182,7 @@ func DoCall(
 	}
 
 	// Add sufficient gas to the pool.
-	gp := new(core.GasPool).AddGas(math.MaxUint64)
+	gp := core.NewGasPool(math.MaxUint64)
 
 	// Apply previous transactions if required.
 	for i, arg := range preArgs {
@@ -1781,7 +1781,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 			statedb.Release()
 			return nil, 0, nil, err
 		}
-		res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
+		res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
 		statedb.Release()
 		if err != nil {
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.toTransaction().Hash(), err)
@@ -1839,7 +1839,7 @@ func (s *PublicBlockChainAPI) SimulateV1(ctx context.Context, opts simOpts, bloc
 		state:          state,
 		base:           base.Header(),
 		chainConfig:    chainConfig,
-		gp:             new(core.GasPool).AddGas(gasCap),
+		gp:             core.NewGasPool(gasCap),
 		traceTransfers: opts.TraceTransfers,
 		validate:       opts.Validation,
 		fullTx:         opts.ReturnFullTransactions,
@@ -2536,7 +2536,7 @@ func (api *PublicDebugAPI) traceTx(
 	_, err = evmcore.ApplyTransactionWithEVM(
 		message,
 		chainConfig,
-		new(core.GasPool).AddGas(message.GasLimit),
+		core.NewGasPool(message.GasLimit),
 		loggingStateDB,
 		blockHeader.Number,
 		txctx.BlockHash,
@@ -2701,7 +2701,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 		}
 
 		statedb.SetTxContext(tx.Hash(), idx)
-		if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(tx.Gas())); err != nil {
+		if _, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(tx.Gas())); err != nil {
 			statedb.Release()
 			return nil, nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
 		}
