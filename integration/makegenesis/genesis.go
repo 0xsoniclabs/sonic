@@ -169,6 +169,7 @@ type dummyHeaderReturner struct {
 func (d dummyHeaderReturner) Header(_ common.Hash, position uint64) *evmcore.EvmHeader {
 	if position < uint64(len(d.blocks)) {
 		return &evmcore.EvmHeader{
+			Hash:    common.Hash(d.blocks[position].BlockHash),
 			BaseFee: d.blocks[position].BaseFee,
 		}
 	}
