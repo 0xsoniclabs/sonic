@@ -417,7 +417,9 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 		return nil, err
 	}
 
-	cfg.Emitter.ThrottlerConfig.Enabled = ctx.GlobalBoolT(flags.EnableThrottlingFlag.Name)
+	if ctx.GlobalIsSet(flags.EnableThrottlingFlag.Name) {
+		cfg.Emitter.ThrottlerConfig.Enabled = ctx.GlobalBoolT(flags.EnableThrottlingFlag.Name)
+	}
 	if ctx.GlobalIsSet(flags.ThrottlingDominantThresholdFlag.Name) {
 		cfg.Emitter.ThrottlerConfig.DominantStakeThreshold = ctx.GlobalFloat64(flags.ThrottlingDominantThresholdFlag.Name)
 	}
