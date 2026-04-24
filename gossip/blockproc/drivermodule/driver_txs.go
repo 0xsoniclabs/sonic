@@ -182,7 +182,11 @@ func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
 	if baseFee == nil {
 		return tx.GasPrice()
 	}
-	// EffectiveGasTip returns an error for negative values, this is no problem here
+
+	// To ensure backwards compatibility the gas tip calculation has to be
+	// preserved in its current form. In case of an error due to a negative
+	// result, the tip is still computed correctly and is used in the
+	// codebase, so we ignore the error here.
 	gasTip, _ := gasprice.EffectiveGasTip(tx, baseFee)
 	return new(big.Int).Add(baseFee, gasTip)
 }
