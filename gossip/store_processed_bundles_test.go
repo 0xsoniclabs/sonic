@@ -193,7 +193,6 @@ func TestStore_AddProcessedBundles_AddsNewBundlesToStorage(t *testing.T) {
 				hash := uint64ToHash(toDelete)
 				batch.EXPECT().Delete(getEntryKey(hash)).Return(nil)
 				batch.EXPECT().Delete(getIndexKey(toDelete, hash)).Return(nil)
-				batch.EXPECT().Delete(getBlockHistoryHashKey(toDelete)).Return(nil)
 				it.EXPECT().Release()
 
 				// Second pass: 'h' iterator for bundle-less blocks (empty in mock world).
@@ -688,7 +687,6 @@ func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 				if c.expectDeleted {
 					batch.EXPECT().Delete(getIndexKey(c.storedBundleBlockNumber, existingBundleHash))
 					batch.EXPECT().Delete(getEntryKey(existingBundleHash))
-					batch.EXPECT().Delete(getBlockHistoryHashKey(c.storedBundleBlockNumber))
 				}
 			}
 
@@ -714,7 +712,6 @@ func TestStore_deleteOutdatedBundles_RemovesMultipleEntries_WhenNotCleanedForToo
 		it.EXPECT().Key().Return(getIndexKey(uint64(i), uint64ToHash(uint64(i))))
 		batch.EXPECT().Delete(gomock.Any()) // index key
 		batch.EXPECT().Delete(gomock.Any()) // entry key
-		batch.EXPECT().Delete(gomock.Any()) // block history hash key
 	}
 	it.EXPECT().Next().Return(false)
 
@@ -755,10 +752,8 @@ func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
 
 	injectedErrDeleteEntry := errors.New("entry delete error")
 	injectedErrDeleteIndex := errors.New("index delete error")
-	injectedErrDeleteBlockHistory := errors.New("block history delete error")
 	batch.EXPECT().Delete(gomock.Any()).Return(injectedErrDeleteEntry)
 	batch.EXPECT().Delete(gomock.Any()).Return(injectedErrDeleteIndex)
-	batch.EXPECT().Delete(gomock.Any()).Return(injectedErrDeleteBlockHistory)
 
 	gomock.InOrder(
 		it.EXPECT().Next().Return(true),
@@ -769,8 +764,7 @@ func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
 
 	compoundErr := errors.Join(
 		injectedErrDeleteEntry,
-		injectedErrDeleteIndex,
-		injectedErrDeleteBlockHistory)
+		injectedErrDeleteIndex)
 	expectCrit(log, "failed to delete old processed bundle hash", "error", compoundErr)
 	// In production, a Crit log call causes the logger to exit the process.
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
