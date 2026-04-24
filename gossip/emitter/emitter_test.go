@@ -257,6 +257,66 @@ func TestEmitter_CreateEvent_InvalidValidatorSetIsDetected(t *testing.T) {
 	require.ErrorContains(t, err, "no validators")
 }
 
+func TestEmitter_CreateEvent_FirstEventInEpoch_IncludesClientVersionAndBlockInfo(t *testing.T) {
+
+	versions := []string{"1.2.3", "4.5.6-rc.1234", "something_else"}
+	blockNumber := []uint64{0, 42, 123456}
+
+	for _, version := range versions {
+		for _, blockNum := range blockNumber {
+			t.Run(fmt.Sprintf("version=%s/blockNumber=%d", version, blockNum), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				world := NewMockExternal(ctrl)
+				signer := valkeystore.NewMockSignerAuthority(ctrl)
+
+				validator := idx.ValidatorID(1)
+				builder := pos.NewBuilder()
+				builder.Set(validator, pos.Weight(1))
+				validators := builder.Build()
+
+				em := &Emitter{
+					config: config.Config{
+						VersionToPublish: version,
+						Validator: config.ValidatorConfig{
+							ID: validator,
+						},
+					},
+					world: World{
+						External:     world,
+						EventsSigner: signer,
+					},
+				}
+				em.validators.Store(validators)
+
+				block := inter.NewBlockBuilder().
+					WithNumber(blockNum).
+					Build()
+
+				any := gomock.Any()
+				world.EXPECT().GetRules().Return(opera.Rules{}).AnyTimes()
+				world.EXPECT().GetLastEvent(any, any).AnyTimes()
+				world.EXPECT().Build(any, any).AnyTimes()
+				world.EXPECT().Check(any, any).Return(nil).AnyTimes()
+				world.EXPECT().GetLatestBlock().Return(block).AnyTimes()
+
+				signer.EXPECT().Sign(any).AnyTimes()
+
+				event, err := em.createEvent(nil)
+				require.NoError(t, err)
+				require.EqualValues(t, 1, event.Seq())
+
+				decodedVersion, info, err := DecodeExtraData(event.Extra())
+				require.NoError(t, err)
+				require.NotNil(t, decodedVersion)
+				require.Equal(t, version, *decodedVersion)
+				require.NotNil(t, info)
+				require.Equal(t, blockNum, info.Number)
+				require.Equal(t, block.Hash(), info.Hash)
+			})
+		}
+	}
+}
+
 func TestEmitter_EmitEvent_DoesNotEmit_IfNodeIsNotValidator(t *testing.T) {
 
 	builder := pos.NewBuilder()
@@ -462,6 +522,93 @@ func TestEmitter_ThrottlerWorldAdapter_ReturnsNilIfNoEventIsFound(t *testing.T) 
 		e := wa.GetLastEvent(validator)
 		require.Nil(t, e)
 	})
+}
+
+func TestEmitter_fillExtraData_EncodesExpectedData(t *testing.T) {
+
+	block := inter.NewBlockBuilder().
+		WithNumber(42).
+		Build()
+
+	info := &BlockNumberAndHash{
+		Number: block.Number,
+		Hash:   block.Hash(),
+	}
+
+	tests := map[string]struct {
+		seqNumber idx.Event
+		version   string
+		blockInfo *BlockNumberAndHash
+		want      []byte
+	}{
+		"first event - no version or block info": {
+			seqNumber: 1,
+			want:      []byte{},
+		},
+		"first event - with version": {
+			seqNumber: 1,
+			version:   "1.2.3",
+			want:      []byte("v-1.2.3"),
+		},
+		"first event - with block info": {
+			seqNumber: 1,
+			blockInfo: info,
+			want:      encodeExtraData(nil, info),
+		},
+		"first event - with version and block info": {
+			seqNumber: 1,
+			version:   "1.2.3",
+			blockInfo: info,
+			want:      encodeExtraData(ptr("1.2.3"), info),
+		},
+		"second event - no version or block info": {
+			seqNumber: 2,
+			want:      []byte{},
+		},
+		"second event - with version": {
+			seqNumber: 2,
+			version:   "1.2.3",
+			want:      []byte{},
+		},
+		"second event - with block info": {
+			seqNumber: 2,
+			blockInfo: info,
+			want:      encodeExtraData(nil, info),
+		},
+		"second event - with version and block info": {
+			seqNumber: 2,
+			version:   "1.2.3",
+			blockInfo: info,
+			want:      encodeExtraData(nil, info), // < version should be omitted
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			world := NewMockExternal(ctrl)
+
+			if tt.blockInfo != nil {
+				world.EXPECT().GetLatestBlock().Return(block).AnyTimes()
+			} else {
+				world.EXPECT().GetLatestBlock().Return(nil).AnyTimes()
+			}
+
+			event := &inter.MutableEventPayload{}
+			event.SetSeq(tt.seqNumber)
+
+			em := &Emitter{
+				config: config.Config{
+					VersionToPublish: tt.version,
+				},
+				world: World{External: world},
+			}
+			em.fillExtraData(event)
+
+			require.Equal(t, tt.want, event.Extra())
+		})
+	}
 }
 
 func TestRemoveBundleOnlyTxs_OnlyFiltersTxIfFeatureIsEnabled(t *testing.T) {

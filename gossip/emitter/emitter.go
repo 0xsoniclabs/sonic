@@ -536,13 +536,8 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	mutEvent.SetLamport(maxLamport + 1)
 	mutEvent.SetCreationTime(inter.MaxTimestamp(inter.Timestamp(time.Now().UnixNano()), selfParentTime+1))
 
-	// node version
-	if mutEvent.Seq() <= 1 && len(em.config.VersionToPublish) > 0 {
-		version := []byte("v-" + em.config.VersionToPublish)
-		if uint32(len(version)) <= em.world.GetRules().Dag.MaxExtraData {
-			mutEvent.SetExtra(version)
-		}
-	}
+	// fill optional extra data field
+	em.fillExtraData(mutEvent)
 
 	// set consensus fields
 	err := em.world.Build(mutEvent, nil)
@@ -622,4 +617,19 @@ func (em *Emitter) nameEventForDebug(e *inter.EventPayload) {
 	hash.SetEventName(e.ID(), fmt.Sprintf("%s%03d",
 		strings.ToLower(string(name)),
 		e.Seq()))
+}
+
+func (em *Emitter) fillExtraData(event *inter.MutableEventPayload) {
+	var clientVersion *string
+	if event.Seq() <= 1 && len(em.config.VersionToPublish) > 0 {
+		clientVersion = &em.config.VersionToPublish
+	}
+	var latestBlockInfo *BlockNumberAndHash
+	if latestBlock := em.world.GetLatestBlock(); latestBlock != nil {
+		latestBlockInfo = &BlockNumberAndHash{
+			Number: latestBlock.Number,
+			Hash:   latestBlock.Hash(),
+		}
+	}
+	event.SetExtra(encodeExtraData(clientVersion, latestBlockInfo))
 }
