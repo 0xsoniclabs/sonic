@@ -156,7 +156,6 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) {
 		err := errors.Join(
 			batch.Delete(getIndexKey(oldBundleBlockNumber, hash)),
 			batch.Delete(getEntryKey(hash)),
-			batch.Delete(getBlockHistoryHashKey(oldBundleBlockNumber)),
 		)
 		if err != nil {
 			s.Log.Crit("failed to delete old processed bundle hash", "error", err)
