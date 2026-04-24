@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/add"
 	"github.com/0xsoniclabs/sonic/tests/contracts/store"
@@ -101,6 +102,8 @@ func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
+	signer := types.LatestSignerForChainID(net.GetChainId())
+
 	// Create all needed accounts and endow in parallel.
 	accounts := tests.MakeAccountsWithBalance(t, net, B*3, big.NewInt(1e18))
 
@@ -132,8 +135,6 @@ func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			signer := types.LatestSignerForChainID(net.GetChainId())
-
 			envelopes := make([]*types.Transaction, B)
 			planHashes := make([]common.Hash, B)
 
@@ -172,4 +173,103 @@ func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBundle_StressWithLargeBundleAndGroupNesting(t *testing.T) {
+	// Increase this number for profiling to increase load on the system.
+	const B = 1 // Number of bundles
+
+	// With larger numbers of bundles, the cache size needs to be increased.
+	archiveCacheSize := 1 << 11
+
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades:         &upgrades,
+		ArchiveCacheSize: &archiveCacheSize,
+	})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	signer := types.LatestSignerForChainID(net.GetChainId())
+
+	// Create all needed accounts and endow in parallel.
+	accounts := tests.MakeAccountsWithBalance(t, net, B*3, big.NewInt(1e18))
+
+	cases := map[string]struct {
+		groupNestingDepth  int
+		bundleNestingDepth int
+		expectedError      string
+	}{
+		"MaxNestingDepth": {
+			groupNestingDepth:  bundle.MaxGroupNestingDepth,
+			bundleNestingDepth: bundle.MaxBundleNestingDepth,
+		},
+		"GroupNestingDepthExceeded": {
+			groupNestingDepth:  bundle.MaxGroupNestingDepth + 1,
+			bundleNestingDepth: bundle.MaxBundleNestingDepth,
+			expectedError:      "exceeds maximum nesting depth of execution steps",
+		},
+		"BundleNestingDepthExceeded": {
+			groupNestingDepth:  bundle.MaxGroupNestingDepth,
+			bundleNestingDepth: bundle.MaxBundleNestingDepth + 1,
+			expectedError:      "exceeds maximum nesting depth of bundles",
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			envelopes := make([]*types.Transaction, B)
+			planHashes := make([]common.Hash, B)
+
+			// Create B bundles.
+			for i := range B {
+				leafTx := types.NewTx(tests.SetTransactionDefaults(t, net, &types.AccessListTx{}, accounts[i*3]))
+				envelope, plan := nestInStepsAndBundles(signer, accounts[i*3], leafTx, tc.groupNestingDepth, tc.bundleNestingDepth)
+
+				envelopes[i] = envelope
+				planHashes[i] = plan.Hash()
+			}
+
+			// Send all bundles.
+			_, err = net.SendAll(envelopes)
+			if len(tc.expectedError) > 0 {
+				require.ErrorContains(t, err, tc.expectedError)
+				return
+			}
+			require.NoError(t, err)
+
+			// Wait for all bundles to be processed.
+			infos, err := WaitForBundleExecutions(t.Context(), client.Client(), planHashes)
+			require.NoError(t, err)
+
+			// Check that all bundles were executed successfully and the single nested
+			// transaction ended up in the block.
+			for _, info := range infos {
+				require.EqualValues(t, 1, info.Count)
+			}
+		})
+	}
+}
+
+func nestInStepsAndBundles(
+	signer types.Signer,
+	sender *tests.Account,
+	tx *types.Transaction,
+	stepDepth int,
+	bundleDepth int,
+) (*types.Transaction, bundle.ExecutionPlan) {
+	var plan bundle.ExecutionPlan
+	for range bundleDepth + 1 {
+		step := bundle.Step(sender.PrivateKey, tx)
+		for range stepDepth {
+			step = bundle.AllOf(step)
+		}
+		tx, plan = bundle.NewBuilder().WithSigner(signer).With(step).BuildEnvelopeAndPlan()
+	}
+
+	return tx, plan
 }

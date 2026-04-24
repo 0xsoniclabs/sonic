@@ -186,6 +186,12 @@ type IntegrationTestNetOptions struct {
 	// SkipCleanUp indicates whether the network should add its stop function
 	// to t.Cleanup or not.
 	SkipCleanUp bool
+	// Size of live db cache in bytes.
+	LiveCacheSize *int
+	// Size of archive cache in bytes.
+	ArchiveCacheSize *int
+	// The number of cached data elements by each StateDb instance.
+	CacheSize *int
 }
 
 // IntegrationTestNet is a in-process test network for integration tests. When
@@ -479,6 +485,19 @@ func (n *IntegrationTestNet) start() error {
 				}
 			}()
 
+			liveCacheSize := 1
+			if n.options.LiveCacheSize != nil {
+				liveCacheSize = *n.options.LiveCacheSize
+			}
+			archiveCacheSize := 1
+			if n.options.ArchiveCacheSize != nil {
+				archiveCacheSize = *n.options.ArchiveCacheSize
+			}
+			cacheSize := 1024
+			if n.options.CacheSize != nil {
+				cacheSize = *n.options.CacheSize
+			}
+
 			// start the fakenet sonic node
 			// equivalent to running `sonicd ...` but in this local process
 			args := append([]string{
@@ -505,9 +524,9 @@ func (n *IntegrationTestNet) start() error {
 				"--nodiscover",
 
 				// database memory usage options
-				"--statedb.livecache", "1",
-				"--statedb.archivecache", "1",
-				"--statedb.cache", "1024",
+				"--statedb.livecache", fmt.Sprintf("%d", liveCacheSize),
+				"--statedb.archivecache", fmt.Sprintf("%d", archiveCacheSize),
+				"--statedb.cache", fmt.Sprintf("%d", cacheSize),
 
 				"--ipcpath", fmt.Sprintf("%s/sonic.ipc", tmp),
 			},
