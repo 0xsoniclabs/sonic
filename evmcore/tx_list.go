@@ -399,7 +399,7 @@ func (l *txList) Filter(
 	l.costcap = new(big.Int).Set(costLimit) // Lower the caps to the thresholds
 	l.gascap = gasLimit
 
-	var bundleInvalidated bool
+	var containsNonExecutableBundles bool
 
 	// Filter out all the transactions above the account's funds
 	removed := l.txs.Filter(func(tx *types.Transaction) bool {
@@ -408,7 +408,7 @@ func (l *txList) Filter(
 		if bundle.IsEnvelope(tx) {
 			status := evaluateBundleStatus(tx)
 			if status != bundlePending {
-				bundleInvalidated = true
+				containsNonExecutableBundles = true
 			}
 			return status == bundleRejected
 		}
@@ -418,7 +418,7 @@ func (l *txList) Filter(
 		return tx.Gas() > gasLimit || tx.Cost().Cmp(costLimit) > 0
 	})
 
-	if len(removed) == 0 && !bundleInvalidated {
+	if len(removed) == 0 && !containsNonExecutableBundles {
 		return nil, nil
 	}
 
@@ -430,13 +430,13 @@ func (l *txList) Filter(
 			firstInvalidNonce = min(firstInvalidNonce, tx.Nonce())
 		}
 
-		// bundles with valid nonces but non-pending status are also invalidated
-		invalidBundles := l.txs.filter(func(tx *types.Transaction) bool {
+		// bundle envelopes with valid nonces but non-pending status are demoted
+		demotedEnvelopes := l.txs.filter(func(tx *types.Transaction) bool {
 			return bundle.IsEnvelope(tx) &&
 				tx.Nonce() < firstInvalidNonce &&
 				evaluateBundleStatus(tx) == bundleQueued
 		})
-		for _, tx := range invalidBundles {
+		for _, tx := range demotedEnvelopes {
 			firstInvalidNonce = min(firstInvalidNonce, tx.Nonce())
 		}
 
@@ -448,7 +448,7 @@ func (l *txList) Filter(
 
 		// invalids are to be demoted from pending to queued, and therefore
 		// are re-queued by the caller, who owns both tx lists.
-		invalids = append(invalidBundles, invalids...)
+		invalids = append(demotedEnvelopes, invalids...)
 
 		if len(invalids) > 0 {
 			l.txs.reheap()
