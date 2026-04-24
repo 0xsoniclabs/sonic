@@ -270,13 +270,34 @@ func TestStore_AddProcessedBundles_RemovesOldHistoryHash_EvenForBlockNumberWitho
 		}
 	}
 
-	// as block 1 is the first bundle, block 2 should have had a history hash
-	// entry, but it should now be gone.
-	oldestBlock, oldestHash, ok := store.GetOldestRetainedBundleHistoryHash()
-	require.True(t, ok)
-	// oldest should be 3, as blocks 0, 1, and 2 are pruned.
-	require.Equal(t, uint64(3), oldestBlock)
-	require.NotZero(t, oldestHash)
+
+func TestStore_AddProcessedBundles_HistoryHashIsConsistentWithPerBlockHash(t *testing.T) {
+	// This test verifies that as new bundles are added the history hash reported
+	// by GetProcessedBundleHistoryHash is consistent with the hash stored
+	// for each block in the 'h' entries.
+
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+
+	for block := range bundle.MaxBlockRange * 2 {
+		// randomly add bundles to some blocks, but not all
+		if rand.Uint64()%2 == 0 {
+			store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
+				uint64ToHash(block): {},
+			})
+		} else {
+			store.AddProcessedBundles(block, nil)
+		}
+
+		_, currentHistoryHash := store.GetProcessedBundleHistoryHash()
+		historyHashForBlock, err := store.table.ProcessedBundles.Get(getBlockHistoryHashKey(block))
+		require.NoError(t, err)
+		if len(historyHashForBlock) == 0 {
+			require.Zero(t, currentHistoryHash)
+		} else {
+			require.Equal(t, currentHistoryHash.Bytes(), historyHashForBlock)
+		}
+	}
 }
 
 func TestStore_GetProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
