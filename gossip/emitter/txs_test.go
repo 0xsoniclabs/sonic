@@ -217,12 +217,66 @@ func Test_preCheckStateAdapter_UsesNetworkRulesAndUpgradeHeights(t *testing.T) {
 	external := NewMockExternal(ctrl)
 	external.EXPECT().GetRules().Return(rules)
 	external.EXPECT().GetUpgradeHeights().Return(heights)
+	external.EXPECT().GetLatestBlock().Return(&inter.Block{})
 
 	adapter := &preCheckChainStateAdapter{external: external}
-	got := adapter.GetEvmChainConfig(blockHeight)
+	got := adapter.GetCurrentChainConfig()
 
 	expected := opera.CreateTransientEvmChainConfig(rules.NetworkID, heights, blockHeight)
 	require.Equal(t, expected, got)
+}
+
+func Test_preCheckStateAdapter_ReturnsBlockZeroRulesIfNoLatestBlock(t *testing.T) {
+	rules := opera.Rules{NetworkID: 42}
+	heights := []opera.UpgradeHeight{
+		// Without upgrade in block 0, default would be Allegro disabled.
+		// This value checks that the upgrades are considered
+		{Height: 0, Upgrades: opera.Upgrades{Allegro: true}},
+		{Height: 1, Upgrades: opera.Upgrades{Allegro: true, Brio: true}},
+	}
+
+	tests := map[string]struct {
+		latestBlock   any
+		checkBlockNum int64
+		wantOsaka     bool
+	}{
+		"with latest block nil, initial rules are used": {
+			latestBlock:   nil,
+			checkBlockNum: 1,
+			wantOsaka:     false,
+		},
+		"with block 0, initial rules are used": {
+			latestBlock:   inter.NewBlockBuilder().WithNumber(0).Build(),
+			checkBlockNum: 1,
+			wantOsaka:     false,
+		},
+		"with block 1, new rules are used": {
+			latestBlock:   inter.NewBlockBuilder().WithNumber(1).Build(),
+			checkBlockNum: 1,
+			wantOsaka:     true,
+		},
+		"with block 2, new rules are used": {
+			latestBlock:   inter.NewBlockBuilder().WithNumber(2).Build(),
+			checkBlockNum: 2,
+			wantOsaka:     true,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			external := NewMockExternal(ctrl)
+			external.EXPECT().GetRules().Return(rules)
+			external.EXPECT().GetUpgradeHeights().Return(heights)
+			external.EXPECT().GetLatestBlock().Return(tt.latestBlock)
+
+			adapter := &preCheckChainStateAdapter{external: external}
+			got := adapter.GetCurrentChainConfig()
+			require.True(t, got.IsPrague(big.NewInt(tt.checkBlockNum), 1), "prague must always be enabled")
+			require.Equal(t, tt.wantOsaka, got.IsOsaka(big.NewInt(tt.checkBlockNum), 1))
+		})
+	}
 }
 
 func Test_preCheckStateAdapter_ForwardsGetLatestHeader(t *testing.T) {
