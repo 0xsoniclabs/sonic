@@ -1647,9 +1647,8 @@ func Test_validateBundleTransactions_RespectNetworkRules(t *testing.T) {
 	bundle := bundle.NewBuilder().Build()
 
 	tests := map[string]struct {
-		rules            NetworkRules
-		expectedError    error
-		expectEvaluation bool
+		rules         NetworkRules
+		expectedError error
 	}{
 		"bundle transactions disabled pre brio": {
 			rules:         NetworkRules{},
@@ -1664,9 +1663,8 @@ func Test_validateBundleTransactions_RespectNetworkRules(t *testing.T) {
 			expectedError: ErrBundleTransactionsDisabled,
 		},
 		"bundle transactions enabled post brio": {
-			rules:            NetworkRules{brio: true, transactionBundles: true},
-			expectedError:    nil,
-			expectEvaluation: true,
+			rules:         NetworkRules{brio: true, transactionBundles: true},
+			expectedError: ErrBundleAlreadyProcessed,
 		},
 	}
 
@@ -1676,16 +1674,10 @@ func Test_validateBundleTransactions_RespectNetworkRules(t *testing.T) {
 
 			ctrl := gomock.NewController(t)
 			state := state.NewMockStateDB(ctrl)
-			if test.expectEvaluation {
-				state.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(false)
-			}
+			state.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(true).AnyTimes()
 
 			err := validateBundleTransactions(bundle, test.rules, nil, state, signer)
-			if test.expectedError != nil {
-				require.ErrorIs(err, test.expectedError)
-			} else {
-				require.NoError(err)
-			}
+			require.ErrorIs(err, test.expectedError)
 		})
 	}
 }
@@ -1732,6 +1724,100 @@ func Test_validateBundleTransactions_RejectsRecentlyProcessedBundles(t *testing.
 
 	err = validateBundleTransactions(envelope, bundlesEnabled, nil, state, signer)
 	require.ErrorIs(err, ErrBundleAlreadyProcessed)
+}
+
+func Test_validateBundleTransactionsInternal_EvaluatesBundleUsingGetBundleState(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	bundlesEnabled := NetworkRules{
+		brio:               true,
+		transactionBundles: true,
+	}
+
+	tests := map[string]struct {
+		bundleState BundleState
+		expectedErr error
+	}{
+		"bundle executable is accepted": {
+			bundleState: BundleState{
+				Executable: true,
+			},
+			expectedErr: nil,
+		},
+		"bundle temporarily not executable is accepted": {
+			bundleState: BundleState{
+				Executable:         false,
+				TemporarilyBlocked: true,
+			},
+			expectedErr: nil,
+		},
+		"bundle non-ever executable": {
+			bundleState: BundleState{
+				Executable:         false,
+				TemporarilyBlocked: false,
+			},
+			expectedErr: ErrBundleNonExecutable,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			reader := NewMockStateReader(ctrl)
+			stateDb := state.NewMockStateDB(ctrl)
+			stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(false)
+
+			signer := types.LatestSignerForChainID(big.NewInt(1))
+			envelope := bundle.NewBuilder().
+				With(bundle.Step(key, &types.AccessListTx{})).
+				Build()
+
+			err = validateBundleTransactionsInternal(envelope, bundlesEnabled, reader, stateDb, signer,
+				func(ChainStateForBundleEval, state.StateDB, *types.Transaction) BundleState {
+					return test.bundleState
+				})
+
+			if test.expectedErr != nil {
+				require.ErrorIs(t, err, test.expectedErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func Test_validateBundleTransactionsInternal_AccumulatesRejectionReasons(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	bundlesEnabled := NetworkRules{
+		brio:               true,
+		transactionBundles: true,
+	}
+
+	ctrl := gomock.NewController(t)
+	reader := NewMockStateReader(ctrl)
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(false)
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	envelope := bundle.NewBuilder().
+		With(bundle.Step(key, &types.AccessListTx{})).
+		Build()
+
+	reasons := []string{"reason1", "reason2"}
+
+	err = validateBundleTransactionsInternal(envelope, bundlesEnabled, reader, stateDb, signer,
+		func(ChainStateForBundleEval, state.StateDB, *types.Transaction) BundleState {
+			return BundleState{
+				Reasons: reasons,
+			}
+		})
+	require.ErrorIs(t, err, ErrBundleNonExecutable)
+	for _, reason := range reasons {
+		require.ErrorContains(t, err, reason)
+	}
 }
 
 func TestValidateTx_AllowsSponsoredZeroGasPriceTransactions_WhenSubsidiesAreFunded(t *testing.T) {
@@ -1863,6 +1949,46 @@ func TestValidateTx_Success(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func Test_ValidateBundle_GetBundleStateAdaptor(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	reader := NewMockStateReader(ctrl)
+
+	adaptor := getBundleStateAdaptor{StateReader: reader}
+
+	t.Run("current rules forwards call", func(t *testing.T) {
+		reader.EXPECT().CurrentRules()
+		adaptor.GetCurrentNetworkRules()
+	})
+
+	t.Run("current config forwards call", func(t *testing.T) {
+		reader.EXPECT().CurrentConfig()
+		adaptor.GetEvmChainConfig(1)
+	})
+
+	t.Run("current block forwards call", func(t *testing.T) {
+		reader.EXPECT().CurrentBlock()
+		adaptor.GetLatestHeader()
+	})
+
+	t.Run("block by hash and number forwards call", func(t *testing.T) {
+		hash := common.HexToHash("0x1234")
+		number := uint64(100)
+		reader.EXPECT().Block(hash, number).Return(&EvmBlock{
+			EvmHeader: EvmHeader{
+				Number: big.NewInt(int64(number)),
+			},
+		})
+		header := adaptor.Header(hash, number)
+		require.EqualValues(t, header.Number.Uint64(), number)
+	})
+
+	t.Run("missing block returns nil", func(t *testing.T) {
+		reader.EXPECT().Block(gomock.Any(), gomock.Any()).Return(nil)
+		heder := adaptor.Header(common.Hash{}, 1)
+		require.Nil(t, heder)
+	})
 }
 
 // =============================================================================
