@@ -14,12 +14,18 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package drivermodule_test
+package drivermodule
 
 import (
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/drivermodule"
+	"fmt"
+	"math"
+	"math/big"
+	"testing"
+
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -27,9 +33,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-	"math/big"
-	"testing"
 )
 
 const OrigOriginated = 10_000
@@ -45,7 +50,7 @@ const EffectiveGasPrice = 53
 func TestReceiptRewardWithoutFixEnabled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	module := drivermodule.NewDriverTxListenerModule()
+	module := NewDriverTxListenerModule()
 
 	blockCtx := iblockproc.BlockCtx{}
 	bs := iblockproc.BlockState{
@@ -86,7 +91,7 @@ func TestReceiptRewardWithoutFixEnabled(t *testing.T) {
 func TestReceiptRewardWithFixEnabled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	module := drivermodule.NewDriverTxListenerModule()
+	module := NewDriverTxListenerModule()
 
 	blockCtx := iblockproc.BlockCtx{}
 	bs := iblockproc.BlockState{
@@ -127,7 +132,7 @@ func TestReceiptRewardWithFixEnabled(t *testing.T) {
 func TestReceiptRewardWithBlobsAndFixEnabled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	module := drivermodule.NewDriverTxListenerModule()
+	module := NewDriverTxListenerModule()
 
 	blockCtx := iblockproc.BlockCtx{}
 	bs := iblockproc.BlockState{
@@ -166,4 +171,201 @@ func TestReceiptRewardWithBlobsAndFixEnabled(t *testing.T) {
 		t.Errorf("Originated increment not GasUsed*EffectiveGasPrice+BlobGasUsed*BlobBaseFee: expected %d, actual %d",
 			OrigOriginated+GasUsed*EffectiveGasPrice+BlobGasUsed*BlobBaseFee, originated)
 	}
+}
+
+func TestDriverTxListener_OnNewAcceptedTransaction_AddsFeesToRespectiveValidator(t *testing.T) {
+	receipt := &types.Receipt{
+		EffectiveGasPrice: big.NewInt(100),
+		GasUsed:           50,
+	}
+
+	creator := idx.ValidatorID(12)
+	other := idx.ValidatorID(14)
+
+	// build two validators with different stake
+	validatorBuilder := pos.NewBuilder()
+	validatorBuilder.Set(creator, 200)
+	validatorBuilder.Set(other, 100)
+	validators := validatorBuilder.Build()
+
+	creatorIndex := validators.GetIdx(creator)
+	otherIndex := validators.GetIdx(other)
+
+	initialFees := []*big.Int{
+		big.NewInt(1234), big.NewInt(4321),
+	}
+	state := make([]iblockproc.ValidatorBlockState, 2)
+	state[creatorIndex].Originated = new(big.Int).SetBytes(initialFees[0].Bytes())
+	state[otherIndex].Originated = new(big.Int).SetBytes(initialFees[1].Bytes())
+
+	listener := &DriverTxListener{
+		es: iblockproc.EpochState{
+			Validators: validators,
+		},
+		bs: iblockproc.BlockState{
+			ValidatorStates: state,
+		},
+	}
+
+	listener.OnNewAcceptedTransaction(creator, nil, receipt)
+
+	fee, err := ComputeEffectiveFee(nil, receipt)
+	require.NoError(t, err)
+	require.Equal(t, 1, fee.Sign())
+
+	// The creator's originated fees should have been increased.
+	want := new(big.Int).Add(initialFees[0], fee.ToBig())
+	got := listener.bs.ValidatorStates[creatorIndex].Originated
+	require.True(t, got.Cmp(want) == 0,
+		"want: %v, got %v", want, got,
+	)
+
+	// the other validator's originated fees should remain as they where.
+	want = initialFees[1]
+	got = listener.bs.ValidatorStates[otherIndex].Originated
+	require.True(t, got.Cmp(want) == 0,
+		"want: %v, got %v", want, got,
+	)
+}
+
+func TestDriverTxListener_OnNewAcceptedTransaction_WarnsOnOriginatorZero(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	log := logger.NewMockLogger(ctrl)
+
+	tx := types.NewTx(&types.LegacyTx{})
+
+	receipt := &types.Receipt{
+		EffectiveGasPrice: big.NewInt(100),
+		GasUsed:           50,
+	}
+
+	log.EXPECT().Warn(
+		"failed to attribute transaction to validator, fees got burned",
+		"tx", tx.Hash(),
+		"fees", uint256.NewInt(100*50),
+	)
+
+	listener := &DriverTxListener{}
+	listener.onNewAcceptedTransactionInternal(0, tx, receipt, log)
+}
+
+func TestDriverTxListener_OnOverflow_WarnsAndBurnsFees(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	log := logger.NewMockLogger(ctrl)
+
+	tx := types.NewTx(&types.LegacyTx{})
+
+	receipt := &types.Receipt{
+		EffectiveGasPrice: new(big.Int).Lsh(big.NewInt(1), 240),
+		GasUsed:           math.MaxUint64,
+	}
+
+	log.EXPECT().Warn(
+		"overflow in fee computation",
+		"tx", tx.Hash(),
+		"usedGas", receipt.GasUsed,
+		"gasPrice", receipt.EffectiveGasPrice,
+		"err", gomock.Any(),
+	)
+
+	listener := &DriverTxListener{}
+	listener.onNewAcceptedTransactionInternal(0, tx, receipt, log)
+}
+
+func TestComputeEffectiveFee_MultipliesEffectiveGasPriceWithUsedGas(t *testing.T) {
+	prices := []*big.Int{
+		big.NewInt(0),
+		big.NewInt(1),
+		big.NewInt(10),
+		big.NewInt(1e18),
+		new(big.Int).Lsh(big.NewInt(1), 100),
+	}
+
+	used := []uint64{
+		0, 1, 1000, 1e9, math.MaxUint64,
+	}
+
+	for _, price := range prices {
+		for _, used := range used {
+			receipt := &types.Receipt{
+				EffectiveGasPrice: price,
+				GasUsed:           used,
+			}
+
+			want := new(big.Int).Mul(
+				new(big.Int).SetUint64(used),
+				price,
+			)
+
+			got, err := ComputeEffectiveFee(nil, receipt)
+			require.NoError(t, err)
+			require.True(t,
+				want.Cmp(got.ToBig()) == 0,
+				"want %v, got %v", want, got,
+			)
+		}
+	}
+}
+
+func TestComputeEffectiveFee_UsesChargedAmountForSponsorshipPayments(t *testing.T) {
+	prices := []*big.Int{
+		big.NewInt(0),
+		big.NewInt(1),
+		big.NewInt(10),
+		big.NewInt(1e18),
+		new(big.Int).Lsh(big.NewInt(1), 100),
+	}
+
+	used := []uint64{
+		0, 1, 1000, 1e9, math.MaxUint64,
+	}
+
+	for _, price := range prices {
+		for _, used := range used {
+			t.Run(fmt.Sprintf("price=%v/used=%d", price, used), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				nonceSource := subsidies.NewMockNonceSource(ctrl)
+				nonceSource.EXPECT().GetNonce(gomock.Any()).AnyTimes()
+
+				tx, err := subsidies.GetFeeChargeTransaction(
+					nonceSource,
+					subsidies.FundId{},
+					subsidies.GasConfig{},
+					used,
+					price,
+				)
+				require.NoError(t, err)
+
+				want := new(big.Int).Mul(
+					new(big.Int).SetUint64(used),
+					price,
+				)
+
+				got, err := ComputeEffectiveFee(tx, nil)
+				require.NoError(t, err)
+				require.True(t,
+					want.Cmp(got.ToBig()) == 0,
+					"want %v, got %v", want, got,
+				)
+			})
+		}
+	}
+}
+
+func TestComputeEffectiveFee_OverflowInGasPriceIsDetected(t *testing.T) {
+	receipt := &types.Receipt{
+		EffectiveGasPrice: new(big.Int).Lsh(big.NewInt(1), 256),
+	}
+	_, err := ComputeEffectiveFee(nil, receipt)
+	require.ErrorContains(t, err, "effective gas price overflow")
+}
+
+func TestComputeEffectiveFee_OverflowInFeeComputationIsReported(t *testing.T) {
+	receipt := &types.Receipt{
+		EffectiveGasPrice: new(big.Int).Lsh(big.NewInt(1), 256-64+1),
+		GasUsed:           math.MaxUint64,
+	}
+
+	_, err := ComputeEffectiveFee(nil, receipt)
+	require.ErrorContains(t, err, "effective fee overflow")
 }

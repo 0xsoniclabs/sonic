@@ -735,6 +735,87 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 	}
 }
 
+func TestApplyTransaction_SetsEffectiveGasPriceInReceipt(t *testing.T) {
+	gasPrices := []*big.Int{
+		big.NewInt(0),
+		big.NewInt(100),
+		big.NewInt(math.MaxInt64),
+		new(big.Int).Lsh(big.NewInt(1), 200),
+	}
+
+	for _, price := range gasPrices {
+		t.Run(fmt.Sprintf("%v", price), func(t *testing.T) {
+			require := require.New(t)
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+
+			// -- setup to get a simple transaction to pass --
+
+			blockContext := vm.BlockContext{
+				BlockNumber: big.NewInt(123),
+				BaseFee:     big.NewInt(0),
+				Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int) {
+					// do nothing
+				},
+				CanTransfer: func(_ vm.StateDB, _ common.Address, amount *uint256.Int) bool {
+					return true
+				},
+				Random: &common.Hash{}, // < signals Revision >= Merge
+			}
+
+			evm := vm.NewEVM(blockContext, state, &params.ChainConfig{
+				LondonBlock:        new(big.Int).SetUint64(0),
+				MergeNetsplitBlock: new(big.Int).SetUint64(0),
+				ShanghaiTime:       new(uint64),
+				CancunTime:         new(uint64),
+			}, vm.Config{})
+
+			// accept everything else that is needed to get the transaction to run
+			any := gomock.Any()
+			balance := new(uint256.Int).Lsh(uint256.NewInt(1), 240)
+			state.EXPECT().GetBalance(any).Return(balance).AnyTimes()
+			state.EXPECT().SubBalance(any, any, any).AnyTimes()
+			state.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+			state.EXPECT().GetNonce(any).AnyTimes()
+			state.EXPECT().SetNonce(any, any, any).AnyTimes()
+			state.EXPECT().GetCode(any).AnyTimes()
+			state.EXPECT().Snapshot().AnyTimes()
+			state.EXPECT().Exist(any).Return(true).AnyTimes()
+			state.EXPECT().AddBalance(any, any, any).AnyTimes()
+			state.EXPECT().GetRefund().AnyTimes()
+			state.EXPECT().AddRefund(any).AnyTimes()
+			state.EXPECT().GetLogs(any, any).AnyTimes()
+			state.EXPECT().EndTransaction().AnyTimes()
+			state.EXPECT().TxIndex().AnyTimes()
+
+			gp := new(core.GasPool).AddGas(1000000)
+			var usedGas uint64
+
+			blockNum := big.NewInt(12)
+
+			tx := types.NewTx(&types.LegacyTx{})
+
+			// -- end of setup --
+
+			// The only thing we really care of is that the GasPrice of the
+			// message is stored in the receipt.
+			msg := &core.Message{
+				GasPrice:  price,
+				GasFeeCap: new(big.Int).Add(price, big.NewInt(1000)),
+				GasTipCap: big.NewInt(100),
+				To:        &common.Address{},
+				Value:     big.NewInt(0),
+				GasLimit:  21_000,
+			}
+
+			receipt, _, err := applyTransaction(msg, gp, state, blockNum, tx, &usedGas, evm, nil)
+			require.NoError(err)
+
+			require.Equal(price, receipt.EffectiveGasPrice)
+		})
+	}
+}
+
 // processFunction is a function type alias for the StateProcessor's Process
 // function to allow side-by-side testing of different implementations.
 type processFunction = func(
