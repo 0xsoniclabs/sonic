@@ -111,13 +111,27 @@ func TestBundles_WriteError(t *testing.T) {
 func TestBundles_RoundTrip(t *testing.T) {
 	store := setupBundleStore(t)
 
-	wantBundles := map[common.Hash]bundle.PositionInBlock{
-		{0xaa}: {Offset: 0, Count: 2},
-		{0xbb}: {Offset: 2, Count: 1},
+	wantBundles := map[uint64]map[common.Hash]bundle.PositionInBlock{
+		1: {
+			{0xaa}: {Offset: 0, Count: 2},
+			{0xbb}: {Offset: 2, Count: 1},
+		},
+		2: {
+			{0xcc}: {Offset: 0, Count: 1},
+		},
 	}
-	store.AddProcessedBundles(1, wantBundles)
-	wantHistoryHash := common.Hash{0xff}
-	store.SetProcessedBundlesHistoryHash(1, wantHistoryHash)
+	// Execute bundles at two different blocks so there is an oldest retained hash.
+	store.AddProcessedBundles(1, wantBundles[1])
+	store.AddProcessedBundles(2, wantBundles[2])
+	wantNewestBlock, wantNewestHistoryHash := store.GetProcessedBundleHistoryHash()
+	wantOldestBlock, wantOldestHistoryHash, hasOldest := store.GetOldestRetainedBundleHistoryHash()
+
+	require.True(t, hasOldest, "oldest retained hash should be present")
+	require.Equal(t, 1, wantOldestBlock)
+	require.Equal(t, 2, wantNewestBlock)
+	require.NotEqual(t, wantOldestHistoryHash, wantNewestHistoryHash,
+		"oldest and newest history hashes should differ")
+	require.NotZero(t, wantOldestHistoryHash)
 
 	// Export to a real file.
 	tmpDir := t.TempDir()
@@ -145,11 +159,13 @@ func TestBundles_RoundTrip(t *testing.T) {
 	gs, _, err := genesisstore.OpenGenesisStore(outFile)
 	require.NoError(t, err)
 
-	// Verify history hash roundtrips correctly.
-	gotHist, ok := gs.ProcessedBundles().GetHistoryHash()
-	require.True(t, ok, "history hash should be present")
-	require.Equal(t, uint64(1), gotHist.BlockNumber)
-	require.Equal(t, wantHistoryHash, gotHist.Hash)
+	// Verify history hashes roundtrip correctly via the new GetHistoryHashes method.
+	gotHHs, ok := gs.ProcessedBundles().GetHistoryHashes()
+	require.True(t, ok, "history hashes should be present")
+	require.Equal(t, wantOldestHistoryHash, gotHHs.Oldest.Hash)
+	require.Equal(t, wantOldestBlock, gotHHs.Oldest.BlockNumber)
+	require.Equal(t, wantNewestHistoryHash, gotHHs.Latest.Hash)
+	require.Equal(t, wantNewestBlock, gotHHs.Latest.BlockNumber)
 
 	// Verify bundle execution infos roundtrip correctly.
 	wantInfos := store.EnumerateProcessedBundles()
@@ -209,6 +225,10 @@ func TestMustRlpEncodeToByte_CanEncodeHistoryHashAndExecutionInfo(t *testing.T) 
 			BlockNumber:       123,
 			ExecutionPlanHash: common.Hash{0x42},
 			Position:          bundle.PositionInBlock{Offset: 1, Count: 2},
+		},
+		"bundle genesis history hashes": bundle.BundleGenesisHistoryHashes{
+			Latest: bundle.HistoryHash{BlockNumber: 100, Hash: common.HexToHash("0xaabbcc")},
+			Oldest: bundle.HistoryHash{BlockNumber: 1, Hash: common.HexToHash("0x112233")},
 		},
 	}
 

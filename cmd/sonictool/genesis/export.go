@@ -297,12 +297,20 @@ func exportFwaSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter
 func exportBundlesHash(ctx context.Context, gdb *gossip.Store, writer *unitWriter, lastBlock idx.Block) error {
 	log.Info("Exporting processed bundles history hash")
 
-	// write the history hash as the first item.
-	blockNum, histHash := gdb.GetProcessedBundleHistoryHash()
-	b := MustRlpEncodeToByte(bundle.HistoryHash{
-		BlockNumber: blockNum,
-		Hash:        histHash,
-	})
+	latestBlockNum, latestHash := gdb.GetProcessedBundleHistoryHash()
+	oldestBlockNum, oldestHash, _ := gdb.GetOldestRetainedBundleHistoryHash()
+
+	hh := bundle.BundleGenesisHistoryHashes{
+		Latest: bundle.HistoryHash{
+			BlockNumber: latestBlockNum,
+			Hash:        latestHash,
+		},
+		Oldest: bundle.HistoryHash{
+			BlockNumber: oldestBlockNum,
+			Hash:        oldestHash,
+		},
+	}
+	b := MustRlpEncodeToByte(hh)
 	if _, err := writer.Write(b); err != nil {
 		return err
 	}
@@ -310,7 +318,9 @@ func exportBundlesHash(ctx context.Context, gdb *gossip.Store, writer *unitWrite
 	if err != nil {
 		return err
 	}
-	log.Info("Exported processed bundles history hash", "blockNum", blockNum, "hash", histHash)
+	log.Info("Exported processed bundles history hash",
+		"latestBlockNum", latestBlockNum, "latestHash", latestHash,
+		"oldestBlockNum", oldestBlockNum, "oldestHash", oldestHash)
 	fmt.Printf("- Processed bundles history hash: %v \n", hash.String())
 	return nil
 }
