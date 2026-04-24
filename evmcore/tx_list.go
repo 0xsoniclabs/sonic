@@ -197,13 +197,8 @@ func (m *txSortedMap) Remove(nonce uint64) bool {
 
 // Ready pops a contiguous list of transactions with incremental nonces,
 // returning them for promotion from the queued list into the pending list.
-// Each candidate is passed through isExecutable;
-// the run stops at the first transaction that returns false. This gate is
-// used to keep bundle envelope transactions in the queue when a trial-run
-// against the current state shows they are not yet executable (e.g. an
-// inner transaction's preconditions are not met). Regular and sponsored
-// transactions always pass the check.
-//
+// Each candidate is passed through isExecutable; the run stops at the first
+// transaction that returns false.
 // Transactions with nonces below start are also popped to self-correct any
 // stale entries that should have been forwarded already.
 func (m *txSortedMap) Ready(
@@ -359,9 +354,12 @@ func (l *txList) Forward(threshold uint64) types.Transactions {
 	return l.txs.Forward(threshold)
 }
 
-// Filter inspects every transaction in the list and classifies it as dropped,
-// invalidated, or kept, based on the account's balance, the current gas limit,
-// the sponsorship status, and the bundle execution state.
+// Filter removes all transactions from the list with certain conditions,
+// returning the removed transactions for any post-removal maintenance.
+// The removed transactions are classified into two categories: dropped and
+// invalid. A transaction is dropped if it cannot longer be executed, while
+// a transaction is invalid if it is temporarily non-executable due to a nonce
+// gap or pending bundle status.
 //
 // A transaction is dropped (permanently removed) when:
 //   - Its cost exceeds costLimit and it is not a sponsored or bundle tx.
@@ -378,11 +376,12 @@ func (l *txList) Forward(threshold uint64) types.Transactions {
 // (temporarily non-executable) are also invalidated, since they block the
 // nonce sequence.
 //
-// In non-strict mode (queued list), the second return value is always nil
-// because gapped nonces are expected.
+// In non-strict mode (queued list), the second return value is always nil.
 //
-// The method short-circuits via the cached costcap/gascap when no sponsored
-// or bundle transactions are present and the caps are within limits.
+// This method uses the cached costcap and gascap to quickly decide if there's even
+// a point in calculating all the costs or if the balance covers all. If the threshold
+// is lower than the costgas cap, the caps will be reset to a new high after removing
+// the newly invalidated transactions.
 func (l *txList) Filter(
 	costLimit *big.Int,
 	gasLimit uint64,
@@ -481,16 +480,11 @@ func (l *txList) Remove(tx *types.Transaction) (bool, types.Transactions) {
 }
 
 // Ready returns and removes a contiguous run of transactions starting at
-// start that are eligible for promotion from queued to pending. The
-// isExecutable callback gates each transaction: regular and sponsored
-// transactions always pass, while bundle envelopes are only promoted when
-// a trial-run against the current chain state confirms they are executable.
-// The run stops at the first transaction that fails the check, leaving it
-// and all higher-nonce transactions in the queue for a future promotion
-// pass.
-//
-// Transactions with nonces below start are also returned to self-correct
-// stale entries.
+// start that are eligible for promotion, as determined by the isExecutable
+// callback. The run stops at the first transaction that fails the check,
+// leaving it and all higher-nonce transactions in the list for a future
+// pass. Transactions with nonces below start are also returned to
+// self-correct stale entries.
 func (l *txList) Ready(
 	start uint64,
 	isExecutable func(*types.Transaction) bool,
