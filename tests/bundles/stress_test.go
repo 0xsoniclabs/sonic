@@ -263,9 +263,9 @@ func nestInStepsAndBundles(
 	bundleDepth int,
 ) (*types.Transaction, bundle.ExecutionPlan) {
 	var plan bundle.ExecutionPlan
-	for _ = range bundleDepth + 1 {
+	for range bundleDepth + 1 {
 		step := bundle.Step(sender.PrivateKey, tx)
-		for _ = range stepDepth {
+		for range stepDepth {
 			step = bundle.AllOf(step)
 		}
 		tx, plan = bundle.NewBuilder().WithSigner(signer).With(step).BuildEnvelopeAndPlan()
