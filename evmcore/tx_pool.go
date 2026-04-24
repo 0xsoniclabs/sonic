@@ -1535,7 +1535,13 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 		}
 		log.Trace("Removed old queued transactions", "count", len(forwards))
 		// Drop all transactions that are too costly (low balance or out of gas)
-		drops, _ := list.Filter(utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)), pool.currentMaxGas, subsidiesChecker)
+		drops, _ := list.Filter(
+			utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)),
+			pool.currentMaxGas,
+			subsidiesChecker,
+			// FIXME: replace with real evaluation
+			func(t *types.Transaction) bundlePoolStatus { return bundlePending },
+		)
 		for _, tx := range drops {
 			hash := tx.Hash()
 			pool.all.Remove(hash)
@@ -1544,7 +1550,11 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 		queuedNofundsMeter.Mark(int64(len(drops)))
 
 		// Gather all executable transactions and promote them
-		readies := list.Ready(pool.pendingNonces.get(addr))
+		readies := list.Ready(
+			pool.pendingNonces.get(addr),
+			// FIXME: replace with real evaluation
+			func(t *types.Transaction) bool { return true },
+		)
 		for _, tx := range readies {
 			hash := tx.Hash()
 			if pool.promoteTx(addr, hash, tx) {
@@ -1734,7 +1744,13 @@ func (pool *TxPool) demoteUnexecutables() {
 			log.Trace("Removed old pending transaction", "hash", hash)
 		}
 		// Drop all transactions that are too costly (low balance or out of gas), and queue any invalids back for later
-		drops, invalids := list.Filter(utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)), pool.currentMaxGas, subsidiesChecker)
+		drops, invalids := list.Filter(
+			utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)),
+			pool.currentMaxGas,
+			subsidiesChecker,
+			// FIXME: replace with real evaluation
+			func(t *types.Transaction) bundlePoolStatus { return bundlePending },
+		)
 		for _, tx := range drops {
 			hash := tx.Hash()
 			log.Trace("Removed unpayable pending transaction", "hash", hash)

@@ -100,11 +100,9 @@ func (m *txSortedMap) Forward(threshold uint64) types.Transactions {
 	return removed
 }
 
-// Filter iterates over the list of transactions and removes all of them for which
-// the specified function evaluates to true.
-// Filter, as opposed to 'filter', re-initialises the heap after the operation is done.
-// If you want to do several consecutive filterings, it's therefore better to first
-// do a .filter(func1) followed by .Filter(func2) or reheap()
+// Filter removes every transaction for which the predicate returns true and
+// rebuilds the nonce heap afterwards. Use the unexported filter method
+// instead when chaining multiple passes, followed by a single reheap call.
 func (m *txSortedMap) Filter(filter func(*types.Transaction) bool) types.Transactions {
 	removed := m.filter(filter)
 	// If transactions were removed, the heap and cache are ruined
@@ -197,14 +195,16 @@ func (m *txSortedMap) Remove(nonce uint64) bool {
 	return true
 }
 
-// Ready retrieves a sequentially increasing list of transactions starting at the
-// provided nonce that is ready for processing. The returned transactions will be
-// removed from the list.
-//
-// Note, all transactions with nonces lower than start will also be returned to
-// prevent getting into and invalid state. This is not something that should ever
-// happen but better to be self correcting than failing!
-func (m *txSortedMap) Ready(start uint64) types.Transactions {
+// Ready pops a contiguous list of transactions with incremental nonces,
+// returning them for promotion from the queued list into the pending list.
+// Each candidate is passed through isExecutable; the run stops at the first
+// transaction that returns false.
+// Transactions with nonces below start are also popped to self-correct any
+// stale entries that should have been forwarded already.
+func (m *txSortedMap) Ready(
+	start uint64,
+	isExecutable func(*types.Transaction) bool,
+) types.Transactions {
 	// Short circuit if no transactions are available
 	if m.index.Len() == 0 || (*m.index)[0] > start {
 		return nil
@@ -212,7 +212,12 @@ func (m *txSortedMap) Ready(start uint64) types.Transactions {
 	// Otherwise start accumulating incremental transactions
 	var ready types.Transactions
 	for next := (*m.index)[0]; m.index.Len() > 0 && (*m.index)[0] == next; next++ {
-		ready = append(ready, m.items[next])
+		tx := m.items[next]
+		if !isExecutable(tx) {
+			break
+		}
+
+		ready = append(ready, tx)
 		delete(m.items, next)
 		heap.Pop(m.index)
 	}
@@ -349,10 +354,29 @@ func (l *txList) Forward(threshold uint64) types.Transactions {
 	return l.txs.Forward(threshold)
 }
 
-// Filter removes all transactions from the list with a cost or gas limit higher
-// than the provided thresholds. Every removed transaction is returned for any
-// post-removal maintenance. Strict-mode invalidated transactions are also
-// returned.
+// Filter removes all transactions from the list with certain conditions,
+// returning the removed transactions for any post-removal maintenance.
+// The removed transactions are classified into two categories: dropped and
+// invalid. A transaction is dropped if it cannot longer be executed, while
+// a transaction is invalid if it is temporarily non-executable due to a nonce
+// gap or pending bundle status.
+//
+// A transaction is dropped (permanently removed) when:
+//   - Its cost exceeds costLimit and it is not a sponsored or bundle tx.
+//   - Its gas exceeds gasLimit and it is not a sponsored or bundle tx.
+//   - It is a sponsorship request whose sponsorship is no longer active
+//     (isSponsored returns false).
+//   - It is a bundle envelope whose status is bundleRejected (e.g. already
+//     executed or structurally invalid).
+//
+// In strict mode (pending list), after drops are removed, any remaining
+// transactions that would create a nonce gap are invalidated and returned
+// separately so the caller can demote them back to the queued list.
+// Bundle envelopes with a nonce below the gap whose status is bundleQueued
+// (temporarily non-executable) are also invalidated, since they block the
+// nonce sequence.
+//
+// In non-strict mode (queued list), the second return value is always nil.
 //
 // This method uses the cached costcap and gascap to quickly decide if there's even
 // a point in calculating all the costs or if the balance covers all. If the threshold
@@ -362,21 +386,31 @@ func (l *txList) Filter(
 	costLimit *big.Int,
 	gasLimit uint64,
 	isSponsored utils.TransactionCheckFunc,
+	evaluateBundleStatus func(*types.Transaction) bundlePoolStatus,
 ) (types.Transactions, types.Transactions) {
+
 	hasSponsored := l.txs.containsFunc(subsidies.IsSponsorshipRequest)
+	hasBundles := l.txs.containsFunc(bundle.IsEnvelope)
 
 	// If all transactions are below the threshold, short circuit
-	if !hasSponsored && l.costcap.Cmp(costLimit) <= 0 && l.gascap <= gasLimit {
+	if !hasSponsored && !hasBundles && l.costcap.Cmp(costLimit) <= 0 && l.gascap <= gasLimit {
 		return nil, nil
 	}
 	l.costcap = new(big.Int).Set(costLimit) // Lower the caps to the thresholds
 	l.gascap = gasLimit
 
+	var containsNonExecutableBundles bool
+
 	// Filter out all the transactions above the account's funds
 	removed := l.txs.Filter(func(tx *types.Transaction) bool {
+		// Bundle transactions need to be checked before sponsored transactions
+		// since bundle envelopes may qualify as sponsored transactions.
 		if bundle.IsEnvelope(tx) {
-			// TODO: filter out permanently blocked bundles
-			return false
+			status := evaluateBundleStatus(tx)
+			if status != bundlePending {
+				containsNonExecutableBundles = true
+			}
+			return status == bundleRejected
 		}
 		if subsidies.IsSponsorshipRequest(tx) {
 			return !isSponsored(tx)
@@ -384,19 +418,37 @@ func (l *txList) Filter(
 		return tx.Gas() > gasLimit || tx.Cost().Cmp(costLimit) > 0
 	})
 
-	if len(removed) == 0 {
+	if len(removed) == 0 && !containsNonExecutableBundles {
 		return nil, nil
 	}
-	var invalids types.Transactions
+
 	// If the list was strict, filter anything above the lowest nonce
+	var invalids types.Transactions
 	if l.strict {
-		lowest := uint64(math.MaxUint64)
+		firstInvalidNonce := uint64(math.MaxUint64)
 		for _, tx := range removed {
-			if nonce := tx.Nonce(); lowest > nonce {
-				lowest = nonce
-			}
+			firstInvalidNonce = min(firstInvalidNonce, tx.Nonce())
 		}
-		invalids = l.txs.filter(func(tx *types.Transaction) bool { return tx.Nonce() > lowest })
+
+		// bundle envelopes with valid nonces but non-pending status are demoted
+		demotedEnvelopes := l.txs.filter(func(tx *types.Transaction) bool {
+			return bundle.IsEnvelope(tx) &&
+				tx.Nonce() < firstInvalidNonce &&
+				evaluateBundleStatus(tx) == bundleQueued
+		})
+		for _, tx := range demotedEnvelopes {
+			firstInvalidNonce = min(firstInvalidNonce, tx.Nonce())
+		}
+
+		// invalidate any transaction with nonce greater than any
+		// removed transaction
+		invalids = l.txs.filter(func(tx *types.Transaction) bool {
+			return tx.Nonce() > firstInvalidNonce
+		})
+
+		// invalids are to be demoted from pending to queued, and therefore
+		// are re-queued by the caller, who owns both tx lists.
+		invalids = append(demotedEnvelopes, invalids...)
 	}
 	l.txs.reheap()
 	return removed, invalids
@@ -424,15 +476,17 @@ func (l *txList) Remove(tx *types.Transaction) (bool, types.Transactions) {
 	return true, nil
 }
 
-// Ready retrieves a sequentially increasing list of transactions starting at the
-// provided nonce that is ready for processing. The returned transactions will be
-// removed from the list.
-//
-// Note, all transactions with nonces lower than start will also be returned to
-// prevent getting into and invalid state. This is not something that should ever
-// happen but better to be self correcting than failing!
-func (l *txList) Ready(start uint64) types.Transactions {
-	return l.txs.Ready(start)
+// Ready returns and removes a contiguous run of transactions starting at
+// start that are eligible for promotion, as determined by the isExecutable
+// callback. The run stops at the first transaction that fails the check,
+// leaving it and all higher-nonce transactions in the list for a future
+// pass. Transactions with nonces below start are also returned to
+// self-correct stale entries.
+func (l *txList) Ready(
+	start uint64,
+	isExecutable func(*types.Transaction) bool,
+) types.Transactions {
+	return l.txs.Ready(start, isExecutable)
 }
 
 // Len returns the length of the transaction list.
