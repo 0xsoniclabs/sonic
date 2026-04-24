@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/add"
 	"github.com/0xsoniclabs/sonic/tests/contracts/store"
@@ -178,7 +179,16 @@ func TestBundle_StressWithLargeBundleAndGroupNesting(t *testing.T) {
 	// Increase this number for profiling to increase load on the system.
 	const B = 1 // Number of bundles
 
-	net := GetIntegrationTestNetWithBundlesEnabled(t)
+	// With larger numbers of bundles, the cache size needs to be increased.
+	archiveCacheSize := 1 << 11
+
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades:         &upgrades,
+		ArchiveCacheSize: &archiveCacheSize,
+	})
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
