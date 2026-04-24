@@ -217,7 +217,7 @@ func TestTxList_Strict_Filter_WithBundleTransactions_InvalidatesGappedNonces_Aft
 		list.Add(tx, DefaultTxPoolConfig.PriceBump)
 	}
 
-	// Each bundle transaction should be checked.
+	// Bundle transactions are to be demoted.
 	checker := func(tx *types.Transaction) bundlePoolStatus {
 		return bundleQueued
 	}
