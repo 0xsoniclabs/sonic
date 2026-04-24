@@ -1952,43 +1952,65 @@ func TestValidateTx_Success(t *testing.T) {
 }
 
 func Test_ValidateBundle_GetBundleStateAdaptor(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	reader := NewMockStateReader(ctrl)
+	hash := common.HexToHash("0x1234")
+	number := uint64(100)
 
-	adaptor := getBundleStateAdaptor{StateReader: reader}
-
-	t.Run("current rules forwards call", func(t *testing.T) {
-		reader.EXPECT().CurrentRules()
-		adaptor.GetCurrentNetworkRules()
-	})
-
-	t.Run("current config forwards call", func(t *testing.T) {
-		reader.EXPECT().CurrentConfig()
-		adaptor.GetEvmChainConfig(1)
-	})
-
-	t.Run("current block forwards call", func(t *testing.T) {
-		reader.EXPECT().CurrentBlock()
-		adaptor.GetLatestHeader()
-	})
-
-	t.Run("block by hash and number forwards call", func(t *testing.T) {
-		hash := common.HexToHash("0x1234")
-		number := uint64(100)
-		reader.EXPECT().Block(hash, number).Return(&EvmBlock{
-			EvmHeader: EvmHeader{
-				Number: big.NewInt(int64(number)),
+	tests := map[string]struct {
+		setup  func(reader *MockStateReader)
+		action func(adaptor *getBundleStateAdaptor)
+		check  func(t *testing.T)
+	}{
+		"current rules forwards call": {
+			setup: func(reader *MockStateReader) { reader.EXPECT().CurrentRules() },
+			action: func(adaptor *getBundleStateAdaptor) {
+				adaptor.GetCurrentNetworkRules()
 			},
-		})
-		header := adaptor.Header(hash, number)
-		require.EqualValues(t, header.Number.Uint64(), number)
-	})
+		},
+		"current config forwards call": {
+			setup: func(reader *MockStateReader) { reader.EXPECT().CurrentConfig() },
+			action: func(adaptor *getBundleStateAdaptor) {
+				adaptor.GetEvmChainConfig(1)
+			},
+		},
+		"current block forwards call": {
+			setup: func(reader *MockStateReader) { reader.EXPECT().CurrentBlock() },
+			action: func(adaptor *getBundleStateAdaptor) {
+				adaptor.GetLatestHeader()
+			},
+		},
+		"block by hash and number forwards call": {
+			setup: func(reader *MockStateReader) {
+				reader.EXPECT().Block(hash, number).Return(&EvmBlock{
+					EvmHeader: EvmHeader{
+						Number: big.NewInt(int64(number)),
+					},
+				})
+			},
+			action: func(adaptor *getBundleStateAdaptor) {
+				header := adaptor.Header(hash, number)
+				require.EqualValues(t, header.Number.Uint64(), number)
+			},
+		},
+		"missing block returns nil": {
+			setup: func(reader *MockStateReader) {
+				reader.EXPECT().Block(gomock.Any(), gomock.Any()).Return(nil)
+			},
+			action: func(adaptor *getBundleStateAdaptor) {
+				header := adaptor.Header(common.Hash{}, 1)
+				require.Nil(t, header)
+			},
+		},
+	}
 
-	t.Run("missing block returns nil", func(t *testing.T) {
-		reader.EXPECT().Block(gomock.Any(), gomock.Any()).Return(nil)
-		heder := adaptor.Header(common.Hash{}, 1)
-		require.Nil(t, heder)
-	})
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			reader := NewMockStateReader(ctrl)
+			adaptor := &getBundleStateAdaptor{StateReader: reader}
+			tt.setup(reader)
+			tt.action(adaptor)
+		})
+	}
 }
 
 // =============================================================================
