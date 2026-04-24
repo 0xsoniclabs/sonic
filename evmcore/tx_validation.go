@@ -28,6 +28,8 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -397,6 +399,18 @@ func validateBundleTransactions(
 	stateDb state.StateDB,
 	signer types.Signer,
 ) error {
+	return validateBundleTransactionsInternal(tx, netRules, chainState, stateDb, signer, GetBundleState)
+}
+
+func validateBundleTransactionsInternal(
+	tx *types.Transaction,
+	netRules NetworkRules,
+	chainState StateReader,
+	stateDb state.StateDB,
+	signer types.Signer,
+	getBundleState func(ChainStateForBundleEval, state.StateDB, *types.Transaction) BundleState,
+) error {
+
 	// This check only covers bundle transactions, ignore the rest.
 	if !bundle.IsEnvelope(tx) {
 		return nil
@@ -423,10 +437,42 @@ func validateBundleTransactions(
 		return ErrBundleAlreadyProcessed
 	}
 
-	// Check that the bundle is runnable.
-	// TODO: this requires integration of `GetBundleState`
-	_ = stateDb
-	_ = chainState
+	// Check that the bundle is executable.
+	state := getBundleState(getBundleStateAdaptor{chainState}, stateDb, tx)
+	if !state.Executable && !state.TemporarilyBlocked {
+		err := ErrBundleNonExecutable
+		for _, reason := range state.Reasons {
+			err = errors.Join(err, errors.New(reason))
+		}
+		return err
+	}
 
 	return nil
+}
+
+// getBundleState is a helper tool to get the state of a bundle transaction
+type getBundleStateAdaptor struct {
+	StateReader
+}
+
+func (f getBundleStateAdaptor) GetCurrentNetworkRules() opera.Rules {
+	return f.CurrentRules()
+}
+
+func (f getBundleStateAdaptor) GetEvmChainConfig(idx.Block) *params.ChainConfig {
+	// FIXME: replace bundles trial-run usage of GetEvmChainConfig by a version returning
+	// current chain config directly
+	return f.CurrentConfig()
+}
+
+func (f getBundleStateAdaptor) GetLatestHeader() *EvmHeader {
+	return f.CurrentBlock().Header()
+}
+
+func (f getBundleStateAdaptor) Header(hash common.Hash, number uint64) *EvmHeader {
+	block := f.Block(hash, number)
+	if block == nil {
+		return nil
+	}
+	return block.Header()
 }
