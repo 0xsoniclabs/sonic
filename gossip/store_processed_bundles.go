@@ -139,7 +139,7 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) {
 
 	highestOutdatedBlockNumber := blockNum - bundle.MaxBlockRange + 1
 
-	// Prune bundle-index entries and all associated keys ('i', 'e', 'h').
+	// Prune bundle-index and entries keys ('i', 'e').
 	// key layout for 'i': 1 byte prefix + 8 bytes blockNum + 32 bytes execPlanHash
 	it := s.table.ProcessedBundles.NewIterator([]byte{'i'}, nil)
 	defer it.Release()
@@ -162,8 +162,7 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) {
 		}
 	}
 
-	// Also prune per-block history-hash entries for blocks that had no bundles
-	// (those blocks have an 'h' key but no 'i' key, so the loop above misses them).
+	// Prune blocks history hash entries.
 	// key layout for 'h': 1 byte prefix + 8 bytes blockNum
 	it2 := s.table.ProcessedBundles.NewIterator([]byte{'h'}, nil)
 	defer it2.Release()
