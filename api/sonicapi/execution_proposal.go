@@ -74,7 +74,7 @@ import (
 //	  ]
 //	}
 type RPCExecutionProposal struct {
-	BlockRange RPCRange `json:"blockRange"`
+	BlockRange *RPCRange `json:"blockRange,omitempty"`
 	RPCExecutionPlanGroup
 }
 
@@ -99,7 +99,7 @@ func createProposalRequestFromBundle(signer types.Signer, txBundle *bundle.Trans
 	}
 
 	proposal := &RPCExecutionProposal{
-		BlockRange: RPCRange{
+		BlockRange: &RPCRange{
 			Earliest: hexutil.Uint64(plan.Range.Earliest),
 			Latest:   hexutil.Uint64(plan.Range.Latest),
 		},
@@ -217,6 +217,159 @@ func convertToTransactionArgs(signer types.Signer, tx *types.Transaction) (ethap
 	}
 
 	return res, nil
+}
+
+func convertProposalToPlan(signer types.Signer, proposal RPCExecutionProposal) (bundle.ExecutionPlan, error) {
+
+	root, err := convertProposalToPlanInternal(signer, &proposal.RPCExecutionPlanGroup)
+	if err != nil {
+		return bundle.ExecutionPlan{}, err
+	}
+
+	if proposal.BlockRange == nil {
+		return bundle.ExecutionPlan{}, fmt.Errorf("execution proposal must include block range")
+	}
+
+	return bundle.ExecutionPlan{
+		Range: proposal.BlockRange.toBundleBlockRange(),
+		Root:  root,
+	}, nil
+}
+
+func convertProposalToPlanInternal(signer types.Signer, proposalStep any) (bundle.ExecutionStep, error) {
+	empty := bundle.ExecutionStep{}
+
+	switch step := proposalStep.(type) {
+	case RPCExecutionPlanGroup:
+		return convertProposalToPlanInternal(signer, &step)
+
+	case RPCExecutionStepProposal:
+		if step.From == nil {
+			return empty, fmt.Errorf("transaction in bundle must include from")
+		}
+
+		tx := step.ToTransaction()
+		hash := signer.Hash(tx)
+
+		return bundle.NewTxStep(bundle.TxReference{
+			From: *step.From,
+			Hash: hash,
+		}).WithFlags(func() bundle.ExecutionFlags {
+			flags := bundle.EF_Default
+			if step.TolerateFailed {
+				flags |= bundle.EF_TolerateFailed
+			}
+			if step.TolerateInvalid {
+				flags |= bundle.EF_TolerateInvalid
+			}
+			return flags
+		}()), nil
+
+	case *RPCExecutionPlanGroup:
+
+		if len(step.Steps) == 0 {
+			return empty, fmt.Errorf("proposed group must include at least one step")
+		}
+
+		// A plain single-child group with no flags is a transparent wrapper;
+		// return the child's plan directly rather than wrapping it in another group.
+		if !step.OneOf && !step.TolerateFailures && len(step.Steps) == 1 {
+			switch step.Steps[0].(type) {
+			case RPCExecutionPlanGroup, *RPCExecutionPlanGroup:
+				return convertProposalToPlanInternal(signer, step.Steps[0])
+			}
+		}
+
+		steps := make([]bundle.ExecutionStep, len(step.Steps))
+		for i, stepLevel := range step.Steps {
+			childStep, err := convertProposalToPlanInternal(signer, stepLevel)
+			if err != nil {
+				return empty, fmt.Errorf("invalid execution plan level: %w", err)
+			}
+			steps[i] = childStep
+		}
+
+		return bundle.NewGroupStep(
+			step.OneOf,
+			steps...,
+		), nil
+	}
+
+	return empty, fmt.Errorf("invalid execution proposal level: must have either executionStep or group")
+}
+
+func transform(
+	proposal RPCExecutionProposal,
+	fn func(step RPCExecutionStepProposal) (RPCExecutionStepProposal, error),
+) (RPCExecutionProposal, error) {
+	if proposal.Steps == nil {
+		return proposal, nil
+	}
+
+	resultSteps := make([]any, 0, len(proposal.Steps))
+	for _, step := range proposal.Steps {
+		switch step := step.(type) {
+		case RPCExecutionStepProposal:
+			step, err := fn(step)
+			if err != nil {
+				return proposal, err
+			}
+			resultSteps = append(resultSteps, step)
+
+		case RPCExecutionPlanGroup:
+			result, err := transform(RPCExecutionProposal{
+				BlockRange:            proposal.BlockRange,
+				RPCExecutionPlanGroup: step,
+			}, fn)
+			if err != nil {
+				return result, err
+			}
+			resultSteps = append(resultSteps, result.RPCExecutionPlanGroup)
+
+		default:
+			return RPCExecutionProposal{}, fmt.Errorf("invalid execution plan level: must have either executionStep or group")
+		}
+	}
+	return RPCExecutionProposal{
+		BlockRange: proposal.BlockRange,
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			OneOf:            proposal.OneOf,
+			TolerateFailures: proposal.TolerateFailures,
+			Steps:            resultSteps,
+		},
+	}, nil
+}
+
+func traverse(
+	proposal RPCExecutionProposal,
+	fn func(step RPCExecutionStepProposal) error,
+) error {
+	if proposal.Steps == nil {
+		return nil
+	}
+
+	for _, step := range proposal.Steps {
+		switch step := step.(type) {
+		case RPCExecutionStepProposal:
+			err := fn(step)
+			if err != nil {
+				return err
+			}
+
+		case RPCExecutionPlanGroup:
+			err := traverse(RPCExecutionProposal{
+				BlockRange:            proposal.BlockRange,
+				RPCExecutionPlanGroup: step,
+			}, fn)
+			if err != nil {
+				return err
+			}
+
+		default:
+			return fmt.Errorf("invalid execution plan level: must have either executionStep or group")
+		}
+	}
+	return nil
 }
 
 func toPtr[T any](v T) *T {

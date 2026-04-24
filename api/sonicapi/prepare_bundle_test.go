@@ -17,7 +17,6 @@
 package sonicapi
 
 import (
-	"encoding/json"
 	"math/big"
 	"testing"
 
@@ -26,24 +25,35 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 )
 
 // txEntry is a test helper that wraps a TransactionArgs as a leaf PrepareBundleEntry.
-func txEntry(tx ethapi.TransactionArgs) PrepareBundleEntry {
-	return PrepareBundleEntry{Tx: &PrepareBundleTxStep{Transaction: tx}}
+func txEntry(tx ethapi.TransactionArgs) RPCExecutionStepProposal {
+	return txEntryWithFlags(tx, false, false)
 }
 
 // txEntryWithFlags wraps a TransactionArgs as a leaf step with execution flags.
-func txEntryWithFlags(tx ethapi.TransactionArgs, tolerateFailed, tolerateInvalid bool) PrepareBundleEntry {
-	return PrepareBundleEntry{Tx: &PrepareBundleTxStep{
-		Transaction:     tx,
+func txEntryWithFlags(tx ethapi.TransactionArgs, tolerateFailed, tolerateInvalid bool) RPCExecutionStepProposal {
+	return RPCExecutionStepProposal{
 		TolerateFailed:  tolerateFailed,
 		TolerateInvalid: tolerateInvalid,
-	}}
+		TransactionArgs: tx,
+	}
+}
+
+func groupEntry(steps ...any) RPCExecutionPlanGroup {
+	return groupEntryWithFlags(false, false, steps...)
+}
+
+func groupEntryWithFlags(oneOf, tolerateFailures bool, steps ...any) RPCExecutionPlanGroup {
+	return RPCExecutionPlanGroup{
+		OneOf:            oneOf,
+		TolerateFailures: tolerateFailures,
+		Steps:            steps,
+	}
 }
 
 func Test_fillTransactionDefaults(t *testing.T) {
@@ -56,119 +66,95 @@ func Test_fillTransactionDefaults(t *testing.T) {
 	explicit := hexutil.Uint64(50000)
 
 	tests := []struct {
-		name      string
-		txs       []ethapi.TransactionArgs
-		gasLimits []hexutil.Uint64
-		gasPrice  *hexutil.Big
-		check     func(t *testing.T, txs []ethapi.TransactionArgs)
+		name     string
+		txs      ethapi.TransactionArgs
+		gasLimit *hexutil.Uint64
+		gasPrice *hexutil.Big
+		check    func(t *testing.T, txs ethapi.TransactionArgs)
 	}{
 		{
-			name:      "nil gas limits fixed gas price",
-			txs:       []ethapi.TransactionArgs{{From: &addr}},
-			gasLimits: nil,
-			gasPrice:  gasPrice,
-			check: func(t *testing.T, txs []ethapi.TransactionArgs) {
-				require.Nil(t, txs[0].Gas, "gas must remain nil when no limits provided")
-				require.Equal(t, gasPrice, txs[0].GasPrice)
+			name:     "nil gas limits fixed gas price",
+			txs:      ethapi.TransactionArgs{From: &addr},
+			gasLimit: nil,
+			gasPrice: gasPrice,
+			check: func(t *testing.T, txs ethapi.TransactionArgs) {
+				require.Nil(t, txs.Gas, "gas must remain nil when no limits provided")
+				require.Equal(t, gasPrice, txs.GasPrice)
 			},
 		},
 		{
-			name:      "gas limits provided fills gas",
-			txs:       []ethapi.TransactionArgs{{From: &addr}},
-			gasLimits: []hexutil.Uint64{21000},
-			gasPrice:  rpctest.ToHexBigInt(big.NewInt(1)),
-			check: func(t *testing.T, txs []ethapi.TransactionArgs) {
-				require.NotNil(t, txs[0].Gas)
-				require.EqualValues(t, 21000, *txs[0].Gas)
+			name:     "gas limits provided fills gas",
+			txs:      ethapi.TransactionArgs{From: &addr},
+			gasLimit: rpctest.ToHexUint64(21000),
+			gasPrice: rpctest.ToHexBigInt(big.NewInt(1)),
+			check: func(t *testing.T, txs ethapi.TransactionArgs) {
+				require.NotNil(t, txs.Gas)
+				require.EqualValues(t, 21000, *txs.Gas)
 			},
 		},
 		{
-			name:      "gas limits provided preserves explicit gas",
-			txs:       []ethapi.TransactionArgs{{From: &addr, Gas: &explicit}},
-			gasLimits: []hexutil.Uint64{21000},
-			gasPrice:  rpctest.ToHexBigInt(big.NewInt(1)),
-			check: func(t *testing.T, txs []ethapi.TransactionArgs) {
-				require.EqualValues(t, 50000, *txs[0].Gas, "explicit gas must not be overwritten")
+			name:     "gas limits provided preserves explicit gas",
+			txs:      ethapi.TransactionArgs{From: &addr, Gas: &explicit},
+			gasLimit: rpctest.ToHexUint64(21000),
+			gasPrice: rpctest.ToHexBigInt(big.NewInt(1)),
+			check: func(t *testing.T, txs ethapi.TransactionArgs) {
+				require.EqualValues(t, 50000, *txs.Gas, "explicit gas must not be overwritten")
 			},
 		},
 		{
-			name:      "existing gas price not overwritten",
-			txs:       []ethapi.TransactionArgs{{From: &addr, GasPrice: existingGasPrice}},
-			gasLimits: nil,
-			gasPrice:  rpctest.ToHexBigInt(big.NewInt(1e9)),
-			check: func(t *testing.T, txs []ethapi.TransactionArgs) {
-				require.Equal(t, existingGasPrice, txs[0].GasPrice, "existing GasPrice must not be overwritten")
+			name:     "existing gas price not overwritten",
+			txs:      ethapi.TransactionArgs{From: &addr, GasPrice: existingGasPrice},
+			gasLimit: nil,
+			gasPrice: rpctest.ToHexBigInt(big.NewInt(1e9)),
+			check: func(t *testing.T, txs ethapi.TransactionArgs) {
+				require.Equal(t, existingGasPrice, txs.GasPrice, "existing GasPrice must not be overwritten")
 			},
 		},
 		{
 			name:     "existing MaxFeePerGas not overwritten",
-			txs:      []ethapi.TransactionArgs{{From: &addr, MaxFeePerGas: existingMaxFee}},
+			txs:      ethapi.TransactionArgs{From: &addr, MaxFeePerGas: existingMaxFee},
+			gasLimit: nil,
 			gasPrice: rpctest.ToHexBigInt(big.NewInt(1e9)),
-			check: func(t *testing.T, txs []ethapi.TransactionArgs) {
-				require.Equal(t, existingMaxFee, txs[0].MaxFeePerGas, "existing MaxFeePerGas must not be overwritten")
-				require.Nil(t, txs[0].GasPrice)
+			check: func(t *testing.T, txs ethapi.TransactionArgs) {
+				require.Equal(t, existingMaxFee, txs.MaxFeePerGas, "existing MaxFeePerGas must not be overwritten")
+				require.Nil(t, txs.GasPrice)
 			},
 		},
 		{
 			name:     "MaxPriorityFeePerGas set causes MaxFeePerGas to be filled",
-			txs:      []ethapi.TransactionArgs{{From: &addr, MaxPriorityFeePerGas: tip}},
+			txs:      ethapi.TransactionArgs{From: &addr, MaxPriorityFeePerGas: tip},
 			gasPrice: gasPrice,
-			check: func(t *testing.T, txs []ethapi.TransactionArgs) {
-				require.Equal(t, gasPrice, txs[0].MaxFeePerGas)
-				require.Nil(t, txs[0].GasPrice)
+			check: func(t *testing.T, txs ethapi.TransactionArgs) {
+				require.Equal(t, gasPrice, txs.MaxFeePerGas)
+				require.Nil(t, txs.GasPrice)
 			},
 		},
 		{
 			name:     "MaxPriorityFeePerGas with existing MaxFeePerGas skips price fill",
-			txs:      []ethapi.TransactionArgs{{From: &addr, MaxPriorityFeePerGas: tip, MaxFeePerGas: existingMaxFee}},
+			txs:      ethapi.TransactionArgs{From: &addr, MaxPriorityFeePerGas: tip, MaxFeePerGas: existingMaxFee},
 			gasPrice: gasPrice,
-			check: func(t *testing.T, txs []ethapi.TransactionArgs) {
-				require.Equal(t, existingMaxFee, txs[0].MaxFeePerGas, "existing MaxFeePerGas must not be overwritten")
-				require.Nil(t, txs[0].GasPrice)
-			},
-		},
-		{
-			name:      "multiple txs each filled with correct limit and price",
-			txs:       []ethapi.TransactionArgs{{From: &addr}, {From: &addr}, {From: &addr}},
-			gasLimits: []hexutil.Uint64{21000, 42000, 63000},
-			gasPrice:  gasPrice,
-			check: func(t *testing.T, txs []ethapi.TransactionArgs) {
-				for i, expected := range []uint64{21000, 42000, 63000} {
-					require.NotNil(t, txs[i].Gas)
-					require.EqualValues(t, expected, *txs[i].Gas)
-					require.Equal(t, gasPrice, txs[i].GasPrice)
-				}
-			},
-		},
-		{
-			name:      "fewer limits than txs only fills available",
-			txs:       []ethapi.TransactionArgs{{From: &addr}, {From: &addr}},
-			gasLimits: []hexutil.Uint64{21000},
-			gasPrice:  rpctest.ToHexBigInt(big.NewInt(1)),
-			check: func(t *testing.T, txs []ethapi.TransactionArgs) {
-				require.NotNil(t, txs[0].Gas)
-				require.EqualValues(t, 21000, *txs[0].Gas)
-				require.Nil(t, txs[1].Gas, "tx without a corresponding limit must remain nil")
+			check: func(t *testing.T, txs ethapi.TransactionArgs) {
+				require.Equal(t, existingMaxFee, txs.MaxFeePerGas, "existing MaxFeePerGas must not be overwritten")
+				require.Nil(t, txs.GasPrice)
 			},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			fillTransactionDefaults(tc.txs, tc.gasLimits, tc.gasPrice)
-			tc.check(t, tc.txs)
+			filledArgs := fillTransactionDefaults(tc.txs, tc.gasLimit, tc.gasPrice)
+			tc.check(t, filledArgs)
 		})
 	}
 }
 
 func Test_resolveBlockRange(t *testing.T) {
-	hexN := func(n uint64) *hexutil.Uint64 { b := hexutil.Uint64(n); return &b }
+	hexN := func(n uint64) hexutil.Uint64 { b := hexutil.Uint64(n); return b }
 
 	tests := []struct {
 		name          string
 		currentBlock  uint64
-		earliest      *hexutil.Uint64
-		latest        *hexutil.Uint64
+		blockRange    *RPCRange
 		wantEarliest  uint64
 		wantLatest    uint64
 		errorContains string
@@ -180,30 +166,28 @@ func Test_resolveBlockRange(t *testing.T) {
 			wantLatest:   10 + bundle.MaxBlockRange,
 		},
 		{
-			name:         "explicit earliest",
-			currentBlock: 10,
-			earliest:     hexN(50),
-			wantEarliest: 50,
-			wantLatest:   50 + bundle.MaxBlockRange - 1,
+			name:          "only earliest",
+			currentBlock:  10,
+			blockRange:    &RPCRange{Earliest: hexN(50)},
+			errorContains: "invalid block range",
 		},
 		{
 			name:         "explicit latest",
 			currentBlock: 10,
-			latest:       hexN(200),
-			wantEarliest: 11,
+			blockRange:   &RPCRange{Latest: hexN(200)},
+			wantEarliest: 0,
 			wantLatest:   200,
 		},
 		{
 			name:          "range exceeds MaxBlockRange when only latest set",
 			currentBlock:  10,
-			latest:        hexN(10 + bundle.MaxBlockRange + 100),
+			blockRange:    &RPCRange{Latest: hexN(10 + bundle.MaxBlockRange + 100)},
 			errorContains: "invalid block range",
 		},
 		{
 			name:         "both explicit",
-			currentBlock: 100,
-			earliest:     hexN(5),
-			latest:       hexN(20),
+			currentBlock: 10,
+			blockRange:   &RPCRange{Earliest: hexN(5), Latest: hexN(20)},
 			wantEarliest: 5,
 			wantLatest:   20,
 		},
@@ -216,28 +200,26 @@ func Test_resolveBlockRange(t *testing.T) {
 		{
 			name:          "latest is less than earliest",
 			currentBlock:  100,
-			earliest:      hexN(50),
-			latest:        hexN(40),
+			blockRange:    &RPCRange{Earliest: hexN(50), Latest: hexN(40)},
 			errorContains: "invalid block range",
 		},
 		{
 			name:          "latest before implicit earliest from current block",
 			currentBlock:  10,
-			latest:        hexN(5),
+			blockRange:    &RPCRange{Latest: hexN(5)},
 			errorContains: "invalid block range",
 		},
 		{
 			name:          "greater than Max block range",
 			currentBlock:  100,
-			earliest:      hexN(50),
-			latest:        hexN(50 + bundle.MaxBlockRange + 1),
+			blockRange:    &RPCRange{Earliest: hexN(50), Latest: hexN(50 + bundle.MaxBlockRange + 1)},
 			errorContains: "invalid block range",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			r, err := resolveBlockRange(tc.currentBlock, tc.earliest, tc.latest)
+			r, err := validateBlockRange(tc.currentBlock, tc.blockRange)
 			if tc.errorContains != "" {
 				require.ErrorContains(t, err, tc.errorContains)
 			} else {
@@ -317,165 +299,6 @@ func Test_injectPlanHashIntoAccessLists(t *testing.T) {
 	}
 }
 
-func Test_asTransaction_UnsupportedTypes_ReturnsError(t *testing.T) {
-	tests := []struct {
-		name    string
-		msg     *core.Message
-		wantErr string
-	}{
-		{
-			name:    "blob hashes",
-			msg:     &core.Message{BlobHashes: []common.Hash{{0x01}}},
-			wantErr: "blob transactions are not supported",
-		},
-		{
-			name:    "blob gas fee cap",
-			msg:     &core.Message{BlobGasFeeCap: big.NewInt(1)},
-			wantErr: "blob transactions are not supported",
-		},
-		{
-			name:    "set code authorizations",
-			msg:     &core.Message{SetCodeAuthorizations: []types.SetCodeAuthorization{{}}},
-			wantErr: "transactions with set code authorization are not supported",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := asTransaction(ethapi.TransactionArgs{}, tc.msg)
-			require.ErrorContains(t, err, tc.wantErr)
-		})
-	}
-}
-
-func Test_asTransaction_TxType(t *testing.T) {
-	to := common.Address{2}
-	maxFee := rpctest.ToHexBigInt(big.NewInt(1e9))
-	gasPrice := rpctest.ToHexBigInt(big.NewInt(1e9))
-
-	tests := []struct {
-		name     string
-		args     ethapi.TransactionArgs
-		msg      *core.Message
-		wantType int
-	}{
-		{
-			name: "MaxFeePerGas set returns dynamic fee tx",
-			args: ethapi.TransactionArgs{MaxFeePerGas: maxFee},
-			msg: &core.Message{
-				To:        &to,
-				GasLimit:  params.TxGas,
-				GasFeeCap: big.NewInt(1e9),
-				GasTipCap: big.NewInt(1e6),
-				Value:     big.NewInt(0),
-			},
-			wantType: types.DynamicFeeTxType,
-		},
-		{
-			// ToMessage normalizes legacy txs: GasFeeCap = GasTipCap = GasPrice.
-			// asTransaction must still produce AccessListTx based on args, not message fields.
-			name: "GasPrice only returns access list tx even when ToMessage sets GasFeeCap",
-			args: ethapi.TransactionArgs{GasPrice: gasPrice},
-			msg: &core.Message{
-				To:        &to,
-				GasPrice:  big.NewInt(1e9),
-				GasFeeCap: big.NewInt(1e9),
-				GasTipCap: big.NewInt(1e9),
-				GasLimit:  params.TxGas,
-				Value:     big.NewInt(0),
-			},
-			wantType: types.AccessListTxType,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			tx, err := asTransaction(tc.args, tc.msg)
-			require.NoError(t, err)
-			require.Equal(t, tc.wantType, int(tx.Type()))
-		})
-	}
-}
-
-func Test_asTransaction_PreservesFields(t *testing.T) {
-	to := common.Address{0xde}
-	accessList := types.AccessList{{Address: common.Address{0xaa}}}
-	args := ethapi.TransactionArgs{MaxFeePerGas: rpctest.ToHexBigInt(big.NewInt(2e9))}
-	msg := &core.Message{
-		To:         &to,
-		Nonce:      7,
-		GasLimit:   100_000,
-		GasFeeCap:  big.NewInt(2e9),
-		GasTipCap:  big.NewInt(1e6),
-		Value:      big.NewInt(42),
-		Data:       []byte{0x01, 0x02},
-		AccessList: accessList,
-	}
-	tx, err := asTransaction(args, msg)
-	require.NoError(t, err)
-	require.Equal(t, to, *tx.To())
-	require.EqualValues(t, 7, tx.Nonce())
-	require.EqualValues(t, 100_000, tx.Gas())
-	require.Equal(t, big.NewInt(42), tx.Value())
-	require.Equal(t, []byte{0x01, 0x02}, tx.Data())
-}
-
-func Test_PrepareBundleEntry_UnmarshalJSON(t *testing.T) {
-	tests := []struct {
-		name          string
-		json          string
-		wantTx        bool
-		wantGroup     bool
-		errorContains string
-	}{
-		{
-			name:   "transaction field to leaf",
-			json:   `{"transaction":{"from":"0x0100000000000000000000000000000000000000"}}`,
-			wantTx: true,
-		},
-		{
-			name:      "entries field to group",
-			json:      `{"entries":[]}`,
-			wantGroup: true,
-		},
-		{
-			name:          "both fields to error",
-			json:          `{"transaction":{},"entries":[]}`,
-			errorContains: "not both",
-		},
-		{
-			name:          "neither field to error",
-			json:          `{"tolerateFailed":true}`,
-			errorContains: "must have either 'transaction' or 'entries'",
-		},
-		{
-			name:          "invalid JSON to error",
-			json:          `not-json`,
-			errorContains: "invalid character",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			var step PrepareBundleEntry
-			err := json.Unmarshal([]byte(tc.json), &step)
-			if tc.errorContains != "" {
-				require.ErrorContains(t, err, tc.errorContains)
-				return
-			}
-			require.NoError(t, err)
-			if tc.wantTx {
-				require.NotNil(t, step.Tx)
-				require.Nil(t, step.Group)
-			}
-			if tc.wantGroup {
-				require.NotNil(t, step.Group)
-				require.Nil(t, step.Tx)
-			}
-		})
-	}
-}
-
 func Test_PrepareBundle_SingleTx_GasAndPriceEstimated(t *testing.T) {
 	addr1 := common.Address{1}
 	addr2 := common.Address{2}
@@ -486,9 +309,9 @@ func Test_PrepareBundle_SingleTx_GasAndPriceEstimated(t *testing.T) {
 
 	api := NewPublicBundleAPI(be)
 
-	args := PrepareBundleArgs{
-		PrepareBundleGroup: PrepareBundleGroup{
-			Entries: []PrepareBundleEntry{
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
 				txEntry(ethapi.TransactionArgs{
 					From:  &addr1,
 					To:    &addr2,
@@ -520,9 +343,9 @@ func Test_PrepareBundle_AccessListContainsConsistentPlanHash(t *testing.T) {
 
 	api := NewPublicBundleAPI(be)
 
-	args := PrepareBundleArgs{
-		PrepareBundleGroup: PrepareBundleGroup{
-			Entries: []PrepareBundleEntry{
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
 				txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
 				txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
 			},
@@ -560,9 +383,9 @@ func Test_PrepareBundle_ExplicitGasLimit_NotOverwritten(t *testing.T) {
 
 	api := NewPublicBundleAPI(be)
 
-	args := PrepareBundleArgs{
-		PrepareBundleGroup: PrepareBundleGroup{
-			Entries: []PrepareBundleEntry{
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
 				txEntry(ethapi.TransactionArgs{
 					From:  &addr1,
 					To:    &addr2,
@@ -590,9 +413,9 @@ func Test_PrepareBundle_DefaultBlockRange_IsCurrentBlockPlusOne(t *testing.T) {
 
 	currentBlock := be.CurrentBlock().NumberU64()
 
-	args := PrepareBundleArgs{
-		PrepareBundleGroup: PrepareBundleGroup{
-			Entries: []PrepareBundleEntry{
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
 				txEntry(ethapi.TransactionArgs{
 					From:  &addr1,
 					To:    &addr2,
@@ -621,9 +444,9 @@ func Test_PrepareBundle_ExplicitBlockRange_IsRespected(t *testing.T) {
 
 	api := NewPublicBundleAPI(be)
 
-	args := PrepareBundleArgs{
-		PrepareBundleGroup: PrepareBundleGroup{
-			Entries: []PrepareBundleEntry{
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
 				txEntry(ethapi.TransactionArgs{
 					From:  &addr1,
 					To:    &addr2,
@@ -631,8 +454,10 @@ func Test_PrepareBundle_ExplicitBlockRange_IsRespected(t *testing.T) {
 				}),
 			},
 		},
-		EarliestBlock: &earliest,
-		LatestBlock:   &latest,
+		BlockRange: &RPCRange{
+			Earliest: earliest,
+			Latest:   latest,
+		},
 	}
 
 	result, err := api.PrepareBundle(t.Context(), args)
@@ -652,9 +477,9 @@ func Test_PrepareBundle_MissingNonce_ReturnsError(t *testing.T) {
 
 	api := NewPublicBundleAPI(be)
 
-	args := PrepareBundleArgs{
-		PrepareBundleGroup: PrepareBundleGroup{
-			Entries: []PrepareBundleEntry{
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
 				txEntry(ethapi.TransactionArgs{
 					From: &addr1,
 					To:   &addr2,
@@ -678,9 +503,9 @@ func Test_PrepareBundle_MultipleTxs_AllOfPlan(t *testing.T) {
 
 	api := NewPublicBundleAPI(be)
 
-	args := PrepareBundleArgs{
-		PrepareBundleGroup: PrepareBundleGroup{
-			Entries: []PrepareBundleEntry{
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
 				txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
 				txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
 			},
@@ -715,11 +540,14 @@ func Test_PrepareBundle_EmptyTransactions_ReturnsEmptyBundle(t *testing.T) {
 	be := rpctest.NewBackendBuilder(t).Build()
 	api := NewPublicBundleAPI(be)
 
-	args := PrepareBundleArgs{PrepareBundleGroup: PrepareBundleGroup{Entries: []PrepareBundleEntry{}}}
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{},
+		},
+	}
 	result, err := api.PrepareBundle(t.Context(), args)
-	require.NoError(t, err)
-	require.Empty(t, result.Transactions)
-	require.Empty(t, result.ExecutionPlan.Steps)
+	require.ErrorContains(t, err, "proposed group must include at least one step")
+	require.Nil(t, result)
 }
 
 func Test_PrepareBundle_OneOfGroup_BuildsOneOfPlan(t *testing.T) {
@@ -733,16 +561,12 @@ func Test_PrepareBundle_OneOfGroup_BuildsOneOfPlan(t *testing.T) {
 
 	api := NewPublicBundleAPI(be)
 
-	args := PrepareBundleArgs{
-		PrepareBundleGroup: PrepareBundleGroup{
-			Entries: []PrepareBundleEntry{
-				{Group: &PrepareBundleGroup{
-					OneOf: true,
-					Entries: []PrepareBundleEntry{
-						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
-						txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
-					},
-				}},
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			OneOf: true,
+			Steps: []any{
+				txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+				txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
 			},
 		},
 	}
@@ -769,41 +593,14 @@ func Test_PrepareBundle_TolerateFailed_Flag(t *testing.T) {
 
 	api := NewPublicBundleAPI(be)
 
-	args := PrepareBundleArgs{
-		PrepareBundleGroup: PrepareBundleGroup{
-			Entries: []PrepareBundleEntry{
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
 				txEntryWithFlags(ethapi.TransactionArgs{
 					From:  &addr1,
 					To:    &addr2,
 					Nonce: rpctest.ToHexUint64(0),
 				}, true, false),
-			},
-		},
-	}
-
-	result, err := api.PrepareBundle(t.Context(), args)
-	require.NoError(t, err)
-	require.Len(t, result.ExecutionPlan.Steps, 1)
-
-	leaf, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionStepComposable)
-	require.True(t, ok, "expected leaf step")
-	require.True(t, leaf.TolerateFailed, "TolerateFailed must be set")
-	require.False(t, leaf.TolerateInvalid)
-}
-
-func Test_PrepareBundle_TolerateInvalid_Flag(t *testing.T) {
-	addr1 := common.Address{1}
-	addr2 := common.Address{2}
-
-	be := rpctest.NewBackendBuilder(t).
-		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
-		Build()
-
-	api := NewPublicBundleAPI(be)
-
-	args := PrepareBundleArgs{
-		PrepareBundleGroup: PrepareBundleGroup{
-			Entries: []PrepareBundleEntry{
 				txEntryWithFlags(ethapi.TransactionArgs{
 					From:  &addr1,
 					To:    &addr2,
@@ -817,10 +614,19 @@ func Test_PrepareBundle_TolerateInvalid_Flag(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.ExecutionPlan.Steps, 1)
 
-	leaf, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionStepComposable)
+	stepGroup, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
+	require.True(t, ok, "expected step group")
+	require.Len(t, stepGroup.Steps, 2)
+
+	leafFailed, ok := stepGroup.Steps[0].(*RPCExecutionStepComposable)
 	require.True(t, ok, "expected leaf step")
-	require.False(t, leaf.TolerateFailed)
-	require.True(t, leaf.TolerateInvalid, "TolerateInvalid must be set")
+	require.True(t, leafFailed.TolerateFailed, "TolerateFailed must be set")
+	require.False(t, leafFailed.TolerateInvalid)
+
+	leafInvalid, ok := stepGroup.Steps[1].(*RPCExecutionStepComposable)
+	require.True(t, ok, "expected leaf step")
+	require.True(t, leafInvalid.TolerateInvalid, "TolerateInvalid must be set")
+	require.False(t, leafInvalid.TolerateFailed)
 }
 
 func Test_PrepareBundle_NestedGroups(t *testing.T) {
@@ -835,21 +641,16 @@ func Test_PrepareBundle_NestedGroups(t *testing.T) {
 	api := NewPublicBundleAPI(be)
 
 	// OneOf(AllOf(tx1, tx2), tx3-alike via addr1 again)
-	args := PrepareBundleArgs{
-		PrepareBundleGroup: PrepareBundleGroup{
-			Entries: []PrepareBundleEntry{
-				{Group: &PrepareBundleGroup{
-					OneOf: true,
-					Entries: []PrepareBundleEntry{
-						{Group: &PrepareBundleGroup{
-							Entries: []PrepareBundleEntry{
-								txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
-								txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
-							},
-						}},
-						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(1), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
-					},
-				}},
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
+				groupEntryWithFlags(true, false,
+					groupEntry(
+						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+						txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+					),
+					txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(1), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+				),
 			},
 		},
 	}
@@ -888,8 +689,12 @@ func Test_PrepareBundle_FlatTransactions_SingleTx(t *testing.T) {
 	api := NewPublicBundleAPI(be)
 
 	tx := ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}
-	args := PrepareBundleArgs{
-		Transactions: []ethapi.TransactionArgs{tx},
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
+				txEntry(tx),
+			},
+		},
 	}
 
 	result, err := api.PrepareBundle(t.Context(), args)
@@ -907,9 +712,12 @@ func Test_PrepareBundle_FlatTransactions_SingleTx(t *testing.T) {
 	}
 	require.True(t, found, "expected BundleOnly marker in access list")
 
-	// Single leaf at root
 	require.Len(t, result.ExecutionPlan.Steps, 1)
-	_, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionStepComposable)
+	group, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
+	require.True(t, ok)
+	require.False(t, group.OneOf)
+	require.Len(t, group.Steps, 1)
+	_, ok = group.Steps[0].(*RPCExecutionStepComposable)
 	require.True(t, ok)
 }
 
@@ -924,10 +732,12 @@ func Test_PrepareBundle_FlatTransactions_MultipleTxs(t *testing.T) {
 
 	api := NewPublicBundleAPI(be)
 
-	args := PrepareBundleArgs{
-		Transactions: []ethapi.TransactionArgs{
-			{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
-			{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
+				txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+				txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+			},
 		},
 	}
 
@@ -966,10 +776,12 @@ func Test_PrepareBundle_FlatTransactions_OrderPreserved(t *testing.T) {
 		Build()
 
 	api := NewPublicBundleAPI(be)
-	args := PrepareBundleArgs{
-		Transactions: []ethapi.TransactionArgs{
-			{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
-			{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))},
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
+				txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+				txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+			},
 		},
 	}
 
@@ -983,29 +795,6 @@ func Test_PrepareBundle_FlatTransactions_OrderPreserved(t *testing.T) {
 	require.Equal(t, &addr1, result.Transactions[1].To)
 }
 
-func Test_PrepareBundle_FlatTransactions_ConflictError(t *testing.T) {
-	addr1 := common.Address{1}
-	addr2 := common.Address{2}
-
-	be := rpctest.NewBackendBuilder(t).
-		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
-		Build()
-
-	api := NewPublicBundleAPI(be)
-
-	tx := ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}
-	args := PrepareBundleArgs{
-		Transactions: []ethapi.TransactionArgs{tx},
-		PrepareBundleGroup: PrepareBundleGroup{
-			Entries: []PrepareBundleEntry{txEntry(tx)},
-		},
-	}
-
-	_, err := api.PrepareBundle(t.Context(), args)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "cannot specify both 'transactions' and 'entries' in bundle input")
-}
-
 func Test_PrepareBundle_SingleChildGroup_TolerateFailures_NotUnwrapped(t *testing.T) {
 	addr1 := common.Address{1}
 	addr2 := common.Address{2}
@@ -1016,15 +805,48 @@ func Test_PrepareBundle_SingleChildGroup_TolerateFailures_NotUnwrapped(t *testin
 
 	api := NewPublicBundleAPI(be)
 
-	args := PrepareBundleArgs{
-		PrepareBundleGroup: PrepareBundleGroup{
-			Entries: []PrepareBundleEntry{
-				{Group: &PrepareBundleGroup{
-					TolerateFailures: true,
-					Entries: []PrepareBundleEntry{
-						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
-					},
-				}},
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
+				groupEntryWithFlags(
+					false, true, txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
+				),
+			},
+		},
+	}
+
+	result, err := api.PrepareBundle(t.Context(), args)
+	require.NoError(t, err)
+	require.Len(t, result.Transactions, 1)
+
+	// TolerateFailures flag must prevent single-child unwrap.
+	require.Len(t, result.ExecutionPlan.Steps, 1)
+	group, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
+	require.True(t, ok, "expected group, not leaf")
+	require.False(t, group.OneOf)
+	require.Len(t, group.Steps, 1)
+}
+
+func Test_PrepareBundle_SingleChildGroup_TolerateFailures_NotUnwrapped2(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	rpcGroup := RPCExecutionPlanGroup{
+		Steps: []any{
+			txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
+		},
+	}
+
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
+				rpcGroup,
 			},
 		},
 	}

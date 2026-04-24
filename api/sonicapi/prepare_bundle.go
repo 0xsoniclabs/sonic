@@ -18,9 +18,7 @@ package sonicapi
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"math/big"
 	"slices"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
@@ -29,63 +27,8 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 )
-
-// PrepareBundleTxStep is a leaf node: one transaction with its execution flags.
-type PrepareBundleTxStep struct {
-	Transaction     ethapi.TransactionArgs `json:"transaction"`
-	TolerateFailed  bool                   `json:"tolerateFailed,omitempty"`
-	TolerateInvalid bool                   `json:"tolerateInvalid,omitempty"`
-}
-
-// PrepareBundleGroup is an interior node grouping child entries as AllOf (default) or OneOf.
-type PrepareBundleGroup struct {
-	OneOf            bool                 `json:"oneOf,omitempty"`
-	TolerateFailures bool                 `json:"tolerateFailures,omitempty"`
-	Entries          []PrepareBundleEntry `json:"entries,omitempty"`
-}
-
-// PrepareBundleEntry is a polymorphic bundle step: either a tx leaf or a group.
-type PrepareBundleEntry struct {
-	Tx    *PrepareBundleTxStep
-	Group *PrepareBundleGroup
-}
-
-// UnmarshalJSON discriminates between a tx leaf ("transaction") and a group ("entries").
-func (s *PrepareBundleEntry) UnmarshalJSON(data []byte) error {
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("failed to parse bundle step: %w", err)
-	}
-	_, hasTx := raw["transaction"]
-	_, hasEntries := raw["entries"]
-	switch {
-	case hasTx && !hasEntries:
-		s.Tx = new(PrepareBundleTxStep)
-		return json.Unmarshal(data, s.Tx)
-	case hasEntries && !hasTx:
-		s.Group = new(PrepareBundleGroup)
-		return json.Unmarshal(data, s.Group)
-	case hasTx && hasEntries:
-		return fmt.Errorf("bundle step must have either 'transaction' or 'entries', not both")
-	default:
-		return fmt.Errorf("bundle step must have either 'transaction' or 'entries'")
-	}
-}
-
-// PrepareBundleArgs are the arguments for the sonic_prepareBundle RPC method.
-type PrepareBundleArgs struct {
-	PrepareBundleGroup
-	// Transactions is a flat all-of shorthand; mutually exclusive with Entries.
-	Transactions []ethapi.TransactionArgs `json:"transactions,omitempty"`
-	// EarliestBlock defaults to currentBlock+1 if unset.
-	EarliestBlock *hexutil.Uint64 `json:"earliestBlock,omitempty"`
-	// LatestBlock defaults to EarliestBlock+MaxBlockRange-1 if unset.
-	LatestBlock *hexutil.Uint64 `json:"latestBlock,omitempty"`
-}
 
 // RPCPreparedBundle is the return type of the sonic_prepareBundle RPC method.
 type RPCPreparedBundle struct {
@@ -107,41 +50,8 @@ type RPCPreparedBundle struct {
 // The returned transactions must be signed without altering any fields.
 func (a *PublicBundleAPI) PrepareBundle(
 	ctx context.Context,
-	args PrepareBundleArgs,
+	args RPCExecutionProposal,
 ) (*RPCPreparedBundle, error) {
-
-	if len(args.Transactions) > 0 && len(args.Entries) > 0 {
-		return nil, fmt.Errorf("cannot specify both 'transactions' and 'entries' in bundle input")
-	}
-	if len(args.Transactions) > 0 {
-		entries := make([]PrepareBundleEntry, len(args.Transactions))
-		for i, tx := range args.Transactions {
-			tx := tx
-			entries[i] = PrepareBundleEntry{Tx: &PrepareBundleTxStep{Transaction: tx}}
-		}
-		args.Entries = entries
-	}
-
-	flatTxs := collectLeafTxArgsFromGroup(args.PrepareBundleGroup)
-
-	if len(flatTxs) == 0 {
-		return &RPCPreparedBundle{}, nil
-	}
-
-	gasCap := a.b.RPCGasCap()
-	basefee := a.b.MinGasPrice()
-
-	// Estimate gas for all transactions if any has an uninitialized gas limit.
-	var gasLimits []hexutil.Uint64
-	if slices.ContainsFunc(flatTxs, func(tx ethapi.TransactionArgs) bool {
-		return tx.Gas == nil || *tx.Gas == 0
-	}) {
-		estimated, err := a.EstimateGasForTransactions(ctx, flatTxs, nil, nil, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to prepare bundle: gas estimation failed: %w", err)
-		}
-		gasLimits = estimated.GasLimits
-	}
 
 	var currentBlock *evmcore.EvmBlock
 	if block := a.b.CurrentBlock(); block != nil {
@@ -150,39 +60,79 @@ func (a *PublicBundleAPI) PrepareBundle(
 		return nil, fmt.Errorf("failed to prepare bundle: unable to retrieve current block number")
 	}
 
-	gasPrice := a.suggestGasPrice(currentBlock)
-	fillTransactionDefaults(flatTxs, gasLimits, gasPrice)
+	blockRange, err := validateBlockRange(currentBlock.NumberU64(), args.BlockRange)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare bundle: %w", err)
+	}
+	args.BlockRange = &blockRange
 
+	gasPrice := a.suggestGasPrice(currentBlock)
 	chainID := a.b.ChainID()
 	signer := types.LatestSignerForChainID(chainID)
 
-	builder := &prepareBundleBuilder{
-		flatTxArgs: flatTxs,
-		gasCap:     gasCap,
-		basefee:    basefee,
-		signer:     signer,
-	}
-	root, err := builder.buildGroupStep(&args.PrepareBundleGroup)
-	if err != nil {
-		return nil, err
-	}
-
-	if builder.cursor != len(flatTxs) {
-		return nil, fmt.Errorf(
-			"failed to prepare bundle: execution plan consumed %d of %d transactions",
-			builder.cursor,
-			len(flatTxs),
-		)
-	}
-
-	blockRange, err := resolveBlockRange(currentBlock.NumberU64(), args.EarliestBlock, args.LatestBlock)
+	flatTxs := make([]ethapi.TransactionArgs, 0)
+	err = traverse(args,
+		func(step RPCExecutionStepProposal) error {
+			flatTxs = append(flatTxs, step.TransactionArgs)
+			return nil
+		},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare bundle: %w", err)
 	}
 
-	plan := bundle.ExecutionPlan{
-		Root:  root,
-		Range: blockRange,
+	// Estimate gas for all transactions if any has an uninitialized gas limit.
+	var gasLimits []hexutil.Uint64
+	if slices.ContainsFunc(flatTxs, func(tx ethapi.TransactionArgs) bool {
+		return tx.Gas == nil || *tx.Gas == 0 || (tx.GasPrice == nil && tx.MaxFeePerGas == nil)
+	}) {
+		estimated, err := a.EstimateGasForTransactions(ctx, flatTxs, nil, nil, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to prepare bundle: gas estimation failed: %w", err)
+		}
+		gasLimits = estimated.GasLimits
+	}
+
+	cursor := 0
+	// Fill transaction defaults
+	ready, err := transform(args,
+		func(step RPCExecutionStepProposal) (RPCExecutionStepProposal, error) {
+			var txArgs ethapi.TransactionArgs
+			if len(gasLimits) > 0 && cursor < len(gasLimits) {
+				txArgs = fillTransactionDefaults(step.TransactionArgs, &gasLimits[cursor], gasPrice)
+				flatTxs[cursor] = txArgs
+			} else {
+				txArgs = fillTransactionDefaults(step.TransactionArgs, nil, gasPrice)
+				flatTxs[cursor] = txArgs
+			}
+
+			if txArgs.Nonce == nil {
+				return step, fmt.Errorf("transaction %d is missing nonce", cursor)
+			}
+
+			if txArgs.To == nil {
+				return step, fmt.Errorf("transaction %d is missing to", cursor)
+			}
+
+			if txArgs.From == nil {
+				return step, fmt.Errorf("transaction %d is missing from", cursor)
+			}
+			cursor++
+
+			return RPCExecutionStepProposal{
+				TolerateFailed:  step.TolerateFailed,
+				TolerateInvalid: step.TolerateInvalid,
+				TransactionArgs: txArgs,
+			}, nil
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set proposed transactions defaults: %w", err)
+	}
+
+	plan, err := convertProposalToPlan(signer, ready)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare bundle: %w", err)
 	}
 
 	injectPlanHashIntoAccessLists(flatTxs, plan.Hash())
@@ -198,157 +148,53 @@ func (a *PublicBundleAPI) PrepareBundle(
 	}, nil
 }
 
-// prepareBundleBuilder threads a cursor through flatTxArgs while building the ExecutionStep tree.
-type prepareBundleBuilder struct {
-	flatTxArgs []ethapi.TransactionArgs
-	cursor     int
-	gasCap     uint64
-	basefee    *big.Int
-	signer     types.Signer
-}
+// fillTransactionDefaults sets default gas and gas price values for a transaction if they are not already set.
+func fillTransactionDefaults(args ethapi.TransactionArgs, gas *hexutil.Uint64, gasPrice *hexutil.Big) ethapi.TransactionArgs {
 
-// buildStep builds an ExecutionStep from the current PrepareBundleEntry, dispatching to buildTxStep or buildGroupStep as appropriate.
-func (b *prepareBundleBuilder) buildStep(step PrepareBundleEntry) (bundle.ExecutionStep, error) {
-	if step.Tx != nil {
-		return b.buildTxStep(step.Tx)
-	}
-	return b.buildGroupStep(step.Group)
-}
-
-// buildTxStep converts the TransactionArgs at the current cursor position into a TxStep, then advances the cursor.
-func (b *prepareBundleBuilder) buildTxStep(tx *PrepareBundleTxStep) (bundle.ExecutionStep, error) {
-	idx := b.cursor
-	if idx >= len(b.flatTxArgs) {
-		return bundle.ExecutionStep{}, fmt.Errorf(
-			"failed to prepare bundle: transaction index %d out of range (have %d transactions)",
-			idx,
-			len(b.flatTxArgs),
-		)
-	}
-	txArgs := b.flatTxArgs[idx]
-	b.cursor++
-
-	if txArgs.Nonce == nil {
-		return bundle.ExecutionStep{}, fmt.Errorf("failed to prepare bundle: transaction %d is missing nonce", idx)
+	// Set default gas limit if missing or zero.
+	if args.Gas == nil || *args.Gas == 0 {
+		args.Gas = gas
 	}
 
-	msg, err := txArgs.ToMessage(b.gasCap, b.basefee, log.Root())
-	if err != nil {
-		return bundle.ExecutionStep{}, fmt.Errorf("failed to prepare bundle: transaction %d conversion error: %w", idx, err)
-	}
-
-	bundleTx, err := asTransaction(txArgs, msg)
-	if err != nil {
-		return bundle.ExecutionStep{}, fmt.Errorf("failed to prepare bundle: transaction %d conversion error: %w", idx, err)
-	}
-
-	step := bundle.NewTxStep(bundle.TxReference{
-		From: msg.From,
-		Hash: b.signer.Hash(bundleTx),
-	})
-
-	var flags bundle.ExecutionFlags
-	if tx.TolerateFailed {
-		flags |= bundle.EF_TolerateFailed
-	}
-	if tx.TolerateInvalid {
-		flags |= bundle.EF_TolerateInvalid
-	}
-	if flags != bundle.EF_Default {
-		step = step.WithFlags(flags)
-	}
-	return step, nil
-}
-
-// buildGroupStep recursively builds ExecutionSteps for each child entry,
-// then combines them into a GroupStep with the appropriate modifier.
-func (b *prepareBundleBuilder) buildGroupStep(g *PrepareBundleGroup) (bundle.ExecutionStep, error) {
-	subSteps := make([]bundle.ExecutionStep, len(g.Entries))
-	for i, s := range g.Entries {
-		sub, err := b.buildStep(s)
-		if err != nil {
-			return bundle.ExecutionStep{}, err
-		}
-		subSteps[i] = sub
-	}
-
-	// No-modifier single-child group is elided so the RPC output matches the internal plan shape.
-	if !g.OneOf && !g.TolerateFailures && len(subSteps) == 1 {
-		return subSteps[0], nil
-	}
-
-	group := bundle.NewGroupStep(g.OneOf, subSteps...)
-	if g.TolerateFailures {
-		group = group.WithFlags(bundle.EF_TolerateFailed)
-	}
-	return group, nil
-}
-
-// collectLeafTxArgsFromGroup returns all leaf TransactionArgs in depth-first order.
-func collectLeafTxArgsFromGroup(g PrepareBundleGroup) []ethapi.TransactionArgs {
-	var out []ethapi.TransactionArgs
-	for _, step := range g.Entries {
-		collectLeafTxArgs(step, &out)
-	}
-	return out
-}
-
-// collectLeafTxArgs appends leaf TransactionArgs from step in depth-first order.
-func collectLeafTxArgs(step PrepareBundleEntry, out *[]ethapi.TransactionArgs) {
-	if step.Tx != nil {
-		*out = append(*out, step.Tx.Transaction)
-		return
-	}
-	if step.Group != nil {
-		for _, sub := range step.Group.Entries {
-			collectLeafTxArgs(sub, out)
+	// Set default gas price if missing and not a type 2 transaction.
+	if args.GasPrice == nil && args.MaxFeePerGas == nil {
+		if args.MaxPriorityFeePerGas == nil {
+			args.GasPrice = gasPrice
+		} else {
+			args.MaxFeePerGas = gasPrice
 		}
 	}
+
+	return args
 }
 
-// fillTransactionDefaults fills missing Gas and gas-price fields without overwriting explicit values.
-func fillTransactionDefaults(txs []ethapi.TransactionArgs, gasLimits []hexutil.Uint64, gasPrice *hexutil.Big) {
-	for i := range txs {
-		if i < len(gasLimits) && (txs[i].Gas == nil || *txs[i].Gas == 0) {
-			txs[i].Gas = &gasLimits[i]
-		}
-		if txs[i].GasPrice == nil && txs[i].MaxFeePerGas == nil {
-			if txs[i].MaxPriorityFeePerGas == nil {
-				txs[i].GasPrice = gasPrice
-			} else {
-				txs[i].MaxFeePerGas = gasPrice
-			}
-		}
-	}
-}
-
-// resolveBlockRange computes the effective block range from optional earliest/latest overrides.
-func resolveBlockRange(currentBlock uint64, earliest, latest *hexutil.Uint64) (bundle.BlockRange, error) {
-
-	if latest != nil && earliest != nil && uint64(*latest) < uint64(*earliest) {
-		return bundle.BlockRange{}, fmt.Errorf("invalid block range: latest block %d is earlier than earliest block %d", *latest, *earliest)
+// validateBlockRange checks that the provided block range is valid and within
+// allowed limits, defaulting to a sensible range if not provided.
+func validateBlockRange(currentBlock uint64, blockRange *RPCRange) (RPCRange, error) {
+	if blockRange == nil {
+		maxRange := bundle.MakeMaxRangeStartingAt(currentBlock + 1)
+		return RPCRange{
+			Earliest: hexutil.Uint64(maxRange.Earliest),
+			Latest:   hexutil.Uint64(maxRange.Latest),
+		}, nil
 	}
 
-	var r bundle.BlockRange
-	if earliest != nil {
-		r = bundle.MakeMaxRangeStartingAt(uint64(*earliest))
-	} else {
-		r = bundle.MakeMaxRangeStartingAt(currentBlock + 1)
+	if blockRange.Latest < hexutil.Uint64(currentBlock) {
+		return RPCRange{}, fmt.Errorf("invalid block range: latest block %d is earlier than current block %d", blockRange.Latest, currentBlock)
 	}
 
-	if latest != nil {
-		r.Latest = uint64(*latest)
+	if uint64(blockRange.Latest) < uint64(blockRange.Earliest) {
+		return RPCRange{}, fmt.Errorf("invalid block range: latest block %d is earlier than earliest block %d", blockRange.Latest, blockRange.Earliest)
 	}
 
-	if r.Latest < r.Earliest {
-		return bundle.BlockRange{}, fmt.Errorf("invalid block range: latest block %d is earlier than earliest block %d", r.Latest, r.Earliest)
+	if uint64(blockRange.Latest-blockRange.Earliest+1) > bundle.MaxBlockRange {
+		return RPCRange{}, fmt.Errorf("invalid block range: range %d is too large; must be at most %d blocks", blockRange.Latest-blockRange.Earliest+1, bundle.MaxBlockRange)
 	}
 
-	if r.Latest-r.Earliest+1 > bundle.MaxBlockRange {
-		return bundle.BlockRange{}, fmt.Errorf("invalid block range: range %d is too large; must be at most %d blocks", r.Latest-r.Earliest+1, bundle.MaxBlockRange)
-	}
-
-	return r, nil
+	return RPCRange{
+		Earliest: blockRange.Earliest,
+		Latest:   blockRange.Latest,
+	}, nil
 }
 
 // injectPlanHashIntoAccessLists appends the BundleOnly access-list entry with planHash to every tx.
@@ -365,40 +211,6 @@ func injectPlanHashIntoAccessLists(txs []ethapi.TransactionArgs, planHash common
 		tx.AccessList = &accessList
 		txs[i] = tx
 	}
-}
-
-// asTransaction converts a Message to a Transaction, rejecting blob and set-code types.
-// args is used to determine the tx type: MaxFeePerGas present → DynamicFee, else AccessList.
-// Conflict validation (GasPrice + MaxFeePerGas) is handled by TransactionArgs.ToMessage.
-func asTransaction(args ethapi.TransactionArgs, msg *core.Message) (*types.Transaction, error) {
-	if len(msg.BlobHashes) != 0 || msg.BlobGasFeeCap != nil {
-		return nil, fmt.Errorf("blob transactions are not supported in bundles")
-	}
-	if len(msg.SetCodeAuthorizations) != 0 {
-		return nil, fmt.Errorf("transactions with set code authorization are not supported in bundles")
-	}
-
-	if args.MaxFeePerGas != nil {
-		return types.NewTx(&types.DynamicFeeTx{
-			To:         msg.To,
-			Nonce:      msg.Nonce,
-			Gas:        msg.GasLimit,
-			GasFeeCap:  msg.GasFeeCap,
-			GasTipCap:  msg.GasTipCap,
-			Value:      msg.Value,
-			Data:       msg.Data,
-			AccessList: msg.AccessList,
-		}), nil
-	}
-	return types.NewTx(&types.AccessListTx{
-		To:         msg.To,
-		Nonce:      msg.Nonce,
-		Gas:        msg.GasLimit,
-		GasPrice:   msg.GasPrice,
-		Value:      msg.Value,
-		Data:       msg.Data,
-		AccessList: msg.AccessList,
-	}), nil
 }
 
 // suggestGasPrice returns the suggested gas price based on the current block's base fee.
