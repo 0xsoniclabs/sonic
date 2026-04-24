@@ -292,15 +292,10 @@ func (a *preCheckChainStateAdapter) Header(hash common.Hash, number uint64) *evm
 }
 
 func (a *preCheckChainStateAdapter) GetCurrentChainConfig() *params.ChainConfig {
-	block := a.external.GetLatestBlock()
-	blockNumber := uint64(0)
-	if block != nil {
-		blockNumber = block.Number
-	}
 	return opera.CreateTransientEvmChainConfig(
 		a.external.GetRules().NetworkID,
 		a.external.GetUpgradeHeights(),
-		idx.Block(blockNumber),
+		a.external.GetLatestBlockIndex(),
 	)
 }
 
