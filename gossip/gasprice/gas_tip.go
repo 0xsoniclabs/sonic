@@ -32,6 +32,10 @@ import (
 // EffectiveGasTip returns the effective miner gasTipCap for the given base fee.
 // Note: if the effective gasTipCap would be negative, this method
 // returns ErrGasFeeCapTooLow, and value is undefined.
+// Due to usages of this function in consensus critical code,
+// the current tip computation has to be preserved.
+// Even if an error is returned due to a negative result,
+// the tip is still computed correctly and is used in the codebase.
 func EffectiveGasTip(tx *types.Transaction, baseFee *big.Int) (*big.Int, error) {
 	dst := new(uint256.Int)
 	base := new(uint256.Int)
