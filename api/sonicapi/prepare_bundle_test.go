@@ -17,6 +17,7 @@
 package sonicapi
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -633,7 +634,7 @@ func Test_PrepareBundle_OneOfGroup_BuildsOneOfPlan(t *testing.T) {
 
 	// Single root step is the OneOf group (unwrapped since root has 1 child with no modifiers).
 	require.Len(t, result.ExecutionPlan.Steps, 1)
-	oneOfGroup, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
+	oneOfGroup, ok := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
 	require.True(t, ok)
 	require.True(t, oneOfGroup.OneOf, "expected OneOf group")
 	require.Len(t, oneOfGroup.Steps, 2)
@@ -670,16 +671,16 @@ func Test_PrepareBundle_TolerateFailed_Flag(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.ExecutionPlan.Steps, 1)
 
-	stepGroup, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
+	stepGroup, ok := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
 	require.True(t, ok, "expected step group")
 	require.Len(t, stepGroup.Steps, 2)
 
-	leafFailed, ok := stepGroup.Steps[0].(*RPCExecutionStepComposable)
+	leafFailed, ok := stepGroup.Steps[0].(RPCExecutionStepComposable)
 	require.True(t, ok, "expected leaf step")
 	require.True(t, leafFailed.TolerateFailed, "TolerateFailed must be set")
 	require.False(t, leafFailed.TolerateInvalid)
 
-	leafInvalid, ok := stepGroup.Steps[1].(*RPCExecutionStepComposable)
+	leafInvalid, ok := stepGroup.Steps[1].(RPCExecutionStepComposable)
 	require.True(t, ok, "expected leaf step")
 	require.True(t, leafInvalid.TolerateInvalid, "TolerateInvalid must be set")
 	require.False(t, leafInvalid.TolerateFailed)
@@ -717,19 +718,19 @@ func Test_PrepareBundle_NestedGroups(t *testing.T) {
 
 	// Root: 1 element (OneOf group)
 	require.Len(t, result.ExecutionPlan.Steps, 1)
-	oneOf, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
+	oneOf, ok := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
 	require.True(t, ok)
 	require.True(t, oneOf.OneOf)
 	require.Len(t, oneOf.Steps, 2)
 
 	// First alt is an AllOf group
-	allOf, ok := oneOf.Steps[0].(*RPCExecutionPlanGroup)
+	allOf, ok := oneOf.Steps[0].(RPCExecutionPlanGroup)
 	require.True(t, ok)
 	require.False(t, allOf.OneOf)
 	require.Len(t, allOf.Steps, 2)
 
 	// Second alt is a leaf
-	_, ok = oneOf.Steps[1].(*RPCExecutionStepComposable)
+	_, ok = oneOf.Steps[1].(RPCExecutionStepComposable)
 	require.True(t, ok)
 }
 
@@ -769,11 +770,11 @@ func Test_PrepareBundle_FlatTransactions_SingleTx(t *testing.T) {
 	require.True(t, found, "expected BundleOnly marker in access list")
 
 	require.Len(t, result.ExecutionPlan.Steps, 1)
-	group, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
+	group, ok := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
 	require.True(t, ok)
 	require.False(t, group.OneOf)
 	require.Len(t, group.Steps, 1)
-	_, ok = group.Steps[0].(*RPCExecutionStepComposable)
+	_, ok = group.Steps[0].(RPCExecutionStepComposable)
 	require.True(t, ok)
 }
 
@@ -816,7 +817,7 @@ func Test_PrepareBundle_FlatTransactions_MultipleTxs(t *testing.T) {
 
 	// Two-leaf AllOf: outer steps holds one AllOf group with two leaves
 	require.Len(t, result.ExecutionPlan.Steps, 1)
-	group, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
+	group, ok := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
 	require.True(t, ok)
 	require.False(t, group.OneOf)
 	require.Len(t, group.Steps, 2)
@@ -877,7 +878,7 @@ func Test_PrepareBundle_SingleChildGroup_TolerateFailures_NotUnwrapped(t *testin
 
 	// TolerateFailures flag must prevent single-child unwrap.
 	require.Len(t, result.ExecutionPlan.Steps, 1)
-	group, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
+	group, ok := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
 	require.True(t, ok, "expected group, not leaf")
 	require.False(t, group.OneOf)
 	require.Len(t, group.Steps, 1)
@@ -913,7 +914,7 @@ func Test_PrepareBundle_SingleChildGroup_Plain_NotUnwrapped(t *testing.T) {
 
 	// Plain group must not collapse its single child.
 	require.Len(t, result.ExecutionPlan.Steps, 1)
-	group, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
+	group, ok := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
 	require.True(t, ok, "expected group, not leaf")
 	require.False(t, group.OneOf)
 	require.Len(t, group.Steps, 1)
@@ -947,11 +948,14 @@ func collectLeafHashes(steps []any) []common.Hash {
 	var hashes []common.Hash
 	for _, s := range steps {
 		switch v := s.(type) {
-		case *RPCExecutionStepComposable:
+		case RPCExecutionStepComposable:
 			hashes = append(hashes, v.Hash)
-		case *RPCExecutionPlanGroup:
+		case RPCExecutionPlanGroup:
 			hashes = append(hashes, collectLeafHashes(v.Steps)...)
+		default:
+			panic(fmt.Sprintf("unexpected step type %T", s))
 		}
+
 	}
 	return hashes
 }
@@ -1076,9 +1080,9 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			},
 			wantTxCount: 2,
 			extraCheck: func(t *testing.T, result *RPCPreparedBundle) {
-				group := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
-				leaf0 := group.Steps[0].(*RPCExecutionStepComposable)
-				leaf1 := group.Steps[1].(*RPCExecutionStepComposable)
+				group := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
+				leaf0 := group.Steps[0].(RPCExecutionStepComposable)
+				leaf1 := group.Steps[1].(RPCExecutionStepComposable)
 				require.True(t, leaf0.TolerateFailed)
 				require.False(t, leaf0.TolerateInvalid)
 				require.False(t, leaf1.TolerateFailed)

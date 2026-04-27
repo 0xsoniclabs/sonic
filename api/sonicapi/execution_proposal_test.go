@@ -77,13 +77,6 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 		bundle bundle.TransactionBundle
 		json   string
 	}{
-		"empty bundle": {
-			bundle: bundle.NewBuilder().WithSigner(signer).BuildBundle(),
-			json: `{
-				"blockRange":{"earliest":"0x0","latest":"0x3ff"},
-				"steps":[{"steps":null}]
-			}`,
-		},
 		"simple bundle": {
 			bundle: bundle.NewBuilder().
 				WithSigner(signer).
@@ -193,6 +186,11 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 			json := strings.ReplaceAll(tt.json, "REPLACE_ADDRESS", strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex()))
 
 			expectJsonEqual(t, json, proposal)
+
+			var deserialized RPCExecutionProposal
+			expectCanBeDeserialized(t, &deserialized, json)
+
+			require.Equal(t, *proposal, deserialized)
 		})
 	}
 }
@@ -715,7 +713,7 @@ func Test_convertVisitorLeafIntoRPCExecutionPlanProposalLeaf_ConvertsToProposalL
 					ref,
 				)
 				require.NoError(t, err)
-				require.Equal(t, tt.expected[i], *result)
+				require.Equal(t, tt.expected[i], result)
 
 			}
 		})

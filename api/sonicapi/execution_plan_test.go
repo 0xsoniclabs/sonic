@@ -17,6 +17,7 @@
 package sonicapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -385,9 +386,14 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 
 			expectJsonEqual(t, tc.expectedJson, rpcPlan)
 
-			recreated, err := toBundleExecutionPlan(rpcPlan)
+			recreated, err := ToBundleExecutionPlan(rpcPlan)
 			require.NoError(t, err)
 			require.Equal(t, recreated, tc.plan)
+
+			var deserialized RPCExecutionPlanComposable
+			expectCanBeDeserialized(t, &deserialized, tc.expectedJson)
+
+			require.Equal(t, rpcPlan, deserialized)
 		})
 	}
 }
@@ -418,7 +424,7 @@ func Test_toBundleExecutionPlan_CanReturnErrors(t *testing.T) {
 		},
 	}
 
-	_, err := toBundleExecutionPlan(rpcPlan)
+	_, err := ToBundleExecutionPlan(rpcPlan)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid execution plan level: must have either executionStep or group")
 }
@@ -431,4 +437,10 @@ func TestNewRPCExecutionPlanComposable_ReturnsErrorWithInvalidPlan(t *testing.T)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to convert execution plan")
 	require.Contains(t, err.Error(), "invalid execution plan")
+}
+
+func expectCanBeDeserialized[T any](t testing.TB, result *T, jsonValue string) {
+	t.Helper()
+	err := json.Unmarshal([]byte(jsonValue), result)
+	require.NoError(t, err, "failed to unmarshal JSON into %T", result)
 }
