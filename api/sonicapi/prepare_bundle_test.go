@@ -956,28 +956,14 @@ func collectLeafHashes(steps []any) []common.Hash {
 }
 
 func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
-	wallet1, err := rpctest.NewWallet()
-	require.NoError(t, err)
-	wallet2, err := rpctest.NewWallet()
-	require.NoError(t, err)
-	wallet3, err := rpctest.NewWallet()
-	require.NoError(t, err)
-
-	addr1 := wallet1.Address()
-	addr2 := wallet2.Address()
-	addr3 := wallet3.Address()
-
-	// wallets maps each funded address to its private key for signing.
-	wallets := map[common.Address]*rpctest.Wallet{
-		*addr1: wallet1,
-		*addr2: wallet2,
-		*addr3: wallet3,
-	}
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+	addr3 := common.Address{3}
 
 	be := rpctest.NewBackendBuilder(t).
-		WithAccount(*addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
-		WithAccount(*addr2, rpctest.AccountState{Balance: big.NewInt(1e18)}).
-		WithAccount(*addr3, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(addr2, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(addr3, rpctest.AccountState{Balance: big.NewInt(1e18)}).
 		Build()
 	api := NewPublicBundleAPI(be)
 	signer := types.LatestSignerForChainID(be.ChainID())
@@ -994,7 +980,7 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			proposal: RPCExecutionProposal{
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
-						txEntry(ethapi.TransactionArgs{From: addr1, To: addr2, Nonce: rpctest.ToHexUint64(0)}),
+						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
 					},
 				},
 			},
@@ -1004,8 +990,8 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			proposal: RPCExecutionProposal{
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
-						txEntry(ethapi.TransactionArgs{From: addr1, To: addr2, Nonce: rpctest.ToHexUint64(0)}),
-						txEntry(ethapi.TransactionArgs{From: addr2, To: addr3, Nonce: rpctest.ToHexUint64(0)}),
+						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
+						txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr3, Nonce: rpctest.ToHexUint64(0)}),
 					},
 				},
 			},
@@ -1015,9 +1001,9 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			proposal: RPCExecutionProposal{
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
-						txEntry(ethapi.TransactionArgs{From: addr1, To: addr2, Nonce: rpctest.ToHexUint64(0)}),
-						txEntry(ethapi.TransactionArgs{From: addr2, To: addr3, Nonce: rpctest.ToHexUint64(0)}),
-						txEntry(ethapi.TransactionArgs{From: addr3, To: addr1, Nonce: rpctest.ToHexUint64(0)}),
+						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
+						txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr3, Nonce: rpctest.ToHexUint64(0)}),
+						txEntry(ethapi.TransactionArgs{From: &addr3, To: &addr1, Nonce: rpctest.ToHexUint64(0)}),
 					},
 				},
 			},
@@ -1028,8 +1014,8 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					OneOf: true,
 					Steps: []any{
-						txEntry(ethapi.TransactionArgs{From: addr1, To: addr2, Nonce: rpctest.ToHexUint64(0)}),
-						txEntry(ethapi.TransactionArgs{From: addr2, To: addr1, Nonce: rpctest.ToHexUint64(0)}),
+						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
+						txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0)}),
 					},
 				},
 			},
@@ -1041,10 +1027,10 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 					Steps: []any{
 						groupEntryWithFlags(true, false,
 							groupEntry(
-								txEntry(ethapi.TransactionArgs{From: addr1, To: addr2, Nonce: rpctest.ToHexUint64(0)}),
-								txEntry(ethapi.TransactionArgs{From: addr2, To: addr3, Nonce: rpctest.ToHexUint64(0)}),
+								txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
+								txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr3, Nonce: rpctest.ToHexUint64(0)}),
 							),
-							txEntry(ethapi.TransactionArgs{From: addr3, To: addr1, Nonce: rpctest.ToHexUint64(0)}),
+							txEntry(ethapi.TransactionArgs{From: &addr3, To: &addr1, Nonce: rpctest.ToHexUint64(0)}),
 						),
 					},
 				},
@@ -1055,7 +1041,7 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			proposal: RPCExecutionProposal{
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
-						txEntry(ethapi.TransactionArgs{From: addr1, To: addr3, Nonce: rpctest.ToHexUint64(0), Gas: &explicitGas}),
+						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr3, Nonce: rpctest.ToHexUint64(0), Gas: &explicitGas}),
 					},
 				},
 			},
@@ -1065,7 +1051,7 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			proposal: RPCExecutionProposal{
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
-						txEntry(ethapi.TransactionArgs{From: addr2, To: addr3, Nonce: rpctest.ToHexUint64(0), MaxPriorityFeePerGas: tip}),
+						txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr3, Nonce: rpctest.ToHexUint64(0), MaxPriorityFeePerGas: tip}),
 					},
 				},
 			},
@@ -1082,8 +1068,8 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			proposal: RPCExecutionProposal{
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
-						txEntryWithFlags(ethapi.TransactionArgs{From: addr1, To: addr2, Nonce: rpctest.ToHexUint64(0)}, true, false),
-						txEntryWithFlags(ethapi.TransactionArgs{From: addr2, To: addr3, Nonce: rpctest.ToHexUint64(0)}, false, true),
+						txEntryWithFlags(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}, true, false),
+						txEntryWithFlags(ethapi.TransactionArgs{From: &addr2, To: &addr3, Nonce: rpctest.ToHexUint64(0)}, false, true),
 					},
 				},
 			},
@@ -1114,11 +1100,7 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			for i, txArgs := range result.Transactions {
 				clean := stripBundleMarker(txArgs)
 				tx := clean.ToTransaction()
-				w := wallets[*txArgs.From]
-				require.NotNil(t, w, "no wallet for sender %s", *txArgs.From)
-				signedTx, err := types.SignTx(tx, signer, w.PrivateKey)
-				require.NoError(t, err)
-				expectedHashes[i] = signer.Hash(signedTx)
+				expectedHashes[i] = signer.Hash(tx)
 			}
 			planHashes := collectLeafHashes(result.ExecutionPlan.Steps)
 			require.Equal(t, expectedHashes, planHashes)
