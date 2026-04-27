@@ -17,6 +17,7 @@
 package sonicapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"slices"
@@ -82,6 +83,90 @@ type RPCExecutionStepProposal struct {
 	TolerateFailed  bool `json:"tolerateFailed,omitempty"`
 	TolerateInvalid bool `json:"tolerateInvalid,omitempty"`
 	ethapi.TransactionArgs
+}
+
+// UnmarshalJSON implements json.Unmarshaler for RPCExecutionProposal.
+// Steps []any requires custom handling: each element is either an
+// RPCExecutionStepProposal (leaf, no "steps" key) or an RPCExecutionPlanGroup
+// (has "steps" key), resolved by unmarshalProposalStep.
+func (p *RPCExecutionProposal) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		BlockRange       *RPCRange         `json:"blockRange,omitempty"`
+		TolerateFailures bool              `json:"tolerateFailures,omitempty"`
+		OneOf            bool              `json:"oneOf,omitempty"`
+		Steps            []json.RawMessage `json:"steps"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	p.BlockRange = raw.BlockRange
+	p.RPCExecutionPlanGroup.OneOf = raw.OneOf
+	p.RPCExecutionPlanGroup.TolerateFailures = raw.TolerateFailures
+	p.RPCExecutionPlanGroup.Steps = make([]any, len(raw.Steps))
+	for i, rawStep := range raw.Steps {
+		step, err := unmarshalProposalStep(rawStep)
+		if err != nil {
+			return err
+		}
+		p.RPCExecutionPlanGroup.Steps[i] = step
+	}
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler for RPCExecutionStepProposal.
+// ethapi.TransactionArgs embeds a custom UnmarshalJSON that would be promoted
+// to RPCExecutionStepProposal, which would silently drop TolerateFailed and
+// TolerateInvalid. This method handles both.
+func (s *RPCExecutionStepProposal) UnmarshalJSON(data []byte) error {
+	var flags struct {
+		TolerateFailed  bool `json:"tolerateFailed"`
+		TolerateInvalid bool `json:"tolerateInvalid"`
+	}
+	if err := json.Unmarshal(data, &flags); err != nil {
+		return err
+	}
+	s.TolerateFailed = flags.TolerateFailed
+	s.TolerateInvalid = flags.TolerateInvalid
+	return json.Unmarshal(data, &s.TransactionArgs)
+}
+
+// unmarshalProposalStep discriminates between a leaf (RPCExecutionStepProposal,
+// no "steps" key) and a group (RPCExecutionPlanGroup, has "steps" key).
+func unmarshalProposalStep(data []byte) (any, error) {
+	var probe struct {
+		Steps *json.RawMessage `json:"steps"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return nil, err
+	}
+	if probe.Steps != nil {
+		var rawGroup struct {
+			TolerateFailures bool              `json:"tolerateFailures"`
+			OneOf            bool              `json:"oneOf"`
+			Steps            []json.RawMessage `json:"steps"`
+		}
+		if err := json.Unmarshal(data, &rawGroup); err != nil {
+			return nil, err
+		}
+		children := make([]any, len(rawGroup.Steps))
+		for i, raw := range rawGroup.Steps {
+			child, err := unmarshalProposalStep(raw)
+			if err != nil {
+				return nil, err
+			}
+			children[i] = child
+		}
+		return RPCExecutionPlanGroup{
+			OneOf:            rawGroup.OneOf,
+			TolerateFailures: rawGroup.TolerateFailures,
+			Steps:            children,
+		}, nil
+	}
+	var step RPCExecutionStepProposal
+	if err := json.Unmarshal(data, &step); err != nil {
+		return nil, err
+	}
+	return step, nil
 }
 
 // createProposalRequestFromBundle creates an RPCExecutionProposal from a bundle.TransactionBundle,
