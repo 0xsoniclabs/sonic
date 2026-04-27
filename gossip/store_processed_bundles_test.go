@@ -543,6 +543,250 @@ func TestStore_AddProcessedBundles_RetainsPredecessorHashEntry(t *testing.T) {
 	}
 }
 
+func TestStore_GetPredecessorBundleHistoryHash_ReturnsFalseWhenEmpty(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	_, _, ok := store.GetPredecessorBundleHistoryHash()
+	require.False(ok, "should return false when no bundles have been executed yet")
+}
+
+func TestStore_GetPredecessorBundleHistoryHash_ReturnsFalseWhenNoBundlesExecuted(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	// Add blocks without bundles — hash stays zero, no 'h' entries written.
+	for block := range bundle.MaxBlockRange + 2 {
+		store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{})
+	}
+
+	_, _, ok := store.GetPredecessorBundleHistoryHash()
+	require.False(ok, "should return false when no bundles have ever been executed")
+}
+
+func TestStore_GetPredecessorBundleHistoryHash_ReturnsFirstBlock_BeforePruning(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	// Add a few blocks with bundles — not enough to trigger pruning.
+	for block := uint64(0); block < bundle.MaxBlockRange/2; block++ {
+		store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
+			uint64ToHash(block): {},
+		})
+	}
+
+	predBlock, predHash, ok := store.GetPredecessorBundleHistoryHash()
+	require.True(ok)
+	require.Equal(uint64(0), predBlock,
+		"before pruning the predecessor should be the very first block")
+
+	// Before pruning, predecessor == oldest retained.
+	oldestBlock, oldestHash, hasOldest := store.GetOldestRetainedBundleHistoryHash()
+	require.True(hasOldest)
+	require.Equal(predBlock, oldestBlock,
+		"before pruning, predecessor and oldest should be the same block")
+	require.Equal(predHash, oldestHash,
+		"before pruning, predecessor and oldest should have the same hash")
+}
+
+func TestStore_GetPredecessorBundleHistoryHash_DiffersFromOldest_AfterPruning(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	// Fill enough blocks to trigger pruning.
+	for block := uint64(0); block < bundle.MaxBlockRange+10; block++ {
+		store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
+			uint64ToHash(block): {},
+		})
+	}
+
+	predBlock, predHash, ok := store.GetPredecessorBundleHistoryHash()
+	require.True(ok)
+
+	oldestBlock, oldestHash, hasOldest := store.GetOldestRetainedBundleHistoryHash()
+	require.True(hasOldest)
+
+	require.Less(predBlock, oldestBlock,
+		"after pruning, predecessor block should be strictly before oldest")
+	require.Equal(oldestBlock, predBlock+1,
+		"predecessor block should be exactly one before oldest")
+	require.NotEqual(predHash, oldestHash,
+		"predecessor and oldest should have different hashes")
+}
+
+func TestStore_GetPredecessorBundleHistoryHash_MatchesExpectedHashChain(t *testing.T) {
+	// Verifies that the predecessor hash matches the independently computed
+	// hash chain at the predecessor's block number.
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	const totalBlocks = bundle.MaxBlockRange + 50
+	for block := uint64(0); block < totalBlocks; block++ {
+		store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
+			uint64ToHash(block): {},
+		})
+	}
+
+	predBlock, predHash, ok := store.GetPredecessorBundleHistoryHash()
+	require.True(ok)
+
+	// Recompute the expected hash chain up to predBlock.
+	expectedHash := common.Hash{}
+	for block := uint64(0); block <= predBlock; block++ {
+		addedHash := uint64ToHash(block)
+		expectedHash = referenceComputeStateHash(expectedHash, addedHash, block)
+	}
+	require.Equal(expectedHash, predHash,
+		"predecessor hash should match the independently computed hash chain")
+}
+
+func TestStore_GetPredecessorBundleHistoryHash_AdvancesAsPruningProgresses(t *testing.T) {
+	// Verifies that the predecessor advances block-by-block as new blocks
+	// push old 'h' entries past the pruning boundary.
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	var prevPredBlock uint64
+	pruningStarted := false
+	for block := uint64(0); block < bundle.MaxBlockRange+20; block++ {
+		store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
+			uint64ToHash(block): {},
+		})
+
+		predBlock, _, ok := store.GetPredecessorBundleHistoryHash()
+		require.True(ok, "block=%d: predecessor should always be present after first bundle", block)
+
+		if block >= bundle.MaxBlockRange-1 {
+			if pruningStarted {
+				require.Equal(prevPredBlock+1, predBlock,
+					"block=%d: predecessor should advance by 1 each block once pruning is active",
+					block)
+			}
+			pruningStarted = true
+		}
+		prevPredBlock = predBlock
+	}
+}
+
+func TestStore_GetPredecessorBundleHistoryHash_WorksWithGapsBetweenBundles(t *testing.T) {
+	// Bundles only at every 10th block, but 'h' entries are written for
+	// every block once the hash is non-zero.
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	// First, trigger the hash chain with a bundle at block 0.
+	store.AddProcessedBundles(0, map[common.Hash]bundle.PositionInBlock{
+		uint64ToHash(0): {},
+	})
+
+	// Then add blocks — bundles only at multiples of 10.
+	for block := uint64(1); block < bundle.MaxBlockRange+50; block++ {
+		bundles := map[common.Hash]bundle.PositionInBlock{}
+		if block%10 == 0 {
+			bundles[uint64ToHash(block)] = bundle.PositionInBlock{}
+		}
+		store.AddProcessedBundles(block, bundles)
+	}
+
+	predBlock, predHash, ok := store.GetPredecessorBundleHistoryHash()
+	require.True(ok)
+	require.NotZero(predHash, "predecessor hash should be non-zero")
+
+	// Verify it's strictly before the oldest in-range block.
+	oldestBlock, _, hasOldest := store.GetOldestRetainedBundleHistoryHash()
+	require.True(hasOldest)
+	require.Less(predBlock, oldestBlock)
+}
+
+func TestStore_GetPredecessorBundleHistoryHash_SingleBlock(t *testing.T) {
+	// When there is exactly one block with bundles and no pruning,
+	// predecessor should be that single block.
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	store.AddProcessedBundles(42, map[common.Hash]bundle.PositionInBlock{
+		{0xaa}: {},
+	})
+
+	predBlock, predHash, ok := store.GetPredecessorBundleHistoryHash()
+	require.True(ok)
+	require.Equal(uint64(42), predBlock)
+	require.NotZero(predHash)
+
+	// Should also equal the oldest and the latest since there's only one block.
+	oldestBlock, oldestHash, hasOldest := store.GetOldestRetainedBundleHistoryHash()
+	require.True(hasOldest)
+	require.Equal(predBlock, oldestBlock)
+	require.Equal(predHash, oldestHash)
+
+	latestBlock, latestHash := store.GetProcessedBundleHistoryHash()
+	require.Equal(predBlock, latestBlock)
+	require.Equal(predHash, latestHash)
+}
+
+func TestStore_GetPredecessorBundleHistoryHash_LogsOnIteratorError(t *testing.T) {
+	store, table, log, _, _ := storeTableLogMocks(t)
+
+	injectedErr := errors.New("iterator error")
+	it := NewMockdbIterator(gomock.NewController(t))
+	table.EXPECT().NewIterator([]byte{'h'}, nil).Return(it)
+	gomock.InOrder(
+		it.EXPECT().Next().Return(false),
+		it.EXPECT().Error().Return(injectedErr),
+		it.EXPECT().Release(),
+	)
+
+	expectCrit(log, "failed to iterate bundle history hashes", "error", injectedErr)
+	require.PanicsWithValue(t,
+		fmt.Sprintf("failed to iterate bundle history hashes: %v", []any{"error", injectedErr}),
+		func() { store.GetPredecessorBundleHistoryHash() })
+}
+
+func TestStore_GetPredecessorBundleHistoryHash_LogsOnInvalidKeyLength(t *testing.T) {
+	store, table, log, _, _ := storeTableLogMocks(t)
+
+	it := NewMockdbIterator(gomock.NewController(t))
+	table.EXPECT().NewIterator([]byte{'h'}, nil).Return(it)
+	gomock.InOrder(
+		it.EXPECT().Next().Return(true),
+		it.EXPECT().Key().Return([]byte{0x01, 0x02}), // too short
+		it.EXPECT().Release(),
+	)
+
+	expectCrit(log, "invalid per-block history hash key length", "length", 2)
+	require.PanicsWithValue(t,
+		fmt.Sprintf("invalid per-block history hash key length: %v", []any{"length", 2}),
+		func() { store.GetPredecessorBundleHistoryHash() })
+}
+
+func TestStore_GetPredecessorBundleHistoryHash_LogsOnInvalidValueLength(t *testing.T) {
+	store, table, log, _, _ := storeTableLogMocks(t)
+
+	validKey := getBlockHistoryHashKey(5)
+
+	it := NewMockdbIterator(gomock.NewController(t))
+	table.EXPECT().NewIterator([]byte{'h'}, nil).Return(it)
+	gomock.InOrder(
+		it.EXPECT().Next().Return(true),
+		it.EXPECT().Key().Return(validKey),
+		it.EXPECT().Value().Return([]byte{0x01, 0x02, 0x03}), // 3 bytes, not 32
+		it.EXPECT().Release(),
+	)
+
+	expectCrit(log, "invalid per-block history hash value length", "length", 3)
+	require.PanicsWithValue(t,
+		fmt.Sprintf("invalid per-block history hash value length: %v", []any{"length", 3}),
+		func() { store.GetPredecessorBundleHistoryHash() })
+}
+
 func TestStore_addNewBundles_EncodesInfoCorrectly(t *testing.T) {
 	store, _, _, _, _ := storeTableLogMocks(t)
 

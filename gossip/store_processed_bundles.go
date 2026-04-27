@@ -330,6 +330,34 @@ func (s *Store) GetOldestRetainedBundleHistoryHash() (blockNum uint64, hash comm
 	return blockNum, hash, true
 }
 
+// GetPredecessorBundleHistoryHash returns the block number and hash of the
+// predecessor 'h' entry — the very first entry in the 'h' key space. When
+// pruning has occurred this is the single retained entry that precedes the
+// oldest in-range block, allowing the hash chain to be independently verified.
+// When no pruning has occurred yet, it coincides with the oldest retained
+// entry. Returns ok=false when no 'h' entries exist at all.
+func (s *Store) GetPredecessorBundleHistoryHash() (blockNum uint64, hash common.Hash, ok bool) {
+	it := s.table.ProcessedBundles.NewIterator([]byte{'h'}, nil)
+	defer it.Release()
+	if !it.Next() {
+		if err := it.Error(); err != nil {
+			s.Log.Crit("failed to iterate bundle history hashes", "error", err)
+		}
+		return 0, common.Hash{}, false
+	}
+	key := it.Key()
+	if len(key) != 1+8 {
+		s.Log.Crit("invalid per-block history hash key length", "length", len(key))
+	}
+	value := it.Value()
+	if len(value) != 32 {
+		s.Log.Crit("invalid per-block history hash value length", "length", len(value))
+	}
+	blockNum = binary.BigEndian.Uint64(key[1:])
+	hash = common.BytesToHash(value)
+	return blockNum, hash, true
+}
+
 // SetProcessedBundlesHistoryHash sets the block number and hash of the
 // processed bundles history. This should be used only during genesis initialization.
 func (s *Store) SetProcessedBundlesHistoryHash(blockNum uint64, hash common.Hash) {
