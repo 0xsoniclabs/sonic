@@ -18,6 +18,7 @@ import (
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	opera "github.com/0xsoniclabs/sonic/opera"
+	hash "github.com/Fantom-foundation/lachesis-base/hash"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
@@ -214,18 +215,18 @@ func (mr *MockSealerProcessorMockRecorder) EpochSealing() *gomock.Call {
 }
 
 // SealEpoch mocks base method.
-func (m *MockSealerProcessor) SealEpoch() (iblockproc.BlockState, iblockproc.EpochState) {
+func (m *MockSealerProcessor) SealEpoch(lastBlockHash, lastExecPlanChainHash hash.Hash, sealingTxs []*types.Transaction) (iblockproc.BlockState, iblockproc.EpochState) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SealEpoch")
+	ret := m.ctrl.Call(m, "SealEpoch", lastBlockHash, lastExecPlanChainHash, sealingTxs)
 	ret0, _ := ret[0].(iblockproc.BlockState)
 	ret1, _ := ret[1].(iblockproc.EpochState)
 	return ret0, ret1
 }
 
 // SealEpoch indicates an expected call of SealEpoch.
-func (mr *MockSealerProcessorMockRecorder) SealEpoch() *gomock.Call {
+func (mr *MockSealerProcessorMockRecorder) SealEpoch(lastBlockHash, lastExecPlanChainHash, sealingTxs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SealEpoch", reflect.TypeOf((*MockSealerProcessor)(nil).SealEpoch))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SealEpoch", reflect.TypeOf((*MockSealerProcessor)(nil).SealEpoch), lastBlockHash, lastExecPlanChainHash, sealingTxs)
 }
 
 // Update mocks base method.
