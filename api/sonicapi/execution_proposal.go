@@ -340,38 +340,6 @@ func transform(
 	}, nil
 }
 
-func traverse(
-	proposal RPCExecutionProposal,
-	fn func(step RPCExecutionStepProposal) error,
-) error {
-	if proposal.Steps == nil {
-		return nil
-	}
-
-	for _, step := range proposal.Steps {
-		switch step := step.(type) {
-		case RPCExecutionStepProposal:
-			err := fn(step)
-			if err != nil {
-				return err
-			}
-
-		case RPCExecutionPlanGroup:
-			err := traverse(RPCExecutionProposal{
-				BlockRange:            proposal.BlockRange,
-				RPCExecutionPlanGroup: step,
-			}, fn)
-			if err != nil {
-				return err
-			}
-
-		default:
-			return fmt.Errorf("invalid execution plan level: must have either executionStep or group")
-		}
-	}
-	return nil
-}
-
 func toPtr[T any](v T) *T {
 	return &v
 }

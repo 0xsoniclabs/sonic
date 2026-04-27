@@ -19,7 +19,6 @@ package sonicapi
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -66,26 +65,14 @@ func (a *PublicBundleAPI) PrepareBundle(
 	}
 	args.BlockRange = &blockRange
 
-	gasPrice := a.suggestGasPrice(currentBlock)
-	chainID := a.b.ChainID()
-	signer := types.LatestSignerForChainID(chainID)
-
-	flatTxs := make([]ethapi.TransactionArgs, 0)
-	err = traverse(args,
-		func(step RPCExecutionStepProposal) error {
-			flatTxs = append(flatTxs, step.TransactionArgs)
-			return nil
-		},
-	)
+	flatTxs, needGasLimit, needGasPrice, err := flattenTransactions(args)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare bundle: %w", err)
 	}
 
-	// Estimate gas for all transactions if any has an uninitialized gas limit.
 	var gasLimits []hexutil.Uint64
-	if slices.ContainsFunc(flatTxs, func(tx ethapi.TransactionArgs) bool {
-		return tx.Gas == nil || *tx.Gas == 0 || (tx.GasPrice == nil && tx.MaxFeePerGas == nil)
-	}) {
+
+	if len(needGasLimit) > 0 {
 		estimated, err := a.EstimateGasForTransactions(ctx, flatTxs, nil, nil, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare bundle: gas estimation failed: %w", err)
@@ -94,35 +81,30 @@ func (a *PublicBundleAPI) PrepareBundle(
 	}
 
 	cursor := 0
-	// Fill transaction defaults
+	gasPrice := a.suggestGasPrice(currentBlock)
 	ready, err := transform(args,
 		func(step RPCExecutionStepProposal) (RPCExecutionStepProposal, error) {
-			var txArgs ethapi.TransactionArgs
-			if len(gasLimits) > 0 && cursor < len(gasLimits) {
-				txArgs = fillTransactionDefaults(step.TransactionArgs, &gasLimits[cursor], gasPrice)
-				flatTxs[cursor] = txArgs
-			} else {
-				txArgs = fillTransactionDefaults(step.TransactionArgs, nil, gasPrice)
-				flatTxs[cursor] = txArgs
+
+			if _, ok := needGasLimit[cursor]; ok {
+				step.Gas = &gasLimits[cursor]
 			}
 
-			if txArgs.Nonce == nil {
-				return step, fmt.Errorf("transaction %d is missing nonce", cursor)
+			if _, ok := needGasPrice[cursor]; ok {
+				if step.MaxFeePerGas == nil && step.GasPrice == nil {
+					if step.MaxPriorityFeePerGas == nil {
+						step.GasPrice = gasPrice
+					} else {
+						step.MaxFeePerGas = gasPrice
+					}
+				}
 			}
-
-			if txArgs.To == nil {
-				return step, fmt.Errorf("transaction %d is missing to", cursor)
-			}
-
-			if txArgs.From == nil {
-				return step, fmt.Errorf("transaction %d is missing from", cursor)
-			}
+			flatTxs[cursor] = step.TransactionArgs
 			cursor++
 
 			return RPCExecutionStepProposal{
 				TolerateFailed:  step.TolerateFailed,
 				TolerateInvalid: step.TolerateInvalid,
-				TransactionArgs: txArgs,
+				TransactionArgs: step.TransactionArgs,
 			}, nil
 		},
 	)
@@ -130,6 +112,8 @@ func (a *PublicBundleAPI) PrepareBundle(
 		return nil, fmt.Errorf("failed to set proposed transactions defaults: %w", err)
 	}
 
+	chainID := a.b.ChainID()
+	signer := types.LatestSignerForChainID(chainID)
 	plan, err := convertProposalToPlan(signer, ready)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare bundle: %w", err)
@@ -148,24 +132,41 @@ func (a *PublicBundleAPI) PrepareBundle(
 	}, nil
 }
 
-// fillTransactionDefaults sets default gas and gas price values for a transaction if they are not already set.
-func fillTransactionDefaults(args ethapi.TransactionArgs, gas *hexutil.Uint64, gasPrice *hexutil.Big) ethapi.TransactionArgs {
+// flattenTransactions traverses the execution proposal and extracts a flat list of transactions in depth-first order,
+// while also tracking which transactions need gas limit and gas price defaults filled in.
+func flattenTransactions(args RPCExecutionProposal) ([]ethapi.TransactionArgs, map[int]hexutil.Uint64, map[int]struct{}, error) {
+	needGasLimit := map[int]hexutil.Uint64{}
+	needGasPrice := map[int]struct{}{}
+	flatTxs := make([]ethapi.TransactionArgs, 0)
+	_, err := transform(args,
+		func(tx RPCExecutionStepProposal) (RPCExecutionStepProposal, error) {
 
-	// Set default gas limit if missing or zero.
-	if args.Gas == nil || *args.Gas == 0 {
-		args.Gas = gas
+			if tx.Nonce == nil {
+				return tx, fmt.Errorf("proposed transaction is missing nonce")
+			}
+
+			if tx.From == nil {
+				return tx, fmt.Errorf("proposed transaction is missing from field")
+			}
+
+			if tx.GasPrice != nil && tx.MaxFeePerGas != nil {
+				return tx, fmt.Errorf("proposed transaction cannot have both gasPrice and maxFeePerGas set")
+			}
+
+			flatTxs = append(flatTxs, tx.TransactionArgs)
+			if tx.Gas == nil || *tx.Gas == 0 {
+				needGasLimit[len(flatTxs)-1] = 0
+			}
+			if tx.GasPrice == nil && tx.MaxFeePerGas == nil {
+				needGasPrice[len(flatTxs)-1] = struct{}{}
+			}
+			return tx, nil
+		},
+	)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to flatten transactions: %w", err)
 	}
-
-	// Set default gas price if missing and not a type 2 transaction.
-	if args.GasPrice == nil && args.MaxFeePerGas == nil {
-		if args.MaxPriorityFeePerGas == nil {
-			args.GasPrice = gasPrice
-		} else {
-			args.MaxFeePerGas = gasPrice
-		}
-	}
-
-	return args
+	return flatTxs, needGasLimit, needGasPrice, nil
 }
 
 // validateBlockRange checks that the provided block range is valid and within
