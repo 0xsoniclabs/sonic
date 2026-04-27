@@ -44,18 +44,18 @@ const (
 // if a bundle transaction is pending.
 func newBundlesChecker(
 	chain StateReader,
-	state state.StateDB,
+	stateDB state.StateDB,
 ) func(*types.Transaction) bundlePoolStatus {
 
 	adapter := chainAdapter{
 		chain:   chain,
-		stateDb: state,
+		stateDb: stateDB,
 	}
 	return func(tx *types.Transaction) bundlePoolStatus {
-		state := GetBundleState(adapter, state, tx)
-		if state.Executable {
+		bundleState := GetBundleState(adapter, stateDB, tx)
+		if bundleState.Executable {
 			return bundlePending
-		} else if state.TemporarilyBlocked {
+		} else if bundleState.TemporarilyBlocked {
 			return bundleQueued
 		} else {
 			return bundleRejected

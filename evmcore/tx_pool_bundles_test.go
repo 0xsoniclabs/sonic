@@ -135,7 +135,7 @@ func TestTxPool_TransactionsAreQueuedAccordingToTheirExecutionStatus(t *testing.
 				SetEnvelopeNonce(0).
 				With(bundle.Step(bundleeKey,
 					&types.AccessListTx{
-						// offsetting the the nonce creates gapped transactions
+						// offsetting the nonce creates gapped transactions
 						// which cannot be immediately executed
 						Nonce: uint64(0 + test.nonceOffset),
 						Gas:   60_000,
