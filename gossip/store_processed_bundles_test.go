@@ -193,11 +193,13 @@ func TestStore_AddProcessedBundles_AddsNewBundlesToStorage(t *testing.T) {
 				hash := uint64ToHash(toDelete)
 				batch.EXPECT().Delete(getEntryKey(hash)).Return(nil)
 				batch.EXPECT().Delete(getIndexKey(toDelete, hash)).Return(nil)
+				it.EXPECT().Error().Return(nil)
 				it.EXPECT().Release()
 
 				// Second pass: 'h' iterator for bundle-less blocks (empty in mock world).
 				it2 := NewMockdbIterator(gomock.NewController(t))
 				it2.EXPECT().Next().Return(false)
+				it2.EXPECT().Error().Return(nil)
 				it2.EXPECT().Release()
 				table.EXPECT().NewIterator([]byte{'h'}, nil).Return(it2)
 			}
@@ -676,10 +678,12 @@ func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 					it.EXPECT().Key().Return(existingBundleKey),
 					// AnyTimes: when entries are not to be deleted, the iteration is stopped
 					it.EXPECT().Next().Return(false).AnyTimes(),
+					it.EXPECT().Error().Return(nil),
 				)
 				// Second pass: 'h' iterator for bundle-less blocks (empty in mock world).
 				table.EXPECT().NewIterator([]byte{'h'}, nil).Return(it2)
 				it2.EXPECT().Next().Return(false)
+				it2.EXPECT().Error().Return(nil)
 
 				// this expectation is the core of the test:
 				// it checks that the delete calls are made if and only if the
@@ -713,10 +717,12 @@ func TestStore_deleteOutdatedBundles_RemovesMultipleEntries_WhenNotCleanedForToo
 		batch.EXPECT().Delete(gomock.Any()) // index key
 		batch.EXPECT().Delete(gomock.Any()) // entry key
 	}
+	it.EXPECT().Error().Return(nil)
 	it.EXPECT().Next().Return(false)
 
 	// Second pass: 'h' iterator for bundle-less blocks (empty in mock world).
 	it2 := NewMockdbIterator(ctrl)
+	it2.EXPECT().Error().Return(nil)
 	it2.EXPECT().Release()
 	table.EXPECT().NewIterator([]byte{'h'}, nil).Return(it2)
 	it2.EXPECT().Next().Return(false)
@@ -734,6 +740,7 @@ func TestStore_deleteOutdatedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
 		// This is the key that will be ignored, since it does not have the correct length.
 		it.EXPECT().Key().Return([]byte{1, 2}),
 		it.EXPECT().Next().Return(false),
+		it.EXPECT().Error().Return(nil),
 		it.EXPECT().Release(),
 	)
 	table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it)
@@ -741,6 +748,7 @@ func TestStore_deleteOutdatedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
 	// 'h' iterator: empty in the mock world.
 	it2 := NewMockdbIterator(gomock.NewController(t))
 	it2.EXPECT().Next().Return(false)
+	it2.EXPECT().Error().Return(nil)
 	it2.EXPECT().Release()
 	table.EXPECT().NewIterator([]byte{'h'}, nil).Return(it2)
 
