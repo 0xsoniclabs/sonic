@@ -132,7 +132,8 @@ func (a *PublicBundleAPI) PrepareBundle(
 	}, nil
 }
 
-// flattenTransactions traverses the execution proposal and extracts a flat list of transactions in depth-first order,
+// flattenTransactions traverses the execution proposal and extracts a map of
+// transactions indexed by the depth-first order position in the tree,
 // while also tracking which transactions need gas limit and gas price defaults filled in.
 func flattenTransactions(args RPCExecutionProposal) ([]ethapi.TransactionArgs, map[int]hexutil.Uint64, map[int]struct{}, error) {
 	needGasLimit := map[int]hexutil.Uint64{}
@@ -178,6 +179,23 @@ func validateBlockRange(currentBlock uint64, blockRange *RPCRange) (RPCRange, er
 			Earliest: hexutil.Uint64(maxRange.Earliest),
 			Latest:   hexutil.Uint64(maxRange.Latest),
 		}, nil
+	}
+
+	if blockRange.Latest == 0 && blockRange.Earliest != 0 {
+		blockRange.Latest = hexutil.Uint64(uint64(blockRange.Earliest) + bundle.MaxBlockRange - 1)
+		return RPCRange{
+			Earliest: blockRange.Earliest,
+			Latest:   blockRange.Latest,
+		}, nil
+	}
+
+	// earliest not specified but latest is specified, set earliest to latest - maxRange + 1, but not less than currentBlock + 1 and check overflow
+	if blockRange.Earliest == 0 && blockRange.Latest != 0 {
+		if blockRange.Latest < hexutil.Uint64(currentBlock+bundle.MaxBlockRange) {
+			blockRange.Earliest = hexutil.Uint64(currentBlock + 1)
+		} else {
+			return RPCRange{}, fmt.Errorf("invalid block range: latest block %d is too far in the future; earliest block must be at least %d", blockRange.Latest, currentBlock+1)
+		}
 	}
 
 	if blockRange.Latest < hexutil.Uint64(currentBlock) {

@@ -72,14 +72,15 @@ func Test_resolveBlockRange(t *testing.T) {
 			wantLatest:   10 + bundle.MaxBlockRange,
 		},
 		"only earliest": {
-			currentBlock:  10,
-			blockRange:    &RPCRange{Earliest: hexN(50)},
-			errorContains: "invalid block range",
+			currentBlock: 10,
+			blockRange:   &RPCRange{Earliest: hexN(50)},
+			wantEarliest: 50,
+			wantLatest:   50 + bundle.MaxBlockRange - 1,
 		},
 		"explicit latest": {
 			currentBlock: 10,
 			blockRange:   &RPCRange{Latest: hexN(200)},
-			wantEarliest: 0,
+			wantEarliest: 11,
 			wantLatest:   200,
 		},
 		"range exceeds MaxBlockRange when only latest set": {
@@ -1092,10 +1093,9 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, result.Transactions, tc.wantTxCount)
 
-			// Sign each returned tx with the account's private key, then extract
-			// the signing hash from the signed transaction. The plan stores exactly
-			// this hash (signer.Hash excludes v,r,s so it is the same pre- and
-			// post-signing), proving that the plan correctly references each tx.
+			// The hash used in the execution plan shall be equal to the hash
+			// of the transaction after removing the bundle marker. All referenced
+			// transactions in the execution plan shall be present in the transaction list.
 			expectedHashes := make([]common.Hash, len(result.Transactions))
 			for i, txArgs := range result.Transactions {
 				clean := stripBundleMarker(txArgs)
