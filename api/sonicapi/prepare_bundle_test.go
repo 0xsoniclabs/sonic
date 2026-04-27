@@ -56,98 +56,6 @@ func groupEntryWithFlags(oneOf, tolerateFailures bool, steps ...any) RPCExecutio
 	}
 }
 
-func Test_fillTransactionDefaults(t *testing.T) {
-	addr := common.Address{1}
-	gasPrice := rpctest.ToHexBigInt(big.NewInt(1e9))
-
-	existingGasPrice := rpctest.ToHexBigInt(big.NewInt(999))
-	existingMaxFee := rpctest.ToHexBigInt(big.NewInt(888))
-	tip := rpctest.ToHexBigInt(big.NewInt(1))
-	explicit := hexutil.Uint64(50000)
-
-	tests := []struct {
-		name     string
-		txs      ethapi.TransactionArgs
-		gasLimit *hexutil.Uint64
-		gasPrice *hexutil.Big
-		check    func(t *testing.T, txs ethapi.TransactionArgs)
-	}{
-		{
-			name:     "nil gas limits fixed gas price",
-			txs:      ethapi.TransactionArgs{From: &addr},
-			gasLimit: nil,
-			gasPrice: gasPrice,
-			check: func(t *testing.T, txs ethapi.TransactionArgs) {
-				require.Nil(t, txs.Gas, "gas must remain nil when no limits provided")
-				require.Equal(t, gasPrice, txs.GasPrice)
-			},
-		},
-		{
-			name:     "gas limits provided fills gas",
-			txs:      ethapi.TransactionArgs{From: &addr},
-			gasLimit: rpctest.ToHexUint64(21000),
-			gasPrice: rpctest.ToHexBigInt(big.NewInt(1)),
-			check: func(t *testing.T, txs ethapi.TransactionArgs) {
-				require.NotNil(t, txs.Gas)
-				require.EqualValues(t, 21000, *txs.Gas)
-			},
-		},
-		{
-			name:     "gas limits provided preserves explicit gas",
-			txs:      ethapi.TransactionArgs{From: &addr, Gas: &explicit},
-			gasLimit: rpctest.ToHexUint64(21000),
-			gasPrice: rpctest.ToHexBigInt(big.NewInt(1)),
-			check: func(t *testing.T, txs ethapi.TransactionArgs) {
-				require.EqualValues(t, 50000, *txs.Gas, "explicit gas must not be overwritten")
-			},
-		},
-		{
-			name:     "existing gas price not overwritten",
-			txs:      ethapi.TransactionArgs{From: &addr, GasPrice: existingGasPrice},
-			gasLimit: nil,
-			gasPrice: rpctest.ToHexBigInt(big.NewInt(1e9)),
-			check: func(t *testing.T, txs ethapi.TransactionArgs) {
-				require.Equal(t, existingGasPrice, txs.GasPrice, "existing GasPrice must not be overwritten")
-			},
-		},
-		{
-			name:     "existing MaxFeePerGas not overwritten",
-			txs:      ethapi.TransactionArgs{From: &addr, MaxFeePerGas: existingMaxFee},
-			gasLimit: nil,
-			gasPrice: rpctest.ToHexBigInt(big.NewInt(1e9)),
-			check: func(t *testing.T, txs ethapi.TransactionArgs) {
-				require.Equal(t, existingMaxFee, txs.MaxFeePerGas, "existing MaxFeePerGas must not be overwritten")
-				require.Nil(t, txs.GasPrice)
-			},
-		},
-		{
-			name:     "MaxPriorityFeePerGas set causes MaxFeePerGas to be filled",
-			txs:      ethapi.TransactionArgs{From: &addr, MaxPriorityFeePerGas: tip},
-			gasPrice: gasPrice,
-			check: func(t *testing.T, txs ethapi.TransactionArgs) {
-				require.Equal(t, gasPrice, txs.MaxFeePerGas)
-				require.Nil(t, txs.GasPrice)
-			},
-		},
-		{
-			name:     "MaxPriorityFeePerGas with existing MaxFeePerGas skips price fill",
-			txs:      ethapi.TransactionArgs{From: &addr, MaxPriorityFeePerGas: tip, MaxFeePerGas: existingMaxFee},
-			gasPrice: gasPrice,
-			check: func(t *testing.T, txs ethapi.TransactionArgs) {
-				require.Equal(t, existingMaxFee, txs.MaxFeePerGas, "existing MaxFeePerGas must not be overwritten")
-				require.Nil(t, txs.GasPrice)
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			filledArgs := fillTransactionDefaults(tc.txs, tc.gasLimit, tc.gasPrice)
-			tc.check(t, filledArgs)
-		})
-	}
-}
-
 func Test_resolveBlockRange(t *testing.T) {
 	hexN := func(n uint64) hexutil.Uint64 { b := hexutil.Uint64(n); return b }
 
@@ -401,6 +309,163 @@ func Test_PrepareBundle_ExplicitGasLimit_NotOverwritten(t *testing.T) {
 	require.EqualValues(t, explicitGas, *result.Transactions[0].Gas)
 }
 
+func Test_PrepareBundle_MixedGas_ExplicitPreservedMissingEstimated(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+	explicitGas := hexutil.Uint64(50000)
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(addr2, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
+				txEntry(ethapi.TransactionArgs{
+					From:  &addr1,
+					To:    &addr2,
+					Nonce: rpctest.ToHexUint64(0),
+					Gas:   &explicitGas,
+				}),
+				txEntry(ethapi.TransactionArgs{
+					From:  &addr2,
+					To:    &addr1,
+					Nonce: rpctest.ToHexUint64(0),
+				}),
+			},
+		},
+	}
+
+	result, err := api.PrepareBundle(t.Context(), args)
+	require.NoError(t, err)
+	require.Len(t, result.Transactions, 2)
+
+	require.EqualValues(t, explicitGas, *result.Transactions[0].Gas, "explicit gas must be preserved")
+	require.NotNil(t, result.Transactions[1].Gas, "missing gas must be estimated")
+	require.GreaterOrEqual(t, uint64(*result.Transactions[1].Gas), uint64(params.TxGas), "estimated gas must be at least base tx gas")
+}
+
+func Test_PrepareBundle_AllGasExplicit_NoEstimationNeeded(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+	gas1 := hexutil.Uint64(50000)
+	gas2 := hexutil.Uint64(60000)
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(addr2, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
+				txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Gas: &gas1}),
+				txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Gas: &gas2}),
+			},
+		},
+	}
+
+	result, err := api.PrepareBundle(t.Context(), args)
+	require.NoError(t, err)
+	require.EqualValues(t, gas1, *result.Transactions[0].Gas, "explicit gas1 must be preserved exactly")
+	require.EqualValues(t, gas2, *result.Transactions[1].Gas, "explicit gas2 must be preserved exactly")
+}
+
+func Test_PrepareBundle_GasPrice_ExplicitPreserved(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+	existingGasPrice := rpctest.ToHexBigInt(big.NewInt(999))
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(addr2, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
+				txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), GasPrice: existingGasPrice}),
+				txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0)}),
+			},
+		},
+	}
+
+	result, err := api.PrepareBundle(t.Context(), args)
+	require.NoError(t, err)
+	require.Equal(t, existingGasPrice, result.Transactions[0].GasPrice, "explicit GasPrice must be preserved")
+	hasPriceField := result.Transactions[1].GasPrice != nil || result.Transactions[1].MaxFeePerGas != nil
+	require.True(t, hasPriceField, "missing gas price must be filled")
+}
+
+func Test_PrepareBundle_GasPrice_MaxFeeFilledForEIP1559(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+	tip := rpctest.ToHexBigInt(big.NewInt(1e8))
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
+				txEntry(ethapi.TransactionArgs{
+					From:                 &addr1,
+					To:                   &addr2,
+					Nonce:                rpctest.ToHexUint64(0),
+					MaxPriorityFeePerGas: tip,
+				}),
+			},
+		},
+	}
+
+	result, err := api.PrepareBundle(t.Context(), args)
+	require.NoError(t, err)
+	tx := result.Transactions[0]
+	require.NotNil(t, tx.MaxFeePerGas, "MaxFeePerGas must be filled for EIP-1559 tx")
+	require.Nil(t, tx.GasPrice, "GasPrice must remain nil for EIP-1559 tx")
+}
+
+func Test_PrepareBundle_GasPrice_MaxFeeExplicitPreserved(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+	existingMaxFee := rpctest.ToHexBigInt(big.NewInt(888))
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
+				txEntry(ethapi.TransactionArgs{
+					From:         &addr1,
+					To:           &addr2,
+					Nonce:        rpctest.ToHexUint64(0),
+					MaxFeePerGas: existingMaxFee,
+				}),
+			},
+		},
+	}
+
+	result, err := api.PrepareBundle(t.Context(), args)
+	require.NoError(t, err)
+	tx := result.Transactions[0]
+	require.Equal(t, existingMaxFee, tx.MaxFeePerGas, "explicit MaxFeePerGas must be preserved")
+	require.Nil(t, tx.GasPrice, "GasPrice must remain nil when MaxFeePerGas is set")
+}
+
 func Test_PrepareBundle_DefaultBlockRange_IsCurrentBlockPlusOne(t *testing.T) {
 	addr1 := common.Address{1}
 	addr2 := common.Address{2}
@@ -489,7 +554,7 @@ func Test_PrepareBundle_MissingNonce_ReturnsError(t *testing.T) {
 	}
 
 	_, err := api.PrepareBundle(t.Context(), args)
-	require.ErrorContains(t, err, "transaction 0 is missing nonce")
+	require.ErrorContains(t, err, "proposed transaction is missing nonce")
 }
 
 func Test_PrepareBundle_MultipleTxs_AllOfPlan(t *testing.T) {
@@ -861,4 +926,225 @@ func Test_PrepareBundle_SingleChildGroup_TolerateFailures_NotUnwrapped2(t *testi
 	require.True(t, ok, "expected group, not leaf")
 	require.False(t, group.OneOf)
 	require.Len(t, group.Steps, 1)
+}
+
+// stripBundleMarker removes the BundleOnly access-list entry from txArgs so that
+// ToTransaction() + signer.Hash() reproduce the pre-injection plan hash.
+// The plan hash is computed before injectPlanHashIntoAccessLists runs, so the
+// marker must be stripped to match what was hashed.
+func stripBundleMarker(args ethapi.TransactionArgs) ethapi.TransactionArgs {
+	if args.AccessList == nil {
+		return args
+	}
+	var clean types.AccessList
+	for _, e := range *args.AccessList {
+		if e.Address != bundle.BundleOnly {
+			clean = append(clean, e)
+		}
+	}
+	if len(clean) == 0 {
+		args.AccessList = nil
+	} else {
+		args.AccessList = &clean
+	}
+	return args
+}
+
+// collectLeafHashes returns all RPCExecutionStepComposable.Hash values from the
+// plan in depth-first left-to-right order.
+func collectLeafHashes(steps []any) []common.Hash {
+	var hashes []common.Hash
+	for _, s := range steps {
+		switch v := s.(type) {
+		case *RPCExecutionStepComposable:
+			hashes = append(hashes, v.Hash)
+		case *RPCExecutionPlanGroup:
+			hashes = append(hashes, collectLeafHashes(v.Steps)...)
+		}
+	}
+	return hashes
+}
+
+func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
+	wallet1, err := rpctest.NewWallet()
+	require.NoError(t, err)
+	wallet2, err := rpctest.NewWallet()
+	require.NoError(t, err)
+	wallet3, err := rpctest.NewWallet()
+	require.NoError(t, err)
+
+	addr1 := wallet1.Address()
+	addr2 := wallet2.Address()
+	addr3 := wallet3.Address()
+
+	// wallets maps each funded address to its private key for signing.
+	wallets := map[common.Address]*rpctest.Wallet{
+		*addr1: wallet1,
+		*addr2: wallet2,
+		*addr3: wallet3,
+	}
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(*addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(*addr2, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(*addr3, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+	api := NewPublicBundleAPI(be)
+	signer := types.LatestSignerForChainID(be.ChainID())
+
+	explicitGas := hexutil.Uint64(50000)
+	tip := rpctest.ToHexBigInt(big.NewInt(1e8))
+
+	tests := []struct {
+		name        string
+		proposal    RPCExecutionProposal
+		wantTxCount int
+		extraCheck  func(t *testing.T, result *RPCPreparedBundle)
+	}{
+		{
+			name: "single tx AllOf",
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						txEntry(ethapi.TransactionArgs{From: addr1, To: addr2, Nonce: rpctest.ToHexUint64(0)}),
+					},
+				},
+			},
+			wantTxCount: 1,
+		},
+		{
+			name: "two txs AllOf different senders",
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						txEntry(ethapi.TransactionArgs{From: addr1, To: addr2, Nonce: rpctest.ToHexUint64(0)}),
+						txEntry(ethapi.TransactionArgs{From: addr2, To: addr3, Nonce: rpctest.ToHexUint64(0)}),
+					},
+				},
+			},
+			wantTxCount: 2,
+		},
+		{
+			name: "three txs AllOf all senders",
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						txEntry(ethapi.TransactionArgs{From: addr1, To: addr2, Nonce: rpctest.ToHexUint64(0)}),
+						txEntry(ethapi.TransactionArgs{From: addr2, To: addr3, Nonce: rpctest.ToHexUint64(0)}),
+						txEntry(ethapi.TransactionArgs{From: addr3, To: addr1, Nonce: rpctest.ToHexUint64(0)}),
+					},
+				},
+			},
+			wantTxCount: 3,
+		},
+		{
+			name: "OneOf group different senders",
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					OneOf: true,
+					Steps: []any{
+						txEntry(ethapi.TransactionArgs{From: addr1, To: addr2, Nonce: rpctest.ToHexUint64(0)}),
+						txEntry(ethapi.TransactionArgs{From: addr2, To: addr1, Nonce: rpctest.ToHexUint64(0)}),
+					},
+				},
+			},
+			wantTxCount: 2,
+		},
+		{
+			name: "nested groups OneOf(AllOf(tx1,tx2),tx3) depth-first",
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						groupEntryWithFlags(true, false,
+							groupEntry(
+								txEntry(ethapi.TransactionArgs{From: addr1, To: addr2, Nonce: rpctest.ToHexUint64(0)}),
+								txEntry(ethapi.TransactionArgs{From: addr2, To: addr3, Nonce: rpctest.ToHexUint64(0)}),
+							),
+							txEntry(ethapi.TransactionArgs{From: addr3, To: addr1, Nonce: rpctest.ToHexUint64(0)}),
+						),
+					},
+				},
+			},
+			wantTxCount: 3,
+		},
+		{
+			name: "explicit gas reflected in hash",
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						txEntry(ethapi.TransactionArgs{From: addr1, To: addr3, Nonce: rpctest.ToHexUint64(0), Gas: &explicitGas}),
+					},
+				},
+			},
+			wantTxCount: 1,
+		},
+		{
+			name: "EIP-1559 tx bundle marker strip required",
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						txEntry(ethapi.TransactionArgs{From: addr2, To: addr3, Nonce: rpctest.ToHexUint64(0), MaxPriorityFeePerGas: tip}),
+					},
+				},
+			},
+			wantTxCount: 1,
+			extraCheck: func(t *testing.T, result *RPCPreparedBundle) {
+				planHashes := collectLeafHashes(result.ExecutionPlan.Steps)
+				// For EIP-1559 (type 2), the access list is part of the signing hash.
+				// Without stripping the marker the hash must differ from the plan hash.
+				withMarker := signer.Hash(result.Transactions[0].ToTransaction())
+				require.NotEqual(t, planHashes[0], withMarker, "stripping bundle marker must be necessary for EIP-1559 txs")
+			},
+		},
+		{
+			name: "tolerate flags preserved alongside hash",
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						txEntryWithFlags(ethapi.TransactionArgs{From: addr1, To: addr2, Nonce: rpctest.ToHexUint64(0)}, true, false),
+						txEntryWithFlags(ethapi.TransactionArgs{From: addr2, To: addr3, Nonce: rpctest.ToHexUint64(0)}, false, true),
+					},
+				},
+			},
+			wantTxCount: 2,
+			extraCheck: func(t *testing.T, result *RPCPreparedBundle) {
+				group := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
+				leaf0 := group.Steps[0].(*RPCExecutionStepComposable)
+				leaf1 := group.Steps[1].(*RPCExecutionStepComposable)
+				require.True(t, leaf0.TolerateFailed)
+				require.False(t, leaf0.TolerateInvalid)
+				require.False(t, leaf1.TolerateFailed)
+				require.True(t, leaf1.TolerateInvalid)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := api.PrepareBundle(t.Context(), tc.proposal)
+			require.NoError(t, err)
+			require.Len(t, result.Transactions, tc.wantTxCount)
+
+			// Sign each returned tx with the account's private key, then extract
+			// the signing hash from the signed transaction. The plan stores exactly
+			// this hash (signer.Hash excludes v,r,s so it is the same pre- and
+			// post-signing), proving that the plan correctly references each tx.
+			expectedHashes := make([]common.Hash, len(result.Transactions))
+			for i, txArgs := range result.Transactions {
+				clean := stripBundleMarker(txArgs)
+				tx := clean.ToTransaction()
+				w := wallets[*txArgs.From]
+				require.NotNil(t, w, "no wallet for sender %s", *txArgs.From)
+				signedTx, err := types.SignTx(tx, signer, w.PrivateKey)
+				require.NoError(t, err)
+				expectedHashes[i] = signer.Hash(signedTx)
+			}
+			planHashes := collectLeafHashes(result.ExecutionPlan.Steps)
+			require.Equal(t, expectedHashes, planHashes)
+
+			if tc.extraCheck != nil {
+				tc.extraCheck(t, result)
+			}
+		})
+	}
 }
