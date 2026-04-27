@@ -36,7 +36,7 @@ type prepareBundleResult struct {
 
 type executionPlanResult struct {
 	BlockRange       blockRangeResult `json:"blockRange"`
-	Steps            []rpcStep        `json:"steps"`
+	Steps            []step           `json:"steps"`
 	OneOf            bool             `json:"oneOf,omitempty"`
 	TolerateFailures bool             `json:"tolerateFailures,omitempty"`
 }
@@ -51,15 +51,15 @@ type prepareBundleTxResult struct {
 	AccessList *types.AccessList `json:"accessList,omitempty"`
 }
 
-// rpcStep represents either a leaf tx step (From+Hash set) or a group step (Steps set).
-type rpcStep struct {
+// step represents either a leaf tx step (From+Hash set) or a group step (Steps set).
+type step struct {
 	From             common.Address `json:"from,omitempty"`
 	Hash             common.Hash    `json:"hash,omitempty"`
 	TolerateFailed   bool           `json:"tolerateFailed,omitempty"`
 	TolerateInvalid  bool           `json:"tolerateInvalid,omitempty"`
 	OneOf            bool           `json:"oneOf,omitempty"`
 	TolerateFailures bool           `json:"tolerateFailures,omitempty"`
-	Steps            []rpcStep      `json:"steps,omitempty"`
+	Steps            []step         `json:"steps,omitempty"`
 }
 
 // TestPrepareBundle tests the sonic_prepareBundle RPC method.
@@ -69,69 +69,41 @@ func TestPrepareBundle(t *testing.T) {
 	from := sponsor.Address()
 	to := common.HexToAddress("0x2222222222222222222222222222222222222222")
 
-	testCases := []struct {
-		name        string
+	testCases := map[string]struct {
 		args        map[string]any
 		wantErr     bool
 		wantTxCount int
 		checkResult func(*testing.T, prepareBundleResult)
 	}{
-		// --- flat transactions shorthand ---
-		{
-			name: "flat_transactions_single",
+		"single_tx": {
 			args: map[string]any{
-				"transactions": []any{txArgs(from, to, 1)},
+				"steps": []any{txStep(from, to, 1)},
 			},
 			wantTxCount: 1,
 			checkResult: func(t *testing.T, r prepareBundleResult) {
-				// single tx: root group is elided, leaf step surfaces directly
-				require.Len(t, r.ExecutionPlan.Steps, 1, "single tx elides to direct leaf step")
-				require.NotEqual(t, common.Address{}, r.ExecutionPlan.Steps[0].From, "leaf step must have From set")
-			},
-		},
-		{
-			name: "flat_transactions_multiple",
-			args: map[string]any{
-				"transactions": []any{txArgs(from, to, 1), txArgs(from, to, 2)},
-			},
-			wantTxCount: 2,
-			checkResult: func(t *testing.T, r prepareBundleResult) {
-				// multiple txs: wrapped in a root all-of group
-				require.Len(t, r.ExecutionPlan.Steps, 1, "multiple txs wrap in a root all-of group")
-				require.Len(t, r.ExecutionPlan.Steps[0].Steps, 2)
-				require.False(t, r.ExecutionPlan.Steps[0].OneOf)
-			},
-		},
-		// --- entries (nested structure) ---
-		{
-			name: "entries_single_tx",
-			args: map[string]any{
-				"entries": []any{txEntry(from, to, 1)},
-			},
-			wantTxCount: 1,
-			checkResult: func(t *testing.T, r prepareBundleResult) {
+				// single leaf at root: wrapped in an AllOf group
 				require.Len(t, r.ExecutionPlan.Steps, 1)
-				require.NotEqual(t, common.Address{}, r.ExecutionPlan.Steps[0].From)
+				group := r.ExecutionPlan.Steps[0]
+				require.Len(t, group.Steps, 1, "single tx wrapped in AllOf group")
+				require.NotEqual(t, common.Address{}, group.Steps[0].From, "leaf must have From set")
 			},
 		},
-		{
-			name: "entries_two_txs_all_of",
+		"two_txs_all_of": {
 			args: map[string]any{
-				"entries": []any{txEntry(from, to, 1), txEntry(from, to, 2)},
+				"steps": []any{txStep(from, to, 1), txStep(from, to, 2)},
 			},
 			wantTxCount: 2,
 			checkResult: func(t *testing.T, r prepareBundleResult) {
-				require.Len(t, r.ExecutionPlan.Steps, 1, "root all-of group wraps 2 txs")
+				require.Len(t, r.ExecutionPlan.Steps, 1, "multiple txs wrapped in root AllOf group")
 				require.Len(t, r.ExecutionPlan.Steps[0].Steps, 2)
 				require.False(t, r.ExecutionPlan.Steps[0].OneOf)
 			},
 		},
-		{
-			name: "nested_one_of_group",
+		"nested_one_of_group": {
 			args: map[string]any{
-				"entries": []any{
-					txEntry(from, to, 1),
-					groupEntry(true, txEntry(from, to, 2), txEntry(from, to, 3)),
+				"steps": []any{
+					txStep(from, to, 1),
+					groupStep(true, txStep(from, to, 2), txStep(from, to, 3)),
 				},
 			},
 			wantTxCount: 3,
@@ -144,12 +116,11 @@ func TestPrepareBundle(t *testing.T) {
 				require.Len(t, root.Steps[1].Steps, 2, "oneOf group has 2 leaves")
 			},
 		},
-		{
-			name: "nested_all_of_group",
+		"nested_all_of_group": {
 			args: map[string]any{
-				"entries": []any{
-					txEntry(from, to, 1),
-					groupEntry(false, txEntry(from, to, 2), txEntry(from, to, 3)),
+				"steps": []any{
+					txStep(from, to, 1),
+					groupStep(false, txStep(from, to, 2), txStep(from, to, 3)),
 				},
 			},
 			wantTxCount: 3,
@@ -161,36 +132,36 @@ func TestPrepareBundle(t *testing.T) {
 				require.Len(t, root.Steps[1].Steps, 2)
 			},
 		},
-		// --- execution flags ---
-		{
-			name: "tolerate_failed_flag_preserved",
+		"tolerate_failed_flag_preserved": {
 			args: map[string]any{
-				"entries": []any{txEntryWithFlags(from, to, 1, true, false)},
+				"steps": []any{txStepWithFlags(from, to, 1, true, false)},
 			},
 			wantTxCount: 1,
 			checkResult: func(t *testing.T, r prepareBundleResult) {
 				require.Len(t, r.ExecutionPlan.Steps, 1)
-				require.True(t, r.ExecutionPlan.Steps[0].TolerateFailed)
-				require.False(t, r.ExecutionPlan.Steps[0].TolerateInvalid)
+				group := r.ExecutionPlan.Steps[0]
+				require.Len(t, group.Steps, 1)
+				require.True(t, group.Steps[0].TolerateFailed)
+				require.False(t, group.Steps[0].TolerateInvalid)
 			},
 		},
-		{
-			name: "tolerate_invalid_flag_preserved",
+		"tolerate_invalid_flag_preserved": {
 			args: map[string]any{
-				"entries": []any{txEntryWithFlags(from, to, 1, false, true)},
+				"steps": []any{txStepWithFlags(from, to, 1, false, true)},
 			},
 			wantTxCount: 1,
 			checkResult: func(t *testing.T, r prepareBundleResult) {
 				require.Len(t, r.ExecutionPlan.Steps, 1)
-				require.False(t, r.ExecutionPlan.Steps[0].TolerateFailed)
-				require.True(t, r.ExecutionPlan.Steps[0].TolerateInvalid)
+				group := r.ExecutionPlan.Steps[0]
+				require.Len(t, group.Steps, 1)
+				require.False(t, group.Steps[0].TolerateFailed)
+				require.True(t, group.Steps[0].TolerateInvalid)
 			},
 		},
-		{
-			name: "one_of_group_flag",
+		"one_of_group_flag": {
 			args: map[string]any{
-				"entries": []any{
-					groupEntry(true, txEntry(from, to, 1), txEntry(from, to, 2)),
+				"steps": []any{
+					groupStep(true, txStep(from, to, 1), txStep(from, to, 2)),
 				},
 			},
 			wantTxCount: 2,
@@ -201,40 +172,34 @@ func TestPrepareBundle(t *testing.T) {
 				require.Len(t, r.ExecutionPlan.Steps[0].Steps, 2)
 			},
 		},
-		{
-			name: "tolerate_failures_on_group",
+		"tolerate_failures_on_group": {
 			args: map[string]any{
-				"entries": []any{
-					groupEntryWithFlags(false, true, txEntry(from, to, 1), txEntry(from, to, 2)),
+				"steps": []any{
+					groupStepWithFlags(false, true, txStep(from, to, 1), txStep(from, to, 2)),
 				},
 			},
 			wantTxCount: 2,
 			checkResult: func(t *testing.T, r prepareBundleResult) {
-				// single-child no-modifier root is elided → root IS the tolerateFailures group
+				// TolerateFailures prevents the single-child root from eliding its child.
 				require.Len(t, r.ExecutionPlan.Steps, 1)
-				require.True(t, r.ExecutionPlan.Steps[0].TolerateFailures)
+				require.Len(t, r.ExecutionPlan.Steps[0].Steps, 2)
 			},
 		},
-		// --- bundle-only marker and plan hash ---
-		{
-			name: "bundle_only_marker_injected",
+		"bundle_only_marker_injected": {
 			args: map[string]any{
-				"entries": []any{txEntry(from, to, 1)},
+				"steps": []any{txStep(from, to, 1)},
 			},
 			wantTxCount: 1,
 		},
-		{
-			name: "plan_hash_consistent_across_txs",
+		"plan_hash_consistent_across_txs": {
 			args: map[string]any{
-				"entries": []any{txEntry(from, to, 1), txEntry(from, to, 2)},
+				"steps": []any{txStep(from, to, 1), txStep(from, to, 2)},
 			},
 			wantTxCount: 2,
 		},
-		// --- gas auto-fill ---
-		{
-			name: "gas_filled_when_omitted",
+		"gas_filled_when_omitted": {
 			args: map[string]any{
-				"entries": []any{txEntryNoGas(from, to, 1)},
+				"steps": []any{txStepNoGas(from, to, 1)},
 			},
 			wantTxCount: 1,
 			checkResult: func(t *testing.T, r prepareBundleResult) {
@@ -242,13 +207,13 @@ func TestPrepareBundle(t *testing.T) {
 				require.Greater(t, uint64(*r.Transactions[0].Gas), uint64(0))
 			},
 		},
-		// --- block range ---
-		{
-			name: "custom_block_range",
+		"custom_block_range": {
 			args: map[string]any{
-				"entries":       []any{txEntry(from, to, 1)},
-				"earliestBlock": hexutil.Uint64(100),
-				"latestBlock":   hexutil.Uint64(200),
+				"steps": []any{txStep(from, to, 1)},
+				"blockRange": map[string]any{
+					"earliest": hexutil.Uint64(100),
+					"latest":   hexutil.Uint64(200),
+				},
 			},
 			wantTxCount: 1,
 			checkResult: func(t *testing.T, r prepareBundleResult) {
@@ -256,10 +221,9 @@ func TestPrepareBundle(t *testing.T) {
 				require.Equal(t, hexutil.Uint64(200), r.ExecutionPlan.BlockRange.Latest)
 			},
 		},
-		{
-			name: "default_block_range_bounded_by_max",
+		"default_block_range_bounded_by_max": {
 			args: map[string]any{
-				"entries": []any{txEntry(from, to, 1)},
+				"steps": []any{txStep(from, to, 1)},
 			},
 			wantTxCount: 1,
 			checkResult: func(t *testing.T, r prepareBundleResult) {
@@ -268,44 +232,36 @@ func TestPrepareBundle(t *testing.T) {
 				require.EqualValues(t, bundle.MaxBlockRange, rangeSize, "default range must be exactly MaxBlockRange")
 			},
 		},
-		// --- error cases ---
-		{
-			name: "error_both_transactions_and_entries",
+		"error_invalid_block_range_latest_before_earliest": {
 			args: map[string]any{
-				"transactions": []any{txArgs(from, to, 1)},
-				"entries":      []any{txEntry(from, to, 1)},
+				"steps": []any{txStep(from, to, 1)},
+				"blockRange": map[string]any{
+					"earliest": hexutil.Uint64(200),
+					"latest":   hexutil.Uint64(100),
+				},
 			},
 			wantErr: true,
 		},
-		{
-			name: "error_invalid_block_range_latest_before_earliest",
+		"error_range_too_large": {
 			args: map[string]any{
-				"entries":       []any{txEntry(from, to, 1)},
-				"earliestBlock": hexutil.Uint64(200),
-				"latestBlock":   hexutil.Uint64(100),
+				"steps": []any{txStep(from, to, 1)},
+				"blockRange": map[string]any{
+					"earliest": hexutil.Uint64(1),
+					"latest":   hexutil.Uint64(1 + bundle.MaxBlockRange), // range = MaxBlockRange+1 blocks
+				},
 			},
 			wantErr: true,
 		},
-		{
-			name: "error_range_too_large",
+		"empty_steps_returns_error": {
 			args: map[string]any{
-				"entries":       []any{txEntry(from, to, 1)},
-				"earliestBlock": hexutil.Uint64(1),
-				"latestBlock":   hexutil.Uint64(1 + bundle.MaxBlockRange), // range = MaxBlockRange+1 blocks
+				"steps": []any{},
 			},
 			wantErr: true,
-		},
-		{
-			name: "empty_transactions_returns_empty",
-			args: map[string]any{
-				"transactions": []any{},
-			},
-			wantTxCount: 0,
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
 			client, err := net.GetClient()
 			require.NoError(t, err)
 			defer client.Close()
@@ -330,8 +286,8 @@ func TestPrepareBundle(t *testing.T) {
 
 // --- helpers for building RPC request JSON ---
 
-// txArgs builds flat TransactionArgs JSON for use in the "transactions" shorthand list.
-func txArgs(from, to common.Address, nonce uint64) map[string]any {
+// txStep builds a leaf step JSON with gas fields set.
+func txStep(from, to common.Address, nonce uint64) map[string]any {
 	return map[string]any{
 		"from":     from,
 		"to":       to,
@@ -342,8 +298,8 @@ func txArgs(from, to common.Address, nonce uint64) map[string]any {
 	}
 }
 
-// txArgsNoGas builds flat TransactionArgs JSON without gas fields to trigger auto-estimation.
-func txArgsNoGas(from, to common.Address, nonce uint64) map[string]any {
+// txStepNoGas builds a leaf step without gas fields to trigger auto-estimation.
+func txStepNoGas(from, to common.Address, nonce uint64) map[string]any {
 	return map[string]any{
 		"from":  from,
 		"to":    to,
@@ -352,42 +308,32 @@ func txArgsNoGas(from, to common.Address, nonce uint64) map[string]any {
 	}
 }
 
-// txEntry wraps txArgs in a "transaction" discriminator for use in an "entries" list.
-func txEntry(from, to common.Address, nonce uint64) map[string]any {
-	return map[string]any{"transaction": txArgs(from, to, nonce)}
-}
-
-// txEntryNoGas wraps txArgsNoGas in a "transaction" discriminator.
-func txEntryNoGas(from, to common.Address, nonce uint64) map[string]any {
-	return map[string]any{"transaction": txArgsNoGas(from, to, nonce)}
-}
-
-// txEntryWithFlags adds tolerateFailed/tolerateInvalid flags to a txEntry.
-func txEntryWithFlags(from, to common.Address, nonce uint64, tolerateFailed, tolerateInvalid bool) map[string]any {
-	entry := txEntry(from, to, nonce)
+// txStepWithFlags adds tolerateFailed/tolerateInvalid flags to a txStep.
+func txStepWithFlags(from, to common.Address, nonce uint64, tolerateFailed, tolerateInvalid bool) map[string]any {
+	step := txStep(from, to, nonce)
 	if tolerateFailed {
-		entry["tolerateFailed"] = true
+		step["tolerateFailed"] = true
 	}
 	if tolerateInvalid {
-		entry["tolerateInvalid"] = true
+		step["tolerateInvalid"] = true
 	}
-	return entry
+	return step
 }
 
-// groupEntry builds a group step JSON using the "entries" discriminator key.
-func groupEntry(oneOf bool, entries ...any) map[string]any {
+// groupStep builds a group step JSON.
+func groupStep(oneOf bool, steps ...any) map[string]any {
 	return map[string]any{
-		"oneOf":   oneOf,
-		"entries": entries,
+		"oneOf": oneOf,
+		"steps": steps,
 	}
 }
 
-// groupEntryWithFlags builds a group step JSON with tolerateFailures flag.
-func groupEntryWithFlags(oneOf, tolerateFailures bool, entries ...any) map[string]any {
+// groupStepWithFlags builds a group step JSON with tolerateFailures flag.
+func groupStepWithFlags(oneOf, tolerateFailures bool, steps ...any) map[string]any {
 	return map[string]any{
 		"oneOf":            oneOf,
 		"tolerateFailures": tolerateFailures,
-		"entries":          entries,
+		"steps":            steps,
 	}
 }
 
