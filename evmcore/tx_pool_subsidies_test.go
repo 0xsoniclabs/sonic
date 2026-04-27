@@ -57,7 +57,7 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 	// mock the external chain dependencies
 	chain := mockChain(ctrl, chainConfig, upgrades)
 
-	subsidiesFactory := func(opera.Rules, StateReader, state.StateDB, types.Signer) utils.TransactionCheckFunc {
+	subsidiesCheckFactory := func(opera.Rules, StateReader, state.StateDB, types.Signer) utils.TransactionCheckFunc {
 		// This test accepts all sponsorship requests
 		return func(tx *types.Transaction) bool {
 			return true
@@ -65,7 +65,7 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 	}
 
 	// Instantiate the pool
-	pool := newTxPool(poolConfig, chainConfig, chain, subsidiesFactory)
+	pool := newTxPool(poolConfig, chainConfig, chain, subsidiesCheckFactory, testBundleCheckerFactory)
 
 	// transactions per sender
 	const transactionsPerSender = 5

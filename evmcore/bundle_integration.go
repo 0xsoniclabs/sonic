@@ -16,6 +16,14 @@
 
 package evmcore
 
+import (
+	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
+)
+
 // bundlePoolStatus represents the status of a bundle in the transaction pool,
 // which can be pending, queued, or rejected. This type is used to
 // manage transitions from queued to pending, pending to queued, queued to
@@ -31,3 +39,52 @@ const (
 	// bundleRejected, the bundle has been executed, or is not valid
 	bundleRejected
 )
+
+// newBundlesChecker constructs a checker with the available state to determine
+// if a bundle transaction is pending.
+func newBundlesChecker(
+	chain StateReader,
+	state state.StateDB,
+) func(*types.Transaction) bundlePoolStatus {
+
+	adapter := chainAdapter{
+		chain:   chain,
+		stateDb: state,
+	}
+	return func(tx *types.Transaction) bundlePoolStatus {
+		state := GetBundleState(adapter, state, tx)
+		if state.Executable {
+			return bundlePending
+		} else if state.TemporarilyBlocked {
+			return bundleQueued
+		} else {
+			return bundleRejected
+		}
+	}
+}
+
+type chainAdapter struct {
+	chain   StateReader
+	stateDb state.StateDB
+}
+
+// GetCurrentNetworkRules implements [ChainState].
+func (c chainAdapter) GetCurrentNetworkRules() opera.Rules {
+	return c.chain.CurrentRules()
+}
+
+func (c chainAdapter) GetCurrentChainConfig() *params.ChainConfig {
+	return c.chain.CurrentConfig()
+}
+
+func (c chainAdapter) GetLatestHeader() *EvmHeader {
+	return &c.chain.CurrentBlock().EvmHeader
+}
+
+func (c chainAdapter) Header(hash common.Hash, number uint64) *EvmHeader {
+	return c.chain.Header(hash, number)
+}
+
+func (c chainAdapter) StateDB() state.StateDB {
+	return c.stateDb
+}
