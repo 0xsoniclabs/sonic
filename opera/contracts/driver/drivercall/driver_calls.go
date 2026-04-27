@@ -18,17 +18,21 @@ package drivercall
 
 import (
 	_ "embed"
+	"fmt"
 	"math/big"
 	"strings"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
 	"github.com/0xsoniclabs/sonic/opera/genesis/gpos"
 	"github.com/0xsoniclabs/sonic/utils"
+	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 )
 
 //go:embed NodeDriverAbi.json
@@ -96,4 +100,56 @@ func SetGenesisDelegation(d Delegation) []byte {
 func DeactivateValidator(validatorID idx.ValidatorID, status uint64) []byte {
 	data, _ := sAbi.Pack("deactivateValidator", utils.U64toBig(uint64(validatorID)), utils.U64toBig(status))
 	return data
+}
+
+// ParseSealEpochArgs decodes a sealEpoch call and returns the originated
+// transaction fee per validator (one entry per validator in epoch order).
+// Returns an error if data does not encode a sealEpoch call.
+func ParseSealEpochArgs(tx *types.Transaction) ([]ValidatorEpochMetric, error) {
+	if tx == nil || !internaltx.IsInternal(tx) {
+		return nil, fmt.Errorf("transaction is nil or not internal")
+	}
+	if tx.To() == nil || *tx.To() != driver.ContractAddress {
+		return nil, fmt.Errorf("transaction does not target the node driver contract")
+	}
+	data := tx.Data()
+
+	if len(data) < 4 {
+		return nil, fmt.Errorf("data too short to contain a function selector")
+	}
+	method, err := sAbi.MethodById(data[:4])
+	if err != nil {
+		return nil, fmt.Errorf("unknown method: %w", err)
+	}
+	if method.Name != "sealEpoch" {
+		return nil, fmt.Errorf("expected sealEpoch, got %s", method.Name)
+	}
+	args, err := method.Inputs.Unpack(data[4:])
+	if err != nil {
+		return nil, fmt.Errorf("failed to unpack sealEpoch arguments: %w", err)
+	}
+
+	// Reconstruct the ValidatorEpochMetric slice from the unpacked arguments.
+	offlineTimes := args[0].([]*big.Int)
+	offlineBlocks := args[1].([]*big.Int)
+	uptimes := args[2].([]*big.Int)
+	fees := args[3].([]*big.Int)
+
+	l := len(offlineTimes)
+	if len(offlineBlocks) != l || len(uptimes) != l || len(fees) != l {
+		return nil, fmt.Errorf("argument array lengths do not match")
+	}
+
+	metrics := make([]ValidatorEpochMetric, l)
+	for i := range metrics {
+		metrics[i] = ValidatorEpochMetric{
+			Missed: opera.BlocksMissed{
+				BlocksNum: idx.Block(offlineBlocks[i].Uint64()),
+				Period:    inter.FromUnix(offlineTimes[i].Int64()),
+			},
+			Uptime:          inter.FromUnix(uptimes[i].Int64()),
+			OriginatedTxFee: fees[i],
+		}
+	}
+	return metrics, nil
 }
