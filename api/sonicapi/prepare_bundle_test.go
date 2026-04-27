@@ -118,7 +118,7 @@ func Test_resolveBlockRange(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			r, err := validateBlockRange(tc.currentBlock, tc.blockRange)
+			r, err := sanitizeBlockRange(tc.currentBlock, tc.blockRange)
 			if tc.errorContains != "" {
 				require.ErrorContains(t, err, tc.errorContains)
 			} else {

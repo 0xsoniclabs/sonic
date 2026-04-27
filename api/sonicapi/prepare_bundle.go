@@ -59,7 +59,7 @@ func (a *PublicBundleAPI) PrepareBundle(
 		return nil, fmt.Errorf("failed to prepare bundle: unable to retrieve current block number")
 	}
 
-	blockRange, err := validateBlockRange(currentBlock.NumberU64(), args.BlockRange)
+	blockRange, err := sanitizeBlockRange(currentBlock.NumberU64(), args.BlockRange)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare bundle: %w", err)
 	}
@@ -170,9 +170,9 @@ func flattenTransactions(args RPCExecutionProposal) ([]ethapi.TransactionArgs, m
 	return flatTxs, needGasLimit, needGasPrice, nil
 }
 
-// validateBlockRange checks that the provided block range is valid and within
+// sanitizeBlockRange checks that the provided block range is valid and within
 // allowed limits, defaulting to a sensible range if not provided.
-func validateBlockRange(currentBlock uint64, blockRange *RPCRange) (RPCRange, error) {
+func sanitizeBlockRange(currentBlock uint64, blockRange *RPCRange) (RPCRange, error) {
 	if blockRange == nil {
 		maxRange := bundle.MakeMaxRangeStartingAt(currentBlock + 1)
 		return RPCRange{
