@@ -31,7 +31,6 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
-	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -3286,7 +3285,7 @@ func TestNewTransactionProcessorForBlock_ConfiguresTransactionProcessorWithValue
 	}
 
 	chain := NewMockChainState(ctrl)
-	chain.EXPECT().GetEvmChainConfig(idx.Block(block.Number.Uint64())).Return(chainCfg)
+	chain.EXPECT().GetCurrentChainConfig().Return(chainCfg)
 	chain.EXPECT().GetCurrentNetworkRules().Return(currentRules).AnyTimes()
 
 	state := state.NewMockStateDB(ctrl)

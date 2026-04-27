@@ -14,7 +14,6 @@ import (
 
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	opera "github.com/0xsoniclabs/sonic/opera"
-	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	params "github.com/ethereum/go-ethereum/params"
@@ -45,6 +44,20 @@ func (m *MockChainStateForBundleEval) EXPECT() *MockChainStateForBundleEvalMockR
 	return m.recorder
 }
 
+// GetCurrentChainConfig mocks base method.
+func (m *MockChainStateForBundleEval) GetCurrentChainConfig() *params.ChainConfig {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCurrentChainConfig")
+	ret0, _ := ret[0].(*params.ChainConfig)
+	return ret0
+}
+
+// GetCurrentChainConfig indicates an expected call of GetCurrentChainConfig.
+func (mr *MockChainStateForBundleEvalMockRecorder) GetCurrentChainConfig() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentChainConfig", reflect.TypeOf((*MockChainStateForBundleEval)(nil).GetCurrentChainConfig))
+}
+
 // GetCurrentNetworkRules mocks base method.
 func (m *MockChainStateForBundleEval) GetCurrentNetworkRules() opera.Rules {
 	m.ctrl.T.Helper()
@@ -57,20 +70,6 @@ func (m *MockChainStateForBundleEval) GetCurrentNetworkRules() opera.Rules {
 func (mr *MockChainStateForBundleEvalMockRecorder) GetCurrentNetworkRules() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentNetworkRules", reflect.TypeOf((*MockChainStateForBundleEval)(nil).GetCurrentNetworkRules))
-}
-
-// GetEvmChainConfig mocks base method.
-func (m *MockChainStateForBundleEval) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEvmChainConfig", blockHeight)
-	ret0, _ := ret[0].(*params.ChainConfig)
-	return ret0
-}
-
-// GetEvmChainConfig indicates an expected call of GetEvmChainConfig.
-func (mr *MockChainStateForBundleEvalMockRecorder) GetEvmChainConfig(blockHeight any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEvmChainConfig", reflect.TypeOf((*MockChainStateForBundleEval)(nil).GetEvmChainConfig), blockHeight)
 }
 
 // GetLatestHeader mocks base method.

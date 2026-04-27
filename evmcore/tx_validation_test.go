@@ -1958,7 +1958,6 @@ func Test_ValidateBundle_GetBundleStateAdaptor(t *testing.T) {
 	tests := map[string]struct {
 		setup  func(reader *MockStateReader)
 		action func(adaptor *getBundleStateAdaptor)
-		check  func(t *testing.T)
 	}{
 		"current rules forwards call": {
 			setup: func(reader *MockStateReader) { reader.EXPECT().CurrentRules() },
@@ -1969,7 +1968,7 @@ func Test_ValidateBundle_GetBundleStateAdaptor(t *testing.T) {
 		"current config forwards call": {
 			setup: func(reader *MockStateReader) { reader.EXPECT().CurrentConfig() },
 			action: func(adaptor *getBundleStateAdaptor) {
-				adaptor.GetEvmChainConfig(1)
+				adaptor.GetCurrentChainConfig()
 			},
 		},
 		"current block forwards call": {

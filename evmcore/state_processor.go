@@ -21,7 +21,6 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -595,9 +594,10 @@ type ChainState interface {
 	// GetCurrentNetworkRules returns the current network rules for the EVM.
 	GetCurrentNetworkRules() opera.Rules
 
-	// GetEvmChainConfig returns the chain configuration for the EVM at the
-	// given block height
-	GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig
+	// GetCurrentChainConfig returns the current chain configuration, which
+	// is needed to determine the active EVM rules and the block context
+	// for transaction processing.
+	GetCurrentChainConfig() *params.ChainConfig
 }
 
 // NewTransactionProcessorForBlock creates a new transaction processor to be used
@@ -610,16 +610,15 @@ func NewTransactionProcessorForBlock(
 ) *TransactionProcessor {
 	// TODO: follow-up task - align this with c_block_callbacks.go
 	// see https://github.com/0xsoniclabs/sonic-admin/issues/227
-	chainCfg := chain.GetEvmChainConfig(idx.Block(block.Header().Number.Uint64()))
-	vmConfig := opera.GetVmConfig(chain.GetCurrentNetworkRules())
+	rules := chain.GetCurrentNetworkRules()
+	chainCfg := chain.GetCurrentChainConfig()
+	vmConfig := opera.GetVmConfig(rules)
 
 	// The gas limit for transactions is enforced on a per-transaction level
 	// in the scheduler. See the scheduler.Schedule method for details. The
 	// total gas used for attempting to schedule transactions is not limited.
 	gasLimit := uint64(math.MaxUint64)
-	stateProcessor := NewStateProcessor(
-		chainCfg, chain, chain.GetCurrentNetworkRules().Upgrades,
-	)
+	stateProcessor := NewStateProcessor(chainCfg, chain, rules.Upgrades)
 	return stateProcessor.BeginBlock(block, state, vmConfig, gasLimit, nil)
 }
 

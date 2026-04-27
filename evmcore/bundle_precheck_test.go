@@ -629,7 +629,7 @@ func Test_trialRunBundle_DoesRunTransactionsThroughEVMAndReturnsIfTransactionsGo
 				Number:  big.NewInt(0),
 				BaseFee: new(big.Int),
 			}).AnyTimes()
-			chainState.EXPECT().GetEvmChainConfig(gomock.Any()).Return(&params.ChainConfig{
+			chainState.EXPECT().GetCurrentChainConfig().Return(&params.ChainConfig{
 				ChainID: big.NewInt(1),
 			}).AnyTimes()
 			chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
@@ -745,7 +745,7 @@ func Test_trialRunBundle_UsesRandomPrevRandaoValue(t *testing.T) {
 		Number:  big.NewInt(0),
 		BaseFee: new(big.Int),
 	}).AnyTimes()
-	chainState.EXPECT().GetEvmChainConfig(any).Return(&params.ChainConfig{
+	chainState.EXPECT().GetCurrentChainConfig().Return(&params.ChainConfig{
 		ChainID:            big.NewInt(1),
 		LondonBlock:        new(big.Int).SetUint64(0),
 		MergeNetsplitBlock: new(big.Int).SetUint64(0),

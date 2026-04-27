@@ -28,7 +28,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -459,9 +458,7 @@ func (f getBundleStateAdaptor) GetCurrentNetworkRules() opera.Rules {
 	return f.CurrentRules()
 }
 
-func (f getBundleStateAdaptor) GetEvmChainConfig(idx.Block) *params.ChainConfig {
-	// FIXME: replace bundles trial-run usage of GetEvmChainConfig by a version returning
-	// current chain config directly
+func (f getBundleStateAdaptor) GetCurrentChainConfig() *params.ChainConfig {
 	return f.CurrentConfig()
 }
 
