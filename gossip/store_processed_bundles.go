@@ -161,6 +161,9 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) {
 			s.Log.Crit("failed to delete old processed bundle hash", "error", err)
 		}
 	}
+	if err := it.Error(); err != nil {
+		s.Log.Crit("failed to iterate old processed bundles for deletion", "error", err)
+	}
 
 	// Prune blocks history hash entries.
 	// key layout for 'h': 1 byte prefix + 8 bytes blockNum
@@ -178,6 +181,9 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) {
 		if err := batch.Delete(getBlockHistoryHashKey(oldBlockNumber)); err != nil {
 			s.Log.Crit("failed to delete old block history hash", "error", err)
 		}
+	}
+	if err := it2.Error(); err != nil {
+		s.Log.Crit("failed to iterate old block history hashes for deletion", "error", err)
 	}
 }
 
@@ -279,6 +285,9 @@ func (s *Store) GetOldestRetainedBundleHistoryHash() (blockNum uint64, hash comm
 	it := s.table.ProcessedBundles.NewIterator([]byte{'h'}, nil)
 	defer it.Release()
 	if !it.Next() {
+		if err := it.Error(); err != nil {
+			s.Log.Crit("failed to iterate bundle history hashes", "error", err)
+		}
 		return 0, common.Hash{}, false
 	}
 	key := it.Key()
