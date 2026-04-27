@@ -59,74 +59,64 @@ func groupEntryWithFlags(oneOf, tolerateFailures bool, steps ...any) RPCExecutio
 func Test_resolveBlockRange(t *testing.T) {
 	hexN := func(n uint64) hexutil.Uint64 { b := hexutil.Uint64(n); return b }
 
-	tests := []struct {
-		name          string
+	tests := map[string]struct {
 		currentBlock  uint64
 		blockRange    *RPCRange
 		wantEarliest  uint64
 		wantLatest    uint64
 		errorContains string
 	}{
-		{
-			name:         "nil both defaults from current block",
+		"nil both defaults from current block": {
 			currentBlock: 10,
 			wantEarliest: 11,
 			wantLatest:   10 + bundle.MaxBlockRange,
 		},
-		{
-			name:          "only earliest",
+		"only earliest": {
 			currentBlock:  10,
 			blockRange:    &RPCRange{Earliest: hexN(50)},
 			errorContains: "invalid block range",
 		},
-		{
-			name:         "explicit latest",
+		"explicit latest": {
 			currentBlock: 10,
 			blockRange:   &RPCRange{Latest: hexN(200)},
 			wantEarliest: 0,
 			wantLatest:   200,
 		},
-		{
-			name:          "range exceeds MaxBlockRange when only latest set",
+		"range exceeds MaxBlockRange when only latest set": {
 			currentBlock:  10,
 			blockRange:    &RPCRange{Latest: hexN(10 + bundle.MaxBlockRange + 100)},
 			errorContains: "invalid block range",
 		},
-		{
-			name:         "both explicit",
+		"both explicit": {
 			currentBlock: 10,
 			blockRange:   &RPCRange{Earliest: hexN(5), Latest: hexN(20)},
 			wantEarliest: 5,
 			wantLatest:   20,
 		},
-		{
-			name:         "current block zero earliest is one",
+		"current block zero earliest is one": {
 			currentBlock: 0,
 			wantEarliest: 1,
 			wantLatest:   bundle.MaxBlockRange,
 		},
-		{
-			name:          "latest is less than earliest",
+		"latest is less than earliest": {
 			currentBlock:  100,
 			blockRange:    &RPCRange{Earliest: hexN(50), Latest: hexN(40)},
 			errorContains: "invalid block range",
 		},
-		{
-			name:          "latest before implicit earliest from current block",
+		"latest before implicit earliest from current block": {
 			currentBlock:  10,
 			blockRange:    &RPCRange{Latest: hexN(5)},
 			errorContains: "invalid block range",
 		},
-		{
-			name:          "greater than Max block range",
+		"greater than Max block range": {
 			currentBlock:  100,
 			blockRange:    &RPCRange{Earliest: hexN(50), Latest: hexN(50 + bundle.MaxBlockRange + 1)},
 			errorContains: "invalid block range",
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
 			r, err := validateBlockRange(tc.currentBlock, tc.blockRange)
 			if tc.errorContains != "" {
 				require.ErrorContains(t, err, tc.errorContains)
@@ -142,14 +132,12 @@ func Test_resolveBlockRange(t *testing.T) {
 func Test_injectPlanHashIntoAccessLists(t *testing.T) {
 	existingAddr := common.Address{0x42}
 
-	tests := []struct {
-		name     string
+	tests := map[string]struct {
 		txs      []ethapi.TransactionArgs
 		planHash common.Hash
 		check    func(t *testing.T, txs []ethapi.TransactionArgs)
 	}{
-		{
-			name:     "nil access list creates bundle-only entry",
+		"nil access list creates bundle-only entry": {
 			txs:      []ethapi.TransactionArgs{{}},
 			planHash: common.Hash{0xab},
 			check: func(t *testing.T, txs []ethapi.TransactionArgs) {
@@ -160,8 +148,7 @@ func Test_injectPlanHashIntoAccessLists(t *testing.T) {
 				require.Equal(t, []common.Hash{{0xab}}, al[0].StorageKeys)
 			},
 		},
-		{
-			name:     "existing entries appended",
+		"existing entries appended": {
 			txs:      []ethapi.TransactionArgs{{AccessList: &types.AccessList{{Address: existingAddr}}}},
 			planHash: common.Hash{0xcd},
 			check: func(t *testing.T, txs []ethapi.TransactionArgs) {
@@ -172,8 +159,7 @@ func Test_injectPlanHashIntoAccessLists(t *testing.T) {
 				require.Equal(t, []common.Hash{{0xcd}}, al[1].StorageKeys)
 			},
 		},
-		{
-			name:     "multiple txs all injected",
+		"multiple txs all injected": {
 			txs:      []ethapi.TransactionArgs{{}, {}, {}},
 			planHash: common.Hash{0x01},
 			check: func(t *testing.T, txs []ethapi.TransactionArgs) {
@@ -185,22 +171,20 @@ func Test_injectPlanHashIntoAccessLists(t *testing.T) {
 				}
 			},
 		},
-		{
-			name:     "nil txs no panic",
+		"nil txs no panic": {
 			txs:      nil,
 			planHash: common.Hash{},
 			check:    func(t *testing.T, txs []ethapi.TransactionArgs) {},
 		},
-		{
-			name:     "empty txs no panic",
+		"empty txs no panic": {
 			txs:      []ethapi.TransactionArgs{},
 			planHash: common.Hash{},
 			check:    func(t *testing.T, txs []ethapi.TransactionArgs) {},
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
 			injectPlanHashIntoAccessLists(tc.txs, tc.planHash)
 			tc.check(t, tc.txs)
 		})
@@ -995,14 +979,12 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 	explicitGas := hexutil.Uint64(50000)
 	tip := rpctest.ToHexBigInt(big.NewInt(1e8))
 
-	tests := []struct {
-		name        string
+	tests := map[string]struct {
 		proposal    RPCExecutionProposal
 		wantTxCount int
 		extraCheck  func(t *testing.T, result *RPCPreparedBundle)
 	}{
-		{
-			name: "single tx AllOf",
+		"single tx AllOf": {
 			proposal: RPCExecutionProposal{
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -1012,8 +994,7 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			},
 			wantTxCount: 1,
 		},
-		{
-			name: "two txs AllOf different senders",
+		"two txs AllOf different senders": {
 			proposal: RPCExecutionProposal{
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -1024,8 +1005,7 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			},
 			wantTxCount: 2,
 		},
-		{
-			name: "three txs AllOf all senders",
+		"three txs AllOf all senders": {
 			proposal: RPCExecutionProposal{
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -1037,8 +1017,7 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			},
 			wantTxCount: 3,
 		},
-		{
-			name: "OneOf group different senders",
+		"OneOf group different senders": {
 			proposal: RPCExecutionProposal{
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					OneOf: true,
@@ -1050,8 +1029,7 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			},
 			wantTxCount: 2,
 		},
-		{
-			name: "nested groups OneOf(AllOf(tx1,tx2),tx3) depth-first",
+		"nested groups OneOf(AllOf(tx1,tx2),tx3) depth-first": {
 			proposal: RPCExecutionProposal{
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -1067,8 +1045,7 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			},
 			wantTxCount: 3,
 		},
-		{
-			name: "explicit gas reflected in hash",
+		"explicit gas reflected in hash": {
 			proposal: RPCExecutionProposal{
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -1078,8 +1055,7 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			},
 			wantTxCount: 1,
 		},
-		{
-			name: "EIP-1559 tx bundle marker strip required",
+		"EIP-1559 tx bundle marker strip required": {
 			proposal: RPCExecutionProposal{
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -1096,8 +1072,7 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 				require.NotEqual(t, planHashes[0], withMarker, "stripping bundle marker must be necessary for EIP-1559 txs")
 			},
 		},
-		{
-			name: "tolerate flags preserved alongside hash",
+		"tolerate flags preserved alongside hash": {
 			proposal: RPCExecutionProposal{
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -1119,8 +1094,8 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
 			result, err := api.PrepareBundle(t.Context(), tc.proposal)
 			require.NoError(t, err)
 			require.Len(t, result.Transactions, tc.wantTxCount)
