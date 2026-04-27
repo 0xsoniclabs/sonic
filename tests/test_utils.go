@@ -465,9 +465,12 @@ func WaitForProofOf(t *testing.T, client *PooledEhtClient, blockNumber int) {
 
 // GetEventHeads retrieves the current consensus DAG heads (events tips, childless events)
 func GetEventHeads(t *testing.T, client *PooledEhtClient) []hash.Event {
-
 	epoch := GetCurrentEpoch(t, client)
+	return GetEventHeadsForEpoch(t, client, epoch)
+}
 
+// GetEventHeadsForEpoch retrieves the consensus DAG heads for the given epoch.
+func GetEventHeadsForEpoch(t *testing.T, client *PooledEhtClient, epoch uint64) []hash.Event {
 	// Get the head res of the given epoch.
 	res := []string{}
 	err := client.Client().Call(&res, "dag_getHeads", rpc.BlockNumber(epoch))

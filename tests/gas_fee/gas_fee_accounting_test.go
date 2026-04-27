@@ -33,7 +33,9 @@ package gasfee
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
 import (
+	"maps"
 	"math/big"
+	"slices"
 	"testing"
 	"time"
 
@@ -43,6 +45,10 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/contracts/driver/drivercall"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
+	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -108,9 +114,12 @@ func testTxFeeAccounting_EpochSealingReportsAggregatedFees(
 
 	// --- verification ---
 
-	// Fetch all blocks with their transactions and receipts.
+	// Fetch all blocks with their transactions and receipts and check that the
+	// sum of the reported fees in the sealing match the collected tx fees.
 	blocks, err := net.GetBlocks(t.Context())
 	require.NoError(t, err)
+
+	epochSealers := []*types.Transaction{}
 
 	totalFees := big.NewInt(0)
 	for _, b := range blocks {
@@ -148,6 +157,8 @@ func testTxFeeAccounting_EpochSealingReportsAggregatedFees(
 				continue
 			}
 
+			epochSealers = append(epochSealers, tx)
+
 			sumReportedFees := big.NewInt(0)
 			for _, cur := range metrics {
 				sumReportedFees.Add(sumReportedFees, cur.OriginatedTxFee)
@@ -158,8 +169,87 @@ func testTxFeeAccounting_EpochSealingReportsAggregatedFees(
 			require.Zero(t, diff.Sign(), "Difference in reported fees: %v", diff)
 		}
 	}
+
+	// Verify that in each epoch sealing, every validator got the fees assigned
+	// according to the transactions that have been suggested.
 }
 
-// TODO:
-//  - add a test that checks that the effective gas prices match the actual charged prices
-//  - add a test that reports the effective gas price of internal transactions as 0
+type Event struct {
+	Epoch        uint64
+	Creator      uint64
+	Transactions []*types.Transaction
+}
+
+func getAllEvents(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+) []Event {
+	t.Helper()
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	currentEpoch := tests.GetCurrentEpoch(t, client)
+
+	res := []Event{}
+	for epoch := range currentEpoch + 1 {
+		res = append(res, getEventsFromEpoch(t, client, epoch)...)
+	}
+	return res
+}
+
+func getEventsFromEpoch(
+	t *testing.T,
+	client *tests.PooledEhtClient,
+	epoch uint64,
+) []Event {
+	// Start with the heads
+	heads := tests.GetEventHeadsForEpoch(t, client, epoch)
+
+	missingEvents := heads
+	resolved := map[hash.Event]Event{}
+	for len(missingEvents) > 0 {
+		eventID := missingEvents[len(missingEvents)-1]
+		missingEvents = missingEvents[:len(missingEvents)-1]
+
+		if _, resolved := resolved[eventID]; resolved {
+			continue
+		}
+
+		// Fetch information from the header.
+		var result struct {
+			Creator hexutil.Uint64  `json:"creator"`
+			Parents []hexutil.Bytes `json:"parents"`
+			// other fields are ignored
+		}
+		err := client.Client().Call(&result, "dag_getEvent", eventID.Hex())
+		require.NoError(t, err)
+
+		// Fetch transactions from the payload.
+		var payloadResult struct {
+			Transactions []*types.Transaction `json:"transactions"`
+			// other fields are ignored
+		}
+		err = client.Client().Call(&payloadResult, "dag_getEventPayload", eventID.Hex(), true)
+		require.NoError(t, err)
+
+		event := Event{
+			Epoch:        epoch,
+			Creator:      uint64(result.Creator),
+			Transactions: payloadResult.Transactions,
+		}
+
+		parents := []hash.Event{}
+		for _, parent := range result.Parents {
+			parents = append(parents, hash.Event(common.HexToHash(parent.String())))
+		}
+
+		// store event as resolved and add parents to missing list
+		resolved[eventID] = event
+		missingEvents = append(missingEvents, parents...)
+	}
+
+	return slices.Collect(maps.Values(resolved))
+
+}
