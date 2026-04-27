@@ -100,15 +100,15 @@ func (p *RPCExecutionProposal) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	p.BlockRange = raw.BlockRange
-	p.RPCExecutionPlanGroup.OneOf = raw.OneOf
-	p.RPCExecutionPlanGroup.TolerateFailures = raw.TolerateFailures
-	p.RPCExecutionPlanGroup.Steps = make([]any, len(raw.Steps))
+	p.OneOf = raw.OneOf
+	p.TolerateFailures = raw.TolerateFailures
+	p.Steps = make([]any, len(raw.Steps))
 	for i, rawStep := range raw.Steps {
 		step, err := unmarshalProposalStep(rawStep)
 		if err != nil {
 			return err
 		}
-		p.RPCExecutionPlanGroup.Steps[i] = step
+		p.Steps[i] = step
 	}
 	return nil
 }
