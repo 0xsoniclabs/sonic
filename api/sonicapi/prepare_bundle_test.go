@@ -541,48 +541,54 @@ func Test_PrepareBundle_MissingNonce_ReturnsError(t *testing.T) {
 	require.ErrorContains(t, err, "proposed transaction is missing nonce")
 }
 
-func Test_PrepareBundle_MultipleTxs_AllOfPlan(t *testing.T) {
-	addr1 := common.Address{1}
+func Test_PrepareBundle_MissingFrom_ReturnsError(t *testing.T) {
 	addr2 := common.Address{2}
 
-	be := rpctest.NewBackendBuilder(t).
-		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
-		WithAccount(addr2, rpctest.AccountState{Balance: big.NewInt(1e18)}).
-		Build()
-
+	be := rpctest.NewBackendBuilder(t).Build()
 	api := NewPublicBundleAPI(be)
 
 	args := RPCExecutionProposal{
 		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 			Steps: []any{
-				txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
-				txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+				txEntry(ethapi.TransactionArgs{
+					To:    &addr2,
+					Nonce: rpctest.ToHexUint64(0),
+				}),
 			},
 		},
 	}
 
-	result, err := api.PrepareBundle(t.Context(), args)
-	require.NoError(t, err)
-	require.Len(t, result.Transactions, 2)
+	_, err := api.PrepareBundle(t.Context(), args)
+	require.ErrorContains(t, err, "proposed transaction is missing from field")
+}
 
-	// Two txs at root produce an AllOf group: outer Steps has 1 group, inner has 2 steps.
-	require.Len(t, result.ExecutionPlan.Steps, 1)
-	innerGroup, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
-	require.True(t, ok, "expected inner AllOf group")
-	require.False(t, innerGroup.OneOf)
-	require.Len(t, innerGroup.Steps, 2)
+func Test_PrepareBundle_ConflictingGasPriceFields_ReturnsError(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+	gasPrice := rpctest.ToHexBigInt(big.NewInt(1e9))
+	maxFee := rpctest.ToHexBigInt(big.NewInt(2e9))
 
-	// Each tx must have the BundleOnly marker.
-	for i, tx := range result.Transactions {
-		require.NotNil(t, tx.AccessList, "tx %d missing access list", i)
-		var found bool
-		for _, entry := range *tx.AccessList {
-			if entry.Address == bundle.BundleOnly {
-				found = true
-			}
-		}
-		require.True(t, found, "tx %d missing BundleOnly marker", i)
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+	api := NewPublicBundleAPI(be)
+
+	args := RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{
+				txEntry(ethapi.TransactionArgs{
+					From:         &addr1,
+					To:           &addr2,
+					Nonce:        rpctest.ToHexUint64(0),
+					GasPrice:     gasPrice,
+					MaxFeePerGas: maxFee,
+				}),
+			},
+		},
 	}
+
+	_, err := api.PrepareBundle(t.Context(), args)
+	require.ErrorContains(t, err, "proposed transaction cannot have both gasPrice and maxFeePerGas set")
 }
 
 func Test_PrepareBundle_EmptyTransactions_ReturnsEmptyBundle(t *testing.T) {
@@ -876,7 +882,7 @@ func Test_PrepareBundle_SingleChildGroup_TolerateFailures_NotUnwrapped(t *testin
 	require.Len(t, group.Steps, 1)
 }
 
-func Test_PrepareBundle_SingleChildGroup_TolerateFailures_NotUnwrapped2(t *testing.T) {
+func Test_PrepareBundle_SingleChildGroup_Plain_NotUnwrapped(t *testing.T) {
 	addr1 := common.Address{1}
 	addr2 := common.Address{2}
 
@@ -904,7 +910,7 @@ func Test_PrepareBundle_SingleChildGroup_TolerateFailures_NotUnwrapped2(t *testi
 	require.NoError(t, err)
 	require.Len(t, result.Transactions, 1)
 
-	// TolerateFailures flag must prevent single-child unwrap.
+	// Plain group must not collapse its single child.
 	require.Len(t, result.ExecutionPlan.Steps, 1)
 	group, ok := result.ExecutionPlan.Steps[0].(*RPCExecutionPlanGroup)
 	require.True(t, ok, "expected group, not leaf")
