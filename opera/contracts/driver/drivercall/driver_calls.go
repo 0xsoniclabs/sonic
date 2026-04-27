@@ -19,8 +19,10 @@ package drivercall
 import (
 	_ "embed"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
+	"time"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -102,9 +104,10 @@ func DeactivateValidator(validatorID idx.ValidatorID, status uint64) []byte {
 	return data
 }
 
-// ParseSealEpochArgs decodes a sealEpoch call and returns the originated
-// transaction fee per validator (one entry per validator in epoch order).
-// Returns an error if data does not encode a sealEpoch call.
+// ParseSealEpochArgs decodes a sealEpoch call and returns the validator epoch
+// metrics (missed blocks, uptime, and originated transaction fee), one
+// entry per validator in epoch order. Returns an error if data does not
+// encode a sealEpoch call.
 func ParseSealEpochArgs(tx *types.Transaction) ([]ValidatorEpochMetric, error) {
 	if tx == nil || !internaltx.IsInternal(tx) {
 		return nil, fmt.Errorf("transaction is nil or not internal")
@@ -130,16 +133,62 @@ func ParseSealEpochArgs(tx *types.Transaction) ([]ValidatorEpochMetric, error) {
 	}
 
 	// Reconstruct the ValidatorEpochMetric slice from the unpacked arguments.
-	offlineTimes := args[0].([]*big.Int)
-	offlineBlocks := args[1].([]*big.Int)
-	uptimes := args[2].([]*big.Int)
-	fees := args[3].([]*big.Int)
+	return convertSealEpochArgs(args)
+}
 
+func convertSealEpochArgs(args []any) ([]ValidatorEpochMetric, error) {
+	if len(args) != 4 {
+		return nil, fmt.Errorf("expected 4 arguments for sealEpoch, got %d", len(args))
+	}
+
+	// Check the types.
+	offlineTimes, ok := args[0].([]*big.Int)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for offlineTimes argument")
+	}
+	offlineBlocks, ok := args[1].([]*big.Int)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for offlineBlocks argument")
+	}
+	uptimes, ok := args[2].([]*big.Int)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for uptimes argument")
+	}
+	fees, ok := args[3].([]*big.Int)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for fees argument")
+	}
+
+	// Check the length.
 	l := len(offlineTimes)
 	if len(offlineBlocks) != l || len(uptimes) != l || len(fees) != l {
 		return nil, fmt.Errorf("argument array lengths do not match")
 	}
 
+	// Check the range limits
+	for _, cur := range offlineBlocks {
+		if !cur.IsUint64() {
+			return nil, fmt.Errorf("offlineBlocks contains value that doesn't fit in uint64")
+		}
+	}
+	for _, cur := range offlineTimes {
+		if !cur.IsInt64() {
+			return nil, fmt.Errorf("offlineTimes contains value that doesn't fit in int64")
+		}
+		if val := cur.Int64(); val > math.MaxInt64/int64(time.Second) {
+			return nil, fmt.Errorf("offlineTimes contains value that is too large to be a valid offline time in seconds")
+		}
+	}
+	for _, cur := range uptimes {
+		if !cur.IsInt64() {
+			return nil, fmt.Errorf("uptimes contains value that doesn't fit in int64")
+		}
+		if val := cur.Int64(); val > math.MaxInt64/int64(time.Second) {
+			return nil, fmt.Errorf("uptimes contains value that is too large to be a valid uptime in seconds")
+		}
+	}
+
+	// Convert to metrics.
 	metrics := make([]ValidatorEpochMetric, l)
 	for i := range metrics {
 		metrics[i] = ValidatorEpochMetric{
