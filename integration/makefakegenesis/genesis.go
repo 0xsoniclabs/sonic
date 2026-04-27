@@ -123,7 +123,7 @@ func FakeGenesisStoreWithRulesAndStart(
 		builder.SetNonce(params.HistoryStorageAddress, 1)
 	}
 
-	_, genesisStateRoot, err := builder.FinalizeBlockZero(rules, FakeGenesisTime)
+	blockHash, genesisStateRoot, err := builder.FinalizeBlockZero(rules, FakeGenesisTime)
 	if err != nil {
 		panic(err)
 	}
@@ -146,14 +146,19 @@ func FakeGenesisStoreWithRulesAndStart(
 				AdvanceEpochs:         0,
 			},
 			EpochState: iblockproc.EpochState{
-				Epoch:             epoch - 1,
-				EpochStart:        FakeGenesisTime,
-				PrevEpochStart:    FakeGenesisTime - 1,
-				EpochStateRoot:    hash.Hash(genesisStateRoot),
-				Validators:        pos.NewBuilder().Build(),
-				ValidatorStates:   make([]iblockproc.ValidatorEpochState, 0),
-				ValidatorProfiles: make(map[idx.ValidatorID]drivertype.Validator),
-				Rules:             rules,
+				EpochStateV1: iblockproc.EpochStateV1{
+					Epoch:             epoch - 1,
+					EpochStart:        FakeGenesisTime,
+					PrevEpochStart:    FakeGenesisTime - 1,
+					EpochStateRoot:    hash.Hash(genesisStateRoot),
+					Validators:        pos.NewBuilder().Build(),
+					ValidatorStates:   make([]iblockproc.ValidatorEpochState, 0),
+					ValidatorProfiles: make(map[idx.ValidatorID]drivertype.Validator),
+					Rules:             rules,
+				},
+				EpochEndBlockHash:              hash.Hash(blockHash),
+				EpochEndExecutionPlanChainHash: hash.Hash{}, // < zero, since no bundles in genesis
+				EpochSealingTxsHash:            nil,         // < no sealing transactions in genesis
 			},
 		},
 		Idx: epoch - 1,

@@ -258,7 +258,7 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 
 	genesisTime := inter.Timestamp(json.BlockZeroTime.UnixNano())
 
-	_, genesisStateRoot, err := builder.FinalizeBlockZero(json.Rules, genesisTime)
+	blockHash, genesisStateRoot, err := builder.FinalizeBlockZero(json.Rules, genesisTime)
 	if err != nil {
 		return nil, err
 	}
@@ -281,14 +281,19 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 				AdvanceEpochs:         0,
 			},
 			EpochState: iblockproc.EpochState{
-				Epoch:             1,
-				EpochStart:        genesisTime + 1,
-				PrevEpochStart:    genesisTime,
-				EpochStateRoot:    hash.Hash(genesisStateRoot),
-				Validators:        pos.NewBuilder().Build(),
-				ValidatorStates:   make([]iblockproc.ValidatorEpochState, 0),
-				ValidatorProfiles: make(map[idx.ValidatorID]drivertype.Validator),
-				Rules:             json.Rules,
+				EpochStateV1: iblockproc.EpochStateV1{
+					Epoch:             1,
+					EpochStart:        genesisTime + 1,
+					PrevEpochStart:    genesisTime,
+					EpochStateRoot:    hash.Hash(genesisStateRoot),
+					Validators:        pos.NewBuilder().Build(),
+					ValidatorStates:   make([]iblockproc.ValidatorEpochState, 0),
+					ValidatorProfiles: make(map[idx.ValidatorID]drivertype.Validator),
+					Rules:             json.Rules,
+				},
+				EpochEndBlockHash:              hash.Hash(blockHash),
+				EpochEndExecutionPlanChainHash: hash.Hash{}, // < zero, since no bundles in genesis
+				EpochSealingTxsHash:            nil,         // < no sealing transactions in genesis
 			},
 		},
 		Idx: 1,

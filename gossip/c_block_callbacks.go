@@ -349,7 +349,14 @@ func consensusCallbackBeginBlockFn(
 				if sealing {
 					sealer.Update(bs, es)
 					prevUpg := es.Rules.Upgrades
-					bs, es = sealer.SealEpoch() // TODO: refactor to not mutate the bs, it is unclear
+
+					_, execPlanChainHash := store.GetProcessedBundleHistoryHash()
+
+					bs, es = sealer.SealEpoch(
+						hash.Hash(lastBlockHeader.Hash),
+						hash.Hash(execPlanChainHash),
+						preInternalTxs,
+					) // TODO: refactor to not mutate the bs, it is unclear
 					if es.Rules.Upgrades != prevUpg {
 						store.AddUpgradeHeight(opera.UpgradeHeight{
 							Upgrades: es.Rules.Upgrades,

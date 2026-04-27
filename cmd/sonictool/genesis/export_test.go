@@ -278,7 +278,7 @@ func setupBundleStore(t *testing.T) *gossip.Store {
 	rules := opera.FakeNetRules(opera.Upgrades{})
 	store.SetBlockEpochState(
 		iblockproc.BlockState{},
-		iblockproc.EpochState{Epoch: 1, Rules: rules},
+		iblockproc.EpochState{EpochStateV1: iblockproc.EpochStateV1{Epoch: 1, Rules: rules}},
 	)
 	return store
 }

@@ -52,8 +52,10 @@ func TestEthApiBackend_GetNetworkRules_LoadsRulesFromEpoch(t *testing.T) {
 		epoch,
 		iblockproc.BlockState{},
 		iblockproc.EpochState{
-			Epoch: epoch,
-			Rules: rules,
+			EpochStateV1: iblockproc.EpochStateV1{
+				Epoch: epoch,
+				Rules: rules,
+			},
 		},
 	)
 

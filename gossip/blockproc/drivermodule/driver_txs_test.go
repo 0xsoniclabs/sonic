@@ -64,8 +64,10 @@ func TestReceiptRewardWithoutFixEnabled(t *testing.T) {
 	rules.Upgrades.Allegro = false // disable fix
 
 	es := iblockproc.EpochState{
-		Validators: valsBuilder.Build(),
-		Rules:      rules,
+		EpochStateV1: iblockproc.EpochStateV1{
+			Validators: valsBuilder.Build(),
+			Rules:      rules,
+		},
 	}
 	stateDb := state.NewMockStateDB(ctrl)
 	listener := module.Start(blockCtx, bs, es, stateDb)
@@ -105,8 +107,10 @@ func TestReceiptRewardWithFixEnabled(t *testing.T) {
 	rules.Upgrades.Allegro = true // enable fix
 
 	es := iblockproc.EpochState{
-		Validators: valsBuilder.Build(),
-		Rules:      rules,
+		EpochStateV1: iblockproc.EpochStateV1{
+			Validators: valsBuilder.Build(),
+			Rules:      rules,
+		},
 	}
 	stateDb := state.NewMockStateDB(ctrl)
 	listener := module.Start(blockCtx, bs, es, stateDb)
@@ -146,8 +150,10 @@ func TestReceiptRewardWithBlobsAndFixEnabled(t *testing.T) {
 	rules.Upgrades.Allegro = true // enable fix
 
 	es := iblockproc.EpochState{
-		Validators: valsBuilder.Build(),
-		Rules:      rules,
+		EpochStateV1: iblockproc.EpochStateV1{
+			Validators: valsBuilder.Build(),
+			Rules:      rules,
+		},
 	}
 	stateDb := state.NewMockStateDB(ctrl)
 	listener := module.Start(blockCtx, bs, es, stateDb)

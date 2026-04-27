@@ -118,7 +118,16 @@ type EpochStateV1 struct {
 	Rules opera.Rules
 }
 
-type EpochState EpochStateV1
+type EpochStateV2 struct {
+	EpochStateV1
+
+	// Fields added in V2 with Brio update.
+	EpochEndBlockHash              hash.Hash
+	EpochEndExecutionPlanChainHash hash.Hash
+	EpochSealingTxsHash            []hash.Hash
+}
+
+type EpochState EpochStateV2
 
 func (es *EpochState) GetValidatorState(id idx.ValidatorID, validators *pos.Validators) *ValidatorEpochState {
 	validatorIdx := validators.GetIdx(id)
@@ -130,9 +139,11 @@ func (es EpochState) Duration() inter.Timestamp {
 }
 
 func (es EpochState) Hash() hash.Hash {
-	var hashed interface{}
-	if es.Rules.Upgrades.London {
+	var hashed any
+	if es.Rules.Upgrades.Brio {
 		hashed = &es
+	} else if es.Rules.Upgrades.London {
+		hashed = &es.EpochStateV1
 	} else {
 		es0 := EpochStateV0{
 			Epoch:             es.Epoch,
