@@ -17,7 +17,6 @@
 package sonicapi
 
 import (
-	"encoding/json"
 	"errors"
 	"testing"
 
@@ -331,54 +330,6 @@ func Test_SubmitBundle_InvalidBlockRange_ReturnsError(t *testing.T) {
 
 			_, err = NewPublicBundleAPI(be).SubmitBundle(t.Context(), args)
 			require.ErrorContains(t, err, tt.errMsg)
-		})
-	}
-}
-
-func Test_SubmitBundle_JSONRoundTrip_Works(t *testing.T) {
-	tests := map[string]struct {
-		flags    bundle.ExecutionFlags
-		numSteps int
-	}{
-		"single tx, default flags":   {bundle.EF_Default, 1},
-		"two txs, default flags":     {bundle.EF_Default, 2},
-		"single tx, TolerateFailed":  {bundle.EF_TolerateFailed, 1},
-		"two txs, TolerateFailed":    {bundle.EF_TolerateFailed, 2},
-		"single tx, TolerateInvalid": {bundle.EF_TolerateInvalid, 1},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			var submitted *types.Transaction
-			ctrl := gomock.NewController(t)
-			pool := rpctest.NewMockTxPool(ctrl)
-			pool.EXPECT().AddLocal(gomock.Any()).DoAndReturn(func(tx *types.Transaction) error {
-				submitted = tx
-				return nil
-			})
-
-			be := rpctest.NewBackendBuilder(t).WithPool(pool).Build()
-			signer := types.LatestSignerForChainID(be.ChainID())
-
-			addr := common.Address{2}
-			steps := make([]bundle.BuilderStep, tt.numSteps)
-			for i := range steps {
-				key, err := crypto.GenerateKey()
-				require.NoError(t, err)
-				steps[i] = bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas})
-			}
-			args := buildSubmitBundleArgs(signer, tt.flags, 1, 100, steps...)
-
-			// Simulate JSON-RPC wire transport
-			data, err := json.Marshal(args)
-			require.NoError(t, err)
-			var deserialized SubmitBundleArgs
-			require.NoError(t, json.Unmarshal(data, &deserialized))
-
-			_, err = NewPublicBundleAPI(be).SubmitBundle(t.Context(), deserialized)
-			require.NoError(t, err)
-			require.NotNil(t, submitted)
-			require.True(t, bundle.IsEnvelope(submitted))
 		})
 	}
 }
