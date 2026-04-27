@@ -860,6 +860,12 @@ func applyTransaction(
 	receipt.Bloom = types.CreateBloom(receipt)
 	receipt.BlockNumber = blockNumber
 	receipt.TransactionIndex = uint(statedb.TxIndex())
+
+	// Set the effective gas price in the receipt. By registering it here, at
+	// the source, down-stream consumers of the receipts do not have to
+	// replicate the code for computing effective gas prices.
+	receipt.EffectiveGasPrice = msg.GasPrice
+
 	return receipt, result.UsedGas, nil
 }
 
