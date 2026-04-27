@@ -219,3 +219,10 @@ func (v *toJsonExecutionPlanVisitor) EndGroup() {
 		v.result.Steps = append(v.result.Steps, closedGroup)
 	}
 }
+
+func (r RPCRange) toBundleBlockRange() bundle.BlockRange {
+	return bundle.BlockRange{
+		Earliest: uint64(r.Earliest),
+		Latest:   uint64(r.Latest),
+	}
+}
