@@ -264,7 +264,7 @@ func TestStore_AddProcessedBundles_RemovesOldHistoryHash_EvenForBlockNumberWitho
 	// Run enough blocks that some 'h' entries from bundle-less blocks get pruned.
 	const currentBlock = bundle.MaxBlockRange * 2
 	const firstBundle = bundle.MaxBlockRange / 2
-	for block := range currentBlock {
+	for block := uint64(1); block <= currentBlock; block++ {
 		// add a single block with bundles
 		if block == firstBundle {
 			store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
@@ -275,20 +275,12 @@ func TestStore_AddProcessedBundles_RemovesOldHistoryHash_EvenForBlockNumberWitho
 			store.AddProcessedBundles(block, nil)
 		}
 	}
-
 	oldestBlock, _, ok := store.GetOldestRetainedBundleHistoryHash()
 	require.True(t, ok)
 
-	for block := range oldestBlock - 1 {
-		got, err := store.table.ProcessedBundles.Get(getBlockHistoryHashKey(block))
-		require.NoError(t, err)
-		require.Empty(t, got, "history hash entry for block %d should have been deleted", block)
-	}
-	// The predecessor entry (oldestBlock - 1) is intentionally retained for
-	// independent hash-chain verification, so it must still be present.
-	got, err := store.table.ProcessedBundles.Get(getBlockHistoryHashKey(oldestBlock - 1))
-	require.NoError(t, err)
-	require.NotEmpty(t, got, "predecessor history hash entry for block %d should be retained", oldestBlock-1)
+	earliest := bundle.MakeMaxRangeEndingAt(currentBlock).Earliest
+	require.Equal(t, earliest, oldestBlock,
+		"oldest retained block should be the earliest block in range, even if it has no bundles")
 }
 
 func TestStore_AddProcessedBundles_HistoryHashIsConsistentWithPerBlockHash(t *testing.T) {
@@ -422,29 +414,24 @@ func TestStore_GetOldestRetainedBundleHistoryHash_AdvancesAfterPruning(t *testin
 		store, err := NewMemStore(t)
 		require.NoError(err)
 
-		var expectedOldestHash common.Hash
-		expectedOldestBlock := uint64(0)
-		foundOldest := false
+		var expectedOldestHash []byte
+		expectedOldestBlock := bundle.MakeMaxRangeEndingAt(currentBlock - 1).Earliest
 		// Run enough blocks that some 'h' entries from bundle-less blocks get pruned.
 		for block := range currentBlock {
 			store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
 				uint64ToHash(block): {},
 			})
-			// stop recording the expected oldest block and hash once we encounter
-			// a block that is in range.
-			if !bundle.MakeMaxRangeStartingAt(block).IsInRange(currentBlock) || foundOldest {
-				continue
+			if block == expectedOldestBlock {
+				expectedOldestHash, err = store.table.ProcessedBundles.Get(getBlockHistoryHashKey(expectedOldestBlock))
+				require.NoError(err)
 			}
-			// Capture the first block not in range.
-			expectedOldestBlock, expectedOldestHash = store.GetProcessedBundleHistoryHash()
-			foundOldest = true
 		}
 
 		gotBlock, gotHash, ok := store.GetOldestRetainedBundleHistoryHash()
 		require.True(ok)
 		require.Equal(expectedOldestBlock, gotBlock,
 			"oldest retained block should be the smallest block stored")
-		require.Equal(expectedOldestHash, gotHash,
+		require.Equal(expectedOldestHash, gotHash.Bytes(),
 			"oldest retained hash should match the stored hash at that block")
 	}
 }
@@ -453,7 +440,7 @@ func TestStore_AddProcessedBundles_RetainsPredecessorHashEntry(t *testing.T) {
 	// This test verifies that at every block height the store retains
 	// exactly one predecessor 'h' entry before the first in-range block,
 	// all earlier entries are pruned, and GetOldestRetainedBundleHistoryHash
-	// skips the predecessor returning the first in-range entry.
+	// returns the predecessor.
 
 	require := require.New(t)
 
@@ -470,35 +457,23 @@ func TestStore_AddProcessedBundles_RetainsPredecessorHashEntry(t *testing.T) {
 
 		latestBlock := currentBlock - 1
 		if latestBlock < bundle.MaxBlockRange-1 {
-			// Before pruning kicks in there is no predecessor; the first 'h'
-			// entry is still in range and GetOldestRetainedBundleHistoryHash
-			// must return it directly.
-			it := store.table.ProcessedBundles.NewIterator([]byte{'h'}, nil)
-			require.True(it.Next(),
-				"currentBlock=%d: 'h' iterator should have at least one entry before pruning",
-				currentBlock)
-			firstKey := it.Key()
-			firstValue := it.Value()
-			it.Release()
-
-			require.Len(firstKey, 1+8,
-				"currentBlock=%d: first 'h' key should be 1+8 bytes", currentBlock)
-			firstBlock := binary.BigEndian.Uint64(firstKey[1:])
+			// Before pruning kicks in there is no predecessor;
+			// that is, GetOldestRetainedBundleHistoryHash returns block 0
 
 			gotBlock, gotHash, ok := store.GetOldestRetainedBundleHistoryHash()
 			require.True(ok,
 				"currentBlock=%d: GetOldestRetainedBundleHistoryHash should return ok before pruning",
 				currentBlock)
-			require.Equal(firstBlock, gotBlock,
-				"currentBlock=%d: oldest retained block should equal the first 'h' key",
-				currentBlock)
-			require.Equal(common.BytesToHash(firstValue), gotHash,
-				"currentBlock=%d: oldest retained hash should match the first 'h' value",
-				currentBlock)
+			require.Zero(gotBlock)
+
+			predecessorValue, err := store.table.ProcessedBundles.Get(
+				getBlockHistoryHashKey(0))
+			require.NoError(err)
+			require.Equal(predecessorValue, gotHash.Bytes())
 			continue
 		}
 
-		highestOutdatedBlockNumber := latestBlock - bundle.MaxBlockRange + 1
+		highestOutdatedBlockNumber := bundle.MakeMaxRangeEndingAt(latestBlock).Earliest
 
 		// 1. The predecessor 'h' entry at highestOutdatedBlockNumber must be retained.
 		predecessorValue, err := store.table.ProcessedBundles.Get(
@@ -517,14 +492,13 @@ func TestStore_AddProcessedBundles_RetainsPredecessorHashEntry(t *testing.T) {
 				currentBlock, block)
 		}
 
-		// 3. GetOldestRetainedBundleHistoryHash must skip the predecessor
-		//    and return the first in-range block (highestOutdatedBlockNumber + 1).
+		// 3. GetOldestRetainedBundleHistoryHash must return the predecessor.
 		gotBlock, _, ok := store.GetOldestRetainedBundleHistoryHash()
 		require.True(ok)
-		require.Equal(highestOutdatedBlockNumber+1, gotBlock,
-			"currentBlock=%d: GetOldestRetainedBundleHistoryHash should skip "+
-				"predecessor at %d and return %d",
-			currentBlock, highestOutdatedBlockNumber, highestOutdatedBlockNumber+1)
+		require.Equal(highestOutdatedBlockNumber, gotBlock,
+			"currentBlock=%d: GetOldestRetainedBundleHistoryHash should return "+
+				"the predecessor at %d",
+			currentBlock, highestOutdatedBlockNumber)
 
 		// 4. The predecessor hash must match the hash chain value that was
 		//    stored when that block was processed.

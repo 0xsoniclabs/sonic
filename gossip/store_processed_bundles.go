@@ -137,7 +137,7 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) {
 		return
 	}
 
-	highestOutdatedBlockNumber := blockNum - bundle.MaxBlockRange + 1
+	highestOutdatedBlockNumber := bundle.MakeMaxRangeEndingAt(blockNum).Earliest
 
 	// Prune bundle-index and entries keys ('i', 'e').
 	// key layout for 'i': 1 byte prefix + 8 bytes blockNum + 32 bytes execPlanHash
@@ -278,10 +278,10 @@ func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
 }
 
 // GetOldestRetainedBundleHistoryHash returns the block number and bundle
-// history hash for the oldest retained block that is still within the
-// MaxBlockRange window. The store keeps one extra predecessor 'h' entry
-// before this block to allow independent verification of the hash chain,
-// but this function skips it and returns the first in-range entry.
+// history hash for the first block outside of the range of blocks for which
+// bundle information is retained in the store. This is meant to be used as a
+// base for the genesis import of processed bundles.
+//
 // Returns ok=false when no retained per-block history-hash entries are
 // present in the store.
 func (s *Store) GetOldestRetainedBundleHistoryHash() (blockNum uint64, hash common.Hash, ok bool) {
@@ -297,28 +297,6 @@ func (s *Store) GetOldestRetainedBundleHistoryHash() (blockNum uint64, hash comm
 	// key layout: 1 byte prefix + 8 bytes block number
 	if len(key) != 1+8 {
 		s.Log.Crit("invalid per-block history hash key length", "length", len(key))
-	}
-
-	// The store retains one extra 'h' entry (the predecessor) at
-	// highestOutdatedBlockNumber so that the hash at the first in-range
-	// block can be verified: hash(K) = Keccak256(hash(K-1) || xor(...) || K).
-	// Skip this predecessor entry and return the first in-range one.
-	latestBlockNumber, _ := s.GetProcessedBundleHistoryHash()
-	if latestBlockNumber >= bundle.MaxBlockRange-1 {
-		highestOutdatedBlockNumber := latestBlockNumber - bundle.MaxBlockRange + 1
-		firstEntryBlock := binary.BigEndian.Uint64(key[1:])
-		if firstEntryBlock <= highestOutdatedBlockNumber {
-			if !it.Next() {
-				if err := it.Error(); err != nil {
-					s.Log.Crit("failed to iterate bundle history hashes", "error", err)
-				}
-				return 0, common.Hash{}, false
-			}
-			key = it.Key()
-			if len(key) != 1+8 {
-				s.Log.Crit("invalid per-block history hash key length", "length", len(key))
-			}
-		}
 	}
 
 	value := it.Value()
