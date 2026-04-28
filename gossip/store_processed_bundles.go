@@ -91,7 +91,7 @@ func (s *Store) AddProcessedBundles(
 			bigendian.Uint64ToBytes(blockNum),
 			newHash.Bytes()...,
 		)),
-		batch.Put(getBlockHistoryHashKey(blockNum), newHash.Bytes()),
+		batch.Put(getBundleHistoryHashKey(blockNum), newHash.Bytes()),
 	)
 	if err != nil {
 		s.Log.Crit("failed to update hash of processed bundles", "error", err)
@@ -175,10 +175,12 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) {
 			continue
 		}
 		oldBlockNumber := binary.BigEndian.Uint64(key[1:])
+		// NOTE: we keep one extra history hash after than the other entries.
+		// this is useful for genesis export/import.
 		if oldBlockNumber >= highestOutdatedBlockNumber {
 			break
 		}
-		if err := batch.Delete(getBlockHistoryHashKey(oldBlockNumber)); err != nil {
+		if err := batch.Delete(getBundleHistoryHashKey(oldBlockNumber)); err != nil {
 			s.Log.Crit("failed to delete old block history hash", "error", err)
 		}
 	}
@@ -277,14 +279,14 @@ func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
 	return blockNum, hash
 }
 
-// GetOldestRetainedBundleHistoryHash returns the block number and bundle
-// history hash for the first block outside of the range of blocks for which
-// bundle information is retained in the store. This is meant to be used as a
+// GetEarliestBundleHistoryHash returns the block number and bundle
+// history hash for the earliest blocks for which bundle information is retained
+// in the store. This is meant to be used as a
 // base for the genesis import of processed bundles.
 //
 // Returns ok=false when no retained per-block history-hash entries are
 // present in the store.
-func (s *Store) GetOldestRetainedBundleHistoryHash() (blockNum uint64, hash common.Hash, ok bool) {
+func (s *Store) GetEarliestBundleHistoryHash() (blockNum uint64, hash common.Hash, ok bool) {
 	it := s.table.ProcessedBundles.NewIterator([]byte{'h'}, nil)
 	defer it.Release()
 	if !it.Next() {
@@ -377,9 +379,9 @@ func getIndexKey(blockNum uint64, hash common.Hash) []byte {
 		hash.Bytes()...)
 }
 
-// getBlockHistoryHashKey returns the key used to store the cumulative history hash
+// getBundleHistoryHashKey returns the key used to store the cumulative history hash
 // for a specific block number.
-func getBlockHistoryHashKey(blockNum uint64) []byte {
+func getBundleHistoryHashKey(blockNum uint64) []byte {
 	return append([]byte{'h'}, bigendian.Uint64ToBytes(blockNum)...)
 }
 
