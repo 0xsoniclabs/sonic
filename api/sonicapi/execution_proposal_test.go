@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -797,4 +798,274 @@ func Test_transform(t *testing.T) {
 	}
 
 	require.Equal(t, expected, newProposal)
+}
+
+func Test_convertProposalToPlan(t *testing.T) {
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	key1, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	address1 := crypto.PubkeyToAddress(key1.PublicKey)
+	key2, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	address2 := crypto.PubkeyToAddress(key2.PublicKey)
+
+	tests := map[string]struct {
+		proposal RPCExecutionProposal
+		plan     bundle.ExecutionPlan
+	}{
+		"simple proposal with one step": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					Earliest: *rpctest.ToHexUint64(0),
+					Latest:   *rpctest.ToHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								From:  &address1,
+								To:    &common.Address{123},
+								Nonce: rpctest.ToHexUint64(1),
+								Gas: rpctest.ToHexUint64(21000 +
+									// NOTE: builder adds marker costs
+									params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+							},
+						},
+					},
+				},
+			},
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetLatest(1023).
+				WithSigner(signer).
+				With(
+					bundle.Step(key1, &types.AccessListTx{
+						To:    &common.Address{123},
+						Nonce: 1,
+						Gas:   21000,
+					}),
+				).
+				BuildBundle().Plan,
+		},
+		"two steps in one group": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					Earliest: *rpctest.ToHexUint64(0),
+					Latest:   *rpctest.ToHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								From:  &address1,
+								To:    &common.Address{123},
+								Nonce: rpctest.ToHexUint64(1),
+								Gas: rpctest.ToHexUint64(21000 +
+									// NOTE: builder adds marker costs
+									params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+							},
+						},
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								From:  &address2,
+								To:    &common.Address{1},
+								Nonce: rpctest.ToHexUint64(2),
+								Gas: rpctest.ToHexUint64(21000 +
+									// NOTE: builder adds marker costs
+									params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+							},
+						},
+					},
+				},
+			},
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetLatest(1023).
+				WithSigner(signer).
+				AllOf(
+					bundle.Step(key1, &types.AccessListTx{
+						To:    &common.Address{123},
+						Nonce: 1,
+						Gas:   21000,
+					}),
+					bundle.Step(key2, &types.AccessListTx{
+						To:    &common.Address{1},
+						Nonce: 2,
+						Gas:   21000,
+					}),
+				).
+				BuildBundle().Plan,
+		},
+		"different execution flags in steps": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					Earliest: *rpctest.ToHexUint64(0),
+					Latest:   *rpctest.ToHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								From:  &address1,
+								To:    &common.Address{123},
+								Nonce: rpctest.ToHexUint64(1),
+								Gas: rpctest.ToHexUint64(21000 +
+									// NOTE: builder adds marker costs
+									params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+							},
+							TolerateFailed: true,
+						},
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								From:  &address2,
+								To:    &common.Address{1},
+								Nonce: rpctest.ToHexUint64(2),
+								Gas: rpctest.ToHexUint64(21000 +
+									// NOTE: builder adds marker costs
+									params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+							},
+							TolerateInvalid: true,
+						},
+					},
+				},
+			},
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetLatest(1023).
+				WithSigner(signer).
+				AllOf(
+					bundle.Step(key1, &types.AccessListTx{
+						To:    &common.Address{123},
+						Nonce: 1,
+						Gas:   21000,
+					}).WithFlags(bundle.EF_TolerateFailed),
+					bundle.Step(key2, &types.AccessListTx{
+						To:    &common.Address{1},
+						Nonce: 2,
+						Gas:   21000,
+					}).WithFlags(bundle.EF_TolerateInvalid),
+				).
+				BuildBundle().Plan,
+		},
+		"OneOf group": {
+
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					Earliest: *rpctest.ToHexUint64(0),
+					Latest:   *rpctest.ToHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							OneOf: true,
+							Steps: []any{
+								RPCExecutionStepProposal{
+									TransactionArgs: ethapi.TransactionArgs{
+										From:  &address1,
+										To:    &common.Address{123},
+										Nonce: rpctest.ToHexUint64(1),
+										Gas: rpctest.ToHexUint64(21000 +
+											// NOTE: builder adds marker costs
+											params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+									},
+								},
+								RPCExecutionStepProposal{
+									TransactionArgs: ethapi.TransactionArgs{
+										From:  &address2,
+										To:    &common.Address{1},
+										Nonce: rpctest.ToHexUint64(2),
+										Gas: rpctest.ToHexUint64(21000 +
+											// NOTE: builder adds marker costs
+											params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetLatest(1023).
+				WithSigner(signer).
+				OneOf(
+					bundle.Step(key1, &types.AccessListTx{
+						To:    &common.Address{123},
+						Nonce: 1,
+						Gas:   21000,
+					}),
+					bundle.Step(key2, &types.AccessListTx{
+						To:    &common.Address{1},
+						Nonce: 2,
+						Gas:   21000,
+					}),
+				).
+				BuildBundle().Plan,
+		},
+		"OneOf group with different execution flags in steps": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					Earliest: *rpctest.ToHexUint64(0),
+					Latest:   *rpctest.ToHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							OneOf: true,
+							Steps: []any{
+								RPCExecutionStepProposal{
+									TransactionArgs: ethapi.TransactionArgs{
+										From:  &address1,
+										To:    &common.Address{123},
+										Nonce: rpctest.ToHexUint64(1),
+										Gas: rpctest.ToHexUint64(21000 +
+											// NOTE: builder adds marker costs
+											params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+									},
+									TolerateFailed: true,
+								},
+								RPCExecutionStepProposal{
+									TransactionArgs: ethapi.TransactionArgs{
+										From:  &address2,
+										To:    &common.Address{1},
+										Nonce: rpctest.ToHexUint64(2),
+										Gas: rpctest.ToHexUint64(21000 +
+											// NOTE: builder adds marker costs
+											params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+									},
+									TolerateInvalid: true,
+								},
+							},
+						},
+					},
+				},
+			},
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetLatest(1023).
+				WithSigner(signer).
+				OneOf(
+					bundle.Step(key1, &types.AccessListTx{
+						To:    &common.Address{123},
+						Nonce: 1,
+						Gas:   21000,
+					}).WithFlags(bundle.EF_TolerateFailed),
+					bundle.Step(key2, &types.AccessListTx{
+						To:    &common.Address{1},
+						Nonce: 2,
+						Gas:   21000,
+					}).WithFlags(bundle.EF_TolerateInvalid),
+				).
+				BuildBundle().Plan,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			plan, err := convertProposalToPlan(signer, tt.proposal)
+			require.NoError(t, err)
+			require.Equal(t, tt.plan, plan)
+			require.Equal(t, tt.plan.Hash(), plan.Hash())
+
+			t.Log("plan", plan.Root.String())
+		})
+	}
 }

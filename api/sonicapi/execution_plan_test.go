@@ -389,6 +389,7 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			recreated, err := ToBundleExecutionPlan(rpcPlan)
 			require.NoError(t, err)
 			require.Equal(t, recreated, tc.plan)
+			require.Equal(t, recreated.Hash(), tc.plan.Hash())
 
 			var deserialized RPCExecutionPlanComposable
 			expectCanBeDeserialized(t, &deserialized, tc.expectedJson)
