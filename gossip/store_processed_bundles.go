@@ -137,7 +137,7 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) {
 		return
 	}
 
-	highestOutdatedBlockNumber := bundle.MakeMaxRangeEndingAt(blockNum).Earliest
+	highestOutdatedBlockNumber := blockNum - bundle.MaxBlockRange + 1
 
 	// Prune bundle-index and entries keys ('i', 'e').
 	// key layout for 'i': 1 byte prefix + 8 bytes blockNum + 32 bytes execPlanHash
