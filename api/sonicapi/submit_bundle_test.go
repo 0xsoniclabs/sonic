@@ -387,7 +387,7 @@ func Test_SubmitBundle_StepCountMismatch_ReturnsError(t *testing.T) {
 		numPlanSteps int
 		numSignedTxs int
 	}{
-		"more signed txs than plan steps": {numPlanSteps: 1, numSignedTxs: 2},
+		"more signed txs than plan steps":  {numPlanSteps: 1, numSignedTxs: 2},
 		"fewer signed txs than plan steps": {numPlanSteps: 2, numSignedTxs: 1},
 	}
 
