@@ -441,6 +441,66 @@ func TestStore_GetEarliestBundleHistoryHash_ReturnsZero_WhenNoBundlesExecuted(t 
 	require.Zero(gotHash, "oldest hash should be zero")
 }
 
+func TestStore_GetEarliestBundleHistoryHash_IterationErrorResultsInCriticalLog(t *testing.T) {
+	store, table, log, _, iter := storeTableLogMocks(t)
+
+	injectedError := fmt.Errorf("injected")
+
+	gomock.InOrder(
+		table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(iter),
+		iter.EXPECT().Next().Return(false),
+		iter.EXPECT().Error().Return(injectedError),
+		log.EXPECT().Crit("failed to iterate bundle history hashes", "error", injectedError).
+			DoAndReturn(func(string, ...any) { panic("forced stop by test") }),
+		// Release would not be called if Crit kills the process, but since we
+		// only panic, it will be called.
+		iter.EXPECT().Release(),
+	)
+
+	require.PanicsWithValue(t, "forced stop by test", func() {
+		store.GetEarliestBundleHistoryHash()
+	})
+}
+
+func TestStore_GetEarliestBundleHistoryHash_InvalidKeyLengthResultsInCriticalLog(t *testing.T) {
+	store, table, log, _, iter := storeTableLogMocks(t)
+
+	gomock.InOrder(
+		table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(iter),
+		iter.EXPECT().Next().Return(true),
+		iter.EXPECT().Key().Return([]byte{1, 2, 3}), // invalid size
+		log.EXPECT().Crit("invalid per-block history hash key length", "length", 3).
+			DoAndReturn(func(string, ...any) { panic("forced stop by test") }),
+		// Release would not be called if Crit kills the process, but since we
+		// only panic, it will be called.
+		iter.EXPECT().Release(),
+	)
+
+	require.PanicsWithValue(t, "forced stop by test", func() {
+		store.GetEarliestBundleHistoryHash()
+	})
+}
+
+func TestStore_GetEarliestBundleHistoryHash_InvalidValueLengthResultsInCriticalLog(t *testing.T) {
+	store, table, log, _, iter := storeTableLogMocks(t)
+
+	gomock.InOrder(
+		table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(iter),
+		iter.EXPECT().Next().Return(true),
+		iter.EXPECT().Key().Return(make([]byte, 9)),
+		iter.EXPECT().Value().Return([]byte{1, 2, 3}), // invalid value length
+		log.EXPECT().Crit("invalid per-block history hash value length", "length", 3).
+			DoAndReturn(func(string, ...any) { panic("forced stop by test") }),
+		// Release would not be called if Crit kills the process, but since we
+		// only panic, it will be called.
+		iter.EXPECT().Release(),
+	)
+
+	require.PanicsWithValue(t, "forced stop by test", func() {
+		store.GetEarliestBundleHistoryHash()
+	})
+}
+
 func TestStore_addNewBundles_EncodesInfoCorrectly(t *testing.T) {
 	store, _, _, _, _ := storeTableLogMocks(t)
 
@@ -727,7 +787,7 @@ func TestStore_deleteOutdatedBundles_RemovesMultipleEntries_WhenNotCleanedForToo
 	store.deleteOutdatedBundles(bundle.MaxBlockRange+10, batch)
 }
 
-func TestStore_deleteOutdatedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
+func TestStore_deleteOutdatedBundles_IgnoresIndexKeysOfWrongLength(t *testing.T) {
 	// log mock is ignored because no log called should be triggered.
 	store, table, _, batch, it := storeTableLogMocks(t)
 
@@ -748,6 +808,30 @@ func TestStore_deleteOutdatedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
 	it2.EXPECT().Error().Return(nil)
 	it2.EXPECT().Release()
 	table.EXPECT().NewIterator([]byte{'h'}, nil).Return(it2)
+
+	store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch)
+}
+
+func TestStore_deleteOutdatedBundles_IgnoresHashKeysOfWrongLength(t *testing.T) {
+	store, table, _, batch, it := storeTableLogMocks(t)
+
+	ctrl := gomock.NewController(t)
+	it2 := NewMockdbIterator(ctrl)
+
+	// 'h' iterator: returns a key of wrong length, then exhausts.
+	gomock.InOrder(
+		table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it),
+		it.EXPECT().Next().Return(false),
+		it.EXPECT().Error().Return(nil),
+		table.EXPECT().NewIterator([]byte{'h'}, nil).Return(it2),
+		it2.EXPECT().Next().Return(true),
+		// This is the key that will be ignored, since it does not have the correct length.
+		it2.EXPECT().Key().Return([]byte{1, 2, 3}), // wrong length
+		it2.EXPECT().Next().Return(false),
+		it2.EXPECT().Error().Return(nil),
+		it2.EXPECT().Release(),
+		it.EXPECT().Release(),
+	)
 
 	store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch)
 }
@@ -776,6 +860,99 @@ func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
 	require.PanicsWithValue(t,
 		fmt.Sprintf("failed to delete old processed bundle hash: %v", []any{"error", compoundErr}),
 		func() { store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch) })
+}
+
+func TestStore_deleteOutdatedBundles_LogsOnIterationError(t *testing.T) {
+	store, table, log, batch, it := storeTableLogMocks(t)
+
+	injectedError := fmt.Errorf("injected issue")
+
+	gomock.InOrder(
+		table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it),
+		it.EXPECT().Next().Return(false),
+		it.EXPECT().Error().Return(injectedError),
+		log.EXPECT().Crit("failed to iterate old processed bundles for deletion", "error", injectedError).
+			DoAndReturn(func(string, ...any) {
+				panic("deliberately stopped by unit test")
+			}),
+		// Release would not be called if Crit kills the process, but since we
+		// only panic, it will be called.
+		it.EXPECT().Release(),
+	)
+
+	require.PanicsWithValue(t,
+		"deliberately stopped by unit test",
+		func() {
+			store.deleteOutdatedBundles(bundle.MaxBlockRange+12, batch)
+		},
+	)
+}
+
+func TestStore_deleteOutdatedBundles_LogsOnErrorWhenDeletingHashes(t *testing.T) {
+	store, table, log, batch, it := storeTableLogMocks(t)
+
+	ctrl := gomock.NewController(t)
+	it2 := NewMockdbIterator(ctrl)
+
+	injectedError := fmt.Errorf("injected issue")
+
+	gomock.InOrder(
+		table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it),
+		it.EXPECT().Next().Return(false),
+		it.EXPECT().Error().Return(nil),
+		table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it2),
+		it2.EXPECT().Next().Return(true),
+		it2.EXPECT().Key().Return(make([]byte, 9)),
+		batch.EXPECT().Delete(gomock.Any()).Return(injectedError),
+		log.EXPECT().Crit("failed to delete old block history hash", "error", injectedError).
+			DoAndReturn(func(string, ...any) {
+				panic("deliberately stopped by unit test")
+			}),
+		// Release would not be called if Crit kills the process, but since we
+		// only panic, it will be called.
+		it2.EXPECT().Release(),
+		it.EXPECT().Release(),
+	)
+
+	require.PanicsWithValue(t,
+		"deliberately stopped by unit test",
+		func() {
+			store.deleteOutdatedBundles(bundle.MaxBlockRange+12, batch)
+		},
+	)
+}
+
+func TestStore_deleteOutdatedBundles_LogsOnSecondIterationError(t *testing.T) {
+	store, table, log, batch, it := storeTableLogMocks(t)
+
+	ctrl := gomock.NewController(t)
+	it2 := NewMockdbIterator(ctrl)
+
+	injectedError := fmt.Errorf("injected issue")
+
+	gomock.InOrder(
+		table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it),
+		it.EXPECT().Next().Return(false),
+		it.EXPECT().Error().Return(nil),
+		table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it2),
+		it2.EXPECT().Next().Return(false),
+		it2.EXPECT().Error().Return(injectedError),
+		log.EXPECT().Crit("failed to iterate old block history hashes for deletion", "error", injectedError).
+			DoAndReturn(func(string, ...any) {
+				panic("deliberately stopped by unit test")
+			}),
+		// Release would not be called if Crit kills the process, but since we
+		// only panic, it will be called.
+		it2.EXPECT().Release(),
+		it.EXPECT().Release(),
+	)
+
+	require.PanicsWithValue(t,
+		"deliberately stopped by unit test",
+		func() {
+			store.deleteOutdatedBundles(bundle.MaxBlockRange+12, batch)
+		},
+	)
 }
 
 func TestStore_xorHash_ReturnsExpectedResult(t *testing.T) {
