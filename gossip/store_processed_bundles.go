@@ -67,7 +67,7 @@ func (s *Store) AddProcessedBundles(
 	s.processedBundleMutex.Lock()
 	defer s.processedBundleMutex.Unlock()
 
-	_, oldHash := s.GetProcessedBundleHistoryHash()
+	_, oldHash := s.GetLatestProcessedBundleHistoryHash()
 
 	// keep the zero hash until a bundle is executed and from then onwards,
 	// compute it for every block.
@@ -257,9 +257,9 @@ func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) *bundle.Executi
 	}
 }
 
-// GetProcessedBundleHistoryHash returns the block number of the last update
+// GetLatestProcessedBundleHistoryHash returns the block number of the last update
 // and the current hash of the processed bundles history.
-func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
+func (s *Store) GetLatestProcessedBundleHistoryHash() (uint64, common.Hash) {
 	state, err := s.table.ProcessedBundles.Get(nil)
 	if err != nil {
 		s.Log.Crit("failed to get hash of processed bundles", "error", err)
@@ -277,6 +277,19 @@ func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
 	blockNum := binary.BigEndian.Uint64(state[:8])
 	hash := common.BytesToHash(state[8:])
 	return blockNum, hash
+}
+
+// GetProcessedBundleHistoryHash returns the history hash at the given block if
+// present. The boolean result indicates whether the value was found or not.
+func (s *Store) GetProcessedBundleHistoryHash(block uint64) (common.Hash, bool) {
+	value, err := s.table.ProcessedBundles.Get(getBundleHistoryHashKey(block))
+	if err != nil {
+		s.Log.Crit("failed to get hash of processed bundles for block", "error", err)
+	}
+	if len(value) != 32 {
+		return common.Hash{}, false
+	}
+	return common.Hash(value[:]), true
 }
 
 // GetEarliestBundleHistoryHash returns the block number and bundle

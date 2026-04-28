@@ -298,7 +298,7 @@ func TestStore_AddProcessedBundles_RemovesOlderHistoryHash_EvenForBlockNumberWit
 
 func TestStore_AddProcessedBundles_HistoryHashIsConsistentWithPerBlockHash(t *testing.T) {
 	// This test verifies that as new bundles are added the history hash reported
-	// by GetProcessedBundleHistoryHash is consistent with the hash stored
+	// by GetLatestProcessedBundleHistoryHash is consistent with the hash stored
 	// for each block in the 'h' entries.
 
 	store, err := NewMemStore(t)
@@ -315,30 +315,30 @@ func TestStore_AddProcessedBundles_HistoryHashIsConsistentWithPerBlockHash(t *te
 			store.AddProcessedBundles(block, nil)
 		}
 
-		_, currentHistoryHash := store.GetProcessedBundleHistoryHash()
+		_, currentHistoryHash := store.GetLatestProcessedBundleHistoryHash()
 		historicHashes = append(historicHashes, currentHistoryHash)
 
 		for past := range block + 1 {
-			historyHashForBlock, err := store.table.ProcessedBundles.Get(getBundleHistoryHashKey(past))
+			historyHashForBlock, found := store.GetProcessedBundleHistoryHash(past)
 			require.NoError(t, err)
-			if len(historyHashForBlock) > 0 {
-				require.Equal(t, historicHashes[past].Bytes(), historyHashForBlock)
+			if found {
+				require.Equal(t, historicHashes[past], historyHashForBlock)
 			}
 		}
 	}
 }
 
-func TestStore_GetProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
+func TestStore_GetLatestProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
-	blockNum, hash := store.GetProcessedBundleHistoryHash()
+	blockNum, hash := store.GetLatestProcessedBundleHistoryHash()
 	require.Zero(blockNum)
 	require.Zero(hash)
 }
 
-func TestStore_GetProcessedBundleHistoryHash_CorrectlyParsesHash(t *testing.T) {
+func TestStore_GetLatestProcessedBundleHistoryHash_CorrectlyParsesHash(t *testing.T) {
 	store, table, _, _, _ := storeTableLogMocks(t)
 
 	for i := range 2 * bundle.MaxBlockRange {
@@ -351,14 +351,14 @@ func TestStore_GetProcessedBundleHistoryHash_CorrectlyParsesHash(t *testing.T) {
 		)
 
 		table.EXPECT().Get(nil).Return(encoded, nil)
-		gotBlock, gotHash := store.GetProcessedBundleHistoryHash()
+		gotBlock, gotHash := store.GetLatestProcessedBundleHistoryHash()
 
 		require.Equal(t, block, gotBlock)
 		require.Equal(t, hash, gotHash)
 	}
 }
 
-func TestStore_GetProcessedBundleHistoryHash_LogsOnGetError(t *testing.T) {
+func TestStore_GetLatestProcessedBundleHistoryHash_LogsOnGetError(t *testing.T) {
 	store, table, log, _, _ := storeTableLogMocks(t)
 
 	injectedErr := errors.New("get error")
@@ -369,10 +369,10 @@ func TestStore_GetProcessedBundleHistoryHash_LogsOnGetError(t *testing.T) {
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
 		fmt.Sprintf("failed to get hash of processed bundles: %v", []any{"error", injectedErr}),
-		func() { store.GetProcessedBundleHistoryHash() })
+		func() { store.GetLatestProcessedBundleHistoryHash() })
 }
 
-func TestStore_GetProcessedBundleHistoryHash_LogsOnInvalidStateLength(t *testing.T) {
+func TestStore_GetLatestProcessedBundleHistoryHash_LogsOnInvalidStateLength(t *testing.T) {
 	store, table, log, _, _ := storeTableLogMocks(t)
 
 	table.EXPECT().Get(gomock.Any()).Return([]byte{1, 2, 3}, nil)
@@ -383,7 +383,67 @@ func TestStore_GetProcessedBundleHistoryHash_LogsOnInvalidStateLength(t *testing
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
 		fmt.Sprintf("invalid state length for processed bundles: %v", []any{"length", 3}),
-		func() { store.GetProcessedBundleHistoryHash() })
+		func() { store.GetLatestProcessedBundleHistoryHash() })
+}
+
+func TestStore_GetProcessedBundleHistoryHash_FetchesDataFromTable(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	table := NewMockstoreTable(ctrl)
+
+	store := &Store{}
+	store.table.ProcessedBundles = table
+
+	wantHash := common.Hash{123, 45}
+	table.EXPECT().Get(getBundleHistoryHashKey(12)).Return(wantHash[:], nil)
+
+	gotHash, found := store.GetProcessedBundleHistoryHash(12)
+	require.True(t, found)
+	require.Equal(t, wantHash, gotHash)
+}
+
+func TestStore_GetProcessedBundleHistoryHash_ReportsMissingForEmptyStore(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	hash, found := store.GetProcessedBundleHistoryHash(12)
+	require.False(found, "should return false when there is no data")
+	require.Zero(hash)
+}
+
+func TestStore_GetProcessedBundleHistoryHash_ReportsMissingIfValueIsMalformed(t *testing.T) {
+	store, table, _, _, _ := storeTableLogMocks(t)
+
+	// one too short, one too long
+	table.EXPECT().Get(getBundleHistoryHashKey(12)).Return([]byte{1, 2, 3}, nil)
+	table.EXPECT().Get(getBundleHistoryHashKey(14)).Return([]byte{40: 1}, nil)
+
+	hash, found := store.GetProcessedBundleHistoryHash(12)
+	require.False(t, found)
+	require.Zero(t, hash)
+
+	hash, found = store.GetProcessedBundleHistoryHash(14)
+	require.False(t, found)
+	require.Zero(t, hash)
+}
+
+func TestStore_GetProcessedBundleHistoryHash_LogCritOnDbReadError(t *testing.T) {
+	store, table, log, _, _ := storeTableLogMocks(t)
+
+	injectedError := fmt.Errorf("injected unit test issue")
+	gomock.InOrder(
+		table.EXPECT().Get(getBundleHistoryHashKey(12)).Return(nil, injectedError),
+		log.EXPECT().
+			Crit("failed to get hash of processed bundles for block", "error", injectedError).
+			DoAndReturn(func(string, ...any) {
+				panic("stopped deliberately by unit test")
+			}),
+	)
+
+	require.PanicsWithValue(t,
+		"stopped deliberately by unit test",
+		func() { store.GetProcessedBundleHistoryHash(12) },
+	)
 }
 
 func TestStore_GetEarliestBundleHistoryHash_ScansTableForFirstEntry(t *testing.T) {
@@ -430,7 +490,7 @@ func TestStore_GetEarliestBundleHistoryHash_ReturnsZero_WhenNoBundlesExecuted(t 
 	// add blocks without bundles
 	for block := range bundle.MaxBlockRange + 2 {
 		store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{})
-		blockNum, hash := store.GetProcessedBundleHistoryHash()
+		blockNum, hash := store.GetLatestProcessedBundleHistoryHash()
 		require.Zero(blockNum)
 		require.Zero(hash)
 	}
@@ -1125,13 +1185,13 @@ func TestStore_ProcessedBundles_ZeroHistoryHashIsPreserved_WhenNoBundlesAreExecu
 	for i := range bundle.MaxBlockRange + 2 {
 		// nil bundles executed
 		store.AddProcessedBundles(i, nil)
-		blockNum, hash := store.GetProcessedBundleHistoryHash()
+		blockNum, hash := store.GetLatestProcessedBundleHistoryHash()
 		require.Equal(uint64(0), blockNum)
 		require.Equal(common.Hash{}, hash)
 
 		// empty block bundles executed
 		store.AddProcessedBundles(i, map[common.Hash]bundle.PositionInBlock{})
-		blockNum, hash = store.GetProcessedBundleHistoryHash()
+		blockNum, hash = store.GetLatestProcessedBundleHistoryHash()
 		require.Equal(uint64(0), blockNum)
 		require.Equal(common.Hash{}, hash)
 
@@ -1165,7 +1225,7 @@ func TestStore_ProcessedBundles_UpdatesHistoryHash(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			store, err := NewMemStore(t)
 			require.NoError(err)
-			_, initialHash := store.GetProcessedBundleHistoryHash()
+			_, initialHash := store.GetLatestProcessedBundleHistoryHash()
 
 			store.AddProcessedBundles(1, tc.bundles)
 			addedHash := common.Hash{}
@@ -1173,7 +1233,7 @@ func TestStore_ProcessedBundles_UpdatesHistoryHash(t *testing.T) {
 				addedHash = xorHash(addedHash, hash)
 			}
 			expectedHash := referenceComputeStateHash(initialHash, addedHash, 1)
-			_, gotHash := store.GetProcessedBundleHistoryHash()
+			_, gotHash := store.GetLatestProcessedBundleHistoryHash()
 			require.Equal(expectedHash, gotHash)
 		})
 	}
@@ -1199,8 +1259,8 @@ func TestStore_ProcessedBundles_CommutativityOfAddedBundles(t *testing.T) {
 		hash1: {Offset: 0, Count: 1},
 	})
 
-	_, hashA := store1.GetProcessedBundleHistoryHash()
-	_, hashB := store2.GetProcessedBundleHistoryHash()
+	_, hashA := store1.GetLatestProcessedBundleHistoryHash()
+	_, hashB := store2.GetLatestProcessedBundleHistoryHash()
 	require.Equal(hashA, hashB)
 }
 
@@ -1218,7 +1278,7 @@ func TestStore_ProcessedBundles_HashIsUpdatedWithNewBlocks(t *testing.T) {
 			uint64ToHash(uint64(i)): {Offset: 0, Count: 1},
 		})
 
-		block, got := store.GetProcessedBundleHistoryHash()
+		block, got := store.GetLatestProcessedBundleHistoryHash()
 		require.Equal(uint64(i), block)
 		require.NotContains(seenHashes, got)
 		seenHashes[got] = struct{}{}
@@ -1269,8 +1329,7 @@ func TestStore_ProcessedBundles_RetainsAllHashesToVerifyContainedExecutionPlans(
 		// hashes required for their verification are also in the store.
 		for b := range currentBlockNumber {
 
-			hash, err := store.table.ProcessedBundles.Get(getBundleHistoryHashKey(b))
-			require.NoError(err)
+			_, hashPresent := store.GetProcessedBundleHistoryHash(b)
 
 			// A hash should be present if:
 			//  - the plans for the associated block are still in the store
@@ -1278,7 +1337,6 @@ func TestStore_ProcessedBundles_RetainsAllHashesToVerifyContainedExecutionPlans(
 			thisInStore := store.HasBundleRecentlyBeenProcessed(uint64ToHash(b))
 			nextInStore := store.HasBundleRecentlyBeenProcessed(uint64ToHash(b + 1))
 
-			hashPresent := hash != nil
 			wantHash := thisInStore || nextInStore
 			require.Equal(
 				wantHash, hashPresent,
@@ -1303,7 +1361,7 @@ func TestStore_SetProcessedBundlesHistoryHash_WritesBundlesHistoryHash(t *testin
 
 	store.SetProcessedBundlesHistoryHash(blockNum, hash)
 
-	resBlockNum, resHash := store.GetProcessedBundleHistoryHash()
+	resBlockNum, resHash := store.GetLatestProcessedBundleHistoryHash()
 	require.Equal(blockNum, resBlockNum)
 	require.Equal(hash, resHash)
 }
@@ -1355,7 +1413,7 @@ func TestStore_EnumerateProcessedBundles_ReturnsAllAddedEntries(t *testing.T) {
 			}
 		}
 	}
-	block, historyHash := store.GetProcessedBundleHistoryHash()
+	block, historyHash := store.GetLatestProcessedBundleHistoryHash()
 	require.Equal(uint64(bundle.MaxBlockRange), block)
 	require.NotNil(historyHash)
 	require.NotZero(historyHash)
@@ -1460,7 +1518,7 @@ func TestStore_ProcessedBundles_HistoryHashConverges_ForStoresStartingAtDifferen
 	// Step 1: Store 1 processes blocks 0-9 without bundles
 	for block := range uint64(10) {
 		store1.AddProcessedBundles(uint64(block), blockHistory[block])
-		_, hash := store1.GetProcessedBundleHistoryHash()
+		_, hash := store1.GetLatestProcessedBundleHistoryHash()
 		// Check 1: History hash remains zero before the first bundle is executed.
 		require.Equal(common.Hash{}, hash,
 			"store1 history hash should remain zero before first bundle at block %d", block)
@@ -1468,11 +1526,11 @@ func TestStore_ProcessedBundles_HistoryHashConverges_ForStoresStartingAtDifferen
 
 	// first bundle is executed at block 10.
 	store1.AddProcessedBundles(10, blockHistory[10])
-	_, hashAt10 := store1.GetProcessedBundleHistoryHash()
+	_, hashAt10 := store1.GetLatestProcessedBundleHistoryHash()
 	require.NotEqual(common.Hash{}, hashAt10, "store1 hash should be non-zero after first bundle at block 10")
 
 	store1.AddProcessedBundles(11, blockHistory[11])
-	_, hashAt11 := store1.GetProcessedBundleHistoryHash()
+	_, hashAt11 := store1.GetLatestProcessedBundleHistoryHash()
 
 	require.NotEqual(hashAt10, hashAt11, "after the first bundle is executed history hash should always vary")
 
@@ -1482,16 +1540,16 @@ func TestStore_ProcessedBundles_HistoryHashConverges_ForStoresStartingAtDifferen
 
 	for block := uint64(5); block < 10; block++ {
 		store2.AddProcessedBundles(uint64(block), blockHistory[block])
-		_, hash := store2.GetProcessedBundleHistoryHash()
+		_, hash := store2.GetLatestProcessedBundleHistoryHash()
 		require.Equal(common.Hash{}, hash,
 			"store2 history hash should remain zero before first bundle at block %d", block)
 	}
 
 	store2.AddProcessedBundles(10, blockHistory[10])
-	_, store2HashAt10 := store2.GetProcessedBundleHistoryHash()
+	_, store2HashAt10 := store2.GetLatestProcessedBundleHistoryHash()
 
 	store2.AddProcessedBundles(11, blockHistory[11])
-	_, store2HashAt11 := store2.GetProcessedBundleHistoryHash()
+	_, store2HashAt11 := store2.GetLatestProcessedBundleHistoryHash()
 
 	// Check 2: Both stores share the same history hash from block 10 to 11.
 	require.Equal(hashAt10, store2HashAt10, "both stores should have the same hash at block 10")
@@ -1509,28 +1567,28 @@ func TestStore_ProcessedBundles_EmptyBundlesChangeHash_AfterFirstBundleExecuted(
 
 	// Adding nil or empty bundles before the first execution keeps the hash zero.
 	store.AddProcessedBundles(1, nil)
-	_, hash := store.GetProcessedBundleHistoryHash()
+	_, hash := store.GetLatestProcessedBundleHistoryHash()
 	require.Equal(common.Hash{}, hash, "hash should remain zero with nil bundles before first execution")
 
 	store.AddProcessedBundles(2, map[common.Hash]bundle.PositionInBlock{})
-	_, hash = store.GetProcessedBundleHistoryHash()
+	_, hash = store.GetLatestProcessedBundleHistoryHash()
 	require.Equal(common.Hash{}, hash, "hash should remain zero with empty map before first execution")
 
 	// Execute the first bundle — hash becomes non-zero.
 	store.AddProcessedBundles(3, map[common.Hash]bundle.PositionInBlock{
 		{1, 2, 3}: {Offset: 0, Count: 1},
 	})
-	_, hashAfterFirstBundle := store.GetProcessedBundleHistoryHash()
+	_, hashAfterFirstBundle := store.GetLatestProcessedBundleHistoryHash()
 	require.NotEqual(common.Hash{}, hashAfterFirstBundle, "hash should be non-zero after first bundle")
 
 	// Once the hash is non-zero, nil and empty bundle lists must still advance the hash.
 	store.AddProcessedBundles(4, nil)
-	_, hashAfterNil := store.GetProcessedBundleHistoryHash()
+	_, hashAfterNil := store.GetLatestProcessedBundleHistoryHash()
 	require.NotEqual(hashAfterFirstBundle, hashAfterNil,
 		"nil bundle list should change the hash once history hash is non-zero")
 
 	store.AddProcessedBundles(5, map[common.Hash]bundle.PositionInBlock{})
-	_, hashAfterEmpty := store.GetProcessedBundleHistoryHash()
+	_, hashAfterEmpty := store.GetLatestProcessedBundleHistoryHash()
 	require.NotEqual(hashAfterNil, hashAfterEmpty,
 		"empty bundle map should change the hash once history hash is non-zero")
 }
@@ -1547,12 +1605,12 @@ func TestStore_ProcessedBundles_HistoryHashRemainsZero_WhenNoBundlesAreEverProce
 
 	for block := range 3 * bundle.MaxBlockRange {
 		store.AddProcessedBundles(uint64(block), nil)
-		_, hash := store.GetProcessedBundleHistoryHash()
+		_, hash := store.GetLatestProcessedBundleHistoryHash()
 		require.Equal(common.Hash{}, hash,
 			"history hash should remain zero at block %d (nil)", block)
 
 		store.AddProcessedBundles(uint64(block), map[common.Hash]bundle.PositionInBlock{})
-		_, hash = store.GetProcessedBundleHistoryHash()
+		_, hash = store.GetLatestProcessedBundleHistoryHash()
 		require.Equal(common.Hash{}, hash,
 			"history hash should remain zero at block %d (empty map)", block)
 	}
@@ -1572,7 +1630,7 @@ func TestStore_ProcessedBundles_DeletingEntries_DoesNotAffectHistoryHash(t *test
 	store.AddProcessedBundles(0, map[common.Hash]bundle.PositionInBlock{
 		firstBundleHash: {Offset: 0, Count: 1},
 	})
-	_, hashAt0 := store.GetProcessedBundleHistoryHash()
+	_, hashAt0 := store.GetLatestProcessedBundleHistoryHash()
 	require.NotEqual(common.Hash{}, hashAt0)
 
 	// Compute the expected hash by replaying the same updates manually,
@@ -1592,7 +1650,7 @@ func TestStore_ProcessedBundles_DeletingEntries_DoesNotAffectHistoryHash(t *test
 		"entry from block 0 should have been pruned after MaxBlockRange blocks")
 
 	// The history hash must match the manually computed value — pruning must not affect it.
-	_, actualHash := store.GetProcessedBundleHistoryHash()
+	_, actualHash := store.GetLatestProcessedBundleHistoryHash()
 	require.Equal(expectedHash, actualHash,
 		"history hash should not be affected by the deletion of old entries")
 }
