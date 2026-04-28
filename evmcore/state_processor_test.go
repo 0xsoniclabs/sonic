@@ -94,7 +94,7 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{})
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -203,7 +203,7 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 	}
 
 	state := getStateDbMockForTransactions(ctrl, transactions)
-	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{})
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
 		"incremental": processor.process_iteratively,
@@ -264,7 +264,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 		}
 		chain := NewMockDummyChain(ctrl)
 
-		processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
+		processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{})
 
 		tests := map[string]processFunction{
 			"bulk":        processor.Process,
@@ -312,7 +312,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{})
 
 	block := &EvmBlock{
 		EvmHeader: EvmHeader{
@@ -371,7 +371,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{})
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -458,7 +458,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 
 func TestProcess_UsesDifficultyOfOne(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	processor := NewStateProcessor(&params.ChainConfig{}, nil, opera.Upgrades{})
+	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{})
 
 	state, block := createScenarioWithTxCheckingDifficulty(ctrl, big.NewInt(1))
 
@@ -482,7 +482,7 @@ func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 	for _, difficulty := range []*big.Int{big.NewInt(0), big.NewInt(2), big.NewInt(42)} {
 		t.Run(fmt.Sprintf("difficulty=%s", difficulty.String()), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			processor := NewStateProcessor(&params.ChainConfig{}, nil, opera.Upgrades{})
+			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{})
 
 			state, block := createScenarioWithTxCheckingDifficulty(ctrl, difficulty)
 			results := processor.ProcessWithDifficulty(
@@ -562,7 +562,7 @@ func TestProcess_ForwardsCorrectIndexToTransactionProcessor(t *testing.T) {
 		t.Run(fmt.Sprintf("offset=%d", offset), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			upgrades := opera.Upgrades{Brio: true, TransactionBundles: true}
-			processor := NewStateProcessor(&params.ChainConfig{}, nil, upgrades)
+			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, upgrades)
 
 			any := gomock.Any()
 			state := state.NewMockStateDB(ctrl)
@@ -1317,6 +1317,60 @@ func TestRunTransactions_EnvelopeAndBundleOnly_SemanticsEnabledByBrio_ExecutionE
 			} else {
 				require.Equal(t, ProcessedTransaction{tc.tx, &types.Receipt{}}, processed[0])
 			}
+		})
+	}
+}
+
+func TestRunTransactions_BundleOnlyTxsAreNotFilteredDuringReplay(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	envelopeTx := getTransactionBundle(t)
+	txBundle, _, err := bundle.ValidateEnvelope(signer, envelopeTx)
+	require.NoError(t, err)
+	bundleOnlyTx := txBundle.GetTransactionsInReferencedOrder()[0]
+
+	cases := map[string]struct {
+		brio               bool
+		transactionBundles bool
+	}{
+		"PreBrio/WithoutBundles": {
+			brio:               false,
+			transactionBundles: false,
+		},
+		"PreBrio/WithBundles": {
+			brio:               false,
+			transactionBundles: true,
+		},
+		"PostBrio/WithoutBundles": {
+			brio:               true,
+			transactionBundles: false,
+		},
+		"PostBrio/WithBundles": {
+			brio:               true,
+			transactionBundles: true,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMock_transactionRunner(ctrl)
+			context := &runContext{
+				runner: runner,
+				upgrades: opera.Upgrades{
+					Brio:               tc.brio,
+					TransactionBundles: tc.transactionBundles,
+				},
+				forReplay: true, // this is the relevant part for this test
+			}
+
+			runner.EXPECT().runRegularTransaction(context, bundleOnlyTx, 0, 0).
+				Return(ProcessedTransaction{Transaction: bundleOnlyTx, Receipt: &types.Receipt{}}, core_types.TransactionResultSuccessful)
+
+			summary := runTransactions(context, []*types.Transaction{bundleOnlyTx}, 0, 0)
+			processed := summary.ProcessedTransactions
+			require.Len(t, processed, 1)
+			require.Equal(t, ProcessedTransaction{bundleOnlyTx, &types.Receipt{}}, processed[0])
 		})
 	}
 }

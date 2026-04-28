@@ -203,7 +203,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 	stateProcessor := NewMock_stateProcessor(ctrl)
 
 	any := gomock.Any()
-	factory.EXPECT().NewStateProcessor(any, any, any).Return(stateProcessor).AnyTimes()
+	factory.EXPECT().NewStateProcessorForHeadState(any, any, any).Return(stateProcessor).AnyTimes()
 
 	summary := evmcore.ProcessSummary{
 		ProcessedTransactions: []evmcore.ProcessedTransaction{
@@ -251,7 +251,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorProducesTransactionsAndBundles_
 	stateProcessor := NewMock_stateProcessor(ctrl)
 
 	any := gomock.Any()
-	factory.EXPECT().NewStateProcessor(any, any, any).Return(stateProcessor).AnyTimes()
+	factory.EXPECT().NewStateProcessorForHeadState(any, any, any).Return(stateProcessor).AnyTimes()
 
 	summary := evmcore.ProcessSummary{
 		ProcessedTransactions: []evmcore.ProcessedTransaction{
@@ -297,7 +297,7 @@ func TestOperaEVMProcessor_Execute_UsesLengthOfProcessedTransactionsAsTransactio
 			stateProcessor := NewMock_stateProcessor(ctrl)
 
 			any := gomock.Any()
-			factory.EXPECT().NewStateProcessor(any, any, any).Return(stateProcessor)
+			factory.EXPECT().NewStateProcessorForHeadState(any, any, any).Return(stateProcessor)
 
 			stateProcessor.EXPECT().
 				Process(any, any, any, any, any, any, any).
@@ -350,7 +350,7 @@ func TestOperaEVMProcessor_Execute_UsesNumberOfTransactionsWithReceiptsAsTransac
 			stateProcessor := NewMock_stateProcessor(ctrl)
 
 			any := gomock.Any()
-			factory.EXPECT().NewStateProcessor(any, any, any).Return(stateProcessor)
+			factory.EXPECT().NewStateProcessorForHeadState(any, any, any).Return(stateProcessor)
 
 			wantedOffset := 0
 			for _, cur := range processedTransactions {
