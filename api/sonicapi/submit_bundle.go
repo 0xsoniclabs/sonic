@@ -66,7 +66,7 @@ func (a *PublicBundleAPI) SubmitBundle(
 		return common.Hash{}, fmt.Errorf("invalid block range: %w", err)
 	}
 
-	execPlan, err := toBundleExecutionPlan(args.ExecutionPlan)
+	execPlan, err := ToBundleExecutionPlan(args.ExecutionPlan)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("invalid execution plan: %w", err)
 	}
