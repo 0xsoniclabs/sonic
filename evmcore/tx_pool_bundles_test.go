@@ -18,7 +18,7 @@ package evmcore
 
 import (
 	"crypto/ecdsa"
-	big "math/big"
+	"math/big"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -29,7 +29,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -213,17 +212,6 @@ func mockStateDbExecutionUsageForAccountWithNonce(
 }
 
 // ========================== Tools ===========================
-
-type dummySubscription struct{}
-
-func (d *dummySubscription) Err() <-chan error {
-	return make(chan error)
-}
-
-func (d *dummySubscription) Unsubscribe() {
-}
-
-var _ event.Subscription = (*dummySubscription)(nil)
 
 // bundleTx creates a transaction that is part of a bundle with the given key and nonce.
 // the name follows the convention of other transaction creation tools in the tx pool tests.

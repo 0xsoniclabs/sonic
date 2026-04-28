@@ -26,26 +26,42 @@ import (
 )
 
 func TestBundleIntegration_chainAdapter_ForwardsCallsToChainReader(t *testing.T) {
-	// Create instances of the mocks
-	ctrl := gomock.NewController(t)
-	chain := NewMockStateReader(ctrl)
 
-	// Create a chainAdapter with the mocks
-	adapter := chainAdapter{
-		chain: chain,
-	}
+	t.Run("GetCurrentNetworkRules", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		chain := NewMockStateReader(ctrl)
+		adapter := chainAdapter{chain: chain}
 
-	chain.EXPECT().CurrentRules().Return(opera.Rules{})
-	adapter.GetCurrentNetworkRules()
+		chain.EXPECT().CurrentRules().Return(opera.Rules{})
+		adapter.GetCurrentNetworkRules()
+	})
 
-	chain.EXPECT().CurrentConfig().Return(&params.ChainConfig{})
-	adapter.GetCurrentChainConfig()
+	t.Run("GetCurrentChainConfig", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		chain := NewMockStateReader(ctrl)
+		adapter := chainAdapter{chain: chain}
 
-	chain.EXPECT().CurrentBlock().Return(&EvmBlock{})
-	adapter.GetLatestHeader()
+		chain.EXPECT().CurrentConfig().Return(&params.ChainConfig{})
+		adapter.GetCurrentChainConfig()
+	})
 
-	hash := common.Hash{123}
-	number := uint64(456)
-	chain.EXPECT().Header(hash, number)
-	adapter.Header(hash, number)
+	t.Run("GetLatestHeader", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		chain := NewMockStateReader(ctrl)
+		adapter := chainAdapter{chain: chain}
+
+		chain.EXPECT().CurrentBlock().Return(&EvmBlock{})
+		adapter.GetLatestHeader()
+	})
+
+	t.Run("Header", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		chain := NewMockStateReader(ctrl)
+		adapter := chainAdapter{chain: chain}
+
+		hash := common.Hash{123}
+		number := uint64(456)
+		chain.EXPECT().Header(hash, number)
+		adapter.Header(hash, number)
+	})
 }
