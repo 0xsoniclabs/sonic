@@ -21,11 +21,10 @@ import (
 	"fmt"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
-	evmcore "github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -79,14 +78,12 @@ func (a *PublicBundleAPI) SubmitBundle(
 
 	// Decode bundled transactions and build TxReference map.
 	transactions := make(map[bundle.TxReference]*types.Transaction, len(args.SignedTransactions))
-	var totalGas uint64
 	for i, encodedTx := range args.SignedTransactions {
 		tx := new(types.Transaction)
 		if err := tx.UnmarshalBinary(encodedTx); err != nil {
 			return common.Hash{}, fmt.Errorf("failed to decode bundled transaction %d: %w", i, err)
 		}
 		transactions[refs[i]] = tx
-		totalGas += tx.Gas()
 	}
 
 	txBundle := bundle.TransactionBundle{
@@ -100,20 +97,17 @@ func (a *PublicBundleAPI) SubmitBundle(
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to encode bundle: %w", err)
 	}
-	minGas, err := core.IntrinsicGas(data, nil, nil, false, true, true, true)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to finalize bundle: could not calculate intrinsic gas: %w", err)
-	}
-	floorDataGas, err := core.FloorDataGas(data)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to finalize bundle: could not calculate floor data gas: %w", err)
-	}
-	totalGas = max(totalGas, minGas, floorDataGas)
 
 	// Make a one use key to sign the bundle
 	key, err := crypto.GenerateKey()
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to generate single use signing key: %w", err)
+	}
+
+	// Calculate the gas limit for the bundle transaction
+	gas, err := bundle.CalculateEnvelopeGas(txBundle, data, nil, nil)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to calculate envelope gas: %w", err)
 	}
 
 	// Sign the bundle transaction with the one-use key and send it to the network
@@ -123,7 +117,7 @@ func (a *PublicBundleAPI) SubmitBundle(
 			To:    &bundle.BundleProcessor,
 			Nonce: 0,
 			Data:  data,
-			Gas:   totalGas,
+			Gas:   gas,
 		})
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to sign bundle transaction: %w", err)
