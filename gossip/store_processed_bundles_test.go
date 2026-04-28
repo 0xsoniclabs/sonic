@@ -165,7 +165,7 @@ func TestStore_AddProcessedBundles_AddsNewBundlesToStorage(t *testing.T) {
 			table.EXPECT().Get(gomock.Any())
 
 			batch.EXPECT().Put(nil, BlockHashTableValueMatcher{blockNum: block})
-			batch.EXPECT().Put(getBlockHistoryHashKey(block), gomock.Any())
+			batch.EXPECT().Put(getBundleHistoryHashKey(block), gomock.Any())
 			batch.EXPECT().Write().Return(nil)
 
 			info1 := bundle.ExecutionInfo{
@@ -218,7 +218,7 @@ func TestStore_AddProcessedBundles_LogsOnBatchPutNewEntryError(t *testing.T) {
 	blockHistoryHashErr := errors.New("block history hash put error")
 	// Put calls for nil key and block-hash key are issued; both return an error.
 	batch.EXPECT().Put(nil, gomock.Any()).Return(historyHashErr)
-	batch.EXPECT().Put(getBlockHistoryHashKey(1), gomock.Any()).
+	batch.EXPECT().Put(getBundleHistoryHashKey(1), gomock.Any()).
 		Return(blockHistoryHashErr)
 
 	table.EXPECT().NewBatch().Return(batch)
@@ -255,7 +255,7 @@ func TestStore_AddProcessedBundles_LogsOnBatchWriteError(t *testing.T) {
 		func() { store.AddProcessedBundles(1, nil) })
 }
 
-func TestStore_AddProcessedBundles_RemovesOldHistoryHash_EvenForBlockNumberWithoutBundles(t *testing.T) {
+func TestStore_AddProcessedBundles_RemovesOlderHistoryHash_EvenForBlockNumberWithoutBundles(t *testing.T) {
 	// This test verifies that as new blocks are added, the history hash of old
 	// blocks are removed even if those blocks don't have bundles.
 
@@ -275,7 +275,7 @@ func TestStore_AddProcessedBundles_RemovesOldHistoryHash_EvenForBlockNumberWitho
 			store.AddProcessedBundles(block, nil)
 		}
 	}
-	oldestBlock, _, ok := store.GetOldestRetainedBundleHistoryHash()
+	oldestBlock, _, ok := store.GetEarliestBundleHistoryHash()
 	require.True(t, ok)
 
 	earliest := bundle.MakeMaxRangeEndingAt(currentBlock).Earliest
@@ -306,7 +306,7 @@ func TestStore_AddProcessedBundles_HistoryHashIsConsistentWithPerBlockHash(t *te
 		historicHashes = append(historicHashes, currentHistoryHash)
 
 		for past := range block + 1 {
-			historyHashForBlock, err := store.table.ProcessedBundles.Get(getBlockHistoryHashKey(past))
+			historyHashForBlock, err := store.table.ProcessedBundles.Get(getBundleHistoryHashKey(past))
 			require.NoError(t, err)
 			if len(historyHashForBlock) > 0 {
 				require.Equal(t, historicHashes[past].Bytes(), historyHashForBlock)
@@ -373,16 +373,16 @@ func TestStore_GetProcessedBundleHistoryHash_LogsOnInvalidStateLength(t *testing
 		func() { store.GetProcessedBundleHistoryHash() })
 }
 
-func TestStore_GetOldestRetainedBundleHistoryHash_ReturnsFalseWhenEmpty(t *testing.T) {
+func TestStore_GetEarliestBundleHistoryHash_ReturnsFalseWhenEmpty(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
-	_, _, ok := store.GetOldestRetainedBundleHistoryHash()
+	_, _, ok := store.GetEarliestBundleHistoryHash()
 	require.False(ok, "should return false when no bundles have been executed yet")
 }
 
-func TestStore_GetOldestRetainedBundleHistoryHash_ReturnsZero_WhenNoBundlesExecuted(t *testing.T) {
+func TestStore_GetEarliestBundleHistoryHash_ReturnsZero_WhenNoBundlesExecuted(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -395,13 +395,13 @@ func TestStore_GetOldestRetainedBundleHistoryHash_ReturnsZero_WhenNoBundlesExecu
 		require.Zero(hash)
 	}
 
-	gotBlock, gotHash, ok := store.GetOldestRetainedBundleHistoryHash()
+	gotBlock, gotHash, ok := store.GetEarliestBundleHistoryHash()
 	require.False(ok)
 	require.Equal(uint64(0), gotBlock, "oldest block should be 0")
 	require.Zero(gotHash, "oldest hash should be zero")
 }
 
-func TestStore_GetOldestRetainedBundleHistoryHash_AdvancesAfterPruning(t *testing.T) {
+func TestStore_GetEarliestBundleHistoryHash_AdvancesAfterPruning(t *testing.T) {
 	// This test verifies that the oldest history hash advances as blocks
 	// are added and old ones are pruned.
 
@@ -422,12 +422,12 @@ func TestStore_GetOldestRetainedBundleHistoryHash_AdvancesAfterPruning(t *testin
 				uint64ToHash(block): {},
 			})
 			if block == expectedOldestBlock {
-				expectedOldestHash, err = store.table.ProcessedBundles.Get(getBlockHistoryHashKey(expectedOldestBlock))
+				expectedOldestHash, err = store.table.ProcessedBundles.Get(getBundleHistoryHashKey(expectedOldestBlock))
 				require.NoError(err)
 			}
 		}
 
-		gotBlock, gotHash, ok := store.GetOldestRetainedBundleHistoryHash()
+		gotBlock, gotHash, ok := store.GetEarliestBundleHistoryHash()
 		require.True(ok)
 		require.Equal(expectedOldestBlock, gotBlock,
 			"oldest retained block should be the smallest block stored")
@@ -888,13 +888,13 @@ func TestStore_GetEntryKey_ReturnsExpectedKey(t *testing.T) {
 	require.Len(got, 1+32) // 1 byte for prefix + 32 bytes for hash
 }
 
-func TestStore_GetBlockHistoryHashKey_ReturnsExpectedKey(t *testing.T) {
+func TestStore_GetBundleHistoryHashKey_ReturnsExpectedKey(t *testing.T) {
 	blockNumbers := []uint64{0, 1, 512, math.MaxUint64 - 1, math.MaxUint64}
 	for _, blockNum := range blockNumbers {
 		t.Run(fmt.Sprintf("blockNum=%d", blockNum), func(t *testing.T) {
 			expectedKey := append([]byte{'h'}, make([]byte, 8)...)
 			binary.BigEndian.PutUint64(expectedKey[1:9], blockNum)
-			got := getBlockHistoryHashKey(blockNum)
+			got := getBundleHistoryHashKey(blockNum)
 			require.Equal(t, expectedKey, got)
 			require.Len(t, got, 1+8) // 1 byte prefix + 8 bytes block number
 		})
