@@ -17,6 +17,7 @@
 package sonicapi
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -85,7 +86,7 @@ type RPCRange struct {
 func NewRPCExecutionPlanComposable(plan bundle.ExecutionPlan) (RPCExecutionPlanComposable, error) {
 	visitor := makeExecutionPlanVisitor(
 		func(flags bundle.ExecutionFlags, txRef bundle.TxReference) (any, error) {
-			return &RPCExecutionStepComposable{
+			return RPCExecutionStepComposable{
 				TolerateFailed:  flags&bundle.EF_TolerateFailed != 0,
 				TolerateInvalid: flags&bundle.EF_TolerateInvalid != 0,
 				From:            txRef.From,
@@ -107,7 +108,7 @@ func NewRPCExecutionPlanComposable(plan bundle.ExecutionPlan) (RPCExecutionPlanC
 	}, nil
 }
 
-func toBundleExecutionPlan(rpcPlan RPCExecutionPlanComposable) (bundle.ExecutionPlan, error) {
+func ToBundleExecutionPlan(rpcPlan RPCExecutionPlanComposable) (bundle.ExecutionPlan, error) {
 	root, err := toBundleExecutionGroup(rpcPlan.RPCExecutionPlanGroup)
 	if err != nil {
 		return bundle.ExecutionPlan{}, fmt.Errorf("failed to convert execution plan: %w", err)
@@ -124,7 +125,7 @@ func toBundleExecutionPlan(rpcPlan RPCExecutionPlanComposable) (bundle.Execution
 
 func toBundleExecutionPlanLevel(level any) (bundle.ExecutionStep, error) {
 	switch l := level.(type) {
-	case *RPCExecutionStepComposable:
+	case RPCExecutionStepComposable:
 		ref := bundle.NewTxStep(bundle.TxReference{
 			From: l.From,
 			Hash: l.Hash,
@@ -138,8 +139,8 @@ func toBundleExecutionPlanLevel(level any) (bundle.ExecutionStep, error) {
 		}
 		return ref.WithFlags(flags), nil
 
-	case *RPCExecutionPlanGroup:
-		return toBundleExecutionGroup(*l)
+	case RPCExecutionPlanGroup:
+		return toBundleExecutionGroup(l)
 	}
 	return bundle.ExecutionStep{}, fmt.Errorf("invalid execution plan level: must have either executionStep or group")
 }
@@ -163,6 +164,32 @@ func toBundleExecutionGroup(l RPCExecutionPlanGroup) (bundle.ExecutionStep, erro
 		group = group.WithFlags(bundle.EF_TolerateFailed)
 	}
 	return group, nil
+}
+
+func (t *RPCExecutionPlanComposable) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		BlockRange       RPCRange          `json:"blockRange,omitempty"`
+		TolerateFailures bool              `json:"tolerateFailures,omitempty"`
+		OneOf            bool              `json:"oneOf,omitempty"`
+		Steps            []json.RawMessage `json:"steps"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	t.BlockRange = raw.BlockRange
+	t.OneOf = raw.OneOf
+	t.TolerateFailures = raw.TolerateFailures
+	t.Steps = make([]any, len(raw.Steps))
+	for i, rawStep := range raw.Steps {
+		step, empty, err := unmarshalBundleGroup[RPCExecutionStepComposable](rawStep)
+		if err != nil {
+			return err
+		}
+		if !empty {
+			t.Steps[i] = step
+		}
+	}
+	return nil
 }
 
 // makeExecutionPlanVisitor creates a new instance of toJsonExecutionPlanVisitor with the provided toLeaf function.
@@ -201,11 +228,11 @@ func (v *toJsonExecutionPlanVisitor) Step(flags bundle.ExecutionFlags, txRef bun
 }
 
 func (v *toJsonExecutionPlanVisitor) BeginGroup(oneOf bool, tolerateFailed bool) {
-	group := &RPCExecutionPlanGroup{
+	group := RPCExecutionPlanGroup{
 		OneOf:            oneOf,
 		TolerateFailures: tolerateFailed,
 	}
-	v.groupStack = append(v.groupStack, group)
+	v.groupStack = append(v.groupStack, &group)
 }
 
 func (v *toJsonExecutionPlanVisitor) EndGroup() {
@@ -214,9 +241,9 @@ func (v *toJsonExecutionPlanVisitor) EndGroup() {
 
 	if len(v.groupStack) > 0 {
 		currentGroup := v.groupStack[len(v.groupStack)-1]
-		currentGroup.Steps = append(currentGroup.Steps, closedGroup)
+		currentGroup.Steps = append(currentGroup.Steps, *closedGroup)
 	} else {
-		v.result.Steps = append(v.result.Steps, closedGroup)
+		v.result.Steps = append(v.result.Steps, *closedGroup)
 	}
 }
 

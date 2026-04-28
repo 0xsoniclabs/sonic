@@ -104,11 +104,13 @@ func (p *RPCExecutionProposal) UnmarshalJSON(data []byte) error {
 	p.TolerateFailures = raw.TolerateFailures
 	p.Steps = make([]any, len(raw.Steps))
 	for i, rawStep := range raw.Steps {
-		step, err := unmarshalProposalStep(rawStep)
+		step, empty, err := unmarshalBundleGroup[RPCExecutionStepProposal](rawStep)
 		if err != nil {
 			return err
 		}
-		p.Steps[i] = step
+		if !empty {
+			p.Steps[i] = step
+		}
 	}
 	return nil
 }
@@ -130,14 +132,17 @@ func (s *RPCExecutionStepProposal) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &s.TransactionArgs)
 }
 
-// unmarshalProposalStep discriminates between a leaf (RPCExecutionStepProposal,
+// unmarshalBundleGroup discriminates between a leaf (i.e. RPCExecutionStepProposal,
 // no "steps" key) and a group (RPCExecutionPlanGroup, has "steps" key).
-func unmarshalProposalStep(data []byte) (any, error) {
+// This function returns the unmarshaled element, a boolean indicating whenever the
+// element can be optimized away and an error if the JSON is invalid. The optimization
+// boolean is used to indicate to the caller that the resulting group is empty
+func unmarshalBundleGroup[LeafType any](data []byte) (any, bool, error) {
 	var probe struct {
 		Steps *json.RawMessage `json:"steps"`
 	}
 	if err := json.Unmarshal(data, &probe); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if probe.Steps != nil {
 		var rawGroup struct {
@@ -146,27 +151,29 @@ func unmarshalProposalStep(data []byte) (any, error) {
 			Steps            []json.RawMessage `json:"steps"`
 		}
 		if err := json.Unmarshal(data, &rawGroup); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		children := make([]any, len(rawGroup.Steps))
 		for i, raw := range rawGroup.Steps {
-			child, err := unmarshalProposalStep(raw)
+			child, empty, err := unmarshalBundleGroup[LeafType](raw)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
-			children[i] = child
+			if !empty {
+				children[i] = child
+			}
 		}
 		return RPCExecutionPlanGroup{
 			OneOf:            rawGroup.OneOf,
 			TolerateFailures: rawGroup.TolerateFailures,
 			Steps:            children,
-		}, nil
+		}, len(children) == 0, nil
 	}
-	var step RPCExecutionStepProposal
+	var step LeafType
 	if err := json.Unmarshal(data, &step); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return step, nil
+	return step, false, nil
 }
 
 // createProposalRequestFromBundle creates an RPCExecutionProposal from a bundle.TransactionBundle,
@@ -199,14 +206,16 @@ func convertVisitorLeafIntoRPCExecutionPlanProposalLeaf(
 	txBundle *bundle.TransactionBundle,
 	flags bundle.ExecutionFlags,
 	txRef bundle.TxReference,
-) (*RPCExecutionStepProposal, error) {
+) (RPCExecutionStepProposal, error) {
+	empty := RPCExecutionStepProposal{}
+
 	tx, ok := txBundle.Transactions[txRef]
 	if !ok {
-		return nil, fmt.Errorf("transaction reference not found in bundle transactions: %v", txRef)
+		return empty, fmt.Errorf("transaction reference not found in bundle transactions: %v", txRef)
 	}
 	txArgs, err := convertToTransactionArgs(signer, tx)
 	if err != nil {
-		return nil, err
+		return empty, err
 	}
 
 	// remove bundle markers from access list
@@ -224,7 +233,7 @@ func convertVisitorLeafIntoRPCExecutionPlanProposalLeaf(
 		}
 	}
 
-	return &RPCExecutionStepProposal{
+	return RPCExecutionStepProposal{
 		TolerateFailed:  flags&bundle.EF_TolerateFailed != 0,
 		TolerateInvalid: flags&bundle.EF_TolerateInvalid != 0,
 		TransactionArgs: txArgs,
@@ -306,7 +315,7 @@ func convertToTransactionArgs(signer types.Signer, tx *types.Transaction) (ethap
 
 func convertProposalToPlan(signer types.Signer, proposal RPCExecutionProposal) (bundle.ExecutionPlan, error) {
 
-	root, err := convertProposalToPlanInternal(signer, &proposal.RPCExecutionPlanGroup)
+	root, err := convertProposalToPlanInternal(signer, proposal.RPCExecutionPlanGroup)
 	if err != nil {
 		return bundle.ExecutionPlan{}, err
 	}
@@ -325,9 +334,6 @@ func convertProposalToPlanInternal(signer types.Signer, proposalStep any) (bundl
 	empty := bundle.ExecutionStep{}
 
 	switch step := proposalStep.(type) {
-	case RPCExecutionPlanGroup:
-		return convertProposalToPlanInternal(signer, &step)
-
 	case RPCExecutionStepProposal:
 		if step.From == nil {
 			return empty, fmt.Errorf("transaction in bundle must include from")
@@ -350,7 +356,7 @@ func convertProposalToPlanInternal(signer types.Signer, proposalStep any) (bundl
 			return flags
 		}()), nil
 
-	case *RPCExecutionPlanGroup:
+	case RPCExecutionPlanGroup:
 
 		if len(step.Steps) == 0 {
 			return empty, fmt.Errorf("proposed group must include at least one step")
@@ -360,7 +366,7 @@ func convertProposalToPlanInternal(signer types.Signer, proposalStep any) (bundl
 		// return the child's plan directly rather than wrapping it in another group.
 		if !step.OneOf && !step.TolerateFailures && len(step.Steps) == 1 {
 			switch step.Steps[0].(type) {
-			case RPCExecutionPlanGroup, *RPCExecutionPlanGroup:
+			case RPCExecutionPlanGroup:
 				return convertProposalToPlanInternal(signer, step.Steps[0])
 			}
 		}
