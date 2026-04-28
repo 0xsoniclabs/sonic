@@ -190,6 +190,7 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 
 	// Fetch the payment transaction for this sponsored transaction.
 	payments := []*types.Transaction{}
+	basefees := []*big.Int{}
 	for _, tx := range []*types.Transaction{tx1, tx2, tx4} {
 		receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
 		require.NoError(err)
@@ -204,6 +205,7 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 		require.Equal(types.ReceiptStatusSuccessful, subtractReceipt.Status)
 
 		payments = append(payments, payment)
+		basefees = append(basefees, block.BaseFee())
 	}
 
 	// The first two transactions are charged using the old registry. Since both
@@ -220,13 +222,13 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 	// correct according to the respective registry config and block gas price.
 	paymentData0 := makePaymentFeeData(t,
 		gasUsed,
-		receipts[0].EffectiveGasPrice,
+		basefees[0],
 		initialRegistryConfig.OverheadCharge)
 	require.Equal(paymentData0, payments[0].Data()[36:])
 
 	paymentData1 := makePaymentFeeData(t,
 		gasUsed,
-		receipts[1].EffectiveGasPrice,
+		basefees[1],
 		initialRegistryConfig.OverheadCharge)
 	require.Equal(paymentData1, payments[1].Data()[36:])
 
@@ -234,7 +236,7 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 	// the corresponding payment transaction is payments[2] for the last transaction.
 	paymentData2 := makePaymentFeeData(t,
 		gasUsed,
-		receipts[3].EffectiveGasPrice,
+		basefees[2],
 		proxyRegistryConfig.OverheadCharge)
 	require.Equal(paymentData2, payments[2].Data()[36:])
 
