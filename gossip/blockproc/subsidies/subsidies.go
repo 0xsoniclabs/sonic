@@ -176,6 +176,35 @@ type NonceSource interface {
 	GetNonce(addr common.Address) uint64
 }
 
+// IsFeeChargeTransaction returns true if the transaction is a fee-charge
+// transaction created by GetFeeChargeTransaction. It checks that the
+// transaction is internal, targets the subsidies registry, and carries
+// calldata with the correct length and deductFees function selector.
+func IsFeeChargeTransaction(tx *types.Transaction) bool {
+	if tx == nil || !internaltx.IsInternal(tx) {
+		return false
+	}
+	if tx.To() == nil || *tx.To() != registry.GetAddress() {
+		return false
+	}
+	input := tx.Data()
+	if len(input) != 4+2*32 {
+		return false
+	}
+	selector := binary.BigEndian.Uint32(input[:4])
+	return selector == registry.DeductFeesFunctionSelector
+}
+
+// ParseFeeChargeAmount extracts the fee amount from the input data of a fee
+// charge transaction created by GetFeeChargeTransaction.
+func ParseFeeChargeAmount(tx *types.Transaction) (*uint256.Int, error) {
+	if !IsFeeChargeTransaction(tx) {
+		return nil, fmt.Errorf("transaction is not a fee charge transaction")
+	}
+	input := tx.Data()
+	return new(uint256.Int).SetBytes32(input[36:68]), nil
+}
+
 // --- utility functions ---
 
 // getGasConfig queries the subsidies registry contract for the current gas
