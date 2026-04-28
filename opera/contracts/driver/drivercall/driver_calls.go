@@ -18,17 +18,23 @@ package drivercall
 
 import (
 	_ "embed"
+	"fmt"
+	"math"
 	"math/big"
 	"strings"
+	"time"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
 	"github.com/0xsoniclabs/sonic/opera/genesis/gpos"
 	"github.com/0xsoniclabs/sonic/utils"
+	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 )
 
 //go:embed NodeDriverAbi.json
@@ -96,4 +102,103 @@ func SetGenesisDelegation(d Delegation) []byte {
 func DeactivateValidator(validatorID idx.ValidatorID, status uint64) []byte {
 	data, _ := sAbi.Pack("deactivateValidator", utils.U64toBig(uint64(validatorID)), utils.U64toBig(status))
 	return data
+}
+
+// ParseSealEpochArgs decodes a sealEpoch call and returns the validator epoch
+// metrics (missed blocks, uptime, and originated transaction fee), one
+// entry per validator in epoch order. Returns an error if data does not
+// encode a sealEpoch call.
+func ParseSealEpochArgs(tx *types.Transaction) ([]ValidatorEpochMetric, error) {
+	if tx == nil || !internaltx.IsInternal(tx) {
+		return nil, fmt.Errorf("transaction is nil or not internal")
+	}
+	if tx.To() == nil || *tx.To() != driver.ContractAddress {
+		return nil, fmt.Errorf("transaction does not target the node driver contract")
+	}
+	data := tx.Data()
+
+	if len(data) < 4 {
+		return nil, fmt.Errorf("data too short to contain a function selector")
+	}
+	method, err := sAbi.MethodById(data[:4])
+	if err != nil {
+		return nil, fmt.Errorf("unknown method: %w", err)
+	}
+	if method.Name != "sealEpoch" {
+		return nil, fmt.Errorf("expected sealEpoch, got %s", method.Name)
+	}
+	args, err := method.Inputs.Unpack(data[4:])
+	if err != nil {
+		return nil, fmt.Errorf("failed to unpack sealEpoch arguments: %w", err)
+	}
+
+	// Reconstruct the ValidatorEpochMetric slice from the unpacked arguments.
+	return convertSealEpochArgs(args)
+}
+
+func convertSealEpochArgs(args []any) ([]ValidatorEpochMetric, error) {
+	if len(args) != 4 {
+		return nil, fmt.Errorf("expected 4 arguments for sealEpoch, got %d", len(args))
+	}
+
+	// Check the types.
+	offlineTimes, ok := args[0].([]*big.Int)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for offlineTimes argument")
+	}
+	offlineBlocks, ok := args[1].([]*big.Int)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for offlineBlocks argument")
+	}
+	uptimes, ok := args[2].([]*big.Int)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for uptimes argument")
+	}
+	fees, ok := args[3].([]*big.Int)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for fees argument")
+	}
+
+	// Check the length.
+	l := len(offlineTimes)
+	if len(offlineBlocks) != l || len(uptimes) != l || len(fees) != l {
+		return nil, fmt.Errorf("argument array lengths do not match")
+	}
+
+	// Check the range limits
+	for _, cur := range offlineBlocks {
+		if !cur.IsUint64() {
+			return nil, fmt.Errorf("offlineBlocks contains value that doesn't fit in uint64")
+		}
+	}
+	for _, cur := range offlineTimes {
+		if !cur.IsInt64() {
+			return nil, fmt.Errorf("offlineTimes contains value that doesn't fit in int64")
+		}
+		if val := cur.Int64(); val > math.MaxInt64/int64(time.Second) {
+			return nil, fmt.Errorf("offlineTimes contains value that is too large to be a valid offline time in seconds")
+		}
+	}
+	for _, cur := range uptimes {
+		if !cur.IsInt64() {
+			return nil, fmt.Errorf("uptimes contains value that doesn't fit in int64")
+		}
+		if val := cur.Int64(); val > math.MaxInt64/int64(time.Second) {
+			return nil, fmt.Errorf("uptimes contains value that is too large to be a valid uptime in seconds")
+		}
+	}
+
+	// Convert to metrics.
+	metrics := make([]ValidatorEpochMetric, l)
+	for i := range metrics {
+		metrics[i] = ValidatorEpochMetric{
+			Missed: opera.BlocksMissed{
+				BlocksNum: idx.Block(offlineBlocks[i].Uint64()),
+				Period:    inter.FromUnix(offlineTimes[i].Int64()),
+			},
+			Uptime:          inter.FromUnix(uptimes[i].Int64()),
+			OriginatedTxFee: fees[i],
+		}
+	}
+	return metrics, nil
 }
