@@ -129,17 +129,11 @@ func (a *PublicBundleAPI) SubmitBundle(
 		return common.Hash{}, fmt.Errorf("failed to sign bundle transaction: %w", err)
 	}
 
-	// Validate generated transaction
-	_, plan, err := bundle.ValidateEnvelope(signer, tx)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to validate bundle transaction: %w", err)
-	}
-
 	// Submit the transaction to the network
 	_, err = ethapi.SubmitTransaction(ctx, a.b, tx)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to submit bundle transaction: %w", err)
 	}
 
-	return plan.Hash(), nil
+	return execPlan.Hash(), nil
 }
