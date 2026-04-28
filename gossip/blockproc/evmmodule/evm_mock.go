@@ -45,18 +45,32 @@ func (m *Mock_stateProcessorFactory) EXPECT() *Mock_stateProcessorFactoryMockRec
 	return m.recorder
 }
 
-// NewStateProcessor mocks base method.
-func (m *Mock_stateProcessorFactory) NewStateProcessor(evmCfg *params.ChainConfig, reader evmcore.DummyChain, upgrades opera.Upgrades) _stateProcessor {
+// NewStateProcessorForHeadState mocks base method.
+func (m *Mock_stateProcessorFactory) NewStateProcessorForHeadState(evmCfg *params.ChainConfig, reader evmcore.DummyChain, upgrades opera.Upgrades) _stateProcessor {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "NewStateProcessor", evmCfg, reader, upgrades)
+	ret := m.ctrl.Call(m, "NewStateProcessorForHeadState", evmCfg, reader, upgrades)
 	ret0, _ := ret[0].(_stateProcessor)
 	return ret0
 }
 
-// NewStateProcessor indicates an expected call of NewStateProcessor.
-func (mr *Mock_stateProcessorFactoryMockRecorder) NewStateProcessor(evmCfg, reader, upgrades any) *gomock.Call {
+// NewStateProcessorForHeadState indicates an expected call of NewStateProcessorForHeadState.
+func (mr *Mock_stateProcessorFactoryMockRecorder) NewStateProcessorForHeadState(evmCfg, reader, upgrades any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewStateProcessor", reflect.TypeOf((*Mock_stateProcessorFactory)(nil).NewStateProcessor), evmCfg, reader, upgrades)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewStateProcessorForHeadState", reflect.TypeOf((*Mock_stateProcessorFactory)(nil).NewStateProcessorForHeadState), evmCfg, reader, upgrades)
+}
+
+// NewStateProcessorForReplay mocks base method.
+func (m *Mock_stateProcessorFactory) NewStateProcessorForReplay(evmCfg *params.ChainConfig, reader evmcore.DummyChain, upgrades opera.Upgrades) _stateProcessor {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NewStateProcessorForReplay", evmCfg, reader, upgrades)
+	ret0, _ := ret[0].(_stateProcessor)
+	return ret0
+}
+
+// NewStateProcessorForReplay indicates an expected call of NewStateProcessorForReplay.
+func (mr *Mock_stateProcessorFactoryMockRecorder) NewStateProcessorForReplay(evmCfg, reader, upgrades any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewStateProcessorForReplay", reflect.TypeOf((*Mock_stateProcessorFactory)(nil).NewStateProcessorForReplay), evmCfg, reader, upgrades)
 }
 
 // Mock_stateProcessor is a mock of _stateProcessor interface.

@@ -142,7 +142,7 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 }
 
 func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evmcore.ProcessSummary {
-	evmProcessor := p.processorFactory.NewStateProcessor(p.evmCfg, p.reader, p.rules.Upgrades)
+	evmProcessor := p.processorFactory.NewStateProcessorForHeadState(p.evmCfg, p.reader, p.rules.Upgrades)
 	legacyTxsOffset := uint(len(p.processedTxs))
 	trueTxsOffset := int(0)
 	for _, tx := range p.processedTxs {
@@ -211,7 +211,13 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 // _stateProcessorFactory is an internal interface to allow introducing mocked
 // state processors in tests.
 type _stateProcessorFactory interface {
-	NewStateProcessor(
+	NewStateProcessorForHeadState(
+		evmCfg *params.ChainConfig,
+		reader evmcore.DummyChain,
+		upgrades opera.Upgrades,
+	) _stateProcessor
+
+	NewStateProcessorForReplay(
 		evmCfg *params.ChainConfig,
 		reader evmcore.DummyChain,
 		upgrades opera.Upgrades,
@@ -236,10 +242,18 @@ type _stateProcessor interface {
 // _stateProcessorFactory using the real evmcore.StateProcessor.
 type stateProcessorFactory struct{}
 
-func (stateProcessorFactory) NewStateProcessor(
+func (stateProcessorFactory) NewStateProcessorForHeadState(
 	evmCfg *params.ChainConfig,
 	reader evmcore.DummyChain,
 	upgrades opera.Upgrades,
 ) _stateProcessor {
-	return evmcore.NewStateProcessor(evmCfg, reader, upgrades)
+	return evmcore.NewStateProcessorForHeadState(evmCfg, reader, upgrades)
+}
+
+func (stateProcessorFactory) NewStateProcessorForReplay(
+	evmCfg *params.ChainConfig,
+	reader evmcore.DummyChain,
+	upgrades opera.Upgrades,
+) _stateProcessor {
+	return evmcore.NewStateProcessorForReplay(evmCfg, reader, upgrades)
 }

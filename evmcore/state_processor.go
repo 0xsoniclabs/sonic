@@ -44,13 +44,14 @@ import (
 //
 // StateProcessor implements Processor.
 type StateProcessor struct {
-	config   *params.ChainConfig // Chain configuration options
-	bc       DummyChain          // Canonical block chain
-	upgrades opera.Upgrades      // Enabled network upgrades
+	config    *params.ChainConfig // Chain configuration options
+	bc        DummyChain          // Canonical block chain
+	upgrades  opera.Upgrades      // Enabled network upgrades
+	forReplay bool                // Whether the state processor is used for replaying transactions or for head state processing.
 }
 
-// NewStateProcessor initializes a new StateProcessor.
-func NewStateProcessor(
+// NewStateProcessorForHeadState initializes a new StateProcessor for head state processing.
+func NewStateProcessorForHeadState(
 	config *params.ChainConfig,
 	bc DummyChain,
 	upgrades opera.Upgrades,
@@ -59,6 +60,20 @@ func NewStateProcessor(
 		config:   config,
 		bc:       bc,
 		upgrades: upgrades,
+	}
+}
+
+// NewStateProcessorForReplay initializes a new StateProcessor for replaying transactions.
+func NewStateProcessorForReplay(
+	config *params.ChainConfig,
+	bc DummyChain,
+	upgrades opera.Upgrades,
+) *StateProcessor {
+	return &StateProcessor{
+		config:    config,
+		bc:        bc,
+		upgrades:  upgrades,
+		forReplay: true,
 	}
 }
 
@@ -134,7 +149,7 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	// Iterate over and process the individual transactions
 	return runTransactions(newRunContext(
 		signer, header.BaseFee, statedb, gp, blockNumber, usedGas,
-		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}},
+		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}}, p.forReplay,
 	), block.Transactions, 0, trueTxOffset)
 }
 
@@ -151,6 +166,7 @@ type runContext struct {
 	onNewLog    func(*types.Log)
 	upgrades    opera.Upgrades
 	runner      _transactionRunner
+	forReplay   bool // Whether the context is used for replaying transactions or for head state processing.
 }
 
 // newRunContext creates a new runContext instance bundling the given parameters
@@ -167,6 +183,7 @@ func newRunContext(
 	onNewLog func(*types.Log),
 	upgrades opera.Upgrades,
 	runner _transactionRunner,
+	isReplay bool,
 ) *runContext {
 	return &runContext{
 		signer:      signer,
@@ -178,6 +195,7 @@ func newRunContext(
 		onNewLog:    onNewLog,
 		upgrades:    upgrades,
 		runner:      runner,
+		forReplay:   isReplay,
 	}
 }
 
@@ -214,6 +232,14 @@ func runTransactions(
 		// transaction index offset to be tracked.
 
 		nextId := legacyTxIndexOffset + len(processedTxs) // < counts also skipped transactions
+
+		// Bundle-only transactions are only valid within a bundle and must
+		// be rejected at the top level when processing the head state.
+		if !context.forReplay && context.upgrades.Brio && bundle.IsBundleOnly(tx) {
+			processedTxs = append(processedTxs, ProcessedTransaction{Transaction: tx})
+			continue
+		}
+
 		txs, _ := runTransaction(context, tx, nextId, trueTxIndexOffset)
 
 		for _, tx := range txs {
@@ -240,9 +266,14 @@ func runTransaction(
 ) ([]ProcessedTransaction, core_types.TransactionResult) {
 	// Since a transaction bundle has a gas-price of 0 it would be considered a
 	// sponsorship request. Thus, we need to check for bundles first.
-	if context.upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
-		return context.runner.runTransactionBundle(context, tx, legacyTxIndexOffset, trueTxIndexOffset)
-	} else if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
+	if context.upgrades.Brio && bundle.IsEnvelope(tx) {
+		if context.upgrades.TransactionBundles {
+			return context.runner.runTransactionBundle(context, tx, legacyTxIndexOffset, trueTxIndexOffset)
+		} else {
+			return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
+		}
+	}
+	if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
 		res, result := context.runner.runSponsoredTransaction(context, tx, legacyTxIndexOffset, trueTxIndexOffset)
 		return res, result
 	} else {
@@ -618,7 +649,7 @@ func NewTransactionProcessorForBlock(
 	// in the scheduler. See the scheduler.Schedule method for details. The
 	// total gas used for attempting to schedule transactions is not limited.
 	gasLimit := uint64(math.MaxUint64)
-	stateProcessor := NewStateProcessor(chainCfg, chain, rules.Upgrades)
+	stateProcessor := NewStateProcessorForHeadState(chainCfg, chain, rules.Upgrades)
 	return stateProcessor.BeginBlock(block, state, vmConfig, gasLimit, nil)
 }
 
@@ -680,6 +711,7 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
+		false,
 	), []*types.Transaction{tx}, i, i)
 }
 

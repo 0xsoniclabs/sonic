@@ -225,7 +225,7 @@ func (s *State) ApplyBlock(
 	upgrades := rules.Upgrades
 	upgrades.GasSubsidies = false
 
-	processor := evmcore.NewStateProcessor(
+	processor := evmcore.NewStateProcessorForReplay(
 		chainConfig,
 		historyAdapter{history: s.blockHashHistory},
 		upgrades,
