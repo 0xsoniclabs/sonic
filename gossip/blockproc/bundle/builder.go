@@ -333,7 +333,7 @@ func (b *builder) BuildEnvelopeBundleAndPlan() (
 	}
 	bundle, plan := b.BuildBundleAndPlan()
 	signer := b.GetSigner()
-	return newEnvelope(signer, key, b.envelopeNonce, b.envelopeGasPrice, bundle), bundle, plan
+	return NewEnvelope(signer, key, b.envelopeNonce, b.envelopeGasPrice, bundle), bundle, plan
 }
 
 // BuildEnvelope returns an envelope transaction and its execution plan
@@ -446,8 +446,8 @@ type txReference struct {
 	tx  types.TxData
 }
 
-// Wraps the given bundle into an envelope transaction.
-func newEnvelope(
+// NewEnvelope wraps the given bundle into an envelope transaction.
+func NewEnvelope(
 	signer types.Signer,
 	key *ecdsa.PrivateKey,
 	nonce uint64,
@@ -478,5 +478,5 @@ func MustWrapIntoEnvelope(signer types.Signer, bundle *TransactionBundle) *types
 	if err != nil {
 		panic(fmt.Sprintf("failed to generate new key: %v", err))
 	}
-	return newEnvelope(signer, key, 0, &big.Int{}, bundle)
+	return NewEnvelope(signer, key, 0, &big.Int{}, bundle)
 }

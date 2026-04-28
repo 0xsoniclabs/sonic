@@ -363,7 +363,7 @@ func removeBundleOnlyTxs(
 	upgrades opera.Upgrades,
 	pendingTxs map[common.Address]types.Transactions) {
 
-	if !upgrades.TransactionBundles {
+	if !upgrades.Brio {
 		return
 	}
 
