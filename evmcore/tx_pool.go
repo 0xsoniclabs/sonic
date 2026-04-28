@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -189,13 +190,18 @@ type StateReader interface {
 }
 
 // subsidiesCheckFuncFactory is a factory method to create a subsidies checker instance.
-// This facilitates testing of the TxPool by using injected mock implementations.
 type subsidiesCheckFuncFactory func(
 	rules opera.Rules,
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,
 ) utils.TransactionCheckFunc
+
+// bundleCheckerFuncFactory is a factory method to create a bundle checker instance.
+type bundleCheckerFuncFactory func(
+	chain StateReader,
+	state state.StateDB,
+) func(*types.Transaction) bundlePoolStatus
 
 // TxPoolConfig are the configuration parameters of the transaction pool.
 type TxPoolConfig struct {
@@ -339,7 +345,9 @@ type TxPool struct {
 	waitForIdleReorgLoopResponseCh chan struct{} // responses to waitForReorgDoneRequestCh
 
 	subsidiesCheckerFactory subsidiesCheckFuncFactory    // Factory to create a subsidies checker instance
-	subsidiesCheckerCache   *utils.TransactionCheckCache // Cache for subsidies check results
+	subsidiesCheckerCache   *utils.TransactionCheckCache // Cache for heavy subsidies check results
+
+	bundleCheckerFactory bundleCheckerFuncFactory // Factory to create a bundle checker instance
 }
 
 type txpoolResetRequest struct {
@@ -352,7 +360,13 @@ func NewTxPool(
 	config TxPoolConfig,
 	chainconfig *params.ChainConfig,
 	chain StateReader) *TxPool {
-	return newTxPool(config, chainconfig, chain, newSubsidiesChecker)
+	return newTxPool(
+		config,
+		chainconfig,
+		chain,
+		newSubsidiesChecker,
+		newBundlesChecker,
+	)
 }
 
 func newTxPool(
@@ -360,6 +374,7 @@ func newTxPool(
 	chainconfig *params.ChainConfig,
 	chain StateReader,
 	subsidiesCheckerFactory subsidiesCheckFuncFactory,
+	bundleCheckerFactory bundleCheckerFuncFactory,
 ) *TxPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
@@ -387,6 +402,8 @@ func newTxPool(
 
 		subsidiesCheckerFactory: subsidiesCheckerFactory,
 		subsidiesCheckerCache:   utils.NewCheckerCache(-1), // use default size
+
+		bundleCheckerFactory: bundleCheckerFactory,
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -1502,16 +1519,6 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	pool.osaka = pool.chainconfig.IsOsaka(next, uint64(newHead.Time.Unix()))
 }
 
-func (pool *TxPool) createCachedSubsidiesChecker() utils.TransactionCheckFunc {
-	return utils.WrapCheck(pool.subsidiesCheckerCache,
-		pool.subsidiesCheckerFactory(
-			pool.chain.CurrentRules(),
-			pool.chain,
-			pool.currentState,
-			pool.signer,
-		))
-}
-
 // promoteExecutables moves transactions that have become processable from the
 // future queue to the set of pending transactions. During this process, all
 // invalidated transactions (low nonce, low balance) are deleted.
@@ -1519,7 +1526,14 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 	// Track the promoted transactions to broadcast them at once
 	var promoted []*types.Transaction
 
-	subsidiesChecker := pool.createCachedSubsidiesChecker()
+	isSponsored := pool.getSubsidiesCheckerForReorg()
+	evaluateBundleStatus := pool.getBundlesCheckerForPromotion()
+	canPromote := func(tx *types.Transaction) bool {
+		if bundle.IsEnvelope(tx) {
+			return evaluateBundleStatus(tx) == bundlePending
+		}
+		return true
+	}
 
 	// Iterate over all accounts and promote any executable transactions
 	for _, addr := range accounts {
@@ -1534,13 +1548,18 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 			pool.all.Remove(hash)
 		}
 		log.Trace("Removed old queued transactions", "count", len(forwards))
-		// Drop all transactions that are too costly (low balance or out of gas)
+
+		// Drop transactions that cannot be executed anymore
+		// - too low balance
+		// - too high gas cost for the current rules
+		// - not sponsored anymore
+		// - bundle has been executed
+		// queue is not strict, transactions cannot be demoted, "invalid" return unused
 		drops, _ := list.Filter(
 			utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)),
 			pool.currentMaxGas,
-			subsidiesChecker,
-			// FIXME: replace with real evaluation
-			func(t *types.Transaction) bundlePoolStatus { return bundlePending },
+			isSponsored,
+			evaluateBundleStatus,
 		)
 		for _, tx := range drops {
 			hash := tx.Hash()
@@ -1550,11 +1569,7 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 		queuedNofundsMeter.Mark(int64(len(drops)))
 
 		// Gather all executable transactions and promote them
-		readies := list.Ready(
-			pool.pendingNonces.get(addr),
-			// FIXME: replace with real evaluation
-			func(t *types.Transaction) bool { return true },
-		)
+		readies := list.Ready(pool.pendingNonces.get(addr), canPromote)
 		for _, tx := range readies {
 			hash := tx.Hash()
 			if pool.promoteTx(addr, hash, tx) {
@@ -1589,6 +1604,24 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 	}
 	promotedTxsCounter.Inc(int64(len(promoted)))
 	return promoted
+}
+
+func (pool *TxPool) getSubsidiesCheckerForReorg() utils.TransactionCheckFunc {
+	return utils.WrapCheck(pool.subsidiesCheckerCache,
+		pool.subsidiesCheckerFactory(
+			pool.chain.CurrentRules(),
+			pool.chain,
+			pool.currentState,
+			pool.signer,
+		))
+}
+
+func (pool *TxPool) getBundlesCheckerForPromotion() func(*types.Transaction) bundlePoolStatus {
+	// TODO: cache?
+	return pool.bundleCheckerFactory(
+		pool.chain,
+		pool.currentState,
+	)
 }
 
 // truncatePending removes transactions from the pending queue if the pool is above the
@@ -1730,7 +1763,8 @@ func (pool *TxPool) truncateQueue() {
 // to trigger a re-heap is this function
 func (pool *TxPool) demoteUnexecutables() {
 
-	subsidiesChecker := pool.createCachedSubsidiesChecker()
+	isSponsored := pool.getSubsidiesCheckerForReorg()
+	isBundlePending := pool.getBundlesCheckerForPromotion()
 
 	// Iterate over all accounts and demote any non-executable transactions
 	for addr, list := range pool.pending {
@@ -1743,13 +1777,20 @@ func (pool *TxPool) demoteUnexecutables() {
 			pool.all.Remove(hash)
 			log.Trace("Removed old pending transaction", "hash", hash)
 		}
-		// Drop all transactions that are too costly (low balance or out of gas), and queue any invalids back for later
+
+		// Drop transactions that cannot be executed anymore
+		// - too low balance
+		// - too high gas cost for the current rules
+		// - not sponsored anymore
+		// - bundle is not executable (final)
+		// the pending list is strict, invalid transactions are returned to be re-queued
+		// - gapped nonces
+		// - temporarily not executable bundles
 		drops, invalids := list.Filter(
 			utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)),
 			pool.currentMaxGas,
-			subsidiesChecker,
-			// FIXME: replace with real evaluation
-			func(t *types.Transaction) bundlePoolStatus { return bundlePending },
+			isSponsored,
+			isBundlePending,
 		)
 		for _, tx := range drops {
 			hash := tx.Hash()
