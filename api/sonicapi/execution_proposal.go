@@ -400,7 +400,7 @@ func toTransactionForBundles(step ethapi.TransactionArgs) *types.Transaction {
 	tx := step.ToTransaction()
 
 	// legacy transactions cannot be included in a bundle.
-	// if a the transaction arguments correspond to a legacy transaction,
+	// if the transaction arguments correspond to a legacy transaction,
 	// promote it to an access list transaction to host the bundle marker.
 	if tx.Type() == types.LegacyTxType {
 		tx = types.NewTx(&types.AccessListTx{
