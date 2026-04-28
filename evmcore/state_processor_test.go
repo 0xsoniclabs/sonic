@@ -561,7 +561,7 @@ func TestProcess_ForwardsCorrectIndexToTransactionProcessor(t *testing.T) {
 	for _, offset := range []int{0, 1, 42} {
 		t.Run(fmt.Sprintf("offset=%d", offset), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			upgrades := opera.Upgrades{TransactionBundles: true}
+			upgrades := opera.Upgrades{Brio: true, TransactionBundles: true}
 			processor := NewStateProcessor(&params.ChainConfig{}, nil, upgrades)
 
 			any := gomock.Any()
@@ -924,7 +924,7 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactions(t *
 
 	context := &runContext{
 		runner:   runner,
-		upgrades: opera.Upgrades{GasSubsidies: true, TransactionBundles: true},
+		upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
 	}
 	gomock.InOrder(
 		runner.EXPECT().runRegularTransaction(context, txs[0], 0, 4).Return(
@@ -1010,6 +1010,7 @@ func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyP
 	context := &runContext{
 		runner: runner,
 		upgrades: opera.Upgrades{
+			Brio:               true,
 			GasSubsidies:       true,
 			TransactionBundles: true,
 		},
@@ -1221,28 +1222,103 @@ func TestRunTransactions_BundlesEnabled_RunsSponsorshipRequestWithSponsorship(t 
 	require.Nil(t, processed[0].Receipt)
 }
 
-func TestRunTransactions_BundlesEnabled_RunsTransactionBundleAsBundle(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	runner := NewMock_transactionRunner(ctrl)
+func TestRunTransactions_EnvelopeAndBundleOnly_SemanticsEnabledByBrio_ExecutionEnabledByBundleFlag(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
 
-	tx := getTransactionBundle(t)
+	envelopeTx := getTransactionBundle(t)
+	txBundle, _, err := bundle.ValidateEnvelope(signer, envelopeTx)
+	require.NoError(t, err)
+	bundleOnlyTx := txBundle.Transactions[txBundle.Plan.Root.GetTransactionReferencesInReferencedOrder()[0]]
 
-	context := &runContext{
-		runner:   runner,
-		upgrades: opera.Upgrades{TransactionBundles: true},
+	cases := map[string]struct {
+		tx                 *types.Transaction
+		brio               bool
+		transactionBundles bool
+		expectRunRegular   bool
+		expectRunBundle    bool
+		expectInvalid      bool
+	}{
+		"Envelope/PreBrio/WithoutBundles": {
+			tx:                 envelopeTx,
+			brio:               false,
+			transactionBundles: false,
+			expectRunRegular:   true,
+		},
+		"Envelope/PreBrio/WithBundles": {
+			tx:                 envelopeTx,
+			brio:               false,
+			transactionBundles: true,
+			expectRunRegular:   true,
+		},
+		"Envelope/PostBrio/WithoutBundles": {
+			tx:                 envelopeTx,
+			brio:               true,
+			transactionBundles: false,
+			expectInvalid:      true,
+		},
+		"Envelope/PostBrio/WithBundles": {
+			tx:                 envelopeTx,
+			brio:               true,
+			transactionBundles: true,
+			expectRunBundle:    true,
+		},
+		"BundleOnly/PreBrio/WithoutBundles": {
+			tx:                 bundleOnlyTx,
+			brio:               false,
+			transactionBundles: false,
+			expectRunRegular:   true,
+		},
+		"BundleOnly/PreBrio/WithBundles": {
+			tx:                 bundleOnlyTx,
+			brio:               false,
+			transactionBundles: true,
+			expectRunRegular:   true,
+		},
+		"BundleOnly/PostBrio/WithoutBundles": {
+			tx:                 bundleOnlyTx,
+			brio:               true,
+			transactionBundles: false,
+			expectInvalid:      true,
+		},
+		"BundleOnly/PostBrio/WithBundles": {
+			tx:                 bundleOnlyTx,
+			brio:               true,
+			transactionBundles: true,
+			expectInvalid:      true,
+		},
 	}
-	runner.EXPECT().runTransactionBundle(context, tx, 10, 15).Return(
-		[]ProcessedTransaction{{
-			Transaction: tx,
-			Receipt:     nil,
-		}},
-		core_types.TransactionResultSuccessful,
-	)
-	summary := runTransactions(context, []*types.Transaction{tx}, 10, 15)
-	processed := summary.ProcessedTransactions
-	require.Len(t, processed, 1)
-	require.Equal(t, tx, processed[0].Transaction)
-	require.Nil(t, processed[0].Receipt)
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMock_transactionRunner(ctrl)
+			context := &runContext{
+				runner: runner,
+				upgrades: opera.Upgrades{
+					Brio:               tc.brio,
+					TransactionBundles: tc.transactionBundles,
+				},
+			}
+
+			if tc.expectRunRegular {
+				runner.EXPECT().runRegularTransaction(context, tc.tx, 0, 0).
+					Return(ProcessedTransaction{Transaction: tc.tx, Receipt: &types.Receipt{}}, core_types.TransactionResultSuccessful)
+			}
+			if tc.expectRunBundle {
+				runner.EXPECT().runTransactionBundle(context, tc.tx, 0, 0).
+					Return([]ProcessedTransaction{{Transaction: tc.tx, Receipt: &types.Receipt{}}}, core_types.TransactionResultSuccessful)
+			}
+
+			summary := runTransactions(context, []*types.Transaction{tc.tx}, 0, 0)
+			processed := summary.ProcessedTransactions
+			require.Len(t, processed, 1)
+			if tc.expectInvalid {
+				require.Equal(t, ProcessedTransaction{tc.tx, nil}, processed[0])
+			} else {
+				require.Equal(t, ProcessedTransaction{tc.tx, &types.Receipt{}}, processed[0])
+			}
+		})
+	}
 }
 
 func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) {
@@ -2822,7 +2898,7 @@ func TestBundleTransactionRunner_Run_ForwardsLegacyAndTrueTransactionOffsetToBun
 				ctrl := gomock.NewController(t)
 				runner := NewMock_transactionRunner(ctrl)
 
-				upgrades := opera.Upgrades{GasSubsidies: true, TransactionBundles: true}
+				upgrades := opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true}
 				ctxt := &runContext{runner: runner, upgrades: upgrades}
 				bundleTransactionRunner := &bundleTransactionRunner{
 					ctxt:           ctxt,
@@ -3308,7 +3384,7 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 			stateDb.EXPECT().AddProcessedBundle(any, any).AnyTimes()
 
 			signer := types.LatestSignerForChainID(big.NewInt(1))
-			upgrades := opera.Upgrades{GasSubsidies: true, TransactionBundles: true}
+			upgrades := opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true}
 			ctxt := &runContext{
 				signer:      signer,
 				usedGas:     new(uint64),

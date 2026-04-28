@@ -214,6 +214,14 @@ func runTransactions(
 		// transaction index offset to be tracked.
 
 		nextId := legacyTxIndexOffset + len(processedTxs) // < counts also skipped transactions
+
+		// Bundle-only transactions are only valid within a bundle and must
+		// be rejected at the top level.
+		if context.upgrades.Brio && bundle.IsBundleOnly(tx) {
+			processedTxs = append(processedTxs, ProcessedTransaction{Transaction: tx})
+			continue
+		}
+
 		txs, _ := runTransaction(context, tx, nextId, trueTxIndexOffset)
 
 		for _, tx := range txs {
@@ -240,9 +248,14 @@ func runTransaction(
 ) ([]ProcessedTransaction, core_types.TransactionResult) {
 	// Since a transaction bundle has a gas-price of 0 it would be considered a
 	// sponsorship request. Thus, we need to check for bundles first.
-	if context.upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
-		return context.runner.runTransactionBundle(context, tx, legacyTxIndexOffset, trueTxIndexOffset)
-	} else if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
+	if context.upgrades.Brio && bundle.IsEnvelope(tx) {
+		if context.upgrades.TransactionBundles {
+			return context.runner.runTransactionBundle(context, tx, legacyTxIndexOffset, trueTxIndexOffset)
+		} else {
+			return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
+		}
+	}
+	if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
 		res, result := context.runner.runSponsoredTransaction(context, tx, legacyTxIndexOffset, trueTxIndexOffset)
 		return res, result
 	} else {

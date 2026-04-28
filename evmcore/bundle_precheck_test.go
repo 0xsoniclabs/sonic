@@ -633,7 +633,7 @@ func Test_trialRunBundle_DoesRunTransactionsThroughEVMAndReturnsIfTransactionsGo
 				ChainID: big.NewInt(1),
 			}).AnyTimes()
 			chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
-				Upgrades: opera.Upgrades{TransactionBundles: true},
+				Upgrades: opera.Upgrades{Brio: true, TransactionBundles: true},
 			}).AnyTimes()
 
 			// setup of the state DB to support the EVM execution, the actual
