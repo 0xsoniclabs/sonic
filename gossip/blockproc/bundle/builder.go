@@ -233,7 +233,7 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 				}
 				accessList := slices.Clone(tx.AccessList())
 				accessList = append(accessList, marker)
-				newGasLimit, err = calculateEnvelopeGas(
+				newGasLimit, err = CalculateEnvelopeGas(
 					innerBundle, tx.Data(), accessList, tx.SetCodeAuthorizations(),
 				)
 				if err != nil {
@@ -459,7 +459,7 @@ func newEnvelope(
 	if err != nil {
 		panic(fmt.Sprintf("failed to encode bundle: %v", err))
 	}
-	gasLimit, err := calculateEnvelopeGas(*bundle, payload, nil, nil)
+	gasLimit, err := CalculateEnvelopeGas(*bundle, payload, nil, nil)
 	if err != nil {
 		panic(err)
 	}

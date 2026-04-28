@@ -99,7 +99,7 @@ func Test_calculateEnvelopeGas_ComputesGasBasedOnProvidedParameters(t *testing.T
 			require.Equal(tc.expected, want)
 
 			// test that function produces expected value
-			have, err := calculateEnvelopeGas(
+			have, err := CalculateEnvelopeGas(
 				tc.bundle,
 				tc.payload,
 				tc.accessList,
@@ -131,7 +131,7 @@ func Test_calculateEnvelopeGas_ComputesNonZeroAndZeroBytesInPayloadCorrectly(t *
 			)
 			require.NoError(err)
 
-			have, err := calculateEnvelopeGas(
+			have, err := CalculateEnvelopeGas(
 				TransactionBundle{}, payload, nil, nil,
 			)
 			require.NoError(err)
