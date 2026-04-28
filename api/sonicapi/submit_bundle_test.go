@@ -334,6 +334,96 @@ func Test_SubmitBundle_InvalidBlockRange_ReturnsError(t *testing.T) {
 	}
 }
 
+func Test_SubmitBundle_EmptySignedTransactions_ReturnsError(t *testing.T) {
+	tests := map[string]struct {
+		signedTxs []hexutil.Bytes
+	}{
+		"nil slice":   {signedTxs: nil},
+		"empty slice": {signedTxs: []hexutil.Bytes{}},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			be := rpctest.NewBackendBuilder(t).Build()
+			_, err := NewPublicBundleAPI(be).SubmitBundle(t.Context(), SubmitBundleArgs{
+				SignedTransactions: tt.signedTxs,
+			})
+			require.ErrorContains(t, err, "signedTransactions must not be empty")
+		})
+	}
+}
+
+func Test_SubmitBundle_NoCurrentBlock_ReturnsError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	be := NewMockBundleApiBackend(ctrl)
+	be.EXPECT().CurrentBlock().Return(nil)
+
+	_, err := NewPublicBundleAPI(be).SubmitBundle(t.Context(), SubmitBundleArgs{
+		SignedTransactions: []hexutil.Bytes{{}},
+	})
+	require.ErrorContains(t, err, "unable to retrieve current block number")
+}
+
+func Test_SubmitBundle_InvalidExecutionPlan_ReturnsError(t *testing.T) {
+	be := rpctest.NewBackendBuilder(t).Build()
+	signer := types.LatestSignerForChainID(be.ChainID())
+
+	addr := common.Address{2}
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	args := buildSubmitBundleArgs(signer, bundle.EF_Default, 1, 100,
+		bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas}),
+	)
+	// Inject an unsupported step type — neither RPCExecutionStepComposable nor RPCExecutionPlanGroup.
+	args.ExecutionPlan.Steps = []any{"invalid step type"}
+
+	_, err = NewPublicBundleAPI(be).SubmitBundle(t.Context(), args)
+	require.ErrorContains(t, err, "invalid execution plan")
+}
+
+func Test_SubmitBundle_StepCountMismatch_ReturnsError(t *testing.T) {
+	tests := map[string]struct {
+		numPlanSteps int
+		numSignedTxs int
+	}{
+		"more signed txs than plan steps": {numPlanSteps: 1, numSignedTxs: 2},
+		"fewer signed txs than plan steps": {numPlanSteps: 2, numSignedTxs: 1},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			be := rpctest.NewBackendBuilder(t).Build()
+			signer := types.LatestSignerForChainID(be.ChainID())
+
+			addr := common.Address{2}
+			steps := make([]bundle.BuilderStep, tt.numPlanSteps)
+			for i := range steps {
+				key, err := crypto.GenerateKey()
+				require.NoError(t, err)
+				steps[i] = bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas})
+			}
+			args := buildSubmitBundleArgs(signer, bundle.EF_Default, 1, 100, steps...)
+
+			switch {
+			case tt.numSignedTxs > len(args.SignedTransactions):
+				key, err := crypto.GenerateKey()
+				require.NoError(t, err)
+				tx, err := types.SignNewTx(key, signer, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas})
+				require.NoError(t, err)
+				data, err := tx.MarshalBinary()
+				require.NoError(t, err)
+				args.SignedTransactions = append(args.SignedTransactions, data)
+			case tt.numSignedTxs < len(args.SignedTransactions):
+				args.SignedTransactions = args.SignedTransactions[:tt.numSignedTxs]
+			}
+
+			_, err := NewPublicBundleAPI(be).SubmitBundle(t.Context(), args)
+			require.ErrorContains(t, err, "executionPlan steps count")
+		})
+	}
+}
+
 // buildSubmitBundleArgs creates a valid SubmitBundleArgs using the bundle builder.
 // The flags are applied to each transaction step individually.
 func buildSubmitBundleArgs(
