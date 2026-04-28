@@ -57,6 +57,23 @@ func MakeMaxRangeStartingAt(blockNum uint64) BlockRange {
 	}
 }
 
+func MakeMaxRangeEndingAt(blockNum uint64) BlockRange {
+	if blockNum < MaxBlockRange-1 {
+		// if the ending block number is too close to 0, we cannot create a full
+		// range of MaxBlockRange blocks without underflowing.
+		// In this case, we create the largest possible range ending at blockNum,
+		// which starts at block 0.
+		return BlockRange{
+			Earliest: 0,
+			Latest:   blockNum,
+		}
+	}
+	return BlockRange{
+		Earliest: blockNum - MaxBlockRange + 1,
+		Latest:   blockNum,
+	}
+}
+
 // Size returns the size of the block range, which is the number of blocks
 // included in the range.
 func (r BlockRange) Size() uint64 {
