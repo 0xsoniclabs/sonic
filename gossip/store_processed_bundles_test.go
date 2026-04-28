@@ -264,7 +264,7 @@ func TestStore_AddProcessedBundles_RemovesOlderHistoryHash_EvenForBlockNumberWit
 	// Run enough blocks that some 'h' entries from bundle-less blocks get pruned.
 	const currentBlock = bundle.MaxBlockRange * 2
 	const firstBundle = bundle.MaxBlockRange / 2
-	for block := uint64(1); block <= currentBlock; block++ {
+	for block := range uint64(currentBlock) + 1 {
 		// add a single block with bundles
 		if block == firstBundle {
 			store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
@@ -274,13 +274,26 @@ func TestStore_AddProcessedBundles_RemovesOlderHistoryHash_EvenForBlockNumberWit
 			// add blocks without bundles to advance the block number and trigger pruning
 			store.AddProcessedBundles(block, nil)
 		}
-	}
-	oldestBlock, _, ok := store.GetEarliestBundleHistoryHash()
-	require.True(t, ok)
 
-	earliest := bundle.MakeMaxRangeEndingAt(currentBlock).Earliest
-	require.Equal(t, earliest, oldestBlock,
-		"oldest retained block should be the earliest block in range, even if it has no bundles")
+		// Check that the earliest bundle history block is updated accordingly.
+		earliestHashBlockNumber, _, found := store.GetEarliestBundleHistoryHash()
+		if block < firstBundle {
+			require.False(t, found)
+		} else {
+			require.True(t, found)
+
+			// Check that the block number of the earliest hash is moving one
+			// step at a time, even if the added bundles execution lists are.
+			// The actual value is not important here, as the correctness of
+			// the boundary is tested by other tests, in particular
+			// TestStore_ProcessedBundles_RetainsAllHashesToVerifyContainedExecutionPlans
+			wantEarliest := firstBundle
+			if block >= bundle.MaxBlockRange+firstBundle {
+				wantEarliest = block - bundle.MaxBlockRange + 1
+			}
+			require.Equal(t, wantEarliest, earliestHashBlockNumber)
+		}
+	}
 }
 
 func TestStore_AddProcessedBundles_HistoryHashIsConsistentWithPerBlockHash(t *testing.T) {
@@ -373,6 +386,33 @@ func TestStore_GetProcessedBundleHistoryHash_LogsOnInvalidStateLength(t *testing
 		func() { store.GetProcessedBundleHistoryHash() })
 }
 
+func TestStore_GetEarliestBundleHistoryHash_ScansTableForFirstEntry(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+
+	wantBlock := uint64(1234)
+	wantHash := common.Hash{1, 2, 3}
+
+	table := NewMockstoreTable(ctrl)
+	it := NewMockdbIterator(ctrl)
+
+	store := &Store{}
+	store.table.ProcessedBundles = table
+
+	gomock.InOrder(
+		table.EXPECT().NewIterator([]byte{'h'}, nil).Return(it),
+		it.EXPECT().Next().Return(true),
+		it.EXPECT().Key().Return(getBundleHistoryHashKey(wantBlock)),
+		it.EXPECT().Value().Return(wantHash.Bytes()),
+		it.EXPECT().Release(),
+	)
+
+	gotBlock, gotHash, found := store.GetEarliestBundleHistoryHash()
+	require.True(found)
+	require.Equal(wantBlock, gotBlock)
+	require.Equal(wantHash, gotHash)
+}
+
 func TestStore_GetEarliestBundleHistoryHash_ReturnsFalseWhenEmpty(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
@@ -399,41 +439,6 @@ func TestStore_GetEarliestBundleHistoryHash_ReturnsZero_WhenNoBundlesExecuted(t 
 	require.False(ok)
 	require.Equal(uint64(0), gotBlock, "oldest block should be 0")
 	require.Zero(gotHash, "oldest hash should be zero")
-}
-
-func TestStore_GetEarliestBundleHistoryHash_AdvancesAfterPruning(t *testing.T) {
-	// This test verifies that the oldest history hash advances as blocks
-	// are added and old ones are pruned.
-
-	require := require.New(t)
-
-	const totalBlocks = bundle.MaxBlockRange * 2
-	// The iteration over total blocks is to show that at different block heights
-	// the same block number can be retained, oldest or pruned.
-	for currentBlock := uint64(1); currentBlock <= totalBlocks; currentBlock++ {
-		store, err := NewMemStore(t)
-		require.NoError(err)
-
-		var expectedOldestHash []byte
-		expectedOldestBlock := bundle.MakeMaxRangeEndingAt(currentBlock - 1).Earliest
-		// Run enough blocks that some 'h' entries from bundle-less blocks get pruned.
-		for block := range currentBlock {
-			store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
-				uint64ToHash(block): {},
-			})
-			if block == expectedOldestBlock {
-				expectedOldestHash, err = store.table.ProcessedBundles.Get(getBundleHistoryHashKey(expectedOldestBlock))
-				require.NoError(err)
-			}
-		}
-
-		gotBlock, gotHash, ok := store.GetEarliestBundleHistoryHash()
-		require.True(ok)
-		require.Equal(expectedOldestBlock, gotBlock,
-			"oldest retained block should be the smallest block stored")
-		require.Equal(expectedOldestHash, gotHash.Bytes(),
-			"oldest retained hash should match the stored hash at that block")
-	}
 }
 
 func TestStore_addNewBundles_EncodesInfoCorrectly(t *testing.T) {
@@ -1063,6 +1068,45 @@ func TestStore_ProcessedBundles_RetainsAllBundlesRequiredToCoverTheMaximumBlockR
 				want, store.HasBundleRecentlyBeenProcessed(uint64ToHash(block)),
 				"Current block %d, checking plan with range [%d,%d]",
 				currentBlockNumber, blockRange.Earliest, blockRange.Latest,
+			)
+		}
+
+		store.AddProcessedBundles(currentBlockNumber, map[common.Hash]bundle.PositionInBlock{
+			uint64ToHash(currentBlockNumber): {},
+		})
+	}
+}
+
+func TestStore_ProcessedBundles_RetainsAllHashesToVerifyContainedExecutionPlans(t *testing.T) {
+	// This test makes sure that exactly those hashes are retained in the store
+	// that are required to verify the stored execution plan hashes.
+	require := require.New(t)
+	numBlocks := 3 * bundle.MaxBlockRange
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	for currentBlockNumber := range numBlocks {
+
+		// Verify that for exactly those blocks that are still in the store the
+		// hashes required for their verification are also in the store.
+		for b := range currentBlockNumber {
+
+			hash, err := store.table.ProcessedBundles.Get(getBundleHistoryHashKey(b))
+			require.NoError(err)
+
+			// A hash should be present if:
+			//  - the plans for the associated block are still in the store
+			//  - the plans for the succeeding block are still in the store
+			thisInStore := store.HasBundleRecentlyBeenProcessed(uint64ToHash(b))
+			nextInStore := store.HasBundleRecentlyBeenProcessed(uint64ToHash(b + 1))
+
+			hashPresent := hash != nil
+			wantHash := thisInStore || nextInStore
+			require.Equal(
+				wantHash, hashPresent,
+				"Current block %d, checking presence of hash for block %d, plans for block %d in store: %t, plans for block %d in store: %t",
+				currentBlockNumber, b, b, thisInStore, b+1, nextInStore,
 			)
 		}
 
