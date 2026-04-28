@@ -1228,7 +1228,7 @@ func TestRunTransactions_EnvelopeAndBundleOnly_SemanticsEnabledByBrio_ExecutionE
 	envelopeTx := getTransactionBundle(t)
 	txBundle, _, err := bundle.ValidateEnvelope(signer, envelopeTx)
 	require.NoError(t, err)
-	bundleOnlyTx := txBundle.Transactions[txBundle.Plan.Root.GetTransactionReferencesInReferencedOrder()[0]]
+	bundleOnlyTx := txBundle.GetTransactionsInReferencedOrder()[0]
 
 	cases := map[string]struct {
 		tx                 *types.Transaction
