@@ -17,6 +17,7 @@
 package drivermodule
 
 import (
+	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -25,8 +26,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/holiman/uint256"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -184,6 +187,73 @@ func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
 	// EffectiveGasTip returns an error for negative values, this is no problem here
 	gasTip, _ := tx.EffectiveGasTip(baseFee)
 	return new(big.Int).Add(baseFee, gasTip)
+}
+
+// OnNewAcceptedTransaction is called for every transaction accepted in a block,
+// providing the ID of the validator that has proposed the transaction in one of
+// its events, the accepted transaction, and its receipt. It is used to keep
+// track on the consumed gas on the network.
+//
+// This function is an updated version of the `OnNewReceipt` function above,
+// which is getting enabled with the Brio flag in the c_block_callback.go file.
+// Unlike the previous version, this function correctly accounts for fees of
+// sponsored and bundled transactions. The old code is preserved for backward
+// compatibility until the Brio hard-fork and to support full-history syncs.
+func (p *DriverTxListener) OnNewAcceptedTransaction(
+	originator idx.ValidatorID,
+	tx *types.Transaction,
+	r *types.Receipt,
+) {
+	p.onNewAcceptedTransactionInternal(originator, tx, r, log.Root())
+}
+
+func (p *DriverTxListener) onNewAcceptedTransactionInternal(
+	originator idx.ValidatorID,
+	tx *types.Transaction,
+	r *types.Receipt,
+	log log.Logger,
+) {
+	fee, err := ComputeEffectiveFee(tx, r)
+	if err != nil {
+		// if there is an overflow in the fee computation, the safe default
+		// is not not attribute it to any validator to not pay out any fees.
+		log.Warn("overflow in fee computation", "tx", tx.Hash(), "usedGas", r.GasUsed, "gasPrice", r.EffectiveGasPrice, "err", err)
+		return
+	}
+
+	if originator == 0 {
+		log.Warn("failed to attribute transaction to validator, fees got burned", "tx", tx.Hash(), "fees", fee)
+		return
+	}
+
+	originatorIdx := p.es.Validators.GetIdx(originator)
+	originated := p.bs.ValidatorStates[originatorIdx].Originated
+	originated.Add(originated, fee.ToBig())
+}
+
+// ComputeEffectiveFee returns the transaction fee charged for the given
+// transaction and its receipt. For regular transactions, this is simply
+// gasUsed * effectiveGasPrice. For fee charge transactions, the fee is
+// extracted from the transaction input data. If the calculation leads to a
+// 256-bit overflow, a fee of 0 is returned.
+func ComputeEffectiveFee(
+	tx *types.Transaction,
+	r *types.Receipt,
+) (*uint256.Int, error) {
+	if fee, err := subsidies.ParseFeeChargeAmount(tx); err == nil {
+		return fee, nil
+	}
+
+	gasPrice, overflow := uint256.FromBig(r.EffectiveGasPrice)
+	if overflow || gasPrice == nil {
+		return nil, fmt.Errorf("effective gas price overflow")
+	}
+	gasUsed := uint256.NewInt(r.GasUsed)
+	fee, overflow := new(uint256.Int).MulOverflow(gasUsed, gasPrice)
+	if overflow {
+		return nil, fmt.Errorf("effective fee overflow")
+	}
+	return fee, nil
 }
 
 func decodeDataBytes(l *types.Log) ([]byte, error) {
