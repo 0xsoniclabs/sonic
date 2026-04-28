@@ -52,6 +52,11 @@ func newBundlesChecker(
 		stateDb: stateDB,
 	}
 	return func(tx *types.Transaction) bundlePoolStatus {
+		// Before Brio, bundle envelopes are regular transactions and must not
+		// be subject to bundle-specific filtering in the pool.
+		if !chain.CurrentRules().Upgrades.Brio {
+			return bundlePending
+		}
 		bundleState := GetBundleState(adapter, stateDB, tx)
 		if bundleState.Executable {
 			return bundlePending
