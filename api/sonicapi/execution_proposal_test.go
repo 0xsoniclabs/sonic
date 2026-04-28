@@ -811,6 +811,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 	require.NoError(t, err)
 	address2 := crypto.PubkeyToAddress(key2.PublicKey)
 
+	const bundleMarkerCost = params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
+
 	tests := map[string]struct {
 		proposal RPCExecutionProposal
 		plan     bundle.ExecutionPlan
@@ -828,9 +830,7 @@ func Test_convertProposalToPlan(t *testing.T) {
 								From:  &address1,
 								To:    &common.Address{123},
 								Nonce: rpctest.ToHexUint64(1),
-								Gas: rpctest.ToHexUint64(21000 +
-									// NOTE: builder adds marker costs
-									params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
 							},
 						},
 					},
@@ -861,9 +861,7 @@ func Test_convertProposalToPlan(t *testing.T) {
 								From:  &address1,
 								To:    &common.Address{123},
 								Nonce: rpctest.ToHexUint64(1),
-								Gas: rpctest.ToHexUint64(21000 +
-									// NOTE: builder adds marker costs
-									params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
 							},
 						},
 						RPCExecutionStepProposal{
@@ -871,9 +869,7 @@ func Test_convertProposalToPlan(t *testing.T) {
 								From:  &address2,
 								To:    &common.Address{1},
 								Nonce: rpctest.ToHexUint64(2),
-								Gas: rpctest.ToHexUint64(21000 +
-									// NOTE: builder adds marker costs
-									params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
 							},
 						},
 					},
@@ -920,9 +916,7 @@ func Test_convertProposalToPlan(t *testing.T) {
 								From:  &address2,
 								To:    &common.Address{1},
 								Nonce: rpctest.ToHexUint64(2),
-								Gas: rpctest.ToHexUint64(21000 +
-									// NOTE: builder adds marker costs
-									params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
 							},
 							TolerateInvalid: true,
 						},
@@ -963,9 +957,7 @@ func Test_convertProposalToPlan(t *testing.T) {
 										From:  &address1,
 										To:    &common.Address{123},
 										Nonce: rpctest.ToHexUint64(1),
-										Gas: rpctest.ToHexUint64(21000 +
-											// NOTE: builder adds marker costs
-											params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+										Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
 									},
 								},
 								RPCExecutionStepProposal{
@@ -973,9 +965,7 @@ func Test_convertProposalToPlan(t *testing.T) {
 										From:  &address2,
 										To:    &common.Address{1},
 										Nonce: rpctest.ToHexUint64(2),
-										Gas: rpctest.ToHexUint64(21000 +
-											// NOTE: builder adds marker costs
-											params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+										Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
 									},
 								},
 							},
@@ -1017,9 +1007,7 @@ func Test_convertProposalToPlan(t *testing.T) {
 										From:  &address1,
 										To:    &common.Address{123},
 										Nonce: rpctest.ToHexUint64(1),
-										Gas: rpctest.ToHexUint64(21000 +
-											// NOTE: builder adds marker costs
-											params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+										Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
 									},
 									TolerateFailed: true,
 								},
@@ -1028,9 +1016,7 @@ func Test_convertProposalToPlan(t *testing.T) {
 										From:  &address2,
 										To:    &common.Address{1},
 										Nonce: rpctest.ToHexUint64(2),
-										Gas: rpctest.ToHexUint64(21000 +
-											// NOTE: builder adds marker costs
-											params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+										Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
 									},
 									TolerateInvalid: true,
 								},
