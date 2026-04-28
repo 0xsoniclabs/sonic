@@ -110,7 +110,7 @@ func validateEnvelopeInternal(
 
 	// Check that the bundle's gas limit matches the required gas limit.
 	have := envelopeTx.Gas()
-	want, err := calculateEnvelopeGas(
+	want, err := CalculateEnvelopeGas(
 		bundle,
 		envelopeTx.Data(),
 		envelopeTx.AccessList(),

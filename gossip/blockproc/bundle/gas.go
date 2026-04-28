@@ -25,9 +25,9 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-// calculateEnvelopeGas calculates the gas limit for an envelope transaction
+// CalculateEnvelopeGas calculates the gas limit for an envelope transaction
 // based on the given payload and access list.
-func calculateEnvelopeGas(
+func CalculateEnvelopeGas(
 	bundle TransactionBundle,
 	payload []byte,
 	accessList types.AccessList,
@@ -46,7 +46,7 @@ func calculateEnvelopeGas(
 }
 
 // calculateEnvelopeGasInternal is the internal implementation of
-// calculateEnvelopeGas that takes pre-calculated values object sizes instead
+// CalculateEnvelopeGas that takes pre-calculated values object sizes instead
 // of the actual objects. This allows for testing the gas calculation logic
 // without needing to construct large objects in memory.
 func calculateEnvelopeGasInternal(

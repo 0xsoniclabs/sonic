@@ -18,18 +18,15 @@ package sonicapi
 
 import (
 	"errors"
-	"math/big"
 	"testing"
 
 	rpctest "github.com/0xsoniclabs/sonic/api/rpc_test"
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -37,21 +34,20 @@ import (
 func Test_SubmitBundle_ValidBundle_ReturnsExecutionPlanHash(t *testing.T) {
 	addr := common.Address{2}
 
-	tests := []struct {
-		name     string
+	tests := map[string]struct {
 		flags    bundle.ExecutionFlags
 		numSteps int
 	}{
-		{"single tx, default flags", bundle.EF_Default, 1},
-		{"two txs, default flags", bundle.EF_Default, 2},
-		{"three txs, default flags", bundle.EF_Default, 3},
-		{"single tx, TolerateFailed", bundle.EF_TolerateFailed, 1},
-		{"two txs, TolerateFailed", bundle.EF_TolerateFailed, 2},
-		{"single tx, TolerateInvalid", bundle.EF_TolerateInvalid, 1},
+		"single tx, default flags":   {bundle.EF_Default, 1},
+		"two txs, default flags":     {bundle.EF_Default, 2},
+		"three txs, default flags":   {bundle.EF_Default, 3},
+		"single tx, TolerateFailed":  {bundle.EF_TolerateFailed, 1},
+		"two txs, TolerateFailed":    {bundle.EF_TolerateFailed, 2},
+		"single tx, TolerateInvalid": {bundle.EF_TolerateInvalid, 1},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			var submitted *types.Transaction
 			ctrl := gomock.NewController(t)
 			pool := rpctest.NewMockTxPool(ctrl)
@@ -95,17 +91,16 @@ func Test_SubmitBundle_ValidBundle_ReturnsExecutionPlanHash(t *testing.T) {
 }
 
 func Test_SubmitBundle_InvalidTxEncoding_ReturnsError(t *testing.T) {
-	tests := []struct {
-		name   string
+	tests := map[string]struct {
 		txData hexutil.Bytes
 	}{
-		{"empty bytes", hexutil.Bytes{}},
-		{"garbage bytes", hexutil.Bytes{0xde, 0xad, 0xbe, 0xef}},
-		{"truncated rlp", hexutil.Bytes{0x01, 0x80}},
+		"empty bytes":   {hexutil.Bytes{}},
+		"garbage bytes": {hexutil.Bytes{0xde, 0xad, 0xbe, 0xef}},
+		"truncated rlp": {hexutil.Bytes{0x01, 0x80}},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			// AddLocal must not be called, decoding fails before submission.
 			pool := rpctest.NewMockTxPool(ctrl)
@@ -233,18 +228,17 @@ func Test_SubmitBundle_EnvelopeGasCoversAllBundledTxs(t *testing.T) {
 }
 
 func Test_SubmitBundle_BlockRangeIsPreservedInPool(t *testing.T) {
-	tests := []struct {
-		name     string
+	tests := map[string]struct {
 		earliest uint64
 		latest   uint64
 	}{
-		{"range [1,1]", 1, 1},
-		{"range [1,100]", 1, 100},
-		{"range [50,50]", 50, 50},
+		"range [1,1]":   {1, 1},
+		"range [1,100]": {1, 100},
+		"range [50,50]": {50, 50},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			var submitted *types.Transaction
 
 			ctrl := gomock.NewController(t)
@@ -278,28 +272,25 @@ func Test_SubmitBundle_BlockRangeIsPreservedInPool(t *testing.T) {
 }
 
 func Test_SubmitBundle_InvalidBlockRange_ReturnsError(t *testing.T) {
-	tests := []struct {
-		name     string
+	tests := map[string]struct {
 		earliest uint64
 		latest   uint64
 		errMsg   string
 	}{
-		{
-			name:     "earliest > latest",
+		"earliest > latest": {
 			earliest: 10,
 			latest:   5,
-			errMsg:   "latest block number cannot be smaller than earliest block number",
+			errMsg:   "invalid block range",
 		},
-		{
-			name:     "range too large",
+		"range too large": {
 			earliest: 0,
 			latest:   bundle.MaxBlockRange + 1,
 			errMsg:   "invalid block range",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			// AddLocal must not be called, validation fails before submission.
 			pool := rpctest.NewMockTxPool(ctrl)
@@ -327,9 +318,10 @@ func Test_SubmitBundle_InvalidBlockRange_ReturnsError(t *testing.T) {
 				signedTxs[i] = data
 			}
 
-			rpcPlan := NewRPCExecutionPlan(plan)
-			rpcPlan.Earliest = rpc.BlockNumber(tt.earliest)
-			rpcPlan.Latest = rpc.BlockNumber(tt.latest)
+			rpcPlan, err := NewRPCExecutionPlanComposable(plan)
+			require.NoError(t, err)
+			rpcPlan.BlockRange.Earliest = hexutil.Uint64(tt.earliest)
+			rpcPlan.BlockRange.Latest = hexutil.Uint64(tt.latest)
 
 			args := SubmitBundleArgs{
 				SignedTransactions: signedTxs,
@@ -342,174 +334,94 @@ func Test_SubmitBundle_InvalidBlockRange_ReturnsError(t *testing.T) {
 	}
 }
 
-func Test_SubmitBundle_InvalidExecutionPlanBlockNumbers_ReturnsError(t *testing.T) {
-	tests := []struct {
-		name     string
-		earliest rpc.BlockNumber
+func Test_SubmitBundle_EmptySignedTransactions_ReturnsError(t *testing.T) {
+	tests := map[string]struct {
+		signedTxs []hexutil.Bytes
 	}{
-		{
-			name:     "latest as earliest",
-			earliest: rpc.LatestBlockNumber,
-		},
-		{
-			name:     "pending as earliest",
-			earliest: rpc.PendingBlockNumber,
-		},
-		{
-			name:     "finalized as earliest",
-			earliest: rpc.FinalizedBlockNumber,
-		},
-		{
-			name:     "safe as earliest",
-			earliest: rpc.SafeBlockNumber,
-		},
+		"nil slice":   {signedTxs: nil},
+		"empty slice": {signedTxs: []hexutil.Bytes{}},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			// AddLocal must not be called, request validation fails before submission.
-			pool := rpctest.NewMockTxPool(ctrl)
-			be := rpctest.NewBackendBuilder(t).
-				WithPool(pool).
-				WithBlockHistory(
-					[]rpctest.Block{
-						{Number: 1},
-						{Number: 5},
-						{Number: 10},
-					},
-				).
-				Build()
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			be := rpctest.NewBackendBuilder(t).Build()
+			_, err := NewPublicBundleAPI(be).SubmitBundle(t.Context(), SubmitBundleArgs{
+				SignedTransactions: tt.signedTxs,
+			})
+			require.ErrorContains(t, err, "signedTransactions must not be empty")
+		})
+	}
+}
+
+func Test_SubmitBundle_NoCurrentBlock_ReturnsError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	be := NewMockBundleApiBackend(ctrl)
+	be.EXPECT().CurrentBlock().Return(nil)
+
+	_, err := NewPublicBundleAPI(be).SubmitBundle(t.Context(), SubmitBundleArgs{
+		SignedTransactions: []hexutil.Bytes{{}},
+	})
+	require.ErrorContains(t, err, "unable to retrieve current block number")
+}
+
+func Test_SubmitBundle_InvalidExecutionPlan_ReturnsError(t *testing.T) {
+	be := rpctest.NewBackendBuilder(t).Build()
+	signer := types.LatestSignerForChainID(be.ChainID())
+
+	addr := common.Address{2}
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	args := buildSubmitBundleArgs(signer, bundle.EF_Default, 1, 100,
+		bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas}),
+	)
+	// Inject an unsupported step type — neither RPCExecutionStepComposable nor RPCExecutionPlanGroup.
+	args.ExecutionPlan.Steps = []any{"invalid step type"}
+
+	_, err = NewPublicBundleAPI(be).SubmitBundle(t.Context(), args)
+	require.ErrorContains(t, err, "invalid execution plan")
+}
+
+func Test_SubmitBundle_StepCountMismatch_ReturnsError(t *testing.T) {
+	tests := map[string]struct {
+		numPlanSteps int
+		numSignedTxs int
+	}{
+		"more signed txs than plan steps":  {numPlanSteps: 1, numSignedTxs: 2},
+		"fewer signed txs than plan steps": {numPlanSteps: 2, numSignedTxs: 1},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			be := rpctest.NewBackendBuilder(t).Build()
 			signer := types.LatestSignerForChainID(be.ChainID())
-			key, err := crypto.GenerateKey()
-			require.NoError(t, err)
+
 			addr := common.Address{2}
-			args := buildSubmitBundleArgs(signer, bundle.EF_Default, 1, 100,
-				bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas}),
-			)
-			args.ExecutionPlan.Earliest = tt.earliest
-			args.ExecutionPlan.Latest = rpc.BlockNumber(1)
-			_, err = NewPublicBundleAPI(be).SubmitBundle(t.Context(), args)
-			require.ErrorContains(t, err, "latest block number cannot be smaller than earliest block number")
-		})
-	}
-}
-
-func Test_parseRPCBlockNumber(t *testing.T) {
-	tests := []struct {
-		name          string
-		num           rpc.BlockNumber
-		currentBlock  *evmcore.EvmBlock
-		wantNum       uint64
-		wantErrSubstr string
-	}{
-		{
-			name:    "explicit block number",
-			num:     rpc.BlockNumber(42),
-			wantNum: 42,
-		},
-		{
-			name:    "block number zero",
-			num:     rpc.BlockNumber(0),
-			wantNum: 0,
-		},
-		{
-			name:    "large block number",
-			num:     rpc.BlockNumber(1_000_000),
-			wantNum: 1_000_000,
-		},
-		{
-			name:    "earliest block number returns zero",
-			num:     rpc.EarliestBlockNumber,
-			wantNum: 0,
-		},
-		{
-			name:         "latest with current block",
-			num:          rpc.LatestBlockNumber,
-			currentBlock: makeEvmBlock(99),
-			wantNum:      99,
-		},
-		{
-			name:         "pending with current block",
-			num:          rpc.PendingBlockNumber,
-			currentBlock: makeEvmBlock(5),
-			wantNum:      5,
-		},
-		{
-			name:         "finalized with current block",
-			num:          rpc.FinalizedBlockNumber,
-			currentBlock: makeEvmBlock(77),
-			wantNum:      77,
-		},
-		{
-			name:         "safe with current block",
-			num:          rpc.SafeBlockNumber,
-			currentBlock: makeEvmBlock(33),
-			wantNum:      33,
-		},
-		{
-			name:          "latest without current block returns error",
-			num:           rpc.LatestBlockNumber,
-			currentBlock:  nil,
-			wantErrSubstr: "no current block",
-		},
-		{
-			name:          "pending without current block returns error",
-			num:           rpc.PendingBlockNumber,
-			currentBlock:  nil,
-			wantErrSubstr: "no current block",
-		},
-		{
-			name:          "finalized without current block returns error",
-			num:           rpc.FinalizedBlockNumber,
-			currentBlock:  nil,
-			wantErrSubstr: "no current block",
-		},
-		{
-			name:          "safe without current block returns error",
-			num:           rpc.SafeBlockNumber,
-			currentBlock:  nil,
-			wantErrSubstr: "no current block",
-		},
-		{
-			name:          "arbitrary negative number returns error",
-			num:           rpc.BlockNumber(-100),
-			wantErrSubstr: "block number cannot be negative",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			mock := NewMockBundleApiBackend(ctrl)
-
-			needsCurrentBlock := tt.num == rpc.PendingBlockNumber ||
-				tt.num == rpc.LatestBlockNumber ||
-				tt.num == rpc.FinalizedBlockNumber ||
-				tt.num == rpc.SafeBlockNumber
-			if needsCurrentBlock {
-				// parseRPCBlockNumber calls CurrentBlock() twice: once for the nil
-				// guard and once to read the block number (only when block != nil).
-				if tt.currentBlock != nil {
-					mock.EXPECT().CurrentBlock().Return(tt.currentBlock).Times(1)
-				} else {
-					mock.EXPECT().CurrentBlock().Return(nil).Times(1)
-				}
-			}
-
-			got, err := parseRPCBlockNumber(mock, tt.num)
-			if tt.wantErrSubstr != "" {
-				require.ErrorContains(t, err, tt.wantErrSubstr)
-			} else {
+			steps := make([]bundle.BuilderStep, tt.numPlanSteps)
+			for i := range steps {
+				key, err := crypto.GenerateKey()
 				require.NoError(t, err)
-				require.Equal(t, tt.wantNum, got)
+				steps[i] = bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas})
 			}
+			args := buildSubmitBundleArgs(signer, bundle.EF_Default, 1, 100, steps...)
+
+			switch {
+			case tt.numSignedTxs > len(args.SignedTransactions):
+				key, err := crypto.GenerateKey()
+				require.NoError(t, err)
+				tx, err := types.SignNewTx(key, signer, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas})
+				require.NoError(t, err)
+				data, err := tx.MarshalBinary()
+				require.NoError(t, err)
+				args.SignedTransactions = append(args.SignedTransactions, data)
+			case tt.numSignedTxs < len(args.SignedTransactions):
+				args.SignedTransactions = args.SignedTransactions[:tt.numSignedTxs]
+			}
+
+			_, err := NewPublicBundleAPI(be).SubmitBundle(t.Context(), args)
+			require.ErrorContains(t, err, "executionPlan steps count")
 		})
 	}
-}
-
-func makeEvmBlock(number uint64) *evmcore.EvmBlock {
-	n := big.NewInt(int64(number))
-	return &evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Number: n}}
 }
 
 // buildSubmitBundleArgs creates a valid SubmitBundleArgs using the bundle builder.
@@ -549,8 +461,12 @@ func buildSubmitBundleArgs(
 		signedTxs[i] = data
 	}
 
+	rpcPlan, err := NewRPCExecutionPlanComposable(plan)
+	if err != nil {
+		panic(err)
+	}
 	return SubmitBundleArgs{
 		SignedTransactions: signedTxs,
-		ExecutionPlan:      NewRPCExecutionPlan(plan),
+		ExecutionPlan:      rpcPlan,
 	}
 }
