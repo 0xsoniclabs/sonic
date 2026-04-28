@@ -770,11 +770,7 @@ func Test_PrepareBundle_FlatTransactions_SingleTx(t *testing.T) {
 	require.True(t, found, "expected BundleOnly marker in access list")
 
 	require.Len(t, result.ExecutionPlan.Steps, 1)
-	group, ok := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
-	require.True(t, ok)
-	require.False(t, group.OneOf)
-	require.Len(t, group.Steps, 1)
-	_, ok = group.Steps[0].(RPCExecutionStepComposable)
+	_, ok := result.ExecutionPlan.Steps[0].(RPCExecutionStepComposable)
 	require.True(t, ok)
 }
 
@@ -884,7 +880,7 @@ func Test_PrepareBundle_SingleChildGroup_TolerateFailures_NotUnwrapped(t *testin
 	require.Len(t, group.Steps, 1)
 }
 
-func Test_PrepareBundle_SingleChildGroup_Plain_NotUnwrapped(t *testing.T) {
+func Test_PrepareBundle_SingleChildGroup_Plain_IsUnwrapped(t *testing.T) {
 	addr1 := common.Address{1}
 	addr2 := common.Address{2}
 
@@ -912,12 +908,10 @@ func Test_PrepareBundle_SingleChildGroup_Plain_NotUnwrapped(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Transactions, 1)
 
-	// Plain group must not collapse its single child.
+	// Plain group must collapses its single child.
 	require.Len(t, result.ExecutionPlan.Steps, 1)
-	group, ok := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
+	_, ok := result.ExecutionPlan.Steps[0].(RPCExecutionStepComposable)
 	require.True(t, ok, "expected group, not leaf")
-	require.False(t, group.OneOf)
-	require.Len(t, group.Steps, 1)
 }
 
 // stripBundleMarker removes the BundleOnly access-list entry from txArgs so that
@@ -1103,7 +1097,7 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			expectedHashes := make([]common.Hash, len(result.Transactions))
 			for i, txArgs := range result.Transactions {
 				clean := stripBundleMarker(txArgs)
-				tx := clean.ToTransaction()
+				tx := toTransactionForBundles(clean)
 				expectedHashes[i] = signer.Hash(tx)
 			}
 			planHashes := collectLeafHashes(result.ExecutionPlan.Steps)
