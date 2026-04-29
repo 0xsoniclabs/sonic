@@ -17,9 +17,10 @@
 package sonicapi
 
 import (
+	"fmt"
+
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 // MaxNumEstimableTransactions is the maximum number of transactions
@@ -28,33 +29,48 @@ import (
 // therefore an upper bound is introduced.
 const MaxNumEstimableTransactions = 16
 
-type RPCExecutionStep struct {
-	From common.Address `json:"from"`
-	Hash common.Hash    `json:"hash"`
-}
-
-type RPCExecutionPlan struct {
-	Flags    bundle.ExecutionFlags `json:"flags"`
-	Steps    []RPCExecutionStep    `json:"steps"`
-	Earliest rpc.BlockNumber       `json:"earliest"`
-	Latest   rpc.BlockNumber       `json:"latest"`
-}
-
-// NewRPCExecutionPlan converts a bundle.ExecutionPlan to an RPCExecutionPlan for JSON-RPC responses.
-// This produces a flat representation of the plan's transaction references.
-// Note: hierarchical execution plans with nested groups cannot be fully represented
-// in this flat format. Only plans with a single level of transaction references are
-// fully supported.
-func NewRPCExecutionPlan(plan bundle.ExecutionPlan) RPCExecutionPlan {
-	refs := plan.Root.GetTransactionReferencesInReferencedOrder()
-	steps := make([]RPCExecutionStep, len(refs))
-	for i, ref := range refs {
-		steps[i] = RPCExecutionStep{From: ref.From, Hash: ref.Hash}
+// sanitizeBlockRange checks that the provided block range is valid and within
+// allowed limits, defaulting to a sensible range if not provided.
+func sanitizeBlockRange(currentBlock uint64, blockRange *RPCRange) (RPCRange, error) {
+	if blockRange == nil {
+		maxRange := bundle.MakeMaxRangeStartingAt(currentBlock + 1)
+		return RPCRange{
+			Earliest: hexutil.Uint64(maxRange.Earliest),
+			Latest:   hexutil.Uint64(maxRange.Latest),
+		}, nil
 	}
-	return RPCExecutionPlan{
-		Flags:    plan.Root.Flags(),
-		Steps:    steps,
-		Earliest: rpc.BlockNumber(plan.Range.Earliest),
-		Latest:   rpc.BlockNumber(plan.Range.Latest),
+
+	if blockRange.Latest == 0 && blockRange.Earliest != 0 {
+		blockRange.Latest = hexutil.Uint64(uint64(blockRange.Earliest) + bundle.MaxBlockRange - 1)
+		return RPCRange{
+			Earliest: blockRange.Earliest,
+			Latest:   blockRange.Latest,
+		}, nil
 	}
+
+	// earliest not specified but latest is specified, set earliest to latest - maxRange + 1, but not less than currentBlock + 1 and check overflow
+	if blockRange.Earliest == 0 && blockRange.Latest != 0 {
+		if blockRange.Latest < hexutil.Uint64(currentBlock+bundle.MaxBlockRange) {
+			blockRange.Earliest = hexutil.Uint64(currentBlock + 1)
+		} else {
+			return RPCRange{}, fmt.Errorf("invalid block range: latest block %d is too far in the future; earliest block must be at least %d", blockRange.Latest, currentBlock+1)
+		}
+	}
+
+	if blockRange.Latest < hexutil.Uint64(currentBlock) {
+		return RPCRange{}, fmt.Errorf("invalid block range: latest block %d is earlier than current block %d", blockRange.Latest, currentBlock)
+	}
+
+	if uint64(blockRange.Latest) < uint64(blockRange.Earliest) {
+		return RPCRange{}, fmt.Errorf("invalid block range: latest block %d is earlier than earliest block %d", blockRange.Latest, blockRange.Earliest)
+	}
+
+	if uint64(blockRange.Latest-blockRange.Earliest+1) > bundle.MaxBlockRange {
+		return RPCRange{}, fmt.Errorf("invalid block range: range %d is too large; must be at most %d blocks", blockRange.Latest-blockRange.Earliest+1, bundle.MaxBlockRange)
+	}
+
+	return RPCRange{
+		Earliest: blockRange.Earliest,
+		Latest:   blockRange.Latest,
+	}, nil
 }

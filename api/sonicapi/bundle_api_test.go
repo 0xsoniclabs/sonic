@@ -20,160 +20,80 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewRPCExecutionPlan(t *testing.T) {
-	addr1 := common.Address{1}
-	addr2 := common.Address{2}
-	addr3 := common.Address{3}
-	hash1 := common.Hash{0x01}
-	hash2 := common.Hash{0x02}
-	hash3 := common.Hash{0x03}
+func Test_sanitizeBlockRange(t *testing.T) {
+	hexN := func(n uint64) hexutil.Uint64 { b := hexutil.Uint64(n); return b }
 
-	ref1 := bundle.TxReference{From: addr1, Hash: hash1}
-	ref2 := bundle.TxReference{From: addr2, Hash: hash2}
-	ref3 := bundle.TxReference{From: addr3, Hash: hash3}
-
-	tests := []struct {
-		name         string
-		plan         bundle.ExecutionPlan
-		wantSteps    []RPCExecutionStep
-		wantFlags    bundle.ExecutionFlags
-		wantEarliest rpc.BlockNumber
-		wantLatest   rpc.BlockNumber
+	tests := map[string]struct {
+		currentBlock  uint64
+		blockRange    *RPCRange
+		wantEarliest  uint64
+		wantLatest    uint64
+		errorContains string
 	}{
-		{
-			name: "single tx step, default flags",
-			plan: bundle.ExecutionPlan{
-				Range: bundle.BlockRange{Earliest: 1, Latest: 100},
-				Root:  bundle.NewTxStep(ref1),
-			},
-			wantSteps:    []RPCExecutionStep{{From: addr1, Hash: hash1}},
-			wantFlags:    bundle.EF_Default,
-			wantEarliest: 1,
-			wantLatest:   100,
+		"nil both defaults from current block": {
+			currentBlock: 10,
+			wantEarliest: 11,
+			wantLatest:   10 + bundle.MaxBlockRange,
 		},
-		{
-			name: "two tx steps in AllOf group",
-			plan: bundle.ExecutionPlan{
-				Range: bundle.BlockRange{Earliest: 5, Latest: 50},
-				Root:  bundle.NewAllOfStep(bundle.NewTxStep(ref1), bundle.NewTxStep(ref2)),
-			},
-			wantSteps: []RPCExecutionStep{
-				{From: addr1, Hash: hash1},
-				{From: addr2, Hash: hash2},
-			},
-			wantFlags:    bundle.EF_Default,
+		"only earliest": {
+			currentBlock: 10,
+			blockRange:   &RPCRange{Earliest: hexN(50)},
+			wantEarliest: 50,
+			wantLatest:   50 + bundle.MaxBlockRange - 1,
+		},
+		"explicit latest": {
+			currentBlock: 10,
+			blockRange:   &RPCRange{Latest: hexN(200)},
+			wantEarliest: 11,
+			wantLatest:   200,
+		},
+		"range exceeds MaxBlockRange when only latest set": {
+			currentBlock:  10,
+			blockRange:    &RPCRange{Latest: hexN(10 + bundle.MaxBlockRange + 100)},
+			errorContains: "invalid block range",
+		},
+		"both explicit": {
+			currentBlock: 10,
+			blockRange:   &RPCRange{Earliest: hexN(5), Latest: hexN(20)},
 			wantEarliest: 5,
-			wantLatest:   50,
-		},
-		{
-			name: "three tx steps in AllOf group",
-			plan: bundle.ExecutionPlan{
-				Range: bundle.BlockRange{Earliest: 0, Latest: 1000},
-				Root: bundle.NewAllOfStep(
-					bundle.NewTxStep(ref1),
-					bundle.NewTxStep(ref2),
-					bundle.NewTxStep(ref3),
-				),
-			},
-			wantSteps: []RPCExecutionStep{
-				{From: addr1, Hash: hash1},
-				{From: addr2, Hash: hash2},
-				{From: addr3, Hash: hash3},
-			},
-			wantFlags:    bundle.EF_Default,
-			wantEarliest: 0,
-			wantLatest:   1000,
-		},
-		{
-			name: "TolerateFailed flag preserved",
-			plan: bundle.ExecutionPlan{
-				Range: bundle.BlockRange{Earliest: 10, Latest: 20},
-				Root:  bundle.NewTxStep(ref1).WithFlags(bundle.EF_TolerateFailed),
-			},
-			wantSteps:    []RPCExecutionStep{{From: addr1, Hash: hash1}},
-			wantFlags:    bundle.EF_TolerateFailed,
-			wantEarliest: 10,
 			wantLatest:   20,
 		},
-		{
-			name: "TolerateInvalid flag preserved",
-			plan: bundle.ExecutionPlan{
-				Range: bundle.BlockRange{Earliest: 10, Latest: 20},
-				Root:  bundle.NewTxStep(ref1).WithFlags(bundle.EF_TolerateInvalid),
-			},
-			wantSteps:    []RPCExecutionStep{{From: addr1, Hash: hash1}},
-			wantFlags:    bundle.EF_TolerateInvalid,
-			wantEarliest: 10,
-			wantLatest:   20,
-		},
-		{
-			name: "both tolerate flags preserved",
-			plan: bundle.ExecutionPlan{
-				Range: bundle.BlockRange{Earliest: 1, Latest: 5},
-				Root:  bundle.NewTxStep(ref1).WithFlags(bundle.EF_TolerateFailed | bundle.EF_TolerateInvalid),
-			},
-			wantSteps:    []RPCExecutionStep{{From: addr1, Hash: hash1}},
-			wantFlags:    bundle.EF_TolerateFailed | bundle.EF_TolerateInvalid,
+		"current block zero earliest is one": {
+			currentBlock: 0,
 			wantEarliest: 1,
-			wantLatest:   5,
+			wantLatest:   bundle.MaxBlockRange,
 		},
-		{
-			name: "block range boundaries preserved",
-			plan: bundle.ExecutionPlan{
-				Range: bundle.BlockRange{Earliest: 42, Latest: 99},
-				Root:  bundle.NewTxStep(ref1),
-			},
-			wantSteps:    []RPCExecutionStep{{From: addr1, Hash: hash1}},
-			wantFlags:    bundle.EF_Default,
-			wantEarliest: 42,
-			wantLatest:   99,
+		"latest is less than earliest": {
+			currentBlock:  100,
+			blockRange:    &RPCRange{Earliest: hexN(50), Latest: hexN(40)},
+			errorContains: "invalid block range",
 		},
-		{
-			name: "nested groups return steps in referenced order",
-			plan: bundle.ExecutionPlan{
-				Range: bundle.BlockRange{Earliest: 1, Latest: 10},
-				Root: bundle.NewAllOfStep(
-					bundle.NewAllOfStep(
-						bundle.NewTxStep(ref1),
-						bundle.NewTxStep(ref2),
-					),
-					bundle.NewTxStep(ref3),
-				),
-			},
-			wantSteps: []RPCExecutionStep{
-				{From: addr1, Hash: hash1},
-				{From: addr2, Hash: hash2},
-				{From: addr3, Hash: hash3},
-			},
-			wantFlags:    bundle.EF_Default,
-			wantEarliest: 1,
-			wantLatest:   10,
+		"latest before implicit earliest from current block": {
+			currentBlock:  10,
+			blockRange:    &RPCRange{Latest: hexN(5)},
+			errorContains: "invalid block range",
 		},
-		{
-			name: "step From and Hash fields correctly mapped",
-			plan: bundle.ExecutionPlan{
-				Range: bundle.BlockRange{Earliest: 0, Latest: 0},
-				Root:  bundle.NewTxStep(ref2),
-			},
-			wantSteps:    []RPCExecutionStep{{From: addr2, Hash: hash2}},
-			wantFlags:    bundle.EF_Default,
-			wantEarliest: 0,
-			wantLatest:   0,
+		"greater than Max block range": {
+			currentBlock:  100,
+			blockRange:    &RPCRange{Earliest: hexN(50), Latest: hexN(50 + bundle.MaxBlockRange + 1)},
+			errorContains: "invalid block range",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := NewRPCExecutionPlan(tt.plan)
-			require.Equal(t, tt.wantSteps, got.Steps)
-			require.Equal(t, tt.wantFlags, got.Flags)
-			require.Equal(t, tt.wantEarliest, got.Earliest)
-			require.Equal(t, tt.wantLatest, got.Latest)
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			r, err := sanitizeBlockRange(tc.currentBlock, tc.blockRange)
+			if tc.errorContains != "" {
+				require.ErrorContains(t, err, tc.errorContains)
+			} else {
+				require.NoError(t, err)
+				require.EqualValues(t, tc.wantEarliest, r.Earliest)
+				require.EqualValues(t, tc.wantLatest, r.Latest)
+			}
 		})
 	}
 }
