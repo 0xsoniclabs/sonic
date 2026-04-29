@@ -20,7 +20,7 @@ go 1.25.0
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20260427113009-ed285bc2e427
-	github.com/0xsoniclabs/tosca v0.0.0-20260423115228-f81e8c56bb3a
+	github.com/0xsoniclabs/tosca v0.0.0-20260429071638-3f4119284c42
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
 	github.com/consensys/gnark-crypto v0.18.1
@@ -150,6 +150,6 @@ require (
 	pgregory.net/rand v1.0.2 // indirect
 )
 
-replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20260423113856-3e6aaf62fe9f
+replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20260424113012-971561538c58
 
-replace github.com/Fantom-foundation/lachesis-base => github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20260423124551-e7f95d0a4cf3
+replace github.com/Fantom-foundation/lachesis-base => github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20260429065829-930ae462cd09
