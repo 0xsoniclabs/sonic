@@ -173,8 +173,6 @@ func TestEpochState_Decode_DecodingFromV1Serialization_ResetV2Fields(t *testing.
 	require.Equal(t, makeEpochStateFromV1(v1), state)
 }
 
-// TODO: test that after reading a V1 value the V2 values are reset
-
 func TestEpochState_DecodeRLP_FailsOnInvalidInput(t *testing.T) {
 	in := rlp.NewStream(bytes.NewBuffer([]byte("not a valid rlp encoding")), 0)
 	state := EpochState{}
