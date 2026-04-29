@@ -283,7 +283,7 @@ func TestStore_AddProcessedBundles_RemovesOlderHistoryHash_EvenForBlockNumberWit
 			require.True(t, found)
 
 			// Check that the block number of the earliest hash is moving one
-			// step at a time, even if the added bundles execution lists are.
+			// step at a time.
 			// The actual value is not important here, as the correctness of
 			// the boundary is tested by other tests, in particular
 			// TestStore_ProcessedBundles_RetainsAllHashesToVerifyContainedExecutionPlans
