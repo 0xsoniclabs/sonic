@@ -95,7 +95,9 @@ func TestTxList_Filter_WithSponsoredTransactions_RetainsCovered(t *testing.T) {
 
 	list := newTxList(true)
 	for _, tx := range txs {
-		list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		added, replaced := list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		require.True(added, "transaction was not added to the list")
+		require.Empty(replaced, "no transaction should have been replaced")
 	}
 
 	// Each sponsored transaction should be checked.
@@ -112,6 +114,43 @@ func TestTxList_Filter_WithSponsoredTransactions_RetainsCovered(t *testing.T) {
 	}
 }
 
+func TestTxList_Filter_TreatsEnvelopesAsNormalTx_BeforeBrio(t *testing.T) {
+	require := require.New(t)
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+	maxGas := uint64(1_000_000)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	txs := make([]*types.Transaction, 10)
+	for i := range txs {
+		tx := bundleTx(uint64(i), key)
+
+		gasLimit := tx.Gas()
+		if i%2 != 0 {
+			gasLimit = maxGas + 1 // make it invalid
+		}
+		txs[i] = types.MustSignNewTx(key, signer, &types.LegacyTx{
+			To:       tx.To(),
+			Gas:      gasLimit,
+			GasPrice: big.NewInt(1), // not an sponsorship request
+			Value:    tx.Value(),
+			Data:     tx.Data(),
+			Nonce:    tx.Nonce(),
+		})
+	}
+
+	list := newTxList(true)
+	for _, tx := range txs {
+		added, replaced := list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		require.True(added)
+		require.Empty(replaced)
+	}
+	costLimit := big.NewInt(1e18)
+	removed, invalidated := list.Filter(costLimit, maxGas, nil, nil, opera.GetAllegroUpgrades())
+	require.Len(removed, 5)
+	require.Len(invalidated, 4)
+}
+
 func TestTxList_Filter_WithBundleTransactions_RetainsPending(t *testing.T) {
 	require := require.New(t)
 	key, err := crypto.GenerateKey()
@@ -124,7 +163,9 @@ func TestTxList_Filter_WithBundleTransactions_RetainsPending(t *testing.T) {
 
 	list := newTxList(true)
 	for _, tx := range txs {
-		list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		added, replaced := list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		require.True(added, "transaction was not added to the list")
+		require.Empty(replaced, "no transaction should have been replaced")
 	}
 
 	// Each bundle transaction should be checked.
@@ -153,7 +194,9 @@ func TestTxList_Filter_WithBundleTransactions_RemovesRejected(t *testing.T) {
 
 	list := newTxList(false)
 	for _, tx := range txs {
-		list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		added, replaced := list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		require.True(added, "transaction was not added to the list")
+		require.Empty(replaced, "no transaction should have been replaced")
 	}
 
 	// Each bundle transaction should be checked.
@@ -185,7 +228,9 @@ func TestTxList_Strict_Filter_WithBundleTransactions_InvalidatesTemporarilyBlock
 
 	list := newTxList(true)
 	for _, tx := range txs {
-		list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		added, replaced := list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		require.True(added, "transaction was not added to the list")
+		require.Empty(replaced, "no transaction should have been replaced")
 	}
 
 	// Each bundle transaction should be checked.
@@ -215,7 +260,9 @@ func TestTxList_Strict_Filter_WithBundleTransactions_InvalidatesGappedNonces_Aft
 
 	list := newTxList(true)
 	for _, tx := range txs {
-		list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		added, replaced := list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		require.True(added, "transaction was not added to the list")
+		require.Empty(replaced, "no transaction should have been replaced")
 	}
 
 	// Bundle transactions are to be demoted.
