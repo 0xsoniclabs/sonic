@@ -229,11 +229,15 @@ func (p *DriverTxListener) onNewReceiptPostBrioInternal(
 	if err != nil {
 		// If there is an error in the fee computation, the safe default
 		// is to avoid attributing it to any validator, so no fees are paid out.
-		log.Warn("error in fee computation", "tx", tx.Hash(),
-			"usedGas", r.GasUsed, "gasPrice", r.EffectiveGasPrice,
-			"blobGasUsed", r.BlobGasUsed, "blobGasPrice", r.BlobGasPrice,
-			"err", err,
-		)
+		if r == nil {
+			log.Warn("error in fee computation", "tx", tx.Hash(), "err", err)
+		} else {
+			log.Warn("error in fee computation", "tx", tx.Hash(),
+				"usedGas", r.GasUsed, "gasPrice", r.EffectiveGasPrice,
+				"blobGasUsed", r.BlobGasUsed, "blobGasPrice", r.BlobGasPrice,
+				"err", err,
+			)
+		}
 		return
 	}
 

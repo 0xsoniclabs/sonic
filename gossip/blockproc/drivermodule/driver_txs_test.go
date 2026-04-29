@@ -305,6 +305,22 @@ func TestDriverTxListener_onNewReceiptPostBrio_AddsFeesToRespectiveValidator(t *
 	)
 }
 
+func TestDriverTxListener_onNewReceiptPostBrioInternal_OnMissingReceipt_WarnsAndBurnsFees(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	log := logger.NewMockLogger(ctrl)
+
+	tx := types.NewTx(&types.LegacyTx{})
+
+	log.EXPECT().Warn(
+		"error in fee computation",
+		"tx", tx.Hash(),
+		"err", gomock.Any(),
+	)
+
+	listener := &DriverTxListener{}
+	listener.onNewReceiptPostBrioInternal(0, tx, nil, log)
+}
+
 func TestDriverTxListener_onNewReceiptPostBrioInternal_OnFeeComputationError_WarnsAndBurnsFees(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	log := logger.NewMockLogger(ctrl)
