@@ -298,7 +298,7 @@ func exportBundlesHash(ctx context.Context, gdb *gossip.Store, writer *unitWrite
 	log.Info("Exporting processed bundles history hash")
 
 	// write the history hash as the first item.
-	blockNum, histHash := gdb.GetProcessedBundleHistoryHash()
+	blockNum, histHash := gdb.GetLatestProcessedBundleHistoryHash()
 	b := MustRlpEncodeToByte(bundle.HistoryHash{
 		BlockNumber: blockNum,
 		Hash:        histHash,
