@@ -375,7 +375,7 @@ func TestReplayInternalTransaction(t *testing.T) {
 	blockCtx := vm.BlockContext{
 		BlockNumber: block.Number,
 		BaseFee:     big.NewInt(1_000_000_000),
-		Transfer:    vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
+		Transfer:    vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int, _ *params.Rules) {}),
 		CanTransfer: vm.CanTransferFunc(func(sd vm.StateDB, a1 common.Address, i *uint256.Int) bool { return true }),
 	}
 
@@ -648,7 +648,7 @@ func getTxArgs(t *testing.T) TransactionArgs {
 func getEvmFunc(mockState *state.MockStateDB) func(any, any, any, any, any) (*vm.EVM, func() error, error) {
 	return func(any, any, any, any, any) (*vm.EVM, func() error, error) {
 		blockCtx := vm.BlockContext{
-			Transfer: vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
+			Transfer: vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int, _ *params.Rules) {}),
 		}
 		config := opera.CreateTransientEvmChainConfig(1, nil, 0)
 		vmConfig := opera.GetVmConfig(opera.Rules{})
@@ -1362,7 +1362,7 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 		blockCtx := vm.BlockContext{
 			BlockNumber: block.Number,
 			BaseFee:     big.NewInt(1_000),
-			Transfer:    vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
+			Transfer:    vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int, _ *params.Rules) {}),
 			CanTransfer: vm.CanTransferFunc(func(sd vm.StateDB, a1 common.Address, i *uint256.Int) bool { return true }),
 		}
 

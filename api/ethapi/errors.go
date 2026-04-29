@@ -20,6 +20,7 @@ import (
 	"errors"
 
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/vm"
 )
 
 const (
@@ -87,7 +88,7 @@ func simTxValidationError(err error) *simInvalidTxError {
 		return &simInvalidTxError{Message: err.Error(), Code: errCodeInsufficientFunds}
 	case errors.Is(err, core.ErrIntrinsicGas):
 		return &simInvalidTxError{Message: err.Error(), Code: errCodeIntrinsicGas}
-	case errors.Is(err, core.ErrMaxInitCodeSizeExceeded):
+	case errors.Is(err, vm.ErrMaxInitCodeSizeExceeded):
 		return &simInvalidTxError{Message: err.Error(), Code: errCodeMaxInitCodeSizeExceeded}
 	default:
 		return &simInvalidTxError{

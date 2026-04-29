@@ -497,7 +497,7 @@ func (env *testEnv) callContract(
 	context := evmcore.NewEVMBlockContext(block.Header(), env.GetEvmStateReader(), nil)
 	vmConfig := opera.GetVmConfig(env.store.GetRules())
 	vmenv := vm.NewEVM(context, state, env.store.GetEvmChainConfig(idx.Block(block.Number.Uint64())), vmConfig)
-	gaspool := new(core.GasPool).AddGas(math.MaxUint64)
+	gaspool := core.NewGasPool(math.MaxUint64)
 	res, err := core.ApplyMessage(vmenv, msg, gaspool)
 	if err != nil {
 		return nil, 0, false, err

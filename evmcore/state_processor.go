@@ -132,7 +132,7 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	difficulty *big.Int,
 ) ProcessSummary {
 	var (
-		gp           = new(core.GasPool).AddGas(gasLimit)
+		gp           = core.NewGasPool(gasLimit)
 		header       = block.Header()
 		time         = uint64(block.Time.Unix())
 		blockContext = NewEVMBlockContextWithDifficulty(header, p.bc, nil, difficulty)
@@ -663,7 +663,7 @@ func (p *StateProcessor) BeginBlock(
 	onNewLog func(*types.Log),
 ) *TransactionProcessor {
 	var (
-		gp            = new(core.GasPool).AddGas(gasLimit)
+		gp            = core.NewGasPool(gasLimit)
 		header        = block.Header()
 		time          = uint64(block.Time.Unix())
 		blockContext  = NewEVMBlockContext(header, p.bc, nil)

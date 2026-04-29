@@ -631,7 +631,7 @@ func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 			}
 
 			evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{}, vm.Config{})
-			gp := new(core.GasPool).AddGas(1000000)
+			gp := core.NewGasPool(1000000)
 
 			// The transaction will fail for various reasons, but for this test
 			// this is not relevant. We just want to check if the base fee
@@ -657,7 +657,7 @@ func TestApplyTransaction_BlobHashesNotSupportedAndSkipped(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
 	evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{}, vm.Config{})
-	gp := new(core.GasPool).AddGas(1000000)
+	gp := core.NewGasPool(1000000)
 
 	state.EXPECT().EndTransaction()
 
@@ -700,7 +700,7 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 				CancunTime:         new(uint64),
 				PragueTime:         &pragueTime,
 			}, vm.Config{})
-			gp := new(core.GasPool).AddGas(1000000)
+			gp := core.NewGasPool(1000000)
 
 			blockNumber := big.NewInt(100)
 			evm.Context.Random = &common.Hash{0x01} // triggers isMerge
@@ -757,10 +757,10 @@ func TestApplyTransaction_SetsEffectiveGasPriceInReceipt(t *testing.T) {
 			blockContext := vm.BlockContext{
 				BlockNumber: big.NewInt(123),
 				BaseFee:     big.NewInt(0),
-				Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int) {
+				Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, _ *uint256.Int, _ *params.Rules) {
 					// do nothing
 				},
-				CanTransfer: func(_ vm.StateDB, _ common.Address, amount *uint256.Int) bool {
+				CanTransfer: func(_ vm.StateDB, _ common.Address, _ *uint256.Int) bool {
 					return true
 				},
 				Random: &common.Hash{}, // < signals Revision >= Merge
@@ -791,7 +791,7 @@ func TestApplyTransaction_SetsEffectiveGasPriceInReceipt(t *testing.T) {
 			state.EXPECT().EndTransaction().AnyTimes()
 			state.EXPECT().TxIndex().AnyTimes()
 
-			gp := new(core.GasPool).AddGas(1000000)
+			gp := core.NewGasPool(1000000)
 			var usedGas uint64
 
 			blockNum := big.NewInt(12)
@@ -1412,7 +1412,7 @@ func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) 
 
 			tx := getSponsorshipRequest(t)
 
-			gasPool := new(core.GasPool).AddGas(test.availableGas)
+			gasPool := core.NewGasPool(test.availableGas)
 			context := &runContext{
 				gasPool:  gasPool,
 				statedb:  state,
@@ -1496,7 +1496,7 @@ func TestRunSponsoredTransaction_SponsorshipNotCovered_ReturnsASkippedTransactio
 	state.EXPECT().Snapshot().Return(1)
 	state.EXPECT().RevertToSnapshot(1)
 
-	gasPool := new(core.GasPool).AddGas(1_000_000)
+	gasPool := core.NewGasPool(1_000_000)
 	context := &runContext{
 		statedb:  state,
 		gasPool:  gasPool,
@@ -1529,7 +1529,7 @@ func TestRunSponsoredTransaction_SponsorshipCoverageCheckFails_ReturnsASkippedTr
 	issue := fmt.Errorf("sponsorship check failed")
 	evm.EXPECT().Call(any, any, any, any, any).Return(nil, uint64(0), issue)
 
-	gasPool := new(core.GasPool).AddGas(1_000_000)
+	gasPool := core.NewGasPool(1_000_000)
 	context := &runContext{
 		statedb:  state,
 		signer:   types.LatestSignerForChainID(nil),
@@ -1573,7 +1573,7 @@ func TestRunSponsoredTransaction_SponsoredTransactionIsSkipped_NoFeeDeductionTxI
 		Receipt:     nil,
 	})
 
-	gasPool := new(core.GasPool).AddGas(1_000_000)
+	gasPool := core.NewGasPool(1_000_000)
 	context := &runContext{
 		statedb:  state,
 		signer:   types.LatestSignerForChainID(nil),
@@ -1642,7 +1642,7 @@ func TestRunSponsoredTransaction_FailingCreationOfFeeDeduction_TransactionIsAcce
 	}
 	evm.EXPECT().runWithoutBaseFeeCheck(any, tx, any).Return(processed)
 
-	gasPool := new(core.GasPool).AddGas(1_000_000)
+	gasPool := core.NewGasPool(1_000_000)
 	context := &runContext{
 		statedb:  state,
 		signer:   types.LatestSignerForChainID(nil),
@@ -1696,7 +1696,7 @@ func TestRunSponsoredTransaction_FeeDeductionTxIsSkipped_TransactionIsAcceptedWi
 	evm.EXPECT().runWithoutBaseFeeCheck(any, gomock.Not(tx), any).
 		Return(skippedFeeDeductionTransaction)
 
-	gasPool := new(core.GasPool).AddGas(1_000_000)
+	gasPool := core.NewGasPool(1_000_000)
 	context := &runContext{
 		statedb:  state,
 		signer:   types.LatestSignerForChainID(nil),
@@ -1755,7 +1755,7 @@ func TestRunSponsoredTransaction_FeeDeductionTxFails_TransactionIsAcceptedWithou
 	evm.EXPECT().runWithoutBaseFeeCheck(any, gomock.Not(tx), any).
 		Return(skippedFeeDeductionTransaction)
 
-	gasPool := new(core.GasPool).AddGas(1_000_000)
+	gasPool := core.NewGasPool(1_000_000)
 	context := &runContext{
 		statedb:  state,
 		signer:   types.LatestSignerForChainID(nil),
@@ -1807,7 +1807,7 @@ func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testin
 			Receipt:     &types.Receipt{},
 		})
 
-	gasPool := new(core.GasPool).AddGas(1_000_000)
+	gasPool := core.NewGasPool(1_000_000)
 	context := &runContext{
 		statedb:  state,
 		signer:   types.LatestSignerForChainID(nil),
@@ -1962,7 +1962,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	blockContext := vm.BlockContext{
 		BlockNumber: big.NewInt(123),
 		BaseFee:     baseFee,
-		Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int) {
+		Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int, _ *params.Rules) {
 			// do nothing
 		},
 		CanTransfer: func(_ vm.StateDB, _ common.Address, amount *uint256.Int) bool {
@@ -1973,7 +1973,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
 	runner := &transactionRunner{evm{vm}}
 
-	gasPool := new(core.GasPool).AddGas(1_000_000)
+	gasPool := core.NewGasPool(1_000_000)
 	usedGas := new(uint64)
 	context := &runContext{
 		signer:   signer,
@@ -2075,9 +2075,9 @@ func TestRunSponsoredTransaction_MatchesCoveredAndReceiptToStatus(t *testing.T) 
 
 			var gasPool *core.GasPool
 			if test.poolNotEnough {
-				gasPool = new(core.GasPool).AddGas(0)
+				gasPool = core.NewGasPool(0)
 			} else {
-				gasPool = new(core.GasPool).AddGas(1_000_000)
+				gasPool = core.NewGasPool(1_000_000)
 			}
 			ctxt := &runContext{
 				statedb:  state,
@@ -2264,7 +2264,7 @@ func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResu
 		}),
 	)
 
-	gasPool := new(core.GasPool).AddGas(1_000_000)
+	gasPool := core.NewGasPool(1_000_000)
 	context := &runContext{
 		statedb:     state,
 		signer:      signer,
@@ -2485,7 +2485,7 @@ func TestRunRegularTransaction_InternalTransactions_SkipsTransactionChecksTrue(t
 	blockContext := vm.BlockContext{
 		BlockNumber: big.NewInt(123),
 		BaseFee:     baseFee,
-		Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int) {
+		Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int, _ *params.Rules) {
 			// do nothing
 		},
 		CanTransfer: func(_ vm.StateDB, _ common.Address, amount *uint256.Int) bool {
@@ -2497,7 +2497,7 @@ func TestRunRegularTransaction_InternalTransactions_SkipsTransactionChecksTrue(t
 	vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
 	runner := &transactionRunner{evm{vm}}
 	// enough max gas per block to accommodate for the internal transaction.
-	gasPool := new(core.GasPool).AddGas(maxTxGas * 3)
+	gasPool := core.NewGasPool(maxTxGas * 3)
 	usedGas := new(uint64)
 	context := &runContext{
 		signer:   types.LatestSignerForChainID(nil),
@@ -2611,7 +2611,7 @@ func TestRunRegularTransaction_RegularTransaction(t *testing.T) {
 			blockContext := vm.BlockContext{
 				BlockNumber: big.NewInt(123),
 				BaseFee:     baseFee,
-				Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int) {
+				Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int, _ *params.Rules) {
 					// do nothing
 				},
 				CanTransfer: func(_ vm.StateDB, _ common.Address, amount *uint256.Int) bool {
@@ -2623,7 +2623,7 @@ func TestRunRegularTransaction_RegularTransaction(t *testing.T) {
 			vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
 			runner := &transactionRunner{evm{vm}}
 			// enough max gas per block to accommodate for the internal transaction.
-			gasPool := new(core.GasPool).AddGas(maxTxGas * 3)
+			gasPool := core.NewGasPool(maxTxGas * 3)
 			usedGas := new(uint64)
 			context := &runContext{
 				signer:   types.LatestSignerForChainID(nil),
