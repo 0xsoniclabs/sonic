@@ -62,17 +62,13 @@ import (
 
 func TestConsensusCallback(t *testing.T) {
 
-	withSingleProposer := opera.GetAllegroUpgrades()
-	withSingleProposer.SingleProposerBlockFormation = true
-
-	features := map[string]opera.Upgrades{
-		"sonic":           opera.GetSonicUpgrades(),
-		"allegro":         opera.GetAllegroUpgrades(),
-		"single proposer": withSingleProposer,
-	}
-
-	for name, feature := range features {
-		t.Run(name, func(t *testing.T) {
+	for name, feature := range opera.GetAllHardForksInOrder() {
+		t.Run(name+"/single_proposer", func(t *testing.T) {
+			feature.SingleProposerBlockFormation = true
+			testConsensusCallback(t, feature)
+		})
+		t.Run(name+"/distributed_proposer", func(t *testing.T) {
+			feature.SingleProposerBlockFormation = false
 			testConsensusCallback(t, feature)
 		})
 	}
@@ -781,13 +777,7 @@ func TestIsPermissible_AcceptsSetCodeTransactionsInAllegroAndBeyond(t *testing.T
 		AuthList: []types.SetCodeAuthorization{{}},
 	})
 
-	tests := map[string]opera.Upgrades{
-		"Sonic":   {},
-		"Allegro": {Allegro: true},
-		"Brio":    {Allegro: true, Brio: true},
-	}
-
-	for name, updates := range tests {
+	for name, updates := range opera.GetAllHardForksInOrder() {
 		t.Run(name, func(t *testing.T) {
 			rules := opera.Rules{Upgrades: updates}
 			if updates.Allegro {
