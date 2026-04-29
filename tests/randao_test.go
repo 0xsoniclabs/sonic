@@ -17,10 +17,13 @@
 package tests
 
 import (
+	"context"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -64,7 +67,16 @@ func TestRandao_randaoIntegrationTest(t *testing.T) {
 				require.NoError(t, err)
 				defer client.Close()
 
-				block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
+				var block *types.Block
+				timeout, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+				defer cancel()
+				err = WaitFor(timeout, func(ctx context.Context) (bool, error) {
+					block, err = client.BlockByNumber(ctx, receipt.BlockNumber)
+					if err != nil && err != ethereum.NotFound {
+						return false, err
+					}
+					return true, nil
+				})
 				require.NoError(t, err)
 				require.NotZero(t, block.Header().MixDigest)
 				randaoList[i] = block.Header().MixDigest
