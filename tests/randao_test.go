@@ -72,7 +72,10 @@ func TestRandao_randaoIntegrationTest(t *testing.T) {
 				defer cancel()
 				err = WaitFor(timeout, func(ctx context.Context) (bool, error) {
 					block, err = client.BlockByNumber(ctx, receipt.BlockNumber)
-					if err != nil && err != ethereum.NotFound {
+					if err == ethereum.NotFound {
+						return false, nil
+					}
+					if err != nil {
 						return false, err
 					}
 					return true, nil
