@@ -353,40 +353,6 @@ func CreateTransientEvmChainConfig(
 	return &cfg
 }
 
-// GetSonicUpgrades contains the feature flags for the Sonic upgrade.
-func GetSonicUpgrades() Upgrades {
-	return Upgrades{
-		Berlin:  true,
-		London:  true,
-		Llr:     false,
-		Sonic:   true,
-		Allegro: false,
-	}
-}
-
-// GetAllegroUpgrades contains the feature flags for the Allegro upgrade.
-func GetAllegroUpgrades() Upgrades {
-	return Upgrades{
-		Berlin:  true,
-		London:  true,
-		Llr:     false,
-		Sonic:   true,
-		Allegro: true,
-	}
-}
-
-// GetBrioUpgrades contains the feature flags for the Brio upgrade.
-func GetBrioUpgrades() Upgrades {
-	return Upgrades{
-		Berlin:  true,
-		London:  true,
-		Llr:     false,
-		Sonic:   true,
-		Allegro: true,
-		Brio:    true,
-	}
-}
-
 // MakeUpgradeHeight constructs an UpgradeHeight instance from the given
 // Upgrades and block height.
 func MakeUpgradeHeight(upgrades Upgrades, height idx.Block) UpgradeHeight {
