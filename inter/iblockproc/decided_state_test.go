@@ -152,7 +152,7 @@ func TestEpochState_Decode_CanBeDecodedFromV1Serialization(t *testing.T) {
 	require.Equal(t, makeEpochStateFromV1(v1), state)
 }
 
-func TestEpochState_Decode_DecodingFromF1Serialization_ResetV2Fields(t *testing.T) {
+func TestEpochState_Decode_DecodingFromV1Serialization_ResetV2Fields(t *testing.T) {
 	var v1 EpochStateV1 = makeExampleEpochStateV1()
 	data, err := rlp.EncodeToBytes(v1)
 	require.NoError(t, err)
