@@ -26,6 +26,12 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+// MaxNumEstimableTransactions is the maximum number of transactions
+// that can be included in a bundle for gas estimation.
+// The algorithm to estimate bundle gas is O(n^2),
+// therefore an upper bound is introduced.
+const MaxNumEstimableTransactions = 16
+
 // BundleGasLimits represents the estimated gas limits for a bundle of transactions.
 type BundleGasLimits struct {
 	// GasLimits contains the estimated gas limit for each transaction in the

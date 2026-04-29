@@ -23,12 +23,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
-// MaxNumEstimableTransactions is the maximum number of transactions
-// that can be included in a bundle for gas estimation.
-// The algorithm to estimate bundle gas is O(n^2),
-// therefore an upper bound is introduced.
-const MaxNumEstimableTransactions = 16
-
 // sanitizeBlockRange checks that the provided block range is valid and within
 // allowed limits, defaulting to a sensible range if not provided.
 func sanitizeBlockRange(currentBlock uint64, blockRange *RPCRange) (RPCRange, error) {
