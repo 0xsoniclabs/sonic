@@ -611,7 +611,7 @@ func TestEmitter_fillExtraData_EncodesExpectedData(t *testing.T) {
 	}
 }
 
-func TestRemoveBundleOnlyTxs_OnlyFiltersTxIfFeatureIsEnabled(t *testing.T) {
+func TestRemoveBundleOnlyTxs_OnlyFiltersTxIfBrioIsEnabled(t *testing.T) {
 
 	sender := common.Address{1}
 
@@ -632,7 +632,7 @@ func TestRemoveBundleOnlyTxs_OnlyFiltersTxIfFeatureIsEnabled(t *testing.T) {
 			}
 
 			upgrades := opera.Upgrades{
-				TransactionBundles: enabled,
+				Brio: enabled,
 			}
 
 			removeBundleOnlyTxs(upgrades, pendingTxs)
@@ -762,7 +762,7 @@ func TestRemoveBundleOnlyTxs_ErasesMultipleBundleMarkedTransactions(t *testing.T
 	}
 
 	removeBundleOnlyTxs(opera.Upgrades{
-		TransactionBundles: true,
+		Brio: true,
 	}, pendingTxs)
 
 	require.Len(t, pendingTxs, 1)
