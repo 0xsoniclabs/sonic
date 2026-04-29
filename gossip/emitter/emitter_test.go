@@ -143,23 +143,12 @@ func (fixedPriceBaseFeeSource) GetCurrentBaseFee() *big.Int {
 
 func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 
-	tests := map[string]opera.Upgrades{
-		"sonic": {
-			Sonic:   true,
-			Allegro: false,
-		},
-		"allegro": {
-			Sonic:   true,
-			Allegro: true,
-		},
-	}
-
 	validator := idx.ValidatorID(1)
 	builder := pos.NewBuilder()
 	builder.Set(validator, pos.Weight(1))
 	validators := builder.Build()
 
-	for name, upgrades := range tests {
+	for name, upgrades := range opera.GetAllHardForksInOrder() {
 		t.Run(name, func(t *testing.T) {
 
 			cases := map[bool]uint8{

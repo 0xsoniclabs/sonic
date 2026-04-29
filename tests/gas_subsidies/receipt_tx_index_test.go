@@ -36,27 +36,19 @@ import (
 
 func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 
-	upgrades := []struct {
-		name    string
-		upgrade opera.Upgrades
-	}{
-		{name: "sonic", upgrade: opera.GetSonicUpgrades()},
-		{name: "allegro", upgrade: opera.GetAllegroUpgrades()},
-		{name: "brio", upgrade: opera.GetBrioUpgrades()},
-	}
 	singleProposerOption := map[string]bool{
 		"singleProposer": true,
 		"distributed":    false,
 	}
 
-	for _, test := range upgrades {
+	for upgradeName, upgrade := range opera.GetAllHardForksInOrder() {
 		for mode, enabled := range singleProposerOption {
-			t.Run(fmt.Sprintf("%s/%v", test.name, mode), func(t *testing.T) {
+			t.Run(upgradeName+"/"+mode, func(t *testing.T) {
 
-				test.upgrade.GasSubsidies = true
-				test.upgrade.SingleProposerBlockFormation = enabled
+				upgrade.GasSubsidies = true
+				upgrade.SingleProposerBlockFormation = enabled
 				net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-					Upgrades: &test.upgrade,
+					Upgrades: &upgrade,
 				})
 
 				client, err := net.GetClient()

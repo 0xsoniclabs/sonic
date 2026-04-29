@@ -30,32 +30,8 @@ import (
 )
 
 func TestBlockParameters_BlockHeaderMatchesObservableBlockParameters(t *testing.T) {
-	hardForks := map[string]opera.Upgrades{
-		"sonic": {
-			Berlin:  true,
-			London:  true,
-			Llr:     false,
-			Sonic:   true,
-			Allegro: false,
-		},
-		"allegro": {
-			Berlin:  true,
-			London:  true,
-			Llr:     false,
-			Sonic:   true,
-			Allegro: true,
-		},
-		"brio": {
-			Berlin:  true,
-			London:  true,
-			Llr:     false,
-			Sonic:   true,
-			Allegro: true,
-			Brio:    true,
-		},
-	}
 
-	for name, upgrades := range hardForks {
+	for name, upgrades := range opera.GetAllHardForksInOrder() {
 		t.Run(name, func(t *testing.T) {
 			for _, singleProposer := range []bool{false, true} {
 				t.Run(fmt.Sprintf("single_proposer=%t", singleProposer), func(t *testing.T) {

@@ -52,16 +52,11 @@ func TestBlockHeader_FakeGenesis_SatisfiesInvariants(t *testing.T) {
 
 func TestBlockHeader_JsonGenesis_SatisfiesInvariants(t *testing.T) {
 
-	upgrades := map[string]opera.Upgrades{
-		"Sonic":   opera.GetSonicUpgrades(),
-		"Allegro": opera.GetAllegroUpgrades(),
-		"Brio":    opera.GetBrioUpgrades(),
-	}
 	modes := map[string]bool{
 		"DistributedProposer": false,
 		"SingleProposer":      true,
 	}
-	for name, upgrades := range upgrades {
+	for name, upgrades := range opera.GetAllHardForksInOrder() {
 		t.Run(name, func(t *testing.T) {
 			upgrades := upgrades
 			for singleProposer, isSingleProposer := range modes {

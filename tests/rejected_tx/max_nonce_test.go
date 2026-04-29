@@ -58,11 +58,7 @@ func TestAccount_RejectTransactions(t *testing.T) {
 		},
 	}
 
-	for upgradeName, upgrades := range map[string]opera.Upgrades{
-		"Sonic":   opera.GetSonicUpgrades(),
-		"Allegro": opera.GetAllegroUpgrades(),
-		"Brio":    opera.GetBrioUpgrades(),
-	} {
+	for upgradeName, upgrades := range opera.GetAllHardForksInOrder() {
 		t.Run(upgradeName, func(t *testing.T) {
 			t.Parallel()
 

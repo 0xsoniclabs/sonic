@@ -28,17 +28,12 @@ import (
 )
 
 func TestPacingOfEmptyBlocks(t *testing.T) {
-	hardFork := map[string]opera.Upgrades{
-		"sonic":   opera.GetSonicUpgrades(),
-		"allegro": opera.GetAllegroUpgrades(),
-		"brio":    opera.GetBrioUpgrades(),
-	}
 	modes := map[string]bool{
 		"single proposer":      true,
 		"distributed proposer": false,
 	}
 
-	for name, upgrades := range hardFork {
+	for name, upgrades := range opera.GetAllHardForksInOrder() {
 		t.Run(name, func(t *testing.T) {
 			for mode, singleProposer := range modes {
 				upgrades := upgrades

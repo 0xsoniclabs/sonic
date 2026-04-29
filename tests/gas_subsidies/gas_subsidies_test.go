@@ -33,24 +33,15 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 
 	// The network is initially started using the distributed protocol.
 	net := tests.StartIntegrationTestNet(t)
-	// a sliced is used here to ensure the forks get updated in an acceptable order.
-	upgrades := []struct {
-		name    string
-		upgrade opera.Upgrades
-	}{
-		{name: "sonic", upgrade: opera.GetSonicUpgrades()},
-		{name: "allegro", upgrade: opera.GetAllegroUpgrades()},
-		{name: "brio", upgrade: opera.GetBrioUpgrades()},
-	}
-	for _, test := range upgrades {
-		t.Run(test.name, func(t *testing.T) {
+	for name, upgrade := range opera.GetAllHardForksInOrder() {
+		t.Run(name, func(t *testing.T) {
 			client, err := net.GetClient()
 			require.NoError(err)
 			defer client.Close()
 
 			// enforce the current upgrade
 			testRules := tests.GetNetworkRules(t, net)
-			testRules.Upgrades = test.upgrade
+			testRules.Upgrades = upgrade
 			tests.UpdateNetworkRules(t, net, testRules)
 			// Advance the epoch by one to apply the change.
 			net.AdvanceEpoch(t, 1)
@@ -101,13 +92,8 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 }
 
 func TestGasSubsidies_CallingRegistryBeforeDeploy_FailsTransaction(t *testing.T) {
-	upgrades := map[string]opera.Upgrades{
-		"sonic":   opera.GetSonicUpgrades(),
-		"allegro": opera.GetAllegroUpgrades(),
-		"brio":    opera.GetBrioUpgrades(),
-	}
 
-	for name, upgrade := range upgrades {
+	for name, upgrade := range opera.GetAllHardForksInOrder() {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			net := tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{

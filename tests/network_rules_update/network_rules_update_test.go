@@ -457,14 +457,7 @@ func TestNetworkRulesUpdate_BrioFeaturesBecomeAvailable_WhenBrioUpgradesEnabled(
 	require.NoError(t, err)
 	require.False(t, rules.Upgrades.Brio, "Brio upgrade should be disabled initially")
 
-	// needs to be a slice to ensure the order of tests cases since upgrade updating is stateful
-	upgrades := []opera.Upgrades{
-		opera.GetSonicUpgrades(),
-		opera.GetAllegroUpgrades(),
-		opera.GetBrioUpgrades(),
-	}
-
-	for _, upgrade := range upgrades {
+	for _, upgrade := range opera.GetAllHardForksInOrder() {
 		// update network
 		rules.Upgrades = upgrade
 		tests.UpdateNetworkRules(t, net, rules)
