@@ -80,51 +80,47 @@ func TestForkId_FollowsFormula(t *testing.T) {
 }
 
 func TestForkId_UpgradesProduceDifferentIds(t *testing.T) {
-	tests := map[string]struct {
-		upgradesHeight opera.UpgradeHeight
-		want           forkId
-	}{
-		"Sonic": {
-			upgradesHeight: opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1),
-			want:           forkId{0x75, 0x45, 0xd7, 0x6e},
-		},
-		"Allegro": {
-			upgradesHeight: opera.MakeUpgradeHeight(opera.GetAllegroUpgrades(), 5),
-			want:           forkId{0x6f, 0xfb, 0x6f, 0xd6},
-		},
-		"Brio": {
-			upgradesHeight: opera.MakeUpgradeHeight(opera.GetBrioUpgrades(), 10),
-			want:           forkId{0x12, 0x7b, 0x69, 0x7b},
-		},
-		// In a real case scenario, SingleProposer and GasSubsidies would be
-		// turned on while another upgrade is activated, so we check that the
-		// ForkId reflects these changes.
-		"Sonic+SingleProposer": {
-			upgradesHeight: func() opera.UpgradeHeight {
-				upgrades := opera.GetSonicUpgrades()
-				upgrades.SingleProposerBlockFormation = true
-				return opera.MakeUpgradeHeight(upgrades, 1)
-			}(),
-			want: forkId{0x28, 0x66, 0x84, 0x67},
-		},
-		"Allegro+GasSubsidies": {
-			upgradesHeight: func() opera.UpgradeHeight {
-				upgrades := opera.GetAllegroUpgrades()
-				upgrades.GasSubsidies = true
-				return opera.MakeUpgradeHeight(upgrades, 5)
-			}(),
-			want: forkId{0xff, 0xae, 0xa0, 0xb6},
-		},
+
+	proposer := map[string]bool{
+		"single proposer":      true,
+		"distributed proposer": false,
+	}
+	subsidies := map[string]bool{
+		"with gas subsidies":    true,
+		"without gas subsidies": false,
+	}
+	bundles := map[string]bool{
+		"with bundles":    true,
+		"without bundles": false,
 	}
 
 	genesisHash := common.Hash{0x42}
 
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			got, err := MakeForkId(test.upgradesHeight, genesisHash)
-			require.NoError(t, err, "makeForkHash failed")
-			require.Equal(t, test.want, got, "unexpected fork hash")
-		})
+	generated := make(map[forkId]struct{})
+	for hardfork, upgrades := range opera.GetAllHardForksInOrder() {
+		for proposerName, singleProposer := range proposer {
+			for subsidiesName, withSubsidies := range subsidies {
+				for bundlesName, withBundles := range bundles {
+					for _, height := range []idx.Block{1, 5, 10} {
+						upgrades := upgrades
+						upgrades.SingleProposerBlockFormation = singleProposer
+						upgrades.GasSubsidies = withSubsidies
+						upgrades.TransactionBundles = withBundles
+
+						upgradeHeight := opera.MakeUpgradeHeight(upgrades, height)
+						testName := fmt.Sprintf("%s-%s-%s-%s-%d", hardfork, proposerName, subsidiesName, bundlesName, height)
+
+						t.Run(testName, func(t *testing.T) {
+							got, err := MakeForkId(upgradeHeight, genesisHash)
+							require.NoError(t, err, "makeForkHash failed")
+							_, exists := generated[got]
+							require.False(t, exists, "duplicate fork ID generated for different upgrades")
+							generated[got] = struct{}{}
+						})
+					}
+				}
+			}
+		}
 	}
 }
 
