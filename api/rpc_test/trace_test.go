@@ -29,10 +29,8 @@ import (
 )
 
 func Test_TraceSimpleTransfer(t *testing.T) {
-	acc1, err := NewWallet()
-	require.NoError(t, err)
-	acc2, err := NewWallet()
-	require.NoError(t, err)
+	acc1 := NewWallet(t)
+	acc2 := NewWallet(t)
 	transferBalance := big.NewInt(1e17)
 
 	be := NewBackendBuilder(t).

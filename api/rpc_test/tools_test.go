@@ -27,15 +27,13 @@ import (
 )
 
 func Test_Wallet_NewWallet(t *testing.T) {
-	acc, err := NewWallet()
-	require.NoError(t, err)
+	acc := NewWallet(t)
 	require.NotNil(t, acc)
 	require.NotNil(t, acc.PrivateKey)
 }
 
 func Test_Wallet_Address(t *testing.T) {
-	acc, err := NewWallet()
-	require.NoError(t, err)
+	acc := NewWallet(t)
 
 	expectedAddr := crypto.PubkeyToAddress(acc.PrivateKey.PublicKey)
 	require.Equal(t, &expectedAddr, acc.Address())
