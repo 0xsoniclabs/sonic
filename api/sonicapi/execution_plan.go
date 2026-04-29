@@ -156,7 +156,7 @@ func toBundleExecutionGroup(l RPCExecutionPlanGroup) (bundle.ExecutionStep, erro
 		steps[i] = step
 	}
 
-	// Single children without flags do not need to be in an extra group
+	// Single child without flags does not need to be in an extra group
 	if !l.TolerateFailures && len(steps) == 1 {
 		return steps[0], nil
 	}

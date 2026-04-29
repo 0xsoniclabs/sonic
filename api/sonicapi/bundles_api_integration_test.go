@@ -240,7 +240,7 @@ func Test_bundlesRPC_PrepareAndSubmit_PoolsValidBundles(t *testing.T) {
 				SignedTransactions: make([]hexutil.Bytes, len(prepared.Transactions)),
 				ExecutionPlan:      prepared.ExecutionPlan,
 			}
-			// This code replicates third party wallets signing the bundled transactions
+			// This loop replicates third-party wallets signing the bundled transactions
 			for i, tx := range prepared.Transactions {
 				// Note: all transactions at this stage have access list, therefore
 				// toTransactionForBundles is not needed.
