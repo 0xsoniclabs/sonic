@@ -14,10 +14,15 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package drivermodule_test
+package drivermodule
 
 import (
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/drivermodule"
+	"fmt"
+	"math"
+	"math/big"
+	"testing"
+
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -27,9 +32,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-	"math/big"
-	"testing"
 )
 
 const OrigOriginated = 10_000
@@ -45,7 +49,7 @@ const EffectiveGasPrice = 53
 func TestReceiptRewardWithoutFixEnabled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	module := drivermodule.NewDriverTxListenerModule()
+	module := NewDriverTxListenerModule()
 
 	blockCtx := iblockproc.BlockCtx{}
 	bs := iblockproc.BlockState{
@@ -86,7 +90,7 @@ func TestReceiptRewardWithoutFixEnabled(t *testing.T) {
 func TestReceiptRewardWithFixEnabled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	module := drivermodule.NewDriverTxListenerModule()
+	module := NewDriverTxListenerModule()
 
 	blockCtx := iblockproc.BlockCtx{}
 	bs := iblockproc.BlockState{
@@ -127,7 +131,7 @@ func TestReceiptRewardWithFixEnabled(t *testing.T) {
 func TestReceiptRewardWithBlobsAndFixEnabled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	module := drivermodule.NewDriverTxListenerModule()
+	module := NewDriverTxListenerModule()
 
 	blockCtx := iblockproc.BlockCtx{}
 	bs := iblockproc.BlockState{
@@ -166,4 +170,122 @@ func TestReceiptRewardWithBlobsAndFixEnabled(t *testing.T) {
 		t.Errorf("Originated increment not GasUsed*EffectiveGasPrice+BlobGasUsed*BlobBaseFee: expected %d, actual %d",
 			OrigOriginated+GasUsed*EffectiveGasPrice+BlobGasUsed*BlobBaseFee, originated)
 	}
+}
+
+func TestComputeEffectiveFee_ComputesFeesBySummingGasAndBlobFees(t *testing.T) {
+	prices := []*big.Int{
+		big.NewInt(0),
+		big.NewInt(1),
+		big.NewInt(10),
+		big.NewInt(1e18),
+		new(big.Int).Lsh(big.NewInt(1), 100),
+	}
+
+	used := []uint64{
+		0, 1, 1000, 1e9, math.MaxUint64,
+	}
+
+	for _, gasPrice := range prices {
+		for _, gasUsed := range used {
+			for _, blobGasPrice := range prices {
+				for _, blobGasUsed := range used {
+					receipt := &types.Receipt{
+						EffectiveGasPrice: gasPrice,
+						GasUsed:           gasUsed,
+						BlobGasUsed:       blobGasUsed,
+						BlobGasPrice:      blobGasPrice,
+					}
+
+					want := new(big.Int).Add(
+						new(big.Int).Mul(
+							new(big.Int).SetUint64(gasUsed),
+							gasPrice,
+						),
+						new(big.Int).Mul(
+							new(big.Int).SetUint64(blobGasUsed),
+							blobGasPrice,
+						),
+					)
+
+					got, err := ComputeEffectiveFee(nil, receipt)
+					require.NoError(t, err)
+					require.True(t,
+						want.Cmp(got) == 0,
+						"want %v, got %v", want, got,
+					)
+				}
+			}
+		}
+	}
+}
+
+func TestComputeEffectiveFee_UsesChargedAmountForSponsorshipPayments(t *testing.T) {
+	prices := []*big.Int{
+		big.NewInt(0),
+		big.NewInt(1),
+		big.NewInt(10),
+		big.NewInt(1e18),
+		new(big.Int).Lsh(big.NewInt(1), 100),
+	}
+
+	uses := []uint64{
+		0, 1, 1000, 1e9, math.MaxUint64,
+	}
+
+	for _, price := range prices {
+		for _, used := range uses {
+			t.Run(fmt.Sprintf("price=%v/used=%d", price, used), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				nonceSource := subsidies.NewMockNonceSource(ctrl)
+				nonceSource.EXPECT().GetNonce(gomock.Any()).AnyTimes()
+
+				tx, err := subsidies.GetFeeChargeTransaction(
+					nonceSource,
+					subsidies.FundId{},
+					subsidies.GasConfig{},
+					used,
+					price,
+				)
+				require.NoError(t, err)
+
+				want := new(big.Int).Mul(
+					new(big.Int).SetUint64(used),
+					price,
+				)
+
+				got, err := ComputeEffectiveFee(tx, nil)
+				require.NoError(t, err)
+				require.True(t,
+					want.Cmp(got) == 0,
+					"want %v, got %v", want, got,
+				)
+			})
+		}
+	}
+}
+
+func TestComputeEffectiveFee_MissingReceipt_ReportsError(t *testing.T) {
+	_, err := ComputeEffectiveFee(nil, nil)
+	require.ErrorContains(t, err, "missing receipt")
+}
+
+func TestComputeEffectiveFee_MissingEffectiveGasPrice_ReportsError(t *testing.T) {
+	receipt := &types.Receipt{}
+	_, err := ComputeEffectiveFee(nil, receipt)
+	require.ErrorContains(t, err, "missing effective gas price")
+}
+
+func TestComputeEffectiveFee_MissingBlobGasPrice_ReportsIfBlobGasIsUsed(t *testing.T) {
+	receipt := &types.Receipt{
+		EffectiveGasPrice: big.NewInt(0),
+	}
+
+	// without blob gas usage no error is reported
+	_, err := ComputeEffectiveFee(nil, receipt)
+	require.NoError(t, err)
+
+	// with blob gas usage, missing blob gas price should cause an error
+	receipt.BlobGasUsed = 1
+	_, err = ComputeEffectiveFee(nil, receipt)
+	require.ErrorContains(t, err, "missing blob gas price")
 }

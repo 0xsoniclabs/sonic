@@ -17,6 +17,7 @@
 package drivermodule
 
 import (
+	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -27,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
@@ -189,6 +191,48 @@ func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
 	// function for backward compatibility with previous client versions.
 	gasTip, _ := gasprice.EffectiveGasTip(tx, baseFee)
 	return new(big.Int).Add(baseFee, gasTip)
+}
+
+// ComputeEffectiveFee returns the effective fee charged for the given
+// transaction and its receipt. For regular transactions, this is simply
+// gasUsed * effectiveGasPrice + blobGasUsed * blobGasPrice. For fee charge
+// transactions used to charge the fees of sponsored transactions, the fee is
+// extracted from the transaction input data. The function returns an error if
+// the effective price could not be determined, for example due to missing
+// receipt data.
+func ComputeEffectiveFee(
+	tx *types.Transaction,
+	r *types.Receipt,
+) (*big.Int, error) {
+	if fee, err := subsidies.ParseFeeChargeAmount(tx); err == nil {
+		return fee.ToBig(), nil
+	}
+
+	// pre-checks
+	if r == nil {
+		return nil, fmt.Errorf("missing receipt")
+	}
+	if r.EffectiveGasPrice == nil {
+		return nil, fmt.Errorf("missing effective gas price in receipt")
+	}
+	if r.BlobGasUsed > 0 && r.BlobGasPrice == nil {
+		return nil, fmt.Errorf("missing blob gas price in receipt")
+	}
+
+	gasFee := new(big.Int).Mul(
+		new(big.Int).SetUint64(r.GasUsed),
+		r.EffectiveGasPrice,
+	)
+
+	blobGasFee := big.NewInt(0)
+	if r.BlobGasUsed > 0 {
+		blobGasFee = new(big.Int).Mul(
+			new(big.Int).SetUint64(r.BlobGasUsed),
+			r.BlobGasPrice,
+		)
+	}
+
+	return new(big.Int).Add(gasFee, blobGasFee), nil
 }
 
 func decodeDataBytes(l *types.Log) ([]byte, error) {
