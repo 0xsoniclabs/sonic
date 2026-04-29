@@ -35,8 +35,21 @@ import (
 
 type TxListener interface {
 	OnNewLog(*types.Log)
+
+	// OnNewReceipt is called once for each transaction being accepted in a
+	// block after the block has been completed before the Brio hard-fork.
+	//
+	// WARNING: this function is no longer invoked after the Brio hard-fork. Use
+	// the OnNewAcceptedTransaction instead for post-Brio support. It is
+	// deprecated since the originator could not correctly be reported.
 	OnNewReceipt(tx *types.Transaction, r *types.Receipt, originator idx.ValidatorID, baseFee *big.Int, blobBaseFee *big.Int)
+
+	// OnNewAcceptedTransaction is the replacement of OnNewReceipt in Brio and
+	// beyond. It is called right after the acceptance of a new transaction in
+	// a block. The originator corresponds to the validator proposing the
+	// given transaction.
 	OnNewAcceptedTransaction(originator idx.ValidatorID, tx *types.Transaction, r *types.Receipt)
+
 	Finalize() iblockproc.BlockState
 	Update(bs iblockproc.BlockState, es iblockproc.EpochState)
 }
