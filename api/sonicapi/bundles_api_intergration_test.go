@@ -28,7 +28,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -40,12 +39,12 @@ func Test_bundlesRPC_PrepareAndSubmit_PoolsValidBundles(t *testing.T) {
 	// and recognized by the transaction pool as a valid bundle envelope
 	// with the correct execution plan hash.
 
-	accounts := make(map[string]account)
-	accounts["ACCOUNT1"] = newAccount(t)
-	accounts["ACCOUNT2"] = newAccount(t)
+	accounts := make(map[string]*rpctest.Wallet)
+	accounts["ACCOUNT1"] = rpctest.NewWallet(t)
+	accounts["ACCOUNT2"] = rpctest.NewWallet(t)
 	addrToKey := make(map[common.Address]*ecdsa.PrivateKey)
 	for _, acc := range accounts {
-		addrToKey[acc.address] = acc.key
+		addrToKey[*acc.Address()] = acc.PrivateKey
 	}
 
 	tests := map[string]struct {
@@ -204,7 +203,7 @@ func Test_bundlesRPC_PrepareAndSubmit_PoolsValidBundles(t *testing.T) {
 			beBuilder := rpctest.NewBackendBuilder(t).
 				WithPool(pool)
 			for _, acc := range accounts {
-				beBuilder.WithAccount(acc.address, rpctest.AccountState{
+				beBuilder.WithAccount(*acc.Address(), rpctest.AccountState{
 					Nonce:   0,
 					Balance: big.NewInt(1e18), // 1 ETH
 				})
@@ -217,7 +216,7 @@ func Test_bundlesRPC_PrepareAndSubmit_PoolsValidBundles(t *testing.T) {
 
 			input := test.request
 			for placeholder, account := range accounts {
-				input = strings.ReplaceAll(input, placeholder, account.address.Hex())
+				input = strings.ReplaceAll(input, placeholder, account.Address().Hex())
 			}
 
 			// ============ PrepareBundle ==================
@@ -265,21 +264,6 @@ func Test_bundlesRPC_PrepareAndSubmit_PoolsValidBundles(t *testing.T) {
 			require.Equal(t, reconstructedPlan.Hash(), submitted,
 				"submit must return the same execution plan as reconstructed and pooled")
 		})
-	}
-}
-
-// account is a helper to keep keys and addresses together in this test.
-type account struct {
-	address common.Address
-	key     *ecdsa.PrivateKey
-}
-
-func newAccount(t testing.TB) account {
-	key, err := crypto.GenerateKey()
-	require.NoError(t, err)
-	return account{
-		address: crypto.PubkeyToAddress(key.PublicKey),
-		key:     key,
 	}
 }
 
