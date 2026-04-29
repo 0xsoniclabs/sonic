@@ -261,13 +261,26 @@ func TestSonicTool_genesis_ExportImport_WithBundles(t *testing.T) {
 
 	client, err = net.GetClient()
 	require.NoError(t, err)
-	defer client.Close()
 
 	// check that the bundle is still there after the export-import process
 	infoAfterRestart, err := bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash)
 	require.NoError(t, err)
 	require.Equal(t, originalInfo, infoAfterRestart,
 		"bundle info mismatch after genesis export-import")
+	client.Close()
+
+	// run enough blocks to make sure that if the history hash is pruned.
+	generateNBlocks(t, net, int(bundle.MaxBlockRange)+10)
+
+	require.NoError(t, net.RestartWithExportImport())
+
+	client, err = net.GetClient()
+	require.NoError(t, err)
+
+	// check that the bundle is still there after the export-import process
+	_, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash)
+	require.ErrorContains(t, err, "not found")
+	client.Close()
 }
 
 func TestSonicTool_heal_ExecutesWithoutErrors(t *testing.T) {
