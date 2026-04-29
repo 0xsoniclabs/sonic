@@ -87,12 +87,14 @@ func Test_bundlesRPC_PrepareAndSubmit_PoolsValidBundles(t *testing.T) {
 					{
 						"from": "ACCOUNT1",
 						"to": "ACCOUNT2",
-						"nonce": "0x0"
+						"nonce": "0x0",
+						"gas": "0x5208"
 					},
 					{
 						"from": "ACCOUNT2",
 						"to": "ACCOUNT1",
-						"nonce": "0x0"
+						"nonce": "0x0",
+						"gas": "0x5208"
 					}
 				]
 			}`,
@@ -105,36 +107,19 @@ func Test_bundlesRPC_PrepareAndSubmit_PoolsValidBundles(t *testing.T) {
 						"from": "ACCOUNT1",
 						"to": "ACCOUNT2",
 						"nonce": "0x0",
+						"gas": "0x5208",
 						"tolerateFailed": true
 					},
 					{
 						"from": "ACCOUNT2",
 						"to": "ACCOUNT1",
 						"nonce": "0x0",
+						"gas": "0x5208",
 						"tolerateInvalid": true
 					}
 			   ]
 			}`,
 			expectedBundle: "AllOf(Step[TolerateFailed](A),Step[TolerateInvalid](B))",
-		},
-		"gas price and gas limit prefilled": {
-			request: `{
-			   "steps": [	
-					{
-						"from": "ACCOUNT1",
-						"to": "ACCOUNT2",
-						"nonce": "0x0",
-						"gasPrice": "0x3b9aca00",
-						"gas": "0x5208"
-					},
-					{
-						"from": "ACCOUNT2",
-						"to": "ACCOUNT1",
-						"nonce": "0x0"
-					}
-			   ]
-			}`,
-			expectedBundle: "AllOf(A,B)",
 		},
 		"nested groups": {
 			request: `{
@@ -143,7 +128,8 @@ func Test_bundlesRPC_PrepareAndSubmit_PoolsValidBundles(t *testing.T) {
 					{
 						"from": "ACCOUNT1",
 						"to": "ACCOUNT2",
-						"nonce": "0x0"
+						"nonce": "0x0",
+						"gas": "0x5208"
 					},
 					{
 						"oneOf": true,
@@ -151,12 +137,14 @@ func Test_bundlesRPC_PrepareAndSubmit_PoolsValidBundles(t *testing.T) {
 							{
 								"from": "ACCOUNT2",
 								"to": "ACCOUNT1",
-								"nonce": "0x0"
+								"nonce": "0x0",
+								"gas": "0x5208"
 							},
 							{
 								"from": "ACCOUNT1",
 								"to": "ACCOUNT2",
-								"nonce": "0x1"
+								"nonce": "0x1",
+								"gas": "0x5208"
 							}
 						]
 					}
@@ -171,7 +159,8 @@ func Test_bundlesRPC_PrepareAndSubmit_PoolsValidBundles(t *testing.T) {
 					{
 						"from": "ACCOUNT1",
 						"to": "ACCOUNT2",
-						"nonce": "0x0"
+						"nonce": "0x0",
+						"gas": "0x5208"
 					},
 					{
 						"oneOf": true,
@@ -179,12 +168,14 @@ func Test_bundlesRPC_PrepareAndSubmit_PoolsValidBundles(t *testing.T) {
 							{
 								"from": "ACCOUNT2",
 								"to": "ACCOUNT1",
-								"nonce": "0x0"
+								"nonce": "0x0",
+								"gas": "0x5208"
 							},
 							{
 								"from": "ACCOUNT1",
 								"to": "ACCOUNT2",
-								"nonce": "0x0"
+								"nonce": "0x0",
+								"gas": "0x5208"
 							}
 						]
 					}
