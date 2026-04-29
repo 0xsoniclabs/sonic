@@ -289,5 +289,10 @@ func validateUpgrades(old, new Upgrades) error {
 
 	// The GasSubsidies feature can be freely modified.
 
+	if new.TransactionBundles && !new.Brio {
+		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
+		issues = append(issues, errors.New("TransactionBundles upgrade requires Brio"))
+	}
+
 	return errors.Join(issues...)
 }
