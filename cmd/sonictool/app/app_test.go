@@ -242,44 +242,54 @@ func TestSonicTool_genesis_ExportImport_WithBundles(t *testing.T) {
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
-
-	bundleHash, originalInfo := runBundle(t, net)
-
 	client, err := net.GetClient()
 	require.NoError(t, err)
 
-	// check that the bundle is still there after the export-import process
-	infoBeforeRestart, err := bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash)
+	// run a bundle and check it can be queried
+	bundleHash1, originalInfo1 := runBundle(t, net)
+	info1, err := bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
 	require.NoError(t, err)
-	require.Equal(t, originalInfo, infoBeforeRestart,
+	require.Equal(t, originalInfo1, info1,
 		"bundle info mismatch after genesis export-import")
 
-	// close client before restarting the net
+	// restart the net
 	client.Close()
-
 	require.NoError(t, net.RestartWithExportImport())
-
 	client, err = net.GetClient()
 	require.NoError(t, err)
 
 	// check that the bundle is still there after the export-import process
-	infoAfterRestart, err := bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash)
+	info1, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
 	require.NoError(t, err)
-	require.Equal(t, originalInfo, infoAfterRestart,
+	require.Equal(t, originalInfo1, info1,
 		"bundle info mismatch after genesis export-import")
-	client.Close()
 
-	// run enough blocks to make sure that if the history hash is pruned.
+	// run enough blocks to make sure that the history hash is pruned.
 	generateNBlocks(t, net, int(bundle.MaxBlockRange)+10)
 
-	require.NoError(t, net.RestartWithExportImport())
+	// run another bundle
+	bundleHash2, originalInfo2 := runBundle(t, net)
 
+	// check that the first bundle is pruned and the second bundle is still there after pruning
+	_, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
+	require.ErrorContains(t, err, "not found")
+	info2, err := bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash2)
+	require.NoError(t, err)
+	require.Equal(t, originalInfo2, info2)
+
+	// restart the net
+	client.Close()
+	require.NoError(t, net.RestartWithExportImport())
 	client, err = net.GetClient()
 	require.NoError(t, err)
 
-	// check that the bundle is still there after the export-import process
-	_, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash)
+	// check that the second bundle is available, but the first bundle is not, after the export-import process
+	_, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
 	require.ErrorContains(t, err, "not found")
+	info2, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash2)
+	require.NoError(t, err)
+	require.Equal(t, originalInfo2, info2)
+
 	client.Close()
 }
 
@@ -647,8 +657,13 @@ func runBundle(t *testing.T, net *tests.IntegrationTestNet) (
 	defer client.Close()
 
 	signer := types.LatestSignerForChainID(net.GetChainId())
+
+	block, err := client.BlockNumber(t.Context())
+	require.NoError(t, err)
+
 	envelope, plan := bundle.NewBuilder().
 		WithSigner(signer).
+		SetEarliest(block).
 		AllOf(
 			bundle.Step(
 				net.GetSessionSponsor().PrivateKey,
