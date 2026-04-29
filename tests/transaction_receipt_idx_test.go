@@ -30,7 +30,14 @@ import (
 )
 
 func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
-	upgrades := opera.GetBrioUpgrades()
+	for hardfork, upgrades := range opera.GetAllHardForksInOrder() {
+		t.Run(hardfork, func(t *testing.T) {
+			testInternalTransactionsDoNotChangeReceiptIndex(t, upgrades)
+		})
+	}
+}
+
+func testInternalTransactionsDoNotChangeReceiptIndex(t *testing.T, upgrades opera.Upgrades) {
 	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
@@ -135,7 +142,14 @@ func getSenderOfTransaction(
 }
 
 func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t *testing.T) {
-	upgrades := opera.GetSonicUpgrades()
+	for hardfork, upgrades := range opera.GetAllHardForksInOrder() {
+		t.Run(hardfork, func(t *testing.T) {
+			testSkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t, upgrades)
+		})
+	}
+}
+
+func testSkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t *testing.T, upgrades opera.Upgrades) {
 	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 		ClientExtraArguments: []string{
@@ -171,6 +185,9 @@ func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t
 
 	// Create skipped transaction
 	initCode := make([]byte, 50000)
+	if upgrades.Brio {
+		initCode = make([]byte, 50000*2)
+	}
 	txData := &types.LegacyTx{
 		Nonce:    uint64(0),
 		Gas:      10000000,
@@ -218,9 +235,16 @@ func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t
 	require.NoError(t, err)
 	balanceAfter, err := client.BalanceAt(t.Context(), senderSkipped.Address(), big.NewInt(int64(after)))
 	require.NoError(t, err)
-	require.Greater(t, balanceBefore.Uint64(), balanceAfter.Uint64(),
-		"Balance should have decreased",
-	)
+
+	if !upgrades.Allegro {
+		require.Greater(t, balanceBefore.Uint64(), balanceAfter.Uint64(),
+			"Balance should have decreased",
+		)
+	} else {
+		require.Equal(t, balanceBefore.Uint64(), balanceAfter.Uint64(),
+			"Balance should remain unchanged",
+		)
+	}
 
 	require.Greater(t, after, before, "Block number should have increased")
 
