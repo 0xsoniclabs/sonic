@@ -204,7 +204,7 @@ func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
 // onNewReceiptPostBrio is called for every transaction accepted in a block,
 // providing the ID of the validator that has proposed the transaction in one of
 // its events, the accepted transaction, and its receipt. It is used to keep
-// track on the consumed gas on the network.
+// track of validator-originated transaction fees.
 //
 // This function is an updated version of the `onNewReceiptPreBrio` function
 // above, which is getting enabled with the Brio flag. Unlike the previous
