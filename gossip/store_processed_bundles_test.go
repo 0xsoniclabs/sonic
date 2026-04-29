@@ -320,7 +320,6 @@ func TestStore_AddProcessedBundles_HistoryHashIsConsistentWithPerBlockHash(t *te
 
 		for past := range block + 1 {
 			historyHashForBlock, found := store.GetProcessedBundleHistoryHash(past)
-			require.NoError(t, err)
 			if found {
 				require.Equal(t, historicHashes[past], historyHashForBlock)
 			}
