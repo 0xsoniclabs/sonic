@@ -211,7 +211,13 @@ func TestEpochState_DecodeRLP_FailsOnIncorrectInputLength(t *testing.T) {
 			require.Equal(t, state, restored)
 		default:
 			// Too little or too many fields should cause failures.
-			require.Error(t, rlp.DecodeBytes(encode, &restored))
+			err := rlp.DecodeBytes(encode, &restored)
+			require.Error(t, err)
+			if i < numV2Fields {
+				require.ErrorContains(t, err, "end of list")
+			} else {
+				require.ErrorContains(t, err, "ListEnd not positioned at EOL")
+			}
 		}
 	}
 }

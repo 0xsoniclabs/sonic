@@ -259,5 +259,5 @@ func (es *EpochState) DecodeRLP(in *rlp.Stream) error {
 	if err := in.Decode(&es.EpochSealingTxHashes); err != nil {
 		return err
 	}
-	return nil
+	return in.ListEnd()
 }
