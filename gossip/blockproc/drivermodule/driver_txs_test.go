@@ -220,7 +220,7 @@ func TestDriverTxListener_OnNewAcceptedTransaction_AddsFeesToRespectiveValidator
 		"want: %v, got %v", want, got,
 	)
 
-	// the other validator's originated fees should remain as they where.
+	// the other validator's originated fees should remain as they were.
 	want = initialFees[1]
 	got = listener.bs.ValidatorStates[otherIndex].Originated
 	require.True(t, got.Cmp(want) == 0,

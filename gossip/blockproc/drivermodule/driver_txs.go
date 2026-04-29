@@ -215,8 +215,8 @@ func (p *DriverTxListener) onNewAcceptedTransactionInternal(
 ) {
 	fee, err := ComputeEffectiveFee(tx, r)
 	if err != nil {
-		// if there is an overflow in the fee computation, the safe default
-		// is not not attribute it to any validator to not pay out any fees.
+		// If there is an overflow in the fee computation, the safe default
+		// is to avoid attributing it to any validator, so no fees are paid out.
 		log.Warn("overflow in fee computation", "tx", tx.Hash(), "usedGas", r.GasUsed, "gasPrice", r.EffectiveGasPrice, "err", err)
 		return
 	}
@@ -235,7 +235,7 @@ func (p *DriverTxListener) onNewAcceptedTransactionInternal(
 // transaction and its receipt. For regular transactions, this is simply
 // gasUsed * effectiveGasPrice. For fee charge transactions, the fee is
 // extracted from the transaction input data. If the calculation leads to a
-// 256-bit overflow, a fee of 0 is returned.
+// 256-bit overflow, the function returns a non-nil error and a nil fee.
 func ComputeEffectiveFee(
 	tx *types.Transaction,
 	r *types.Receipt,

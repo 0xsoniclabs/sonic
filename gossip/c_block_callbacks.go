@@ -420,18 +420,32 @@ func consensusCallbackBeginBlockFn(
 						}
 					}
 
+					// memorize event position of each tx and identify origin
+					txPositions := make(map[common.Hash]ExtendedTxPosition)
+					for _, e := range blockEvents {
+						for i, tx := range e.Transactions() {
+							// If tx was met in multiple events, then assign to first ordered event
+							if _, ok := txPositions[tx.Hash()]; ok {
+								continue
+							}
+							txPositions[tx.Hash()] = ExtendedTxPosition{
+								TxPosition: evmstore.TxPosition{
+									Event:       e.ID(),
+									EventOffset: uint32(i),
+								},
+								EventCreator: e.Creator(),
+							}
+						}
+					}
+
 					orderedTxs := proposal.Transactions
 					numSkippedDueToBlockLimits := 0
 					if es.Rules.Upgrades.Brio {
 						// Link transactions to their creators to attribute
 						// fees to the correct validators in processUserTransactions.
 						txCreators := make(map[common.Hash]idx.ValidatorID)
-						for _, e := range blockEvents {
-							for _, tx := range e.Transactions() {
-								if _, ok := txCreators[tx.Hash()]; !ok {
-									txCreators[tx.Hash()] = e.Creator()
-								}
-							}
+						for hash, posInfo := range txPositions {
+							txCreators[hash] = posInfo.EventCreator
 						}
 						// Limit block size and gas while adding user transactions
 						numSkippedDueToBlockLimits =
@@ -464,23 +478,6 @@ func consensusCallbackBeginBlockFn(
 						}
 					}
 
-					// memorize event position of each tx
-					txPositions := make(map[common.Hash]ExtendedTxPosition)
-					for _, e := range blockEvents {
-						for i, tx := range e.Transactions() {
-							// If tx was met in multiple events, then assign to first ordered event
-							if _, ok := txPositions[tx.Hash()]; ok {
-								continue
-							}
-							txPositions[tx.Hash()] = ExtendedTxPosition{
-								TxPosition: evmstore.TxPosition{
-									Event:       e.ID(),
-									EventOffset: uint32(i),
-								},
-								EventCreator: e.Creator(),
-							}
-						}
-					}
 					// memorize block position of each tx
 					for i, tx := range evmBlock.Transactions {
 						// not skipped txs only
