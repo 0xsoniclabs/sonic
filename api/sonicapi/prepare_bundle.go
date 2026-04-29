@@ -73,6 +73,9 @@ func (a *PublicBundleAPI) PrepareBundle(
 	var gasLimits []hexutil.Uint64
 
 	if len(needGasLimit) > 0 {
+		if err := validateGasEstimationCompatibility(args.RPCExecutionPlanGroup); err != nil {
+			return nil, fmt.Errorf("failed to prepare bundle: %w", err)
+		}
 		estimated, err := a.EstimateGasForTransactions(ctx, flatTxs, nil, nil, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare bundle: gas estimation failed: %w", err)
@@ -168,6 +171,35 @@ func flattenTransactions(args RPCExecutionProposal) ([]ethapi.TransactionArgs, m
 		return nil, nil, nil, fmt.Errorf("failed to flatten transactions: %w", err)
 	}
 	return flatTxs, needGasLimit, needGasPrice, nil
+}
+
+// validateGasEstimationCompatibility traverses the proposal group tree and returns
+// an error if any flag makes sequential gas estimation unreliable.
+// Gas estimation assumes all prior transactions executed and their state is visible;
+// any flag that allows partial or conditional execution breaks this assumption.
+func validateGasEstimationCompatibility(group RPCExecutionPlanGroup) error {
+	if group.TolerateFailures {
+		return fmt.Errorf("gas estimation not supported when tolerateFailures is set: failed transactions leave state uncertain for subsequent transactions")
+	}
+	if group.OneOf {
+		return fmt.Errorf("gas estimation not supported when oneOf is set: only one branch executes, making state uncertain for sibling branches")
+	}
+	for _, step := range group.Steps {
+		switch s := step.(type) {
+		case RPCExecutionStepProposal:
+			if s.TolerateFailed {
+				return fmt.Errorf("gas estimation not supported when tolerateFailed is set: failed transaction leaves state uncertain for subsequent transactions")
+			}
+			if s.TolerateInvalid {
+				return fmt.Errorf("gas estimation not supported when tolerateInvalid is set: invalid transaction may be skipped, leaving state uncertain for subsequent transactions")
+			}
+		case RPCExecutionPlanGroup:
+			if err := validateGasEstimationCompatibility(s); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // injectPlanHashIntoAccessLists appends the BundleOnly access-list entry with planHash to every tx.

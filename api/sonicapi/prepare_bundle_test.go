@@ -536,6 +536,7 @@ func Test_PrepareBundle_EmptyTransactions_ReturnsEmptyBundle(t *testing.T) {
 func Test_PrepareBundle_OneOfGroup_BuildsOneOfPlan(t *testing.T) {
 	addr1 := common.Address{1}
 	addr2 := common.Address{2}
+	gas := hexutil.Uint64(21000)
 
 	be := rpctest.NewBackendBuilder(t).
 		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
@@ -548,8 +549,8 @@ func Test_PrepareBundle_OneOfGroup_BuildsOneOfPlan(t *testing.T) {
 		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 			OneOf: true,
 			Steps: []any{
-				txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
-				txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+				txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15)), Gas: &gas}),
+				txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15)), Gas: &gas}),
 			},
 		},
 	}
@@ -569,6 +570,7 @@ func Test_PrepareBundle_OneOfGroup_BuildsOneOfPlan(t *testing.T) {
 func Test_PrepareBundle_TolerateFailed_Flag(t *testing.T) {
 	addr1 := common.Address{1}
 	addr2 := common.Address{2}
+	gas := hexutil.Uint64(21000)
 
 	be := rpctest.NewBackendBuilder(t).
 		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
@@ -583,11 +585,13 @@ func Test_PrepareBundle_TolerateFailed_Flag(t *testing.T) {
 					From:  &addr1,
 					To:    &addr2,
 					Nonce: rpctest.ToHexUint64(0),
+					Gas:   &gas,
 				}, true, false),
 				txEntryWithFlags(ethapi.TransactionArgs{
 					From:  &addr1,
 					To:    &addr2,
-					Nonce: rpctest.ToHexUint64(0),
+					Nonce: rpctest.ToHexUint64(1),
+					Gas:   &gas,
 				}, false, true),
 			},
 		},
@@ -623,16 +627,17 @@ func Test_PrepareBundle_NestedGroups(t *testing.T) {
 
 	api := NewPublicBundleAPI(be)
 
+	gas := hexutil.Uint64(21000)
 	// OneOf(AllOf(tx1, tx2), tx3-alike via addr1 again)
 	args := RPCExecutionProposal{
 		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 			Steps: []any{
 				groupEntryWithFlags(true, false,
 					groupEntry(
-						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
-						txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15)), Gas: &gas}),
+						txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Value: rpctest.ToHexBigInt(big.NewInt(1e15)), Gas: &gas}),
 					),
-					txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(1), Value: rpctest.ToHexBigInt(big.NewInt(1e15))}),
+					txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(1), Value: rpctest.ToHexBigInt(big.NewInt(1e15)), Gas: &gas}),
 				),
 			},
 		},
@@ -784,11 +789,12 @@ func Test_PrepareBundle_SingleChildGroup_TolerateFailures_NotUnwrapped(t *testin
 
 	api := NewPublicBundleAPI(be)
 
+	gas := hexutil.Uint64(21000)
 	args := RPCExecutionProposal{
 		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 			Steps: []any{
 				groupEntryWithFlags(
-					false, true, txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
+					false, true, txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Gas: &gas}),
 				),
 			},
 		},
@@ -939,8 +945,8 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					OneOf: true,
 					Steps: []any{
-						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
-						txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0)}),
+						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Gas: &explicitGas}),
+						txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Gas: &explicitGas}),
 					},
 				},
 			},
@@ -952,10 +958,10 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 					Steps: []any{
 						groupEntryWithFlags(true, false,
 							groupEntry(
-								txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
-								txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr3, Nonce: rpctest.ToHexUint64(0)}),
+								txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Gas: &explicitGas}),
+								txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr3, Nonce: rpctest.ToHexUint64(0), Gas: &explicitGas}),
 							),
-							txEntry(ethapi.TransactionArgs{From: &addr3, To: &addr1, Nonce: rpctest.ToHexUint64(0)}),
+							txEntry(ethapi.TransactionArgs{From: &addr3, To: &addr1, Nonce: rpctest.ToHexUint64(0), Gas: &explicitGas}),
 						),
 					},
 				},
@@ -993,8 +999,8 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			proposal: RPCExecutionProposal{
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
-						txEntryWithFlags(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}, true, false),
-						txEntryWithFlags(ethapi.TransactionArgs{From: &addr2, To: &addr3, Nonce: rpctest.ToHexUint64(0)}, false, true),
+						txEntryWithFlags(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Gas: &explicitGas}, true, false),
+						txEntryWithFlags(ethapi.TransactionArgs{From: &addr2, To: &addr3, Nonce: rpctest.ToHexUint64(1), Gas: &explicitGas}, false, true),
 					},
 				},
 			},
@@ -1031,6 +1037,164 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 
 			if tc.extraCheck != nil {
 				tc.extraCheck(t, result)
+			}
+		})
+	}
+}
+
+func Test_PrepareBundle_GasEstimationCompatibility(t *testing.T) {
+	addr1 := common.Address{1}
+	addr2 := common.Address{2}
+	gas := hexutil.Uint64(21000)
+
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(addr2, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		Build()
+	api := NewPublicBundleAPI(be)
+
+	tests := map[string]struct {
+		args          RPCExecutionProposal
+		errorContains string // empty means success expected
+	}{
+		// --- error cases: gas estimation needed + incompatible flags ---
+		"group tolerateFailures needs gas": {
+			args: RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+				Steps: []any{
+					groupEntryWithFlags(false, true,
+						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
+					),
+				},
+			}},
+			errorContains: "tolerateFailures",
+		},
+		"group oneOf needs gas": {
+			args: RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+				Steps: []any{
+					groupEntryWithFlags(true, false,
+						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Gas: &gas}),
+						txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0)}),
+					),
+				},
+			}},
+			errorContains: "oneOf",
+		},
+		"group oneOf+tolerateFailures needs gas": {
+			args: RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+				Steps: []any{
+					groupEntryWithFlags(true, true,
+						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
+					),
+				},
+			}},
+			errorContains: "tolerateFailures",
+		},
+		"step tolerateFailed needs gas": {
+			args: RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+				Steps: []any{
+					txEntryWithFlags(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}, true, false),
+				},
+			}},
+			errorContains: "tolerateFailed",
+		},
+		"step tolerateInvalid needs gas": {
+			args: RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+				Steps: []any{
+					txEntryWithFlags(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}, false, true),
+				},
+			}},
+			errorContains: "tolerateInvalid",
+		},
+		"step tolerateFailed+tolerateInvalid needs gas": {
+			args: RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+				Steps: []any{
+					txEntryWithFlags(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}, true, true),
+				},
+			}},
+			errorContains: "tolerateFailed",
+		},
+		"nested group tolerateFailures needs gas": {
+			args: RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+				Steps: []any{
+					groupEntry(
+						groupEntryWithFlags(false, true,
+							txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
+						),
+					),
+				},
+			}},
+			errorContains: "tolerateFailures",
+		},
+		"root tolerateFailures needs gas": {
+			args: RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+				TolerateFailures: true,
+				Steps: []any{
+					txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
+				},
+			}},
+			errorContains: "tolerateFailures",
+		},
+		// --- success cases: no incompatible flags, gas estimated ---
+		"flat proposal no flags gas estimated": {
+			args: RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+				Steps: []any{
+					txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
+					txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0)}),
+				},
+			}},
+		},
+		// --- success cases: all gas explicit, no estimation needed ---
+		"group tolerateFailures all gas explicit": {
+			args: RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+				Steps: []any{
+					groupEntryWithFlags(false, true,
+						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Gas: &gas}),
+					),
+				},
+			}},
+		},
+		"group oneOf all gas explicit": {
+			args: RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+				Steps: []any{
+					groupEntryWithFlags(true, false,
+						txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Gas: &gas}),
+						txEntry(ethapi.TransactionArgs{From: &addr2, To: &addr1, Nonce: rpctest.ToHexUint64(0), Gas: &gas}),
+					),
+				},
+			}},
+		},
+		"step tolerateFailed all gas explicit": {
+			args: RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+				Steps: []any{
+					txEntryWithFlags(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Gas: &gas}, true, false),
+				},
+			}},
+		},
+		"step tolerateInvalid all gas explicit": {
+			args: RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+				Steps: []any{
+					txEntryWithFlags(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Gas: &gas}, false, true),
+				},
+			}},
+		},
+		"step tolerateFailed+tolerateInvalid all gas explicit": {
+			args: RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+				Steps: []any{
+					txEntryWithFlags(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Gas: &gas}, true, true),
+				},
+			}},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			result, err := api.PrepareBundle(t.Context(), tc.args)
+			if tc.errorContains != "" {
+				require.ErrorContains(t, err, tc.errorContains)
+				require.Nil(t, result)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, result)
 			}
 		})
 	}
