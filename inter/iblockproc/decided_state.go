@@ -18,7 +18,6 @@ package iblockproc
 
 import (
 	"crypto/sha256"
-	"errors"
 	"math/big"
 	"slices"
 
@@ -220,17 +219,28 @@ func (es *EpochState) DecodeRLP(in *rlp.Stream) error {
 	}
 
 	// Decode V1 fields first.
-	err = errors.Join(
-		in.Decode(&es.Epoch),
-		in.Decode(&es.EpochStart),
-		in.Decode(&es.PrevEpochStart),
-		in.Decode(&es.EpochStateRoot),
-		in.Decode(&es.Validators),
-		in.Decode(&es.ValidatorStates),
-		in.Decode(&es.ValidatorProfiles),
-		in.Decode(&es.Rules),
-	)
-	if err != nil {
+	if err := in.Decode(&es.Epoch); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.EpochStart); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.PrevEpochStart); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.EpochStateRoot); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.Validators); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.ValidatorStates); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.ValidatorProfiles); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.Rules); err != nil {
 		return err
 	}
 
@@ -240,10 +250,14 @@ func (es *EpochState) DecodeRLP(in *rlp.Stream) error {
 	}
 
 	// If there is more, it is the V2 encoding.
-	return errors.Join(
-		in.Decode(&es.EpochEndBlockHash),
-		in.Decode(&es.EpochEndExecutionPlanChainHash),
-		in.Decode(&es.EpochSealingTxHashes),
-		in.ListEnd(),
-	)
+	if err := in.Decode(&es.EpochEndBlockHash); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.EpochEndExecutionPlanChainHash); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.EpochSealingTxHashes); err != nil {
+		return err
+	}
+	return nil
 }

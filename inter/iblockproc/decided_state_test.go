@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/inter"
@@ -66,7 +67,7 @@ func TestEpochState_Hash_AfterBrio_CoversV2Fields(t *testing.T) {
 	v1Hash := hash.BytesToHash(hasher.Sum(nil))
 
 	hashAfterBrio := state.Hash()
-	require.NotEqual(t, v1Hash, hashAfterBrio)
+	require.NotEqual(v1Hash, hashAfterBrio)
 
 	// Changes to V2 fields do change the hash.
 	state.EpochEndBlockHash[5]++
@@ -199,7 +200,6 @@ func TestEpochState_DecodeRLP_FailsOnIncorrectInputLength(t *testing.T) {
 		require.NoError(t, err)
 
 		var restored EpochState
-
 		switch i {
 		case numV1Fields:
 			// All V1 fields are here, the V1 part should have been decoded.
@@ -213,6 +213,41 @@ func TestEpochState_DecodeRLP_FailsOnIncorrectInputLength(t *testing.T) {
 			// Too little or too many fields should cause failures.
 			require.Error(t, rlp.DecodeBytes(encode, &restored))
 		}
+	}
+}
+
+func TestEpochState_DecodeRLP_FailsOnIncorrectListElementEncoding(t *testing.T) {
+
+	state := makeExampleEpochState()
+	encoded, err := rlp.EncodeToBytes(state)
+	require.NoError(t, err)
+
+	// get individual fields as a list
+	var list []any
+	require.NoError(t, rlp.DecodeBytes(encoded, &list))
+
+	for i := range list {
+		// The full list can be parsed
+		copy := slices.Clone(list)
+		encoded, err := rlp.EncodeToBytes(copy)
+		require.NoError(t, err)
+
+		var restored EpochState
+		require.NoError(t, rlp.DecodeBytes(encoded, &restored))
+		require.Equal(t, restored, state)
+
+		// Swapping element i between a list and scalar breaks the decoding.
+		if _, isList := copy[i].([]any); isList {
+			copy[i] = uint(12)
+		} else {
+			copy[i] = []any{uint(12), uint(14)}
+		}
+
+		// The modified list should no longer be decodable.
+		encoded, err = rlp.EncodeToBytes(copy)
+		require.NoError(t, err)
+
+		require.Error(t, rlp.DecodeBytes(encoded, &restored))
 	}
 }
 
