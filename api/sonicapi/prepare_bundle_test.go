@@ -908,7 +908,7 @@ func Test_PrepareBundle_SingleChildGroup_Plain_IsUnwrapped(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Transactions, 1)
 
-	// Plain group must collapses its single child.
+	// Plain group must collapse it's single child.
 	require.Len(t, result.ExecutionPlan.Steps, 1)
 	_, ok := result.ExecutionPlan.Steps[0].(RPCExecutionStepComposable)
 	require.True(t, ok, "expected group, not leaf")
