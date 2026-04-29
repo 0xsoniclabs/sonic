@@ -24,7 +24,6 @@ import (
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/api/sonicapi"
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/bundles"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
@@ -242,12 +241,7 @@ func TestBundleRPCFunctionsGeneric(t *testing.T) {
 func newBundleTestFixture(t *testing.T) *bundleTestFixture {
 	t.Helper()
 	require := require.New(t)
-
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	net := bundles.GetIntegrationTestNetWithBundlesEnabled(t)
 
 	_, receipt, err := tests.DeployContract(net, counter.DeployCounter)
 	require.NoError(err)
