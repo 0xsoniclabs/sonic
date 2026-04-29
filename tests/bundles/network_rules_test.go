@@ -45,21 +45,13 @@ func TestBundles_BundlesCanBeEnabledAndDisabledStartingFromBrio(t *testing.T) {
 	buildEnvelope := func(t *testing.T) *types.Transaction {
 		t.Helper()
 		senderA := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-		senderB := tests.NewAccount()
-		addressB := senderB.Address()
 		block, err := client.BlockNumber(t.Context())
 		require.NoError(t, err)
-		envelope, _, _ := bundle.NewBuilder().
+		return bundle.NewBuilder().
 			WithSigner(signer).
 			SetEarliest(block).
-			AllOf(
-				Step(t, net, senderA, &types.AccessListTx{
-					To:    &addressB,
-					Value: big.NewInt(1),
-				}),
-			).
-			BuildEnvelopeBundleAndPlan()
-		return envelope
+			AllOf(Step(t, net, senderA, &types.AccessListTx{})).
+			Build()
 	}
 
 	// Verify that bundles are initially disabled.
