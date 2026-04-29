@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -181,8 +182,12 @@ func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
 	if baseFee == nil {
 		return tx.GasPrice()
 	}
-	// EffectiveGasTip returns an error for negative values, this is no problem here
-	gasTip, _ := tx.EffectiveGasTip(baseFee)
+
+	// To ensure backwards compatibility the gas tip calculation has to be
+	// preserved in its current form. In case of an error due to a negative
+	// result, the computed tip still needs to be used as reported by the
+	// function for backward compatibility with previous client versions.
+	gasTip, _ := gasprice.EffectiveGasTip(tx, baseFee)
 	return new(big.Int).Add(baseFee, gasTip)
 }
 

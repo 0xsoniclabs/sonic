@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -128,8 +129,8 @@ func testTransactionPriceNonceSort(t *testing.T, baseFee *big.Int) {
 		if i+1 < len(txs) {
 			next := txs[i+1]
 			fromNext, _ := types.Sender(signer, next)
-			tip, err := txi.EffectiveGasTip(baseFee)
-			nextTip, nextErr := next.EffectiveGasTip(baseFee)
+			tip, err := gasprice.EffectiveGasTip(txi, baseFee)
+			nextTip, nextErr := gasprice.EffectiveGasTip(next, baseFee)
 			if err != nil || nextErr != nil {
 				t.Errorf("error calculating effective tip: %v, %v", err, nextErr)
 			}
