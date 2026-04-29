@@ -529,7 +529,7 @@ func (b *bundleTransactionRunner) CreateSnapshot() int {
 		trueTxOffset:                   b.trueTxOffset,
 		processedTransactionListLength: len(b.processedTransactions),
 		usedGas:                        *b.ctxt.usedGas,
-		gasPool:                        *b.ctxt.gasPool,
+		gasPool:                        b.ctxt.gasPool.Snapshot(),
 	}
 	b.snapshots = append(b.snapshots, snapshot)
 	return len(b.snapshots) - 1
@@ -549,7 +549,7 @@ func (b *bundleTransactionRunner) RevertToSnapshot(id int) {
 	b.trueTxOffset = snapshot.trueTxOffset
 	b.processedTransactions = b.processedTransactions[:snapshot.processedTransactionListLength]
 	*b.ctxt.usedGas = snapshot.usedGas
-	*b.ctxt.gasPool = snapshot.gasPool
+	b.ctxt.gasPool.Set(snapshot.gasPool)
 	b.snapshots = b.snapshots[:id]
 }
 
@@ -559,7 +559,7 @@ type bundleTransactionRunnerSnapshot struct {
 	trueTxOffset                   int
 	processedTransactionListLength int
 	usedGas                        uint64
-	gasPool                        core.GasPool
+	gasPool                        *core.GasPool
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single

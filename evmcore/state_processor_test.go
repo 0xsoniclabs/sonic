@@ -2853,7 +2853,7 @@ func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOn
 		trueTxOffset:                   15,
 		processedTransactionListLength: 5,
 		usedGas:                        6,
-		gasPool:                        *core.NewGasPool(7),
+		gasPool:                        core.NewGasPool(7),
 	}}
 	bundleTransactionRunner.RevertToSnapshot(0)
 
