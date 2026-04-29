@@ -2313,6 +2313,7 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 		signer:      signer,
 		baseFee:     big.NewInt(1),
 		usedGas:     new(uint64),
+		gasPool:     core.NewGasPool(1_000_000),
 		upgrades:    opera.Upgrades{TransactionBundles: true},
 		blockNumber: big.NewInt(0),
 		runner:      runner,
@@ -2432,6 +2433,7 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 				statedb: state,
 				signer:  signer,
 				usedGas: new(uint64),
+				gasPool: core.NewGasPool(1_000_000),
 				upgrades: opera.Upgrades{
 					GasSubsidies:       true,
 					TransactionBundles: true,
@@ -2807,8 +2809,9 @@ func TestBundleTransactionRunner_CreateSnapshot_CallsInterTxSnapshotOnStateDbAnd
 
 	state.EXPECT().InterTxSnapshot().Return(123)
 
+	gasPool := core.NewGasPool(10)
 	usedGas := uint64(11)
-	ctxt := &runContext{statedb: state, usedGas: &usedGas}
+	ctxt := &runContext{statedb: state, usedGas: &usedGas, gasPool: gasPool}
 	bundleTransactionRunner := &bundleTransactionRunner{
 		ctxt:                  ctxt,
 		legacyTxOffset:        12,
@@ -2820,10 +2823,11 @@ func TestBundleTransactionRunner_CreateSnapshot_CallsInterTxSnapshotOnStateDbAnd
 	require.Equal(t, 0, snapshotId)
 	require.Len(t, bundleTransactionRunner.snapshots, 1)
 	require.Equal(t, 123, bundleTransactionRunner.snapshots[0].stateDbSnapshot)
+	require.EqualValues(t, 10, bundleTransactionRunner.snapshots[0].gasPool.Gas())
+	require.EqualValues(t, 11, bundleTransactionRunner.snapshots[0].usedGas)
 	require.Equal(t, 12, bundleTransactionRunner.snapshots[0].legacyTxOffset)
 	require.Equal(t, 13, bundleTransactionRunner.snapshots[0].trueTxOffset)
 	require.Equal(t, 14, bundleTransactionRunner.snapshots[0].processedTransactionListLength)
-	require.EqualValues(t, 11, bundleTransactionRunner.snapshots[0].usedGas)
 }
 
 func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOnStateDbAndResetsLocalState(t *testing.T) {
@@ -2833,8 +2837,9 @@ func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOn
 	snapshotId := 123
 	state.EXPECT().RevertToInterTxSnapshot(snapshotId)
 
+	gasPool := core.NewGasPool(10)
 	usedGas := uint64(11)
-	ctxt := &runContext{statedb: state, usedGas: &usedGas}
+	ctxt := &runContext{statedb: state, usedGas: &usedGas, gasPool: gasPool}
 	bundleTransactionRunner := &bundleTransactionRunner{
 		ctxt:                  ctxt,
 		legacyTxOffset:        50,
@@ -2848,6 +2853,7 @@ func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOn
 		trueTxOffset:                   15,
 		processedTransactionListLength: 5,
 		usedGas:                        6,
+		gasPool:                        *core.NewGasPool(7),
 	}}
 	bundleTransactionRunner.RevertToSnapshot(0)
 
@@ -2856,9 +2862,10 @@ func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOn
 	require.Equal(t, 15, bundleTransactionRunner.trueTxOffset)
 	require.Len(t, bundleTransactionRunner.processedTransactions, 5)
 	require.EqualValues(t, 6, *ctxt.usedGas)
+	require.EqualValues(t, 7, ctxt.gasPool.Gas())
 }
 
-func TestBundleTransactionRunner_CreatingAndRevertingSnapshotsDoesNotAlterUsedGasAddressOfContext(t *testing.T) {
+func TestBundleTransactionRunner_CreatingAndRevertingSnapshotsDoesNotAlterUsedGasAndGasPoolAddressesOfContext(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
 
@@ -2866,8 +2873,9 @@ func TestBundleTransactionRunner_CreatingAndRevertingSnapshotsDoesNotAlterUsedGa
 	state.EXPECT().InterTxSnapshot().Return(snapshotId)
 	state.EXPECT().RevertToInterTxSnapshot(snapshotId)
 
+	gasPool := core.NewGasPool(10)
 	usedGas := uint64(11)
-	ctxt := &runContext{statedb: state, usedGas: &usedGas}
+	ctxt := &runContext{statedb: state, usedGas: &usedGas, gasPool: gasPool}
 	bundleTransactionRunner := &bundleTransactionRunner{
 		ctxt:                  ctxt,
 		legacyTxOffset:        50,
@@ -2875,13 +2883,16 @@ func TestBundleTransactionRunner_CreatingAndRevertingSnapshotsDoesNotAlterUsedGa
 		processedTransactions: make([]ProcessedTransaction, 100),
 	}
 
-	address := ctxt.usedGas
+	usedGasAddress := ctxt.usedGas
+	gasPoolAddress := ctxt.gasPool
 
 	snapshotId = bundleTransactionRunner.CreateSnapshot()
-	require.Same(t, address, ctxt.usedGas)
+	require.Same(t, usedGasAddress, ctxt.usedGas)
+	require.Same(t, gasPoolAddress, ctxt.gasPool)
 
 	bundleTransactionRunner.RevertToSnapshot(snapshotId)
-	require.Same(t, address, ctxt.usedGas)
+	require.Same(t, usedGasAddress, ctxt.usedGas)
+	require.Same(t, gasPoolAddress, ctxt.gasPool)
 }
 
 func TestBundleTransactionRunner_RevertToSnapshot_InvalidId_TriggerInvalidRevertInStateDB(t *testing.T) {
@@ -3035,7 +3046,7 @@ func TestBundleTransactionRunner_Snapshot_CoversTxOffsets(t *testing.T) {
 	state.EXPECT().RevertToInterTxSnapshot(gomock.Any()).AnyTimes()
 
 	runner := &bundleTransactionRunner{
-		ctxt:           &runContext{statedb: state, usedGas: new(uint64)},
+		ctxt:           &runContext{statedb: state, usedGas: new(uint64), gasPool: core.NewGasPool(1_000_000)},
 		legacyTxOffset: 5,
 		trueTxOffset:   7,
 	}
@@ -3126,7 +3137,7 @@ func TestBundleTransactionRunner_Snapshot_CoversProcessedTransactions(t *testing
 	}
 
 	runner := &bundleTransactionRunner{
-		ctxt:                  &runContext{statedb: state, usedGas: new(uint64)},
+		ctxt:                  &runContext{statedb: state, usedGas: new(uint64), gasPool: core.NewGasPool(1_000_000)},
 		processedTransactions: processedTransactions[:1],
 	}
 
@@ -3442,6 +3453,7 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 			ctxt := &runContext{
 				signer:      signer,
 				usedGas:     new(uint64),
+				gasPool:     core.NewGasPool(1_000_000),
 				upgrades:    upgrades,
 				blockNumber: big.NewInt(0),
 				statedb:     stateDb,
