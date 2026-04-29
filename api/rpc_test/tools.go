@@ -19,12 +19,14 @@ package rpctest
 import (
 	"crypto/ecdsa"
 	"math/big"
+	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/stretchr/testify/require"
 )
 
 // This file contains utility functions and types for the RPC tests.
@@ -36,14 +38,13 @@ type Wallet struct {
 }
 
 // NewWallet creates a new wallet with a random private key.
-func NewWallet() (*Wallet, error) {
+func NewWallet(t testing.TB) *Wallet {
+	t.Helper()
 	key, err := crypto.GenerateKey()
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err, "failed to generate wallet key")
 	return &Wallet{
 		PrivateKey: key,
-	}, nil
+	}
 }
 
 // Address returns the public address corresponding to the private key.
