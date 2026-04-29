@@ -437,11 +437,14 @@ func (l *txList) Filter(
 		}
 
 		// bundle envelopes with valid nonces but non-pending status are demoted
-		demotedEnvelopes := l.txs.filter(func(tx *types.Transaction) bool {
-			return bundle.IsEnvelope(tx) &&
-				tx.Nonce() < firstInvalidNonce &&
-				evaluateBundleStatus(tx) == bundleQueued
-		})
+		var demotedEnvelopes types.Transactions
+		if upgrades.Brio && hasBundles {
+			demotedEnvelopes = l.txs.filter(func(tx *types.Transaction) bool {
+				return bundle.IsEnvelope(tx) &&
+					tx.Nonce() < firstInvalidNonce &&
+					evaluateBundleStatus(tx) == bundleQueued
+			})
+		}
 		for _, tx := range demotedEnvelopes {
 			firstInvalidNonce = min(firstInvalidNonce, tx.Nonce())
 		}
