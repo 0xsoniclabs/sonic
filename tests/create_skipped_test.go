@@ -31,7 +31,7 @@ import (
 
 func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *testing.T) {
 
-	testSizes := map[string]uint64{
+	testSizes := map[string]int{
 		"Sonic":   50000,
 		"Allegro": 50000,
 		// From Brio onwards, the limit is doubled

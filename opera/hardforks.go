@@ -52,9 +52,10 @@ func GetBrioUpgrades() Upgrades {
 	}
 }
 
-// GetAllHardForksInOrder returns a mapping of all hard forks to their corresponding feature flags.
+// GetAllHardForksInOrder returns an iterator over all hard forks and their
+// corresponding feature flags in order.
 // This function returns an iterator and not a map to preserve the hardfork order.
-// some tests can use this property.
+// Some tests can use this property.
 func GetAllHardForksInOrder() iter.Seq2[string, Upgrades] {
 
 	hardforks := []struct {

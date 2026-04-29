@@ -53,7 +53,7 @@ func TestJsonGenesis_Network_RulesValidated_WithAllegroAndLater(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 
 			genesis := GenerateFakeJsonGenesis(upgrades, CreateEqualValidatorStake(1))
-			genesis.Rules.Upgrades.Llr = true // LLR is not supported in Allegro and Sonic
+			genesis.Rules.Upgrades.Llr = true // LLR is not supported in any hardfork
 			_, err := ApplyGenesisJson(genesis)
 
 			// Validation of network rules introduced in Allegro
