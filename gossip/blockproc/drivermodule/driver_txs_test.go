@@ -25,6 +25,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -170,6 +171,181 @@ func TestReceiptRewardWithBlobsAndFixEnabled(t *testing.T) {
 		t.Errorf("Originated increment not GasUsed*EffectiveGasPrice+BlobGasUsed*BlobBaseFee: expected %d, actual %d",
 			OrigOriginated+GasUsed*EffectiveGasPrice+BlobGasUsed*BlobBaseFee, originated)
 	}
+}
+
+func TestDriverTxListener_OnNewReceipt_SwitchesOnBrio(t *testing.T) {
+	// To detect whether the listener correctly switches on Brio, we can test
+	// whether fee charge transactions are processed correctly.
+	tests := map[string]struct {
+		Upgrades                         opera.Upgrades
+		ShouldCoverFeeChargeTransactions bool
+	}{
+		"sonic": {
+			Upgrades:                         opera.GetSonicUpgrades(),
+			ShouldCoverFeeChargeTransactions: false,
+		},
+		"allegro": {
+			Upgrades:                         opera.GetAllegroUpgrades(),
+			ShouldCoverFeeChargeTransactions: false,
+		},
+		"brio": {
+			Upgrades:                         opera.GetBrioUpgrades(),
+			ShouldCoverFeeChargeTransactions: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			nonceSource := subsidies.NewMockNonceSource(ctrl)
+			nonceSource.EXPECT().GetNonce(gomock.Any()).AnyTimes()
+
+			tx, err := subsidies.GetFeeChargeTransaction(
+				nonceSource,
+				subsidies.FundId{},
+				subsidies.GasConfig{},
+				123,
+				big.NewInt(456),
+			)
+			require.NoError(t, err)
+
+			fees, err := ComputeEffectiveFee(tx, nil)
+			require.NoError(t, err)
+			require.Equal(t, uint64(123*456), fees.Uint64())
+
+			validatorId := idx.ValidatorID(12)
+			valsBuilder := pos.NewBuilder()
+			valsBuilder.Set(validatorId, 100)
+			validators := valsBuilder.Build()
+
+			receipt := &types.Receipt{}
+
+			listener := &DriverTxListener{
+				es: iblockproc.EpochState{
+					Validators: validators,
+					Rules: opera.Rules{
+						Upgrades: tc.Upgrades,
+					},
+				},
+				bs: iblockproc.BlockState{
+					ValidatorStates: []iblockproc.ValidatorBlockState{{
+						Originated: big.NewInt(0),
+					}},
+				},
+			}
+
+			listener.OnNewReceipt(tx, receipt, validatorId, big.NewInt(123), nil)
+
+			// Before Brio, fee charge transactions should not be processed, so the
+			// receipt should not be attributed to the validator.
+			validatorIndex := listener.es.Validators.GetIdx(validatorId)
+			originated := listener.bs.ValidatorStates[validatorIndex].Originated.Uint64()
+
+			if tc.ShouldCoverFeeChargeTransactions {
+				require.Equal(t, fees.Uint64(), originated)
+			} else {
+				require.Zero(t, originated)
+			}
+		})
+	}
+}
+
+func TestDriverTxListener_onNewReceiptPostBrio_AddsFeesToRespectiveValidator(t *testing.T) {
+	receipt := &types.Receipt{
+		EffectiveGasPrice: big.NewInt(100),
+		GasUsed:           50,
+	}
+
+	creator := idx.ValidatorID(12)
+	other := idx.ValidatorID(14)
+
+	// build two validators with different stake
+	validatorBuilder := pos.NewBuilder()
+	validatorBuilder.Set(creator, 200)
+	validatorBuilder.Set(other, 100)
+	validators := validatorBuilder.Build()
+
+	creatorIndex := validators.GetIdx(creator)
+	otherIndex := validators.GetIdx(other)
+
+	initialFees := []*big.Int{
+		big.NewInt(1234), big.NewInt(4321),
+	}
+	state := make([]iblockproc.ValidatorBlockState, 2)
+	state[creatorIndex].Originated = new(big.Int).SetBytes(initialFees[0].Bytes())
+	state[otherIndex].Originated = new(big.Int).SetBytes(initialFees[1].Bytes())
+
+	listener := &DriverTxListener{
+		es: iblockproc.EpochState{
+			Validators: validators,
+		},
+		bs: iblockproc.BlockState{
+			ValidatorStates: state,
+		},
+	}
+
+	listener.onNewReceiptPostBrio(creator, nil, receipt)
+
+	fee, err := ComputeEffectiveFee(nil, receipt)
+	require.NoError(t, err)
+	require.Equal(t, 1, fee.Sign())
+
+	// The creator's originated fees should have been increased.
+	want := new(big.Int).Add(initialFees[0], fee)
+	got := listener.bs.ValidatorStates[creatorIndex].Originated
+	require.True(t, got.Cmp(want) == 0,
+		"want: %v, got %v", want, got,
+	)
+
+	// the other validator's originated fees should remain as they were.
+	want = initialFees[1]
+	got = listener.bs.ValidatorStates[otherIndex].Originated
+	require.True(t, got.Cmp(want) == 0,
+		"want: %v, got %v", want, got,
+	)
+}
+
+func TestDriverTxListener_onNewReceiptPostBrioInternal_OnFeeComputationError_WarnsAndBurnsFees(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	log := logger.NewMockLogger(ctrl)
+
+	tx := types.NewTx(&types.LegacyTx{})
+
+	receipt := &types.Receipt{}
+
+	log.EXPECT().Warn(
+		"error in fee computation",
+		"tx", tx.Hash(),
+		"usedGas", receipt.GasUsed,
+		"gasPrice", receipt.EffectiveGasPrice,
+		"blobGasUsed", receipt.BlobGasUsed,
+		"blobGasPrice", receipt.BlobGasPrice,
+		"err", gomock.Any(),
+	)
+
+	listener := &DriverTxListener{}
+	listener.onNewReceiptPostBrioInternal(0, tx, receipt, log)
+}
+
+func TestDriverTxListener_onNewReceiptPostBrioInternal_WarnsOnOriginatorZero(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	log := logger.NewMockLogger(ctrl)
+
+	tx := types.NewTx(&types.LegacyTx{})
+
+	receipt := &types.Receipt{
+		EffectiveGasPrice: big.NewInt(100),
+		GasUsed:           50,
+	}
+
+	log.EXPECT().Warn(
+		"failed to attribute transaction to validator, fees got burned",
+		"tx", tx.Hash(),
+		"fees", big.NewInt(100*50),
+	)
+
+	listener := &DriverTxListener{}
+	listener.onNewReceiptPostBrioInternal(0, tx, receipt, log)
 }
 
 func TestComputeEffectiveFee_ComputesFeesBySummingGasAndBlobFees(t *testing.T) {
