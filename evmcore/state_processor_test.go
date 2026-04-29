@@ -757,10 +757,10 @@ func TestApplyTransaction_SetsEffectiveGasPriceInReceipt(t *testing.T) {
 			blockContext := vm.BlockContext{
 				BlockNumber: big.NewInt(123),
 				BaseFee:     big.NewInt(0),
-				Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int) {
+				Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, _ *uint256.Int, _ *params.Rules) {
 					// do nothing
 				},
-				CanTransfer: func(_ vm.StateDB, _ common.Address, amount *uint256.Int) bool {
+				CanTransfer: func(_ vm.StateDB, _ common.Address, _ *uint256.Int) bool {
 					return true
 				},
 				Random: &common.Hash{}, // < signals Revision >= Merge
@@ -791,7 +791,7 @@ func TestApplyTransaction_SetsEffectiveGasPriceInReceipt(t *testing.T) {
 			state.EXPECT().EndTransaction().AnyTimes()
 			state.EXPECT().TxIndex().AnyTimes()
 
-			gp := new(core.GasPool).AddGas(1000000)
+			gp := core.NewGasPool(1000000)
 			var usedGas uint64
 
 			blockNum := big.NewInt(12)
