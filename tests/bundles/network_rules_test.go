@@ -28,7 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBundles_BundleOnlyTransactionsAreNotExecutedStartingFromBrio(t *testing.T) {
+func TestBundles_BundleOnlyTransactionsAreFilteredOutByTheTxPoolStartingFromBrio(t *testing.T) {
 	brioAndBundlesUpgrades := opera.GetBrioUpgrades()
 	brioAndBundlesUpgrades.TransactionBundles = true
 
@@ -103,7 +103,8 @@ func TestBundles_BundleOnlyTransactionsAreNotExecutedStartingFromBrio(t *testing
 				_, err = net.GetReceipt(normalHash)
 				require.NoError(t, err)
 
-				// After a block advanced, the bundle-only tx should not have been executed.
+				// After a block advanced, the bundle-only tx should not have reached the processor
+				// and should not have been executed.
 				blockNumber, err = client.BlockNumber(t.Context())
 				require.NoError(t, err)
 				balance, err = client.BalanceAt(t.Context(), recipientAddr, big.NewInt(int64(blockNumber)))
