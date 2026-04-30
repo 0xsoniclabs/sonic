@@ -323,8 +323,9 @@ func convertProposalToPlan(signer types.Signer, proposal RPCExecutionProposal) (
 	}
 
 	return bundle.ExecutionPlan{
-		Range: proposal.BlockRange.toBundleBlockRange(),
-		Root:  root,
+		Range:  proposal.BlockRange.toBundleBlockRange(),
+		Root:   root,
+		Period: bundle.MakeUnrestrictedTimePeriod(),
 	}, nil
 }
 
