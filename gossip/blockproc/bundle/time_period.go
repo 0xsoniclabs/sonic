@@ -33,8 +33,8 @@ type TimePeriod struct {
 }
 
 // MakeUnrestrictedTimePeriod creates a TimePeriod that is valid for the maximum
-// possible period, starting from the unix epoch (0) to the maximum uint64
-// value (math.MaxUint64).
+// possible duration, starting from the unix epoch (0). This corresponds to the
+// half-open interval [0, math.MaxUint64).
 func MakeUnrestrictedTimePeriod() TimePeriod {
 	return TimePeriod{
 		Start:    0,
