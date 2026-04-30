@@ -30,7 +30,7 @@ import (
 
 func TestMakeUnrestrictedTimePeriod_CreatesTheMaximumTimePeriod(t *testing.T) {
 	period := MakeUnrestrictedTimePeriod()
-	require.Zero(t, 0, period.Start)
+	require.Zero(t, period.Start)
 	require.Equal(t, uint64(math.MaxUint64), period.Duration)
 }
 

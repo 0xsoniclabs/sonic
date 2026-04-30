@@ -133,6 +133,23 @@ func TestExecutionPlan_encode_StartsWithVersionNumber(t *testing.T) {
 	require.Equal(t, byte(1), buf.Bytes()[0])
 }
 
+func TestExecutionPlan_encode_DetectsShortWriteForVersionNumber(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	writer := NewMockWriter(ctrl)
+	writer.EXPECT().Write(gomock.Any()).Return(0, nil)
+
+	executionPlan := ExecutionPlan{
+		Range:  BlockRange{First: 10, Length: 12},
+		Period: TimePeriod{Start: 100, Duration: 200},
+		Root: NewTxStep(TxReference{
+			From: common.Address{1},
+			Hash: common.Hash{2},
+		}),
+	}
+
+	require.ErrorContains(t, executionPlan.encode(writer), "failed to write version byte")
+}
+
 func TestExecutionPlan_encode_ReportsWriteError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 

@@ -43,7 +43,7 @@ func MakeUnrestrictedTimePeriod() TimePeriod {
 }
 
 // IsInPeriod checks if the given time is within this time period. The period is
-// the half-open interval [Start, Start+Length).
+// the half-open interval [Start, Start+Duration).
 func (p TimePeriod) IsInPeriod(time inter.Timestamp) bool {
 	return !p.IsBeforePeriod(time) && !p.IsAfterPeriod(time)
 }
@@ -56,7 +56,7 @@ func (p TimePeriod) IsBeforePeriod(time inter.Timestamp) bool {
 
 // IsAfterPeriod checks if the given time is after this time period.
 func (p TimePeriod) IsAfterPeriod(time inter.Timestamp) bool {
-	// p.Start + p.Length may overflow, so we subtract the start
+	// p.Start + p.Duration may overflow, so we subtract the start
 	return time >= p.Start && time-p.Start >= inter.Timestamp(p.Duration)
 }
 

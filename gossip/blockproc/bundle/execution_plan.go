@@ -54,9 +54,12 @@ func (p *ExecutionPlan) Hash() common.Hash {
 
 func (p *ExecutionPlan) encode(writer io.Writer) error {
 	// version byte for future compatibility
-	_, err := writer.Write([]byte{0x01})
+	n, err := writer.Write([]byte{0x01})
 	if err != nil {
 		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("failed to write version byte")
 	}
 
 	return errors.Join(
@@ -69,7 +72,7 @@ func (p *ExecutionPlan) encode(writer io.Writer) error {
 func (p *ExecutionPlan) decode(reader io.Reader) error {
 	// version byte for future compatibility
 	var version [1]byte
-	if _, err := reader.Read(version[:]); err != nil {
+	if _, err := io.ReadFull(reader, version[:]); err != nil {
 		return err
 	}
 	if version[0] != 0x01 {

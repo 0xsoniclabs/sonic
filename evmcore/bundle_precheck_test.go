@@ -126,7 +126,7 @@ func Test_GetBundleState_FutureBundle_ReturnsTemporaryBlocked(t *testing.T) {
 	require.Equal(t, state, makeTemporaryBlockedState("bundle targets future blocks"))
 }
 
-func Test_GetBundleState_ToLateForTimePeriod_ReturnsNonExecutable(t *testing.T) {
+func Test_GetBundleState_TooLateForTimePeriod_ReturnsNonExecutable(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainState := NewMockChainStateForBundleEval(ctrl)
 
