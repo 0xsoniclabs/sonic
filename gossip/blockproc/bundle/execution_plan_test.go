@@ -180,7 +180,7 @@ func TestExecutionPlan_encode_ReportsWriteError(t *testing.T) {
 			issue := fmt.Errorf("injected issue")
 			writer := NewMockWriter(ctrl)
 			gomock.InOrder(
-				writer.EXPECT().Write(gomock.Any()).Times(i),
+				writer.EXPECT().Write(gomock.Any()).Return(1, nil).Times(i),
 				writer.EXPECT().Write(gomock.Any()).Return(0, issue),
 				writer.EXPECT().Write(gomock.Any()).AnyTimes(),
 			)
