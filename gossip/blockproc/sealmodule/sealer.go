@@ -19,9 +19,11 @@ package sealmodule
 import (
 	"math/big"
 
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/Fantom-foundation/lachesis-base/lachesis"
+	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -59,7 +61,11 @@ func (s *OperaEpochsSealer) Update(bs iblockproc.BlockState, es iblockproc.Epoch
 }
 
 // SealEpoch is called after pre-internal transactions are executed
-func (s *OperaEpochsSealer) SealEpoch() (iblockproc.BlockState, iblockproc.EpochState) {
+func (s *OperaEpochsSealer) SealEpoch(
+	lastBlockHash hash.Hash,
+	lastExecPlanChainHash hash.Hash,
+	sealingTxs []*types.Transaction,
+) (iblockproc.BlockState, iblockproc.EpochState) {
 	// Select new validators
 	oldValidators := s.es.Validators
 	builder := pos.NewBigBuilder()
@@ -105,6 +111,14 @@ func (s *OperaEpochsSealer) SealEpoch() (iblockproc.BlockState, iblockproc.Epoch
 		s.bs.DirtyRules = nil
 	}
 	s.es.EpochStateRoot = s.bs.FinalizedStateRoot
+
+	// New shared state introduced in Brio.
+	s.es.EpochEndBlockHash = hash.Hash(lastBlockHash)
+	s.es.EpochEndExecutionPlanChainHash = hash.Hash(lastExecPlanChainHash)
+	s.es.EpochSealingTxHashes = nil
+	for _, sealingTx := range sealingTxs {
+		s.es.EpochSealingTxHashes = append(s.es.EpochSealingTxHashes, hash.Hash(sealingTx.Hash()))
+	}
 
 	s.bs.EpochGas = 0
 	s.bs.EpochCheaters = lachesis.Cheaters{}

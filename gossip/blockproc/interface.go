@@ -19,6 +19,7 @@ package blockproc
 import (
 	"math/big"
 
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -50,7 +51,11 @@ type TxTransactor interface {
 
 type SealerProcessor interface {
 	EpochSealing() bool
-	SealEpoch() (iblockproc.BlockState, iblockproc.EpochState)
+	SealEpoch(
+		lastBlockHash hash.Hash,
+		lastExecPlanChainHash hash.Hash,
+		sealingTxs []*types.Transaction,
+	) (iblockproc.BlockState, iblockproc.EpochState)
 	Update(bs iblockproc.BlockState, es iblockproc.EpochState)
 }
 

@@ -19,6 +19,7 @@ package iblockproc
 import (
 	"crypto/sha256"
 	"math/big"
+	"slices"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -118,7 +119,27 @@ type EpochStateV1 struct {
 	Rules opera.Rules
 }
 
-type EpochState EpochStateV1
+type EpochStateV2 struct {
+	// --- copied from V1 ---
+	Epoch          idx.Epoch
+	EpochStart     inter.Timestamp
+	PrevEpochStart inter.Timestamp
+
+	EpochStateRoot hash.Hash
+
+	Validators        *pos.Validators
+	ValidatorStates   []ValidatorEpochState
+	ValidatorProfiles ValidatorProfiles
+
+	Rules opera.Rules
+
+	// --- new fields in V2 ---
+	EpochEndBlockHash              hash.Hash
+	EpochEndExecutionPlanChainHash hash.Hash
+	EpochSealingTxHashes           []hash.Hash
+}
+
+type EpochState EpochStateV2
 
 func (es *EpochState) GetValidatorState(id idx.ValidatorID, validators *pos.Validators) *ValidatorEpochState {
 	validatorIdx := validators.GetIdx(id)
@@ -130,9 +151,12 @@ func (es EpochState) Duration() inter.Timestamp {
 }
 
 func (es EpochState) Hash() hash.Hash {
-	var hashed interface{}
-	if es.Rules.Upgrades.London {
+	var hashed any
+	if es.Rules.Upgrades.Brio {
 		hashed = &es
+	} else if es.Rules.Upgrades.London {
+		v1 := es.asV1()
+		hashed = &v1
 	} else {
 		es0 := EpochStateV0{
 			Epoch:             es.Epoch,
@@ -166,5 +190,74 @@ func (es EpochState) Copy() EpochState {
 	if es.Rules != (opera.Rules{}) {
 		cp.Rules = es.Rules.Copy()
 	}
+	cp.EpochSealingTxHashes = slices.Clone(es.EpochSealingTxHashes)
 	return cp
+}
+
+func (es EpochState) asV1() EpochStateV1 {
+	return EpochStateV1{
+		Epoch:             es.Epoch,
+		EpochStart:        es.EpochStart,
+		PrevEpochStart:    es.PrevEpochStart,
+		EpochStateRoot:    es.EpochStateRoot,
+		Validators:        es.Validators,
+		ValidatorStates:   es.ValidatorStates,
+		ValidatorProfiles: es.ValidatorProfiles,
+		Rules:             es.Rules,
+	}
+}
+
+// DecodeRLP implements a custom decoder supporting the decoding of V1 and V2
+// formats into the current EpochState type.
+func (es *EpochState) DecodeRLP(in *rlp.Stream) error {
+	*es = EpochState{} // reset to default values
+
+	// V1 and V2 are both encoded as lists of different length.
+	_, err := in.List()
+	if err != nil {
+		return err
+	}
+
+	// Decode V1 fields first.
+	if err := in.Decode(&es.Epoch); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.EpochStart); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.PrevEpochStart); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.EpochStateRoot); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.Validators); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.ValidatorStates); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.ValidatorProfiles); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.Rules); err != nil {
+		return err
+	}
+
+	// if that is all, it was a V1 encoding and we are done.
+	if !in.MoreDataInList() {
+		return in.ListEnd()
+	}
+
+	// If there is more, it is the V2 encoding.
+	if err := in.Decode(&es.EpochEndBlockHash); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.EpochEndExecutionPlanChainHash); err != nil {
+		return err
+	}
+	if err := in.Decode(&es.EpochSealingTxHashes); err != nil {
+		return err
+	}
+	return in.ListEnd()
 }
