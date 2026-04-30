@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"slices"
 
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -134,6 +135,8 @@ type builder struct {
 	signer           types.Signer
 	earliest         *uint64
 	rangeLength      *uint64
+	notBefore        *inter.Timestamp
+	periodDuration   *uint64
 	root             BuilderStep
 	envelopeKey      *ecdsa.PrivateKey
 	envelopeNonce    uint64
@@ -147,6 +150,16 @@ func (b *builder) SetEarliest(earliest uint64) *builder {
 
 func (b *builder) SetRangeLength(length uint64) *builder {
 	b.rangeLength = &length
+	return b
+}
+
+func (b *builder) SetNotBefore(limit inter.Timestamp) *builder {
+	b.notBefore = &limit
+	return b
+}
+
+func (b *builder) SetPeriodDuration(duration uint64) *builder {
+	b.periodDuration = &duration
 	return b
 }
 
@@ -203,6 +216,14 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 	}
 	if b.rangeLength != nil {
 		rangeLength = *b.rangeLength
+	}
+
+	period := MakeUnrestrictedTimePeriod()
+	if b.notBefore != nil {
+		period.Start = *b.notBefore
+	}
+	if b.periodDuration != nil {
+		period.Duration = *b.periodDuration
 	}
 
 	signer := b.GetSigner()
@@ -262,6 +283,7 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 			First:  earliest,
 			Length: rangeLength,
 		},
+		Period: period,
 	}
 
 	// Prepare index of transactions to be signed.

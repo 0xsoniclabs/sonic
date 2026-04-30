@@ -216,6 +216,9 @@ func validatePlan(plan ExecutionPlan) error {
 	if err := validateRange(plan.Range); err != nil {
 		return fmt.Errorf("invalid block range: %v", err)
 	}
+	if err := validatePeriod(plan.Period); err != nil {
+		return fmt.Errorf("invalid time period: %v", err)
+	}
 	return nil
 }
 
@@ -268,6 +271,15 @@ func validateRange(r BlockRange) error {
 	}
 	if size > MaxBlockRangeLength {
 		return fmt.Errorf("invalid block range, length %d, limit %d", size, MaxBlockRangeLength)
+	}
+	return nil
+}
+
+// validatePeriod checks that the given time period is valid, i.e. that it is
+// not empty.
+func validatePeriod(p TimePeriod) error {
+	if p.Duration == 0 {
+		return fmt.Errorf("invalid empty time period [%d,+%d)", p.Start, p.Duration)
 	}
 	return nil
 }

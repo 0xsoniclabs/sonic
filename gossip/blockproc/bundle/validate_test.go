@@ -376,8 +376,9 @@ func TestValidateBundle_NilTransaction_Rejected(t *testing.T) {
 	for name, transactions := range tests {
 		t.Run(name, func(t *testing.T) {
 			validPlan := ExecutionPlan{
-				Range: BlockRange{First: 10, Length: 20},
-				Root:  NewTxStep(TxReference{}),
+				Range:  BlockRange{First: 10, Length: 20},
+				Period: TimePeriod{Start: 100, Duration: 200},
+				Root:   NewTxStep(TxReference{}),
 			}
 			require.NoError(t, validatePlan(validPlan))
 
@@ -436,8 +437,9 @@ func TestValidateBundle_InconsistentChainIds_Rejected(t *testing.T) {
 	for name, transactions := range tests {
 		t.Run(name, func(t *testing.T) {
 			validPlan := ExecutionPlan{
-				Range: BlockRange{First: 10, Length: 20},
-				Root:  NewTxStep(TxReference{}),
+				Range:  BlockRange{First: 10, Length: 20},
+				Period: TimePeriod{Start: 100, Duration: 200},
+				Root:   NewTxStep(TxReference{}),
 			}
 			require.NoError(t, validatePlan(validPlan))
 
@@ -471,8 +473,9 @@ func TestValidateBundle_InconsistentChainIds_Rejected(t *testing.T) {
 
 func TestValidateBundle_MissingSigner_ProducesAnError(t *testing.T) {
 	validPlan := ExecutionPlan{
-		Range: BlockRange{First: 10, Length: 20},
-		Root:  NewTxStep(TxReference{}),
+		Range:  BlockRange{First: 10, Length: 20},
+		Period: TimePeriod{Start: 100, Duration: 200},
+		Root:   NewTxStep(TxReference{}),
 	}
 
 	bundle := TransactionBundle{
@@ -526,8 +529,9 @@ func TestValidateBundle_InvalidIndex_Rejected(t *testing.T) {
 
 func TestValidateBundle_UsageOfLegacyTransaction_Rejected(t *testing.T) {
 	validPlan := ExecutionPlan{
-		Range: BlockRange{First: 10, Length: 20},
-		Root:  NewTxStep(TxReference{}),
+		Range:  BlockRange{First: 10, Length: 20},
+		Period: TimePeriod{Start: 100, Duration: 200},
+		Root:   NewTxStep(TxReference{}),
 	}
 	require.NoError(t, validatePlan(validPlan))
 
@@ -651,16 +655,19 @@ func TestValidateBundle_AdditionalTransactionInIndex_Rejected(t *testing.T) {
 func TestValidatePlan_AcceptsValidPlans(t *testing.T) {
 	validPlans := []ExecutionPlan{
 		{
-			Root:  NewTxStep(TxReference{}),
-			Range: BlockRange{First: 10, Length: 1},
+			Root:   NewTxStep(TxReference{}),
+			Range:  BlockRange{First: 10, Length: 1},
+			Period: TimePeriod{Start: 100, Duration: 200},
 		},
 		{
-			Root:  NewAllOfStep(NewTxStep(TxReference{}), NewTxStep(TxReference{})),
-			Range: BlockRange{First: 10, Length: 10},
+			Root:   NewAllOfStep(NewTxStep(TxReference{}), NewTxStep(TxReference{})),
+			Range:  BlockRange{First: 10, Length: 10},
+			Period: TimePeriod{Start: 100, Duration: math.MaxUint64},
 		},
 		{
-			Root:  NewOneOfStep(NewTxStep(TxReference{}), NewTxStep(TxReference{})),
-			Range: BlockRange{First: 0, Length: MaxBlockRangeLength},
+			Root:   NewOneOfStep(NewTxStep(TxReference{}), NewTxStep(TxReference{})),
+			Range:  BlockRange{First: 0, Length: MaxBlockRangeLength},
+			Period: MakeUnrestrictedTimePeriod(),
 		},
 	}
 
@@ -691,6 +698,14 @@ func TestValidatePlan_DetectsInvalidPlans(t *testing.T) {
 				Range: BlockRange{First: 20, Length: MaxBlockRangeLength + 1}, // invalid range
 			},
 			issue: "invalid block range",
+		},
+		"invalid time period": {
+			plan: ExecutionPlan{
+				Root:   NewTxStep(TxReference{}),
+				Range:  BlockRange{First: 20, Length: 20},
+				Period: TimePeriod{Duration: 0}, // invalid
+			},
+			issue: "invalid time period",
 		},
 	}
 
@@ -911,6 +926,32 @@ func TestValidateRange_ComprehensiveRangeChecks(t *testing.T) {
 				)
 			}
 		}
+	}
+}
+
+func TestValidatePeriod_AcceptsValidPeriods(t *testing.T) {
+	tests := []TimePeriod{
+		{Start: 0, Duration: 1},
+		{Start: 10, Duration: 1},
+		{Start: 10, Duration: 10},
+		MakeUnrestrictedTimePeriod(),
+	}
+	for _, tc := range tests {
+		require.NoError(t, validatePeriod(tc))
+	}
+}
+
+func TestValidatePeriod_DetectsInvalidPeriods(t *testing.T) {
+	tests := []struct {
+		period TimePeriod
+		issue  string
+	}{
+		{period: TimePeriod{Start: 0, Duration: 0}, issue: "empty time period"},
+		{period: TimePeriod{Start: 10, Duration: 0}, issue: "empty time period"},
+	}
+
+	for _, tc := range tests {
+		require.ErrorContains(t, validatePeriod(tc.period), tc.issue)
 	}
 }
 

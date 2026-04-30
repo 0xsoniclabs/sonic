@@ -32,6 +32,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
@@ -148,7 +149,7 @@ func (p *StateProcessor) ProcessWithDifficulty(
 
 	// Iterate over and process the individual transactions
 	return runTransactions(newRunContext(
-		signer, header.BaseFee, statedb, gp, blockNumber, usedGas,
+		signer, header.BaseFee, statedb, gp, blockNumber, block.Time, usedGas,
 		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}}, p.forReplay,
 	), block.Transactions, 0, trueTxOffset)
 }
@@ -162,6 +163,7 @@ type runContext struct {
 	statedb     state.StateDB
 	gasPool     *core.GasPool
 	blockNumber *big.Int
+	blockTime   inter.Timestamp
 	usedGas     *uint64
 	onNewLog    func(*types.Log)
 	upgrades    opera.Upgrades
@@ -179,6 +181,7 @@ func newRunContext(
 	statedb state.StateDB,
 	gasPool *core.GasPool,
 	blockNumber *big.Int,
+	blockTime inter.Timestamp,
 	usedGas *uint64,
 	onNewLog func(*types.Log),
 	upgrades opera.Upgrades,
@@ -191,6 +194,7 @@ func newRunContext(
 		statedb:     statedb,
 		gasPool:     gasPool,
 		blockNumber: blockNumber,
+		blockTime:   blockTime,
 		usedGas:     usedGas,
 		onNewLog:    onNewLog,
 		upgrades:    upgrades,
@@ -452,6 +456,11 @@ func (r *transactionRunner) runTransactionBundleInternal(
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
 
+	if !plan.Period.IsInPeriod(ctxt.blockTime) {
+		log.Warn("Bundle skipped due to out-of-time execution plan", "tx", tx.Hash().Hex(), "planPeriod", plan.Period, "blockTime", ctxt.blockTime)
+		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
+	}
+
 	planHash := plan.Hash()
 	if ctxt.statedb.HasBundleRecentlyBeenProcessed(planHash) {
 		log.Warn("Rescheduled bundle skipped", "exec_plan_hash", planHash)
@@ -682,6 +691,7 @@ func (p *StateProcessor) BeginBlock(
 
 	return &TransactionProcessor{
 		blockNumber:   blockNumber,
+		blockTime:     block.Time,
 		gp:            gp,
 		header:        header,
 		onNewLog:      onNewLog,
@@ -696,6 +706,7 @@ func (p *StateProcessor) BeginBlock(
 // process individual transactions in the block.
 type TransactionProcessor struct {
 	blockNumber   *big.Int
+	blockTime     inter.Timestamp
 	gp            *core.GasPool
 	header        *EvmHeader
 	onNewLog      func(*types.Log)
@@ -712,7 +723,7 @@ type TransactionProcessor struct {
 // their receipts if they did not get skipped.
 func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary {
 	return runTransactions(newRunContext(
-		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber,
+		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber, tp.blockTime,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
 		false,
 	), []*types.Transaction{tx}, i, i)
