@@ -863,6 +863,7 @@ func TestValidateRange_AcceptsValidRanges(t *testing.T) {
 		{First: 0, Length: 100},
 		{First: 0, Length: MaxBlockRangeLength - 1},
 		{First: 0, Length: MaxBlockRangeLength},
+		{First: 10, Length: 1},
 		{First: 10, Length: 11},
 		{First: 10, Length: 100},
 	}
