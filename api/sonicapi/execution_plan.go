@@ -33,8 +33,8 @@ import (
 //
 //	{
 //	  "blockRange": {
-//	    "earliest": 12345678,
-//	    "latest": 12345778
+//	    "first": 12345678,
+//	    "length": 100
 //	  },
 //	  "steps": [
 //	    {

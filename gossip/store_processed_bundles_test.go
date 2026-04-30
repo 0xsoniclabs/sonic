@@ -1418,7 +1418,7 @@ func TestStore_EnumerateProcessedBundles_ReturnsAllAddedEntries(t *testing.T) {
 	require.NotZero(historyHash)
 
 	entries := store.EnumerateProcessedBundles()
-	// MaxBlockRange-1 entries (oldest was pruned)
+	// MaxBlockRangeLength-1 entries (oldest was pruned)
 	require.Len(entries, int(bundle.MaxBlockRangeLength-1))
 	require.Len(entries, len(expected),
 		"expected number of exported entries does not match expected")

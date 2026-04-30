@@ -42,8 +42,8 @@ import (
 //
 //	{
 //	  "blockRange": {
-//	    "earliest": "0xbc614e",
-//	    "latest": "0xbc61b2"
+//	    "first": "0xbc614e",
+//	    "length": "0x64"
 //	  },
 //	  "steps": [
 //	    {
