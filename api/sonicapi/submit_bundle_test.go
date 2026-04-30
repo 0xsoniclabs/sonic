@@ -84,8 +84,8 @@ func Test_SubmitBundle_ValidBundle_ReturnsExecutionPlanHash(t *testing.T) {
 			require.Equal(t, submittedPlan.Hash(), hash)
 
 			// Block range must be preserved.
-			require.EqualValues(t, 1, submittedPlan.Range.Earliest)
-			require.EqualValues(t, 100, submittedPlan.Range.Latest)
+			require.EqualValues(t, 1, submittedPlan.Range.First)
+			require.EqualValues(t, 100, submittedPlan.Range.Length)
 		})
 	}
 }
@@ -181,8 +181,8 @@ func Test_SubmitBundle_SubmittedEnvelopeMatchesBundleContents(t *testing.T) {
 	decoded, err := bundle.OpenEnvelope(signer, submitted)
 	require.NoError(t, err)
 	require.Len(t, decoded.Transactions, 2)
-	require.EqualValues(t, 10, decoded.Plan.Range.Earliest)
-	require.EqualValues(t, 20, decoded.Plan.Range.Latest)
+	require.EqualValues(t, 10, decoded.Plan.Range.First)
+	require.EqualValues(t, 20, decoded.Plan.Range.Length)
 }
 
 func Test_SubmitBundle_EnvelopeGasCoversAllBundledTxs(t *testing.T) {
@@ -229,12 +229,12 @@ func Test_SubmitBundle_EnvelopeGasCoversAllBundledTxs(t *testing.T) {
 
 func Test_SubmitBundle_BlockRangeIsPreservedInPool(t *testing.T) {
 	tests := map[string]struct {
-		earliest uint64
-		latest   uint64
+		first  uint64
+		length uint64
 	}{
-		"range [1,1]":   {1, 1},
-		"range [1,100]": {1, 100},
-		"range [50,50]": {50, 50},
+		"range [1,+1)":   {1, 1},
+		"range [1,+100)": {1, 100},
+		"range [50,+50)": {50, 50},
 	}
 
 	for name, tt := range tests {
@@ -255,7 +255,7 @@ func Test_SubmitBundle_BlockRangeIsPreservedInPool(t *testing.T) {
 			require.NoError(t, err)
 			addr := common.Address{2}
 
-			args := buildSubmitBundleArgs(signer, bundle.EF_Default, tt.earliest, tt.latest,
+			args := buildSubmitBundleArgs(signer, bundle.EF_Default, tt.first, tt.length,
 				bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas}),
 			)
 
@@ -265,27 +265,22 @@ func Test_SubmitBundle_BlockRangeIsPreservedInPool(t *testing.T) {
 
 			decoded, err := bundle.OpenEnvelope(signer, submitted)
 			require.NoError(t, err)
-			require.Equal(t, tt.earliest, decoded.Plan.Range.Earliest)
-			require.Equal(t, tt.latest, decoded.Plan.Range.Latest)
+			require.Equal(t, tt.first, decoded.Plan.Range.First)
+			require.Equal(t, tt.length, decoded.Plan.Range.Length)
 		})
 	}
 }
 
 func Test_SubmitBundle_InvalidBlockRange_ReturnsError(t *testing.T) {
 	tests := map[string]struct {
-		earliest uint64
-		latest   uint64
-		errMsg   string
+		first  uint64
+		length uint64
+		errMsg string
 	}{
-		"earliest > latest": {
-			earliest: 10,
-			latest:   5,
-			errMsg:   "invalid block range",
-		},
 		"range too large": {
-			earliest: 0,
-			latest:   bundle.MaxBlockRange + 1,
-			errMsg:   "invalid block range",
+			first:  15,
+			length: bundle.MaxBlockRangeLength + 1,
+			errMsg: "invalid block range",
 		},
 	}
 
@@ -306,7 +301,7 @@ func Test_SubmitBundle_InvalidBlockRange_ReturnsError(t *testing.T) {
 			tb, plan := bundle.NewBuilder().
 				WithSigner(signer).
 				SetEarliest(1).
-				SetLatest(10).
+				SetRangeLength(10).
 				With(bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas})).
 				BuildBundleAndPlan()
 
@@ -320,8 +315,8 @@ func Test_SubmitBundle_InvalidBlockRange_ReturnsError(t *testing.T) {
 
 			rpcPlan, err := NewRPCExecutionPlanComposable(plan)
 			require.NoError(t, err)
-			rpcPlan.BlockRange.Earliest = hexutil.Uint64(tt.earliest)
-			rpcPlan.BlockRange.Latest = hexutil.Uint64(tt.latest)
+			rpcPlan.BlockRange.First = hexutil.Uint64(tt.first)
+			rpcPlan.BlockRange.Length = hexutil.Uint64(tt.length)
 
 			args := SubmitBundleArgs{
 				SignedTransactions: signedTxs,
@@ -429,7 +424,7 @@ func Test_SubmitBundle_StepCountMismatch_ReturnsError(t *testing.T) {
 func buildSubmitBundleArgs(
 	signer types.Signer,
 	flags bundle.ExecutionFlags,
-	earliest, latest uint64,
+	first, length uint64,
 	steps ...bundle.BuilderStep,
 ) SubmitBundleArgs {
 	stepsWithFlags := make([]bundle.BuilderStep, len(steps))
@@ -446,8 +441,8 @@ func buildSubmitBundleArgs(
 
 	tb, plan := bundle.NewBuilder().
 		WithSigner(signer).
-		SetEarliest(earliest).
-		SetLatest(latest).
+		SetEarliest(first).
+		SetRangeLength(length).
 		With(root).
 		BuildBundleAndPlan()
 

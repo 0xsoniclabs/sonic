@@ -17,64 +17,67 @@
 package bundle
 
 import (
+	"fmt"
 	"io"
-	"math"
 
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
-	// MaxBlockRange is the maximum allowed block range (Latest - Earliest) for
-	// allowed for the validity period of a bundle.
-	MaxBlockRange = uint64(1024)
+	// MaxBlockRangeLength is the maximum allowed block range length being
+	// specified in execution plans of bundles. The limit is needed to limit
+	// the state information required to be maintained by validators for
+	// tracking processed execution plans.
+	MaxBlockRangeLength = uint64(1024)
 )
 
-// BlockRange represents a range of blocks, defined by an earliest and latest
-// block number. The covered block range is a closed interval [Earliest, Latest],
-// meaning that the earliest and latest blocks are included in the range.
-// For instance, [0,0] is a valid block range that only includes the block
-// number 0, while [0,1] includes both blocks 0 and 1. An interval where Latest
-// is smaller than Earliest, such as [1,0], is a valid empty range.
+// BlockRange defines a range of blocks. The range is defined by a first block
+// and the length of the range. All block numbers that satisfy
+//
+//	First <= blockNum < First + Length
+//
+// are included in the range. If Length is 0, the range is empty and does not
+// include any block numbers.
 type BlockRange struct {
-	Earliest uint64
-	Latest   uint64
+	First  uint64
+	Length uint64
 }
 
-// MakeMaxRangeStartingAt creates a block range of maximum allowed size, starting
-// at the given block number.
-func MakeMaxRangeStartingAt(blockNum uint64) BlockRange {
-	latest := blockNum + MaxBlockRange - 1
-	if blockNum > math.MaxUint64-MaxBlockRange {
-		// if the starting block number is too close to maxUint64,
-		// we cannot create a full range of MaxBlockRange blocks without overflowing.
-		// In this case, we create the largest possible range starting at blockNum,
-		// which ends at the maximum uint64 value.
-		latest = math.MaxUint64
-	}
+// MakeMaxRangeStartingAt creates a block range of maximum allowed size,
+// starting at the given block number. The resulting range may implicitly cover
+// blocks beyond math.MaxUint64 if the start block is high enough. The length
+// is not adjusted to cap block ranges at math.MaxUint64.
+func MakeMaxRangeStartingAt(first uint64) BlockRange {
 	return BlockRange{
-		Earliest: blockNum,
-		Latest:   latest,
+		First:  first,
+		Length: MaxBlockRangeLength,
 	}
-}
-
-// Size returns the size of the block range, which is the number of blocks
-// included in the range.
-func (r BlockRange) Size() uint64 {
-	if r.Latest < r.Earliest {
-		return 0
-	}
-	// overflow check
-	if r.Earliest == 0 && r.Latest == math.MaxUint64 {
-		return math.MaxUint64
-	}
-	return r.Latest - r.Earliest + 1
 }
 
 // IsInRange checks if the given block number is within this block range.
-// The range is a closed interval [Earliest, Latest], meaning that blocks with
-// numbers from Earliest through Latest (inclusive) are considered in range.
+// The range is the half-open interval [First, First+Length): a block number
+// is in range if First <= blockNum and blockNum is strictly less than the end
+// of the range. If Length is 0, the range is empty and no block number is in
+// range. The implementation avoids computing First+Length directly, so the
+// result remains correct even if that sum would overflow uint64.
 func (r BlockRange) IsInRange(blockNum uint64) bool {
-	return blockNum >= r.Earliest && blockNum <= r.Latest
+	return !r.IsBeforeRange(blockNum) && !r.IsAfterRange(blockNum)
+}
+
+// IsBeforeRange checks if the given block number is before this block range,
+// meaning that it is less than the first block number of the range.
+func (r BlockRange) IsBeforeRange(blockNum uint64) bool {
+	return blockNum < r.First
+}
+
+// IsAfterRange checks if the given block number is after this block range.
+func (r BlockRange) IsAfterRange(blockNum uint64) bool {
+	// r.First + r.Length may overflow, so we subtract the first
+	return blockNum >= r.First && blockNum-r.First >= r.Length
+}
+
+func (r BlockRange) String() string {
+	return fmt.Sprintf("[%d,+%d)", r.First, r.Length)
 }
 
 func (r BlockRange) encode(writer io.Writer) error {

@@ -102,10 +102,10 @@ func getBundleState(
 
 	// Quickest filter: check if the bundle is in the valid block range.
 	currentBlock := chain.GetLatestHeader().Number.Uint64()
-	if bundle.Plan.Range.Latest < currentBlock {
+	if bundle.Plan.Range.IsAfterRange(currentBlock) {
 		return makePermanentlyBlockedState("bundle has expired")
 	}
-	if bundle.Plan.Range.Earliest > currentBlock {
+	if bundle.Plan.Range.IsBeforeRange(currentBlock) {
 		return makeTemporaryBlockedState("bundle targets future blocks")
 	}
 

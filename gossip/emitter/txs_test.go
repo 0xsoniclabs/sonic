@@ -75,7 +75,7 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 				},
 			}
 
-			tx := bundle.NewBuilder().SetEarliest(50).SetLatest(150).WithSigner(signer).Build()
+			tx := bundle.NewBuilder().SetEarliest(50).SetRangeLength(100).WithSigner(signer).Build()
 
 			_, _, err := bundle.ValidateEnvelope(signer, tx)
 			require.NoError(err)
@@ -98,7 +98,7 @@ func Test_Emitter_isValidBundleTx_RejectsInvalidBundle(t *testing.T) {
 		}),
 		"bundle with out-of-range block numbers": bundle.NewBuilder().
 			SetEarliest(150).
-			SetLatest(250).
+			SetRangeLength(100).
 			Build(),
 	}
 
@@ -158,7 +158,7 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 				},
 			}
 
-			tx := bundle.NewBuilder().SetEarliest(50).SetLatest(150).Build()
+			tx := bundle.NewBuilder().SetEarliest(50).SetRangeLength(100).Build()
 
 			_, _, err := bundle.ValidateEnvelope(signer, tx)
 			require.NoError(t, err)

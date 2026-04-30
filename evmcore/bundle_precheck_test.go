@@ -88,7 +88,7 @@ func Test_GetBundleState_OutdatedBundle_ReturnsNonExecutable(t *testing.T) {
 
 	// Build an outdated bundle.
 	signer := types.LatestSignerForChainID(big.NewInt(1))
-	envelope := bundle.NewBuilder().SetLatest(currentBlock - 1).Build()
+	envelope := bundle.NewBuilder().SetEarliest(currentBlock - 1).SetRangeLength(1).Build()
 
 	_, _, err := bundle.ValidateEnvelope(signer, envelope)
 	require.NoError(t, err)
@@ -115,7 +115,7 @@ func Test_GetBundleState_FutureBundle_ReturnsTemporaryBlocked(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	envelop := bundle.NewBuilder().
 		SetEarliest(currentBlock + 1).
-		SetLatest(currentBlock + 10).
+		SetRangeLength(10).
 		Build()
 
 	_, _, err := bundle.ValidateEnvelope(signer, envelop)
@@ -145,7 +145,7 @@ func Test_GetBundleState_FailedTrialRun_ReturnsNonExecutable(t *testing.T) {
 
 	envelope := bundle.NewBuilder().
 		SetEarliest(currentBlock - 5).
-		SetLatest(currentBlock + 5).
+		SetRangeLength(10).
 		Build()
 
 	rejectEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) bool {
@@ -176,7 +176,7 @@ func Test_GetBundleState_ValidBundle_ReturnsRunnable(t *testing.T) {
 	// Build a bundle with a valid block window.
 	envelope := bundle.NewBuilder().
 		SetEarliest(currentBlock - 5).
-		SetLatest(currentBlock + 5).
+		SetRangeLength(10).
 		Build()
 
 	acceptEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) bool {

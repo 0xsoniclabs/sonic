@@ -265,7 +265,7 @@ func TestSonicTool_genesis_ExportImport_WithBundles(t *testing.T) {
 		"bundle info mismatch after genesis export-import")
 
 	// run enough blocks to make sure that the history hash is pruned.
-	generateNBlocks(t, net, int(bundle.MaxBlockRange)+10)
+	generateNBlocks(t, net, int(bundle.MaxBlockRangeLength)+10)
 
 	// run another bundle
 	bundleHash2, originalInfo2 := runBundle(t, net)

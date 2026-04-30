@@ -448,7 +448,7 @@ func (r *transactionRunner) runTransactionBundleInternal(
 	}
 
 	if !plan.Range.IsInRange(ctxt.blockNumber.Uint64()) {
-		log.Warn("Bundle skipped due to out-of-range execution plan", "tx", tx.Hash().Hex(), "planRange", fmt.Sprintf("[%d,%d]", plan.Range.Earliest, plan.Range.Latest), "blockNumber", ctxt.blockNumber.Uint64())
+		log.Warn("Bundle skipped due to out-of-range execution plan", "tx", tx.Hash().Hex(), "planRange", plan.Range, "blockNumber", ctxt.blockNumber.Uint64())
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
 

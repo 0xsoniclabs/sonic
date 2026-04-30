@@ -42,8 +42,8 @@ import (
 //
 //	{
 //	  "blockRange": {
-//	    "earliest": "0xbc614e",
-//	    "latest": "0xbc61b2"
+//	    "first": "0xbc614e",
+//	    "length": "0x64"
 //	  },
 //	  "steps": [
 //	    {
@@ -190,11 +190,9 @@ func createProposalRequestFromBundle(signer types.Signer, txBundle *bundle.Trans
 		return nil, fmt.Errorf("failed to create execution proposal: %w", err)
 	}
 
+	blockRange := fromBundleRange(plan.Range)
 	proposal := &RPCExecutionProposal{
-		BlockRange: &RPCRange{
-			Earliest: hexutil.Uint64(plan.Range.Earliest),
-			Latest:   hexutil.Uint64(plan.Range.Latest),
-		},
+		BlockRange:            &blockRange,
 		RPCExecutionPlanGroup: visitor.result,
 	}
 

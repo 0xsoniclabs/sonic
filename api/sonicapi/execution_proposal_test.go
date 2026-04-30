@@ -84,7 +84,7 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 				With(bundle.Step(key, &types.AccessListTx{})).
 				BuildBundle(),
 			json: fmt.Sprintf(`{
-				"blockRange":{"earliest":"0x0","latest":"0x3ff"},
+				"blockRange":{"first":"0x0","length":"0x400"},
 				"steps":[%s]
 			}`, s),
 		},
@@ -99,7 +99,7 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 				).
 				BuildBundle(),
 			json: fmt.Sprintf(`{
-				"blockRange":{"earliest":"0x0","latest":"0x3ff"},
+				"blockRange":{"first":"0x0","length":"0x400"},
 				"steps":[{"steps":[%s,%s]}]
 			}`, s, s),
 		},
@@ -115,7 +115,7 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 				).
 				BuildBundle(),
 			json: fmt.Sprintf(`{
-				"blockRange":{"earliest":"0x0","latest":"0x3ff"},
+				"blockRange":{"first":"0x0","length":"0x400"},
 				"steps":[{"oneOf":true,"steps":[{"steps":[%s]}]}]
 			}`, s),
 		},
@@ -134,7 +134,7 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 				).
 				BuildBundle(),
 			json: fmt.Sprintf(`{
-				"blockRange":{"earliest":"0x0","latest":"0x3ff"},
+				"blockRange":{"first":"0x0","length":"0x400"},
 				"steps":[{"steps":[%s,%s,%s]}]
 			}`, sTF, sTI, sTFI),
 		},
@@ -159,7 +159,7 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 				).
 				BuildBundle(),
 			json: fmt.Sprintf(`{
-				"blockRange":{"earliest":"0x0","latest":"0x3ff"},
+				"blockRange":{"first":"0x0","length":"0x400"},
 				"steps":[{"steps":[
 					{"oneOf":true,"steps":[%s]},
 					{"tolerateFailures":true,"oneOf":true,"steps":[%s]},
@@ -534,8 +534,8 @@ func TestCreateProposalRequestFromBundle(t *testing.T) {
 	require.NotNil(t, proposal)
 
 	// Check that the proposal contains the expected block range and steps
-	require.EqualValues(t, *rpctest.ToHexUint64(0), proposal.BlockRange.Earliest)
-	require.EqualValues(t, *rpctest.ToHexUint64(1023), proposal.BlockRange.Latest)
+	require.EqualValues(t, *rpctest.ToHexUint64(0), proposal.BlockRange.First)
+	require.EqualValues(t, *rpctest.ToHexUint64(1024), proposal.BlockRange.Length)
 	require.Len(t, proposal.Steps, 1)
 
 	// Nested bundle (AllOf with two steps)
@@ -820,8 +820,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 		"simple proposal with one step": {
 			proposal: RPCExecutionProposal{
 				BlockRange: &RPCRange{
-					Earliest: *rpctest.ToHexUint64(0),
-					Latest:   *rpctest.ToHexUint64(1023),
+					First:  *rpctest.ToHexUint64(0),
+					Length: *rpctest.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -837,7 +837,7 @@ func Test_convertProposalToPlan(t *testing.T) {
 				},
 			},
 			plan: bundle.NewBuilder().
-				SetEarliest(0).SetLatest(1023).
+				SetEarliest(0).SetRangeLength(1023).
 				WithSigner(signer).
 				With(
 					bundle.Step(key1, &types.AccessListTx{
@@ -851,8 +851,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 		"two steps in one group": {
 			proposal: RPCExecutionProposal{
 				BlockRange: &RPCRange{
-					Earliest: *rpctest.ToHexUint64(0),
-					Latest:   *rpctest.ToHexUint64(1023),
+					First:  *rpctest.ToHexUint64(0),
+					Length: *rpctest.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -876,7 +876,7 @@ func Test_convertProposalToPlan(t *testing.T) {
 				},
 			},
 			plan: bundle.NewBuilder().
-				SetEarliest(0).SetLatest(1023).
+				SetEarliest(0).SetRangeLength(1023).
 				WithSigner(signer).
 				AllOf(
 					bundle.Step(key1, &types.AccessListTx{
@@ -895,8 +895,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 		"different execution flags in steps": {
 			proposal: RPCExecutionProposal{
 				BlockRange: &RPCRange{
-					Earliest: *rpctest.ToHexUint64(0),
-					Latest:   *rpctest.ToHexUint64(1023),
+					First:  *rpctest.ToHexUint64(0),
+					Length: *rpctest.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -924,7 +924,7 @@ func Test_convertProposalToPlan(t *testing.T) {
 				},
 			},
 			plan: bundle.NewBuilder().
-				SetEarliest(0).SetLatest(1023).
+				SetEarliest(0).SetRangeLength(1023).
 				WithSigner(signer).
 				AllOf(
 					bundle.Step(key1, &types.AccessListTx{
@@ -944,8 +944,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 
 			proposal: RPCExecutionProposal{
 				BlockRange: &RPCRange{
-					Earliest: *rpctest.ToHexUint64(0),
-					Latest:   *rpctest.ToHexUint64(1023),
+					First:  *rpctest.ToHexUint64(0),
+					Length: *rpctest.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -975,7 +975,7 @@ func Test_convertProposalToPlan(t *testing.T) {
 			},
 
 			plan: bundle.NewBuilder().
-				SetEarliest(0).SetLatest(1023).
+				SetEarliest(0).SetRangeLength(1023).
 				WithSigner(signer).
 				OneOf(
 					bundle.Step(key1, &types.AccessListTx{
@@ -994,8 +994,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 		"OneOf group with different execution flags in steps": {
 			proposal: RPCExecutionProposal{
 				BlockRange: &RPCRange{
-					Earliest: *rpctest.ToHexUint64(0),
-					Latest:   *rpctest.ToHexUint64(1023),
+					First:  *rpctest.ToHexUint64(0),
+					Length: *rpctest.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -1026,7 +1026,7 @@ func Test_convertProposalToPlan(t *testing.T) {
 				},
 			},
 			plan: bundle.NewBuilder().
-				SetEarliest(0).SetLatest(1023).
+				SetEarliest(0).SetRangeLength(1023).
 				WithSigner(signer).
 				OneOf(
 					bundle.Step(key1, &types.AccessListTx{

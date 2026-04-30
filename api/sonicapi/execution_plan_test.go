@@ -302,9 +302,9 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			}`,
 		},
 		"plan with block range": {
-			plan: bundle.ExecutionPlan{Root: step1, Range: bundle.BlockRange{Earliest: 10, Latest: 20}},
+			plan: bundle.ExecutionPlan{Root: step1, Range: bundle.BlockRange{First: 10, Length: 20}},
 			expectedJson: `{
-				"blockRange":{"earliest":"0xa","latest":"0x14"},
+				"blockRange":{"first":"0xa","length":"0x14"},
 				"steps":[
 					{
 						"from":"0x0100000000000000000000000000000000000000",
@@ -314,9 +314,9 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			}`,
 		},
 		"plan with different start": {
-			plan: bundle.ExecutionPlan{Root: step1, Range: bundle.BlockRange{Earliest: 11, Latest: 20}},
+			plan: bundle.ExecutionPlan{Root: step1, Range: bundle.BlockRange{First: 11, Length: 20}},
 			expectedJson: `{
-				"blockRange":{"earliest":"0xb","latest":"0x14"},
+				"blockRange":{"first":"0xb","length":"0x14"},
 				"steps":[
 					{
 						"from":"0x0100000000000000000000000000000000000000",
@@ -326,9 +326,9 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			}`,
 		},
 		"plan with different end": {
-			plan: bundle.ExecutionPlan{Root: step1, Range: bundle.BlockRange{Earliest: 10, Latest: 21}},
+			plan: bundle.ExecutionPlan{Root: step1, Range: bundle.BlockRange{First: 10, Length: 21}},
 			expectedJson: `{
-				"blockRange":{"earliest":"0xa","latest":"0x15"},
+				"blockRange":{"first":"0xa","length":"0x15"},
 				"steps":[
 					{
 						"from":"0x0100000000000000000000000000000000000000",
@@ -346,10 +346,10 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 						bundle.NewTxStep(ref2).WithFlags(bundle.EF_TolerateInvalid),
 					),
 				),
-				Range: bundle.BlockRange{Earliest: 12345678, Latest: 12345778},
+				Range: bundle.BlockRange{First: 12345678, Length: 12345778},
 			},
 			expectedJson: `{
-				"blockRange":{"earliest":"0xbc614e","latest":"0xbc61b2"},
+				"blockRange":{"first":"0xbc614e","length":"0xbc61b2"},
 				"steps":[
 					{
 						"oneOf":true,
@@ -419,7 +419,7 @@ func Test_toBundleExecutionPlan_CanReturnErrors(t *testing.T) {
 	}
 
 	rpcPlan := RPCExecutionPlanComposable{
-		BlockRange: RPCRange{Earliest: 10, Latest: 20},
+		BlockRange: RPCRange{First: 10, Length: 20},
 		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 			Steps: []any{invalidStep},
 		},
