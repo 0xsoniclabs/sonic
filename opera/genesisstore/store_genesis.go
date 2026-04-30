@@ -225,24 +225,24 @@ func (s *Store) ProcessedBundles() genesis.ProcessedBundles {
 	return RawProcessedBundles{s.fMap}
 }
 
-func (s RawProcessedBundles) GetHistoryHash() (bundle.HistoryHash, bool) {
+func (s RawProcessedBundles) GetHistoryHashes() (bundle.BundleGenesisHistoryHashes, bool) {
 	for i := range 1000 {
 		f, err := s.fMap(BundleHashSection(i))
 		if err != nil {
 			continue
 		}
 		stream := rlp.NewStream(f, 0)
-		var h bundle.HistoryHash
-		err = stream.Decode(&h)
+		var hh bundle.BundleGenesisHistoryHashes
+		err = stream.Decode(&hh)
 		if err == io.EOF {
-			return bundle.HistoryHash{}, false
+			return bundle.BundleGenesisHistoryHashes{}, false
 		}
 		if err != nil {
 			log.Crit("Failed to decode Processed Bundles history hash", "err", err)
 		}
-		return h, true
+		return hh, true
 	}
-	return bundle.HistoryHash{}, false
+	return bundle.BundleGenesisHistoryHashes{}, false
 }
 
 func (s RawProcessedBundles) ForEach(fn func(bundle.ExecutionInfo) bool) {

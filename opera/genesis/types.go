@@ -51,7 +51,7 @@ type (
 	}
 	ProcessedBundles interface {
 		ForEach(fn func(bundle.ExecutionInfo) bool)
-		GetHistoryHash() (bundle.HistoryHash, bool)
+		GetHistoryHashes() (bundle.BundleGenesisHistoryHashes, bool)
 	}
 	FwsLiveSection interface {
 		GetReader() (io.Reader, error)

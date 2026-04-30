@@ -40,3 +40,13 @@ type HistoryHash struct {
 	BlockNumber uint64
 	Hash        common.Hash
 }
+
+// BundleGenesisHistoryHashes carries both the latest and the oldest
+// cumulative history hashes for genesis export and import. The latest field
+// allows importers to verify that replayed bundle entries produce the correct
+// history hash for the oldest block still in the retention window, catching
+// any mismatch between the exported entries and the expected history.
+type BundleGenesisHistoryHashes struct {
+	Latest HistoryHash
+	Oldest HistoryHash
+}
