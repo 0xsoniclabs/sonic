@@ -424,7 +424,7 @@ func Test_SubmitBundle_StepCountMismatch_ReturnsError(t *testing.T) {
 func buildSubmitBundleArgs(
 	signer types.Signer,
 	flags bundle.ExecutionFlags,
-	earliest, latest uint64,
+	first, length uint64,
 	steps ...bundle.BuilderStep,
 ) SubmitBundleArgs {
 	stepsWithFlags := make([]bundle.BuilderStep, len(steps))
@@ -441,8 +441,8 @@ func buildSubmitBundleArgs(
 
 	tb, plan := bundle.NewBuilder().
 		WithSigner(signer).
-		SetEarliest(earliest).
-		SetRangeLength(latest).
+		SetEarliest(first).
+		SetRangeLength(length).
 		With(root).
 		BuildBundleAndPlan()
 

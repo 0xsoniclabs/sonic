@@ -43,11 +43,13 @@ type BlockRange struct {
 	Length uint64
 }
 
-// MakeMaxRangeStartingAt creates a block range of maximum allowed size, starting
-// at the given block number.
-func MakeMaxRangeStartingAt(blockNum uint64) BlockRange {
+// MakeMaxRangeStartingAt creates a block range of maximum allowed size,
+// starting at the given block number. The resulting range may implicitly cover
+// blocks beyond math.MaxUint64 if the start block is high enough. The length
+// is not adjusted to cap block ranges at math.MaxUint64.
+func MakeMaxRangeStartingAt(first uint64) BlockRange {
 	return BlockRange{
-		First:  blockNum,
+		First:  first,
 		Length: MaxBlockRangeLength,
 	}
 }
@@ -71,7 +73,7 @@ func (r BlockRange) IsBeforeRange(blockNum uint64) bool {
 // IsAfterRange checks if the given block number is after this block range.
 func (r BlockRange) IsAfterRange(blockNum uint64) bool {
 	// r.First + r.Length may overflow, so we subtract the first
-	return blockNum > r.First && blockNum-r.First >= r.Length
+	return blockNum >= r.First && blockNum-r.First >= r.Length
 }
 
 func (r BlockRange) String() string {

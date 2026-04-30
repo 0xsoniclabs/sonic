@@ -83,9 +83,24 @@ func TestBlockRange_IsInRange_ReturnsTrueIfBlockNumberIsWithinRange(t *testing.T
 			current:    10,
 			want:       true,
 		},
-		"invalid range": {
+		"single block range before": {
+			BlockRange: BlockRange{First: 10, Length: 1},
+			current:    9,
+			want:       false,
+		},
+		"single block range after": {
+			BlockRange: BlockRange{First: 10, Length: 1},
+			current:    11,
+			want:       false,
+		},
+		"empty range before": {
 			BlockRange: BlockRange{First: 20, Length: 0},
-			current:    15,
+			current:    19,
+			want:       false,
+		},
+		"empty range after": {
+			BlockRange: BlockRange{First: 20, Length: 0},
+			current:    20,
 			want:       false,
 		},
 	}
@@ -111,11 +126,13 @@ func TestBlockRange_IsBeforeRange_ReturnsTrueIfBlockNumberIsBeforeRange(t *testi
 
 func TestBlockRange_IsAfterRange_ReturnsTrueIfBlockNumberIsAfterRange(t *testing.T) {
 	for first := range uint64(10) {
-		for cur := range uint64(10) {
-			r := BlockRange{First: first, Length: 2}
-			want := cur >= first+2
-			got := r.IsAfterRange(cur)
-			require.Equal(t, want, got)
+		for length := range uint64(10) {
+			for cur := range uint64(10) {
+				r := BlockRange{First: first, Length: length}
+				want := cur >= first+length
+				got := r.IsAfterRange(cur)
+				require.Equal(t, want, got)
+			}
 		}
 	}
 }

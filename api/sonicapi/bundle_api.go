@@ -26,8 +26,9 @@ import (
 // sanitizeBlockRange checks that the provided block range is valid and within
 // allowed limits, defaulting to a sensible range if not provided.
 func sanitizeBlockRange(currentBlock uint64, blockRange *RPCRange) (RPCRange, error) {
+	nextBlock := max(currentBlock+1, currentBlock)
 	if blockRange == nil {
-		maxRange := bundle.MakeMaxRangeStartingAt(currentBlock + 1)
+		maxRange := bundle.MakeMaxRangeStartingAt(nextBlock)
 		return RPCRange{
 			First:  hexutil.Uint64(maxRange.First),
 			Length: hexutil.Uint64(maxRange.Length),
@@ -37,7 +38,7 @@ func sanitizeBlockRange(currentBlock uint64, blockRange *RPCRange) (RPCRange, er
 	// If first is not specified, set it to currentBlock + 1.
 	first := uint64(blockRange.First)
 	if first == 0 {
-		first = currentBlock + 1
+		first = nextBlock
 	}
 
 	// Sanitize the length of the range.

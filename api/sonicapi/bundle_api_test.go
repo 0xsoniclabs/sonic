@@ -17,6 +17,7 @@
 package sonicapi
 
 import (
+	"math"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -65,6 +66,11 @@ func Test_sanitizeBlockRange(t *testing.T) {
 		"current block zero earliest is one": {
 			currentBlock: 0,
 			wantFirst:    1,
+			wantLength:   bundle.MaxBlockRangeLength,
+		},
+		"no overflow of first": {
+			currentBlock: math.MaxUint64,
+			wantFirst:    math.MaxUint64,
 			wantLength:   bundle.MaxBlockRangeLength,
 		},
 	}
