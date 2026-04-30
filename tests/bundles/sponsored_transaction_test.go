@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
@@ -134,10 +135,21 @@ func TestBundle_RevertedBundleDoesNotConsumeSponsoredFunds(t *testing.T) {
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 	counterAddr := receipt.ContractAddress
 
+	// check that the registry account has zero balance, therefore no funds for
+	// any use
+	balanceInRegistry, err := client.BalanceAt(t.Context(), registry.GetAddress(), nil)
+	require.NoError(t, err)
+	require.EqualValues(t, 0, balanceInRegistry.Uint64())
+
 	// Create a sponsored sender and fund its sponsorship.
 	sponsoredSender := tests.NewAccount()
 	fundsForOneExecution := big.NewInt(5e15)
 	gas_subsidies.Fund(t, net, sponsoredSender.Address(), fundsForOneExecution)
+
+	// verify that the registry account has received the funds
+	balanceInRegistry, err = client.BalanceAt(t.Context(), registry.GetAddress(), nil)
+	require.NoError(t, err)
+	require.EqualValues(t, fundsForOneExecution.Uint64(), balanceInRegistry.Uint64())
 
 	// Create a regular sender with funds.
 	senders := tests.MakeAccountsWithBalance(t, net, 2, big.NewInt(1e18))
@@ -186,23 +198,8 @@ func TestBundle_RevertedBundleDoesNotConsumeSponsoredFunds(t *testing.T) {
 	require.NoError(t, err, "failed to get counter value")
 	require.Equal(t, int64(0), got.Int64(), "unexpected counter value")
 
-	// Ensure there are still sufficient funds
-	transaction := types.MustSignNewTx(sponsoredSender.PrivateKey, signer, sponsoredTxData)
-	require.NoError(t, client.SendTransaction(t.Context(), transaction))
-
-	// Wait for the transaction to be processed.
-	receipt, err = net.GetReceipt(transaction.Hash())
+	// Ensure that funds remain untouched
+	balanceInRegistry, err = client.BalanceAt(t.Context(), registry.GetAddress(), nil)
 	require.NoError(t, err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-
-	// Ensure the sponsored transaction was successful and the counter has been incremented.
-	got, err = counterContract.GetCount(&bind.CallOpts{BlockNumber: receipt.BlockNumber})
-	require.NoError(t, err, "failed to get counter value")
-	require.Equal(t, int64(1), got.Int64(), "unexpected counter value")
-
-	// Ensure there are no more funds
-	sponsoredTxData.Nonce += 1
-	transaction = types.MustSignNewTx(sponsoredSender.PrivateKey, signer, sponsoredTxData)
-	err = client.SendTransaction(t.Context(), transaction)
-	require.ErrorContains(t, err, "transaction sponsorship rejected")
+	require.EqualValues(t, fundsForOneExecution.Uint64(), balanceInRegistry.Uint64())
 }
