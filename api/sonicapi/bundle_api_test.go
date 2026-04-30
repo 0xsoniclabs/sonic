@@ -73,6 +73,11 @@ func Test_sanitizeBlockRange(t *testing.T) {
 			wantFirst:    math.MaxUint64,
 			wantLength:   bundle.MaxBlockRangeLength,
 		},
+		"specified range is in the past": {
+			currentBlock:  10,
+			blockRange:    &RPCRange{First: hexN(5), Length: hexN(3)},
+			errorContains: "invalid block range",
+		},
 	}
 
 	for name, tc := range tests {
