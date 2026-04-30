@@ -174,15 +174,15 @@ func Test_GetBundleState_ToEarlyForTimePeriod_ReturnsTemporaryBlocked(t *testing
 
 	// Build a bundle with a block window in the future
 	signer := types.LatestSignerForChainID(big.NewInt(1))
-	envelop := bundle.NewBuilder().
+	envelope := bundle.NewBuilder().
 		SetNotBefore(currentTime + 100).
 		SetPeriodDuration(50).
 		Build()
 
-	_, _, err := bundle.ValidateEnvelope(signer, envelop)
+	_, _, err := bundle.ValidateEnvelope(signer, envelope)
 	require.NoError(t, err)
 
-	state := GetBundleState(chainState, nil, envelop)
+	state := GetBundleState(chainState, nil, envelope)
 	require.Equal(t, state, makeTemporaryBlockedState("bundle targets future time period"))
 }
 
