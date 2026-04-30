@@ -25,6 +25,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -387,6 +388,7 @@ func (l *txList) Filter(
 	gasLimit uint64,
 	isSponsored utils.TransactionCheckFunc,
 	evaluateBundleStatus func(*types.Transaction) bundlePoolStatus,
+	upgrades opera.Upgrades,
 ) (types.Transactions, types.Transactions) {
 
 	hasSponsored := l.txs.containsFunc(subsidies.IsSponsorshipRequest)
@@ -403,14 +405,18 @@ func (l *txList) Filter(
 
 	// Filter out all the transactions above the account's funds
 	removed := l.txs.Filter(func(tx *types.Transaction) bool {
-		// Bundle transactions need to be checked before sponsored transactions
-		// since bundle envelopes may qualify as sponsored transactions.
-		if bundle.IsEnvelope(tx) {
-			status := evaluateBundleStatus(tx)
-			if status != bundlePending {
-				containsNonExecutableBundles = true
+		// Before Brio, bundle envelopes are regular transactions and must not
+		// be subject to bundle-specific filtering in the pool.
+		if upgrades.Brio {
+			// Bundle transactions need to be checked before sponsored transactions
+			// since bundle envelopes may qualify as sponsored transactions.
+			if bundle.IsEnvelope(tx) {
+				status := evaluateBundleStatus(tx)
+				if status != bundlePending {
+					containsNonExecutableBundles = true
+				}
+				return status == bundleRejected
 			}
-			return status == bundleRejected
 		}
 		if subsidies.IsSponsorshipRequest(tx) {
 			return !isSponsored(tx)
@@ -431,11 +437,14 @@ func (l *txList) Filter(
 		}
 
 		// bundle envelopes with valid nonces but non-pending status are demoted
-		demotedEnvelopes := l.txs.filter(func(tx *types.Transaction) bool {
-			return bundle.IsEnvelope(tx) &&
-				tx.Nonce() < firstInvalidNonce &&
-				evaluateBundleStatus(tx) == bundleQueued
-		})
+		var demotedEnvelopes types.Transactions
+		if upgrades.Brio && hasBundles {
+			demotedEnvelopes = l.txs.filter(func(tx *types.Transaction) bool {
+				return bundle.IsEnvelope(tx) &&
+					tx.Nonce() < firstInvalidNonce &&
+					evaluateBundleStatus(tx) == bundleQueued
+			})
+		}
 		for _, tx := range demotedEnvelopes {
 			firstInvalidNonce = min(firstInvalidNonce, tx.Nonce())
 		}

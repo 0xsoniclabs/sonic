@@ -1529,8 +1529,10 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 	isSponsored := pool.getSubsidiesCheckerForReorg()
 	evaluateBundleStatus := pool.getBundlesCheckerForPromotion()
 	canPromote := func(tx *types.Transaction) bool {
-		if bundle.IsEnvelope(tx) {
-			return evaluateBundleStatus(tx) == bundlePending
+		if pool.chain.CurrentRules().Upgrades.Brio {
+			if bundle.IsEnvelope(tx) {
+				return evaluateBundleStatus(tx) == bundlePending
+			}
 		}
 		return true
 	}
@@ -1560,6 +1562,7 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 			pool.currentMaxGas,
 			isSponsored,
 			evaluateBundleStatus,
+			pool.chain.CurrentRules().Upgrades,
 		)
 		for _, tx := range drops {
 			hash := tx.Hash()
@@ -1791,6 +1794,7 @@ func (pool *TxPool) demoteUnexecutables() {
 			pool.currentMaxGas,
 			isSponsored,
 			isBundlePending,
+			pool.chain.CurrentRules().Upgrades,
 		)
 		for _, tx := range drops {
 			hash := tx.Hash()

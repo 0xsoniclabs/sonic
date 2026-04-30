@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -94,7 +95,9 @@ func TestTxList_Filter_WithSponsoredTransactions_RetainsCovered(t *testing.T) {
 
 	list := newTxList(true)
 	for _, tx := range txs {
-		list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		added, replaced := list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		require.True(added, "transaction was not added to the list")
+		require.Empty(replaced, "no transaction should have been replaced")
 	}
 
 	// Each sponsored transaction should be checked.
@@ -102,13 +105,50 @@ func TestTxList_Filter_WithSponsoredTransactions_RetainsCovered(t *testing.T) {
 		return tx.Nonce()%2 == 0
 	}
 
-	removed, _ := list.Filter(big.NewInt(1e18), 1_000_000, checker, nil)
+	removed, _ := list.Filter(big.NewInt(1e18), 1_000_000, checker, nil, opera.GetBrioUpgrades())
 
 	// All non-sponsored transactions should be removed.
 	require.Len(removed, 5)
 	for _, tx := range removed {
 		require.True(tx.Nonce()%2 == 1, "removed tx with nonce %d", tx.Nonce())
 	}
+}
+
+func TestTxList_Filter_TreatsEnvelopesAsNormalTx_BeforeBrio(t *testing.T) {
+	require := require.New(t)
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+	maxGas := uint64(1_000_000)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	txs := make([]*types.Transaction, 10)
+	for i := range txs {
+		tx := bundleTx(uint64(i), key)
+
+		gasLimit := tx.Gas()
+		if i%2 != 0 {
+			gasLimit = maxGas + 1 // make it invalid
+		}
+		txs[i] = types.MustSignNewTx(key, signer, &types.LegacyTx{
+			To:       tx.To(),
+			Gas:      gasLimit,
+			GasPrice: big.NewInt(1), // not an sponsorship request
+			Value:    tx.Value(),
+			Data:     tx.Data(),
+			Nonce:    tx.Nonce(),
+		})
+	}
+
+	list := newTxList(true)
+	for _, tx := range txs {
+		added, replaced := list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		require.True(added)
+		require.Empty(replaced)
+	}
+	costLimit := big.NewInt(1e18)
+	removed, invalidated := list.Filter(costLimit, maxGas, nil, nil, opera.GetAllegroUpgrades())
+	require.Len(removed, 5)
+	require.Len(invalidated, 4)
 }
 
 func TestTxList_Filter_WithBundleTransactions_RetainsPending(t *testing.T) {
@@ -123,7 +163,9 @@ func TestTxList_Filter_WithBundleTransactions_RetainsPending(t *testing.T) {
 
 	list := newTxList(true)
 	for _, tx := range txs {
-		list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		added, replaced := list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		require.True(added, "transaction was not added to the list")
+		require.Empty(replaced, "no transaction should have been replaced")
 	}
 
 	// Each bundle transaction should be checked.
@@ -134,7 +176,7 @@ func TestTxList_Filter_WithBundleTransactions_RetainsPending(t *testing.T) {
 	}
 
 	costLimit := big.NewInt(1e18)
-	removed, invalidated := list.Filter(costLimit, 1_000_000, nil, checker)
+	removed, invalidated := list.Filter(costLimit, 1_000_000, nil, checker, opera.GetBrioUpgrades())
 	require.Equal(10, callCount, "unexpected number of calls to checker")
 	require.Len(removed, 0)
 	require.Len(invalidated, 0)
@@ -152,7 +194,9 @@ func TestTxList_Filter_WithBundleTransactions_RemovesRejected(t *testing.T) {
 
 	list := newTxList(false)
 	for _, tx := range txs {
-		list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		added, replaced := list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		require.True(added, "transaction was not added to the list")
+		require.Empty(replaced, "no transaction should have been replaced")
 	}
 
 	// Each bundle transaction should be checked.
@@ -166,7 +210,7 @@ func TestTxList_Filter_WithBundleTransactions_RemovesRejected(t *testing.T) {
 	}
 
 	costLimit := big.NewInt(1e18)
-	removed, invalidated := list.Filter(costLimit, 1_000_000, nil, checker)
+	removed, invalidated := list.Filter(costLimit, 1_000_000, nil, checker, opera.GetBrioUpgrades())
 	require.Equal(10, callCount, "unexpected number of calls to checker")
 	require.Len(removed, 5, "odd nonce transactions should be removed")
 	require.Len(invalidated, 0, "list is not strict, so no transactions should be invalidated")
@@ -184,7 +228,9 @@ func TestTxList_Strict_Filter_WithBundleTransactions_InvalidatesTemporarilyBlock
 
 	list := newTxList(true)
 	for _, tx := range txs {
-		list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		added, replaced := list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		require.True(added, "transaction was not added to the list")
+		require.Empty(replaced, "no transaction should have been replaced")
 	}
 
 	// Each bundle transaction should be checked.
@@ -196,7 +242,7 @@ func TestTxList_Strict_Filter_WithBundleTransactions_InvalidatesTemporarilyBlock
 	}
 
 	costLimit := big.NewInt(1e18)
-	removed, invalidated := list.Filter(costLimit, 1_000_000, nil, checker)
+	removed, invalidated := list.Filter(costLimit, 1_000_000, nil, checker, opera.GetBrioUpgrades())
 	require.Len(removed, 0, "no transactions should be removed, just invalidated")
 	require.Len(invalidated, 5, "list is strict, so temporarily blocked transactions should be invalidated")
 }
@@ -214,7 +260,9 @@ func TestTxList_Strict_Filter_WithBundleTransactions_InvalidatesGappedNonces_Aft
 
 	list := newTxList(true)
 	for _, tx := range txs {
-		list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		added, replaced := list.Add(tx, DefaultTxPoolConfig.PriceBump)
+		require.True(added, "transaction was not added to the list")
+		require.Empty(replaced, "no transaction should have been replaced")
 	}
 
 	// Bundle transactions are to be demoted.
@@ -223,7 +271,7 @@ func TestTxList_Strict_Filter_WithBundleTransactions_InvalidatesGappedNonces_Aft
 	}
 
 	costLimit := big.NewInt(1e18)
-	removed, invalidated := list.Filter(costLimit, 1_000_000, nil, checker)
+	removed, invalidated := list.Filter(costLimit, 1_000_000, nil, checker, opera.GetBrioUpgrades())
 	require.Len(removed, 0, "no transactions should be removed, just invalidated")
 	require.Len(invalidated, 10, "invalid bundle with nonce 0 invalidates all transactions with nonce > 0")
 }
@@ -391,7 +439,7 @@ func TestTxList_Filter_RemovesAndInvalidatesTransactions(t *testing.T) {
 
 			costLimit := big.NewInt(1e18)
 			gasLimit := uint64(1_000_000)
-			removed, invalidated := list.Filter(costLimit, gasLimit, nil, test.checker)
+			removed, invalidated := list.Filter(costLimit, gasLimit, nil, test.checker, opera.GetBrioUpgrades())
 
 			assert.Len(t, removed, len(test.wantRemoved))
 			for _, nonce := range test.wantRemoved {
@@ -417,7 +465,7 @@ func TestTxList_Filter_ShortCircuitIfAllTransactionsAreBelowThreshold(t *testing
 	}
 
 	// Cost limit and gas limit are above all transactions, so Filter short-circuits.
-	removed, invalidated := list.Filter(big.NewInt(1e18), 1_000_000, nil, nil)
+	removed, invalidated := list.Filter(big.NewInt(1e18), 1_000_000, nil, nil, opera.GetBrioUpgrades())
 	require.Len(removed, 0)
 	require.Len(invalidated, 0)
 	require.Equal(5, list.Len(), "all transactions should remain in the list")
@@ -479,7 +527,7 @@ func BenchmarkTxListAdd(t *testing.B) {
 	t.ResetTimer()
 	for _, v := range rand.Perm(len(txs)) {
 		list.Add(txs[v], DefaultTxPoolConfig.PriceBump)
-		list.Filter(minimumTip, DefaultTxPoolConfig.MinimumTip, nil, nil)
+		list.Filter(minimumTip, DefaultTxPoolConfig.MinimumTip, nil, nil, opera.GetBrioUpgrades())
 	}
 }
 
