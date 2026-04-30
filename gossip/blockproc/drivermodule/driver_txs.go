@@ -150,6 +150,14 @@ func (p *DriverTxTransactor) PopInternalTxs(_ iblockproc.BlockCtx, _ iblockproc.
 }
 
 func (p *DriverTxListener) OnNewReceipt(tx *types.Transaction, r *types.Receipt, originator idx.ValidatorID, baseFee *big.Int, blobBaseFee *big.Int) {
+	if p.es.Rules.Upgrades.Brio {
+		p.onNewReceiptPostBrio(originator, tx, r)
+	} else {
+		p.onNewReceiptPreBrio(tx, r, originator, baseFee, blobBaseFee)
+	}
+}
+
+func (p *DriverTxListener) onNewReceiptPreBrio(tx *types.Transaction, r *types.Receipt, originator idx.ValidatorID, baseFee *big.Int, blobBaseFee *big.Int) {
 	if originator == 0 {
 		return
 	}
@@ -191,6 +199,56 @@ func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
 	// function for backward compatibility with previous client versions.
 	gasTip, _ := gasprice.EffectiveGasTip(tx, baseFee)
 	return new(big.Int).Add(baseFee, gasTip)
+}
+
+// onNewReceiptPostBrio is called for every transaction accepted in a block,
+// providing the ID of the validator that has proposed the transaction in one of
+// its events, the accepted transaction, and its receipt. It is used to keep
+// track of validator-originated transaction fees.
+//
+// This function is an updated version of the `onNewReceiptPreBrio` function
+// above, which is getting enabled with the Brio flag. Unlike the previous
+// version, this function correctly accounts for fees of sponsored and bundled
+// transactions. The old code is preserved for backward compatibility until the
+// Brio hard-fork and to support full-history syncs.
+func (p *DriverTxListener) onNewReceiptPostBrio(
+	originator idx.ValidatorID,
+	tx *types.Transaction,
+	r *types.Receipt,
+) {
+	p.onNewReceiptPostBrioInternal(originator, tx, r, log.Root())
+}
+
+func (p *DriverTxListener) onNewReceiptPostBrioInternal(
+	originator idx.ValidatorID,
+	tx *types.Transaction,
+	r *types.Receipt,
+	log log.Logger,
+) {
+	fee, err := ComputeEffectiveFee(tx, r)
+	if err != nil {
+		// If there is an error in the fee computation, the safe default
+		// is to avoid attributing it to any validator, so no fees are paid out.
+		if r == nil {
+			log.Warn("error in fee computation", "tx", tx.Hash(), "err", err)
+		} else {
+			log.Warn("error in fee computation", "tx", tx.Hash(),
+				"usedGas", r.GasUsed, "gasPrice", r.EffectiveGasPrice,
+				"blobGasUsed", r.BlobGasUsed, "blobGasPrice", r.BlobGasPrice,
+				"err", err,
+			)
+		}
+		return
+	}
+
+	if originator == 0 {
+		log.Warn("failed to attribute transaction to validator, fees got burned", "tx", tx.Hash(), "fees", fee)
+		return
+	}
+
+	originatorIdx := p.es.Validators.GetIdx(originator)
+	originated := p.bs.ValidatorStates[originatorIdx].Originated
+	originated.Add(originated, fee)
 }
 
 // ComputeEffectiveFee returns the effective fee charged for the given

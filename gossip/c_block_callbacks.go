@@ -422,9 +422,10 @@ func consensusCallbackBeginBlockFn(
 
 					orderedTxs := proposal.Transactions
 					numSkippedDueToBlockLimits := 0
+					var txCausedBy map[common.Hash]common.Hash
 					if es.Rules.Upgrades.Brio {
 						// Limit block size and gas while adding user transactions
-						numSkippedDueToBlockLimits =
+						numSkippedDueToBlockLimits, txCausedBy =
 							processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
 					} else {
 						// Pre brio there were no limits on user transactions
@@ -482,7 +483,11 @@ func consensusCallbackBeginBlockFn(
 
 					// call OnNewReceipt
 					for i, r := range allReceipts {
-						creator := txPositions[r.TxHash].EventCreator
+						originTx := r.TxHash
+						if origin, found := txCausedBy[r.TxHash]; found {
+							originTx = origin
+						}
+						creator := txPositions[originTx].EventCreator
 						if creator != 0 && es.Validators.Get(creator) == 0 {
 							creator = 0
 						}
@@ -616,13 +621,20 @@ func processUserTransactionsNoLimits(
 // used for block size calculations.
 const rlpEncodedMaxHeaderSizeInBytes = 1024
 
-// processUserTransactions executes user transactions in order, adding them to the block
-// until all transactions are processed or the gas/block size limit is reached.
+// processUserTransactions executes user transactions in order, adding them to
+// the block until all transactions are processed or the gas/block size limit is
+// reached. The function returns the number of input transactions skipped due
+// to capacity limitations as well as a map linking the hashes of accepted
+// transactions to the transaction they are derived from in the given list.
 func processUserTransactions(
 	evmProcessor blockproc.EVMProcessor,
 	blockBuilder *inter.BlockBuilder,
 	orderedTxs []*types.Transaction,
-	userTransactionGasLimit uint64) int {
+	userTransactionGasLimit uint64,
+) (
+	skippedCount int,
+	causedBy map[common.Hash]common.Hash,
+) {
 	remainingGas := userTransactionGasLimit
 	remainingSize := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
 	internalTxs := blockBuilder.GetTransactions()
@@ -630,11 +642,12 @@ func processUserTransactions(
 		txSize := tx.Size()
 		if txSize > remainingSize {
 			log.Warn("block filled with only internal transactions")
-			return len(orderedTxs)
+			return len(orderedTxs), nil
 		}
 		remainingSize -= txSize
 	}
 
+	causedBy = make(map[common.Hash]common.Hash)
 	skippedCounter := 0
 	for _, tx := range orderedTxs {
 		neededSpace := txSizeIncludingSubsidies(tx)
@@ -647,13 +660,14 @@ func processUserTransactions(
 					)
 					remainingGas -= processed.Receipt.GasUsed
 					remainingSize -= processed.Transaction.Size()
+					causedBy[processed.Transaction.Hash()] = tx.Hash()
 				}
 			}
 		} else {
 			skippedCounter++
 		}
 	}
-	return skippedCounter
+	return skippedCounter, causedBy
 }
 
 // txSizeIncludingSubsidies returns the size of the transaction,
