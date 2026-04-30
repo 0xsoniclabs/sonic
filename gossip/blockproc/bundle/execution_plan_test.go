@@ -88,15 +88,15 @@ func TestExecutionPlan_Hash_ComputesDeterministicHash(t *testing.T) {
 		},
 		"plan with block range": {
 			Root:  step1,
-			Range: BlockRange{Earliest: 10, Latest: 20},
+			Range: BlockRange{First: 10, Length: 12},
 		},
 		"plan with different start": {
 			Root:  step1,
-			Range: BlockRange{Earliest: 11, Latest: 20},
+			Range: BlockRange{First: 11, Length: 12},
 		},
-		"plan with different end": {
+		"plan with different length": {
 			Root:  step1,
-			Range: BlockRange{Earliest: 10, Latest: 21},
+			Range: BlockRange{First: 10, Length: 14},
 		},
 	}
 

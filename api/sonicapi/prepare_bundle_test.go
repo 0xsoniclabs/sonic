@@ -405,15 +405,15 @@ func Test_PrepareBundle_DefaultBlockRange_IsCurrentBlockPlusOne(t *testing.T) {
 	result, err := api.PrepareBundle(t.Context(), args)
 	require.NoError(t, err)
 
-	require.EqualValues(t, currentBlock+1, result.ExecutionPlan.BlockRange.Earliest)
-	require.EqualValues(t, currentBlock+bundle.MaxBlockRange, result.ExecutionPlan.BlockRange.Latest)
+	require.EqualValues(t, currentBlock+1, result.ExecutionPlan.BlockRange.First)
+	require.EqualValues(t, bundle.MaxBlockRangeLength, result.ExecutionPlan.BlockRange.Length)
 }
 
 func Test_PrepareBundle_ExplicitBlockRange_IsRespected(t *testing.T) {
 	addr1 := common.Address{1}
 	addr2 := common.Address{2}
-	earliest := hexutil.Uint64(10)
-	latest := hexutil.Uint64(20)
+	first := hexutil.Uint64(10)
+	length := hexutil.Uint64(20)
 
 	be := rpctest.NewBackendBuilder(t).
 		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
@@ -432,16 +432,16 @@ func Test_PrepareBundle_ExplicitBlockRange_IsRespected(t *testing.T) {
 			},
 		},
 		BlockRange: &RPCRange{
-			Earliest: earliest,
-			Latest:   latest,
+			First:  first,
+			Length: length,
 		},
 	}
 
 	result, err := api.PrepareBundle(t.Context(), args)
 	require.NoError(t, err)
 
-	require.EqualValues(t, earliest, result.ExecutionPlan.BlockRange.Earliest)
-	require.EqualValues(t, latest, result.ExecutionPlan.BlockRange.Latest)
+	require.EqualValues(t, first, result.ExecutionPlan.BlockRange.First)
+	require.EqualValues(t, length, result.ExecutionPlan.BlockRange.Length)
 }
 
 func Test_PrepareBundle_MissingNonce_ReturnsError(t *testing.T) {

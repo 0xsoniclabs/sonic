@@ -45,7 +45,7 @@ func TestBundleBuilder_Build_AllowsToBuildBundleAsSpecified(t *testing.T) {
 	tx := NewBuilder().
 		WithSigner(signer).
 		SetEarliest(12).
-		SetLatest(15).
+		SetRangeLength(4).
 		AllOf(
 			Step(key0, &types.AccessListTx{
 				Nonce: 0,
@@ -65,8 +65,8 @@ func TestBundleBuilder_Build_AllowsToBuildBundleAsSpecified(t *testing.T) {
 
 	// Check the block range.
 	require.Equal(bundle.Plan, *plan)
-	require.EqualValues(12, plan.Range.Earliest)
-	require.EqualValues(15, plan.Range.Latest)
+	require.EqualValues(12, plan.Range.First)
+	require.EqualValues(4, plan.Range.Length)
 
 	// check the structure of the execution plan
 	require.Equal(

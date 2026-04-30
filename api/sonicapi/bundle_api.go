@@ -29,42 +29,33 @@ func sanitizeBlockRange(currentBlock uint64, blockRange *RPCRange) (RPCRange, er
 	if blockRange == nil {
 		maxRange := bundle.MakeMaxRangeStartingAt(currentBlock + 1)
 		return RPCRange{
-			Earliest: hexutil.Uint64(maxRange.Earliest),
-			Latest:   hexutil.Uint64(maxRange.Latest),
+			First:  hexutil.Uint64(maxRange.First),
+			Length: hexutil.Uint64(maxRange.Length),
 		}, nil
 	}
 
-	if blockRange.Latest == 0 && blockRange.Earliest != 0 {
-		blockRange.Latest = hexutil.Uint64(uint64(blockRange.Earliest) + bundle.MaxBlockRange - 1)
-		return RPCRange{
-			Earliest: blockRange.Earliest,
-			Latest:   blockRange.Latest,
-		}, nil
+	// If first is not specified, set it to currentBlock + 1.
+	first := uint64(blockRange.First)
+	if first == 0 {
+		first = currentBlock + 1
 	}
 
-	// earliest not specified but latest is specified, set earliest to latest - maxRange + 1, but not less than currentBlock + 1 and check overflow
-	if blockRange.Earliest == 0 && blockRange.Latest != 0 {
-		if blockRange.Latest < hexutil.Uint64(currentBlock+bundle.MaxBlockRange) {
-			blockRange.Earliest = hexutil.Uint64(currentBlock + 1)
-		} else {
-			return RPCRange{}, fmt.Errorf("invalid block range: latest block %d is too far in the future; earliest block must be at least %d", blockRange.Latest, currentBlock+1)
-		}
+	// Sanitize the length of the range.
+	limit := uint64(blockRange.Length)
+	if limit == 0 { // < user did not specify, use maximum allowed range
+		limit = bundle.MaxBlockRangeLength
+	} else if limit > bundle.MaxBlockRangeLength {
+		return RPCRange{}, fmt.Errorf("invalid block range: length %d is too large; must be at most %d blocks", limit, bundle.MaxBlockRangeLength)
 	}
 
-	if blockRange.Latest < hexutil.Uint64(currentBlock) {
-		return RPCRange{}, fmt.Errorf("invalid block range: latest block %d is earlier than current block %d", blockRange.Latest, currentBlock)
-	}
-
-	if uint64(blockRange.Latest) < uint64(blockRange.Earliest) {
-		return RPCRange{}, fmt.Errorf("invalid block range: latest block %d is earlier than earliest block %d", blockRange.Latest, blockRange.Earliest)
-	}
-
-	if uint64(blockRange.Latest-blockRange.Earliest+1) > bundle.MaxBlockRange {
-		return RPCRange{}, fmt.Errorf("invalid block range: range %d is too large; must be at most %d blocks", blockRange.Latest-blockRange.Earliest+1, bundle.MaxBlockRange)
+	// Check whether the user given limit is already in the past
+	r := bundle.BlockRange{First: first, Length: limit}
+	if r.IsAfterRange(currentBlock) {
+		return RPCRange{}, fmt.Errorf("invalid block range: the specified range (first: %d, length: %d) is not in the future relative to current block %d", first, limit, currentBlock)
 	}
 
 	return RPCRange{
-		Earliest: blockRange.Earliest,
-		Latest:   blockRange.Latest,
+		First:  hexutil.Uint64(first),
+		Length: hexutil.Uint64(limit),
 	}, nil
 }

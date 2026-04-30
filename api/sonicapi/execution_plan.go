@@ -78,8 +78,8 @@ type RPCExecutionStepComposable struct {
 
 // RPCRange represents the block range for which the execution plan is valid.
 type RPCRange struct {
-	Earliest hexutil.Uint64 `json:"earliest"`
-	Latest   hexutil.Uint64 `json:"latest"`
+	First  hexutil.Uint64 `json:"first"`
+	Length hexutil.Uint64 `json:"length"`
 }
 
 // NewRPCExecutionPlanComposable converts a bundle.ExecutionPlan to an RPCExecutionPlan that can be returned by the API.
@@ -100,10 +100,7 @@ func NewRPCExecutionPlanComposable(plan bundle.ExecutionPlan) (RPCExecutionPlanC
 	}
 
 	return RPCExecutionPlanComposable{
-		BlockRange: RPCRange{
-			Earliest: hexutil.Uint64(plan.Range.Earliest),
-			Latest:   hexutil.Uint64(plan.Range.Latest),
-		},
+		BlockRange:            fromBundleRange(plan.Range),
 		RPCExecutionPlanGroup: visitor.result,
 	}, nil
 }
@@ -115,11 +112,8 @@ func ToBundleExecutionPlan(rpcPlan RPCExecutionPlanComposable) (bundle.Execution
 	}
 
 	return bundle.ExecutionPlan{
-		Range: bundle.BlockRange{
-			Earliest: uint64(rpcPlan.BlockRange.Earliest),
-			Latest:   uint64(rpcPlan.BlockRange.Latest),
-		},
-		Root: root,
+		Range: rpcPlan.BlockRange.toBundleBlockRange(),
+		Root:  root,
 	}, nil
 }
 
@@ -251,7 +245,14 @@ func (v *toJsonExecutionPlanVisitor) EndGroup() {
 
 func (r RPCRange) toBundleBlockRange() bundle.BlockRange {
 	return bundle.BlockRange{
-		Earliest: uint64(r.Earliest),
-		Latest:   uint64(r.Latest),
+		First:  uint64(r.First),
+		Length: uint64(r.Length),
+	}
+}
+
+func fromBundleRange(r bundle.BlockRange) RPCRange {
+	return RPCRange{
+		First:  hexutil.Uint64(r.First),
+		Length: hexutil.Uint64(r.Length),
 	}
 }

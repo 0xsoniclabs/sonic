@@ -138,7 +138,7 @@ func TestValidateEnvelope_InvalidBundle_IsRejected(t *testing.T) {
 	tests := map[string]TransactionBundle{
 		"invalid block range": NewBuilder().
 			SetEarliest(20).
-			SetLatest(10).
+			SetRangeLength(MaxBlockRangeLength + 1).
 			BuildBundle(),
 		"missing transactions": func() TransactionBundle {
 			bundle := NewBuilder().AllOf(
@@ -253,8 +253,7 @@ func TestValidateEnvelope_NestedInvalidEnvelope_IsRejected(t *testing.T) {
 	require.NoError(err)
 
 	invalidInner := NewBuilder().
-		SetEarliest(20).
-		SetLatest(10).
+		SetRangeLength(MaxBlockRangeLength + 1).
 		WithSigner(signer).
 		Build()
 
@@ -377,7 +376,7 @@ func TestValidateBundle_NilTransaction_Rejected(t *testing.T) {
 	for name, transactions := range tests {
 		t.Run(name, func(t *testing.T) {
 			validPlan := ExecutionPlan{
-				Range: BlockRange{Earliest: 10, Latest: 20},
+				Range: BlockRange{First: 10, Length: 20},
 				Root:  NewTxStep(TxReference{}),
 			}
 			require.NoError(t, validatePlan(validPlan))
@@ -437,7 +436,7 @@ func TestValidateBundle_InconsistentChainIds_Rejected(t *testing.T) {
 	for name, transactions := range tests {
 		t.Run(name, func(t *testing.T) {
 			validPlan := ExecutionPlan{
-				Range: BlockRange{Earliest: 10, Latest: 20},
+				Range: BlockRange{First: 10, Length: 20},
 				Root:  NewTxStep(TxReference{}),
 			}
 			require.NoError(t, validatePlan(validPlan))
@@ -472,7 +471,7 @@ func TestValidateBundle_InconsistentChainIds_Rejected(t *testing.T) {
 
 func TestValidateBundle_MissingSigner_ProducesAnError(t *testing.T) {
 	validPlan := ExecutionPlan{
-		Range: BlockRange{Earliest: 10, Latest: 20},
+		Range: BlockRange{First: 10, Length: 20},
 		Root:  NewTxStep(TxReference{}),
 	}
 
@@ -527,7 +526,7 @@ func TestValidateBundle_InvalidIndex_Rejected(t *testing.T) {
 
 func TestValidateBundle_UsageOfLegacyTransaction_Rejected(t *testing.T) {
 	validPlan := ExecutionPlan{
-		Range: BlockRange{Earliest: 10, Latest: 20},
+		Range: BlockRange{First: 10, Length: 20},
 		Root:  NewTxStep(TxReference{}),
 	}
 	require.NoError(t, validatePlan(validPlan))
@@ -653,15 +652,15 @@ func TestValidatePlan_AcceptsValidPlans(t *testing.T) {
 	validPlans := []ExecutionPlan{
 		{
 			Root:  NewTxStep(TxReference{}),
-			Range: BlockRange{Earliest: 10, Latest: 10},
+			Range: BlockRange{First: 10, Length: 1},
 		},
 		{
 			Root:  NewAllOfStep(NewTxStep(TxReference{}), NewTxStep(TxReference{})),
-			Range: BlockRange{Earliest: 10, Latest: 20},
+			Range: BlockRange{First: 10, Length: 10},
 		},
 		{
 			Root:  NewOneOfStep(NewTxStep(TxReference{}), NewTxStep(TxReference{})),
-			Range: BlockRange{Earliest: 0, Latest: MaxBlockRange - 1},
+			Range: BlockRange{First: 0, Length: MaxBlockRangeLength},
 		},
 	}
 
@@ -682,14 +681,14 @@ func TestValidatePlan_DetectsInvalidPlans(t *testing.T) {
 		"invalid root step": {
 			plan: ExecutionPlan{
 				Root:  ExecutionStep{}, // invalid step
-				Range: BlockRange{Earliest: 10, Latest: 20},
+				Range: BlockRange{First: 10, Length: 20},
 			},
 			issue: "invalid execution plan",
 		},
 		"invalid block range": {
 			plan: ExecutionPlan{
 				Root:  NewTxStep(TxReference{}),
-				Range: BlockRange{Earliest: 20, Latest: 10}, // invalid range
+				Range: BlockRange{First: 20, Length: MaxBlockRangeLength + 1}, // invalid range
 			},
 			issue: "invalid block range",
 		},
@@ -702,8 +701,8 @@ func TestValidatePlan_DetectsInvalidPlans(t *testing.T) {
 	}
 
 	invalidPlanAndRange := ExecutionPlan{
-		Root:  ExecutionStep{},                      // invalid step
-		Range: BlockRange{Earliest: 20, Latest: 10}, // invalid range
+		Root:  ExecutionStep{},                                        // invalid step
+		Range: BlockRange{First: 20, Length: MaxBlockRangeLength + 1}, // invalid range
 	}
 
 	require.Error(t, validateStep(invalidPlanAndRange.Root))
@@ -860,12 +859,12 @@ func wrapInNested(inner ExecutionStep, depth int) ExecutionStep {
 
 func TestValidateRange_AcceptsValidRanges(t *testing.T) {
 	tests := []BlockRange{
-		{0, 0},
-		{0, 100},
-		{0, MaxBlockRange - 1},
-		{10, 10},
-		{10, 100},
-		{10, MaxBlockRange + 9},
+		{First: 0, Length: 1},
+		{First: 0, Length: 100},
+		{First: 0, Length: MaxBlockRangeLength - 1},
+		{First: 0, Length: MaxBlockRangeLength},
+		{First: 10, Length: 11},
+		{First: 10, Length: 100},
 	}
 
 	for _, tc := range tests {
@@ -883,23 +882,11 @@ func TestValidateRange_DetectsInvalidRanges(t *testing.T) {
 			issue:      "empty block range",
 		},
 		{
-			blockRange: BlockRange{10, 9},
-			issue:      "empty block range",
-		},
-		{
-			blockRange: BlockRange{MaxBlockRange, 0},
-			issue:      "empty block range",
-		},
-		{
-			blockRange: BlockRange{0, MaxBlockRange},
+			blockRange: BlockRange{0, MaxBlockRangeLength + 1},
 			issue:      "invalid block range",
 		},
 		{
-			blockRange: BlockRange{10, MaxBlockRange + 10},
-			issue:      "invalid block range",
-		},
-		{
-			blockRange: BlockRange{10, MaxBlockRange + 100},
+			blockRange: BlockRange{10, MaxBlockRangeLength + 10},
 			issue:      "invalid block range",
 		},
 	}
@@ -910,16 +897,16 @@ func TestValidateRange_DetectsInvalidRanges(t *testing.T) {
 }
 
 func TestValidateRange_ComprehensiveRangeChecks(t *testing.T) {
-	for earliest := range 2 * MaxBlockRange {
-		for latest := range 2 * MaxBlockRange {
-			r := BlockRange{earliest, latest}
-			if size := r.Size(); size > 0 && size <= MaxBlockRange {
+	for first := range 2 * MaxBlockRangeLength {
+		for length := range 2 * MaxBlockRangeLength {
+			r := BlockRange{first, length}
+			if length > 0 && length <= MaxBlockRangeLength {
 				require.NoError(t, validateRange(r),
-					"earliest=%d, latest=%d", earliest, latest,
+					"first=%d, length=%d", first, length,
 				)
 			} else {
 				require.Error(t, validateRange(r),
-					"earliest=%d, latest=%d", earliest, latest,
+					"first=%d, length=%d", first, length,
 				)
 			}
 		}

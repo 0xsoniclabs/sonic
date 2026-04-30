@@ -262,12 +262,12 @@ func validateStepInternal(
 // validateRange checks that the given block range is valid, i.e. that it is not
 // empty and does not exceed the maximum allowed range.
 func validateRange(r BlockRange) error {
-	size := r.Size()
+	size := r.Length
 	if size == 0 {
-		return fmt.Errorf("invalid empty block range [%d,%d]", r.Earliest, r.Latest)
+		return fmt.Errorf("invalid empty block range [%d,+%d)", r.First, r.Length)
 	}
-	if size > MaxBlockRange {
-		return fmt.Errorf("invalid block range, duration %d, limit %d", size, MaxBlockRange)
+	if size > MaxBlockRangeLength {
+		return fmt.Errorf("invalid block range, length %d, limit %d", size, MaxBlockRangeLength)
 	}
 	return nil
 }

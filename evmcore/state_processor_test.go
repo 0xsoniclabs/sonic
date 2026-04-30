@@ -2190,7 +2190,7 @@ func TestRunTransactionBundle_BundleOutOfRange_ReturnsEnvelopeAndResultInvalid(t
 			Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
 		})).
 		SetEarliest(11). // not ready for execution yet
-		SetLatest(12).
+		SetRangeLength(2).
 		Build()
 
 	_, _, err = bundle.ValidateEnvelope(signer, tx)

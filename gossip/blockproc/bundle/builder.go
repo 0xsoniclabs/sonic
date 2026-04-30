@@ -133,7 +133,7 @@ func NewBuilder() *builder {
 type builder struct {
 	signer           types.Signer
 	earliest         *uint64
-	latest           *uint64
+	rangeLength      *uint64
 	root             BuilderStep
 	envelopeKey      *ecdsa.PrivateKey
 	envelopeNonce    uint64
@@ -145,8 +145,8 @@ func (b *builder) SetEarliest(earliest uint64) *builder {
 	return b
 }
 
-func (b *builder) SetLatest(latest uint64) *builder {
-	b.latest = &latest
+func (b *builder) SetRangeLength(length uint64) *builder {
+	b.rangeLength = &length
 	return b
 }
 
@@ -197,13 +197,12 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 
 	// Set up defaults for meta flags.
 	earliest := uint64(0)
-	latest := uint64(MaxBlockRange - 1)
+	rangeLength := MaxBlockRangeLength
 	if b.earliest != nil {
 		earliest = *b.earliest
-		latest = earliest + MaxBlockRange - 1
 	}
-	if b.latest != nil {
-		latest = *b.latest
+	if b.rangeLength != nil {
+		rangeLength = *b.rangeLength
 	}
 
 	signer := b.GetSigner()
@@ -260,8 +259,8 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 	plan := ExecutionPlan{
 		Root: root.toStep(signer),
 		Range: BlockRange{
-			Earliest: earliest,
-			Latest:   latest,
+			First:  earliest,
+			Length: rangeLength,
 		},
 	}
 

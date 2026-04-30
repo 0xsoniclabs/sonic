@@ -30,57 +30,42 @@ func Test_sanitizeBlockRange(t *testing.T) {
 	tests := map[string]struct {
 		currentBlock  uint64
 		blockRange    *RPCRange
-		wantEarliest  uint64
-		wantLatest    uint64
+		wantFirst     uint64
+		wantLength    uint64
 		errorContains string
 	}{
 		"nil both defaults from current block": {
 			currentBlock: 10,
-			wantEarliest: 11,
-			wantLatest:   10 + bundle.MaxBlockRange,
+			wantFirst:    11,
+			wantLength:   bundle.MaxBlockRangeLength,
 		},
-		"only earliest": {
+		"only first": {
 			currentBlock: 10,
-			blockRange:   &RPCRange{Earliest: hexN(50)},
-			wantEarliest: 50,
-			wantLatest:   50 + bundle.MaxBlockRange - 1,
+			blockRange:   &RPCRange{First: hexN(50)},
+			wantFirst:    50,
+			wantLength:   bundle.MaxBlockRangeLength,
 		},
-		"explicit latest": {
+		"explicit length": {
 			currentBlock: 10,
-			blockRange:   &RPCRange{Latest: hexN(200)},
-			wantEarliest: 11,
-			wantLatest:   200,
+			blockRange:   &RPCRange{Length: hexN(200)},
+			wantFirst:    11,
+			wantLength:   200,
 		},
-		"range exceeds MaxBlockRange when only latest set": {
+		"length exceeds MaxBlockRange": {
 			currentBlock:  10,
-			blockRange:    &RPCRange{Latest: hexN(10 + bundle.MaxBlockRange + 100)},
+			blockRange:    &RPCRange{Length: hexN(bundle.MaxBlockRangeLength + 1)},
 			errorContains: "invalid block range",
 		},
 		"both explicit": {
 			currentBlock: 10,
-			blockRange:   &RPCRange{Earliest: hexN(5), Latest: hexN(20)},
-			wantEarliest: 5,
-			wantLatest:   20,
+			blockRange:   &RPCRange{First: hexN(5), Length: hexN(20)},
+			wantFirst:    5,
+			wantLength:   20,
 		},
 		"current block zero earliest is one": {
 			currentBlock: 0,
-			wantEarliest: 1,
-			wantLatest:   bundle.MaxBlockRange,
-		},
-		"latest is less than earliest": {
-			currentBlock:  100,
-			blockRange:    &RPCRange{Earliest: hexN(50), Latest: hexN(40)},
-			errorContains: "invalid block range",
-		},
-		"latest before implicit earliest from current block": {
-			currentBlock:  10,
-			blockRange:    &RPCRange{Latest: hexN(5)},
-			errorContains: "invalid block range",
-		},
-		"greater than Max block range": {
-			currentBlock:  100,
-			blockRange:    &RPCRange{Earliest: hexN(50), Latest: hexN(50 + bundle.MaxBlockRange + 1)},
-			errorContains: "invalid block range",
+			wantFirst:    1,
+			wantLength:   bundle.MaxBlockRangeLength,
 		},
 	}
 
@@ -91,8 +76,8 @@ func Test_sanitizeBlockRange(t *testing.T) {
 				require.ErrorContains(t, err, tc.errorContains)
 			} else {
 				require.NoError(t, err)
-				require.EqualValues(t, tc.wantEarliest, r.Earliest)
-				require.EqualValues(t, tc.wantLatest, r.Latest)
+				require.EqualValues(t, tc.wantFirst, r.First)
+				require.EqualValues(t, tc.wantLength, r.Length)
 			}
 		})
 	}

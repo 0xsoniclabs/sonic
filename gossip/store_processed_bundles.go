@@ -135,11 +135,11 @@ func (s *Store) addNewBundles(
 func (s *Store) deleteOutdatedBundles(finishedBlock uint64, batch kvdb.Batch) {
 	nextBlock := finishedBlock + 1
 
-	if nextBlock < bundle.MaxBlockRange {
+	if nextBlock < bundle.MaxBlockRangeLength {
 		return
 	}
 
-	highestOutdatedBlockNumber := nextBlock - bundle.MaxBlockRange
+	highestOutdatedBlockNumber := nextBlock - bundle.MaxBlockRangeLength
 
 	// Prune bundle-index and entries keys ('i', 'e').
 	// key layout for 'i': 1 byte prefix + 8 bytes blockNum + 32 bytes execPlanHash
