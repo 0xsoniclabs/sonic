@@ -762,6 +762,79 @@ func Test_trialRunBundle_DoesRunTransactionsThroughEVMAndReturnsIfTransactionsGo
 	}
 }
 
+func Test_trialRunBundleInternal_RejectsBundlesWhereEfficiencyIsBelowThreshold(t *testing.T) {
+	tests := map[string]struct {
+		processedTxs []ProcessedTransaction
+		execCost     core_types.ExecutionCost
+		expectAccept bool
+	}{
+		"below threshold with no receipts": {
+			processedTxs: []ProcessedTransaction{},
+			execCost:     core_types.ExecutionCost(100),
+			expectAccept: false,
+		},
+		"below threshold with single receipt": {
+			processedTxs: []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 19}}},
+			execCost:     core_types.ExecutionCost(100),
+			expectAccept: false,
+		},
+		"below threshold with multiple receipts": {
+			processedTxs: []ProcessedTransaction{
+				{Receipt: &types.Receipt{GasUsed: 9}},
+				{Receipt: &types.Receipt{GasUsed: 10}},
+			},
+			execCost:     core_types.ExecutionCost(100),
+			expectAccept: false,
+		},
+		"above threshold with single receipt": {
+			processedTxs: []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 21}}},
+			execCost:     core_types.ExecutionCost(100),
+			expectAccept: true,
+		},
+		"above threshold with multiple receipts": {
+			processedTxs: []ProcessedTransaction{
+				{Receipt: &types.Receipt{GasUsed: 10}},
+				{Receipt: &types.Receipt{GasUsed: 11}},
+			},
+			execCost:     core_types.ExecutionCost(100),
+			expectAccept: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			envelope := types.NewTx(&types.LegacyTx{})
+
+			chainState := NewMockChainStateForBundleEval(ctrl)
+			chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+				Number: big.NewInt(0),
+			})
+
+			any := gomock.Any()
+
+			processor := NewMocktransactionProcessor(ctrl)
+			processor.EXPECT().Run(any, any).Return(
+				ProcessSummary{
+					ProcessedTransactions: tc.processedTxs,
+					ExecutionCost:         tc.execCost,
+				},
+			)
+
+			factory := NewMocktransactionProcessorFactory(ctrl)
+			factory.EXPECT().newTransactionProcessor(any, any, any).Return(processor)
+
+			db := state.NewMockStateDB(ctrl)
+			db.EXPECT().InterTxSnapshot()
+			db.EXPECT().RevertToInterTxSnapshot(any)
+
+			got := trialRunBundleInternal(envelope, chainState, db, factory, rand.Read)
+			require.Equal(t, tc.expectAccept, got)
+		})
+	}
+}
+
 func Test_trialRunBundle_UsesRandomPrevRandaoValue(t *testing.T) {
 	// This test verifies that the trialRunBundle function indeed uses a random
 	// source for determining PrevRandao values. It does so by running code
@@ -1045,7 +1118,7 @@ func Test_trialRunBundleInternal_UsesPresentsOfReceiptToDecideResult(t *testing.
 			expectedResult: false,
 		},
 		"single result with receipt": {
-			processedTxs:   []ProcessedTransaction{{Receipt: &types.Receipt{}}},
+			processedTxs:   []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 1}}},
 			expectedResult: true,
 		},
 		"multiple results without receipt": {
@@ -1053,7 +1126,7 @@ func Test_trialRunBundleInternal_UsesPresentsOfReceiptToDecideResult(t *testing.
 			expectedResult: false,
 		},
 		"multiple results with some receipt": {
-			processedTxs:   []ProcessedTransaction{{}, {Receipt: &types.Receipt{}}, {}},
+			processedTxs:   []ProcessedTransaction{{}, {Receipt: &types.Receipt{GasUsed: 1}}, {}},
 			expectedResult: true,
 		},
 	}
@@ -1075,6 +1148,7 @@ func Test_trialRunBundleInternal_UsesPresentsOfReceiptToDecideResult(t *testing.
 			processor := NewMocktransactionProcessor(ctrl)
 			processor.EXPECT().Run(any, any).Return(ProcessSummary{
 				ProcessedTransactions: tc.processedTxs,
+				ExecutionCost:         1,
 			})
 
 			factory := NewMocktransactionProcessorFactory(ctrl)
