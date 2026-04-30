@@ -53,8 +53,11 @@ func MakeMaxRangeStartingAt(blockNum uint64) BlockRange {
 }
 
 // IsInRange checks if the given block number is within this block range.
-// The range is a closed interval [Earliest, Latest], meaning that blocks with
-// numbers from Earliest through Latest (inclusive) are considered in range.
+// The range is the half-open interval [First, First+Length): a block number
+// is in range if First <= blockNum and blockNum is strictly less than the end
+// of the range. If Length is 0, the range is empty and no block number is in
+// range. The implementation avoids computing First+Length directly, so the
+// result remains correct even if that sum would overflow uint64.
 func (r BlockRange) IsInRange(blockNum uint64) bool {
 	return !r.IsBeforeRange(blockNum) && !r.IsAfterRange(blockNum)
 }
