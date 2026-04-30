@@ -61,7 +61,7 @@ func (p TimePeriod) IsAfterPeriod(time inter.Timestamp) bool {
 }
 
 func (p TimePeriod) encode(writer io.Writer) error {
-	// The common case of a unrestricted period should be encoded efficiently,
+	// The common case of an unrestricted period should be encoded efficiently,
 	// without the need to encode the full struct.
 	wrapped := encodedTimePeriod{TimePeriod: &p}
 	if p == MakeUnrestrictedTimePeriod() {
