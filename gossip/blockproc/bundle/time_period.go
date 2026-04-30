@@ -24,7 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-// TimePeriod defines period of real-time.
+// TimePeriod defines a real-time period.
 type TimePeriod struct {
 	// Start is the begin of the period (unix nanoseconds).
 	Start inter.Timestamp
