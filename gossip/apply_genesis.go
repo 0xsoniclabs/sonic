@@ -174,13 +174,15 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 			"oldestBlockNum", hh.Oldest.BlockNumber, "oldestHash", hh.Oldest.Hash,
 			"latestBlockNum", hh.Latest.BlockNumber, "latestHash", hh.Latest.Hash)
 
-		// When the oldest block has bundle entries, the hash chain was
-		// never pruned for that block, so we can replay from it with the
-		// hash starting at zero. When the oldest block has no entries,
-		// pruning occurred and the oldest hash is a predecessor: seed the
-		// chain with it and start replaying from the next block.
+		// When the block range is less than 1024, there have been less than
+		// 1024 blocks since the first block which contains processed bundles.
+		// Therefore, we know the previous history hash is zero and we can
+		// start from the oldest block. Otherwise, there have been at least
+		// 1024 blocks since the first block with processed bundles, so we use
+		// the oldest hash as the starting point and start replay from the next
+		// block. Because the block range is inclusive, we check for 1023.
 		startBlock := hh.Oldest.BlockNumber
-		if _, oldestHasBundles := bundlesByBlock[hh.Oldest.BlockNumber]; !oldestHasBundles {
+		if hh.Latest.BlockNumber-hh.Oldest.BlockNumber >= 1023 {
 			s.SetProcessedBundlesHistoryHash(hh.Oldest.BlockNumber, hh.Oldest.Hash)
 			startBlock = hh.Oldest.BlockNumber + 1
 		}
