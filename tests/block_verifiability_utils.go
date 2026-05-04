@@ -220,15 +220,10 @@ func (s *State) ApplyBlock(
 		idx.Block(block.NumberU64()),
 	)
 
-	// In verification mode, gas subsidies are disabled to avoid introducing
-	// a second charge for sponsored transactions.
-	upgrades := rules.Upgrades
-	upgrades.GasSubsidies = false
-
 	processor := evmcore.NewStateProcessorForReplay(
 		chainConfig,
 		historyAdapter{history: s.blockHashHistory},
-		upgrades,
+		rules.Upgrades,
 	)
 
 	evmBlock := &evmcore.EvmBlock{
@@ -262,20 +257,6 @@ func (s *State) ApplyBlock(
 		0, // tx index offset
 		nil,
 	).ProcessedTransactions
-
-	if false { // Debug
-		fmt.Printf("block %d: used gas %d / %d\n", block.NumberU64(), usedGas, block.GasUsed())
-		signer := types.LatestSignerForChainID(big.NewInt(int64(rules.NetworkID)))
-		for _, cur := range processed {
-			from, _ := signer.Sender(cur.Transaction)
-			to := cur.Transaction.To()
-			if cur.Receipt != nil {
-				fmt.Printf("  tx %v -> %v, nonce %d (gas used %d)\n", from.Hex(), to.Hex(), cur.Transaction.Nonce(), cur.Receipt.GasUsed)
-			} else {
-				fmt.Printf("  tx %v -> %v, nonce %d (skipped)\n", from.Hex(), to.Hex(), cur.Transaction.Nonce())
-			}
-		}
-	}
 
 	receipts := types.Receipts{}
 	for i, cur := range processed {

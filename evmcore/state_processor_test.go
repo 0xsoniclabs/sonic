@@ -1125,6 +1125,26 @@ func TestRunTransaction_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorshi
 	require.Nil(t, processed[0].Receipt)
 }
 
+func TestRunTransaction_GasSubsidiesEnabled_ForReplay_RunsSponsorshipRequestAsRegularTransaction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+
+	tx := getSponsorshipRequest(t)
+	processed := ProcessedTransaction{
+		Transaction: tx,
+	}
+
+	context := &runContext{
+		runner:    runner,
+		upgrades:  opera.Upgrades{GasSubsidies: true},
+		forReplay: true,
+	}
+	runner.EXPECT().runRegularTransaction(context, tx, 0, 123).Return(processed, core_types.TransactionResultSuccessful)
+	got, status := runTransaction(context, tx, 0, 123)
+	require.Equal(t, []ProcessedTransaction{processed}, got)
+	require.Equal(t, core_types.TransactionResultSuccessful, status)
+}
+
 func TestRunTransactions_GasSubsidiesDisabled_BundlesDisabled_ProcessesAsRegularTransaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMock_transactionRunner(ctrl)

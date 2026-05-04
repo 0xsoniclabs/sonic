@@ -273,7 +273,7 @@ func runTransaction(
 			return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 		}
 	}
-	if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
+	if !context.forReplay && context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
 		res, result := context.runner.runSponsoredTransaction(context, tx, legacyTxIndexOffset, trueTxIndexOffset)
 		return res, result
 	} else {
