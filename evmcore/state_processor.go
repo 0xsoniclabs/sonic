@@ -79,9 +79,13 @@ func NewStateProcessorForReplay(
 }
 
 // ProcessSummary contains the result of processing a list of transactions,
-// including the list of processed transactions with their receipts.
+// including the list of processed transactions with their receipts and the
+// total execution cost. The execution cost tracks the gas consumed during
+// processing, including gas from rolled-back bundles, which distinguishes it
+// from the usedGas counter that gets reverted on snapshot rollback.
 type ProcessSummary struct {
 	ProcessedTransactions []ProcessedTransaction
+	ExecutionCost         core_types.ExecutionCost
 }
 
 // ProcessedTransaction represents a transaction that was considered for
@@ -216,6 +220,7 @@ func runTransactions(
 	trueTxIndexOffset int,
 ) ProcessSummary {
 	processedTxs := make([]ProcessedTransaction, 0, len(transactions))
+	totalExecCost := core_types.ExecutionCost(0)
 	for _, tx := range transactions {
 		// The transaction execution tracks two different transaction index
 		// offsets: the legacyTxIndexOffset and the trueTxIndexOffset.
@@ -244,7 +249,8 @@ func runTransactions(
 			continue
 		}
 
-		txs, _ := runTransaction(context, tx, nextId, trueTxIndexOffset)
+		txs, _, execCost := runTransaction(context, tx, nextId, trueTxIndexOffset)
+		totalExecCost += execCost
 
 		for _, tx := range txs {
 			if tx.Receipt != nil { // < only transactions included in the block
@@ -254,7 +260,10 @@ func runTransactions(
 		processedTxs = append(processedTxs, txs...)
 
 	}
-	return ProcessSummary{ProcessedTransactions: processedTxs}
+	return ProcessSummary{
+		ProcessedTransactions: processedTxs,
+		ExecutionCost:         totalExecCost,
+	}
 }
 
 // runTransaction processes the given transaction and returns a list of all
@@ -267,22 +276,32 @@ func runTransaction(
 	tx *types.Transaction,
 	legacyTxIndexOffset int,
 	trueTxIndexOffset int,
-) ([]ProcessedTransaction, core_types.TransactionResult) {
+) ([]ProcessedTransaction, core_types.TransactionResult, core_types.ExecutionCost) {
 	// Since a transaction bundle has a gas-price of 0 it would be considered a
 	// sponsorship request. Thus, we need to check for bundles first.
 	if context.upgrades.Brio && bundle.IsEnvelope(tx) {
 		if context.upgrades.TransactionBundles {
 			return context.runner.runTransactionBundle(context, tx, legacyTxIndexOffset, trueTxIndexOffset)
 		} else {
-			return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
+			return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid, 0
 		}
 	}
 	if !context.forReplay && context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
 		res, result := context.runner.runSponsoredTransaction(context, tx, legacyTxIndexOffset, trueTxIndexOffset)
-		return res, result
+		execCost := core_types.ExecutionCost(0)
+		for _, r := range res {
+			if r.Receipt != nil {
+				execCost += core_types.ExecutionCost(r.Receipt.GasUsed)
+			}
+		}
+		return res, result, execCost
 	} else {
 		res, result := context.runner.runRegularTransaction(context, tx, legacyTxIndexOffset, trueTxIndexOffset)
-		return []ProcessedTransaction{res}, result
+		execCost := core_types.ExecutionCost(0)
+		if res.Receipt != nil {
+			execCost = core_types.ExecutionCost(res.Receipt.GasUsed)
+		}
+		return []ProcessedTransaction{res}, result, execCost
 	}
 }
 
@@ -318,6 +337,7 @@ type _transactionRunner interface {
 	) (
 		[]ProcessedTransaction,
 		core_types.TransactionResult,
+		core_types.ExecutionCost,
 	)
 }
 
@@ -429,7 +449,7 @@ func (r *transactionRunner) runTransactionBundle(
 	tx *types.Transaction,
 	legacyTxIndexOffset int,
 	trueTxIndexOffset int,
-) ([]ProcessedTransaction, core_types.TransactionResult) {
+) ([]ProcessedTransaction, core_types.TransactionResult, core_types.ExecutionCost) {
 	return r.runTransactionBundleInternal(ctxt, tx, legacyTxIndexOffset, trueTxIndexOffset, log.Root())
 }
 
@@ -439,32 +459,32 @@ func (r *transactionRunner) runTransactionBundleInternal(
 	legacyTxOffset int,
 	trueTxOffset int,
 	log logger,
-) ([]ProcessedTransaction, core_types.TransactionResult) {
+) ([]ProcessedTransaction, core_types.TransactionResult, core_types.ExecutionCost) {
 	if !ctxt.upgrades.TransactionBundles {
 		log.Warn("Transaction bundles are not enabled, bundle transaction skipped", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
+		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid, 0
 	}
 
 	txBundle, plan, err := bundle.ValidateEnvelope(ctxt.signer, tx)
 	if err != nil {
 		log.Warn("Invalid bundle skipped", "tx", tx.Hash().Hex(), "err", err)
-		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
+		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid, 0
 	}
 
 	if !plan.Range.IsInRange(ctxt.blockNumber.Uint64()) {
 		log.Warn("Bundle skipped due to out-of-range execution plan", "tx", tx.Hash().Hex(), "planRange", plan.Range, "blockNumber", ctxt.blockNumber.Uint64())
-		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
+		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid, 0
 	}
 
 	if !plan.Period.IsInPeriod(ctxt.blockTime) {
 		log.Warn("Bundle skipped due to out-of-time execution plan", "tx", tx.Hash().Hex(), "planPeriod", plan.Period, "blockTime", ctxt.blockTime)
-		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
+		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid, 0
 	}
 
 	planHash := plan.Hash()
 	if ctxt.statedb.HasBundleRecentlyBeenProcessed(planHash) {
 		log.Warn("Rescheduled bundle skipped", "exec_plan_hash", planHash)
-		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
+		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid, 0
 	}
 
 	positionInBlock := bundle.PositionInBlock{
@@ -477,7 +497,8 @@ func (r *transactionRunner) runTransactionBundleInternal(
 		legacyTxOffset: legacyTxOffset,
 		trueTxOffset:   trueTxOffset,
 	}
-	if success := bundle.RunBundle(txBundle, &runner); !success {
+	success, execCost := bundle.RunBundle(txBundle, &runner)
+	if !success {
 		// Mark the execution plan as processed in the StateDB to prevent processing
 		// another bundle with the same execution plan in the same block. Also keep
 		// track of the position of the bundle in the block.
@@ -485,7 +506,7 @@ func (r *transactionRunner) runTransactionBundleInternal(
 		// execution of the bundle as used since nested bundles can not contain
 		// copies of themselves without finding a hash-function collision.
 		ctxt.statedb.AddProcessedBundle(planHash, positionInBlock)
-		return []ProcessedTransaction{}, core_types.TransactionResultFailed
+		return []ProcessedTransaction{}, core_types.TransactionResultFailed, execCost
 	}
 
 	// Update the position-in-block struct to track the number of transactions
@@ -504,7 +525,7 @@ func (r *transactionRunner) runTransactionBundleInternal(
 	// copies of themselves without finding a hash-function collision.
 	ctxt.statedb.AddProcessedBundle(planHash, positionInBlock)
 
-	return runner.processedTransactions, core_types.TransactionResultSuccessful
+	return runner.processedTransactions, core_types.TransactionResultSuccessful, execCost
 }
 
 // bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner
@@ -517,8 +538,8 @@ type bundleTransactionRunner struct {
 	snapshots             []bundleTransactionRunnerSnapshot
 }
 
-func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.TransactionResult {
-	processed, result := runTransaction(b.ctxt, tx, b.legacyTxOffset, b.trueTxOffset)
+func (b *bundleTransactionRunner) Run(tx *types.Transaction) (core_types.TransactionResult, core_types.ExecutionCost) {
+	processed, result, execCost := runTransaction(b.ctxt, tx, b.legacyTxOffset, b.trueTxOffset)
 	b.processedTransactions = append(b.processedTransactions, processed...)
 
 	b.legacyTxOffset += len(processed)
@@ -528,7 +549,7 @@ func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.Transact
 		}
 	}
 
-	return result
+	return result, execCost
 }
 
 func (b *bundleTransactionRunner) CreateSnapshot() int {

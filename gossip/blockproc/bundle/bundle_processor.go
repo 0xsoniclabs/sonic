@@ -32,7 +32,7 @@ import (
 func RunBundle(
 	bundle *TransactionBundle,
 	runner TransactionRunner,
-) bool {
+) (bool, core_types.ExecutionCost) {
 	return runStep(bundle.Plan.Root, bundle.Transactions, runner)
 }
 
@@ -40,7 +40,7 @@ func RunBundle(
 // within a bundle and obtaining their results, as used by the RunBundle
 // function to determine the overall success of the bundle execution.
 type TransactionRunner interface {
-	Run(tx *types.Transaction) core_types.TransactionResult
+	Run(tx *types.Transaction) (core_types.TransactionResult, core_types.ExecutionCost)
 	CreateSnapshot() int
 	RevertToSnapshot(id int)
 }
@@ -54,9 +54,9 @@ func runStep(
 	step ExecutionStep,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
-) bool {
+) (bool, core_types.ExecutionCost) {
 	if !step.valid() {
-		return false
+		return false, 0
 	}
 	if step.single != nil {
 		return runSingle(*step.single, transactions, runner)
@@ -71,17 +71,18 @@ func runGroup(
 	group group,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
-) bool {
+) (bool, core_types.ExecutionCost) {
 	var success bool
+	var execCost core_types.ExecutionCost
 	if group.oneOf {
-		success = runOneOfGroup(group.steps, transactions, runner)
+		success, execCost = runOneOfGroup(group.steps, transactions, runner)
 	} else {
-		success = runAllOfGroup(group.steps, transactions, runner)
+		success, execCost = runAllOfGroup(group.steps, transactions, runner)
 	}
 	if group.tolerateFailed {
-		return true
+		return true, execCost
 	}
-	return success
+	return success, execCost
 }
 
 // runAllOfGroup executes a group of steps where all steps must be successful
@@ -92,15 +93,18 @@ func runAllOfGroup(
 	steps []ExecutionStep,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
-) bool {
+) (bool, core_types.ExecutionCost) {
 	snapshot := runner.CreateSnapshot()
+	var execCost core_types.ExecutionCost
 	for _, step := range steps {
-		if !runStep(step, transactions, runner) {
+		success, stepExecCost := runStep(step, transactions, runner)
+		execCost += stepExecCost
+		if !success {
 			runner.RevertToSnapshot(snapshot)
-			return false
+			return false, execCost
 		}
 	}
-	return true
+	return true, execCost
 }
 
 // runOneOfGroup executes a group of steps where at least one step must be
@@ -112,15 +116,18 @@ func runOneOfGroup(
 	steps []ExecutionStep,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
-) bool {
+) (bool, core_types.ExecutionCost) {
 	snapshot := runner.CreateSnapshot()
+	var execCost core_types.ExecutionCost
 	for _, step := range steps {
-		if runStep(step, transactions, runner) {
-			return true
+		success, stepExecCost := runStep(step, transactions, runner)
+		execCost += stepExecCost
+		if success {
+			return true, execCost
 		}
 	}
 	runner.RevertToSnapshot(snapshot)
-	return false
+	return false, execCost
 }
 
 // runSingle executes a single transaction step and returns true if the
@@ -132,15 +139,16 @@ func runSingle(
 	single single,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
-) bool {
+) (bool, core_types.ExecutionCost) {
 	var result core_types.TransactionResult
+	var execCost core_types.ExecutionCost
 	tx, found := transactions[single.txRef]
 	if !found {
 		result = core_types.TransactionResultInvalid
 	} else {
-		result = runner.Run(tx)
+		result, execCost = runner.Run(tx)
 	}
-	return isTolerated(result, single.flags)
+	return isTolerated(result, single.flags), execCost
 }
 
 // isTolerated determines whether a transaction result is considered successful

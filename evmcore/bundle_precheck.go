@@ -203,7 +203,7 @@ func checkForNonceConflicts(
 	}
 
 	// If this execution failed, the bundle is non-executable.
-	if success := bundle.RunBundle(txBundle, runner); !success {
+	if success, _ := bundle.RunBundle(txBundle, runner); !success {
 		return makePermanentlyBlockedState("bundle nonce check execution failed")
 	}
 
@@ -267,40 +267,40 @@ type dryRunner struct {
 	undo           []func()
 }
 
-func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
+func (r *dryRunner) Run(tx *types.Transaction) (core_types.TransactionResult, core_types.ExecutionCost) {
 
 	// if the transaction is a nested bundle, process it as such
 	if bundle.IsEnvelope(tx) {
 		txBundle, err := bundle.OpenEnvelope(r.signer, tx)
 		if err != nil {
-			return core_types.TransactionResultInvalid
+			return core_types.TransactionResultInvalid, 0
 		}
 
-		if bundle.RunBundle(&txBundle, r) {
-			return core_types.TransactionResultSuccessful
+		if success, _ := bundle.RunBundle(&txBundle, r); success {
+			return core_types.TransactionResultSuccessful, 0
 		}
 
-		return core_types.TransactionResultFailed
+		return core_types.TransactionResultFailed, 0
 	}
 
 	// check for nonce conflicts
 	sender, err := types.Sender(r.signer, tx)
 	if err != nil {
-		return core_types.TransactionResultInvalid
+		return core_types.TransactionResultInvalid, 0
 	}
 	want := r.nonceTracker.getNonce(sender)
 	if tx.Nonce() < want {
-		return core_types.TransactionResultInvalid
+		return core_types.TransactionResultInvalid, 0
 	}
 	if tx.Nonce() > want {
-		return core_types.TransactionResultInvalid
+		return core_types.TransactionResultInvalid, 0
 	}
 
 	// if there are no nonce conflicts, consume the nonce for the sender and
 	// continue with the next transaction in the bundle
 	r.nonceTracker.consumeNonce(sender)
 	r.acceptedSender[sender] = struct{}{}
-	return core_types.TransactionResultSuccessful
+	return core_types.TransactionResultSuccessful, 0
 }
 
 func (r *dryRunner) CreateSnapshot() int {
