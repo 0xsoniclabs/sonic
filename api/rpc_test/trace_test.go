@@ -138,7 +138,6 @@ func Test_TraceTransaction_MustProcessWithBaseFeeSet(t *testing.T) {
 	be := NewBackendBuilder(t).
 		WithChainID(chainId).
 		WithAccount(sender, AccountState{Balance: big.NewInt(1e18)}).
-		WithAccount(toAddr, AccountState{}).
 		WithBlockHistory(
 			[]Block{
 				{
