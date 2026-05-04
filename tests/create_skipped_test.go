@@ -30,12 +30,15 @@ import (
 )
 
 func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *testing.T) {
-	versions := map[string]opera.Upgrades{
-		"sonic":   opera.GetSonicUpgrades(),
-		"allegro": opera.GetAllegroUpgrades(),
+
+	testSizes := map[string]int{
+		"Sonic":   50000,
+		"Allegro": 50000,
+		// From Brio onwards, the limit is doubled
+		"Brio": 50000 * 2,
 	}
 
-	for name, version := range versions {
+	for name, version := range opera.GetAllHardForksInOrder() {
 		t.Run(name, func(t *testing.T) {
 			net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
 				Upgrades: &version,
@@ -56,7 +59,10 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 			chainId, err := client.ChainID(t.Context())
 			require.NoError(t, err)
 
-			initCode := make([]byte, 50000)
+			testSize, ok := testSizes[name]
+			require.True(t, ok, "test size should be defined for the hardfork")
+
+			initCode := make([]byte, testSize)
 			txData := &types.LegacyTx{
 				Nonce:    0,
 				Gas:      10000000,

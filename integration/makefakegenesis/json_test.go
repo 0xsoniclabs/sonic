@@ -38,32 +38,30 @@ func TestJsonGenesis_AcceptsGenesisWithoutCommittee(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestJsonGenesis_Network_Rules_Validated_Allegro_Only(t *testing.T) {
-	tests := map[string]struct {
-		featureSet opera.Upgrades
-		assert     func(t *testing.T, err error)
-	}{
-		"sonic": {
-			featureSet: opera.GetSonicUpgrades(),
-			assert: func(t *testing.T, err error) {
-				require.NoError(t, err)
-			},
-		},
-		"allegro": {
-			featureSet: opera.GetAllegroUpgrades(),
-			assert: func(t *testing.T, err error) {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), "LLR upgrade is not supported")
-			},
-		},
+func TestJsonGenesis_Network_RulesValidated_WithAllegroAndLater(t *testing.T) {
+
+	expectNotValidated := func(t *testing.T, err error) {
+		require.NoError(t, err)
 	}
 
-	for name, test := range tests {
+	expectValidated := func(t *testing.T, err error) {
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "LLR upgrade is not supported")
+	}
+
+	for name, upgrades := range opera.GetAllHardForksInOrder() {
 		t.Run(name, func(t *testing.T) {
-			genesis := GenerateFakeJsonGenesis(test.featureSet, CreateEqualValidatorStake(1))
-			genesis.Rules.Upgrades.Llr = true // LLR is not supported in Allegro and Sonic
+
+			genesis := GenerateFakeJsonGenesis(upgrades, CreateEqualValidatorStake(1))
+			genesis.Rules.Upgrades.Llr = true // LLR is not supported in any hardfork
 			_, err := ApplyGenesisJson(genesis)
-			test.assert(t, err)
+
+			// Validation of network rules introduced in Allegro
+			if name == "Sonic" {
+				expectNotValidated(t, err)
+			} else {
+				expectValidated(t, err)
+			}
 		})
 	}
 }

@@ -33,13 +33,8 @@ import (
 )
 
 func TestBlockVerifiability(t *testing.T) {
-	tests := map[string]opera.Upgrades{
-		"sonic":   opera.GetSonicUpgrades(),
-		"allegro": opera.GetAllegroUpgrades(),
-		"brio":    opera.GetBrioUpgrades(),
-	}
 
-	for name, upgrades := range tests {
+	for name, upgrades := range opera.GetAllHardForksInOrder() {
 		t.Run(name, func(t *testing.T) {
 			single := upgrades
 			single.SingleProposerBlockFormation = true

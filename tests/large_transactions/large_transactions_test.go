@@ -103,18 +103,12 @@ func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 		it becomes unstable when running with enabled data race detection.`)
 	}
 
-	hardForks := map[string]opera.Upgrades{
-		"Sonic":   opera.GetSonicUpgrades(),
-		"Allegro": opera.GetAllegroUpgrades(),
-		"Brio":    opera.GetBrioUpgrades(),
-	}
-
 	modes := map[string]bool{
 		"DistributedProposer": false,
 		"SingleProposer":      true,
 	}
 
-	for name, upgrades := range hardForks {
+	for name, upgrades := range opera.GetAllHardForksInOrder() {
 		for mode, singleProposer := range modes {
 			t.Run(fmt.Sprintf("%s/%s", name, mode), func(t *testing.T) {
 				effectiveUpgrades := upgrades

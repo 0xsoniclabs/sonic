@@ -29,13 +29,18 @@ import (
 )
 
 func TestDefaultRulesAreValid(t *testing.T) {
-	rules := map[string]Rules{
-		"mainnet": MainNetRules(),
-		"fakenet": FakeNetRules(GetAllegroUpgrades()),
-	}
-	for name, r := range rules {
-		t.Run(name, func(t *testing.T) {
-			require.NoError(t, r.Validate(Rules{}))
+	t.Run("mainnet", func(t *testing.T) {
+		require.NoError(t, MainNetRules().Validate(Rules{}))
+	})
+
+	for name, upgrades := range GetAllHardForksInOrder() {
+		if name == "Sonic" {
+			// validation introduced in Allegro
+			continue
+		}
+		rules := FakeNetRules(upgrades)
+		t.Run("fakenet/"+name, func(t *testing.T) {
+			require.NoError(t, rules.Validate(Rules{}))
 		})
 	}
 }

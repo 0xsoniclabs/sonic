@@ -33,28 +33,24 @@ import (
 )
 
 func TestEstimateGas(t *testing.T) {
-	t.Run("Sonic", func(t *testing.T) {
-		session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
-		t.Parallel()
 
-		dataContract, receipt, err := DeployContract(session, data_reader.DeployDataReader)
-		require.NoError(t, err, "failed to deploy contract; %v", err)
-		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
-		dataContractAddress := receipt.ContractAddress
+	for upgradeName, upgrade := range opera.GetAllHardForksInOrder() {
+		t.Run(upgradeName, func(t *testing.T) {
+			session := getIntegrationTestNetSession(t, upgrade)
+			t.Parallel()
 
-		doTestEstimate(t, session, makeTestCases(t, session, dataContract, dataContractAddress))
-	})
-	t.Run("Allegro", func(t *testing.T) {
-		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
-		t.Parallel()
+			dataContract, receipt, err := DeployContract(session, data_reader.DeployDataReader)
+			require.NoError(t, err, "failed to deploy contract; %v", err)
+			require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
+			dataContractAddress := receipt.ContractAddress
 
-		dataContract, receipt, err := DeployContract(session, data_reader.DeployDataReader)
-		require.NoError(t, err, "failed to deploy contract; %v", err)
-		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
-		dataContractAddress := receipt.ContractAddress
-
-		doTestEstimate(t, session, makeAllegroCases(t, session, dataContract, dataContractAddress))
-	})
+			if upgradeName == "Sonic" {
+				doTestEstimate(t, session, makeTestCases(t, session, dataContract, dataContractAddress))
+			} else {
+				doTestEstimate(t, session, makeAllegroCases(t, session, dataContract, dataContractAddress))
+			}
+		})
+	}
 }
 
 func makeTestCases(
