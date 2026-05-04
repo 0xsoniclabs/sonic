@@ -36,8 +36,9 @@ import (
 //
 // The execution plan also defines a block range for which the plan is valid.
 type ExecutionPlan struct {
-	Range BlockRange
-	Root  ExecutionStep
+	Root   ExecutionStep
+	Range  BlockRange
+	Period TimePeriod
 }
 
 // Hash computes a deterministic hash of the execution plan, which can be used
@@ -52,15 +53,35 @@ func (p *ExecutionPlan) Hash() common.Hash {
 }
 
 func (p *ExecutionPlan) encode(writer io.Writer) error {
+	// version byte for future compatibility
+	n, err := writer.Write([]byte{0x01})
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("failed to write version byte")
+	}
+
 	return errors.Join(
 		p.Range.encode(writer),
+		p.Period.encode(writer),
 		p.Root.encode(writer),
 	)
 }
 
 func (p *ExecutionPlan) decode(reader io.Reader) error {
+	// version byte for future compatibility
+	var version [1]byte
+	if _, err := io.ReadFull(reader, version[:]); err != nil {
+		return err
+	}
+	if version[0] != 0x01 {
+		return fmt.Errorf("unsupported execution plan version: %d", version[0])
+	}
+
 	return errors.Join(
 		p.Range.decode(reader),
+		p.Period.decode(reader),
 		p.Root.decode(reader),
 	)
 }

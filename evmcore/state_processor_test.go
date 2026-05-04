@@ -27,6 +27,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
@@ -555,6 +556,48 @@ func createScenarioWithTxCheckingDifficulty(
 	}
 
 	return state, block
+}
+
+func TestProcessWithDifficulty_ForwardsTimeToBundleProcessing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).AnyTimes()
+	stateDb.EXPECT().InterTxSnapshot().AnyTimes()
+	stateDb.EXPECT().AddProcessedBundle(gomock.Any(), gomock.Any()).AnyTimes()
+
+	currentTime := inter.Timestamp(12_345)
+
+	processableBundle := bundle.NewBuilder().AllOf().SetNotBefore(currentTime).Build()
+	blockedBundle := bundle.NewBuilder().AllOf().SetNotBefore(currentTime + 1).Build()
+
+	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{
+		Brio:               true,
+		TransactionBundles: true,
+	})
+
+	block := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number: big.NewInt(1),
+			Time:   currentTime,
+		},
+		Transactions: []*types.Transaction{
+			processableBundle,
+			blockedBundle,
+		},
+	}
+
+	summary := processor.ProcessWithDifficulty(
+		block, stateDb, vm.Config{}, math.MaxUint64,
+		new(uint64), 0, nil, big.NewInt(1),
+	)
+
+	// The rejected bundle should be listed in the summary, the accepted not,
+	// as the envelope is not reported and the bundle itself is empty.
+	require.Len(t, summary.ProcessedTransactions, 1)
+
+	processed := summary.ProcessedTransactions[0]
+	require.Equal(t, processed.Transaction, blockedBundle)
+	require.Nil(t, processed.Receipt)
 }
 
 func TestProcess_ForwardsCorrectIndexToTransactionProcessor(t *testing.T) {
@@ -2231,6 +2274,45 @@ func TestRunTransactionBundle_BundleOutOfRange_ReturnsEnvelopeAndResultInvalid(t
 	require.Equal(t, core_types.TransactionResultInvalid, result)
 }
 
+func TestRunTransactionBundle_BundleOutOfTime_ReturnsEnvelopeAndResultInvalid(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	ctrl := gomock.NewController(t)
+
+	log := NewMocklogger(ctrl)
+	log.EXPECT().Warn("Bundle skipped due to out-of-time execution plan", gomock.Any())
+
+	blockNumber := 10
+	blockTime := inter.Timestamp(1234)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	tx := bundle.NewBuilder().
+		With(bundle.Step(key, &types.AccessListTx{
+			Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
+		})).
+		SetNotBefore(blockTime + 1).
+		Build()
+
+	_, _, err = bundle.ValidateEnvelope(signer, tx)
+	require.NoError(t, err)
+
+	context := &runContext{
+		signer:      signer,
+		upgrades:    opera.Upgrades{TransactionBundles: true},
+		blockNumber: big.NewInt(int64(blockNumber)),
+		blockTime:   blockTime,
+	}
+
+	runner := &transactionRunner{}
+
+	processedTransactions, result := runner.runTransactionBundleInternal(context, tx, 0, 0, log)
+	require.Len(t, processedTransactions, 1)
+	require.Equal(t, tx, processedTransactions[0].Transaction)
+	require.Nil(t, processedTransactions[0].Receipt)
+	require.Equal(t, core_types.TransactionResultInvalid, result)
+}
+
 func TestRunTransactionBundle_PreviouslyProcessedBundle_ReturnsEnvelopeAndResultInvalid(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 
@@ -3548,4 +3630,49 @@ func TestNewTransactionProcessorForBlock_ConfiguresTransactionProcessorWithValue
 	require.EqualValues(0, processor.usedGas)
 	require.NotNil(processor.vmEnvironment)
 	require.Equal(currentRules.Upgrades, processor.upgrades)
+}
+
+func TestTransactionProcessor_Run_ForwardsTimeToBundleProcessing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).AnyTimes()
+	stateDb.EXPECT().InterTxSnapshot().AnyTimes()
+	stateDb.EXPECT().AddProcessedBundle(gomock.Any(), gomock.Any()).AnyTimes()
+
+	chainCfg := &params.ChainConfig{
+		ChainID: big.NewInt(1),
+	}
+	currentRules := opera.Rules{
+		Upgrades: opera.Upgrades{
+			Brio:               true,
+			TransactionBundles: true,
+		},
+	}
+
+	chain := NewMockChainState(ctrl)
+	chain.EXPECT().GetCurrentChainConfig().Return(chainCfg)
+	chain.EXPECT().GetCurrentNetworkRules().Return(currentRules).AnyTimes()
+
+	currentTime := inter.Timestamp(12_345)
+	block := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number: big.NewInt(1),
+			Time:   currentTime,
+		},
+	}
+
+	txProcessor := NewTransactionProcessorForBlock(chain, stateDb, block)
+
+	// Processable Bundles should be processed.
+	processableBundle := bundle.NewBuilder().AllOf().SetNotBefore(currentTime).Build()
+	summary := txProcessor.Run(0, processableBundle)
+	require.Empty(t, summary.ProcessedTransactions) // < accepted, no result
+
+	// Blocked bundles should be rejected.
+	blockedBundle := bundle.NewBuilder().AllOf().SetNotBefore(currentTime + 1).Build()
+	summary = txProcessor.Run(0, blockedBundle)
+	require.Len(t, summary.ProcessedTransactions, 1)
+	processedTx := summary.ProcessedTransactions[0]
+	require.Equal(t, blockedBundle, processedTx.Transaction)
+	require.Nil(t, processedTx.Receipt)
 }

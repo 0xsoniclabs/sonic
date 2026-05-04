@@ -18,11 +18,13 @@ package bundle
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestExecutionPlan_Hash_ComputesDeterministicHash(t *testing.T) {
@@ -111,6 +113,112 @@ func TestExecutionPlan_Hash_ComputesDeterministicHash(t *testing.T) {
 			require.Equal(t, executionPlan.Hash(), computed)
 			require.NotContains(t, seenHashes, computed, "hash should be unique for different plans")
 			seenHashes[computed] = struct{}{}
+		})
+	}
+}
+
+func TestExecutionPlan_encode_StartsWithVersionNumber(t *testing.T) {
+	executionPlan := ExecutionPlan{
+		Range:  BlockRange{First: 10, Length: 12},
+		Period: TimePeriod{Start: 100, Duration: 200},
+		Root: NewTxStep(TxReference{
+			From: common.Address{1},
+			Hash: common.Hash{2},
+		}),
+	}
+
+	buf := &bytes.Buffer{}
+	require.NoError(t, executionPlan.encode(buf))
+	require.NotEmpty(t, buf.Bytes())
+	require.Equal(t, byte(1), buf.Bytes()[0])
+}
+
+func TestExecutionPlan_encode_DetectsShortWriteForVersionNumber(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	writer := NewMockWriter(ctrl)
+	writer.EXPECT().Write(gomock.Any()).Return(0, nil)
+
+	executionPlan := ExecutionPlan{
+		Range:  BlockRange{First: 10, Length: 12},
+		Period: TimePeriod{Start: 100, Duration: 200},
+		Root: NewTxStep(TxReference{
+			From: common.Address{1},
+			Hash: common.Hash{2},
+		}),
+	}
+
+	require.ErrorContains(t, executionPlan.encode(writer), "failed to write version byte")
+}
+
+func TestExecutionPlan_encode_ReportsWriteError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	executionPlan := ExecutionPlan{
+		Range:  BlockRange{First: 10, Length: 12},
+		Period: TimePeriod{Start: 100, Duration: 200},
+		Root: NewTxStep(TxReference{
+			From: common.Address{1},
+			Hash: common.Hash{2},
+		}),
+	}
+
+	numWrites := 0
+	writer := NewMockWriter(ctrl)
+	writer.EXPECT().Write(gomock.Any()).DoAndReturn(
+		func(data []byte) (int, error) {
+			numWrites++
+			return len(data), nil
+		},
+	).AnyTimes()
+
+	require.NoError(t, executionPlan.encode(writer))
+	require.NotZero(t, numWrites)
+
+	for i := range numWrites {
+		t.Run(fmt.Sprintf("issue_after=%d", i), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			issue := fmt.Errorf("injected issue")
+			writer := NewMockWriter(ctrl)
+			gomock.InOrder(
+				writer.EXPECT().Write(gomock.Any()).Return(1, nil).Times(i),
+				writer.EXPECT().Write(gomock.Any()).Return(0, issue),
+				writer.EXPECT().Write(gomock.Any()).AnyTimes(),
+			)
+			require.ErrorContains(t, executionPlan.encode(writer), issue.Error())
+		})
+	}
+}
+
+func TestExecutionPlan_decode_ReportsVersionMismatch(t *testing.T) {
+	data := []byte{0xFF}
+	var executionPlan ExecutionPlan
+	require.ErrorContains(t,
+		executionPlan.decode(bytes.NewReader(data)),
+		"unsupported execution plan version",
+	)
+}
+
+func TestExecutionPlan_decode_ReportsReadError(t *testing.T) {
+	executionPlan := ExecutionPlan{
+		Range:  BlockRange{First: 10, Length: 12},
+		Period: TimePeriod{Start: 100, Duration: 200},
+		Root: NewTxStep(TxReference{
+			From: common.Address{1},
+			Hash: common.Hash{2},
+		}),
+	}
+
+	buf := &bytes.Buffer{}
+	require.NoError(t, executionPlan.encode(buf))
+	encoded := buf.Bytes()
+	require.NotEmpty(t, encoded)
+
+	// prune input data to trigger read errors at different points in the
+	// decoding process, and verify that an error is returned in each case
+	for i := range len(encoded) {
+		t.Run(fmt.Sprintf("issue_after=%d", i), func(t *testing.T) {
+			reader := bytes.NewBuffer(encoded[:i])
+			require.Error(t, executionPlan.decode(reader))
 		})
 	}
 }

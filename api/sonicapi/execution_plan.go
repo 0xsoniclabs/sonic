@@ -112,8 +112,9 @@ func ToBundleExecutionPlan(rpcPlan RPCExecutionPlanComposable) (bundle.Execution
 	}
 
 	return bundle.ExecutionPlan{
-		Range: rpcPlan.BlockRange.toBundleBlockRange(),
-		Root:  root,
+		Range:  rpcPlan.BlockRange.toBundleBlockRange(),
+		Root:   root,
+		Period: bundle.MakeUnrestrictedTimePeriod(),
 	}, nil
 }
 

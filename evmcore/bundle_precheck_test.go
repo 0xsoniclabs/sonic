@@ -27,6 +27,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
@@ -94,7 +95,7 @@ func Test_GetBundleState_OutdatedBundle_ReturnsNonExecutable(t *testing.T) {
 	require.NoError(t, err)
 
 	state := GetBundleState(chainState, nil, envelope)
-	require.Equal(t, state, makePermanentlyBlockedState("bundle has expired"))
+	require.Equal(t, state, makePermanentlyBlockedState("bundle has expired (block constraint)"))
 }
 
 func Test_GetBundleState_FutureBundle_ReturnsTemporaryBlocked(t *testing.T) {
@@ -125,11 +126,99 @@ func Test_GetBundleState_FutureBundle_ReturnsTemporaryBlocked(t *testing.T) {
 	require.Equal(t, state, makeTemporaryBlockedState("bundle targets future blocks"))
 }
 
+func Test_GetBundleState_TooLateForTimePeriod_ReturnsNonExecutable(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	chainState := NewMockChainStateForBundleEval(ctrl)
+
+	currentBlock := uint64(100)
+	currentTime := inter.Timestamp(12_345)
+	currentHeader := &EvmHeader{
+		Number: big.NewInt(int64(currentBlock)),
+		Time:   currentTime,
+	}
+	chainState.EXPECT().GetLatestHeader().Return(currentHeader).AnyTimes()
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
+	}).AnyTimes()
+
+	// Build an outdated bundle.
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	envelope := bundle.NewBuilder().
+		SetNotBefore(currentTime - 100).
+		SetPeriodDuration(50).
+		Build()
+
+	_, _, err := bundle.ValidateEnvelope(signer, envelope)
+	require.NoError(t, err)
+
+	state := GetBundleState(chainState, nil, envelope)
+	require.Equal(t, state, makePermanentlyBlockedState("bundle has expired (time constraint)"))
+}
+
+func Test_GetBundleState_ToEarlyForTimePeriod_ReturnsTemporaryBlocked(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	chainState := NewMockChainStateForBundleEval(ctrl)
+
+	currentBlock := uint64(100)
+	currentTime := inter.Timestamp(12_345)
+	currentHeader := &EvmHeader{
+		Number: big.NewInt(int64(currentBlock)),
+		Time:   currentTime,
+	}
+	chainState.EXPECT().GetLatestHeader().Return(currentHeader).AnyTimes()
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
+	}).AnyTimes()
+
+	// Build a bundle with a block window in the future
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	envelope := bundle.NewBuilder().
+		SetNotBefore(currentTime + 100).
+		SetPeriodDuration(50).
+		Build()
+
+	_, _, err := bundle.ValidateEnvelope(signer, envelope)
+	require.NoError(t, err)
+
+	state := GetBundleState(chainState, nil, envelope)
+	require.Equal(t, state, makeTemporaryBlockedState("bundle targets future time period"))
+}
+
+func Test_GetBundleState_BundleHasAlreadyBeenProcessed_ReturnsPermanentlyBlocked(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	chainState := NewMockChainStateForBundleEval(ctrl)
+
+	currentBlock := uint64(100)
+	currentHeader := &EvmHeader{
+		Number: big.NewInt(int64(currentBlock)),
+	}
+	chainState.EXPECT().GetLatestHeader().Return(currentHeader).AnyTimes()
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
+	}).AnyTimes()
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	envelope := bundle.NewBuilder().Build()
+
+	_, _, err := bundle.ValidateEnvelope(signer, envelope)
+	require.NoError(t, err)
+
+	db := state.NewMockStateDB(ctrl)
+	db.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(true)
+
+	state := GetBundleState(chainState, db, envelope)
+	require.Equal(t, state, makePermanentlyBlockedState("bundle already processed"))
+}
+
 func Test_GetBundleState_FailedTrialRun_ReturnsNonExecutable(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	chainState := NewMockChainStateForBundleEval(ctrl)
 	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any())
 	stateDb.EXPECT().InterTxSnapshot().Return(12)
 	stateDb.EXPECT().RevertToInterTxSnapshot(12)
 
@@ -160,6 +249,7 @@ func Test_GetBundleState_ValidBundle_ReturnsRunnable(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainState := NewMockChainStateForBundleEval(ctrl)
 	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any())
 	stateDb.EXPECT().InterTxSnapshot().Return(12)
 	stateDb.EXPECT().RevertToInterTxSnapshot(12)
 
@@ -229,6 +319,7 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 			ctrl := gomock.NewController(t)
 
 			db := state.NewMockStateDB(ctrl)
+			db.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any())
 			db.EXPECT().GetNonce(gomock.Any()).Return(uint64(initialNonce)).AnyTimes()
 			db.EXPECT().InterTxSnapshot().AnyTimes()
 			db.EXPECT().RevertToInterTxSnapshot(gomock.Any()).AnyTimes()

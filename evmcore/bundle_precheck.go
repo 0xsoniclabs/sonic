@@ -103,10 +103,24 @@ func getBundleState(
 	// Quickest filter: check if the bundle is in the valid block range.
 	currentBlock := chain.GetLatestHeader().Number.Uint64()
 	if bundle.Plan.Range.IsAfterRange(currentBlock) {
-		return makePermanentlyBlockedState("bundle has expired")
+		return makePermanentlyBlockedState("bundle has expired (block constraint)")
 	}
 	if bundle.Plan.Range.IsBeforeRange(currentBlock) {
 		return makeTemporaryBlockedState("bundle targets future blocks")
+	}
+
+	// Check the time period limit of the bundle.
+	currentTime := chain.GetLatestHeader().Time
+	if bundle.Plan.Period.IsAfterPeriod(currentTime) {
+		return makePermanentlyBlockedState("bundle has expired (time constraint)")
+	}
+	if bundle.Plan.Period.IsBeforePeriod(currentTime) {
+		return makeTemporaryBlockedState("bundle targets future time period")
+	}
+
+	// Check that the bundle has not already been processed.
+	if stateDb.HasBundleRecentlyBeenProcessed(bundle.Plan.Hash()) {
+		return makePermanentlyBlockedState("bundle already processed")
 	}
 
 	// Next, check whether there are any nonce conflicts in the execution of

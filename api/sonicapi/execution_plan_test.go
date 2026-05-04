@@ -46,7 +46,10 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 		expectedJson string
 	}{
 		"plan with single step": {
-			plan: bundle.ExecutionPlan{Root: step1},
+			plan: bundle.ExecutionPlan{
+				Root:   step1,
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
     			"steps":[
 					{
@@ -57,7 +60,10 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			}`,
 		},
 		"plan with different single step": {
-			plan: bundle.ExecutionPlan{Root: step2},
+			plan: bundle.ExecutionPlan{
+				Root:   step2,
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
 		 		"steps":[
 		 			{
@@ -68,7 +74,10 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 		 	}`,
 		},
 		"plan with single step and execution flags 1": {
-			plan: bundle.ExecutionPlan{Root: step1.WithFlags(bundle.EF_TolerateFailed)},
+			plan: bundle.ExecutionPlan{
+				Root:   step1.WithFlags(bundle.EF_TolerateFailed),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
 		 		"steps":[
 		 			{
@@ -80,7 +89,10 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 		 	}`,
 		},
 		"plan with single step and execution flags 2": {
-			plan: bundle.ExecutionPlan{Root: step1.WithFlags(bundle.EF_TolerateInvalid)},
+			plan: bundle.ExecutionPlan{
+				Root:   step1.WithFlags(bundle.EF_TolerateInvalid),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
 		 		"steps":[
 		 			{
@@ -92,7 +104,10 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 		 	}`,
 		},
 		"plan with single step and execution flags 3": {
-			plan: bundle.ExecutionPlan{Root: step2.WithFlags(bundle.EF_TolerateFailed | bundle.EF_TolerateInvalid)},
+			plan: bundle.ExecutionPlan{
+				Root:   step2.WithFlags(bundle.EF_TolerateFailed | bundle.EF_TolerateInvalid),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
 		 		"steps":[
 		 			{
@@ -105,7 +120,10 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 		 	}`,
 		},
 		"plan with all-of group": {
-			plan: bundle.ExecutionPlan{Root: bundle.NewAllOfStep(step1, step2)},
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewAllOfStep(step1, step2),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
 		 		"steps": [
 					{
@@ -124,7 +142,10 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 		 	}`,
 		},
 		"plan with different all-of group": {
-			plan: bundle.ExecutionPlan{Root: bundle.NewAllOfStep(step2, step1)},
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewAllOfStep(step2, step1),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
 		  		"steps":[
 					{
@@ -143,7 +164,10 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 		  	}`,
 		},
 		"plan with all-of group tolerating failed": {
-			plan: bundle.ExecutionPlan{Root: bundle.NewAllOfStep(step1, step2).WithFlags(bundle.EF_TolerateFailed)},
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewAllOfStep(step1, step2).WithFlags(bundle.EF_TolerateFailed),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
 				"steps":[
 					{
@@ -163,7 +187,10 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			}`,
 		},
 		"plan with one-of group": {
-			plan: bundle.ExecutionPlan{Root: bundle.NewOneOfStep(step1, step2)},
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewOneOfStep(step1, step2),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
 				"steps":[
 					{
@@ -183,7 +210,10 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			}`,
 		},
 		"plan with different one-of group": {
-			plan: bundle.ExecutionPlan{Root: bundle.NewOneOfStep(step2, step1)},
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewOneOfStep(step2, step1),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
 				"steps":[
 					{
@@ -203,7 +233,10 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			}`,
 		},
 		"plan with one-of group and tolerating failed": {
-			plan: bundle.ExecutionPlan{Root: bundle.NewOneOfStep(step1, step2).WithFlags(bundle.EF_TolerateFailed)},
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewOneOfStep(step1, step2).WithFlags(bundle.EF_TolerateFailed),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
 				"steps":[
 					{
@@ -224,10 +257,13 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			}`,
 		},
 		"plan with nested groups": {
-			plan: bundle.ExecutionPlan{Root: bundle.NewOneOfStep(
-				bundle.NewAllOfStep(step1, step2),
-				bundle.NewAllOfStep(step2, step1),
-			)},
+			plan: bundle.ExecutionPlan{
+				Root: bundle.NewOneOfStep(
+					bundle.NewAllOfStep(step1, step2),
+					bundle.NewAllOfStep(step2, step1),
+				),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
 				"steps":[
 					{
@@ -263,10 +299,13 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			}`,
 		},
 		"plan with different nested groups": {
-			plan: bundle.ExecutionPlan{Root: bundle.NewOneOfStep(
-				bundle.NewAllOfStep(step2, step1),
-				bundle.NewAllOfStep(step1, step2),
-			)},
+			plan: bundle.ExecutionPlan{
+				Root: bundle.NewOneOfStep(
+					bundle.NewAllOfStep(step2, step1),
+					bundle.NewAllOfStep(step1, step2),
+				),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
 				"steps":[
 					{
@@ -302,7 +341,11 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			}`,
 		},
 		"plan with block range": {
-			plan: bundle.ExecutionPlan{Root: step1, Range: bundle.BlockRange{First: 10, Length: 20}},
+			plan: bundle.ExecutionPlan{
+				Root:   step1,
+				Range:  bundle.BlockRange{First: 10, Length: 20},
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
 				"blockRange":{"first":"0xa","length":"0x14"},
 				"steps":[
@@ -314,7 +357,11 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			}`,
 		},
 		"plan with different start": {
-			plan: bundle.ExecutionPlan{Root: step1, Range: bundle.BlockRange{First: 11, Length: 20}},
+			plan: bundle.ExecutionPlan{
+				Root:   step1,
+				Range:  bundle.BlockRange{First: 11, Length: 20},
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
 				"blockRange":{"first":"0xb","length":"0x14"},
 				"steps":[
@@ -326,7 +373,11 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			}`,
 		},
 		"plan with different end": {
-			plan: bundle.ExecutionPlan{Root: step1, Range: bundle.BlockRange{First: 10, Length: 21}},
+			plan: bundle.ExecutionPlan{
+				Root:   step1,
+				Range:  bundle.BlockRange{First: 10, Length: 21},
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
 			expectedJson: `{
 				"blockRange":{"first":"0xa","length":"0x15"},
 				"steps":[
@@ -346,7 +397,8 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 						bundle.NewTxStep(ref2).WithFlags(bundle.EF_TolerateInvalid),
 					),
 				),
-				Range: bundle.BlockRange{First: 12345678, Length: 12345778},
+				Range:  bundle.BlockRange{First: 12345678, Length: 12345778},
+				Period: bundle.MakeUnrestrictedTimePeriod(),
 			},
 			expectedJson: `{
 				"blockRange":{"first":"0xbc614e","length":"0xbc61b2"},
