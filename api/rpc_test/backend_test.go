@@ -361,8 +361,7 @@ func Test_FakeBackend_GetTransaction(t *testing.T) {
 				require.Equal(t, tt.expectedBlockNumber, blockNr)
 				require.Equal(t, tt.expectedTxIndex, txIndex)
 			} else {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), "transaction not found")
+				require.Nil(t, err)
 				require.Nil(t, tx)
 				require.Equal(t, tt.expectedBlockNumber, blockNr)
 				require.Equal(t, tt.expectedTxIndex, txIndex)

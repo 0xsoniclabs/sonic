@@ -399,7 +399,7 @@ func (b *fakeBackend) GetTransaction(ctx context.Context, hash common.Hash) (*ty
 			}
 		}
 	}
-	return nil, 0, 0, errors.New("transaction not found")
+	return nil, 0, 0, nil
 }
 
 // GetReceiptsByNumber looks up a block by its number in the fake backend's block history,
