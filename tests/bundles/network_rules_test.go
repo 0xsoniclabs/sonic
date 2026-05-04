@@ -28,7 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBundles_BundleOnlyTransactionsAreFilteredOutByTheTxPoolStartingFromBrio(t *testing.T) {
+func TestBundles_BundleOnlyTransactionsAreAcceptedByTxPoolButNeverExecutedStartingFromBrio(t *testing.T) {
 	brioAndBundlesUpgrades := opera.GetBrioUpgrades()
 	brioAndBundlesUpgrades.TransactionBundles = true
 
@@ -81,6 +81,7 @@ func TestBundles_BundleOnlyTransactionsAreFilteredOutByTheTxPoolStartingFromBrio
 			}, sender)
 			require.True(t, bundle.IsBundleOnly(bundleOnlyTx))
 
+			// The pool should accept the bundle-only transaction, even if brio is enabled.
 			txHash, err := net.Send(bundleOnlyTx)
 			require.NoError(t, err)
 			if test.processed {
