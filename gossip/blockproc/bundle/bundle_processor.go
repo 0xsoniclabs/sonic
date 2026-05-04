@@ -25,7 +25,10 @@ import (
 
 // RunBundle executes the transactions in the bundle using the provided
 // TransactionRunner. It returns true if the bundle execution is considered
-// successful, and false otherwise.
+// successful, and false otherwise, and the total execution cost. The execution
+// cost tracks the gas consumed during processing, including gas from
+// rolled-back bundles, which distinguishes it from the usedGas counter that
+// gets reverted on snapshot rollback
 //
 // This is the canonical implementation of the bundle execution logic, which
 // defines the semantic of the execution flags.
