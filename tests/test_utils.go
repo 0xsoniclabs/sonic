@@ -302,7 +302,7 @@ func MakeAccountWithBalance(t *testing.T, net IntegrationTestNetSession, balance
 
 // MakeAccountsWithBalance creates multiple new accounts and endows them with the given balance.
 // Creating the accounts this way allows to get access to the private keys to sign transactions.
-func MakeAccountsWithBalance(t *testing.T, net IntegrationTestNetSession, count int, balance *big.Int) []*Account {
+func MakeAccountsWithBalance(t testing.TB, net IntegrationTestNetSession, count int, balance *big.Int) []*Account {
 	t.Helper()
 
 	accounts := make([]*Account, count)

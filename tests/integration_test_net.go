@@ -55,7 +55,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	geth_crypto "github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -373,6 +373,23 @@ func StartIntegrationTestNetWithJsonGenesis(
 	)
 
 	jsonGenesis.Accounts = append(jsonGenesis.Accounts, effectiveOptions.Accounts...)
+
+	// Give extra balance to the first validator, being the account used to
+	// sponsor transactions and endow accounts in tests.
+	sponsorAddress := crypto.PubkeyToAddress(evmcore.FakeKey(1).PublicKey)
+	found := false
+	for i := range jsonGenesis.Accounts {
+		cur := &jsonGenesis.Accounts[i]
+		if cur.Address == sponsorAddress {
+			// enough tokens to endow plenty of accounts
+			extraBalanceForSponsor := new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1e9))
+			balance := cur.Balance
+			cur.Balance = new(big.Int).Add(balance, extraBalanceForSponsor)
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "sponsor account not found in genesis accounts")
 
 	// Speed up the block generation time to reduce test time.
 	jsonGenesis.Rules.Emitter.Interval = inter.Timestamp(time.Millisecond)
@@ -852,6 +869,32 @@ func (n *IntegrationTestNet) GetHeaders() ([]*types.Header, error) {
 	return headers, nil
 }
 
+// GetBlocks returns all blocks on the network from block 0 to the latest block,
+// as reported by node zero.
+func (n *IntegrationTestNet) GetBlocks(ctxt context.Context) ([]*types.Block, error) {
+	client, err := n.GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+	}
+	defer client.Close()
+
+	lastBlock, err := client.BlockByNumber(context.Background(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get last block: %w", err)
+	}
+
+	blocks := []*types.Block{}
+	for i := range lastBlock.NumberU64() {
+		block, err := client.BlockByNumber(ctxt, big.NewInt(int64(i)))
+		if err != nil {
+			return nil, fmt.Errorf("failed to get block: %w", err)
+		}
+		blocks = append(blocks, block)
+	}
+
+	return blocks, nil
+}
+
 // SpawnSession creates a new test session on the network.
 // The session is backed by an account which will be used to sign and pay for
 // transactions. By using this function, multiple test sessions can be run in
@@ -871,7 +914,7 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 	n.sessionsMutex.Lock()
 	defer n.sessionsMutex.Unlock()
 
-	key, _ := geth_crypto.GenerateKey()
+	key, _ := crypto.GenerateKey()
 	nextSessionAccount := Account{
 		PrivateKey: key,
 	}
@@ -1043,6 +1086,19 @@ func (s *Session) EndowAccounts(
 		return nil, fmt.Errorf("failed to connect to the network: %w", err)
 	}
 	defer client.Close()
+
+	// Check that there are enough funds in the account to endow the requested accounts.
+	balance, err := client.BalanceAt(context.Background(), s.account.Address(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get balance: %w", err)
+	}
+	totalValue := new(big.Int).Mul(value, big.NewInt(int64(len(addresses))))
+	if balance.Cmp(totalValue) < 0 {
+		return nil, fmt.Errorf("not enough funds to endow accounts: balance %s, required %s",
+			new(big.Float).SetInt(balance).String(), // scientific notation for large numbers
+			new(big.Float).SetInt(totalValue).String(),
+		)
+	}
 
 	chainId, err := client.ChainID(context.Background())
 	if err != nil {
