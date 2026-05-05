@@ -41,7 +41,7 @@ require (
 	github.com/supranational/blst v0.3.16
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/tyler-smith/go-bip39 v1.1.0
-	go.uber.org/mock v0.4.0
+	go.uber.org/mock v0.6.0
 	golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d
 	golang.org/x/sys v0.40.0
 	google.golang.org/protobuf v1.36.11
