@@ -78,7 +78,7 @@ func TestBundle_BundlesWithTooLowEfficiencyAreRejected(t *testing.T) {
 			// The valid transaction.
 			steps = append(steps, Step(t, net, senders[tc.InvalidTxCount], &types.AccessListTx{}))
 
-			envelope, bundle, _ := bundle.NewBuilder().
+			envelope, bundle, plan := bundle.NewBuilder().
 				WithSigner(signer).
 				SetEarliest(blockNumber).
 				With(bundle.OneOf(steps...)).
@@ -98,6 +98,21 @@ func TestBundle_BundlesWithTooLowEfficiencyAreRejected(t *testing.T) {
 				require.GreaterOrEqual(t, float64(usedGas)/float64(execGas), evmcore.MinBundleEfficiency)
 				_, err = net.Send(envelope)
 				require.NoError(t, err)
+
+				// Wait for the bundle to be processed.
+				info, err := WaitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+				require.NoError(t, err)
+
+				bundleTxs := bundle.GetTransactionsInReferencedOrder()
+				blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(info.Block.Int64()))
+
+				successfulTxHash := bundleTxs[tc.InvalidTxCount].Hash()
+				require.EqualValues(t, info.Count, 1)
+				require.Contains(t, blockTxsHashes, successfulTxHash)
+
+				receipt, err := client.TransactionReceipt(t.Context(), successfulTxHash)
+				require.NoError(t, err)
+				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 			}
 		})
 	}

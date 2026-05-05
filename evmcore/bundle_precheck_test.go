@@ -768,6 +768,11 @@ func Test_trialRunBundleInternal_RejectsBundlesWhereEfficiencyIsBelowThreshold(t
 		execCost     core_types.ExecutionCost
 		expectAccept bool
 	}{
+		"below threshold with empty bundle": {
+			processedTxs: []ProcessedTransaction{},
+			execCost:     core_types.ExecutionCost(0),
+			expectAccept: false,
+		},
 		"below threshold with no receipts": {
 			processedTxs: []ProcessedTransaction{},
 			execCost:     core_types.ExecutionCost(100),
