@@ -183,79 +183,32 @@ func checkForNonceConflicts(
 	signer types.Signer,
 	nonceSource NonceSource,
 ) BundleState {
-	// We start by collecting the lowest nonces referenced for each sender in
-	// the bundle.
-	lowest, err := getLowestReferencedNonces(txBundle, signer)
-	if err != nil {
-		// If we fail to derive the lowest referenced nonces, it means that the
-		// bundle is malformed (e.g., contains invalid transactions) and we can
-		// consider it as non-executable.
-		return makePermanentlyBlockedState(
-			fmt.Sprintf("could not get lowest nonce for all accounts: %v", err))
+
+	// Step 1: run with current nonces to check whether the bundle is ready to
+	// run right now. The runner does not allow nonce-gaps.
+	strictRunner := &dryRunner{
+		signer:       signer,
+		nonceTracker: &nonceTracker{source: nonceSource},
+	}
+	if bundle.RunBundle(txBundle, strictRunner) {
+		return makeRunnableState()
 	}
 
-	// We correct the lowest nonces to be at least as high as the current nonces
-	// for each sender. Lower nonces are no longer available.
-	for sender, lowestNonce := range lowest {
-		lowest[sender] = max(lowestNonce, nonceSource.GetNonce(sender))
+	// Step 2: check with future nonces, to check whether the bundle may become
+	// executable in the future. The runner allows nonce-gaps.
+	looseRunner := &dryRunner{
+		signer:       signer,
+		nonceTracker: &nonceTracker{source: nonceSource},
+		allowGaps:    true, // for each account, a future nonce may be chosen once
+	}
+	if bundle.RunBundle(txBundle, looseRunner) {
+		return makeTemporaryBlockedState("gapped nonce")
 	}
 
-	// With those lowest nonces as a start, we attempt to run the bundle.
-	runner := &dryRunner{
-		signer:         signer,
-		nonceTracker:   &nonceTracker{nonces: maps.Clone(lowest)},
-		acceptedSender: make(map[common.Address]struct{}),
-	}
-
-	// If this execution failed, the bundle is non-executable.
-	if success := bundle.RunBundle(txBundle, runner); !success {
-		return makePermanentlyBlockedState("bundle nonce check execution failed")
-	}
-
-	// If it succeeded, it depends on whether there is a gap between the lowest
-	// and the current nonces for any sender of an accepted transaction.
-	for sender := range runner.acceptedSender {
-		if nonceSource.GetNonce(sender) < lowest[sender] {
-			return makeTemporaryBlockedState("gapped nonce")
-		}
-	}
-	return makeRunnableState()
-}
-
-// getLowestReferencedNonces returns the lowest nonce referenced for each sender
-// in the bundle. If the bundle is malformed (e.g., contains invalid signatures)
-// an error is returned.
-func getLowestReferencedNonces(
-	txBundle *bundle.TransactionBundle,
-	signer types.Signer,
-) (map[common.Address]uint64, error) {
-	res := make(map[common.Address]uint64)
-	for _, tx := range txBundle.Transactions {
-		if bundle.IsEnvelope(tx) {
-			bundle, err := bundle.OpenEnvelope(signer, tx)
-			if err != nil {
-				return nil, fmt.Errorf("invalid nested bundle: %w", err)
-			}
-			innerRes, err := getLowestReferencedNonces(&bundle, signer)
-			if err != nil {
-				return nil, err
-			}
-			for addr, nonce := range innerRes {
-				if existingNonce, ok := res[addr]; !ok || nonce < existingNonce {
-					res[addr] = nonce
-				}
-			}
-		} else {
-			sender, err := types.Sender(signer, tx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to derive sender: %w", err)
-			}
-			if nonce, ok := res[sender]; !ok || tx.Nonce() < nonce {
-				res[sender] = tx.Nonce()
-			}
-		}
-	}
-	return res, nil
+	// Step 3: if it is still not successful, it means that there are nonce
+	// conflicts that can not be resolved by waiting for other transactions to
+	// be executed, and we can consider the bundle as non-executable.
+	return makePermanentlyBlockedState("bundle nonce check execution failed")
 }
 
 // dryRunner is an implementation of the TransactionRunner interface enabling
@@ -266,14 +219,14 @@ func getLowestReferencedNonces(
 // It is only to be used by the checkForNonceConflicts function, which performs
 // the proper lifecycle management of the dryRunner.
 type dryRunner struct {
-	signer         types.Signer
-	nonceTracker   *nonceTracker
-	acceptedSender map[common.Address]struct{}
-	undo           []func()
+	signer       types.Signer
+	nonceTracker *nonceTracker
+	allowGaps    bool
+	nonceUsed    map[common.Address]struct{}
+	undo         []func()
 }
 
 func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
-
 	// if the transaction is a nested bundle, process it as such
 	if bundle.IsEnvelope(tx) {
 		txBundle, err := bundle.OpenEnvelope(r.signer, tx)
@@ -293,27 +246,41 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 	if err != nil {
 		return core_types.TransactionResultInvalid
 	}
+	if r.allowGaps && r.nonceUsed == nil {
+		r.nonceUsed = make(map[common.Address]struct{})
+	}
+
+	got := tx.Nonce()
 	want := r.nonceTracker.getNonce(sender)
-	if tx.Nonce() < want {
+	if got != want {
+		// If gaps are allowed, we can skip over one nonce gap for each account.
+		if got > want && r.allowGaps {
+			if _, found := r.nonceUsed[sender]; !found {
+				r.nonceUsed[sender] = struct{}{}
+				r.nonceTracker.setNonce(sender, got+1)
+				return core_types.TransactionResultSuccessful
+			}
+		}
 		return core_types.TransactionResultInvalid
 	}
-	if tx.Nonce() > want {
-		return core_types.TransactionResultInvalid
+
+	// This account has used the first nonce now, no more gaps allowed for it.
+	if r.allowGaps {
+		r.nonceUsed[sender] = struct{}{}
 	}
 
 	// if there are no nonce conflicts, consume the nonce for the sender and
 	// continue with the next transaction in the bundle
-	r.nonceTracker.consumeNonce(sender)
-	r.acceptedSender[sender] = struct{}{}
+	r.nonceTracker.setNonce(sender, got+1)
 	return core_types.TransactionResultSuccessful
 }
 
 func (r *dryRunner) CreateSnapshot() int {
-	acceptedBackup := maps.Clone(r.acceptedSender)
 	nonceBackup := r.nonceTracker.backup()
+	nonceUsedBackup := maps.Clone(r.nonceUsed)
 	r.undo = append(r.undo, func() {
 		r.nonceTracker.restore(nonceBackup)
-		r.acceptedSender = acceptedBackup
+		r.nonceUsed = nonceUsedBackup
 	})
 	return len(r.undo) - 1
 }
@@ -328,26 +295,36 @@ func (r *dryRunner) RevertToSnapshot(id int) {
 }
 
 // nonceTracker is keeping track of consumed nonces during the execution of a
-// bundle, recording the lowest required nonce per account.
+// bundle in dry-run mode. It allows to check for nonce conflicts without having
+// to trial-run the bundle on the EVM.
 type nonceTracker struct {
-	nonces map[common.Address]uint64
+	source NonceSource
+	nonces map[common.Address]uint64 // overrides
 }
 
 func (t *nonceTracker) getNonce(addr common.Address) uint64 {
-	return t.nonces[addr]
+	if nonce, ok := t.nonces[addr]; ok {
+		return nonce
+	}
+	return t.source.GetNonce(addr)
 }
 
-func (t *nonceTracker) consumeNonce(addr common.Address) {
-	t.nonces[addr]++
+func (t *nonceTracker) setNonce(addr common.Address, nonce uint64) {
+	if t.nonces == nil {
+		t.nonces = make(map[common.Address]uint64)
+	}
+	t.nonces[addr] = nonce
 }
 
 func (t *nonceTracker) backup() *nonceTracker {
 	return &nonceTracker{
+		source: t.source,
 		nonces: maps.Clone(t.nonces),
 	}
 }
 
 func (t *nonceTracker) restore(backup *nonceTracker) {
+	t.source = backup.source
 	t.nonces = backup.nonces
 }
 
