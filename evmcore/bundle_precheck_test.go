@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
@@ -410,9 +409,17 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 			bundle: allOf(0, 1, 2),
 			result: makePermanentlyBlockedState("bundle nonce check execution failed"),
 		},
+		"multiple all-of with too old and too new nonces": {
+			bundle: allOf(0, 2),
+			result: makePermanentlyBlockedState("bundle nonce check execution failed"),
+		},
 		"multiple one-of with old nonce": {
 			bundle: oneOf(0, 1, 2),
 			result: makeRunnableState(),
+		},
+		"multiple one-of with too old and too new nonces": {
+			bundle: oneOf(0, 2),
+			result: makeTemporaryBlockedState("gapped nonce"),
 		},
 		"all-of with nonce gap": {
 			bundle: allOf(1, 3),
@@ -463,6 +470,14 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 			bundle: oneOf(0xA0, 0xB1),
 			result: makeRunnableState(),
 		},
+		"one-of with distinct future nonce options": {
+			bundle: oneOf(allOf(2, 3), allOf(4, 5)),
+			result: makeTemporaryBlockedState("gapped nonce"),
+		},
+		"one-of with distinct future nonce gaps": {
+			bundle: oneOf(allOf(2, 4), allOf(4, 6)),
+			result: makePermanentlyBlockedState("bundle nonce check execution failed"),
+		},
 	}
 
 	keys, senders := createKeys(t)
@@ -475,7 +490,7 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 
 			source := NewMockNonceSource(ctrl)
 			for _, sender := range senders {
-				source.EXPECT().GetNonce(sender).Return(uint64(initialNonce)).MaxTimes(2)
+				source.EXPECT().GetNonce(sender).Return(uint64(initialNonce)).AnyTimes()
 			}
 
 			envelope := test.bundle.toBundle(keys)
@@ -488,133 +503,13 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 	}
 }
 
-func Test_checkForNonceConflicts_LowestReferencedNoncesCannotBeDerived_ReturnsNonExecutable(t *testing.T) {
-	invalidTx := types.NewTx(&types.LegacyTx{})
-	bundle := &bundle.TransactionBundle{
-		Transactions: map[bundle.TxReference]*types.Transaction{
-			{}: invalidTx,
-		},
-	}
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	_, err := getLowestReferencedNonces(bundle, signer)
-	require.Error(t, err)
-
-	got := checkForNonceConflicts(bundle, signer, nil)
-	require.Equal(t, got, makePermanentlyBlockedState("could not get lowest nonce for all accounts: failed to derive sender: invalid transaction v, r, s values"))
-}
-
-func Test_getLowestReferencedNonces_ReturnsLowestNoncesInBundle(t *testing.T) {
-
-	tests := map[string]struct {
-		bundle   pattern
-		expected map[int]uint64
-	}{
-		"empty bundle": {
-			bundle:   allOf(),
-			expected: map[int]uint64{},
-		},
-		"single transaction": {
-			bundle:   allOf(0xA1),
-			expected: map[int]uint64{0xA: 1},
-		},
-		"multiple transactions from same sender": {
-			bundle:   allOf(0xA2, 0xA1, 0xA3),
-			expected: map[int]uint64{0xA: 1},
-		},
-		"multiple transactions from different senders": {
-			bundle:   allOf(0xA2, 0xB3, 0xA1, 0xB4),
-			expected: map[int]uint64{0xA: 1, 0xB: 3},
-		},
-		"nested bundles": {
-			bundle:   allOf(0xA2, oneOf(0xB3, 0xB4), allOf(0xA1, 0xA3)),
-			expected: map[int]uint64{0xA: 1, 0xB: 3},
-		},
-	}
-
-	keys, senders := createKeys(t)
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			chainId := big.NewInt(1)
-			signer := types.LatestSignerForChainID(chainId)
-
-			envelope := test.bundle.toBundle(keys)
-			bundle, _, err := bundle.ValidateEnvelope(signer, envelope)
-			require.NoError(t, err)
-
-			lowest, err := getLowestReferencedNonces(bundle, signer)
-			require.NoError(t, err)
-
-			got := make(map[int]uint64)
-			for addr, nonce := range lowest {
-				got[slices.Index(senders, addr)] = nonce
-			}
-			require.Equal(t, test.expected, got)
-		})
-	}
-}
-
-func Test_getLowestReferencedNonces_ReturnsIfSenderCannotBeDerived(t *testing.T) {
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	bundle := bundle.TransactionBundle{
-		// Add a transaction with a missing signature.
-		Transactions: map[bundle.TxReference]*types.Transaction{
-			{}: types.NewTx(&types.LegacyTx{}),
-		},
-	}
-	_, err := getLowestReferencedNonces(&bundle, signer)
-	require.ErrorContains(t, err, "failed to derive sender")
-}
-
-func Test_getLowestReferencedNonces_DetectsInvalidNestedBundle(t *testing.T) {
-	require := require.New(t)
-	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleProcessor})
-	require.True(bundle.IsEnvelope(invalidBundle))
-
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	_, _, err := bundle.ValidateEnvelope(signer, invalidBundle)
-	require.Error(err)
-
-	bundle := bundle.TransactionBundle{
-		Transactions: map[bundle.TxReference]*types.Transaction{
-			{}: invalidBundle,
-		},
-	}
-	_, err = getLowestReferencedNonces(&bundle, signer)
-	require.ErrorContains(err, "invalid nested bundle")
-}
-
-func Test_getLowestReferencedNonces_ReportsErrorWhileObtainingNoncesOfNestedBundles(t *testing.T) {
-	require := require.New(t)
-	invalidInner := types.NewTx(&types.LegacyTx{To: &bundle.BundleProcessor})
-	require.True(bundle.IsEnvelope(invalidInner))
-
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	_, _, err := bundle.ValidateEnvelope(signer, invalidInner)
-	require.Error(err)
-
-	key, err := crypto.GenerateKey()
-	require.NoError(err)
-
-	middle := bundle.NewBuilder().
-		With(bundle.Step(key, invalidInner)).
-		Build()
-
-	outer, _ := bundle.NewBuilder().
-		With(bundle.Step(key, middle)).
-		BuildBundleAndPlan()
-
-	_, err = getLowestReferencedNonces(outer, signer)
-	require.ErrorContains(err, "invalid nested bundle")
-}
-
 func Test_runner_Run_ReturnsErrorForInvalidNestedBundle(t *testing.T) {
 	require := require.New(t)
 	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleProcessor})
 	require.True(bundle.IsEnvelope(invalidBundle))
 
 	runner := &dryRunner{
-		signer:         types.LatestSignerForChainID(big.NewInt(1)),
-		acceptedSender: make(map[common.Address]struct{}),
+		signer: types.LatestSignerForChainID(big.NewInt(1)),
 	}
 
 	result := runner.Run(invalidBundle)
@@ -624,8 +519,7 @@ func Test_runner_Run_ReturnsErrorForInvalidNestedBundle(t *testing.T) {
 func Test_runner_Run_ReturnsInvalidForTransactionsWithoutSignature(t *testing.T) {
 	tx := types.NewTx(&types.LegacyTx{})
 	runner := &dryRunner{
-		signer:         types.LatestSignerForChainID(big.NewInt(1)),
-		acceptedSender: make(map[common.Address]struct{}),
+		signer: types.LatestSignerForChainID(big.NewInt(1)),
 	}
 
 	result := runner.Run(tx)
