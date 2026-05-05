@@ -497,8 +497,7 @@ func (r *transactionRunner) runTransactionBundleInternal(
 		legacyTxOffset: legacyTxOffset,
 		trueTxOffset:   trueTxOffset,
 	}
-	success := bundle.RunBundle(txBundle, &runner)
-	if !success {
+	if !bundle.RunBundle(txBundle, &runner) {
 		// Mark the execution plan as processed in the StateDB to prevent processing
 		// another bundle with the same execution plan in the same block. Also keep
 		// track of the position of the bundle in the block.

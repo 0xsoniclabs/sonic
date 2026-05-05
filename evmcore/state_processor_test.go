@@ -1134,6 +1134,7 @@ func TestRunTransaction_GasSubsidiesEnabled_RunsRegularTransactionWithoutSponsor
 	tx := getRegularTransaction(t)
 	processed := ProcessedTransaction{
 		Transaction: tx,
+		Receipt:     &types.Receipt{GasUsed: 1},
 	}
 
 	context := &runContext{
@@ -1141,9 +1142,10 @@ func TestRunTransaction_GasSubsidiesEnabled_RunsRegularTransactionWithoutSponsor
 		upgrades: opera.Upgrades{GasSubsidies: true},
 	}
 	runner.EXPECT().runRegularTransaction(context, tx, 0, 123).Return(processed, core_types.TransactionResultSuccessful)
-	got, status, _ := runTransaction(context, tx, 0, 123)
+	got, status, execCost := runTransaction(context, tx, 0, 123)
 	require.Equal(t, []ProcessedTransaction{processed}, got)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
+	require.EqualValues(t, processed.Receipt.GasUsed, execCost)
 }
 
 func TestRunTransaction_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorship(t *testing.T) {
@@ -1159,15 +1161,16 @@ func TestRunTransaction_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorshi
 	runner.EXPECT().runSponsoredTransaction(context, tx, 0, 123).Return(
 		[]ProcessedTransaction{{
 			Transaction: tx,
-			Receipt:     nil,
+			Receipt:     &types.Receipt{GasUsed: 1},
 		}},
 		core_types.TransactionResultSuccessful,
 	)
-	processed, status, _ := runTransaction(context, tx, 0, 123)
+	processed, status, execCost := runTransaction(context, tx, 0, 123)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
-	require.Nil(t, processed[0].Receipt)
+	require.NotNil(t, processed[0].Receipt)
+	require.EqualValues(t, 1, execCost)
 }
 
 func TestRunTransaction_GasSubsidiesEnabled_ForReplay_RunsSponsorshipRequestAsRegularTransaction(t *testing.T) {
@@ -1177,6 +1180,7 @@ func TestRunTransaction_GasSubsidiesEnabled_ForReplay_RunsSponsorshipRequestAsRe
 	tx := getSponsorshipRequest(t)
 	processed := ProcessedTransaction{
 		Transaction: tx,
+		Receipt:     &types.Receipt{GasUsed: 1},
 	}
 
 	context := &runContext{
@@ -1185,9 +1189,10 @@ func TestRunTransaction_GasSubsidiesEnabled_ForReplay_RunsSponsorshipRequestAsRe
 		forReplay: true,
 	}
 	runner.EXPECT().runRegularTransaction(context, tx, 0, 123).Return(processed, core_types.TransactionResultSuccessful)
-	got, status, _ := runTransaction(context, tx, 0, 123)
+	got, status, execCost := runTransaction(context, tx, 0, 123)
 	require.Equal(t, []ProcessedTransaction{processed}, got)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
+	require.Equal(t, core_types.ExecutionCost(1), execCost)
 }
 
 func TestRunTransactions_GasSubsidiesDisabled_BundlesDisabled_ProcessesAsRegularTransaction(t *testing.T) {
@@ -2209,11 +2214,12 @@ func TestRunTransactionBundle_BundlesDisabled_ReturnsEnvelopeAndResultInvalid(t 
 
 	runner := &transactionRunner{}
 
-	processedTransactions, result, _ := runner.runTransactionBundleInternal(context, tx, 0, 0, log)
+	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, 0, log)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
 	require.Equal(t, core_types.TransactionResultInvalid, result)
+	require.Zero(t, execCost)
 }
 
 func TestRunTransactionBundle_InvalidEnvelope_ReturnsEnvelopeAndResultInvalid(t *testing.T) {
@@ -2231,11 +2237,12 @@ func TestRunTransactionBundle_InvalidEnvelope_ReturnsEnvelopeAndResultInvalid(t 
 
 	runner := &transactionRunner{}
 
-	processedTransactions, result, _ := runner.runTransactionBundleInternal(context, tx, 0, 0, log)
+	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, 0, log)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
 	require.Equal(t, core_types.TransactionResultInvalid, result)
+	require.Zero(t, execCost)
 }
 
 func TestRunTransactionBundle_BundleOutOfRange_ReturnsEnvelopeAndResultInvalid(t *testing.T) {
@@ -2269,11 +2276,12 @@ func TestRunTransactionBundle_BundleOutOfRange_ReturnsEnvelopeAndResultInvalid(t
 
 	runner := &transactionRunner{}
 
-	processedTransactions, result, _ := runner.runTransactionBundleInternal(context, tx, 0, 0, log)
+	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, 0, log)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
 	require.Equal(t, core_types.TransactionResultInvalid, result)
+	require.Zero(t, execCost)
 }
 
 func TestRunTransactionBundle_BundleOutOfTime_ReturnsEnvelopeAndResultInvalid(t *testing.T) {
@@ -2308,11 +2316,12 @@ func TestRunTransactionBundle_BundleOutOfTime_ReturnsEnvelopeAndResultInvalid(t 
 
 	runner := &transactionRunner{}
 
-	processedTransactions, result, _ := runner.runTransactionBundleInternal(context, tx, 0, 0, log)
+	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, 0, log)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
 	require.Equal(t, core_types.TransactionResultInvalid, result)
+	require.Zero(t, execCost)
 }
 
 func TestRunTransactionBundle_PreviouslyProcessedBundle_ReturnsEnvelopeAndResultInvalid(t *testing.T) {
@@ -2339,11 +2348,12 @@ func TestRunTransactionBundle_PreviouslyProcessedBundle_ReturnsEnvelopeAndResult
 
 	runner := &transactionRunner{}
 
-	processedTransactions, result, _ := runner.runTransactionBundleInternal(context, tx, 0, 0, log)
+	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, 0, log)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
 	require.Equal(t, core_types.TransactionResultInvalid, result)
+	require.Zero(t, execCost)
 }
 
 func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResultFailed_AndMarksBundleAsProcessed(t *testing.T) {
@@ -2381,9 +2391,10 @@ func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResu
 
 	runner := &transactionRunner{evm: evm}
 
-	processedTransactions, result, _ := runner.runTransactionBundle(context, tx, txOffset, txOffset)
+	processedTransactions, result, execCost := runner.runTransactionBundle(context, tx, txOffset, txOffset)
 	require.Len(t, processedTransactions, 0)
 	require.Equal(t, core_types.TransactionResultFailed, result)
+	require.Zero(t, execCost)
 }
 
 func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAndResultSuccessful_AndMarksBundleAsProcessed(t *testing.T) {
@@ -2428,14 +2439,15 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 	evm.EXPECT().runWithBaseFeeCheck(context, gomock.Any(), legacyTxOffset).
 		Return(ProcessedTransaction{
 			Transaction: txs[0],
-			Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful},
+			Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful, GasUsed: txs[0].Gas()},
 		})
 
-	processedTransactions, result, _ := runner.runTransactionBundle(context, envelope, legacyTxOffset, trueTxOffset)
+	processedTransactions, result, execCost := runner.runTransactionBundle(context, envelope, legacyTxOffset, trueTxOffset)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, txs[0], processedTransactions[0].Transaction)
 	require.NotNil(t, processedTransactions[0].Receipt)
 	require.Equal(t, core_types.TransactionResultSuccessful, result)
+	require.EqualValues(t, txs[0].Gas(), execCost)
 }
 
 func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountToStateDB(t *testing.T) {
@@ -2520,7 +2532,7 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 			for _, accepted := range test.validTxs {
 				var receipt *types.Receipt
 				if accepted {
-					receipt = &types.Receipt{}
+					receipt = &types.Receipt{GasUsed: 1}
 				}
 				execResult = append(execResult, ProcessedTransaction{
 					Transaction: &types.Transaction{},
@@ -2547,9 +2559,16 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 			}
 
 			runner := &transactionRunner{}
-			processedTransactions, result, _ := runner.runTransactionBundle(context, envelope, int(legacyTxOffset), int(trueTxOffset))
+			processedTransactions, result, execCost := runner.runTransactionBundle(context, envelope, int(legacyTxOffset), int(trueTxOffset))
 			require.Equal(t, execResult, processedTransactions)
 			require.Equal(t, core_types.TransactionResultSuccessful, result)
+			execCostExpected := uint64(0)
+			for _, accepted := range test.validTxs {
+				if accepted {
+					execCostExpected += 1
+				}
+			}
+			require.Equal(t, core_types.ExecutionCost(execCostExpected), execCost)
 		})
 	}
 }
