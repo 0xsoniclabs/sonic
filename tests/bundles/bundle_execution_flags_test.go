@@ -26,6 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/sonic/tests/contracts/add"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -209,8 +210,18 @@ func TestBundle_AllOfGroupSucceedsIfAllStepsTolerated(t *testing.T) {
 	senders := tests.MakeAccountsWithBalance(t, net, 4, big.NewInt(1e18))
 
 	revertAddress, revertInput := tests.MustDeployRevertContractAndGetMethodCallParameters(t, net)
+	addContractAddr := tests.MustDeployContract(t, net, add.DeployAdd)
+	addContractInput := tests.MustGetMethodParameters(
+		t, add.AddMetaData, "add", big.NewInt(10_000),
+	)
 
 	successfulTx := types.AccessListTx{}
+	// The last successful transaction needs to be expensive enough for the
+	// bundle to pass the efficiency check.
+	successfulExpensiveTx := types.AccessListTx{
+		To:   &addContractAddr,
+		Data: addContractInput,
+	}
 	failingTx := types.AccessListTx{
 		To:   &revertAddress,
 		Gas:  1_000_000,
@@ -283,7 +294,7 @@ func TestBundle_AllOfGroupSucceedsIfAllStepsTolerated(t *testing.T) {
 						).WithFlags(bundle.EF_TolerateFailed),
 						// This tx is needed to produce observable results
 						// in case the group under test was not tolerated
-						Step(t, net, senders[3], &successfulTx),
+						Step(t, net, senders[3], &successfulExpensiveTx),
 					),
 				).
 				BuildEnvelopeBundleAndPlan()
@@ -332,8 +343,19 @@ func TestBundle_OneOfGroupSucceedsOnFirstToleratedStep(t *testing.T) {
 	senders := tests.MakeAccountsWithBalance(t, net, 3, big.NewInt(1e18))
 
 	revertAddress, revertInput := tests.MustDeployRevertContractAndGetMethodCallParameters(t, net)
+	addContractAddr := tests.MustDeployContract(t, net, add.DeployAdd)
+	addContractInput := tests.MustGetMethodParameters(
+		t, add.AddMetaData, "add", big.NewInt(10_000),
+	)
 
 	successfulTx := types.AccessListTx{}
+	// The last successful transaction needs to be expensive enough for the
+	// bundle to pass the efficiency check.
+	successfulExpensiveTx := types.AccessListTx{
+		To:   &addContractAddr,
+		Data: addContractInput,
+	}
+
 	failingTx := types.AccessListTx{
 		To:   &revertAddress,
 		Gas:  1_000_000,
@@ -409,7 +431,7 @@ func TestBundle_OneOfGroupSucceedsOnFirstToleratedStep(t *testing.T) {
 						Step(t, net, senders[0], &c.firstTx),
 						Step(t, net, senders[1], &c.secondTx),
 					).WithFlags(flags),
-					Step(t, net, senders[2], &successfulTx),
+					Step(t, net, senders[2], &successfulExpensiveTx),
 				).
 				BuildEnvelopeBundleAndPlan()
 
