@@ -132,6 +132,12 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	usedGas *uint64, trueTxOffset int, onNewLog func(*types.Log),
 	difficulty *big.Int,
 ) ProcessSummary {
+
+	chainID := big.NewInt(1)
+	if p.config.ChainID != nil {
+		chainID = p.config.ChainID
+	}
+
 	var (
 		gp           = core.NewGasPool(gasLimit)
 		header       = block.Header()
@@ -139,7 +145,7 @@ func (p *StateProcessor) ProcessWithDifficulty(
 		blockContext = NewEVMBlockContextWithDifficulty(header, p.bc, nil, difficulty)
 		vmenv        = vm.NewEVM(blockContext, statedb, p.config, cfg)
 		blockNumber  = block.Number
-		signer       = types.LatestSignerForChainID(p.config.ChainID)
+		signer       = NewSonicSigner(chainID)
 	)
 
 	// execute EIP-2935 HistoryStorage contract.
@@ -681,7 +687,7 @@ func (p *StateProcessor) BeginBlock(
 		blockContext  = NewEVMBlockContext(header, p.bc, nil)
 		vmEnvironment = vm.NewEVM(blockContext, stateDb, p.config, cfg)
 		blockNumber   = block.Number
-		signer        = types.LatestSignerForChainID(p.config.ChainID)
+		signer        = NewSonicSigner(p.config.ChainID)
 	)
 
 	// execute EIP-2935 HistoryStorage contract.

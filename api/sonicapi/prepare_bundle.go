@@ -115,8 +115,7 @@ func (a *PublicBundleAPI) PrepareBundle(
 		return nil, fmt.Errorf("failed to set proposed transactions defaults: %w", err)
 	}
 
-	chainID := a.b.ChainID()
-	signer := types.LatestSignerForChainID(chainID)
+	signer := evmcore.NewSonicSigner(a.b.ChainID())
 	plan, err := convertProposalToPlan(signer, ready)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare bundle: %w", err)

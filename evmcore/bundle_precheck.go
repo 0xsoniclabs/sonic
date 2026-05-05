@@ -92,7 +92,7 @@ func GetCachedBundleState(
 	envelope *types.Transaction,
 ) BundleState {
 	chainId := big.NewInt(int64(chain.GetCurrentNetworkRules().NetworkID))
-	signer := types.LatestSignerForChainID(chainId)
+	signer := NewSonicSigner(chainId)
 
 	// Does this even pay off? cache envelope vs cache plan
 	txBundle, err := bundle.OpenEnvelope(signer, envelope)
@@ -129,7 +129,7 @@ func getBundleState(
 	trialRunner func(*types.Transaction, ChainStateForBundleEval, state.StateDB) bool,
 ) BundleState {
 	chainId := big.NewInt(int64(chain.GetCurrentNetworkRules().NetworkID))
-	signer := types.LatestSignerForChainID(chainId)
+	signer := NewSonicSigner(chainId)
 
 	// Check that bundled transactions are enabled.
 	if !chain.GetCurrentNetworkRules().Upgrades.TransactionBundles {

@@ -215,7 +215,7 @@ func consensusCallbackBeginBlockFn(
 				// gas limit. With this parameter, this limit is enforced.
 				userTransactionGasLimit := maxBlockGas
 
-				signer := types.LatestSignerForChainID(chainCfg.ChainID)
+				signer := evmcore.NewSonicSigner(chainCfg.ChainID)
 
 				// Get a proposal for the block to be created.
 				proposal := inter.Proposal{

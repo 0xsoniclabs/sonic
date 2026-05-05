@@ -3625,7 +3625,7 @@ func TestNewTransactionProcessorForBlock_ConfiguresTransactionProcessorWithValue
 	require.Equal(uint64(math.MaxUint64), processor.gp.Gas())
 	require.Equal(block.Header(), processor.header)
 	require.Nil(processor.onNewLog)
-	require.Equal(types.LatestSignerForChainID(chainCfg.ChainID), processor.signer)
+	require.Equal(NewSonicSigner(chainCfg.ChainID), processor.signer)
 	require.Equal(state, processor.stateDb)
 	require.EqualValues(0, processor.usedGas)
 	require.NotNil(processor.vmEnvironment)

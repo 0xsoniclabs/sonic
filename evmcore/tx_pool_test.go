@@ -1120,6 +1120,8 @@ func TestInvalidTransactions(t *testing.T) {
 func TestTransactionQueue(t *testing.T) {
 	t.Parallel()
 
+	signer := types.LatestSignerForChainID(params.TestChainConfig.ChainID)
+
 	pool, key := setupTxPool()
 	defer pool.Stop()
 
@@ -1131,7 +1133,7 @@ func TestTransactionQueue(t *testing.T) {
 	if _, err := pool.enqueueTx(tx.Hash(), tx, false, true); err != nil {
 		t.Error("failed to enqueue tx", err)
 	}
-	<-pool.requestPromoteExecutables(newAccountSet(pool.signer, from))
+	<-pool.requestPromoteExecutables(newAccountSet(signer, from))
 	if len(pool.pending) != 1 {
 		t.Error("expected valid txs to be 1 is", len(pool.pending))
 	}
@@ -1143,7 +1145,7 @@ func TestTransactionQueue(t *testing.T) {
 		t.Error("failed to enqueue tx", err)
 	}
 
-	<-pool.requestPromoteExecutables(newAccountSet(pool.signer, from))
+	<-pool.requestPromoteExecutables(newAccountSet(signer, from))
 	if _, ok := pool.pending[from].txs.items[tx.Nonce()]; ok {
 		t.Error("expected transaction to be in tx pool")
 	}

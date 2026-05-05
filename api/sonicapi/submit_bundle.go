@@ -111,7 +111,7 @@ func (a *PublicBundleAPI) SubmitBundle(
 	}
 
 	// Sign the bundle transaction with the one-use key and send it to the network
-	signer := types.LatestSignerForChainID(a.b.ChainID())
+	signer := evmcore.NewSonicSigner(a.b.ChainID())
 	tx, err := types.SignNewTx(key, signer,
 		&types.DynamicFeeTx{
 			To:    &bundle.BundleProcessor,

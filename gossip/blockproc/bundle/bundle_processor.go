@@ -17,7 +17,7 @@
 package bundle
 
 import (
-	"github.com/0xsoniclabs/sonic/evmcore/core_types"
+	core_types "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 

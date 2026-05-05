@@ -331,7 +331,7 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 
 	// create checkers
 	net := store.GetRules()
-	txSigner := types.LatestSignerForChainID(new(big.Int).SetUint64(net.NetworkID))
+	txSigner := evmcore.NewSonicSigner(new(big.Int).SetUint64(net.NetworkID))
 	svc.heavyCheckReader.Store = store
 	svc.heavyCheckReader.Pubkeys.Store(readEpochPubKeys(svc.store, svc.store.GetEpoch()))                                          // read pub keys of current epoch from DB
 	svc.gasPowerCheckReader.Ctx.Store(NewGasPowerContext(svc.store, svc.store.GetValidators(), svc.store.GetEpoch(), net.Economy)) // read gaspower check data from DB

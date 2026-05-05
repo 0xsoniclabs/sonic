@@ -1553,7 +1553,7 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 	// because the return value of ChainId is zero for those transactions.
 	var signer types.Signer
 	if tx.Protected() {
-		signer = types.LatestSignerForChainID(tx.ChainId())
+		signer = evmcore.NewSonicSigner(chainId)
 	} else {
 		signer = types.HomesteadSigner{}
 	}
@@ -1850,8 +1850,7 @@ type PublicTransactionPoolAPI struct {
 func NewPublicTransactionPoolAPI(b Backend, nonceLock *AddrLocker) *PublicTransactionPoolAPI {
 	// The signer used by the API should always be the 'latest' known one because we expect
 	// signers to be backwards-compatible with old transactions.
-	chainID := b.ChainID()
-	signer := types.LatestSignerForChainID(chainID)
+	signer := evmcore.NewSonicSigner(b.ChainID())
 	return &PublicTransactionPoolAPI{b, nonceLock, signer}
 }
 
@@ -1984,7 +1983,7 @@ func (s *PublicTransactionPoolAPI) formatTxReceipt(header *evmcore.EvmHeader, tx
 	}
 
 	// Derive the sender.
-	signer := types.LatestSignerForChainID(s.b.ChainConfig(idx.Block(header.Number.Uint64())).ChainID)
+	signer := evmcore.NewSonicSigner(s.b.ChainID())
 	from, _ := internaltx.Sender(signer, tx)
 
 	fields := map[string]interface{}{
@@ -2115,7 +2114,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 		return common.Hash{}, err
 	} // Print a log with full tx details for manual investigations and interventions
 
-	signer := types.LatestSignerForChainID(b.ChainID())
+	signer := evmcore.NewSonicSigner(b.ChainID())
 	from, err := types.Sender(signer, tx)
 	if err != nil {
 		return common.Hash{}, err
@@ -2600,7 +2599,7 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 	var (
 		chainConfig   = api.b.ChainConfig(idx.Block(block.Header().Number.Uint64()))
 		txs           = block.Transactions
-		signer        = types.LatestSignerForChainID(chainConfig.ChainID)
+		signer        = evmcore.NewSonicSigner(chainConfig.ChainID)
 		results       = make([]*txTraceResult, len(txs))
 		resultsLength int
 	)
@@ -2671,7 +2670,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 
 	// Recompute transactions up to the target index.
 	chainConfig := b.ChainConfig(idx.Block(block.NumberU64()))
-	signer := types.LatestSignerForChainID(chainConfig.ChainID)
+	signer := evmcore.NewSonicSigner(chainConfig.ChainID)
 	for idx, tx := range block.Transactions {
 		// Assemble the transaction call message and return if the requested offset
 		msg, err := evmcore.TxAsMessage(tx, signer, block.BaseFee)

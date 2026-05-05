@@ -368,7 +368,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 	}
 
 	chainConfig := s.b.ChainConfig(idx.Block(block.NumberU64()))
-	signer := types.LatestSignerForChainID(chainConfig.ChainID)
+	signer := evmcore.NewSonicSigner(chainConfig.ChainID)
 
 	state, _, err := s.b.StateAndBlockByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &parentBlockNr})
 	if err != nil {

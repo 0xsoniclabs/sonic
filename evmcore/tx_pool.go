@@ -307,7 +307,6 @@ type TxPool struct {
 	minTip      *big.Int
 	txFeed      notify.Feed
 	scope       notify.SubscriptionScope
-	signer      types.Signer
 	mu          sync.RWMutex
 
 	istanbul bool // Fork indicator whether we are in the istanbul stage.
@@ -378,13 +377,11 @@ func newTxPool(
 ) *TxPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
-
 	// Create the transaction pool with its initial settings
 	pool := &TxPool{
 		config:          config,
 		chainconfig:     chainconfig,
 		chain:           chain,
-		signer:          types.LatestSignerForChainID(chainconfig.ChainID),
 		pending:         make(map[common.Address]*txList),
 		queue:           make(map[common.Address]*txList),
 		beats:           make(map[common.Address]time.Time),
@@ -405,7 +402,7 @@ func newTxPool(
 
 		bundleCheckerFactory: bundleCheckerFactory,
 	}
-	pool.locals = newAccountSet(pool.signer)
+	pool.locals = newAccountSet(NewSonicSigner(chainconfig.ChainID))
 	for _, addr := range config.Locals {
 		log.Debug("Setting new local account", "address", addr)
 		pool.locals.add(addr)
@@ -746,11 +743,12 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		transactionBundles: pool.chain.CurrentRules().Upgrades.TransactionBundles,
 	}
 
+	signer := NewSonicSigner(pool.chainconfig.ChainID)
 	subsidiesChecker := pool.subsidiesCheckerFactory(
 		pool.chain.CurrentRules(),
 		pool.chain,
 		pool.currentState,
-		pool.signer,
+		signer,
 	)
 
 	err := validateTx(
@@ -760,7 +758,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		pool.chain,
 		pool.currentState,
 		subsidiesChecker,
-		pool.signer,
+		signer,
 	)
 	if err != nil {
 		return err
@@ -773,7 +771,8 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 // **executable** transaction, e.g. disallow stacked and gapped transactions
 // from the account.
 func (pool *TxPool) checkDelegationLimit(tx *types.Transaction) error {
-	from, _ := types.Sender(pool.signer, tx) // validated
+	signer := NewSonicSigner(pool.chainconfig.ChainID)
+	from, _ := types.Sender(signer, tx) // validated
 
 	codeHash := pool.currentState.GetCodeHash(from)
 	hasNoCode := codeHash == types.EmptyCodeHash || codeHash == common.Hash{}
@@ -830,6 +829,9 @@ func (pool *TxPool) validateAuth(tx *types.Transaction) error {
 // be added to the allowlist, preventing any associated transaction from being dropped
 // out of the pool due to pricing constraints.
 func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err error) {
+
+	signer := NewSonicSigner(pool.chainconfig.ChainID)
+
 	// If the transaction is already known, discard it
 	hash := tx.Hash()
 	if pool.all.Get(hash) != nil {
@@ -877,7 +879,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 		}
 	}
 	// Try to replace an existing transaction in the pending pool
-	from, _ := types.Sender(pool.signer, tx) // already validated
+	from, _ := types.Sender(signer, tx) // already validated
 	if list := pool.pending[from]; list != nil && list.Overlaps(tx) {
 		// Nonce already pending, check if required price bump is met
 		inserted, old := list.Add(tx, pool.config.PriceBump)
@@ -936,8 +938,10 @@ func (pool *TxPool) updateUsedGauges() {
 //
 // Note, this method assumes the pool lock is held!
 func (pool *TxPool) enqueueTx(hash common.Hash, tx *types.Transaction, local bool, addAll bool) (bool, error) {
+	signer := NewSonicSigner(pool.chainconfig.ChainID)
+
 	// Try to insert the transaction into the future queue
-	from, _ := types.Sender(pool.signer, tx) // already validated
+	from, _ := types.Sender(signer, tx) // already validated
 	if pool.queue[from] == nil {
 		pool.queue[from] = newTxList(false)
 	}
@@ -1067,6 +1071,8 @@ func (pool *TxPool) AddRemote(tx *types.Transaction) error {
 
 // addTxs attempts to queue a batch of transactions if they are valid.
 func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
+	signer := NewSonicSigner(pool.chainconfig.ChainID)
+
 	arrivedAt := time.Now()
 	// Filter out known ones without obtaining the pool lock or recovering signatures
 	var (
@@ -1082,7 +1088,7 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 		// Exclude transactions with invalid signatures as soon as
 		// possible and cache senders in transactions before
 		// obtaining lock
-		_, err := types.Sender(pool.signer, tx)
+		_, err := types.Sender(signer, tx)
 		if err != nil {
 			errs[i] = ErrInvalidSender
 			invalidTxMeter.Mark(1)
@@ -1126,7 +1132,8 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 // addTxsLocked attempts to queue a batch of transactions if they are valid.
 // The transaction pool lock must be held.
 func (pool *TxPool) addTxsLocked(txs []*types.Transaction, local bool) ([]error, *accountSet) {
-	dirty := newAccountSet(pool.signer)
+	signer := NewSonicSigner(pool.chainconfig.ChainID)
+	dirty := newAccountSet(signer)
 	errs := make([]error, len(txs))
 	for i, tx := range txs {
 		replaced, err := pool.add(tx, local)
@@ -1142,13 +1149,14 @@ func (pool *TxPool) addTxsLocked(txs []*types.Transaction, local bool) ([]error,
 // Status returns the status (unknown/pending/queued) of a batch of transactions
 // identified by their hashes.
 func (pool *TxPool) Status(hashes []common.Hash) []TxStatus {
+	signer := NewSonicSigner(pool.chainconfig.ChainID)
 	status := make([]TxStatus, len(hashes))
 	for i, hash := range hashes {
 		tx := pool.Get(hash)
 		if tx == nil {
 			continue
 		}
-		from, _ := types.Sender(pool.signer, tx) // already validated
+		from, _ := types.Sender(signer, tx) // already validated
 		pool.mu.RLock()
 		if txList := pool.pending[from]; txList != nil && txList.txs.items[tx.Nonce()] != nil {
 			status[i] = TxStatusPending
@@ -1185,7 +1193,8 @@ func (pool *TxPool) removeTx(hash common.Hash, removeFromPriced bool) {
 	if tx == nil {
 		return
 	}
-	addr, _ := types.Sender(pool.signer, tx) // already validated during insertion
+	signer := NewSonicSigner(pool.chainconfig.ChainID)
+	addr, _ := types.Sender(signer, tx) // already validated during insertion
 
 	// Remove it from the list of known transactions
 	pool.all.Remove(hash)
@@ -1311,7 +1320,8 @@ func (pool *TxPool) scheduleReorgLoop() {
 		case tx := <-pool.queueTxEventCh:
 			// Queue up the event, but don't schedule a reorg. It's up to the caller to
 			// request one later if they want the events sent.
-			addr, _ := types.Sender(pool.signer, tx)
+			signer := NewSonicSigner(pool.chainconfig.ChainID)
+			addr, _ := types.Sender(signer, tx)
 			if _, ok := queuedEvents[addr]; !ok {
 				queuedEvents[addr] = newTxSortedMap()
 			}
@@ -1340,6 +1350,7 @@ func (pool *TxPool) scheduleReorgLoop() {
 
 // runReorg runs reset and promoteExecutables on behalf of scheduleReorgLoop.
 func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirtyAccounts *accountSet, events map[common.Address]*txSortedMap) {
+	signer := NewSonicSigner(pool.chainconfig.ChainID)
 	defer close(done)
 
 	var promoteAddrs []common.Address
@@ -1400,7 +1411,7 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 
 	// Notify subsystems for newly added transactions
 	for _, tx := range promoted {
-		addr, _ := types.Sender(pool.signer, tx)
+		addr, _ := types.Sender(signer, tx)
 		if _, ok := events[addr]; !ok {
 			events[addr] = newTxSortedMap()
 		}
@@ -1504,7 +1515,8 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 
 	// Inject any transactions discarded due to reorgs
 	log.Debug("Reinjecting stale transactions", "count", len(reinject))
-	senderCacher.recover(pool.signer, reinject)
+	signer := NewSonicSigner(pool.chainconfig.ChainID)
+	senderCacher.recover(signer, reinject)
 	pool.addTxsLocked(reinject, false)
 
 	// Update all fork indicator by next pending block number.
@@ -1610,12 +1622,13 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 }
 
 func (pool *TxPool) getSubsidiesCheckerForReorg() utils.TransactionCheckFunc {
+	signer := NewSonicSigner(pool.chainconfig.ChainID)
 	return utils.WrapCheck(pool.subsidiesCheckerCache,
 		pool.subsidiesCheckerFactory(
 			pool.chain.CurrentRules(),
 			pool.chain,
 			pool.currentState,
-			pool.signer,
+			signer,
 		))
 }
 
