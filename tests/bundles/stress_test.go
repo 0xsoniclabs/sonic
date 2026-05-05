@@ -32,7 +32,7 @@ import (
 
 func TestBundle_StressWithManyNonceBlockedBundles(t *testing.T) {
 	// Increase this number for profiling to increase load on the system.
-	const N = 2 // Number of blocked bundles
+	const N = 1000 // Number of blocked bundles
 
 	net := GetIntegrationTestNetWithBundlesEnabled(t)
 
@@ -94,7 +94,7 @@ func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
 	// AllOf(AllOf[TolerateFailed](expensive tx, failing tx), successful tx).
 
 	// Increase this number for profiling to increase load on the system.
-	const B = 1 // Number of bundles
+	const B = 50 // Number of bundles
 
 	net := GetIntegrationTestNetWithBundlesEnabled(t)
 

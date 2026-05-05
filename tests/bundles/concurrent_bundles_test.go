@@ -18,6 +18,7 @@ package bundles
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -120,8 +121,8 @@ func testRandomlyFailingBundles(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
 ) {
-	const N = 200 // Number of bundles to process
-	const W = 3   // Number of transactions per bundle
+	const N = 2000 // Number of bundles to process
+	const W = 5    // Number of transactions per bundle
 
 	require := require.New(t)
 
@@ -169,12 +170,15 @@ func testRandomlyFailingBundles(
 
 	// For those bundles that got executed, check that the obtained infos match
 	// the respective transactions.
+	succeeded := 0
+	failed := 0
 	for i, info := range infos {
 
 		bundle, err := bundle.OpenEnvelope(signer, envelopes[i])
 		require.NoError(err)
 
 		if info != nil && info.Count > 0 {
+			succeeded++
 			// bundle produced transactions, so we expect all transactions
 			// to be included in a block.
 			require.Len(bundle.Transactions, int(info.Count))
@@ -187,6 +191,10 @@ func testRandomlyFailingBundles(
 				require.Equal(int(receipt.TransactionIndex), int(info.Position)+i)
 			}
 		} else {
+			if info != nil {
+				failed++
+				require.Zero(info.Count)
+			}
 			// bundle got reverted or dropped from the pool, in either case
 			// we expect no transaction to be included in a block.
 			for _, tx := range bundle.Transactions {
@@ -195,6 +203,9 @@ func testRandomlyFailingBundles(
 			}
 		}
 	}
+	fmt.Println("bundles in block", len(infos))
+	fmt.Println("succeeded:", succeeded)
+	fmt.Println("failed:", failed)
 }
 
 // newBurnMoneyTransaction creates transaction data for a transaction burning
