@@ -108,27 +108,42 @@ func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
 	accounts := tests.MakeAccountsWithBalance(t, net, B*3, big.NewInt(1e18))
 
 	cases := map[string]struct {
-		contractAddr  common.Address
-		contractInput []byte
+		contractAddr       common.Address
+		contractInputLarge []byte
+		contractInputSmall []byte
 	}{
 		"ComputeHeavy": {
 			contractAddr: tests.MustDeployContract(t, net, add.DeployAdd),
-			contractInput: tests.MustGetMethodParameters(
+			// 128_000 iterations is about the maximum number of iterations
+			// that can be executed within the block gas limit. They have to be
+			// split between the rolled back and the successful transaction to
+			// pass the efficiency check.
+			contractInputLarge: tests.MustGetMethodParameters(
 				t, add.AddMetaData, "add",
-				// arguments: iter (128_000 iterations is about the maximum
-				// number of iterations that can be executed within the
-				// block gas limit)
-				big.NewInt(128_000),
+				// arguments: iter
+				big.NewInt(100_000),
+			),
+			contractInputSmall: tests.MustGetMethodParameters(
+				t, add.AddMetaData, "add",
+				// arguments: iter
+				big.NewInt(28_000),
 			),
 		},
 		"DbHeavy": {
 			contractAddr: tests.MustDeployContract(t, net, store.DeployStore),
-			contractInput: tests.MustGetMethodParameters(
+			// 1100 slots is about the maximum number of slots that can be
+			// filled within the block gas limit. They have to be split between
+			// the rolled back and the successful transaction to pass the
+			// efficiency check.
+			contractInputLarge: tests.MustGetMethodParameters(
 				t, store.StoreMetaData, "fill",
-				// arguments: from, until, value (1100 slots is about the
-				// maximum number of slots that can be filled within the
-				// block gas limit)
-				big.NewInt(0), big.NewInt(1100), big.NewInt(1),
+				// arguments: from, until, value
+				big.NewInt(0), big.NewInt(800), big.NewInt(1),
+			),
+			contractInputSmall: tests.MustGetMethodParameters(
+				t, store.StoreMetaData, "fill",
+				// arguments: from, until, value
+				big.NewInt(0), big.NewInt(300), big.NewInt(1),
 			),
 		},
 	}
@@ -146,11 +161,14 @@ func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
 						bundle.AllOf(
 							Step(t, net, accounts[i*3], &types.AccessListTx{
 								To:   &tc.contractAddr,
-								Data: tc.contractInput,
+								Data: tc.contractInputLarge,
 							}),
 							Step(t, net, accounts[i*3+1], &types.AccessListTx{Gas: 1}),
 						).WithFlags(bundle.EF_TolerateFailed),
-						Step(t, net, accounts[i*3+2], &types.AccessListTx{}),
+						Step(t, net, accounts[i*3+2], &types.AccessListTx{
+							To:   &tc.contractAddr,
+							Data: tc.contractInputSmall,
+						}),
 					).
 					BuildEnvelopeBundleAndPlan()
 

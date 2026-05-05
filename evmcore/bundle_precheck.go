@@ -31,6 +31,11 @@ import (
 
 //go:generate mockgen -source=bundle_precheck.go -destination=bundle_precheck_mock.go -package=evmcore
 
+// MinBundleEfficiency is the minimum efficiency threshold for accepting
+// bundles. The efficiency of a bundle is defined as:
+// sum of usedGas of receipts / total execution cost.
+const MinBundleEfficiency = 0.2
+
 // BundleState represents the current evaluation state of a transaction bundle.
 // It indicates whether the bundle is executable as is, may become executable
 // at a later point or will never be executable. If the bundle is not executable
@@ -403,6 +408,17 @@ func trialRunBundleInternal(
 
 	transactionProcessor := factory.newTransactionProcessor(chain, stateDb, nextBlock)
 	summary := transactionProcessor.Run(0, envelope)
+
+	usedGas := uint64(0)
+	for _, tx := range summary.ProcessedTransactions {
+		if tx.Receipt != nil {
+			usedGas += tx.Receipt.GasUsed
+		}
+	}
+
+	if summary.ExecutionCost == 0 || float64(usedGas)/float64(summary.ExecutionCost) < MinBundleEfficiency {
+		return false
+	}
 
 	// Check if the bundle lead to any accepted transactions. If so, it is
 	// a success, otherwise it is a failure.
