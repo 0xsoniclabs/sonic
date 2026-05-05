@@ -22,11 +22,9 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/drivermodule"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driver/drivercall"
 	"github.com/0xsoniclabs/sonic/tests"
-	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/stretchr/testify/require"
 )
 
@@ -102,21 +100,6 @@ func testTxFeeAccounting_EpochSealingReportsAggregatedFees(
 
 			receipt, err := net.GetReceipt(tx.Hash())
 			require.NoError(t, err)
-
-			// --- mitigation for reporting bug ---
-			// see https://github.com/0xsoniclabs/sonic-admin/issues/743
-
-			// There is a bug in the system causing the effective gas price for
-			// internal transactions to be non-zero. Until fixed, those prices
-			// need to be corrected here.
-			if internaltx.IsInternal(tx) {
-				receipt.EffectiveGasPrice = big.NewInt(0)
-			}
-			// Same problem for sponsored transactions.
-			if subsidies.IsSponsorshipRequest(tx) {
-				receipt.EffectiveGasPrice = big.NewInt(0)
-			}
-			// --- end of reporting issue mitigation ---
 
 			// Compute the effect fees charged for this transaction.
 			txFees, err := drivermodule.ComputeEffectiveFee(tx, receipt)

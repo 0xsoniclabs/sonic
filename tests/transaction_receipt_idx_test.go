@@ -29,6 +29,60 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestReceipt_InternalTransactionsHaveZeroEffectiveGasPrice(t *testing.T) {
+	net := StartIntegrationTestNet(t)
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	// Run one transaction to not interfere with still pending delayed genesis.
+	receipt, err := net.EndowAccount(common.Address{}, big.NewInt(1e18))
+	require.NoError(t, err)
+	before := receipt.BlockNumber.Uint64()
+
+	// Advance one epoch to trigger internal sealing transactions.
+	net.AdvanceEpoch(t, 1)
+
+	after, err := client.BlockNumber(t.Context())
+	require.NoError(t, err)
+
+	// Find a block containing internal sealing transactions (sender = zero address).
+	var sealingBlock *types.Block
+	for cur := before; cur <= after; cur++ {
+		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(cur)))
+		require.NoError(t, err)
+		if len(block.Transactions()) == 0 {
+			continue
+		}
+		sender, err := getSenderOfTransaction(client, block.Transactions()[0].Hash())
+		require.NoError(t, err)
+		if sender == (common.Address{}) {
+			sealingBlock = block
+			break
+		}
+	}
+	require.NotNil(t, sealingBlock, "No block found with internal transactions")
+
+	// For every internal transaction, verify that the RPC-reported effectiveGasPrice is zero.
+	foundInternal := false
+	for _, blockTx := range sealingBlock.Transactions() {
+		sender, err := getSenderOfTransaction(client, blockTx.Hash())
+		require.NoError(t, err)
+		if sender != (common.Address{}) {
+			continue
+		}
+		foundInternal = true
+		txReceipt, err := client.TransactionReceipt(t.Context(), blockTx.Hash())
+		require.NoError(t, err)
+		require.NotNil(t, txReceipt, "receipt must exist for internal tx")
+		require.NotNil(t, txReceipt.EffectiveGasPrice, "effectiveGasPrice must be set")
+		require.Equal(t, int64(0), txReceipt.EffectiveGasPrice.Int64(),
+			"effectiveGasPrice must be zero for internal transactions")
+	}
+	require.True(t, foundInternal, "No internal transactions found in sealing block")
+}
+
 func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 	for hardfork, upgrades := range opera.GetAllHardForksInOrder() {
 		t.Run(hardfork, func(t *testing.T) {
