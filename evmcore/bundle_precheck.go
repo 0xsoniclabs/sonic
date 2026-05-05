@@ -206,7 +206,7 @@ func checkForNonceConflicts(
 	}
 
 	// Step 3: if it is still not successful, it means that there are nonce
-	// conflicts that can not be resolved by waiting for other transactions to
+	// conflicts that cannot be resolved by waiting for other transactions to
 	// be executed, and we can consider the bundle as non-executable.
 	return makePermanentlyBlockedState("bundle nonce check execution failed")
 }
@@ -222,7 +222,7 @@ type dryRunner struct {
 	signer       types.Signer
 	nonceTracker *nonceTracker
 	allowGaps    bool
-	nonceUsed    map[common.Address]struct{}
+	nonceLocked  map[common.Address]struct{}
 	undo         []func()
 }
 
@@ -246,8 +246,8 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 	if err != nil {
 		return core_types.TransactionResultInvalid
 	}
-	if r.allowGaps && r.nonceUsed == nil {
-		r.nonceUsed = make(map[common.Address]struct{})
+	if r.allowGaps && r.nonceLocked == nil {
+		r.nonceLocked = make(map[common.Address]struct{})
 	}
 
 	got := tx.Nonce()
@@ -255,8 +255,8 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 	if got != want {
 		// If gaps are allowed, we can skip over one nonce gap for each account.
 		if got > want && r.allowGaps {
-			if _, found := r.nonceUsed[sender]; !found {
-				r.nonceUsed[sender] = struct{}{}
+			if _, found := r.nonceLocked[sender]; !found {
+				r.nonceLocked[sender] = struct{}{}
 				r.nonceTracker.setNonce(sender, got+1)
 				return core_types.TransactionResultSuccessful
 			}
@@ -266,7 +266,7 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 
 	// This account has used the first nonce now, no more gaps allowed for it.
 	if r.allowGaps {
-		r.nonceUsed[sender] = struct{}{}
+		r.nonceLocked[sender] = struct{}{}
 	}
 
 	// if there are no nonce conflicts, consume the nonce for the sender and
@@ -277,10 +277,10 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 
 func (r *dryRunner) CreateSnapshot() int {
 	nonceBackup := r.nonceTracker.backup()
-	nonceUsedBackup := maps.Clone(r.nonceUsed)
+	nonceLockedBackup := maps.Clone(r.nonceLocked)
 	r.undo = append(r.undo, func() {
 		r.nonceTracker.restore(nonceBackup)
-		r.nonceUsed = nonceUsedBackup
+		r.nonceLocked = nonceLockedBackup
 	})
 	return len(r.undo) - 1
 }
@@ -306,7 +306,9 @@ func (t *nonceTracker) getNonce(addr common.Address) uint64 {
 	if nonce, ok := t.nonces[addr]; ok {
 		return nonce
 	}
-	return t.source.GetNonce(addr)
+	nonce := t.source.GetNonce(addr)
+	t.setNonce(addr, nonce)
+	return nonce
 }
 
 func (t *nonceTracker) setNonce(addr common.Address, nonce uint64) {
