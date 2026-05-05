@@ -20,7 +20,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
@@ -68,12 +67,6 @@ func TestTxFeeAccounting_TransactionFeesAreChargedAsStatedInReceipts(t *testing.
 				receipt.EffectiveGasPrice,
 				big.NewInt(int64(receipt.GasUsed)),
 			)
-			// --- mitigation for reporting bug ---
-			// see https://github.com/0xsoniclabs/sonic-admin/issues/743
-			if internaltx.IsInternal(tx) || subsidies.IsSponsorshipRequest(tx) {
-				expectedCharges = big.NewInt(0)
-			}
-			// --- end of reporting issue mitigation ---
 
 			// The expected change is the sum of the fee charges and the
 			// transferred value.
