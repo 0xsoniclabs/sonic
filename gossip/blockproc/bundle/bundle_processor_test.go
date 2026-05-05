@@ -27,8 +27,6 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-func asPointer[T any](v T) *T { return &v }
-
 func TestRunBundle_DelegatesToRunStep(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockTransactionRunner(ctrl)
@@ -71,20 +69,19 @@ func TestRunBundle_DelegatesToRunStep(t *testing.T) {
 		runner.EXPECT().CreateSnapshot().Return(1),
 
 		runner.EXPECT().CreateSnapshot().Return(2),
-		runner.EXPECT().Run(tx1).Return(core_types.TransactionResultSuccessful, core_types.ExecutionCost(0)),
-		runner.EXPECT().Run(tx2).Return(core_types.TransactionResultFailed, core_types.ExecutionCost(0)),
+		runner.EXPECT().Run(tx1).Return(core_types.TransactionResultSuccessful),
+		runner.EXPECT().Run(tx2).Return(core_types.TransactionResultFailed),
 		runner.EXPECT().RevertToSnapshot(2),
 
 		runner.EXPECT().CreateSnapshot().Return(3),
-		runner.EXPECT().Run(tx1).Return(core_types.TransactionResultSuccessful, core_types.ExecutionCost(0)),
-		runner.EXPECT().Run(tx3).Return(core_types.TransactionResultSuccessful, core_types.ExecutionCost(0)),
+		runner.EXPECT().Run(tx1).Return(core_types.TransactionResultSuccessful),
+		runner.EXPECT().Run(tx3).Return(core_types.TransactionResultSuccessful),
 		// no revert for second branch since it succeeds
 
 		// third branch should not be executed since one of the branches already succeeded
 	)
 
-	success, _ := RunBundle(bundle, runner)
-	require.True(t, success)
+	require.True(t, RunBundle(bundle, runner))
 }
 
 func Test_runStep_DispatchesToCorrectExecutionMode(t *testing.T) {
@@ -122,7 +119,7 @@ func Test_runStep_DispatchesToCorrectExecutionMode(t *testing.T) {
 				}
 			}
 
-			result, _ := runStep(test.step, nil, runner)
+			result := runStep(test.step, nil, runner)
 			require.Equal(t, test.expectedSuccess, result)
 		})
 	}
@@ -136,8 +133,7 @@ func Test_runStep_UnknownStepType_ReturnsFalse(t *testing.T) {
 
 	for name, step := range test {
 		t.Run(name, func(t *testing.T) {
-			result, _ := runStep(step, nil, nil)
-			require.False(t, result)
+			require.False(t, runStep(step, nil, nil))
 		})
 	}
 }
@@ -167,7 +163,7 @@ func Test_runGroup_DispatchesToCorrectExecutionMode(t *testing.T) {
 				runner.EXPECT().RevertToSnapshot(1).Times(1)
 			}
 
-			result, _ := runGroup(test.group, nil, runner)
+			result := runGroup(test.group, nil, runner)
 			require.Equal(t, test.expectedResult, result)
 		})
 	}
@@ -208,8 +204,7 @@ func Test_runGroup_HandlesTolerateFailedFlag(t *testing.T) {
 			runner.EXPECT().CreateSnapshot().Return(1)
 			runner.EXPECT().RevertToSnapshot(1).MaxTimes(1)
 
-			result, _ := runGroup(*test.step.group, nil, runner)
-			require.Equal(t, test.wanted, result)
+			require.Equal(t, test.wanted, runGroup(*test.step.group, nil, runner))
 		})
 	}
 }
@@ -219,8 +214,7 @@ func Test_runAllOfGroup_EmptySteps_ReturnsSuccessful(t *testing.T) {
 	runner := NewMockTransactionRunner(ctrl)
 	runner.EXPECT().CreateSnapshot().Return(1)
 
-	success, _ := runAllOfGroup(nil, nil, runner)
-	require.True(t, success)
+	require.True(t, runAllOfGroup(nil, nil, runner))
 }
 
 func Test_runAllOfGroup_ReturnsTrueIfAllTransactionsPass(t *testing.T) {
@@ -232,7 +226,7 @@ func Test_runAllOfGroup_ReturnsTrueIfAllTransactionsPass(t *testing.T) {
 
 	gomock.InOrder(
 		runner.EXPECT().CreateSnapshot().Return(1),
-		runner.EXPECT().Run(tx).Return(core_types.TransactionResultSuccessful, core_types.ExecutionCost(0)).Times(3),
+		runner.EXPECT().Run(tx).Return(core_types.TransactionResultSuccessful).Times(3),
 	)
 
 	steps := []ExecutionStep{
@@ -243,8 +237,7 @@ func Test_runAllOfGroup_ReturnsTrueIfAllTransactionsPass(t *testing.T) {
 		ref: tx,
 	}
 
-	success, _ := runAllOfGroup(steps, txs, runner)
-	require.True(t, success)
+	require.True(t, runAllOfGroup(steps, txs, runner))
 }
 
 func Test_runAllOfGroup_StopsAtFirstFailedTransaction(t *testing.T) {
@@ -278,17 +271,16 @@ func Test_runAllOfGroup_StopsAtFirstFailedTransaction(t *testing.T) {
 			for i := range firstFailed {
 				head = runner.EXPECT().
 					Run(txs[i]).
-					Return(core_types.TransactionResultSuccessful, core_types.ExecutionCost(0)).
+					Return(core_types.TransactionResultSuccessful).
 					After(head)
 			}
 			head = runner.EXPECT().Run(txs[firstFailed]).
-				Return(core_types.TransactionResultFailed, core_types.ExecutionCost(0)).
+				Return(core_types.TransactionResultFailed).
 				After(head)
 
 			runner.EXPECT().RevertToSnapshot(1).After(head)
 
-			success, _ := runAllOfGroup(steps, index, runner)
-			require.False(t, success)
+			require.False(t, runAllOfGroup(steps, index, runner))
 		})
 	}
 }
@@ -302,8 +294,7 @@ func Test_runOneOfGroup_ForEmptySteps_ReturnsFailed(t *testing.T) {
 		runner.EXPECT().RevertToSnapshot(1),
 	)
 
-	success, _ := runOneOfGroup(nil, nil, runner)
-	require.False(t, success)
+	require.False(t, runOneOfGroup(nil, nil, runner))
 }
 
 func Test_runOneOfGroup_RollsBackAndReturnsFailedIfAllTransactionsFail(t *testing.T) {
@@ -315,7 +306,7 @@ func Test_runOneOfGroup_RollsBackAndReturnsFailedIfAllTransactionsFail(t *testin
 
 	gomock.InOrder(
 		runner.EXPECT().CreateSnapshot().Return(1),
-		runner.EXPECT().Run(tx).Return(core_types.TransactionResultFailed, core_types.ExecutionCost(0)).Times(3),
+		runner.EXPECT().Run(tx).Return(core_types.TransactionResultFailed).Times(3),
 		runner.EXPECT().RevertToSnapshot(1),
 	)
 
@@ -327,8 +318,7 @@ func Test_runOneOfGroup_RollsBackAndReturnsFailedIfAllTransactionsFail(t *testin
 		NewTxStep(ref), NewTxStep(ref), NewTxStep(ref),
 	}
 
-	success, _ := runOneOfGroup(steps, txs, runner)
-	require.False(t, success)
+	require.False(t, runOneOfGroup(steps, txs, runner))
 }
 
 func Test_runOneOfGroup_StopsAtFirstSuccessfulTransaction(t *testing.T) {
@@ -362,15 +352,14 @@ func Test_runOneOfGroup_StopsAtFirstSuccessfulTransaction(t *testing.T) {
 			for i := range firstSuccess {
 				head = runner.EXPECT().
 					Run(txs[i]).
-					Return(core_types.TransactionResultFailed, core_types.ExecutionCost(0)).
+					Return(core_types.TransactionResultFailed).
 					After(head)
 			}
 			runner.EXPECT().Run(txs[firstSuccess]).
-				Return(core_types.TransactionResultSuccessful, core_types.ExecutionCost(0)).
+				Return(core_types.TransactionResultSuccessful).
 				After(head)
 
-			success, _ := runOneOfGroup(steps, index, runner)
-			require.True(t, success)
+			require.True(t, runOneOfGroup(steps, index, runner))
 		})
 	}
 }
@@ -399,10 +388,10 @@ func Test_runSingle_InterpretsTxResultAsDefinedByFlags(t *testing.T) {
 				tx := types.NewTx(&types.LegacyTx{})
 				txs := map[TxReference]*types.Transaction{ref: tx}
 
-				runner.EXPECT().Run(tx).Return(result, core_types.ExecutionCost(0))
+				runner.EXPECT().Run(tx).Return(result)
 
 				single := single{flags: flag}
-				got, _ := runSingle(single, txs, runner)
+				got := runSingle(single, txs, runner)
 				want := isTolerated(result, flag)
 				require.Equal(t, want, got)
 			})
@@ -421,7 +410,7 @@ func Test_runSingle_MissingTransaction_AcceptsAsDefinedByFlags(t *testing.T) {
 	for _, flags := range tests {
 		t.Run(fmt.Sprintf("flags=%b", flags), func(t *testing.T) {
 			single := single{flags: flags}
-			result, _ := runSingle(single, nil, nil)
+			result := runSingle(single, nil, nil)
 			want := isTolerated(core_types.TransactionResultInvalid, flags)
 			require.Equal(t, want, result)
 		})
@@ -462,240 +451,4 @@ func Test_isTolerated_InterpretsExecutionFlagsCorrectly(t *testing.T) {
 			"flags: %b, result: %d", test.flags, test.result,
 		)
 	}
-}
-
-// --- ExecutionCost tests ---
-
-func TestRunBundle_ReturnsExecutionCostOfSuccessfulBundle(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	runner := NewMockTransactionRunner(ctrl)
-
-	ref := TxReference{From: common.Address{1}}
-	tx := types.NewTx(&types.LegacyTx{})
-
-	gomock.InOrder(
-		runner.EXPECT().CreateSnapshot().Return(1),
-		runner.EXPECT().Run(tx).Return(core_types.TransactionResultSuccessful, core_types.ExecutionCost(100)),
-	)
-
-	b := &TransactionBundle{
-		Transactions: map[TxReference]*types.Transaction{ref: tx},
-		Plan:         ExecutionPlan{Root: NewAllOfStep(NewTxStep(ref))},
-	}
-
-	success, execCost := RunBundle(b, runner)
-	require.True(t, success)
-	require.Equal(t, core_types.ExecutionCost(100), execCost)
-}
-
-func Test_runAllOfGroup_ExecutionCostIsSumOfGasFromNonRevertedAndRevertedSteps(t *testing.T) {
-	ref1 := TxReference{From: common.Address{1}}
-	ref2 := TxReference{From: common.Address{2}}
-	tx1 := types.NewTx(&types.LegacyTx{})
-	tx2 := types.NewTx(&types.LegacyTx{})
-
-	// The steps have an execution cost of 100 and 200 gas respectively.
-	cases := map[string]struct {
-		tx1Result    core_types.TransactionResult
-		tx2Result    *core_types.TransactionResult
-		expectedCost core_types.ExecutionCost
-	}{
-		"both succeed": {
-			tx1Result:    core_types.TransactionResultSuccessful,
-			tx2Result:    asPointer(core_types.TransactionResultSuccessful),
-			expectedCost: core_types.ExecutionCost(300),
-		},
-		"first succeeds, second fails": {
-			tx1Result:    core_types.TransactionResultSuccessful,
-			tx2Result:    asPointer(core_types.TransactionResultFailed),
-			expectedCost: core_types.ExecutionCost(300),
-		},
-		"first fails": {
-			tx1Result:    core_types.TransactionResultFailed,
-			expectedCost: core_types.ExecutionCost(100), // second step not executed
-		},
-	}
-
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			runner := NewMockTransactionRunner(ctrl)
-
-			runner.EXPECT().CreateSnapshot().Return(1)
-			runner.EXPECT().Run(tx1).Return(tc.tx1Result, core_types.ExecutionCost(100))
-			if tc.tx2Result != nil {
-				runner.EXPECT().Run(tx2).Return(*tc.tx2Result, core_types.ExecutionCost(200))
-			}
-			if tc.tx1Result == core_types.TransactionResultFailed || (tc.tx2Result != nil && *tc.tx2Result == core_types.TransactionResultFailed) {
-				runner.EXPECT().RevertToSnapshot(1)
-			}
-
-			txs := map[TxReference]*types.Transaction{ref1: tx1, ref2: tx2}
-			steps := []ExecutionStep{NewTxStep(ref1), NewTxStep(ref2)}
-
-			_, execCost := runAllOfGroup(steps, txs, runner)
-			require.Equal(t, tc.expectedCost, execCost)
-		})
-	}
-}
-
-func Test_runOneOfGroup_ExecutionCostIncludesGasFromAllAttemptedSteps(t *testing.T) {
-	ref1 := TxReference{From: common.Address{1}}
-	ref2 := TxReference{From: common.Address{2}}
-	tx1 := types.NewTx(&types.LegacyTx{})
-	tx2 := types.NewTx(&types.LegacyTx{})
-
-	// The steps have an execution cost of 100 and 200 gas respectively.
-	cases := map[string]struct {
-		tx1Result    core_types.TransactionResult
-		tx2Result    *core_types.TransactionResult
-		expectedCost core_types.ExecutionCost
-	}{
-		"first succeeds": {
-			tx1Result:    core_types.TransactionResultSuccessful,
-			expectedCost: core_types.ExecutionCost(100), // second step not executed
-		},
-		"first fails, second succeeds": {
-			tx1Result:    core_types.TransactionResultFailed,
-			tx2Result:    asPointer(core_types.TransactionResultSuccessful),
-			expectedCost: core_types.ExecutionCost(300),
-		},
-		"both fail": {
-			tx1Result:    core_types.TransactionResultFailed,
-			tx2Result:    asPointer(core_types.TransactionResultFailed),
-			expectedCost: core_types.ExecutionCost(300),
-		},
-	}
-
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			runner := NewMockTransactionRunner(ctrl)
-
-			runner.EXPECT().CreateSnapshot().Return(1)
-			runner.EXPECT().Run(tx1).Return(tc.tx1Result, core_types.ExecutionCost(100))
-			if tc.tx2Result != nil {
-				runner.EXPECT().Run(tx2).Return(*tc.tx2Result, core_types.ExecutionCost(200))
-			}
-			if tc.tx2Result != nil && *tc.tx2Result == core_types.TransactionResultFailed {
-				runner.EXPECT().RevertToSnapshot(1)
-			}
-
-			txs := map[TxReference]*types.Transaction{ref1: tx1, ref2: tx2}
-			steps := []ExecutionStep{NewTxStep(ref1), NewTxStep(ref2)}
-
-			_, execCost := runOneOfGroup(steps, txs, runner)
-			require.Equal(t, tc.expectedCost, execCost)
-		})
-	}
-}
-
-func Test_runOneOfGroup_ExecutionCostIncludesGasWhenAllStepsFail(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	runner := NewMockTransactionRunner(ctrl)
-
-	ref1 := TxReference{From: common.Address{1}}
-	ref2 := TxReference{From: common.Address{2}}
-	tx1 := types.NewTx(&types.LegacyTx{})
-	tx2 := types.NewTx(&types.LegacyTx{})
-
-	gomock.InOrder(
-		runner.EXPECT().CreateSnapshot().Return(1),
-		runner.EXPECT().Run(tx1).Return(core_types.TransactionResultFailed, core_types.ExecutionCost(100)),
-		runner.EXPECT().Run(tx2).Return(core_types.TransactionResultFailed, core_types.ExecutionCost(200)),
-		runner.EXPECT().RevertToSnapshot(1),
-	)
-
-	txs := map[TxReference]*types.Transaction{ref1: tx1, ref2: tx2}
-	steps := []ExecutionStep{NewTxStep(ref1), NewTxStep(ref2)}
-
-	success, execCost := runOneOfGroup(steps, txs, runner)
-	require.False(t, success)
-	require.Equal(t, core_types.ExecutionCost(300), execCost)
-}
-
-func Test_runOneOfGroup_ExecutionCostOnlyCountsFirstSuccessfulStep(t *testing.T) {
-	// In a oneOf, once the first step succeeds, subsequent steps are not run.
-	// The cost should only include steps that were actually attempted.
-	ctrl := gomock.NewController(t)
-	runner := NewMockTransactionRunner(ctrl)
-
-	ref := TxReference{From: common.Address{1}}
-	tx := types.NewTx(&types.LegacyTx{})
-
-	gomock.InOrder(
-		runner.EXPECT().CreateSnapshot().Return(1),
-		runner.EXPECT().Run(tx).Return(core_types.TransactionResultSuccessful, core_types.ExecutionCost(1000)),
-		// second step is NOT run since first succeeded
-	)
-
-	txs := map[TxReference]*types.Transaction{ref: tx}
-	steps := []ExecutionStep{NewTxStep(ref), NewTxStep(ref)}
-
-	success, execCost := runOneOfGroup(steps, txs, runner)
-	require.True(t, success)
-	require.Equal(t, core_types.ExecutionCost(1000), execCost)
-}
-
-func TestRunBundle_NestedGroups_AccumulateExecutionCostAcrossLevels(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	runner := NewMockTransactionRunner(ctrl)
-
-	ref1 := TxReference{From: common.Address{1}}
-	ref2 := TxReference{From: common.Address{2}}
-	ref3 := TxReference{From: common.Address{3}}
-	tx1 := types.NewTx(&types.LegacyTx{})
-	tx2 := types.NewTx(&types.LegacyTx{})
-	tx3 := types.NewTx(&types.LegacyTx{})
-
-	// OneOf(AllOf(tx1, tx2), tx3)
-	// AllOf branch: tx1 succeeds (100 gas), tx2 fails (200 gas) -> reverted
-	// tx3 succeeds (50 gas)
-	// Total cost: 100 + 200 + 50 = 350
-	gomock.InOrder(
-		runner.EXPECT().CreateSnapshot().Return(1), // oneOf snapshot
-		runner.EXPECT().CreateSnapshot().Return(2), // allOf snapshot
-		runner.EXPECT().Run(tx1).Return(core_types.TransactionResultSuccessful, core_types.ExecutionCost(100)),
-		runner.EXPECT().Run(tx2).Return(core_types.TransactionResultFailed, core_types.ExecutionCost(200)),
-		runner.EXPECT().RevertToSnapshot(2), // allOf reverted
-		runner.EXPECT().Run(tx3).Return(core_types.TransactionResultSuccessful, core_types.ExecutionCost(50)),
-	)
-
-	txs := map[TxReference]*types.Transaction{ref1: tx1, ref2: tx2, ref3: tx3}
-	b := &TransactionBundle{
-		Transactions: txs,
-		Plan: ExecutionPlan{
-			Root: NewOneOfStep(
-				NewAllOfStep(NewTxStep(ref1), NewTxStep(ref2)),
-				NewTxStep(ref3),
-			),
-		},
-	}
-
-	success, execCost := RunBundle(b, runner)
-	require.True(t, success)
-	require.Equal(t, core_types.ExecutionCost(350), execCost)
-}
-
-func Test_runSingle_ReturnsExecutionCostFromRunner(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	runner := NewMockTransactionRunner(ctrl)
-
-	ref := TxReference{From: common.Address{1}}
-	tx := types.NewTx(&types.LegacyTx{})
-	txs := map[TxReference]*types.Transaction{ref: tx}
-
-	runner.EXPECT().Run(tx).Return(core_types.TransactionResultSuccessful, core_types.ExecutionCost(42))
-
-	s := single{txRef: ref}
-	success, execCost := runSingle(s, txs, runner)
-	require.True(t, success)
-	require.Equal(t, core_types.ExecutionCost(42), execCost)
-}
-
-func Test_runSingle_MissingTransaction_ReturnsZeroExecutionCost(t *testing.T) {
-	s := single{txRef: TxReference{}, flags: EF_TolerateInvalid}
-	success, execCost := runSingle(s, nil, nil)
-	require.True(t, success)
-	require.Equal(t, core_types.ExecutionCost(0), execCost)
 }

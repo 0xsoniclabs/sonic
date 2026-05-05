@@ -25,17 +25,14 @@ import (
 
 // RunBundle executes the transactions in the bundle using the provided
 // TransactionRunner. It returns true if the bundle execution is considered
-// successful, and false otherwise, and the total execution cost. The execution
-// cost tracks the gas consumed during processing, including gas from
-// rolled-back bundles, which distinguishes it from the usedGas counter that
-// gets reverted on snapshot rollback
+// successful, and false otherwise.
 //
 // This is the canonical implementation of the bundle execution logic, which
 // defines the semantic of the execution flags.
 func RunBundle(
 	bundle *TransactionBundle,
 	runner TransactionRunner,
-) (bool, core_types.ExecutionCost) {
+) bool {
 	return runStep(bundle.Plan.Root, bundle.Transactions, runner)
 }
 
@@ -43,7 +40,7 @@ func RunBundle(
 // within a bundle and obtaining their results, as used by the RunBundle
 // function to determine the overall success of the bundle execution.
 type TransactionRunner interface {
-	Run(tx *types.Transaction) (core_types.TransactionResult, core_types.ExecutionCost)
+	Run(tx *types.Transaction) core_types.TransactionResult
 	CreateSnapshot() int
 	RevertToSnapshot(id int)
 }
@@ -57,9 +54,9 @@ func runStep(
 	step ExecutionStep,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
-) (bool, core_types.ExecutionCost) {
+) bool {
 	if !step.valid() {
-		return false, 0
+		return false
 	}
 	if step.single != nil {
 		return runSingle(*step.single, transactions, runner)
@@ -74,18 +71,17 @@ func runGroup(
 	group group,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
-) (bool, core_types.ExecutionCost) {
+) bool {
 	var success bool
-	var execCost core_types.ExecutionCost
 	if group.oneOf {
-		success, execCost = runOneOfGroup(group.steps, transactions, runner)
+		success = runOneOfGroup(group.steps, transactions, runner)
 	} else {
-		success, execCost = runAllOfGroup(group.steps, transactions, runner)
+		success = runAllOfGroup(group.steps, transactions, runner)
 	}
 	if group.tolerateFailed {
-		return true, execCost
+		return true
 	}
-	return success, execCost
+	return success
 }
 
 // runAllOfGroup executes a group of steps where all steps must be successful
@@ -96,18 +92,15 @@ func runAllOfGroup(
 	steps []ExecutionStep,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
-) (bool, core_types.ExecutionCost) {
+) bool {
 	snapshot := runner.CreateSnapshot()
-	var execCost core_types.ExecutionCost
 	for _, step := range steps {
-		success, stepExecCost := runStep(step, transactions, runner)
-		execCost += stepExecCost
-		if !success {
+		if !runStep(step, transactions, runner) {
 			runner.RevertToSnapshot(snapshot)
-			return false, execCost
+			return false
 		}
 	}
-	return true, execCost
+	return true
 }
 
 // runOneOfGroup executes a group of steps where at least one step must be
@@ -119,18 +112,15 @@ func runOneOfGroup(
 	steps []ExecutionStep,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
-) (bool, core_types.ExecutionCost) {
+) bool {
 	snapshot := runner.CreateSnapshot()
-	var execCost core_types.ExecutionCost
 	for _, step := range steps {
-		success, stepExecCost := runStep(step, transactions, runner)
-		execCost += stepExecCost
-		if success {
-			return true, execCost
+		if runStep(step, transactions, runner) {
+			return true
 		}
 	}
 	runner.RevertToSnapshot(snapshot)
-	return false, execCost
+	return false
 }
 
 // runSingle executes a single transaction step and returns true if the
@@ -142,16 +132,15 @@ func runSingle(
 	single single,
 	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
-) (bool, core_types.ExecutionCost) {
+) bool {
 	var result core_types.TransactionResult
-	var execCost core_types.ExecutionCost
 	tx, found := transactions[single.txRef]
 	if !found {
 		result = core_types.TransactionResultInvalid
 	} else {
-		result, execCost = runner.Run(tx)
+		result = runner.Run(tx)
 	}
-	return isTolerated(result, single.flags), execCost
+	return isTolerated(result, single.flags)
 }
 
 // isTolerated determines whether a transaction result is considered successful

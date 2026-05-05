@@ -68,12 +68,11 @@ func (mr *MockTransactionRunnerMockRecorder) RevertToSnapshot(id any) *gomock.Ca
 }
 
 // Run mocks base method.
-func (m *MockTransactionRunner) Run(tx *types.Transaction) (core_types.TransactionResult, core_types.ExecutionCost) {
+func (m *MockTransactionRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Run", tx)
 	ret0, _ := ret[0].(core_types.TransactionResult)
-	ret1, _ := ret[1].(core_types.ExecutionCost)
-	return ret0, ret1
+	return ret0
 }
 
 // Run indicates an expected call of Run.

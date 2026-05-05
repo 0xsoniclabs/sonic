@@ -617,7 +617,7 @@ func Test_runner_Run_ReturnsErrorForInvalidNestedBundle(t *testing.T) {
 		acceptedSender: make(map[common.Address]struct{}),
 	}
 
-	result, _ := runner.Run(invalidBundle)
+	result := runner.Run(invalidBundle)
 	require.Equal(core_types.TransactionResultInvalid, result)
 }
 
@@ -628,7 +628,7 @@ func Test_runner_Run_ReturnsInvalidForTransactionsWithoutSignature(t *testing.T)
 		acceptedSender: make(map[common.Address]struct{}),
 	}
 
-	result, _ := runner.Run(tx)
+	result := runner.Run(tx)
 	require.Equal(t, core_types.TransactionResultInvalid, result)
 }
 

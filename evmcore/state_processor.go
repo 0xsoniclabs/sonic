@@ -497,7 +497,7 @@ func (r *transactionRunner) runTransactionBundleInternal(
 		legacyTxOffset: legacyTxOffset,
 		trueTxOffset:   trueTxOffset,
 	}
-	success, execCost := bundle.RunBundle(txBundle, &runner)
+	success := bundle.RunBundle(txBundle, &runner)
 	if !success {
 		// Mark the execution plan as processed in the StateDB to prevent processing
 		// another bundle with the same execution plan in the same block. Also keep
@@ -506,7 +506,7 @@ func (r *transactionRunner) runTransactionBundleInternal(
 		// execution of the bundle as used since nested bundles can not contain
 		// copies of themselves without finding a hash-function collision.
 		ctxt.statedb.AddProcessedBundle(planHash, positionInBlock)
-		return []ProcessedTransaction{}, core_types.TransactionResultFailed, execCost
+		return []ProcessedTransaction{}, core_types.TransactionResultFailed, runner.executionCost
 	}
 
 	// Update the position-in-block struct to track the number of transactions
@@ -525,7 +525,7 @@ func (r *transactionRunner) runTransactionBundleInternal(
 	// copies of themselves without finding a hash-function collision.
 	ctxt.statedb.AddProcessedBundle(planHash, positionInBlock)
 
-	return runner.processedTransactions, core_types.TransactionResultSuccessful, execCost
+	return runner.processedTransactions, core_types.TransactionResultSuccessful, runner.executionCost
 }
 
 // bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner
@@ -536,10 +536,12 @@ type bundleTransactionRunner struct {
 	trueTxOffset          int
 	processedTransactions []ProcessedTransaction
 	snapshots             []bundleTransactionRunnerSnapshot
+	executionCost         core_types.ExecutionCost // not included in snapshots
 }
 
-func (b *bundleTransactionRunner) Run(tx *types.Transaction) (core_types.TransactionResult, core_types.ExecutionCost) {
+func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 	processed, result, execCost := runTransaction(b.ctxt, tx, b.legacyTxOffset, b.trueTxOffset)
+	b.executionCost += execCost
 	b.processedTransactions = append(b.processedTransactions, processed...)
 
 	b.legacyTxOffset += len(processed)
@@ -549,7 +551,7 @@ func (b *bundleTransactionRunner) Run(tx *types.Transaction) (core_types.Transac
 		}
 	}
 
-	return result, execCost
+	return result
 }
 
 func (b *bundleTransactionRunner) CreateSnapshot() int {
