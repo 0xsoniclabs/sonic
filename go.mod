@@ -26,7 +26,6 @@ require (
 	github.com/consensys/gnark-crypto v0.20.1
 	github.com/davecgh/go-spew v1.1.1
 	github.com/deckarep/golang-set v1.8.0
-	github.com/docker/docker v28.5.2+incompatible
 	github.com/ethereum/go-ethereum v1.17.1
 	github.com/gballet/go-libpcsclite v0.0.0-20250918194357-1ec6f2e601c6
 	github.com/hashicorp/golang-lru v1.0.2
@@ -34,6 +33,7 @@ require (
 	github.com/klauspost/pgzip v1.2.6
 	github.com/mattn/go-colorable v0.1.14
 	github.com/mattn/go-isatty v0.0.22
+	github.com/moby/sys/reexec v0.1.0
 	github.com/naoina/toml v0.1.2-0.20170918210437-9fafd6967416
 	github.com/pkg/errors v0.9.1
 	github.com/status-im/keycard-go v0.3.3
@@ -110,7 +110,6 @@ require (
 	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mitchellh/pointerstructure v1.2.1 // indirect
-	github.com/moby/sys/reexec v0.1.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/naoina/go-stringutil v0.1.0 // indirect
 	github.com/oapi-codegen/runtime v1.4.0 // indirect

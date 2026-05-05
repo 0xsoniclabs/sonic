@@ -30,8 +30,8 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	futils "github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/docker/docker/pkg/reexec"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/moby/sys/reexec"
 
 	"github.com/0xsoniclabs/sonic/cmd/cmdtest"
 )
