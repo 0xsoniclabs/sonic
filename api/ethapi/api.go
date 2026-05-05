@@ -1204,10 +1204,8 @@ func DoCall(
 	}
 
 	// If the timer caused an abort, return an appropriate error message
-	if evm.Cancelled() && timeout > 0 {
-		return nil, fmt.Errorf("execution aborted (timeout = %v)", timeout)
-	} else if evm.Cancelled() {
-		return nil, fmt.Errorf("execution aborted, (reason: %v)", ctx.Err())
+	if evm.Cancelled() {
+		return nil, fmt.Errorf("execution aborted (reason: %v, timeout: %v)", ctx.Err(), timeout)
 	}
 	if err != nil {
 		return result, fmt.Errorf("err: %w (supplied gas %d)", err, msg.GasLimit)
