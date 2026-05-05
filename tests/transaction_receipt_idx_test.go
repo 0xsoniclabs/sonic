@@ -41,28 +41,8 @@ func TestReceipt_InternalTransactionsHaveZeroEffectiveGasPrice(t *testing.T) {
 	require.NoError(t, err)
 	before := receipt.BlockNumber.Uint64()
 
-	initialEpoch := GetEpochOfBlock(t, client, int(before))
-
-	// Send transaction instructing the network to advance one epoch, triggering
-	// internal transactions in the sealing block.
-	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
-	require.NoError(t, err)
-	txOpts, err := net.GetTransactOptions(&net.account)
-	require.NoError(t, err)
-	tx, err := contract.AdvanceEpochs(txOpts, big.NewInt(int64(1)))
-	require.NoError(t, err)
-	require.NotNil(t, tx)
-
-	// Wait for the epoch to advance while submitting new transactions.
-	for {
-		current, err := client.BlockNumber(t.Context())
-		require.NoError(t, err)
-		if GetEpochOfBlock(t, client, int(current)) > initialEpoch {
-			break
-		}
-		_, err = net.EndowAccount(common.Address{}, big.NewInt(1e18))
-		require.NoError(t, err)
-	}
+	// Advance one epoch to trigger internal sealing transactions.
+	net.AdvanceEpoch(t, 1)
 
 	after, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
