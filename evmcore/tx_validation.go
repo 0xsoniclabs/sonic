@@ -398,7 +398,7 @@ func validateBundleTransactions(
 	stateDb state.StateDB,
 	signer types.Signer,
 ) error {
-	return validateBundleTransactionsInternal(tx, netRules, chainState, stateDb, signer, GetBundleState)
+	return validateBundleTransactionsInternal(tx, netRules, chainState, stateDb, signer, GetCachedBundleState)
 }
 
 func validateBundleTransactionsInternal(

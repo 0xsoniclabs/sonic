@@ -52,7 +52,7 @@ func newBundlesChecker(
 		stateDb: stateDB,
 	}
 	return func(tx *types.Transaction) bundlePoolStatus {
-		bundleState := GetBundleState(adapter, stateDB, tx)
+		bundleState := GetCachedBundleState(adapter, stateDB, tx)
 		if bundleState.Executable {
 			return bundlePending
 		} else if bundleState.TemporarilyBlocked {

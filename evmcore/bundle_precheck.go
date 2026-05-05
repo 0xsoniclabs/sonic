@@ -25,8 +25,10 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	state "github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	lru "github.com/hashicorp/golang-lru"
 )
 
 //go:generate mockgen -source=bundle_precheck.go -destination=bundle_precheck_mock.go -package=evmcore
@@ -76,6 +78,46 @@ func GetBundleState(
 	envelope *types.Transaction,
 ) BundleState {
 	return getBundleState(chain, stateDb, envelope, trialRunBundle)
+}
+
+var cache *lru.Cache
+
+func init() {
+	cache, _ = lru.New(1000) // TODO: set size.
+}
+
+func GetCachedBundleState(
+	chain ChainStateForBundleEval,
+	stateDb state.StateDB,
+	envelope *types.Transaction,
+) BundleState {
+	chainId := big.NewInt(int64(chain.GetCurrentNetworkRules().NetworkID))
+	signer := types.LatestSignerForChainID(chainId)
+
+	// Does this even pay off? cache envelope vs cache plan
+	txBundle, err := bundle.OpenEnvelope(signer, envelope)
+	if err != nil {
+		return makeRunnableState()
+	}
+	planHash := txBundle.Plan.Hash()
+
+	// get current block number
+	blockNumber := uint64(0)
+	if block := chain.GetLatestHeader(); block != nil {
+		blockNumber = block.Number.Uint64()
+	}
+
+	key := string(append(
+		bigendian.Uint64ToBytes(blockNumber),
+		planHash.Bytes()...,
+	))
+	if state, ok := cache.Get(key); ok {
+		return state.(BundleState)
+	}
+
+	state := getBundleState(chain, stateDb, envelope, trialRunBundle)
+	cache.Add(key, state)
+	return state
 }
 
 // getBundleState is the internal version of GetBundleState, allowing to inject
