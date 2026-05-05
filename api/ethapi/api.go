@@ -28,6 +28,7 @@ import (
 
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	bip39 "github.com/tyler-smith/go-bip39"
@@ -2002,7 +2003,9 @@ func (s *PublicTransactionPoolAPI) formatTxReceipt(header *evmcore.EvmHeader, tx
 		"type":              hexutil.Uint(tx.Type()),
 	}
 	// Assign the effective gas price paid
-	if header.BaseFee == nil {
+	if internaltx.IsInternal(tx) || subsidies.IsSponsorshipRequest(tx) {
+		fields["effectiveGasPrice"] = hexutil.Uint64(0)
+	} else if header.BaseFee == nil {
 		fields["effectiveGasPrice"] = hexutil.Uint64(tx.GasPrice().Uint64())
 	} else {
 		gasTip := tx.EffectiveGasTipValue(header.BaseFee)
