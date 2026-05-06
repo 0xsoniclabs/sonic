@@ -148,15 +148,13 @@ func (c Committee) String() string {
 	result.WriteString("Committee{")
 	for i, m := range c.Members() {
 		key := m.PublicKey.Serialize()
-		result.WriteString(
-			fmt.Sprintf(
-				"%d: 0x%x..%x -> %d, ",
-				i, key[:2], key[len(key)-2:],
-				m.VotingPower,
-			),
+		fmt.Fprintf(&result,
+			"%d: 0x%x..%x -> %d, ",
+			i, key[:2], key[len(key)-2:],
+			m.VotingPower,
 		)
 	}
-	result.WriteString(fmt.Sprintf("Valid: %t}", c.Validate() == nil))
+	fmt.Fprintf(&result, "Valid: %t}", c.Validate() == nil)
 	return result.String()
 }
 

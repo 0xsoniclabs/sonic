@@ -545,7 +545,7 @@ func (mask NodeMask) String() string {
 			if builder.Len() > 1 {
 				builder.WriteString(",")
 			}
-			builder.WriteString(fmt.Sprintf("%d", i))
+			fmt.Fprintf(&builder, "%d", i)
 		}
 	}
 	builder.WriteString("}")

@@ -70,7 +70,7 @@ func (b BitSet[T]) String() string {
 		if i > 0 {
 			builder.WriteString(", ")
 		}
-		builder.WriteString(fmt.Sprintf("%v", entry))
+		fmt.Fprintf(&builder, "%v", entry)
 	}
 	builder.WriteString("}")
 	return builder.String()

@@ -171,7 +171,7 @@ func (nm namespaceMap) String() string {
 	var sb strings.Builder
 	sb.WriteString("{\n")
 	for key, innerMap := range nm {
-		sb.WriteString(fmt.Sprintf("  \"%s\": [", key))
+		fmt.Fprintf(&sb, "  \"%s\": [", key)
 		funcs := []string{}
 		for innerKey := range innerMap {
 			funcs = append(funcs, fmt.Sprintf("\"%s\"", innerKey))
