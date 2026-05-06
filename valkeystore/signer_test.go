@@ -80,6 +80,7 @@ func TestSignerAuthority_SignatureMayFail(t *testing.T) {
 	t.Run("with corrupted key", func(t *testing.T) {
 		key, err := crypto.GenerateKey()
 		require.NoError(t, err)
+		//nolint:staticcheck // SA1019: key.D has been deprecated but remains the only way to corrupt the key for testing
 		key.D = big.NewInt(0) // corrupt the key by setting D to zero
 		corruptedKey := encryption.PrivateKey{Decoded: key}
 
