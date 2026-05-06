@@ -1,0 +1,35 @@
+// Copyright 2026 Sonic Operations Ltd
+// This file is part of the Sonic Client
+//
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
+package utils
+
+//go:generate mockgen -source=metrics.go -destination=metrics_mock.go -package=utils
+
+// MetricsGaugeWrapper is an interface that wraps the methods of
+// metrics Gauge to facilitate testing with mocks.
+type MetricsGaugeWrapper interface {
+	Dec(int64)
+	Inc(int64)
+	Update(int64)
+}
+
+// MetricsCounterWrapper is an interface that wraps the methods of
+// metrics Counter to facilitate testing with mocks.
+type MetricsCounterWrapper interface {
+	Inc(int64)
+	Dec(int64)
+	Clear()
+}
