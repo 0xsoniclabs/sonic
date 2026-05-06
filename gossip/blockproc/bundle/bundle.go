@@ -49,6 +49,9 @@ func IsEnvelope(tx *types.Transaction) bool {
 }
 
 // OpenEnvelope extracts the bundle enclosed in the given envelope.
+// Results are cached in the transaction's Sonic payload to avoid redundant decoding of the
+// same bundle, and repeated construction of the same transaction objects for the transactions
+// included in the bundle, as computing the sender of such transactions is an expensive operation.
 func OpenEnvelope(
 	signer types.Signer,
 	tx *types.Transaction,
@@ -56,7 +59,18 @@ func OpenEnvelope(
 	if !IsEnvelope(tx) {
 		return TransactionBundle{}, fmt.Errorf("not an envelope")
 	}
-	return decode(signer, tx.Data())
+
+	const openedBundleKey = "openedBundle"
+	if txBundle, cached := types.GetSonicPayload[TransactionBundle](tx, openedBundleKey); cached {
+		return txBundle, nil
+	}
+
+	txBundle, err := decode(signer, tx.Data())
+	if err != nil {
+		return TransactionBundle{}, err
+	}
+	types.SetSonicPayload(tx, openedBundleKey, txBundle)
+	return txBundle, nil
 }
 
 var (

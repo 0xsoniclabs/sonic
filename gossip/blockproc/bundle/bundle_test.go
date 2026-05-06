@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestIsBundledOnly_IdentifiesBundleOnlyTransactions_OfAllTypes(t *testing.T) {
@@ -123,6 +124,45 @@ func TestOpenEnvelope_SuccessfullyDecodesEnvelopes(t *testing.T) {
 
 			require.Equal(t, bundle, unpacked)
 		})
+	}
+}
+
+func TestOpenEnvelope_CachesCalls(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockSigner := NewMockSigner(ctrl)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	bundle := NewBuilder().AllOf(
+		Step(key, &types.AccessListTx{Nonce: 1}),
+	).BuildBundle()
+
+	payload, err := bundle.Encode()
+	require.NoError(t, err)
+
+	envelope := types.NewTx(&types.LegacyTx{
+		To:   &BundleProcessor,
+		Data: payload,
+	})
+
+	// Expect the signer to be called only during the first OpenEnvelope call.
+	mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).Times(1)
+	mockSigner.EXPECT().Hash(gomock.Any()).Return(common.Hash{}).Times(1)
+
+	// First call: signer is used to decode the bundle.
+	firstValue, err := OpenEnvelope(mockSigner, envelope)
+	require.NoError(t, err)
+
+	// Second call: result is cached, signer must not be called again.
+	secondValue, err := OpenEnvelope(mockSigner, envelope)
+	require.NoError(t, err)
+
+	require.Equal(t, firstValue, secondValue)
+	for i := range firstValue.Transactions {
+		// Ensure that bundled transactions have the same cached sender, they must
+		// be the same instance
+		require.Same(t, firstValue.Transactions[i], secondValue.Transactions[i])
 	}
 }
 
