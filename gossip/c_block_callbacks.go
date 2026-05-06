@@ -77,6 +77,12 @@ var (
 
 	confirmedEventsMeter = metrics.GetOrRegisterMeter("chain/events/confirmed", nil) // events received from lachesis
 	spilledEventsMeter   = metrics.GetOrRegisterMeter("chain/events/spilled", nil)   // tx excluded because of MaxBlockGas
+
+	sponsoredCounter        = utils.MetricsCounterWrapper(metrics.GetOrRegisterCounter("chain/sponsored", nil))
+	skippedSponsoredCounter = utils.MetricsCounterWrapper(metrics.GetOrRegisterCounter("chain/sponsored/skipped", nil))
+	bundleCounter           = utils.MetricsCounterWrapper(metrics.GetOrRegisterCounter("chain/bundles", nil))
+	skippedBundleCounter    = utils.MetricsCounterWrapper(metrics.GetOrRegisterCounter("chain/bundles/skipped", nil))
+	effectiveGasGauge       = utils.MetricsGaugeWrapper(metrics.GetOrRegisterGauge("chain/gas/effective", nil))
 )
 
 type ExtendedTxPosition struct {
@@ -615,12 +621,33 @@ func processUserTransactionsNoLimits(
 	blockBuilder *inter.BlockBuilder,
 	orderedTxs []*types.Transaction,
 	userTransactionGasLimit uint64) {
-	for _, processed := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit).ProcessedTransactions {
+	sumGasUsed := uint64(0)
+	for _, tx := range orderedTxs {
+		if subsidies.IsSponsorshipRequest(tx) {
+			sponsoredCounter.Inc(1)
+		}
+	}
+
+	summary := evmProcessor.Execute(orderedTxs, userTransactionGasLimit)
+	for _, processed := range summary.ProcessedTransactions {
 		if processed.Receipt != nil { // < nil if skipped
 			blockBuilder.AddTransaction(
 				processed.Transaction,
 				processed.Receipt,
 			)
+			sumGasUsed += processed.Receipt.GasUsed
+		}
+
+		if subsidies.IsSponsorshipRequest(processed.Transaction) && processed.Receipt == nil {
+			skippedSponsoredCounter.Inc(1)
+		}
+		if summary.ExecutionCost == 0 && sumGasUsed == 0 {
+			effectiveGasGauge.Update(100)
+		} else if summary.ExecutionCost == 0 {
+			effectiveGasGauge.Update(0)
+		} else {
+			effective := float64(sumGasUsed) / float64(summary.ExecutionCost)
+			effectiveGasGauge.Update(int64(effective * 100))
 		}
 	}
 }
@@ -654,13 +681,24 @@ func processUserTransactions(
 		}
 		remainingSize -= txSize
 	}
+	summaryGasSum := core_types.ExecutionCost(0)
+	receiptGasSum := uint64(0)
 
 	causedBy = make(map[common.Hash]common.Hash)
 	skippedCounter := 0
 	for _, tx := range orderedTxs {
 		neededSpace := txSizeIncludingSubsidies(tx)
 		if neededSpace <= remainingSize {
-			for _, processed := range evmProcessor.Execute([]*types.Transaction{tx}, remainingGas).ProcessedTransactions {
+			if subsidies.IsSponsorshipRequest(tx) {
+				sponsoredCounter.Inc(1)
+			}
+			if bundle.IsEnvelope(tx) {
+				bundleCounter.Inc(1)
+			}
+
+			summary := evmProcessor.Execute([]*types.Transaction{tx}, userTransactionGasLimit)
+			summaryGasSum += summary.ExecutionCost
+			for _, processed := range summary.ProcessedTransactions {
 				if processed.Receipt != nil { // < nil if skipped
 					blockBuilder.AddTransaction(
 						processed.Transaction,
@@ -669,12 +707,31 @@ func processUserTransactions(
 					remainingGas -= processed.Receipt.GasUsed
 					remainingSize -= processed.Transaction.Size()
 					causedBy[processed.Transaction.Hash()] = tx.Hash()
+					receiptGasSum += processed.Receipt.GasUsed
+				}
+
+				// The envelope is only part of the processed transactions if the bundle failed
+				if bundle.IsEnvelope(processed.Transaction) {
+					skippedBundleCounter.Inc(1)
+				}
+				if subsidies.IsSponsorshipRequest(processed.Transaction) && processed.Receipt == nil {
+					skippedSponsoredCounter.Inc(1)
 				}
 			}
 		} else {
 			skippedCounter++
 		}
 	}
+
+	if summaryGasSum == 0 && receiptGasSum == 0 {
+		effectiveGasGauge.Update(100)
+	} else if summaryGasSum == 0 {
+		effectiveGasGauge.Update(0)
+	} else {
+		effective := float64(receiptGasSum) / float64(summaryGasSum)
+		effectiveGasGauge.Update(int64(effective * 100))
+	}
+
 	return skippedCounter, causedBy
 }
 

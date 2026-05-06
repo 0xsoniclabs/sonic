@@ -1408,6 +1408,352 @@ func TestProcessUserTransactions_RecordsOriginTransactionForAcceptedProcessedTra
 	require.Equal(t, wantCausedBy, gotCausedBy)
 }
 
+func TestProcessUserTransactionsNoLimit_ProducesExpectedMetrics(t *testing.T) {
+	toAddr := common.Address{0x42}
+	tests := map[string]struct {
+		transactions         []*types.Transaction
+		receipts             []*types.Receipt
+		summaryExecutionCost uint64
+		metricsMockSetup     func(
+			*utils.MockMetricsCounterWrapper,
+			*utils.MockMetricsCounterWrapper,
+			*utils.MockMetricsGaugeWrapper,
+		)
+	}{
+		"sponsored_counter_incremented_for_sponsorship_requests": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(0), V: big.NewInt(1)}),
+			},
+			receipts: []*types.Receipt{
+				{GasUsed: 21000},
+			},
+			metricsMockSetup: func(
+				sponsoredCounterMock *utils.MockMetricsCounterWrapper,
+				skippedSponsoredCounterMock *utils.MockMetricsCounterWrapper,
+				effectiveGasGaugeMock *utils.MockMetricsGaugeWrapper) {
+				sponsoredCounterMock.EXPECT().Inc(int64(1))
+				effectiveGasGaugeMock.EXPECT().Update(int64(0)) // ExecutionCost == 0 -> 0
+			},
+		},
+		"skipped_sponsored_counter_incremented_when_sponsored_tx_has_nil_receipt": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(0), V: big.NewInt(1)}),
+			},
+			receipts: []*types.Receipt{
+				nil, // Simulate skipped transaction
+			},
+			metricsMockSetup: func(
+				sponsoredCounterMock *utils.MockMetricsCounterWrapper,
+				skippedSponsoredCounterMock *utils.MockMetricsCounterWrapper,
+				effectiveGasGaugeMock *utils.MockMetricsGaugeWrapper) {
+				sponsoredCounterMock.EXPECT().Inc(int64(1))
+				skippedSponsoredCounterMock.EXPECT().Inc(int64(1))
+				effectiveGasGaugeMock.EXPECT().Update(int64(100)) // ExecutionCost == 0 -> 100
+			},
+		},
+		"effective_gas_gauge_updated_with_ratio_when_execution_cost_is_nonzero": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
+			},
+			receipts: []*types.Receipt{
+				{GasUsed: 50},
+			},
+			summaryExecutionCost: 100,
+			metricsMockSetup: func(
+				sponsoredCounterMock *utils.MockMetricsCounterWrapper,
+				skippedSponsoredCounterMock *utils.MockMetricsCounterWrapper,
+				effectiveGasGaugeMock *utils.MockMetricsGaugeWrapper) {
+				// GasUsed=50, ExecutionCost=100 -> effective = 50/100 * 100 = 50
+				effectiveGasGaugeMock.EXPECT().Update(int64(50)) // ExecutionCost == 50% of GasUsed -> 50
+			},
+		},
+		"effective_gas_gauge_defaults_to_0_when_execution_cost_is_zero": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(0), V: big.NewInt(1)}),
+			},
+			receipts: []*types.Receipt{
+				{GasUsed: 21000},
+			},
+			metricsMockSetup: func(
+				sponsoredCounterMock *utils.MockMetricsCounterWrapper,
+				skippedSponsoredCounterMock *utils.MockMetricsCounterWrapper,
+				effectiveGasGaugeMock *utils.MockMetricsGaugeWrapper) {
+				sponsoredCounterMock.EXPECT().Inc(int64(1))
+				effectiveGasGaugeMock.EXPECT().Update(int64(0)) // ExecutionCost == 0 -> 0
+			},
+		},
+		"effective_gas_gauge_defaults_to_100_when_execution_cost_and_gas_used_is_zero": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(0), V: big.NewInt(1)}),
+			},
+			receipts: []*types.Receipt{
+				{GasUsed: 0},
+			},
+			metricsMockSetup: func(
+				sponsoredCounterMock *utils.MockMetricsCounterWrapper,
+				skippedSponsoredCounterMock *utils.MockMetricsCounterWrapper,
+				effectiveGasGaugeMock *utils.MockMetricsGaugeWrapper) {
+				sponsoredCounterMock.EXPECT().Inc(int64(1))
+				effectiveGasGaugeMock.EXPECT().Update(int64(100)) // ExecutionCost == 0 && GasUsed == 0 -> 100
+			},
+		},
+		"effective_gas_gauge_accumulates_across_processed_transactions": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
+				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
+			},
+			receipts: []*types.Receipt{
+				{GasUsed: 30},
+				{GasUsed: 70},
+			},
+			summaryExecutionCost: 200,
+			metricsMockSetup: func(
+				sponsoredCounterMock *utils.MockMetricsCounterWrapper,
+				skippedSponsoredCounterMock *utils.MockMetricsCounterWrapper,
+				effectiveGasGaugeMock *utils.MockMetricsGaugeWrapper) {
+				// Two txs with GasUsed 30 and 70, ExecutionCost 200
+				// After tx1: effective = 30/200 * 100 = 15
+				// After tx2: effective = 100/200 * 100 = 50
+				gomock.InOrder(
+					effectiveGasGaugeMock.EXPECT().Update(int64(15)),
+					effectiveGasGaugeMock.EXPECT().Update(int64(50)),
+				)
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+			sponsoredCounterMock := utils.NewMockMetricsCounterWrapper(ctrl)
+			skippedSponsoredCounterMock := utils.NewMockMetricsCounterWrapper(ctrl)
+			effectiveGasGaugeMock := utils.NewMockMetricsGaugeWrapper(ctrl)
+			blockBuilder := inter.NewBlockBuilder()
+
+			tmpSponsoredCounter := sponsoredCounter
+			tmpSkipped := skippedSponsoredCounter
+			tmpGauge := effectiveGasGauge
+			defer func() {
+				sponsoredCounter = tmpSponsoredCounter
+				skippedSponsoredCounter = tmpSkipped
+				effectiveGasGauge = tmpGauge
+			}()
+			sponsoredCounter = sponsoredCounterMock
+			skippedSponsoredCounter = skippedSponsoredCounterMock
+			effectiveGasGauge = effectiveGasGaugeMock
+
+			test.metricsMockSetup(sponsoredCounterMock, skippedSponsoredCounterMock, effectiveGasGaugeMock)
+
+			processedTxs := make([]evmcore.ProcessedTransaction, len(test.transactions))
+			for i := range test.transactions {
+				processedTxs[i] = evmcore.ProcessedTransaction{
+					Transaction: test.transactions[i],
+					Receipt:     test.receipts[i],
+				}
+			}
+			summary := evmcore.ProcessSummary{
+				ProcessedTransactions: processedTxs,
+				ExecutionCost:         core_types.ExecutionCost(test.summaryExecutionCost),
+			}
+
+			evmProcessor.EXPECT().Execute(test.transactions, gomock.Any()).Return(summary)
+			processUserTransactionsNoLimits(evmProcessor, blockBuilder, test.transactions, math.MaxUint64)
+		})
+	}
+}
+
+func TestProcessUserTransactions_ProducesExpectedMetrics(t *testing.T) {
+	toAddr := common.Address{0x42}
+	bundleProcessorAddr := bundle.BundleProcessor
+
+	tests := map[string]struct {
+		transactions                []*types.Transaction
+		receipts                    []*types.Receipt
+		summaryExecutionCost        uint64
+		successfulBundleReturnInner bool // if true, use a different tx in processed results (simulates successful bundle)
+		metricsMockSetup            func(
+			*utils.MockMetricsCounterWrapper,
+			*utils.MockMetricsCounterWrapper,
+			*utils.MockMetricsCounterWrapper,
+			*utils.MockMetricsCounterWrapper,
+			*utils.MockMetricsGaugeWrapper,
+		)
+	}{
+		"sponsored_counter_incremented_for_sponsorship_requests": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(0), V: big.NewInt(1)}),
+			},
+			receipts: []*types.Receipt{
+				{GasUsed: 21000},
+			},
+			metricsMockSetup: func(
+				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
+				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				sponsoredMock.EXPECT().Inc(int64(1))
+				effectiveGasMock.EXPECT().Update(int64(0)) // ExecutionCost == 0 -> 0
+			},
+		},
+		"skipped_sponsored_counter_incremented_when_sponsored_tx_has_nil_receipt": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(0), V: big.NewInt(1)}),
+			},
+			receipts: []*types.Receipt{
+				nil,
+			},
+			metricsMockSetup: func(
+				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
+				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				sponsoredMock.EXPECT().Inc(int64(1))
+				skippedSponsoredMock.EXPECT().Inc(int64(1))
+				effectiveGasMock.EXPECT().Update(int64(100)) // ExecutionCost == 0 -> 100
+			},
+		},
+		"bundle_counter_incremented_for_envelope_transactions": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{To: &bundleProcessorAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
+			},
+			// Successful bundles return inner transactions, not the envelope
+			receipts: []*types.Receipt{
+				{GasUsed: 21000},
+			},
+			successfulBundleReturnInner: true,
+			metricsMockSetup: func(
+				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
+				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				bundleMock.EXPECT().Inc(int64(1))
+				effectiveGasMock.EXPECT().Update(int64(0)) // ExecutionCost == 0 -> 0
+			},
+		},
+		"skipped_bundle_counter_incremented_when_envelope_in_processed_transactions": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{To: &bundleProcessorAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
+			},
+			receipts: []*types.Receipt{
+				nil, // envelope appears in processed txs only when bundle failed
+			},
+			metricsMockSetup: func(
+				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
+				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				bundleMock.EXPECT().Inc(int64(1))
+				skippedBundleMock.EXPECT().Inc(int64(1))
+				effectiveGasMock.EXPECT().Update(int64(100)) // ExecutionCost == 0 -> 100
+			},
+		},
+		"effective_gas_gauge_updated_with_ratio_when_execution_cost_is_nonzero": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
+			},
+			receipts: []*types.Receipt{
+				{GasUsed: 50},
+			},
+			summaryExecutionCost: 100,
+			metricsMockSetup: func(
+				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
+				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				// sumGasUsed=50, ExecutionCost=100 -> effective = 50/100 * 100 = 50
+				effectiveGasMock.EXPECT().Update(int64(50))
+			},
+		},
+		"effective_gas_gauge_defaults_to_0_when_execution_cost_is_zero": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
+			},
+			receipts: []*types.Receipt{
+				{GasUsed: 21000},
+			},
+			metricsMockSetup: func(
+				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
+				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				effectiveGasMock.EXPECT().Update(int64(0))
+			},
+		},
+		"effective_gas_gauge_defaults_to_100_when_execution_cost_and_gas_used_is_zero": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
+			},
+			receipts: []*types.Receipt{
+				{GasUsed: 0},
+			},
+			metricsMockSetup: func(
+				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
+				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				effectiveGasMock.EXPECT().Update(int64(100))
+			},
+		},
+		"effective_gas_gauge_accumulates_across_multiple_transactions": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
+				types.NewTx(&types.LegacyTx{Nonce: 2, To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
+			},
+			receipts: []*types.Receipt{
+				{GasUsed: 30},
+				{GasUsed: 70},
+			},
+			summaryExecutionCost: 200,
+			metricsMockSetup: func(
+				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
+				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				// sumGasUsed = 30 + 70 = 100, sumExecutionCost = 200 + 200 = 400
+				// effective = 100/400 * 100 = 25
+				effectiveGasMock.EXPECT().Update(int64(25))
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+			sponsoredMock := utils.NewMockMetricsCounterWrapper(ctrl)
+			skippedSponsoredMock := utils.NewMockMetricsCounterWrapper(ctrl)
+			bundleMock := utils.NewMockMetricsCounterWrapper(ctrl)
+			skippedBundleMock := utils.NewMockMetricsCounterWrapper(ctrl)
+			effectiveGasMock := utils.NewMockMetricsGaugeWrapper(ctrl)
+			blockBuilder := inter.NewBlockBuilder()
+
+			tmpSponsored := sponsoredCounter
+			tmpSkippedSponsored := skippedSponsoredCounter
+			tmpBundle := bundleCounter
+			tmpSkippedBundle := skippedBundleCounter
+			tmpGauge := effectiveGasGauge
+			defer func() {
+				sponsoredCounter = tmpSponsored
+				skippedSponsoredCounter = tmpSkippedSponsored
+				bundleCounter = tmpBundle
+				skippedBundleCounter = tmpSkippedBundle
+				effectiveGasGauge = tmpGauge
+			}()
+			sponsoredCounter = sponsoredMock
+			skippedSponsoredCounter = skippedSponsoredMock
+			bundleCounter = bundleMock
+			skippedBundleCounter = skippedBundleMock
+			effectiveGasGauge = effectiveGasMock
+
+			test.metricsMockSetup(sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock, effectiveGasMock)
+
+			// processUserTransactions calls Execute once per transaction
+			for i := range test.transactions {
+				resultTx := test.transactions[i]
+				if test.successfulBundleReturnInner {
+					// Successful bundles return inner transactions, not the envelope
+					resultTx = types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)})
+				}
+				processedTxs := []evmcore.ProcessedTransaction{
+					{Transaction: resultTx, Receipt: test.receipts[i]},
+				}
+				summary := evmcore.ProcessSummary{
+					ProcessedTransactions: processedTxs,
+					ExecutionCost:         core_types.ExecutionCost(test.summaryExecutionCost),
+				}
+				evmProcessor.EXPECT().Execute([]*types.Transaction{test.transactions[i]}, gomock.Any()).Return(summary)
+			}
+
+			processUserTransactions(evmProcessor, blockBuilder, test.transactions, math.MaxUint64)
+		})
+	}
+}
+
 func TestTransactionSize_ConsidersSponsoredTxs(t *testing.T) {
 	basicTx := types.NewTx(&types.LegacyTx{
 		To:       &common.Address{0x42},

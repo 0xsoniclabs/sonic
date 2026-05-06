@@ -20,6 +20,22 @@ import "github.com/prometheus/client_golang/prometheus"
 
 //go:generate mockgen -source=metrics.go -destination=metrics_mock.go -package=utils
 
+// MetricsGaugeWrapper is an interface that wraps the methods of
+// metrics Gauge to facilitate testing with mocks.
+type MetricsGaugeWrapper interface {
+	Dec(int64)
+	Inc(int64)
+	Update(int64)
+}
+
+// MetricsCounterWrapper is an interface that wraps the methods of
+// metrics Counter to facilitate testing with mocks.
+type MetricsCounterWrapper interface {
+	Inc(int64)
+	Dec(int64)
+	Clear()
+}
+
 // MetricsHistogramWrapper is an interface that wraps the methods of a
 // prometheus Histogram to facilitate testing with mocks.
 type MetricsHistogramWrapper interface {

@@ -65,48 +65,48 @@ func (mr *MockUserPrompterMockRecorder) ClearHistory() *gomock.Call {
 }
 
 // PromptConfirm mocks base method.
-func (m *MockUserPrompter) PromptConfirm(arg0 string) (bool, error) {
+func (m *MockUserPrompter) PromptConfirm(prompt string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PromptConfirm", arg0)
+	ret := m.ctrl.Call(m, "PromptConfirm", prompt)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // PromptConfirm indicates an expected call of PromptConfirm.
-func (mr *MockUserPrompterMockRecorder) PromptConfirm(arg0 any) *gomock.Call {
+func (mr *MockUserPrompterMockRecorder) PromptConfirm(prompt any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PromptConfirm", reflect.TypeOf((*MockUserPrompter)(nil).PromptConfirm), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PromptConfirm", reflect.TypeOf((*MockUserPrompter)(nil).PromptConfirm), prompt)
 }
 
 // PromptInput mocks base method.
-func (m *MockUserPrompter) PromptInput(arg0 string) (string, error) {
+func (m *MockUserPrompter) PromptInput(prompt string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PromptInput", arg0)
+	ret := m.ctrl.Call(m, "PromptInput", prompt)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // PromptInput indicates an expected call of PromptInput.
-func (mr *MockUserPrompterMockRecorder) PromptInput(arg0 any) *gomock.Call {
+func (mr *MockUserPrompterMockRecorder) PromptInput(prompt any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PromptInput", reflect.TypeOf((*MockUserPrompter)(nil).PromptInput), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PromptInput", reflect.TypeOf((*MockUserPrompter)(nil).PromptInput), prompt)
 }
 
 // PromptPassword mocks base method.
-func (m *MockUserPrompter) PromptPassword(arg0 string) (string, error) {
+func (m *MockUserPrompter) PromptPassword(prompt string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PromptPassword", arg0)
+	ret := m.ctrl.Call(m, "PromptPassword", prompt)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // PromptPassword indicates an expected call of PromptPassword.
-func (mr *MockUserPrompterMockRecorder) PromptPassword(arg0 any) *gomock.Call {
+func (mr *MockUserPrompterMockRecorder) PromptPassword(prompt any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PromptPassword", reflect.TypeOf((*MockUserPrompter)(nil).PromptPassword), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PromptPassword", reflect.TypeOf((*MockUserPrompter)(nil).PromptPassword), prompt)
 }
 
 // SetHistory mocks base method.
