@@ -122,7 +122,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecutionAndRevertsSta
 			},
 			expectAccept: false,
 		},
-		"below threshold with empty bundle": {
+		"below threshold no processed transactions": {
 			tx: tx,
 			summary: evmcore.ProcessSummary{
 				ProcessedTransactions: []evmcore.ProcessedTransaction{},
@@ -144,7 +144,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecutionAndRevertsSta
 			tx: tx,
 			summary: evmcore.ProcessSummary{
 				ProcessedTransactions: []evmcore.ProcessedTransaction{
-					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 19}},
+					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 100*evmcore.MinBundleEfficiency - 1}},
 				},
 				ExecutionCost: core_types.ExecutionCost(100),
 			},
@@ -154,8 +154,8 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecutionAndRevertsSta
 			tx: tx,
 			summary: evmcore.ProcessSummary{
 				ProcessedTransactions: []evmcore.ProcessedTransaction{
-					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 9}},
-					{Transaction: otherTx, Receipt: &types.Receipt{GasUsed: 10}},
+					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 100/2*evmcore.MinBundleEfficiency - 1}},
+					{Transaction: otherTx, Receipt: &types.Receipt{GasUsed: 100/2*evmcore.MinBundleEfficiency - 1}},
 				},
 				ExecutionCost: core_types.ExecutionCost(100),
 			},
@@ -165,7 +165,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecutionAndRevertsSta
 			tx: tx,
 			summary: evmcore.ProcessSummary{
 				ProcessedTransactions: []evmcore.ProcessedTransaction{
-					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 21}},
+					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 100*evmcore.MinBundleEfficiency + 1}},
 				},
 				ExecutionCost: core_types.ExecutionCost(100),
 			},
@@ -175,8 +175,8 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecutionAndRevertsSta
 			tx: tx,
 			summary: evmcore.ProcessSummary{
 				ProcessedTransactions: []evmcore.ProcessedTransaction{
-					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 10}},
-					{Transaction: otherTx, Receipt: &types.Receipt{GasUsed: 11}},
+					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 100/2*evmcore.MinBundleEfficiency + 1}},
+					{Transaction: otherTx, Receipt: &types.Receipt{GasUsed: 100/2*evmcore.MinBundleEfficiency + 1}},
 				},
 				ExecutionCost: core_types.ExecutionCost(100),
 			},

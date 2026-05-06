@@ -84,9 +84,7 @@ type evmProcessor struct {
 	stateDb   state.StateDB
 }
 
-func (p *evmProcessor) run(tx *types.Transaction) (
-	result bool, gasUsed uint64,
-) {
+func (p *evmProcessor) run(tx *types.Transaction) (bool, uint64) {
 	snapshot := p.stateDb.InterTxSnapshot()
 
 	// Note: the index can be set to 0 since code running inside the EVM can not
@@ -94,20 +92,20 @@ func (p *evmProcessor) run(tx *types.Transaction) (
 	// on the scheduling of the transactions.
 	summary := p.processor.Run(0, tx)
 
-	gasUsedByTx := uint64(0)
+	gasUsed := uint64(0)
 	for _, processedTx := range summary.ProcessedTransactions {
 		if processedTx.Receipt != nil {
-			gasUsedByTx += processedTx.Receipt.GasUsed
+			gasUsed += processedTx.Receipt.GasUsed
 		}
 	}
 
 	if summary.ExecutionCost == 0 ||
-		float64(gasUsedByTx)/float64(summary.ExecutionCost) < evmcore.MinBundleEfficiency {
+		float64(gasUsed)/float64(summary.ExecutionCost) < evmcore.MinBundleEfficiency {
 		p.stateDb.RevertToInterTxSnapshot(snapshot)
-		return false, gasUsed
+		return false, 0
 	}
 
-	return true, gasUsed + gasUsedByTx
+	return true, gasUsed
 }
 
 func (p *evmProcessor) release() {
