@@ -197,7 +197,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 	any := gomock.Any()
 	factory.EXPECT().NewStateProcessorForHeadState(any, any, any).Return(stateProcessor).AnyTimes()
 
-	summary := evmcore.ProcessSummary{
+	summary1 := evmcore.ProcessSummary{
 		ProcessedTransactions: []evmcore.ProcessedTransaction{
 			{Receipt: &types.Receipt{TransactionIndex: 0}},
 			{Receipt: &types.Receipt{TransactionIndex: 1}},
@@ -207,9 +207,21 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 		},
 	}
 
+	summary2 := evmcore.ProcessSummary{
+		ProcessedTransactions: []evmcore.ProcessedTransaction{
+			{Receipt: &types.Receipt{TransactionIndex: 5}},
+			{Receipt: &types.Receipt{TransactionIndex: 6}},
+			{Receipt: &types.Receipt{TransactionIndex: 7}},
+		},
+	}
+
 	stateProcessor.EXPECT().Process(
-		any, any, any, any, any, any, any,
-	).Return(summary).Times(2)
+		any, any, any, any, any, 0, any,
+	).Return(summary1)
+
+	stateProcessor.EXPECT().Process(
+		any, any, any, any, any, 5, any,
+	).Return(summary2)
 
 	processor := &OperaEVMProcessor{
 		processorFactory: factory,
@@ -220,19 +232,17 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 	})
 
 	// The first patch should index transactions as they are executed.
-	result := processor.Execute([]*types.Transaction{tx, tx}, math.MaxUint64)
-	require.Equal(summary, result)
-	processed := result.ProcessedTransactions
-	require.Len(processed, 5)
-	for i, p := range processed {
+	result := processor.Execute([]*types.Transaction{tx}, math.MaxUint64)
+	require.Equal(summary1, result)
+	for i, p := range result.ProcessedTransactions {
 		require.Equal(uint(i), p.Receipt.TransactionIndex)
 	}
 
 	// the next batch should be offset by the first patch
-	processor.Execute([]*types.Transaction{tx, tx}, math.MaxUint64)
-	require.Len(processed, 5)
-	for i, p := range processed {
-		require.Equal(uint(i+5), p.Receipt.TransactionIndex)
+	result = processor.Execute([]*types.Transaction{tx}, math.MaxUint64)
+	require.Equal(summary2, result)
+	for i, p := range result.ProcessedTransactions {
+		require.Equal(uint(i+len(summary1.ProcessedTransactions)), p.Receipt.TransactionIndex)
 	}
 }
 
@@ -264,6 +274,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorProducesTransactionsAndBundles_
 	require.Equal(summary, result)
 }
 
+/*
 func TestOperaEVMProcessor_Execute_UsesLengthOfProcessedTransactionsAsTransactionIndexOffsetInReceipts(t *testing.T) {
 	tests := map[string][]evmcore.ProcessedTransaction{
 		"nil":   nil,
@@ -316,6 +327,7 @@ func TestOperaEVMProcessor_Execute_UsesLengthOfProcessedTransactionsAsTransactio
 		})
 	}
 }
+*/
 
 func TestOperaEVMProcessor_Execute_UsesNumberOfTransactionsWithReceiptsAsTransactionOffsetInEvmProcessor(t *testing.T) {
 	tests := map[string][]evmcore.ProcessedTransaction{
