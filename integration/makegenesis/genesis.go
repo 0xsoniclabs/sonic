@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils/objstream"
@@ -261,7 +262,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	)
 	evmProcessor := blockProc.EVMModule.Start(
 		blockCtx, b.tmpStateDB, dummyHeaderReturner{b.blocks},
-		func(l *types.Log) { txListener.OnNewLog(l) },
+		func(l *core_types.Log) { txListener.OnNewLog(l) },
 		es.Rules,
 		chainConfig,
 		common.Hash{0x01}, // non-zero PrevRandao necessary to enable Cancun

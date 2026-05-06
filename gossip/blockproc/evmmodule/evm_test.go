@@ -17,7 +17,6 @@
 package evmmodule
 
 import (
-	"fmt"
 	"math"
 	"math/big"
 	"testing"
@@ -25,6 +24,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -112,7 +112,7 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 	}
 }
 
-func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(t *testing.T) {
+func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInReceipts(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	stateDb := state.NewMockStateDB(ctrl)
@@ -144,19 +144,11 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 			return currentTxIndex
 		},
 	)
-	stateDb.EXPECT().GetLogs(any, any).AnyTimes().DoAndReturn(
-		func(_, _ common.Hash) []*types.Log {
-			return []*types.Log{{
-				TxIndex: uint(currentTxIndex),
-			}}
-		},
-	)
+	stateDb.EXPECT().GetLogs(any, any).AnyTimes().Return([]*types.Log{{}})
 
 	// Logs should be reported in consecutive order, one per transaction.
 	const N = 5
-	for i := range N * 3 {
-		logConsumer.EXPECT().OnNewLog(LogWithTxIndex(uint(i)))
-	}
+	logConsumer.EXPECT().OnNewLog(gomock.Any()).Times(N * 3)
 
 	evmModule := New()
 	processor := evmModule.Start(
@@ -554,34 +546,9 @@ func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOne
 // onNewLog is a helper interface to allow mocking the onNewLog function
 // passed to the EVM processor.
 type _onNewLog interface {
-	OnNewLog(*types.Log)
+	OnNewLog(*core_types.Log)
 }
 
 // Added to avoid unused warning of onNewLog interface which is only used for
 // generating the mock.
 var _ _onNewLog = (*Mock_onNewLog)(nil)
-
-// LogWithTxIndex creates a gomock matcher that matches a log message with the
-// given transaction index.
-func LogWithTxIndex(id any) gomock.Matcher {
-	if matcher, ok := id.(gomock.Matcher); ok {
-		return logWithTxIndex{txIndex: matcher}
-	}
-	return LogWithTxIndex(gomock.Eq(id))
-}
-
-type logWithTxIndex struct {
-	txIndex gomock.Matcher
-}
-
-func (i logWithTxIndex) Matches(arg any) bool {
-	log, ok := arg.(*types.Log)
-	if !ok || log == nil {
-		return false
-	}
-	return i.txIndex.Matches(log.TxIndex)
-}
-
-func (i logWithTxIndex) String() string {
-	return fmt.Sprintf("Log with TxIndex: %s", i.txIndex.String())
-}

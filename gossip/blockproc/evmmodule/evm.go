@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -46,7 +47,7 @@ func (p *EVMModule) Start(
 	block iblockproc.BlockCtx,
 	statedb state.StateDB,
 	reader evmcore.DummyChain,
-	onNewLog func(*types.Log),
+	onNewLog func(*core_types.Log),
 	rules opera.Rules,
 	evmCfg *params.ChainConfig,
 	prevrandao common.Hash,
@@ -87,7 +88,7 @@ type OperaEVMProcessor struct {
 	block    iblockproc.BlockCtx
 	reader   evmcore.DummyChain
 	statedb  state.StateDB
-	onNewLog func(*types.Log)
+	onNewLog func(*core_types.Log)
 	rules    opera.Rules
 	evmCfg   *params.ChainConfig
 
@@ -155,11 +156,7 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evm
 
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
-	summary := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, trueTxsOffset, func(l *types.Log) {
-		// Note: l.Index is properly set before
-		l.TxIndex += legacyTxsOffset
-		p.onNewLog(l)
-	})
+	summary := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, trueTxsOffset, p.onNewLog)
 
 	if legacyTxsOffset > 0 {
 		for _, p := range summary.ProcessedTransactions {
@@ -234,7 +231,7 @@ type _stateProcessor interface {
 		gasLimit uint64,
 		gasUsed *uint64,
 		trueTxOffset int,
-		onNewLog func(*types.Log),
+		onNewLog func(*core_types.Log),
 	) evmcore.ProcessSummary
 }
 

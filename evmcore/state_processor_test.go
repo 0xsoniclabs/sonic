@@ -51,7 +51,7 @@ import (
 // Process method.
 func (p *StateProcessor) process_iteratively(
 	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, gasLimit uint64,
-	usedGas *uint64, trueTxOffset int, onNewLog func(*types.Log),
+	usedGas *uint64, trueTxOffset int, onNewLog func(*core_types.Log),
 ) ProcessSummary {
 	// This implementation is a wrapper around the BeginBlock function, which
 	// handles the actual transaction processing.
@@ -113,8 +113,8 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 				Transactions: transactions,
 			}
 
-			reportedLogs := []*types.Log{}
-			onLog := func(log *types.Log) {
+			reportedLogs := []*core_types.Log{}
+			onLog := func(log *core_types.Log) {
 				reportedLogs = append(reportedLogs, log)
 			}
 
@@ -169,7 +169,9 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 
 			require.Nil(processed[3].Receipt)
 
-			require.Equal([]*types.Log{logMsg0, logMsg2}, reportedLogs)
+			coreLogMsg0 := core_types.CoreLogFromGethLog(logMsg0)
+			coreLogMsg2 := core_types.CoreLogFromGethLog(logMsg2)
+			require.Equal([]*core_types.Log{coreLogMsg0, coreLogMsg2}, reportedLogs)
 
 			require.Equal(uint64(21_000+21_000), *usedGas)
 		})
@@ -871,7 +873,7 @@ type processFunction = func(
 	gasLimit uint64,
 	usedGas *uint64,
 	trueTxOffset int,
-	onNewLog func(*types.Log),
+	onNewLog func(*core_types.Log),
 ) ProcessSummary
 
 func getStateDbMockForTransactions(

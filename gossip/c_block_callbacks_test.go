@@ -43,6 +43,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
@@ -1203,7 +1204,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 		iblockproc.BlockCtx{},
 		statedb,
 		&EvmStateReader{},
-		func(l *types.Log) {},
+		func(l *core_types.Log) {},
 		opera.Rules{},
 		&params.ChainConfig{},
 		common.Hash{},

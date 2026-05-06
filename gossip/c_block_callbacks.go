@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
 
@@ -315,7 +316,7 @@ func consensusCallbackBeginBlockFn(
 				sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
 				sealing := sealer.EpochSealing()
 				txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es, statedb)
-				onNewLogAll := func(l *types.Log) {
+				onNewLogAll := func(l *core_types.Log) {
 					txListener.OnNewLog(l)
 					// Note: it's possible for logs to get indexed twice by BR and block processing
 					if verWatcher != nil {

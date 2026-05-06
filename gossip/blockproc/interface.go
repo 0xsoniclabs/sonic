@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -35,7 +36,7 @@ import (
 //go:generate mockgen -source=interface.go -package=blockproc -destination=interface_mock.go
 
 type TxListener interface {
-	OnNewLog(*types.Log)
+	OnNewLog(*core_types.Log)
 	OnNewReceipt(tx *types.Transaction, r *types.Receipt, originator idx.ValidatorID, baseFee *big.Int, blobBaseFee *big.Int)
 	Finalize() iblockproc.BlockState
 	Update(bs iblockproc.BlockState, es iblockproc.EpochState)
@@ -82,7 +83,7 @@ type EVM interface {
 		block iblockproc.BlockCtx,
 		statedb state.StateDB,
 		reader evmcore.DummyChain,
-		onNewLog func(*types.Log),
+		onNewLog func(*core_types.Log),
 		net opera.Rules,
 		evmCfg *params.ChainConfig,
 		prevrandao common.Hash,
