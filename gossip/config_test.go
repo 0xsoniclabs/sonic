@@ -37,7 +37,7 @@ func TestConfigInstancesAreIndependent(t *testing.T) {
 func checkNoSharedReferences(t *testing.T, a, b interface{}, path string) {
 	va := reflect.ValueOf(a)
 	vb := reflect.ValueOf(b)
-	if va.Kind() == reflect.Ptr || va.Kind() == reflect.Interface {
+	if va.Kind() == reflect.Pointer || va.Kind() == reflect.Interface {
 		if va.IsNil() || vb.IsNil() {
 			return
 		}
