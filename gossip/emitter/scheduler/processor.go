@@ -87,30 +87,27 @@ type evmProcessor struct {
 func (p *evmProcessor) run(tx *types.Transaction) (
 	result bool, gasUsed uint64,
 ) {
+	snapshot := p.stateDb.InterTxSnapshot()
+
 	// Note: the index can be set to 0 since code running inside the EVM can not
 	// obtain the position of a transaction in the block. It has thus no effect
 	// on the scheduling of the transactions.
-	processed := p.processor.Run(0, tx).ProcessedTransactions
+	summary := p.processor.Run(0, tx)
 
-	// A single input transaction can lead to multiple processed transactions.
-	// For instance, a sponsored transaction may be accompanied by a fee
-	// charging transaction. Or a bundle envelope may result in an arbitrary
-	// number of transactions to be processed. We consider the input transaction
-	// successful if it results in at least one accepted transaction. We also
-	// sum up the gas used by all accepted transactions, as this is the total
-	// gas cost of running the input transaction.
-	//
-	// TODO: add a minimum efficiency filter to avoid very inefficient bundles
-	// to be distributed in the network
-	// (see https://github.com/0xsoniclabs/sonic-admin/issues/740).
-	hasAcceptedTransaction := false
-	for _, pt := range processed {
-		if pt.Receipt != nil {
-			hasAcceptedTransaction = true
-			gasUsed += pt.Receipt.GasUsed
+	gasUsedByTx := uint64(0)
+	for _, processedTx := range summary.ProcessedTransactions {
+		if processedTx.Receipt != nil {
+			gasUsedByTx += processedTx.Receipt.GasUsed
 		}
 	}
-	return hasAcceptedTransaction, gasUsed
+
+	if summary.ExecutionCost == 0 ||
+		float64(gasUsedByTx)/float64(summary.ExecutionCost) < evmcore.MinBundleEfficiency {
+		p.stateDb.RevertToInterTxSnapshot(snapshot)
+		return false, gasUsed
+	}
+
+	return true, gasUsed + gasUsedByTx
 }
 
 func (p *evmProcessor) release() {

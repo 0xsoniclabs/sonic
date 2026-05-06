@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -45,16 +46,19 @@ func TestEvmProcessorFactory_BeginBlock_CreatesProcessor(t *testing.T) {
 func TestEvmProcessor_Run_IfExecutionSucceeds_ReportsSuccessAndGasUsage(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockevmProcessorRunner(ctrl)
+	stateDb := state.NewMockStateDB(ctrl)
 
+	stateDb.EXPECT().InterTxSnapshot()
 	runner.EXPECT().Run(0, nil).Return(evmcore.ProcessSummary{
 		ProcessedTransactions: []evmcore.ProcessedTransaction{{
 			Receipt: &types.Receipt{
 				GasUsed: 10,
 			},
 		}},
+		ExecutionCost: core_types.ExecutionCost(10),
 	})
 
-	processor := &evmProcessor{processor: runner}
+	processor := &evmProcessor{processor: runner, stateDb: stateDb}
 	success, gasUsed := processor.run(nil)
 	require.True(t, success)
 	require.Equal(t, uint64(10), gasUsed)
@@ -63,16 +67,19 @@ func TestEvmProcessor_Run_IfExecutionSucceeds_ReportsSuccessAndGasUsage(t *testi
 func TestEvmProcessor_Run_IfExecutionProducesMultipleProcessedTransactions_SumsUpGasUsage(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockevmProcessorRunner(ctrl)
+	stateDb := state.NewMockStateDB(ctrl)
 
+	stateDb.EXPECT().InterTxSnapshot()
 	runner.EXPECT().Run(0, nil).Return(evmcore.ProcessSummary{
 		ProcessedTransactions: []evmcore.ProcessedTransaction{
 			{Receipt: &types.Receipt{GasUsed: 10}},
 			{Receipt: nil}, // skipped transaction
 			{Receipt: &types.Receipt{GasUsed: 20}},
 		},
+		ExecutionCost: core_types.ExecutionCost(30),
 	})
 
-	processor := &evmProcessor{processor: runner}
+	processor := &evmProcessor{processor: runner, stateDb: stateDb}
 	success, gasUsed := processor.run(nil)
 	require.True(t, success)
 	require.Equal(t, uint64(30), gasUsed)
@@ -81,60 +88,130 @@ func TestEvmProcessor_Run_IfExecutionProducesMultipleProcessedTransactions_SumsU
 func TestEvmProcessor_Run_IfRequestedTransactionIsNotExecuted_TheTransactionIsStillAccepted(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockevmProcessorRunner(ctrl)
+	stateDb := state.NewMockStateDB(ctrl)
 
+	stateDb.EXPECT().InterTxSnapshot()
 	tx := &types.Transaction{}
 	runner.EXPECT().Run(0, tx).Return(evmcore.ProcessSummary{
 		ProcessedTransactions: []evmcore.ProcessedTransaction{{
 			Transaction: &types.Transaction{}, // different transaction
 			Receipt:     &types.Receipt{GasUsed: 10},
 		}},
+		ExecutionCost: core_types.ExecutionCost(10),
 	})
 
-	processor := &evmProcessor{processor: runner}
+	processor := &evmProcessor{processor: runner, stateDb: stateDb}
 	success, _ := processor.run(tx)
 	require.True(t, success)
 }
 
-func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecution(t *testing.T) {
-	t.Run("not processed", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		runner := NewMockevmProcessorRunner(ctrl)
-		runner.EXPECT().Run(0, nil)
-		processor := &evmProcessor{processor: runner}
-		success, _ := processor.run(nil)
-		require.False(t, success)
-	})
+func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecutionAndRevertsState(t *testing.T) {
+	tx := &types.Transaction{}
+	otherTx := &types.Transaction{}
 
-	t.Run("no receipt", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		runner := NewMockevmProcessorRunner(ctrl)
-		tx := &types.Transaction{}
-		runner.EXPECT().Run(0, gomock.Any()).Return(evmcore.ProcessSummary{
-			ProcessedTransactions: []evmcore.ProcessedTransaction{
-				{Transaction: tx, Receipt: nil},
+	cases := map[string]struct {
+		tx           *types.Transaction
+		summary      evmcore.ProcessSummary
+		expectAccept bool
+	}{
+		"nil transaction": {
+			tx: nil,
+			summary: evmcore.ProcessSummary{
+				ProcessedTransactions: []evmcore.ProcessedTransaction{},
+				ExecutionCost:         core_types.ExecutionCost(0),
 			},
-		})
-		processor := &evmProcessor{processor: runner}
-		success, _ := processor.run(tx)
-		require.False(t, success)
-	})
+			expectAccept: false,
+		},
+		"below threshold with empty bundle": {
+			tx: tx,
+			summary: evmcore.ProcessSummary{
+				ProcessedTransactions: []evmcore.ProcessedTransaction{},
+				ExecutionCost:         core_types.ExecutionCost(0),
+			},
+			expectAccept: false,
+		},
+		"below threshold with no receipts": {
+			tx: tx,
+			summary: evmcore.ProcessSummary{
+				ProcessedTransactions: []evmcore.ProcessedTransaction{
+					{Transaction: tx, Receipt: nil},
+				},
+				ExecutionCost: core_types.ExecutionCost(100),
+			},
+			expectAccept: false,
+		},
+		"below threshold with single receipt": {
+			tx: tx,
+			summary: evmcore.ProcessSummary{
+				ProcessedTransactions: []evmcore.ProcessedTransaction{
+					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 19}},
+				},
+				ExecutionCost: core_types.ExecutionCost(100),
+			},
+			expectAccept: false,
+		},
+		"below threshold with multiple receipts": {
+			tx: tx,
+			summary: evmcore.ProcessSummary{
+				ProcessedTransactions: []evmcore.ProcessedTransaction{
+					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 9}},
+					{Transaction: otherTx, Receipt: &types.Receipt{GasUsed: 10}},
+				},
+				ExecutionCost: core_types.ExecutionCost(100),
+			},
+			expectAccept: false,
+		},
+		"above threshold with single receipt": {
+			tx: tx,
+			summary: evmcore.ProcessSummary{
+				ProcessedTransactions: []evmcore.ProcessedTransaction{
+					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 21}},
+				},
+				ExecutionCost: core_types.ExecutionCost(100),
+			},
+			expectAccept: true,
+		},
+		"above threshold with multiple receipts": {
+			tx: tx,
+			summary: evmcore.ProcessSummary{
+				ProcessedTransactions: []evmcore.ProcessedTransaction{
+					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 10}},
+					{Transaction: otherTx, Receipt: &types.Receipt{GasUsed: 11}},
+				},
+				ExecutionCost: core_types.ExecutionCost(100),
+			},
+			expectAccept: true,
+		},
+	}
 
-	t.Run("multiple failed transactions", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		runner := NewMockevmProcessorRunner(ctrl)
-		txA := &types.Transaction{}
-		txB := &types.Transaction{}
-		runner.EXPECT().Run(0, gomock.Any()).Return(evmcore.ProcessSummary{
-			ProcessedTransactions: []evmcore.ProcessedTransaction{
-				{Transaction: txA, Receipt: nil},
-				{Transaction: txB, Receipt: nil},
-			},
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMockevmProcessorRunner(ctrl)
+			stateDb := state.NewMockStateDB(ctrl)
+
+			stateDb.EXPECT().InterTxSnapshot()
+			runner.EXPECT().Run(0, tc.tx).Return(tc.summary)
+			if !tc.expectAccept {
+				stateDb.EXPECT().RevertToInterTxSnapshot(gomock.Any())
+			}
+
+			processor := &evmProcessor{processor: runner, stateDb: stateDb}
+			success, gasUsed := processor.run(tc.tx)
+			require.Equal(t, tc.expectAccept, success)
+			if tc.expectAccept {
+				expectedGasUsed := uint64(0)
+				for _, tx := range tc.summary.ProcessedTransactions {
+					if tx.Receipt != nil {
+						expectedGasUsed += tx.Receipt.GasUsed
+					}
+				}
+				require.Equal(t, expectedGasUsed, gasUsed)
+			} else {
+				require.Zero(t, gasUsed)
+			}
 		})
-		processor := &evmProcessor{processor: runner}
-		success, gasUsed := processor.run(txA)
-		require.False(t, success)
-		require.Equal(t, uint64(0), gasUsed)
-	})
+	}
 }
 
 func TestEvmProcessor_Release_ReleasesStateDb(t *testing.T) {
