@@ -20,13 +20,15 @@ import (
 	"crypto/rand"
 	"fmt"
 	"maps"
-	big "math/big"
+	"math/big"
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	state "github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	lru "github.com/hashicorp/golang-lru"
 )
 
 //go:generate mockgen -source=bundle_precheck.go -destination=bundle_precheck_mock.go -package=evmcore
@@ -440,4 +442,76 @@ func makeTemporaryBlockedState(reason string) BundleState {
 
 func makePermanentlyBlockedState(reason string) BundleState {
 	return BundleState{Reasons: []string{reason}}
+}
+
+// BundleEvaluator is an interface which exposes the GetBundleState function,
+// The signature of GetBundleState is identical to the free standing function
+// GetBundleState, this allows to inject caches in functions using the function.
+type BundleEvaluator interface {
+	GetBundleState(
+		chain ChainStateForBundleEval,
+		stateDb state.StateDB,
+		envelope *types.Transaction,
+	) BundleState
+}
+
+type bundleEvaluationCache struct {
+	cache *lru.Cache
+}
+
+// NewBundleEvaluationCache creates a new instance of bundleEvaluationCache,
+// which is an LRU cache for storing bundle evaluation results.
+//
+// Bundles are cached by their execution plan hash and the block number at
+// which they were evaluated, to ensure that further evaluations in the same
+// block can hit the cache, sparing the need to re-run the same bundle
+// multiple times within the same block.
+func NewBundleEvaluationCache() *bundleEvaluationCache {
+
+	// The cache size of 100k entries is chosen arbitrarily and can be tuned
+	// Evaluation of block current-1 are never used again, so we can consider
+	// that the cache is only useful for the current block. This means that the
+	//  cache contains evaluations for up to 100k envelopes pending of execution.
+	//
+	// Maximum memory consumption is a constant factor of the following formula:
+	// number of bundles in the cache * (size of bundle plan hash + size of block number + size of BundleState)
+	// 32  + 8 + ( 1+1 + 24, aligned to 32) = 72 bytes per entry, so ~7.2MiB for 100k entries.
+	// Notice that the reasons in the bundle state point to static strings,
+	// so they do not contribute to the memory consumption of each entry.
+	cache, _ := lru.New(100_000)
+	return &bundleEvaluationCache{cache: cache}
+}
+
+func (c *bundleEvaluationCache) GetBundleState(
+	chain ChainStateForBundleEval,
+	stateDb state.StateDB,
+	envelope *types.Transaction,
+) BundleState {
+	chainId := big.NewInt(int64(chain.GetCurrentNetworkRules().NetworkID))
+	signer := types.LatestSignerForChainID(chainId)
+
+	// Does this even pay off? cache envelope vs cache plan
+	txBundle, err := bundle.OpenEnvelope(signer, envelope)
+	if err != nil {
+		return makeRunnableState()
+	}
+	planHash := txBundle.Plan.Hash()
+
+	// get current block number
+	blockNumber := uint64(0)
+	if block := chain.GetLatestHeader(); block != nil {
+		blockNumber = block.Number.Uint64()
+	}
+
+	key := string(append(
+		bigendian.Uint64ToBytes(blockNumber),
+		planHash.Bytes()...,
+	))
+	if state, ok := c.cache.Get(key); ok {
+		return state.(BundleState)
+	}
+
+	state := GetBundleState(chain, stateDb, envelope)
+	c.cache.Add(key, state)
+	return state
 }
