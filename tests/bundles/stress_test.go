@@ -111,6 +111,8 @@ func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
 		contractAddr       common.Address
 		contractInputLarge []byte
 		contractInputSmall []byte
+		GasLarge           uint64
+		GasSmall           uint64
 	}{
 		"ComputeHeavy": {
 			contractAddr: tests.MustDeployContract(t, net, add.DeployAdd),
@@ -128,6 +130,8 @@ func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
 				// arguments: iter
 				big.NewInt(28_000),
 			),
+			GasLarge: 19_321_848,
+			GasSmall: 5_425_836,
 		},
 		"DbHeavy": {
 			contractAddr: tests.MustDeployContract(t, net, store.DeployStore),
@@ -145,6 +149,8 @@ func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
 				// arguments: from, until, value
 				big.NewInt(0), big.NewInt(300), big.NewInt(1),
 			),
+			GasLarge: 17910958,
+			GasSmall: 6744458,
 		},
 	}
 
@@ -162,12 +168,14 @@ func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
 							Step(t, net, accounts[i*3], &types.AccessListTx{
 								To:   &tc.contractAddr,
 								Data: tc.contractInputLarge,
+								Gas:  tc.GasLarge,
 							}),
 							Step(t, net, accounts[i*3+1], &types.AccessListTx{Gas: 1}),
 						).WithFlags(bundle.EF_TolerateFailed),
 						Step(t, net, accounts[i*3+2], &types.AccessListTx{
 							To:   &tc.contractAddr,
 							Data: tc.contractInputSmall,
+							Gas:  tc.GasSmall,
 						}),
 					).
 					BuildEnvelopeBundleAndPlan()
