@@ -134,17 +134,9 @@ func TestOpenEnvelope_CachesCalls(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	bundle := NewBuilder().AllOf(
+	envelope := NewBuilder().AllOf(
 		Step(key, &types.AccessListTx{Nonce: 1}),
-	).BuildBundle()
-
-	payload, err := bundle.Encode()
-	require.NoError(t, err)
-
-	envelope := types.NewTx(&types.LegacyTx{
-		To:   &BundleProcessor,
-		Data: payload,
-	})
+	).Build()
 
 	// Expect the signer to be called only during the first OpenEnvelope call.
 	mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).Times(1)
