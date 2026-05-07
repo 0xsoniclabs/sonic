@@ -162,12 +162,14 @@ func TestBundle_StressWithExpensiveInternalRollback(t *testing.T) {
 							Step(t, net, accounts[i*3], &types.AccessListTx{
 								To:   &tc.contractAddr,
 								Data: tc.contractInputLarge,
+								Gas:  19_321_848,
 							}),
 							Step(t, net, accounts[i*3+1], &types.AccessListTx{Gas: 1}),
 						).WithFlags(bundle.EF_TolerateFailed),
 						Step(t, net, accounts[i*3+2], &types.AccessListTx{
 							To:   &tc.contractAddr,
 							Data: tc.contractInputSmall,
+							Gas:  5_425_836,
 						}),
 					).
 					BuildEnvelopeBundleAndPlan()
