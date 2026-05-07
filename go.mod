@@ -153,3 +153,5 @@ require (
 replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20260424113012-971561538c58
 
 replace github.com/Fantom-foundation/lachesis-base => github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20260429065829-930ae462cd09
+
+replace github.com/0xsoniclabs/carmen/go => ../carmen/go

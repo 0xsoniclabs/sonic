@@ -410,7 +410,8 @@ func (c *CarmenStateDB) EndBlock(number uint64) <-chan error {
 
 	// finish the block in the underlying StateDB
 	if db, ok := c.db.(carmen.StateDB); c.committable && ok {
-		return db.EndBlock(number)
+		results := db.EndBlock(number)
+		return results.ErrorCh
 	}
 	return nil
 }
