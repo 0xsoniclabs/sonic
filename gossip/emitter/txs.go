@@ -236,7 +236,7 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 // isValidBundleTx checks whether the given transaction is a valid bundle that
 // could be emitted by this emitter.
 func (em *Emitter) isValidBundleTx(tx *types.Transaction) bool {
-	return em.isRunnableBundleTxInternal(tx, evmcore.GetBundleState)
+	return em.isRunnableBundleTxInternal(tx, em.bundleCache.GetBundleState)
 }
 
 func (em *Emitter) isRunnableBundleTxInternal(
