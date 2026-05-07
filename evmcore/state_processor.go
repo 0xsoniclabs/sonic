@@ -121,7 +121,7 @@ type ProcessedTransaction struct {
 // consistent.
 func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
-	usedGas *uint64, trueTxOffset int, onNewLog func(*types.Log),
+	usedGas *uint64, trueTxOffset int, onNewLog func(*core_types.Log),
 ) ProcessSummary {
 	sonicDifficulty := big.NewInt(1)
 	return p.ProcessWithDifficulty(block, statedb, cfg, gasLimit, usedGas, trueTxOffset, onNewLog, sonicDifficulty)
@@ -133,7 +133,7 @@ func (p *StateProcessor) Process(
 // difficulty values than Sonic's constant difficulty of 1.
 func (p *StateProcessor) ProcessWithDifficulty(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
-	usedGas *uint64, trueTxOffset int, onNewLog func(*types.Log),
+	usedGas *uint64, trueTxOffset int, onNewLog func(*core_types.Log),
 	difficulty *big.Int,
 ) ProcessSummary {
 	var (
@@ -169,7 +169,7 @@ type runContext struct {
 	blockNumber *big.Int
 	blockTime   inter.Timestamp
 	usedGas     *uint64
-	onNewLog    func(*types.Log)
+	onNewLog    func(*core_types.Log)
 	upgrades    opera.Upgrades
 	runner      _transactionRunner
 	forReplay   bool // Whether the context is used for replaying transactions or for head state processing.
@@ -187,7 +187,7 @@ func newRunContext(
 	blockNumber *big.Int,
 	blockTime inter.Timestamp,
 	usedGas *uint64,
-	onNewLog func(*types.Log),
+	onNewLog func(*core_types.Log),
 	upgrades opera.Upgrades,
 	runner _transactionRunner,
 	isReplay bool,
@@ -694,7 +694,7 @@ func NewTransactionProcessorForBlock(
 // probe individual transactions to determine their applicability and gas usage.
 func (p *StateProcessor) BeginBlock(
 	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, gasLimit uint64,
-	onNewLog func(*types.Log),
+	onNewLog func(*core_types.Log),
 ) *TransactionProcessor {
 	var (
 		gp            = core.NewGasPool(gasLimit)
@@ -731,7 +731,7 @@ type TransactionProcessor struct {
 	blockTime     inter.Timestamp
 	gp            *core.GasPool
 	header        *EvmHeader
-	onNewLog      func(*types.Log)
+	onNewLog      func(*core_types.Log)
 	signer        types.Signer
 	stateDb       state.StateDB
 	usedGas       uint64
@@ -854,7 +854,7 @@ func applyTransaction(
 	tx *types.Transaction,
 	usedGas *uint64,
 	evm *vm.EVM,
-	onNewLog func(*types.Log),
+	onNewLog func(*core_types.Log),
 ) (
 	*types.Receipt,
 	uint64,
@@ -899,7 +899,7 @@ func applyTransaction(
 	logs := statedb.GetLogs(tx.Hash(), common.Hash{})
 	if onNewLog != nil {
 		for _, l := range logs {
-			onNewLog(l)
+			onNewLog(core_types.CoreLogFromGethLog(l))
 		}
 	}
 

@@ -13,9 +13,9 @@ import (
 	reflect "reflect"
 
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
+	core_types "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	opera "github.com/0xsoniclabs/sonic/opera"
-	types "github.com/ethereum/go-ethereum/core/types"
 	vm "github.com/ethereum/go-ethereum/core/vm"
 	params "github.com/ethereum/go-ethereum/params"
 	gomock "go.uber.org/mock/gomock"
@@ -98,7 +98,7 @@ func (m *Mock_stateProcessor) EXPECT() *Mock_stateProcessorMockRecorder {
 }
 
 // Process mocks base method.
-func (m *Mock_stateProcessor) Process(block *evmcore.EvmBlock, statedb state.StateDB, vmCfg vm.Config, gasLimit uint64, gasUsed *uint64, trueTxOffset int, onNewLog func(*types.Log)) evmcore.ProcessSummary {
+func (m *Mock_stateProcessor) Process(block *evmcore.EvmBlock, statedb state.StateDB, vmCfg vm.Config, gasLimit uint64, gasUsed *uint64, trueTxOffset int, onNewLog func(*core_types.Log)) evmcore.ProcessSummary {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Process", block, statedb, vmCfg, gasLimit, gasUsed, trueTxOffset, onNewLog)
 	ret0, _ := ret[0].(evmcore.ProcessSummary)

@@ -12,7 +12,7 @@ package evmmodule
 import (
 	reflect "reflect"
 
-	types "github.com/ethereum/go-ethereum/core/types"
+	core_types "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -41,7 +41,7 @@ func (m *Mock_onNewLog) EXPECT() *Mock_onNewLogMockRecorder {
 }
 
 // OnNewLog mocks base method.
-func (m *Mock_onNewLog) OnNewLog(arg0 *types.Log) {
+func (m *Mock_onNewLog) OnNewLog(arg0 *core_types.Log) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "OnNewLog", arg0)
 }
