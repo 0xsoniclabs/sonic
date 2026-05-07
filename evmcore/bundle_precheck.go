@@ -491,13 +491,18 @@ func (c *bundleEvaluationCache) GetBundleState(
 	stateDb state.StateDB,
 	envelope *types.Transaction,
 ) BundleState {
+
+	if !bundle.IsEnvelope(envelope) {
+		return makeRunnableState()
+	}
+
 	chainId := big.NewInt(int64(chain.GetCurrentNetworkRules().NetworkID))
 	signer := types.LatestSignerForChainID(chainId)
 
 	// Does this even pay off? cache envelope vs cache plan
 	txBundle, err := bundle.OpenEnvelope(signer, envelope)
 	if err != nil {
-		return makeRunnableState()
+		return makePermanentlyBlockedState(err.Error())
 	}
 	planHash := txBundle.Plan.Hash()
 

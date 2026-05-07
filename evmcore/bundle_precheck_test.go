@@ -1278,3 +1278,25 @@ func Test_BundleEvaluationCache_IgnoresNonEnvelopes(t *testing.T) {
 	result := cache.GetBundleState(chainState, stateDb, tx)
 	require.Equal(t, makeRunnableState(), result)
 }
+
+func Test_BundleEvaluationCache_ReturnsErrorForInvalidEnvelope(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	chainState := NewMockChainStateForBundleEval(ctrl)
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
+	}).AnyTimes()
+	chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+		Number: big.NewInt(100),
+	}).AnyTimes()
+
+	stateDb := state.NewMockStateDB(ctrl)
+
+	tx := types.NewTx(&types.LegacyTx{
+		To: &bundle.BundleProcessor,
+	})
+	cache := NewBundleEvaluationCache()
+
+	result := cache.GetBundleState(chainState, stateDb, tx)
+	require.Equal(t, makePermanentlyBlockedState("failed to decode transaction bundle: unexpected EOF"), result)
+}
