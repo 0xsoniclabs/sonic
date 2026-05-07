@@ -81,6 +81,7 @@ func validateTx(
 	chain StateReader,
 	state state.StateDB, // Although this can be retrieved from chain, it's passed explicitly to avoid extra db-pool accesses
 	isSponsored utils.TransactionCheckFunc,
+	getBundleState func(ChainStateForBundleEval, state.StateDB, *types.Transaction) BundleState,
 	signer types.Signer,
 ) error {
 
@@ -111,7 +112,7 @@ func validateTx(
 		return err
 	}
 
-	if err := validateBundleTransactions(tx, netRules, chain, state, signer); err != nil {
+	if err := validateBundleTransactions(tx, netRules, chain, getBundleState, state, signer); err != nil {
 		return err
 	}
 
@@ -394,11 +395,19 @@ func validateBundleTransactions(
 	tx *types.Transaction,
 	netRules NetworkRules,
 	chainState StateReader,
+	getBundleState func(ChainStateForBundleEval, state.StateDB, *types.Transaction) BundleState,
 	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
 	stateDb state.StateDB,
 	signer types.Signer,
 ) error {
-	return validateBundleTransactionsInternal(tx, netRules, chainState, stateDb, signer, GetBundleState)
+	return validateBundleTransactionsInternal(
+		tx,
+		netRules,
+		chainState,
+		stateDb,
+		signer,
+		getBundleState,
+	)
 }
 
 func validateBundleTransactionsInternal(

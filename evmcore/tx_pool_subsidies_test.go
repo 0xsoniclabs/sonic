@@ -65,7 +65,7 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 	}
 
 	// Instantiate the pool
-	pool := newTxPool(poolConfig, chainConfig, chain, subsidiesCheckFactory, testBundleCheckerFactory)
+	pool := newTxPool(poolConfig, chainConfig, chain, subsidiesCheckFactory, nil)
 
 	// transactions per sender
 	const transactionsPerSender = 5

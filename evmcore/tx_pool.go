@@ -197,12 +197,6 @@ type subsidiesCheckFuncFactory func(
 	signer types.Signer,
 ) utils.TransactionCheckFunc
 
-// bundleCheckerFuncFactory is a factory method to create a bundle checker instance.
-type bundleCheckerFuncFactory func(
-	chain StateReader,
-	state state.StateDB,
-) func(*types.Transaction) bundlePoolStatus
-
 // TxPoolConfig are the configuration parameters of the transaction pool.
 type TxPoolConfig struct {
 	Locals    []common.Address // Addresses that should be treated by default as local
@@ -347,7 +341,7 @@ type TxPool struct {
 	subsidiesCheckerFactory subsidiesCheckFuncFactory    // Factory to create a subsidies checker instance
 	subsidiesCheckerCache   *utils.TransactionCheckCache // Cache for heavy subsidies check results
 
-	bundleCheckerFactory bundleCheckerFuncFactory // Factory to create a bundle checker instance
+	bundleEvaluationCache BundleEvaluator // Cache for bundle evaluation results
 }
 
 type txpoolResetRequest struct {
@@ -359,13 +353,15 @@ type txpoolResetRequest struct {
 func NewTxPool(
 	config TxPoolConfig,
 	chainconfig *params.ChainConfig,
-	chain StateReader) *TxPool {
+	chain StateReader,
+	bundlesCache BundleEvaluator,
+) *TxPool {
 	return newTxPool(
 		config,
 		chainconfig,
 		chain,
 		newSubsidiesChecker,
-		newBundlesChecker,
+		nil,
 	)
 }
 
@@ -374,7 +370,7 @@ func newTxPool(
 	chainconfig *params.ChainConfig,
 	chain StateReader,
 	subsidiesCheckerFactory subsidiesCheckFuncFactory,
-	bundleCheckerFactory bundleCheckerFuncFactory,
+	bundlesCache BundleEvaluator,
 ) *TxPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
@@ -403,7 +399,7 @@ func newTxPool(
 		subsidiesCheckerFactory: subsidiesCheckerFactory,
 		subsidiesCheckerCache:   utils.NewCheckerCache(-1), // use default size
 
-		bundleCheckerFactory: bundleCheckerFactory,
+		bundleEvaluationCache: bundlesCache,
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -760,6 +756,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		pool.chain,
 		pool.currentState,
 		subsidiesChecker,
+		pool.bundleEvaluationCache.GetBundleState,
 		pool.signer,
 	)
 	if err != nil {
@@ -1527,7 +1524,7 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 	var promoted []*types.Transaction
 
 	isSponsored := pool.getSubsidiesCheckerForReorg()
-	evaluateBundleStatus := pool.getBundlesCheckerForPromotion()
+	evaluateBundleStatus := newBundlesChecker(pool.bundleEvaluationCache, pool.chain, pool.currentState)
 	canPromote := func(tx *types.Transaction) bool {
 		if pool.chain.CurrentRules().Upgrades.Brio {
 			if bundle.IsEnvelope(tx) {
@@ -1617,14 +1614,6 @@ func (pool *TxPool) getSubsidiesCheckerForReorg() utils.TransactionCheckFunc {
 			pool.currentState,
 			pool.signer,
 		))
-}
-
-func (pool *TxPool) getBundlesCheckerForPromotion() func(*types.Transaction) bundlePoolStatus {
-	// TODO: cache?
-	return pool.bundleCheckerFactory(
-		pool.chain,
-		pool.currentState,
-	)
 }
 
 // truncatePending removes transactions from the pending queue if the pool is above the
@@ -1767,7 +1756,7 @@ func (pool *TxPool) truncateQueue() {
 func (pool *TxPool) demoteUnexecutables() {
 
 	isSponsored := pool.getSubsidiesCheckerForReorg()
-	isBundlePending := pool.getBundlesCheckerForPromotion()
+	evaluateBundle := newBundlesChecker(pool.bundleEvaluationCache, pool.chain, pool.currentState)
 
 	// Iterate over all accounts and demote any non-executable transactions
 	for addr, list := range pool.pending {
@@ -1793,7 +1782,7 @@ func (pool *TxPool) demoteUnexecutables() {
 			utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)),
 			pool.currentMaxGas,
 			isSponsored,
-			isBundlePending,
+			evaluateBundle,
 			pool.chain.CurrentRules().Upgrades,
 		)
 		for _, tx := range drops {
