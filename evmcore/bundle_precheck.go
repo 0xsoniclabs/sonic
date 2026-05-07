@@ -471,7 +471,11 @@ func NewBundleEvaluationCache() *bundleEvaluationCache {
 	// The cache size of 100k entries is chosen arbitrarily and can be tuned
 	// Evaluation of block current-1 are never used again, so we can consider
 	// that the cache is only useful for the current block. This means that the
-	//  cache contains evaluations for up to 100k envelopes pending of execution.
+	// cache contains evaluations for up to 100k envelopes pending of execution.
+	//
+	// The cache does not proactively purge entries from previous blocks, instead
+	// it relies on its LRU eviction policy to evict old entries when the cache
+	// is full, older block evaluations are expected to be evicted first.
 	//
 	// Maximum memory consumption is a constant factor of the following formula:
 	// number of bundles in the cache * (size of bundle plan hash + size of block number + size of BundleState)
