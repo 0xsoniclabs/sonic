@@ -28,6 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
@@ -159,6 +160,8 @@ type Emitter struct {
 	proposalTracker inter.ProposalTracker
 
 	eventEmissionThrottler throttler.ThrottlingState
+
+	bundleCache evmcore.BundleEvaluator
 }
 
 type BaseFeeSource interface {
@@ -190,6 +193,7 @@ func NewEmitter(
 	world World,
 	baseFeeSource BaseFeeSource,
 	errorLock *errlock.ErrorLock,
+	bundleCache evmcore.BundleEvaluator,
 ) *Emitter {
 	// Randomize event time to decrease chance of 2 parallel instances emitting event at the same time
 	// It increases the chance of detecting parallel instances
@@ -203,6 +207,7 @@ func NewEmitter(
 		Periodic:      logger.Periodic{Instance: logger.New()},
 		baseFeeSource: baseFeeSource,
 		errorLock:     errorLock,
+		bundleCache:   bundleCache,
 	}
 	res.eventEmissionThrottler = throttler.NewThrottlingState(
 		config.Validator.ID,

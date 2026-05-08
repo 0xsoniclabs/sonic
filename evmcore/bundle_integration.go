@@ -32,17 +32,19 @@ import (
 type bundlePoolStatus int
 
 const (
-	// bundlePending, the bundle hasn't yet been executed and trial-run is positive
+	// bundlePending, the bundle is executable with the current state
 	bundlePending bundlePoolStatus = iota
-	// bundleQueued, the bundle hasn't yet been executed but trial-run is negative
+	// bundleQueued, the bundle is temporarily non-executable
 	bundleQueued
-	// bundleRejected, the bundle has been executed, or is not valid
+	// bundleRejected, the bundle is permanently non-executable
 	bundleRejected
 )
 
-// newBundlesChecker constructs a checker with the available state to determine
-// if a bundle transaction is pending.
+// newBundlesChecker creates a function that checks the status of a bundle in
+// the transaction pool. This function translates BundleState into bundlePoolStatus,
+// for use in promotion/demotion/eviction of bundles in the transaction pool.
 func newBundlesChecker(
+	cache BundleEvaluator,
 	chain StateReader,
 	stateDB state.StateDB,
 ) func(*types.Transaction) bundlePoolStatus {
@@ -52,7 +54,7 @@ func newBundlesChecker(
 		stateDb: stateDB,
 	}
 	return func(tx *types.Transaction) bundlePoolStatus {
-		bundleState := GetBundleState(adapter, stateDB, tx)
+		bundleState := cache.GetBundleState(adapter, stateDB, tx)
 		if bundleState.Executable {
 			return bundlePending
 		} else if bundleState.TemporarilyBlocked {

@@ -145,12 +145,15 @@ func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(
 	}
 	signer := valkeystore.NewSignerAuthority(valKeystore, cfg.Emitter.Validator.PubKey)
 
+	// shared resource between the tx pool and the emitter
+	bundleEvaluationCache := evmcore.NewBundleEvaluationCache()
+
 	// Create and register a gossip network service.
 	newTxPool := func(reader evmcore.StateReader) gossip.TxPool {
 		if cfg.TxPool.Journal != "" {
 			cfg.TxPool.Journal = path.Join(cfg.Node.DataDir, cfg.TxPool.Journal)
 		}
-		pool := evmcore.NewTxPool(cfg.TxPool, reader.CurrentConfig(), reader)
+		pool := evmcore.NewTxPool(cfg.TxPool, reader.CurrentConfig(), reader, bundleEvaluationCache)
 		cleanup = append(cleanup, pool.Stop)
 		return pool
 	}
@@ -191,6 +194,7 @@ func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(
 			svc.EmitterWorld(signer),
 			gdb.AsBaseFeeSource(),
 			errorLock,
+			bundleEvaluationCache,
 		))
 	}
 

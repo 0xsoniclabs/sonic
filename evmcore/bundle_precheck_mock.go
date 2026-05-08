@@ -213,3 +213,41 @@ func (mr *MocktransactionProcessorMockRecorder) Run(arg0, arg1 any) *gomock.Call
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MocktransactionProcessor)(nil).Run), arg0, arg1)
 }
+
+// MockBundleEvaluator is a mock of BundleEvaluator interface.
+type MockBundleEvaluator struct {
+	ctrl     *gomock.Controller
+	recorder *MockBundleEvaluatorMockRecorder
+	isgomock struct{}
+}
+
+// MockBundleEvaluatorMockRecorder is the mock recorder for MockBundleEvaluator.
+type MockBundleEvaluatorMockRecorder struct {
+	mock *MockBundleEvaluator
+}
+
+// NewMockBundleEvaluator creates a new mock instance.
+func NewMockBundleEvaluator(ctrl *gomock.Controller) *MockBundleEvaluator {
+	mock := &MockBundleEvaluator{ctrl: ctrl}
+	mock.recorder = &MockBundleEvaluatorMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockBundleEvaluator) EXPECT() *MockBundleEvaluatorMockRecorder {
+	return m.recorder
+}
+
+// GetBundleState mocks base method.
+func (m *MockBundleEvaluator) GetBundleState(chain ChainStateForBundleEval, stateDb state.StateDB, envelope *types.Transaction) BundleState {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBundleState", chain, stateDb, envelope)
+	ret0, _ := ret[0].(BundleState)
+	return ret0
+}
+
+// GetBundleState indicates an expected call of GetBundleState.
+func (mr *MockBundleEvaluatorMockRecorder) GetBundleState(chain, stateDb, envelope any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBundleState", reflect.TypeOf((*MockBundleEvaluator)(nil).GetBundleState), chain, stateDb, envelope)
+}

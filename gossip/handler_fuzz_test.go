@@ -124,7 +124,7 @@ func makeFuzzedHandler(t *testing.T) (*handler, error) {
 		&EvmStateReader{
 			ServiceFeed: feed,
 			store:       store,
-		})
+		}, nil)
 	t.Cleanup(txpool.Stop)
 
 	h, err := newHandler(
