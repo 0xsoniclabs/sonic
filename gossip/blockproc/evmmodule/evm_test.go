@@ -274,8 +274,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorProducesTransactionsAndBundles_
 	require.Equal(summary, result)
 }
 
-/*
-func TestOperaEVMProcessor_Execute_UsesLengthOfProcessedTransactionsAsTransactionIndexOffsetInReceipts(t *testing.T) {
+func TestOperaEVMProcessor_Execute_UsesNumberOfAcceptedTransactionsAsTransactionIndexOffsetInProcessorCall(t *testing.T) {
 	tests := map[string][]evmcore.ProcessedTransaction{
 		"nil":   nil,
 		"empty": {},
@@ -302,12 +301,19 @@ func TestOperaEVMProcessor_Execute_UsesLengthOfProcessedTransactionsAsTransactio
 			any := gomock.Any()
 			factory.EXPECT().NewStateProcessorForHeadState(any, any, any).Return(stateProcessor)
 
+			numPreAccepted := 0
+			for _, cur := range processedTransactions {
+				if cur.Receipt != nil {
+					numPreAccepted++
+				}
+			}
+
 			stateProcessor.EXPECT().
-				Process(any, any, any, any, any, any, any).
+				Process(any, any, any, any, any, numPreAccepted, any).
 				Return(evmcore.ProcessSummary{
 					ProcessedTransactions: []evmcore.ProcessedTransaction{
-						{Receipt: &types.Receipt{TransactionIndex: 0}},
-						{Receipt: &types.Receipt{TransactionIndex: 1}},
+						{Receipt: &types.Receipt{TransactionIndex: uint(numPreAccepted)}},
+						{Receipt: &types.Receipt{TransactionIndex: uint(numPreAccepted) + 1}},
 					},
 				})
 
@@ -321,13 +327,12 @@ func TestOperaEVMProcessor_Execute_UsesLengthOfProcessedTransactionsAsTransactio
 			require.Len(t, summary.ProcessedTransactions, 2)
 			for i, cur := range summary.ProcessedTransactions {
 				got := cur.Receipt.TransactionIndex
-				want := len(processedTransactions) + i
+				want := numPreAccepted + i
 				require.EqualValues(t, want, got)
 			}
 		})
 	}
 }
-*/
 
 func TestOperaEVMProcessor_Execute_UsesNumberOfTransactionsWithReceiptsAsTransactionOffsetInEvmProcessor(t *testing.T) {
 	tests := map[string][]evmcore.ProcessedTransaction{
