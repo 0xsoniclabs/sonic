@@ -1165,7 +1165,7 @@ func TestValidateTx_RejectsTx_whenNetworkValidationFails(t *testing.T) {
 
 			rules := NetworkRules{}
 
-			err := validateTx(types.NewTx(tx), opts, rules, nil, nil, nil, nil)
+			err := validateTx(types.NewTx(tx), opts, rules, nil, nil, nil, nil, nil)
 			require.Error(t, err)
 		})
 	}
@@ -1221,6 +1221,7 @@ func TestValidateTx_RejectsTx_WhenStaticValidationFails(t *testing.T) {
 				chain,
 				state,
 				expectNoSubsidies(t),
+				expectNoBundleTransaction(ctrl),
 				signer)
 			require.Error(t, err)
 		})
@@ -1279,6 +1280,7 @@ func TestValidateTx_RejectsTx_WhenBlockValidationFails(t *testing.T) {
 				chain,
 				state,
 				expectNoSubsidies(t),
+				expectNoBundleTransaction(ctrl),
 				signer,
 			)
 			require.Error(t, err)
@@ -1336,7 +1338,15 @@ func TestValidateTx_RejectsTx_WhenPoolValidationFails(t *testing.T) {
 				locals: newAccountSet(signer),
 			}
 
-			err := validateTx(types.NewTx(tx), opts, rules, chain, state, expectNoSubsidies(t), signer)
+			err := validateTx(
+				types.NewTx(tx),
+				opts,
+				rules,
+				chain,
+				state,
+				expectNoSubsidies(t),
+				expectNoBundleTransaction(ctrl),
+				signer)
 			require.Error(t, err)
 		})
 	}
@@ -1394,7 +1404,16 @@ func TestValidateTx_RejectsTx_WhenStateValidationFails(t *testing.T) {
 				locals:  newAccountSet(signer),
 			}
 
-			err := validateTx(types.NewTx(tx), opts, rules, chain, state, expectNoSubsidies(t), signer)
+			err := validateTx(
+				types.NewTx(tx),
+				opts,
+				rules,
+				chain,
+				state,
+				expectNoSubsidies(t),
+				expectNoBundleTransaction(ctrl),
+				signer,
+			)
 			require.Error(t, err)
 		})
 	}
@@ -1433,6 +1452,7 @@ func TestValidateTx_RejectsTx_WhenBundleTransactionValidationFails(t *testing.T)
 		},
 		chain,
 		state,
+		nil,
 		nil,
 		signer,
 	), ErrBundleTransactionInvalid)
@@ -1502,12 +1522,30 @@ func TestValidateTx_AcceptsZeroGasPriceTransactions_WhenSubsidiesAreEnabled(t *t
 				locals:  newAccountSet(signer),
 			}
 
-			err := validateTx(types.NewTx(tx), opts, rules, chain, state, acceptAnySponsorshipRequest, signer)
+			err := validateTx(
+				types.NewTx(tx),
+				opts,
+				rules,
+				chain,
+				state,
+				acceptAnySponsorshipRequest,
+				acceptAnyBundleTransaction(ctrl),
+				signer,
+			)
 			require.NoError(t, err)
 
 			//Check that the same transaction is rejected when gas subsidies are disabled
 			rules.gasSubsidies = false
-			err = validateTx(types.NewTx(tx), opts, rules, chain, state, acceptAnySponsorshipRequest, signer)
+			err = validateTx(
+				types.NewTx(tx),
+				opts,
+				rules,
+				chain,
+				state,
+				acceptAnySponsorshipRequest,
+				acceptAnyBundleTransaction(ctrl),
+				signer,
+			)
 			require.Error(t, err)
 		})
 	}
@@ -1637,7 +1675,7 @@ func Test_validateBundleTransactions_AcceptNonBundleTransactions(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			require.False(bundle.IsEnvelope(tx))
-			require.NoError(validateBundleTransactions(tx, NetworkRules{}, nil, nil, nil))
+			require.NoError(validateBundleTransactions(tx, NetworkRules{}, nil, nil, nil, nil))
 		})
 	}
 }
@@ -1676,7 +1714,7 @@ func Test_validateBundleTransactions_RespectNetworkRules(t *testing.T) {
 			state := state.NewMockStateDB(ctrl)
 			state.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(true).AnyTimes()
 
-			err := validateBundleTransactions(bundle, test.rules, nil, state, signer)
+			err := validateBundleTransactions(bundle, test.rules, nil, nil, state, signer)
 			require.ErrorIs(err, test.expectedError)
 		})
 	}
@@ -1696,7 +1734,7 @@ func Test_validateBundleTransactions_ReturnsErrorWithMalformedEnvelope(t *testin
 		transactionBundles: true,
 	}
 
-	err := validateBundleTransactions(malformedBundle, bundlesEnabled, nil, nil, nil)
+	err := validateBundleTransactions(malformedBundle, bundlesEnabled, nil, nil, nil, nil)
 	require.ErrorIs(err, ErrBundleTransactionInvalid)
 }
 
@@ -1722,7 +1760,7 @@ func Test_validateBundleTransactions_RejectsRecentlyProcessedBundles(t *testing.
 
 	state.EXPECT().HasBundleRecentlyBeenProcessed(plan.Hash()).Return(true)
 
-	err = validateBundleTransactions(envelope, bundlesEnabled, nil, state, signer)
+	err = validateBundleTransactions(envelope, bundlesEnabled, nil, nil, state, signer)
 	require.ErrorIs(err, ErrBundleAlreadyProcessed)
 }
 
@@ -1773,10 +1811,13 @@ func Test_validateBundleTransactionsInternal_EvaluatesBundleUsingGetBundleState(
 				With(bundle.Step(key, &types.AccessListTx{})).
 				Build()
 
-			err = validateBundleTransactionsInternal(envelope, bundlesEnabled, reader, stateDb, signer,
-				func(ChainStateForBundleEval, state.StateDB, *types.Transaction) BundleState {
-					return test.bundleState
-				})
+			err = validateBundleTransactionsInternal(envelope,
+				bundlesEnabled,
+				reader,
+				stateDb,
+				signer,
+				returnBundleState(ctrl, test.bundleState),
+			)
 
 			if test.expectedErr != nil {
 				require.ErrorIs(t, err, test.expectedErr)
@@ -1808,12 +1849,13 @@ func Test_validateBundleTransactionsInternal_AccumulatesRejectionReasons(t *test
 
 	reasons := []string{"reason1", "reason2"}
 
-	err = validateBundleTransactionsInternal(envelope, bundlesEnabled, reader, stateDb, signer,
-		func(ChainStateForBundleEval, state.StateDB, *types.Transaction) BundleState {
-			return BundleState{
-				Reasons: reasons,
-			}
-		})
+	err = validateBundleTransactionsInternal(envelope,
+		bundlesEnabled,
+		reader,
+		stateDb,
+		signer,
+		returnBundleState(ctrl, BundleState{Reasons: reasons}),
+	)
 	require.ErrorIs(t, err, ErrBundleNonExecutable)
 	for _, reason := range reasons {
 		require.ErrorContains(t, err, reason)
@@ -1878,7 +1920,16 @@ func TestValidateTx_AllowsSponsoredZeroGasPriceTransactions_WhenSubsidiesAreFund
 				locals:  newAccountSet(signer),
 			}
 
-			err := validateTx(types.NewTx(test.tx), opts, rules, chain, state, subsidiesChecker, signer)
+			err := validateTx(
+				types.NewTx(test.tx),
+				opts,
+				rules,
+				chain,
+				state,
+				subsidiesChecker,
+				acceptAnyBundleTransaction(ctrl),
+				signer,
+			)
 			if test.isSponsored {
 				require.NoError(t, err)
 			} else {
@@ -1945,7 +1996,16 @@ func TestValidateTx_Success(t *testing.T) {
 				locals:  newAccountSet(signer),
 			}
 
-			err := validateTx(types.NewTx(tx), opts, rules, chain, state, expectNoSubsidies(t), signer)
+			err := validateTx(
+				types.NewTx(tx),
+				opts,
+				rules,
+				chain,
+				state,
+				expectNoSubsidies(t),
+				acceptAnyBundleTransaction(ctrl),
+				signer,
+			)
 			require.NoError(t, err)
 		})
 	}
@@ -2045,4 +2105,25 @@ func expectNoSubsidies(t *testing.T) func(*types.Transaction) bool {
 // acceptAnySponsorshipRequest returns a subsidies checker that accepts any sponsorship request.
 func acceptAnySponsorshipRequest(*types.Transaction) bool {
 	return true
+}
+
+func expectNoBundleTransaction(ctrl *gomock.Controller) BundleEvaluator {
+	mock := NewMockBundleEvaluator(ctrl)
+	return mock
+}
+
+func acceptAnyBundleTransaction(ctrl *gomock.Controller) BundleEvaluator {
+	mock := NewMockBundleEvaluator(ctrl)
+	mock.EXPECT().GetBundleState(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(BundleState{Executable: true}).
+		AnyTimes()
+	return mock
+}
+
+func returnBundleState(ctrl *gomock.Controller, state BundleState) BundleEvaluator {
+	mock := NewMockBundleEvaluator(ctrl)
+	mock.EXPECT().GetBundleState(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(state).
+		AnyTimes()
+	return mock
 }

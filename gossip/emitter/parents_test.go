@@ -37,6 +37,7 @@ func TestChooseParents_NoParentsForGenesisEvent(t *testing.T) {
 		World{External: external},
 		fixedPriceBaseFeeSource{},
 		nil,
+		nil,
 	)
 
 	epoch := idx.Epoch(1)
@@ -63,6 +64,7 @@ func TestChooseParents_NonGenesisEventMustHaveOneSelfParent(t *testing.T) {
 		config.DefaultConfig(),
 		World{External: external},
 		fixedPriceBaseFeeSource{},
+		nil,
 		nil,
 	)
 	em.maxParents = 3

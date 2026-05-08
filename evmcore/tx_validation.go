@@ -81,6 +81,7 @@ func validateTx(
 	chain StateReader,
 	state state.StateDB, // Although this can be retrieved from chain, it's passed explicitly to avoid extra db-pool accesses
 	isSponsored utils.TransactionCheckFunc,
+	bundleEvaluator BundleEvaluator,
 	signer types.Signer,
 ) error {
 
@@ -111,7 +112,7 @@ func validateTx(
 		return err
 	}
 
-	if err := validateBundleTransactions(tx, netRules, chain, state, signer); err != nil {
+	if err := validateBundleTransactions(tx, netRules, chain, bundleEvaluator, state, signer); err != nil {
 		return err
 	}
 
@@ -394,11 +395,19 @@ func validateBundleTransactions(
 	tx *types.Transaction,
 	netRules NetworkRules,
 	chainState StateReader,
+	bundleEvaluator BundleEvaluator,
 	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
 	stateDb state.StateDB,
 	signer types.Signer,
 ) error {
-	return validateBundleTransactionsInternal(tx, netRules, chainState, stateDb, signer, GetBundleState)
+	return validateBundleTransactionsInternal(
+		tx,
+		netRules,
+		chainState,
+		stateDb,
+		signer,
+		bundleEvaluator,
+	)
 }
 
 func validateBundleTransactionsInternal(
@@ -407,7 +416,7 @@ func validateBundleTransactionsInternal(
 	chainState StateReader,
 	stateDb state.StateDB,
 	signer types.Signer,
-	getBundleState func(ChainStateForBundleEval, state.StateDB, *types.Transaction) BundleState,
+	bundleEvaluator BundleEvaluator,
 ) error {
 
 	// This check only covers bundle transactions, ignore the rest.
@@ -437,7 +446,7 @@ func validateBundleTransactionsInternal(
 	}
 
 	// Check that the bundle is executable.
-	state := getBundleState(getBundleStateAdaptor{chainState}, stateDb, tx)
+	state := bundleEvaluator.GetBundleState(getBundleStateAdaptor{chainState}, stateDb, tx)
 	if !state.Executable && !state.TemporarilyBlocked {
 		err := ErrBundleNonExecutable
 		for _, reason := range state.Reasons {

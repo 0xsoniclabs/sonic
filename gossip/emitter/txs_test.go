@@ -80,11 +80,14 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 			_, _, err := bundle.ValidateEnvelope(signer, tx)
 			require.NoError(err)
 
-			allBundlesRunnable := func(evmcore.ChainStateForBundleEval, state.StateDB, *types.Transaction) evmcore.BundleState {
-				return evmcore.BundleState{Executable: true}
+			bundleEvaluator := evmcore.NewMockBundleEvaluator(ctrl)
+			if bundlesEnabled {
+				// if bundles are enabled, it will be evaluated
+				bundleEvaluator.EXPECT().GetBundleState(gomock.Any(), gomock.Any(), tx).
+					Return(evmcore.BundleState{Executable: true})
 			}
 
-			require.Equal(bundlesEnabled, emitter.isRunnableBundleTxInternal(tx, allBundlesRunnable))
+			require.Equal(bundlesEnabled, emitter.isRunnableBundleTxInternal(tx, bundleEvaluator))
 		})
 	}
 }
@@ -163,11 +166,14 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 			_, _, err := bundle.ValidateEnvelope(signer, tx)
 			require.NoError(t, err)
 
-			getBundleState := func(evmcore.ChainStateForBundleEval, state.StateDB, *types.Transaction) evmcore.BundleState {
-				return evmcore.BundleState{Executable: true}
+			bundleEvaluator := evmcore.NewMockBundleEvaluator(ctrl)
+			if !processed {
+				// if not processed already, it will be evaluated
+				bundleEvaluator.EXPECT().GetBundleState(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(evmcore.BundleState{Executable: true})
 			}
 
-			require.Equal(t, !processed, emitter.isRunnableBundleTxInternal(tx, getBundleState))
+			require.Equal(t, !processed, emitter.isRunnableBundleTxInternal(tx, bundleEvaluator))
 		})
 	}
 }

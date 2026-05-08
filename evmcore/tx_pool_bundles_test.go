@@ -124,7 +124,9 @@ func TestTxPool_TransactionsAreQueuedAccordingToTheirExecutionStatus(t *testing.
 				return nil
 			}
 
-			pool := newTxPool(poolConfig, chainConfig, chain, subsidiesCheckFactory, newBundlesChecker)
+			bundleEvaluationCache := NewBundleEvaluationCache()
+
+			pool := newTxPool(poolConfig, chainConfig, chain, subsidiesCheckFactory, bundleEvaluationCache)
 
 			pending, queued := pool.Content()
 			expectContents(t, pending, queued, 0, 0)
