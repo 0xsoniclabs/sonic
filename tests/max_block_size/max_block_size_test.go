@@ -19,6 +19,7 @@ package max_block_size
 import (
 	"fmt"
 	"math/big"
+	"slices"
 	"testing"
 	"time"
 
@@ -30,7 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/slices"
 )
 
 // This test ensures that the maximum block size introduced in EIP-7934 is

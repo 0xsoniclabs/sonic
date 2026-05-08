@@ -18,6 +18,7 @@ package tests
 
 import (
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
@@ -25,7 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/slices"
 )
 
 func TestRpcReplay_IsConsistentWithUpgradesAtBlockHeight(t *testing.T) {

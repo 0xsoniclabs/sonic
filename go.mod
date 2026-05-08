@@ -42,7 +42,6 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/tyler-smith/go-bip39 v1.1.0
 	go.uber.org/mock v0.6.0
-	golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d
 	golang.org/x/sys v0.40.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/urfave/cli.v1 v1.20.0
@@ -140,6 +139,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.40.0 // indirect
 	go.opentelemetry.io/otel/trace v1.40.0 // indirect
 	golang.org/x/crypto v0.44.0 // indirect
+	golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/text v0.31.0 // indirect

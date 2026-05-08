@@ -18,11 +18,12 @@ package cert
 
 import (
 	"encoding/json"
+	"maps"
 	"math/rand/v2"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/maps"
 )
 
 func TestBitSet_Default_IsEmpty(t *testing.T) {
@@ -72,7 +73,7 @@ func TestBitSet_ContainsAndEntriesAreConsistent(t *testing.T) {
 			require.Equal(t, found, b.Contains(i))
 		}
 
-		require.ElementsMatch(t, maps.Keys(ref), b.Entries())
+		require.ElementsMatch(t, slices.Collect(maps.Keys(ref)), b.Entries())
 	}
 }
 
