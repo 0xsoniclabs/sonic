@@ -31,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics/exp"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -207,6 +208,7 @@ func StartPProf(address string, withMetrics bool) {
 	// from the registry into expvar, and execute regular expvar handler.
 	if withMetrics {
 		exp.Exp(metrics.DefaultRegistry)
+		http.Handle("/debug/metrics/prometheus/native", promhttp.Handler())
 	}
 	log.Info("Starting pprof server", "addr", fmt.Sprintf("http://%s/debug/pprof", address))
 	go func() {

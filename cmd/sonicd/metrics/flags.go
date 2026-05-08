@@ -18,6 +18,7 @@ package metrics
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -25,6 +26,8 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/metrics/exp"
 	"github.com/ethereum/go-ethereum/metrics/influxdb"
+	gethprometheus "github.com/ethereum/go-ethereum/metrics/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -162,7 +165,7 @@ func SetupMetrics(ctx *cli.Context) error {
 		if ctx.GlobalIsSet(MetricsHTTPFlag.Name) {
 			address := fmt.Sprintf("%s:%d", ctx.GlobalString(MetricsHTTPFlag.Name), ctx.GlobalInt(MetricsPortFlag.Name))
 			log.Info("Enabling stand-alone metrics HTTP endpoint", "address", address)
-			exp.Setup(address)
+			setupMetricsServer(address)
 		}
 	}
 	return nil
@@ -183,4 +186,20 @@ func SplitTagsFlag(tagsFlag string) map[string]string {
 	}
 
 	return tagsMap
+}
+
+// setupMetricsServer starts a dedicated metrics server at the given address.
+// It serves go-ethereum metrics in expvar and Prometheus summary format, and
+// also native Prometheus metrics (including bucketed histograms) via promhttp.
+func setupMetricsServer(address string) {
+	m := http.NewServeMux()
+	m.Handle("/debug/metrics", exp.ExpHandler(metrics.DefaultRegistry))
+	m.Handle("/debug/metrics/prometheus", gethprometheus.Handler(metrics.DefaultRegistry))
+	m.Handle("/debug/metrics/prometheus/native", promhttp.Handler())
+	log.Info("Starting metrics server", "addr", fmt.Sprintf("http://%s/debug/metrics", address))
+	go func() {
+		if err := http.ListenAndServe(address, m); err != nil {
+			log.Error("Failure in running metrics server", "err", err)
+		}
+	}()
 }
