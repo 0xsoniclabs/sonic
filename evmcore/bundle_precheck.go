@@ -499,14 +499,17 @@ func (c *bundleEvaluationCache) GetBundleState(
 	chainId := big.NewInt(int64(chain.GetCurrentNetworkRules().NetworkID))
 	signer := types.LatestSignerForChainID(chainId)
 
-	// Does this even pay off? cache envelope vs cache plan
+	// Caching evaluations by plan hash instead of envelope hash allows to
+	// maximize cache hits, covering cases where different envelopes share
+	// the same execution plan.
+	// OpenEnvelope may be an expensive operation, this step relies on optimizations
+	// done in OpenEnvelope itself to be efficient.
 	txBundle, err := bundle.OpenEnvelope(signer, envelope)
 	if err != nil {
 		return makePermanentlyBlockedState(err.Error())
 	}
 	planHash := txBundle.Plan.Hash()
 
-	// get current block number
 	blockNumber := uint64(0)
 	if block := chain.GetLatestHeader(); block != nil {
 		blockNumber = block.Number.Uint64()
