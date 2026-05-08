@@ -786,3 +786,25 @@ func TestDecode_CorruptedExecutionPlanEncoding_DetectedDuringDecoding(t *testing
 	_, err = decode(nil, encoded)
 	require.ErrorContains(t, err, "failed to decode execution plan")
 }
+
+func TestTransactionBundle_Copy_CreatesDistinctCopy(t *testing.T) {
+	bundle := TransactionBundle{
+		Transactions: map[TxReference]*types.Transaction{
+			{From: common.Address{0x1}, Hash: common.Hash{0x1}}: types.NewTx(&types.LegacyTx{Nonce: 1}),
+		},
+		Plan: ExecutionPlan{
+			Root: NewTxStep(TxReference{From: common.Address{0x1}, Hash: common.Hash{0x1}}),
+		},
+	}
+
+	copied := bundle.Copy()
+
+	require.Equal(t, bundle.Transactions, copied.Transactions)
+	require.Equal(t, bundle.Plan, copied.Plan)
+
+	copied.Transactions[TxReference{From: common.Address{0x2}, Hash: common.Hash{0x2}}] = types.NewTx(&types.LegacyTx{Nonce: 2})
+	copied.Plan.Root = NewTxStep(TxReference{From: common.Address{0x2}, Hash: common.Hash{0x2}})
+
+	require.NotContains(t, bundle.Transactions, TxReference{From: common.Address{0x2}, Hash: common.Hash{0x2}})
+	require.Equal(t, NewTxStep(TxReference{From: common.Address{0x1}, Hash: common.Hash{0x1}}), bundle.Plan.Root)
+}
