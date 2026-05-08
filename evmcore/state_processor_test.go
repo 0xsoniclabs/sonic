@@ -992,8 +992,8 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactions(t *
 		),
 	)
 
-	// run the transactions; as a side-effect, check that the legacy and true
-	// transaction offsets are correctly initialized and updated.
+	// run the transactions; as a side-effect, check that the
+	// transaction offset is correctly initialized and updated.
 	summary := runTransactions(context, txs, 4)
 	got := summary.ProcessedTransactions
 	require.Len(t, got, 6)
@@ -1078,8 +1078,8 @@ func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyP
 			regularTxResult2,
 			core_types.TransactionResultSuccessful,
 		),
-		// the regular transaction has a nil receipt, which increases the legacy
-		// index but not the true index.
+		// the regular transaction has a nil receipt, which does not increase
+		// the transaction offset.
 		runner.EXPECT().runRegularTransaction(context, txs[2], trueStartIndex+2).Return(
 			regularTxResult3,
 			core_types.TransactionResultSuccessful,
