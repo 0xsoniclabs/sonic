@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"sync"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
@@ -1126,4 +1127,176 @@ func createKeys(t *testing.T) ([]*ecdsa.PrivateKey, []common.Address) {
 		senders[i] = crypto.PubkeyToAddress(key.PublicKey)
 	}
 	return keys, senders
+}
+
+var _ BundleEvaluator = (*bundleEvaluationCache)(nil)
+
+// evaluationSignature is used to static assert that the free standing
+// function and the cache method are interchangeable
+type evaluationSignature func(
+	chain ChainStateForBundleEval,
+	stateDb state.StateDB,
+	envelope *types.Transaction,
+) BundleState
+
+var _ evaluationSignature = GetBundleState
+var _ evaluationSignature = (*bundleEvaluationCache)(nil).GetBundleState
+
+func Test_BundleEvaluationCache_IsThreadSafe(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	chainState := NewMockChainStateForBundleEval(ctrl)
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
+	}).AnyTimes()
+	chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+		Number: big.NewInt(100),
+	}).AnyTimes()
+
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(true).AnyTimes()
+
+	envelope := bundle.NewBuilder().Build()
+	cache := NewBundleEvaluationCache()
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for range goroutines {
+		go func() {
+			defer wg.Done()
+			cache.GetBundleState(chainState, stateDb, envelope)
+		}()
+	}
+	wg.Wait()
+}
+
+func Test_BundleEvaluationCache_CachesWithinSameBlock(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	chainState := NewMockChainStateForBundleEval(ctrl)
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
+	}).AnyTimes()
+	chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+		Number: big.NewInt(100),
+	}).AnyTimes()
+
+	stateDb := state.NewMockStateDB(ctrl)
+	// HasBundleRecentlyBeenProcessed is only called by GetBundleState.
+	// If caching works, the second call should not reach GetBundleState.
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(true).Times(1)
+
+	envelope := bundle.NewBuilder().Build()
+	cache := NewBundleEvaluationCache()
+
+	result1 := cache.GetBundleState(chainState, stateDb, envelope)
+	result2 := cache.GetBundleState(chainState, stateDb, envelope)
+	require.Equal(t, result1, result2)
+	require.Equal(t, makePermanentlyBlockedState("bundle already processed"), result1)
+}
+
+func Test_BundleEvaluationCache_ReEvaluatesOnBlockChange(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	chainState := NewMockChainStateForBundleEval(ctrl)
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
+	}).AnyTimes()
+
+	blockNum := uint64(100)
+	chainState.EXPECT().GetLatestHeader().DoAndReturn(func() *EvmHeader {
+		return &EvmHeader{Number: big.NewInt(int64(blockNum))}
+	}).AnyTimes()
+
+	stateDb := state.NewMockStateDB(ctrl)
+	// Expect two evaluations: one for block 100 and one for block 101.
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(true).Times(2)
+
+	envelope := bundle.NewBuilder().Build()
+	cache := NewBundleEvaluationCache()
+
+	result1 := cache.GetBundleState(chainState, stateDb, envelope)
+	blockNum = 101
+	result2 := cache.GetBundleState(chainState, stateDb, envelope)
+
+	require.Equal(t, makePermanentlyBlockedState("bundle already processed"), result1)
+	require.Equal(t, makePermanentlyBlockedState("bundle already processed"), result2)
+}
+
+func Test_BundleEvaluationCache_AssumesBlock0IfNoHeaderAvailable(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	chainState := NewMockChainStateForBundleEval(ctrl)
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
+	}).AnyTimes()
+
+	// The first cache call triggers GetBundleState internally, which calls
+	// GetLatestHeader multiple times. All of those must return a valid header.
+	// The second cache call (key computation only) returns nil, which should
+	// resolve to block 0 and produce a cache hit.
+	headerCallCount := 0
+	chainState.EXPECT().GetLatestHeader().DoAndReturn(func() *EvmHeader {
+		headerCallCount++
+		if headerCallCount <= 3 {
+			return &EvmHeader{Number: big.NewInt(0)}
+		}
+		return nil
+	}).AnyTimes()
+
+	stateDb := state.NewMockStateDB(ctrl)
+	// Only one evaluation: the second call should use the cached value.
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(true).Times(1)
+
+	envelope := bundle.NewBuilder().Build()
+	cache := NewBundleEvaluationCache()
+
+	result1 := cache.GetBundleState(chainState, stateDb, envelope)
+	result2 := cache.GetBundleState(chainState, stateDb, envelope)
+
+	require.Equal(t, result1, result2)
+	require.Equal(t, makePermanentlyBlockedState("bundle already processed"), result1)
+}
+
+func Test_BundleEvaluationCache_IgnoresNonEnvelopes(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	chainState := NewMockChainStateForBundleEval(ctrl)
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
+	}).AnyTimes()
+	chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+		Number: big.NewInt(100),
+	}).AnyTimes()
+
+	stateDb := state.NewMockStateDB(ctrl)
+
+	tx := types.NewTx(&types.LegacyTx{})
+	cache := NewBundleEvaluationCache()
+
+	result := cache.GetBundleState(chainState, stateDb, tx)
+	require.Equal(t, makeRunnableState(), result)
+}
+
+func Test_BundleEvaluationCache_ReturnsErrorForInvalidEnvelope(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	chainState := NewMockChainStateForBundleEval(ctrl)
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
+	}).AnyTimes()
+	chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+		Number: big.NewInt(100),
+	}).AnyTimes()
+
+	stateDb := state.NewMockStateDB(ctrl)
+
+	tx := types.NewTx(&types.LegacyTx{
+		To: &bundle.BundleProcessor,
+	})
+	cache := NewBundleEvaluationCache()
+
+	result := cache.GetBundleState(chainState, stateDb, tx)
+	require.Equal(t, makePermanentlyBlockedState("failed to decode transaction bundle: unexpected EOF"), result)
 }
