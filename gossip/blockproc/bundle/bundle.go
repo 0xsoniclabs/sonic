@@ -62,7 +62,7 @@ func OpenEnvelope(
 
 	const openedBundleKey = "openedBundle"
 	if txBundle, cached := types.GetSonicPayload[TransactionBundle](tx, openedBundleKey); cached {
-		return txBundle, nil
+		return txBundle.Clone(), nil
 	}
 
 	txBundle, err := decode(signer, tx.Data())
@@ -70,7 +70,7 @@ func OpenEnvelope(
 		return TransactionBundle{}, err
 	}
 	types.SetSonicPayload(tx, openedBundleKey, txBundle)
-	return txBundle, nil
+	return txBundle.Clone(), nil
 }
 
 var (
@@ -112,6 +112,14 @@ func (tb *TransactionBundle) GetTransactionsInReferencedOrder() []*types.Transac
 // envelope transaction's data field.
 func (tb *TransactionBundle) Encode() ([]byte, error) {
 	return encodeInternal(bundleEncodingVersion, tb)
+}
+
+// Clone creates a deep copy of the transaction bundle by encoding and decoding it.
+func (tb *TransactionBundle) Clone() TransactionBundle {
+	return TransactionBundle{
+		Transactions: maps.Clone(tb.Transactions),
+		Plan:         tb.Plan,
+	}
 }
 
 // --- internal utilities ---

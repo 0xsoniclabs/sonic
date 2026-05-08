@@ -158,6 +158,36 @@ func TestOpenEnvelope_CachesCalls(t *testing.T) {
 	}
 }
 
+func TestOpenEnvelope_CachedValuesAreImmutable(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	mockSigner := NewMockSigner(ctrl)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	envelope := NewBuilder().AllOf(
+		Step(key, &types.AccessListTx{Nonce: 1}),
+	).Build()
+
+	// Expect the signer to be called only during the first OpenEnvelope call.
+	mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{0x1}, nil).Times(1)
+	mockSigner.EXPECT().Hash(gomock.Any()).Return(common.Hash{0x1}).Times(1)
+
+	// First call: signer is used to decode the bundle.
+	firstValue, err := OpenEnvelope(mockSigner, envelope)
+	require.NoError(t, err)
+
+	testRef := TxReference{From: common.Address{0x2}, Hash: common.Hash{0x2}}
+	firstValue.Transactions[testRef] = types.NewTx(&types.LegacyTx{Nonce: 999})
+
+	// Second call: result is cached, signer must not be called again.
+	secondValue, err := OpenEnvelope(mockSigner, envelope)
+	require.NoError(t, err)
+
+	require.NotContains(t, secondValue.Transactions, testRef)
+}
+
 func TestOpenEnvelope_FailsIfNotAnEnvelope(t *testing.T) {
 	notEnvelope := types.NewTx(&types.LegacyTx{})
 	require.False(t, IsEnvelope(notEnvelope))
