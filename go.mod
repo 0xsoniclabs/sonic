@@ -27,7 +27,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/deckarep/golang-set v1.8.0
 	github.com/ethereum/go-ethereum v1.17.1
-	github.com/gballet/go-libpcsclite v0.0.0-20250918194357-1ec6f2e601c6
+	github.com/gballet/go-libpcsclite v0.0.0-20191108122812-4678299bea08
 	github.com/hashicorp/golang-lru v1.0.2
 	github.com/holiman/uint256 v1.3.2
 	github.com/klauspost/pgzip v1.2.6
@@ -36,7 +36,7 @@ require (
 	github.com/moby/sys/reexec v0.1.0
 	github.com/naoina/toml v0.1.2-0.20170918210437-9fafd6967416
 	github.com/pkg/errors v0.9.1
-	github.com/status-im/keycard-go v0.3.3
+	github.com/status-im/keycard-go v0.3.2
 	github.com/stretchr/testify v1.11.1
 	github.com/supranational/blst v0.3.16
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
