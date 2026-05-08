@@ -134,3 +134,39 @@ func (mr *MockMetricsCounterWrapperMockRecorder) Inc(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Inc", reflect.TypeOf((*MockMetricsCounterWrapper)(nil).Inc), arg0)
 }
+
+// MockMetricsHistogramWrapper is a mock of MetricsHistogramWrapper interface.
+type MockMetricsHistogramWrapper struct {
+	ctrl     *gomock.Controller
+	recorder *MockMetricsHistogramWrapperMockRecorder
+	isgomock struct{}
+}
+
+// MockMetricsHistogramWrapperMockRecorder is the mock recorder for MockMetricsHistogramWrapper.
+type MockMetricsHistogramWrapperMockRecorder struct {
+	mock *MockMetricsHistogramWrapper
+}
+
+// NewMockMetricsHistogramWrapper creates a new mock instance.
+func NewMockMetricsHistogramWrapper(ctrl *gomock.Controller) *MockMetricsHistogramWrapper {
+	mock := &MockMetricsHistogramWrapper{ctrl: ctrl}
+	mock.recorder = &MockMetricsHistogramWrapperMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockMetricsHistogramWrapper) EXPECT() *MockMetricsHistogramWrapperMockRecorder {
+	return m.recorder
+}
+
+// Update mocks base method.
+func (m *MockMetricsHistogramWrapper) Update(arg0 int64) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Update", arg0)
+}
+
+// Update indicates an expected call of Update.
+func (mr *MockMetricsHistogramWrapperMockRecorder) Update(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockMetricsHistogramWrapper)(nil).Update), arg0)
+}

@@ -82,7 +82,9 @@ var (
 	skippedSponsoredCounter = utils.MetricsCounterWrapper(metrics.GetOrRegisterCounter("chain/sponsored/skipped", nil))
 	bundleCounter           = utils.MetricsCounterWrapper(metrics.GetOrRegisterCounter("chain/bundles", nil))
 	skippedBundleCounter    = utils.MetricsCounterWrapper(metrics.GetOrRegisterCounter("chain/bundles/skipped", nil))
-	effectiveGasGauge       = utils.MetricsGaugeWrapper(metrics.GetOrRegisterGauge("chain/gas/effective", nil))
+	effectiveGasHistogram   = utils.MetricsHistogramWrapper(
+		metrics.GetOrRegisterHistogram("chain/gas/effective", nil, metrics.NewExpDecaySample(1028, 0.015)),
+	)
 )
 
 type ExtendedTxPosition struct {
@@ -622,14 +624,10 @@ func processUserTransactionsNoLimits(
 	orderedTxs []*types.Transaction,
 	userTransactionGasLimit uint64) {
 	sumGasUsed := uint64(0)
-	for _, tx := range orderedTxs {
-		if subsidies.IsSponsorshipRequest(tx) {
-			sponsoredCounter.Inc(1)
-		}
-	}
 
 	summary := evmProcessor.Execute(orderedTxs, userTransactionGasLimit)
 	for _, processed := range summary.ProcessedTransactions {
+		updateMetricsInputTx(processed.Transaction)
 		if processed.Receipt != nil { // < nil if skipped
 			blockBuilder.AddTransaction(
 				processed.Transaction,
@@ -637,19 +635,9 @@ func processUserTransactionsNoLimits(
 			)
 			sumGasUsed += processed.Receipt.GasUsed
 		}
-
-		if subsidies.IsSponsorshipRequest(processed.Transaction) && processed.Receipt == nil {
-			skippedSponsoredCounter.Inc(1)
-		}
-		if summary.ExecutionCost == 0 && sumGasUsed == 0 {
-			effectiveGasGauge.Update(100)
-		} else if summary.ExecutionCost == 0 {
-			effectiveGasGauge.Update(0)
-		} else {
-			effective := float64(sumGasUsed) / float64(summary.ExecutionCost)
-			effectiveGasGauge.Update(int64(effective * 100))
-		}
+		updateMetricsSkippedTx(processed.Transaction, processed.Receipt)
 	}
+	updateMetricsEffectiveGas(uint64(summary.ExecutionCost), sumGasUsed)
 }
 
 // rlpEncodedMaxHeaderSizeInBytes is an upper bound of the EVM block header size
@@ -687,15 +675,9 @@ func processUserTransactions(
 	causedBy = make(map[common.Hash]common.Hash)
 	skippedCounter := 0
 	for _, tx := range orderedTxs {
+		updateMetricsInputTx(tx)
 		neededSpace := txSizeIncludingSubsidies(tx)
 		if neededSpace <= remainingSize {
-			if subsidies.IsSponsorshipRequest(tx) {
-				sponsoredCounter.Inc(1)
-			}
-			if bundle.IsEnvelope(tx) {
-				bundleCounter.Inc(1)
-			}
-
 			summary := evmProcessor.Execute([]*types.Transaction{tx}, userTransactionGasLimit)
 			summaryGasSum += summary.ExecutionCost
 			for _, processed := range summary.ProcessedTransactions {
@@ -710,29 +692,44 @@ func processUserTransactions(
 					receiptGasSum += processed.Receipt.GasUsed
 				}
 
-				// The envelope is only part of the processed transactions if the bundle failed
-				if bundle.IsEnvelope(processed.Transaction) {
-					skippedBundleCounter.Inc(1)
-				}
-				if subsidies.IsSponsorshipRequest(processed.Transaction) && processed.Receipt == nil {
-					skippedSponsoredCounter.Inc(1)
-				}
+				updateMetricsSkippedTx(processed.Transaction, processed.Receipt)
 			}
 		} else {
 			skippedCounter++
 		}
 	}
 
-	if summaryGasSum == 0 && receiptGasSum == 0 {
-		effectiveGasGauge.Update(100)
-	} else if summaryGasSum == 0 {
-		effectiveGasGauge.Update(0)
-	} else {
-		effective := float64(receiptGasSum) / float64(summaryGasSum)
-		effectiveGasGauge.Update(int64(effective * 100))
-	}
+	updateMetricsEffectiveGas(uint64(summaryGasSum), receiptGasSum)
 
 	return skippedCounter, causedBy
+}
+
+func updateMetricsInputTx(tx *types.Transaction) {
+	if bundle.IsEnvelope(tx) {
+		bundleCounter.Inc(1)
+	} else if subsidies.IsSponsorshipRequest(tx) {
+		sponsoredCounter.Inc(1)
+	}
+}
+
+func updateMetricsSkippedTx(tx *types.Transaction, receipt *types.Receipt) {
+	// The envelope is only part of the processed transactions if the bundle failed
+	if bundle.IsEnvelope(tx) {
+		skippedBundleCounter.Inc(1)
+	} else if subsidies.IsSponsorshipRequest(tx) && receipt == nil {
+		skippedSponsoredCounter.Inc(1)
+	}
+}
+
+func updateMetricsEffectiveGas(summaryGasSum, receiptGasSum uint64) {
+	if summaryGasSum == 0 && receiptGasSum == 0 {
+		effectiveGasHistogram.Update(100)
+	} else if summaryGasSum == 0 {
+		effectiveGasHistogram.Update(0)
+	} else {
+		effective := float64(receiptGasSum) / float64(summaryGasSum)
+		effectiveGasHistogram.Update(int64(effective * 100))
+	}
 }
 
 // txSizeIncludingSubsidies returns the size of the transaction,

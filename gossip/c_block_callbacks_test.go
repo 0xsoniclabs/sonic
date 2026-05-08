@@ -1417,7 +1417,7 @@ func TestProcessUserTransactionsNoLimit_ProducesExpectedMetrics(t *testing.T) {
 		metricsMockSetup     func(
 			*utils.MockMetricsCounterWrapper,
 			*utils.MockMetricsCounterWrapper,
-			*utils.MockMetricsGaugeWrapper,
+			*utils.MockMetricsHistogramWrapper,
 		)
 	}{
 		"sponsored_counter_incremented_for_sponsorship_requests": {
@@ -1430,9 +1430,9 @@ func TestProcessUserTransactionsNoLimit_ProducesExpectedMetrics(t *testing.T) {
 			metricsMockSetup: func(
 				sponsoredCounterMock *utils.MockMetricsCounterWrapper,
 				skippedSponsoredCounterMock *utils.MockMetricsCounterWrapper,
-				effectiveGasGaugeMock *utils.MockMetricsGaugeWrapper) {
+				effectiveGasHistogramMock *utils.MockMetricsHistogramWrapper) {
 				sponsoredCounterMock.EXPECT().Inc(int64(1))
-				effectiveGasGaugeMock.EXPECT().Update(int64(0)) // ExecutionCost == 0 -> 0
+				effectiveGasHistogramMock.EXPECT().Update(int64(0)) // ExecutionCost == 0 -> 0
 			},
 		},
 		"skipped_sponsored_counter_incremented_when_sponsored_tx_has_nil_receipt": {
@@ -1445,13 +1445,13 @@ func TestProcessUserTransactionsNoLimit_ProducesExpectedMetrics(t *testing.T) {
 			metricsMockSetup: func(
 				sponsoredCounterMock *utils.MockMetricsCounterWrapper,
 				skippedSponsoredCounterMock *utils.MockMetricsCounterWrapper,
-				effectiveGasGaugeMock *utils.MockMetricsGaugeWrapper) {
+				effectiveGasHistogramMock *utils.MockMetricsHistogramWrapper) {
 				sponsoredCounterMock.EXPECT().Inc(int64(1))
 				skippedSponsoredCounterMock.EXPECT().Inc(int64(1))
-				effectiveGasGaugeMock.EXPECT().Update(int64(100)) // ExecutionCost == 0 -> 100
+				effectiveGasHistogramMock.EXPECT().Update(int64(100)) // ExecutionCost == 0 -> 100
 			},
 		},
-		"effective_gas_gauge_updated_with_ratio_when_execution_cost_is_nonzero": {
+		"effective_gas_histogram_updated_with_ratio_when_execution_cost_is_nonzero": {
 			transactions: []*types.Transaction{
 				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
 			},
@@ -1462,12 +1462,12 @@ func TestProcessUserTransactionsNoLimit_ProducesExpectedMetrics(t *testing.T) {
 			metricsMockSetup: func(
 				sponsoredCounterMock *utils.MockMetricsCounterWrapper,
 				skippedSponsoredCounterMock *utils.MockMetricsCounterWrapper,
-				effectiveGasGaugeMock *utils.MockMetricsGaugeWrapper) {
+				effectiveGasHistogramMock *utils.MockMetricsHistogramWrapper) {
 				// GasUsed=50, ExecutionCost=100 -> effective = 50/100 * 100 = 50
-				effectiveGasGaugeMock.EXPECT().Update(int64(50)) // ExecutionCost == 50% of GasUsed -> 50
+				effectiveGasHistogramMock.EXPECT().Update(int64(50)) // ExecutionCost == 50% of GasUsed -> 50
 			},
 		},
-		"effective_gas_gauge_defaults_to_0_when_execution_cost_is_zero": {
+		"effective_gas_histogram_defaults_to_0_when_execution_cost_is_zero": {
 			transactions: []*types.Transaction{
 				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(0), V: big.NewInt(1)}),
 			},
@@ -1477,12 +1477,12 @@ func TestProcessUserTransactionsNoLimit_ProducesExpectedMetrics(t *testing.T) {
 			metricsMockSetup: func(
 				sponsoredCounterMock *utils.MockMetricsCounterWrapper,
 				skippedSponsoredCounterMock *utils.MockMetricsCounterWrapper,
-				effectiveGasGaugeMock *utils.MockMetricsGaugeWrapper) {
+				effectiveGasHistogramMock *utils.MockMetricsHistogramWrapper) {
 				sponsoredCounterMock.EXPECT().Inc(int64(1))
-				effectiveGasGaugeMock.EXPECT().Update(int64(0)) // ExecutionCost == 0 -> 0
+				effectiveGasHistogramMock.EXPECT().Update(int64(0)) // ExecutionCost == 0 -> 0
 			},
 		},
-		"effective_gas_gauge_defaults_to_100_when_execution_cost_and_gas_used_is_zero": {
+		"effective_gas_histogram_defaults_to_100_when_execution_cost_and_gas_used_is_zero": {
 			transactions: []*types.Transaction{
 				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(0), V: big.NewInt(1)}),
 			},
@@ -1492,12 +1492,12 @@ func TestProcessUserTransactionsNoLimit_ProducesExpectedMetrics(t *testing.T) {
 			metricsMockSetup: func(
 				sponsoredCounterMock *utils.MockMetricsCounterWrapper,
 				skippedSponsoredCounterMock *utils.MockMetricsCounterWrapper,
-				effectiveGasGaugeMock *utils.MockMetricsGaugeWrapper) {
+				effectiveGasHistogramMock *utils.MockMetricsHistogramWrapper) {
 				sponsoredCounterMock.EXPECT().Inc(int64(1))
-				effectiveGasGaugeMock.EXPECT().Update(int64(100)) // ExecutionCost == 0 && GasUsed == 0 -> 100
+				effectiveGasHistogramMock.EXPECT().Update(int64(100)) // ExecutionCost == 0 && GasUsed == 0 -> 100
 			},
 		},
-		"effective_gas_gauge_accumulates_across_processed_transactions": {
+		"effective_gas_histogram_accumulates_across_processed_transactions": {
 			transactions: []*types.Transaction{
 				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
 				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
@@ -1510,14 +1510,9 @@ func TestProcessUserTransactionsNoLimit_ProducesExpectedMetrics(t *testing.T) {
 			metricsMockSetup: func(
 				sponsoredCounterMock *utils.MockMetricsCounterWrapper,
 				skippedSponsoredCounterMock *utils.MockMetricsCounterWrapper,
-				effectiveGasGaugeMock *utils.MockMetricsGaugeWrapper) {
-				// Two txs with GasUsed 30 and 70, ExecutionCost 200
-				// After tx1: effective = 30/200 * 100 = 15
-				// After tx2: effective = 100/200 * 100 = 50
-				gomock.InOrder(
-					effectiveGasGaugeMock.EXPECT().Update(int64(15)),
-					effectiveGasGaugeMock.EXPECT().Update(int64(50)),
-				)
+				effectiveGasHistogramMock *utils.MockMetricsHistogramWrapper) {
+				// Total GasUsed= 30 + 70 = 100, ExecutionCost=200 -> effective = 100/200 * 100 = 50
+				effectiveGasHistogramMock.EXPECT().Update(int64(50))
 			},
 		},
 	}
@@ -1528,22 +1523,22 @@ func TestProcessUserTransactionsNoLimit_ProducesExpectedMetrics(t *testing.T) {
 			evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
 			sponsoredCounterMock := utils.NewMockMetricsCounterWrapper(ctrl)
 			skippedSponsoredCounterMock := utils.NewMockMetricsCounterWrapper(ctrl)
-			effectiveGasGaugeMock := utils.NewMockMetricsGaugeWrapper(ctrl)
+			effectiveGasHistogramMock := utils.NewMockMetricsHistogramWrapper(ctrl)
 			blockBuilder := inter.NewBlockBuilder()
 
 			tmpSponsoredCounter := sponsoredCounter
 			tmpSkipped := skippedSponsoredCounter
-			tmpGauge := effectiveGasGauge
+			tmpHistogram := effectiveGasHistogram
 			defer func() {
 				sponsoredCounter = tmpSponsoredCounter
 				skippedSponsoredCounter = tmpSkipped
-				effectiveGasGauge = tmpGauge
+				effectiveGasHistogram = tmpHistogram
 			}()
 			sponsoredCounter = sponsoredCounterMock
 			skippedSponsoredCounter = skippedSponsoredCounterMock
-			effectiveGasGauge = effectiveGasGaugeMock
+			effectiveGasHistogram = effectiveGasHistogramMock
 
-			test.metricsMockSetup(sponsoredCounterMock, skippedSponsoredCounterMock, effectiveGasGaugeMock)
+			test.metricsMockSetup(sponsoredCounterMock, skippedSponsoredCounterMock, effectiveGasHistogramMock)
 
 			processedTxs := make([]evmcore.ProcessedTransaction, len(test.transactions))
 			for i := range test.transactions {
@@ -1577,7 +1572,7 @@ func TestProcessUserTransactions_ProducesExpectedMetrics(t *testing.T) {
 			*utils.MockMetricsCounterWrapper,
 			*utils.MockMetricsCounterWrapper,
 			*utils.MockMetricsCounterWrapper,
-			*utils.MockMetricsGaugeWrapper,
+			*utils.MockMetricsHistogramWrapper,
 		)
 	}{
 		"sponsored_counter_incremented_for_sponsorship_requests": {
@@ -1589,7 +1584,7 @@ func TestProcessUserTransactions_ProducesExpectedMetrics(t *testing.T) {
 			},
 			metricsMockSetup: func(
 				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
-				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				effectiveGasMock *utils.MockMetricsHistogramWrapper) {
 				sponsoredMock.EXPECT().Inc(int64(1))
 				effectiveGasMock.EXPECT().Update(int64(0)) // ExecutionCost == 0 -> 0
 			},
@@ -1603,7 +1598,7 @@ func TestProcessUserTransactions_ProducesExpectedMetrics(t *testing.T) {
 			},
 			metricsMockSetup: func(
 				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
-				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				effectiveGasMock *utils.MockMetricsHistogramWrapper) {
 				sponsoredMock.EXPECT().Inc(int64(1))
 				skippedSponsoredMock.EXPECT().Inc(int64(1))
 				effectiveGasMock.EXPECT().Update(int64(100)) // ExecutionCost == 0 -> 100
@@ -1620,7 +1615,7 @@ func TestProcessUserTransactions_ProducesExpectedMetrics(t *testing.T) {
 			successfulBundleReturnInner: true,
 			metricsMockSetup: func(
 				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
-				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				effectiveGasMock *utils.MockMetricsHistogramWrapper) {
 				bundleMock.EXPECT().Inc(int64(1))
 				effectiveGasMock.EXPECT().Update(int64(0)) // ExecutionCost == 0 -> 0
 			},
@@ -1634,13 +1629,13 @@ func TestProcessUserTransactions_ProducesExpectedMetrics(t *testing.T) {
 			},
 			metricsMockSetup: func(
 				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
-				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				effectiveGasMock *utils.MockMetricsHistogramWrapper) {
 				bundleMock.EXPECT().Inc(int64(1))
 				skippedBundleMock.EXPECT().Inc(int64(1))
 				effectiveGasMock.EXPECT().Update(int64(100)) // ExecutionCost == 0 -> 100
 			},
 		},
-		"effective_gas_gauge_updated_with_ratio_when_execution_cost_is_nonzero": {
+		"effective_gas_histogram_updated_with_ratio_when_execution_cost_is_nonzero": {
 			transactions: []*types.Transaction{
 				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
 			},
@@ -1650,12 +1645,12 @@ func TestProcessUserTransactions_ProducesExpectedMetrics(t *testing.T) {
 			summaryExecutionCost: 100,
 			metricsMockSetup: func(
 				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
-				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				effectiveGasMock *utils.MockMetricsHistogramWrapper) {
 				// sumGasUsed=50, ExecutionCost=100 -> effective = 50/100 * 100 = 50
 				effectiveGasMock.EXPECT().Update(int64(50))
 			},
 		},
-		"effective_gas_gauge_defaults_to_0_when_execution_cost_is_zero": {
+		"effective_gas_histogram_defaults_to_0_when_execution_cost_is_zero": {
 			transactions: []*types.Transaction{
 				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
 			},
@@ -1664,11 +1659,11 @@ func TestProcessUserTransactions_ProducesExpectedMetrics(t *testing.T) {
 			},
 			metricsMockSetup: func(
 				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
-				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				effectiveGasMock *utils.MockMetricsHistogramWrapper) {
 				effectiveGasMock.EXPECT().Update(int64(0))
 			},
 		},
-		"effective_gas_gauge_defaults_to_100_when_execution_cost_and_gas_used_is_zero": {
+		"effective_gas_histogram_defaults_to_100_when_execution_cost_and_gas_used_is_zero": {
 			transactions: []*types.Transaction{
 				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
 			},
@@ -1677,11 +1672,11 @@ func TestProcessUserTransactions_ProducesExpectedMetrics(t *testing.T) {
 			},
 			metricsMockSetup: func(
 				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
-				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				effectiveGasMock *utils.MockMetricsHistogramWrapper) {
 				effectiveGasMock.EXPECT().Update(int64(100))
 			},
 		},
-		"effective_gas_gauge_accumulates_across_multiple_transactions": {
+		"effective_gas_histogram_accumulates_across_multiple_transactions": {
 			transactions: []*types.Transaction{
 				types.NewTx(&types.LegacyTx{To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
 				types.NewTx(&types.LegacyTx{Nonce: 2, To: &toAddr, GasPrice: big.NewInt(10), V: big.NewInt(1)}),
@@ -1693,7 +1688,7 @@ func TestProcessUserTransactions_ProducesExpectedMetrics(t *testing.T) {
 			summaryExecutionCost: 200,
 			metricsMockSetup: func(
 				sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock *utils.MockMetricsCounterWrapper,
-				effectiveGasMock *utils.MockMetricsGaugeWrapper) {
+				effectiveGasMock *utils.MockMetricsHistogramWrapper) {
 				// sumGasUsed = 30 + 70 = 100, sumExecutionCost = 200 + 200 = 400
 				// effective = 100/400 * 100 = 25
 				effectiveGasMock.EXPECT().Update(int64(25))
@@ -1709,26 +1704,26 @@ func TestProcessUserTransactions_ProducesExpectedMetrics(t *testing.T) {
 			skippedSponsoredMock := utils.NewMockMetricsCounterWrapper(ctrl)
 			bundleMock := utils.NewMockMetricsCounterWrapper(ctrl)
 			skippedBundleMock := utils.NewMockMetricsCounterWrapper(ctrl)
-			effectiveGasMock := utils.NewMockMetricsGaugeWrapper(ctrl)
+			effectiveGasMock := utils.NewMockMetricsHistogramWrapper(ctrl)
 			blockBuilder := inter.NewBlockBuilder()
 
 			tmpSponsored := sponsoredCounter
 			tmpSkippedSponsored := skippedSponsoredCounter
 			tmpBundle := bundleCounter
 			tmpSkippedBundle := skippedBundleCounter
-			tmpGauge := effectiveGasGauge
+			tmpHistogram := effectiveGasHistogram
 			defer func() {
 				sponsoredCounter = tmpSponsored
 				skippedSponsoredCounter = tmpSkippedSponsored
 				bundleCounter = tmpBundle
 				skippedBundleCounter = tmpSkippedBundle
-				effectiveGasGauge = tmpGauge
+				effectiveGasHistogram = tmpHistogram
 			}()
 			sponsoredCounter = sponsoredMock
 			skippedSponsoredCounter = skippedSponsoredMock
 			bundleCounter = bundleMock
 			skippedBundleCounter = skippedBundleMock
-			effectiveGasGauge = effectiveGasMock
+			effectiveGasHistogram = effectiveGasMock
 
 			test.metricsMockSetup(sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock, effectiveGasMock)
 

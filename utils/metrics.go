@@ -33,3 +33,9 @@ type MetricsCounterWrapper interface {
 	Dec(int64)
 	Clear()
 }
+
+// MetricsHistogramWrapper is an interface that wraps the methods of
+// metrics Histogram to facilitate testing with mocks.
+type MetricsHistogramWrapper interface {
+	Update(int64)
+}
