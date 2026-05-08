@@ -1221,7 +1221,7 @@ func TestValidateTx_RejectsTx_WhenStaticValidationFails(t *testing.T) {
 				chain,
 				state,
 				expectNoSubsidies(t),
-				expectNoBundleTransaction(t),
+				expectNoBundleTransaction(ctrl),
 				signer)
 			require.Error(t, err)
 		})
@@ -1280,7 +1280,7 @@ func TestValidateTx_RejectsTx_WhenBlockValidationFails(t *testing.T) {
 				chain,
 				state,
 				expectNoSubsidies(t),
-				expectNoBundleTransaction(t),
+				expectNoBundleTransaction(ctrl),
 				signer,
 			)
 			require.Error(t, err)
@@ -1345,7 +1345,7 @@ func TestValidateTx_RejectsTx_WhenPoolValidationFails(t *testing.T) {
 				chain,
 				state,
 				expectNoSubsidies(t),
-				expectNoBundleTransaction(t),
+				expectNoBundleTransaction(ctrl),
 				signer)
 			require.Error(t, err)
 		})
@@ -1411,7 +1411,7 @@ func TestValidateTx_RejectsTx_WhenStateValidationFails(t *testing.T) {
 				chain,
 				state,
 				expectNoSubsidies(t),
-				expectNoBundleTransaction(t),
+				expectNoBundleTransaction(ctrl),
 				signer,
 			)
 			require.Error(t, err)
@@ -1529,7 +1529,7 @@ func TestValidateTx_AcceptsZeroGasPriceTransactions_WhenSubsidiesAreEnabled(t *t
 				chain,
 				state,
 				acceptAnySponsorshipRequest,
-				acceptAnyBundleTransaction,
+				acceptAnyBundleTransaction(ctrl),
 				signer,
 			)
 			require.NoError(t, err)
@@ -1543,7 +1543,7 @@ func TestValidateTx_AcceptsZeroGasPriceTransactions_WhenSubsidiesAreEnabled(t *t
 				chain,
 				state,
 				acceptAnySponsorshipRequest,
-				acceptAnyBundleTransaction,
+				acceptAnyBundleTransaction(ctrl),
 				signer,
 			)
 			require.Error(t, err)
@@ -1811,10 +1811,13 @@ func Test_validateBundleTransactionsInternal_EvaluatesBundleUsingGetBundleState(
 				With(bundle.Step(key, &types.AccessListTx{})).
 				Build()
 
-			err = validateBundleTransactionsInternal(envelope, bundlesEnabled, reader, stateDb, signer,
-				func(ChainStateForBundleEval, state.StateDB, *types.Transaction) BundleState {
-					return test.bundleState
-				})
+			err = validateBundleTransactionsInternal(envelope,
+				bundlesEnabled,
+				reader,
+				stateDb,
+				signer,
+				returnBundleState(ctrl, test.bundleState),
+			)
 
 			if test.expectedErr != nil {
 				require.ErrorIs(t, err, test.expectedErr)
@@ -1846,12 +1849,13 @@ func Test_validateBundleTransactionsInternal_AccumulatesRejectionReasons(t *test
 
 	reasons := []string{"reason1", "reason2"}
 
-	err = validateBundleTransactionsInternal(envelope, bundlesEnabled, reader, stateDb, signer,
-		func(ChainStateForBundleEval, state.StateDB, *types.Transaction) BundleState {
-			return BundleState{
-				Reasons: reasons,
-			}
-		})
+	err = validateBundleTransactionsInternal(envelope,
+		bundlesEnabled,
+		reader,
+		stateDb,
+		signer,
+		returnBundleState(ctrl, BundleState{Reasons: reasons}),
+	)
 	require.ErrorIs(t, err, ErrBundleNonExecutable)
 	for _, reason := range reasons {
 		require.ErrorContains(t, err, reason)
@@ -1923,7 +1927,7 @@ func TestValidateTx_AllowsSponsoredZeroGasPriceTransactions_WhenSubsidiesAreFund
 				chain,
 				state,
 				subsidiesChecker,
-				acceptAnyBundleTransaction,
+				acceptAnyBundleTransaction(ctrl),
 				signer,
 			)
 			if test.isSponsored {
@@ -1999,7 +2003,7 @@ func TestValidateTx_Success(t *testing.T) {
 				chain,
 				state,
 				expectNoSubsidies(t),
-				acceptAnyBundleTransaction,
+				acceptAnyBundleTransaction(ctrl),
 				signer,
 			)
 			require.NoError(t, err)
@@ -2103,15 +2107,23 @@ func acceptAnySponsorshipRequest(*types.Transaction) bool {
 	return true
 }
 
-func expectNoBundleTransaction(t *testing.T) func(ChainStateForBundleEval, state.StateDB, *types.Transaction) BundleState {
-	return func(ChainStateForBundleEval, state.StateDB, *types.Transaction) BundleState {
-		t.Fatal("unexpected bundle transaction in this test")
-		return BundleState{}
-	}
+func expectNoBundleTransaction(ctrl *gomock.Controller) BundleEvaluator {
+	mock := NewMockBundleEvaluator(ctrl)
+	return mock
 }
 
-func acceptAnyBundleTransaction(ChainStateForBundleEval, state.StateDB, *types.Transaction) BundleState {
-	return BundleState{
-		Executable: true,
-	}
+func acceptAnyBundleTransaction(ctrl *gomock.Controller) BundleEvaluator {
+	mock := NewMockBundleEvaluator(ctrl)
+	mock.EXPECT().GetBundleState(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(BundleState{Executable: true}).
+		AnyTimes()
+	return mock
+}
+
+func returnBundleState(ctrl *gomock.Controller, state BundleState) BundleEvaluator {
+	mock := NewMockBundleEvaluator(ctrl)
+	mock.EXPECT().GetBundleState(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(state).
+		AnyTimes()
+	return mock
 }

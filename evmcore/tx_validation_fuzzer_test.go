@@ -264,7 +264,7 @@ func FuzzValidateTransaction(f *testing.F) {
 		validateErr := validateTx(
 			signedTx, opt, netRules, chain, state,
 			acceptAnySponsorshipRequest,
-			acceptAnyBundleTransaction,
+			acceptAnyBundleTransaction(ctrl),
 			signer)
 
 		// create evm to check validateTx is consistent with processor.

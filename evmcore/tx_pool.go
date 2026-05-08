@@ -756,7 +756,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		pool.chain,
 		pool.currentState,
 		subsidiesChecker,
-		pool.bundleEvaluationCache.GetBundleState,
+		pool.bundleEvaluationCache,
 		pool.signer,
 	)
 	if err != nil {
