@@ -361,7 +361,7 @@ func NewTxPool(
 		chainconfig,
 		chain,
 		newSubsidiesChecker,
-		nil,
+		bundlesCache,
 	)
 }
 
