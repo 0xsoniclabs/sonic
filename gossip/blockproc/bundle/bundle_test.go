@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestIsBundledOnly_IdentifiesBundleOnlyTransactions_OfAllTypes(t *testing.T) {
@@ -124,6 +125,67 @@ func TestOpenEnvelope_SuccessfullyDecodesEnvelopes(t *testing.T) {
 			require.Equal(t, bundle, unpacked)
 		})
 	}
+}
+
+func TestOpenEnvelope_CachesCalls(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockSigner := NewMockSigner(ctrl)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	envelope := NewBuilder().AllOf(
+		Step(key, &types.AccessListTx{Nonce: 1}),
+	).Build()
+
+	// Expect the signer to be called only during the first OpenEnvelope call.
+	mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).Times(1)
+	mockSigner.EXPECT().Hash(gomock.Any()).Return(common.Hash{}).Times(1)
+
+	// First call: signer is used to decode the bundle.
+	firstValue, err := OpenEnvelope(mockSigner, envelope)
+	require.NoError(t, err)
+
+	// Second call: result is cached, signer must not be called again.
+	secondValue, err := OpenEnvelope(mockSigner, envelope)
+	require.NoError(t, err)
+
+	require.Equal(t, firstValue, secondValue)
+	for i := range firstValue.Transactions {
+		// Ensure that bundled transactions have the same cached sender, they must
+		// be the same instance
+		require.Same(t, firstValue.Transactions[i], secondValue.Transactions[i])
+	}
+}
+
+func TestOpenEnvelope_CachedValuesAreImmutable(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	mockSigner := NewMockSigner(ctrl)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	envelope := NewBuilder().AllOf(
+		Step(key, &types.AccessListTx{Nonce: 1}),
+	).Build()
+
+	// Expect the signer to be called only during the first OpenEnvelope call.
+	mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{0x1}, nil).Times(1)
+	mockSigner.EXPECT().Hash(gomock.Any()).Return(common.Hash{0x1}).Times(1)
+
+	// First call: signer is used to decode the bundle.
+	firstValue, err := OpenEnvelope(mockSigner, envelope)
+	require.NoError(t, err)
+
+	testRef := TxReference{From: common.Address{0x2}, Hash: common.Hash{0x2}}
+	firstValue.Transactions[testRef] = types.NewTx(&types.LegacyTx{Nonce: 999})
+
+	// Second call: result is cached, signer must not be called again.
+	secondValue, err := OpenEnvelope(mockSigner, envelope)
+	require.NoError(t, err)
+
+	require.NotContains(t, secondValue.Transactions, testRef)
 }
 
 func TestOpenEnvelope_FailsIfNotAnEnvelope(t *testing.T) {
@@ -723,4 +785,26 @@ func TestDecode_CorruptedExecutionPlanEncoding_DetectedDuringDecoding(t *testing
 	encoded[len(encoded)-1] = 0x17 // < last byte contains length of sub-step list
 	_, err = decode(nil, encoded)
 	require.ErrorContains(t, err, "failed to decode execution plan")
+}
+
+func TestTransactionBundle_Copy_CreatesDistinctCopy(t *testing.T) {
+	bundle := TransactionBundle{
+		Transactions: map[TxReference]*types.Transaction{
+			{From: common.Address{0x1}, Hash: common.Hash{0x1}}: types.NewTx(&types.LegacyTx{Nonce: 1}),
+		},
+		Plan: ExecutionPlan{
+			Root: NewTxStep(TxReference{From: common.Address{0x1}, Hash: common.Hash{0x1}}),
+		},
+	}
+
+	copied := bundle.Copy()
+
+	require.Equal(t, bundle.Transactions, copied.Transactions)
+	require.Equal(t, bundle.Plan, copied.Plan)
+
+	copied.Transactions[TxReference{From: common.Address{0x2}, Hash: common.Hash{0x2}}] = types.NewTx(&types.LegacyTx{Nonce: 2})
+	copied.Plan.Root = NewTxStep(TxReference{From: common.Address{0x2}, Hash: common.Hash{0x2}})
+
+	require.NotContains(t, bundle.Transactions, TxReference{From: common.Address{0x2}, Hash: common.Hash{0x2}})
+	require.Equal(t, NewTxStep(TxReference{From: common.Address{0x1}, Hash: common.Hash{0x1}}), bundle.Plan.Root)
 }
