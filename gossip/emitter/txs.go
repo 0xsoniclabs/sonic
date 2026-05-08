@@ -32,7 +32,6 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
@@ -236,12 +235,12 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 // isValidBundleTx checks whether the given transaction is a valid bundle that
 // could be emitted by this emitter.
 func (em *Emitter) isValidBundleTx(tx *types.Transaction) bool {
-	return em.isRunnableBundleTxInternal(tx, em.bundleCache.GetBundleState)
+	return em.isRunnableBundleTxInternal(tx, em.bundleCache)
 }
 
 func (em *Emitter) isRunnableBundleTxInternal(
 	tx *types.Transaction,
-	getBundleState func(evmcore.ChainStateForBundleEval, state.StateDB, *types.Transaction) evmcore.BundleState,
+	evalBundle evmcore.BundleEvaluator,
 ) bool {
 	// Ignore if bundled transactions are not enabled.
 	if !em.world.GetRules().Upgrades.TransactionBundles {
@@ -276,7 +275,7 @@ func (em *Emitter) isRunnableBundleTxInternal(
 
 	// Skip bundles that are not runnable in the current state.
 	adapter := &preCheckChainStateAdapter{external: em.world}
-	return getBundleState(adapter, stateDb, tx).Executable
+	return evalBundle.GetBundleState(adapter, stateDb, tx).Executable
 }
 
 type preCheckChainStateAdapter struct {
