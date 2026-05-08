@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
@@ -35,10 +36,17 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 )
 
 //go:generate mockgen -source=state_processor.go -destination=state_processor_mock.go -package=evmcore
+
+var (
+	effectiveGasHistogram = utils.MetricsHistogramWrapper(
+		metrics.GetOrRegisterHistogram("bundle/gas/effective", nil, metrics.NewExpDecaySample(1028, 0.015)),
+	)
+)
 
 // StateProcessor is a basic Processor, which takes care of transitioning
 // state from one point to another.
@@ -493,6 +501,13 @@ func (r *transactionRunner) runTransactionBundleInternal(
 	// execution of the bundle as used since nested bundles can not contain
 	// copies of themselves without finding a hash-function collision.
 	ctxt.statedb.AddProcessedBundle(planHash, positionInBlock)
+
+	bundleMaxGasUsed := uint64(0)
+	for _, bundleTx := range txBundle.Transactions {
+		bundleMaxGasUsed += bundleTx.Gas()
+	}
+	effective := float64(bundleMaxGasUsed) / float64(runner.executionCost) * 100
+	effectiveGasHistogram.Update(int64(effective))
 
 	return runner.processedTransactions, core_types.TransactionResultSuccessful, runner.executionCost
 }
