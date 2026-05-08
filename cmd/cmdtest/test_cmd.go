@@ -30,7 +30,7 @@ import (
 	"testing"
 	"text/template"
 
-	"github.com/docker/docker/pkg/reexec"
+	"github.com/moby/sys/reexec"
 )
 
 func NewTestCmd(t *testing.T, data interface{}) *TestCmd {
