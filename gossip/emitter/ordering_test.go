@@ -267,8 +267,8 @@ func TestTransactionsOrdering_MinerFeesCanBeComputedWithAllTransactions(t *testi
 				Hash:      test.tx.Hash(),
 				Tx:        test.tx,
 				Time:      test.tx.Time(),
-				GasFeeCap: utils.BigIntToUint256(test.tx.GasFeeCap()),
-				GasTipCap: utils.BigIntToUint256(test.tx.GasTipCap()),
+				GasFeeCap: utils.BigIntToUint256Clamped(test.tx.GasFeeCap()),
+				GasTipCap: utils.BigIntToUint256Clamped(test.tx.GasTipCap()),
 				Gas:       test.tx.Gas(),
 				BlobGas:   test.tx.BlobGas(),
 			}
