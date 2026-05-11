@@ -49,7 +49,7 @@ func TestTestApi_ProposeTransactions_FailsOnDecodingError(t *testing.T) {
 	require.ErrorContains(t, err, "typed transaction too short")
 }
 
-func TestTestApi_ProposeTransactions_ForwardsTransationsToBackend(t *testing.T) {
+func TestTestApi_ProposeTransactions_ForwardsTransactionsToBackend(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	backend := NewMockBackend(ctrl)
 	backend.EXPECT().IsTestOnlyApiEnabled().Return(true)
