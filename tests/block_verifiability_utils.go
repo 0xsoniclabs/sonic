@@ -191,9 +191,10 @@ func (s *State) ApplyGenesis(genesis *makefakegenesis.GenesisJson) error {
 		if len(account.Code) != 0 {
 			s.db.SetCode(cc.Address(address), account.Code)
 		}
-		balance, err := amount.NewFromBigInt(account.Balance)
-		if err != nil {
-			return fmt.Errorf("invalid balance for account %s: %w", address.Hex(), err)
+
+		var balance amount.Amount
+		if account.Balance != nil {
+			balance = amount.NewFromUint256(account.Balance)
 		}
 		s.db.AddBalance(cc.Address(address), balance)
 		s.db.SetNonce(cc.Address(address), account.Nonce)

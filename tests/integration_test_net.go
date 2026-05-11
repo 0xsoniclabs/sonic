@@ -39,6 +39,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 
 	sonicd "github.com/0xsoniclabs/sonic/cmd/sonicd/app"
@@ -393,9 +394,9 @@ func StartIntegrationTestNetWithJsonGenesis(
 		cur := &jsonGenesis.Accounts[i]
 		if cur.Address == sponsorAddress {
 			// enough tokens to endow plenty of accounts
-			extraBalanceForSponsor := new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1e9))
+			extraBalanceForSponsor := new(uint256.Int).Mul(uint256.NewInt(1e18), uint256.NewInt(1e9))
 			balance := cur.Balance
-			cur.Balance = new(big.Int).Add(balance, extraBalanceForSponsor)
+			cur.Balance = new(uint256.Int).Add(balance, extraBalanceForSponsor)
 			found = true
 			break
 		}

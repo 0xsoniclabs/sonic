@@ -61,8 +61,8 @@ func initStoreForTests(t *testing.T) *Store {
 
 	genStore := makefakegenesis.FakeGenesisStoreWithRulesAndStart(
 		2,
-		utils.ToFtm(genesisBalance),
-		utils.ToFtm(genesisStake),
+		utils.ToFtmU256(genesisBalance),
+		utils.ToFtmU256(genesisStake),
 		opera.FakeNetRules(opera.GetSonicUpgrades()),
 		2,
 		2,

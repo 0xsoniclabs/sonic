@@ -1035,7 +1035,7 @@ func TestSetCode_CannotChangeCode_OfEOA(t *testing.T) {
 		Accounts: []makefakegenesis.Account{
 			{
 				Address: codeAccountAddress,
-				Balance: big.NewInt(1e18),
+				Balance: uint256.NewInt(1e18),
 				Code:    originalCode,
 			},
 		},
