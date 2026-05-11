@@ -35,7 +35,7 @@ func (em *Emitter) ForceEventEmissionForTesting(
 	}
 
 	if !em.isValidator() {
-		return fmt.Errorf("can not emit events, not a validator")
+		return fmt.Errorf("cannot emit events, not a validator")
 	}
 
 	em.world.Lock()
