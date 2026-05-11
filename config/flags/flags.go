@@ -432,6 +432,6 @@ var (
 		Name: "enable-test-only-api",
 		Usage: "Enable the test-only API, which provides methods that are not intended to be used " +
 			"in production and may be modified at any time in the future. This is intended to be " +
-			"used in integration tests to simulate malicious behavior of a nodes.",
+			"used in integration tests to simulate malicious behavior of nodes.",
 	}
 )
