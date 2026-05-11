@@ -289,9 +289,9 @@ func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int, lo
 	}, nil
 }
 
-// toTransaction converts the arguments to a transaction.
+// ToTransaction converts the arguments to an unsigned `types.transaction`.
 // This assumes that setDefaults has been called.
-func (args *TransactionArgs) toTransaction() *types.Transaction {
+func (args *TransactionArgs) ToTransaction() *types.Transaction {
 	var data types.TxData
 
 	switch {
@@ -370,10 +370,4 @@ func (args *TransactionArgs) toTransaction() *types.Transaction {
 		}
 	}
 	return types.NewTx(data)
-}
-
-// ToTransaction converts the arguments to a transaction.
-// This assumes that setDefaults has been called.
-func (args *TransactionArgs) ToTransaction() *types.Transaction {
-	return args.toTransaction()
 }
