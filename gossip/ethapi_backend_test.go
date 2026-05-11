@@ -181,5 +181,5 @@ func TestEthApiBackend_proposeTransactionsInternal_ReturnsEmissionIssue(t *testi
 	issue := fmt.Errorf("injected test issue")
 
 	emitter.EXPECT().ForceEventEmissionForTesting(nil).Return(issue)
-	require.Error(t, backend.proposeTransactionsInternal(nil, emitter), issue)
+	require.ErrorIs(t, backend.proposeTransactionsInternal(nil, emitter), issue)
 }

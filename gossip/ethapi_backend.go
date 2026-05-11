@@ -662,6 +662,9 @@ func (b *EthAPIBackend) IsTestOnlyApiEnabled() bool {
 func (b *EthAPIBackend) ProposeTransactions(
 	txs types.Transactions,
 ) error {
+	if !b.IsTestOnlyApiEnabled() {
+		return fmt.Errorf("this feature is disabled")
+	}
 	if len(b.svc.emitters) == 0 {
 		return fmt.Errorf("no emitters available to propose transactions")
 	}
@@ -672,9 +675,6 @@ func (b *EthAPIBackend) proposeTransactionsInternal(
 	txs types.Transactions,
 	emitter forceableEmitter,
 ) error {
-	if !b.IsTestOnlyApiEnabled() {
-		return fmt.Errorf("this feature is disabled")
-	}
 	return emitter.ForceEventEmissionForTesting(txs)
 }
 
