@@ -403,6 +403,10 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 	if ctx.IsSet(flags.TEST_ONLY_DisableTransactionPoolValidation.Name) {
 		cfg.TxPool.DisableTxPoolValidation = true
 	}
+	if ctx.IsSet(flags.TEST_ONLY_EnableTestOnlyApi.Name) {
+		cfg.Opera.EnableTestOnlyApi = true
+		cfg.Emitter.AllowForcedEmission = true
+	}
 	if err := setTxPool(ctx, &cfg.TxPool); err != nil {
 		return nil, err
 	}

@@ -53,6 +53,8 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/result"
 )
 
+//go:generate mockgen -source=ethapi_backend.go -destination=ethapi_backend_mock.go -package=gossip
+
 // EthAPIBackend implements ethapi.Backend.
 type EthAPIBackend struct {
 	extRPCEnabled       bool
@@ -651,4 +653,31 @@ func (b *EthAPIBackend) GetUpgradeHeights() []opera.UpgradeHeight {
 
 func (b *EthAPIBackend) GetBundleExecutionInfo(hash common.Hash) *bundle.ExecutionInfo {
 	return b.svc.store.GetBundleExecutionInfo(hash)
+}
+
+func (b *EthAPIBackend) IsTestOnlyApiEnabled() bool {
+	return b.svc.config.EnableTestOnlyApi
+}
+
+func (b *EthAPIBackend) ProposeTransactions(
+	txs types.Transactions,
+) error {
+	if len(b.svc.emitters) == 0 {
+		return fmt.Errorf("no emitters available to propose transactions")
+	}
+	return b.proposeTransactionsInternal(txs, b.svc.emitters[0])
+}
+
+func (b *EthAPIBackend) proposeTransactionsInternal(
+	txs types.Transactions,
+	emitter forceableEmitter,
+) error {
+	if !b.IsTestOnlyApiEnabled() {
+		return fmt.Errorf("this feature is disabled")
+	}
+	return emitter.ForceEventEmissionForTesting(txs)
+}
+
+type forceableEmitter interface {
+	ForceEventEmissionForTesting(txs []*types.Transaction) error
 }

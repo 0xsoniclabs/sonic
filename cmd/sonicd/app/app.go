@@ -59,6 +59,7 @@ func RunWithArgs(
 	if control != nil {
 		// Disable txPool validation, only to be used in tests.
 		app.Flags = append(app.Flags, &flags.TEST_ONLY_DisableTransactionPoolValidation)
+		app.Flags = append(app.Flags, &flags.TEST_ONLY_EnableTestOnlyApi)
 		if control.NodeIdAnnouncement != nil {
 			defer close(control.NodeIdAnnouncement)
 		}

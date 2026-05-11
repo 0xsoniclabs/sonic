@@ -97,6 +97,11 @@ func TestIntegrationTestNet_Can(t *testing.T) {
 		t.Parallel()
 		testIntegrationTestNet_CanSpawnParallelSessions(t, session)
 	})
+
+	t.Run("ForceEmitTransactions", func(t *testing.T) {
+		session := net.SpawnSession(t)
+		testIntegrationTestNet_CanForceEmitTransactions(t, session)
+	})
 }
 
 func testIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T, net *IntegrationTestNet) {
@@ -170,6 +175,26 @@ func testIntegrationTestNet_CanSpawnParallelSessions(t *testing.T, session Integ
 			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 		})
 	}
+}
+
+func testIntegrationTestNet_CanForceEmitTransactions(t *testing.T, session IntegrationTestNetSession) {
+	account := MakeAccountWithBalance(t, session, big.NewInt(1e18))
+
+	signer := types.LatestSignerForChainID(session.GetChainId())
+	tx := types.MustSignNewTx(account.PrivateKey, signer, &types.LegacyTx{
+		Nonce:    0,
+		To:       &common.Address{},
+		Value:    big.NewInt(0),
+		Gas:      21000,
+		GasPrice: big.NewInt(enoughGasPrice),
+	})
+
+	hash, err := session.ForceEmit(t.Context(), tx)
+	require.NoError(t, err, "Failed to force emit transaction")
+
+	receipt, err := session.GetReceipt(hash)
+	require.NoError(t, err, "Failed to get receipt for forced transaction")
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 }
 
 func TestIntegrationTestNet_AdvanceEpoch(t *testing.T) {

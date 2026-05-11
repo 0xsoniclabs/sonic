@@ -71,6 +71,8 @@ type Config struct {
 	PrevEpochVoteFile    FileConfig
 
 	ThrottlerConfig ThrottlerConfig
+
+	AllowForcedEmission bool `toml:"-"`
 }
 
 // Attempt measures event emission attempts, it is used to define timeouts.
