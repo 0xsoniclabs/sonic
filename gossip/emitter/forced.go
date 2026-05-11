@@ -144,7 +144,7 @@ func (em *Emitter) createForcedEventForTesting(
 	}
 
 	if version == 3 {
-		// In single proposer mode, we would have to wait until its the local
+		// In single proposer mode, we would have to wait until it's the local
 		// validator's turn to emit a proposal. This is a bit more complicated,
 		// and can be implemented if needed. For now, it is skipped.
 		return nil, fmt.Errorf("forced transaction emissions not yet supported in single proposer mode")
