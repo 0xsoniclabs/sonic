@@ -57,6 +57,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -85,6 +86,16 @@ type IntegrationTestNetSession interface {
 	// them to be processed. An error is returned if the submission of any
 	// transaction failed.
 	SendAll(txs []*types.Transaction) ([]common.Hash, error)
+
+	// ForceEmit sends the given transaction to the network by directly causing
+	// a validator to propose it for inclusion in a block, by-passing the
+	// transaction pool. This is intended for testing miscellaneous edge cases
+	// that can not be tested by sending transactions through the normal
+	// transaction submission flow.
+	ForceEmit(ctx context.Context, tx *types.Transaction) (common.Hash, error)
+
+	// ForceEmitAll is the multi-transaction version of ForceEmit.
+	ForceEmitAll(ctx context.Context, txs []*types.Transaction) ([]common.Hash, error)
 
 	// TrySendAll transactions to the network without waiting for them to be
 	// processed. The method returns the list of hashes of accepted transactions,
@@ -529,7 +540,7 @@ func (n *IntegrationTestNet) start() error {
 
 				// http-client option
 				"--http", "--http.addr", "127.0.0.1", "--http.port", "0",
-				"--http.api", "admin,eth,dag,web3,net,txpool,trace,debug,sonic,scc",
+				"--http.api", "admin,eth,dag,web3,net,txpool,trace,debug,sonic,scc,test",
 
 				// websocket-client options
 				"--ws", "--ws.addr", "127.0.0.1", "--ws.port", "0",
@@ -546,6 +557,9 @@ func (n *IntegrationTestNet) start() error {
 				"--statedb.cache", fmt.Sprintf("%d", cacheSize),
 
 				"--ipcpath", fmt.Sprintf("%s/sonic.ipc", tmp),
+
+				// enable test-only API
+				"--enable-test-only-api",
 			},
 				// append extra arguments
 				n.options.ClientExtraArguments...,
@@ -1164,6 +1178,46 @@ func (s *Session) TrySendAll(tx []*types.Transaction) ([]common.Hash, map[common
 		return nil
 	})
 	return accepted, rejected, err
+}
+
+func (s *Session) ForceEmit(
+	ctx context.Context,
+	tx *types.Transaction,
+) (common.Hash, error) {
+	res, err := s.ForceEmitAll(ctx, []*types.Transaction{tx})
+	if err != nil {
+		return common.Hash{}, err
+	}
+	return res[0], nil
+}
+
+func (s *Session) ForceEmitAll(ctx context.Context, txs []*types.Transaction) ([]common.Hash, error) {
+	client, err := s.GetClient()
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	data := make([][]byte, len(txs))
+	for i, tx := range txs {
+		encoded, err := rlp.EncodeToBytes(tx)
+		if err != nil {
+			return nil, err
+		}
+		data[i] = encoded
+	}
+
+	err = client.Client().CallContext(ctx, nil, "test_proposeTransactions", data)
+	if err != nil {
+		return nil, err
+	}
+
+	hashes := make([]common.Hash, len(txs))
+	for i, tx := range txs {
+		hashes[i] = tx.Hash()
+	}
+
+	return hashes, nil
 }
 
 // Run sends the given transaction to the network and waits for it to be processed.

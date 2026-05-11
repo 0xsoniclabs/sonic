@@ -20,11 +20,14 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestEthApiBackend_GetNetworkRules_LoadsRulesFromEpoch(t *testing.T) {
@@ -94,4 +97,89 @@ func TestEthApiBackend_GetNetworkRules_MissingBlockReturnsNilRules(t *testing.T)
 	rules, err := backend.GetNetworkRules(t.Context(), blockNumber)
 	require.NoError(err)
 	require.Nil(rules)
+}
+
+func TestEthApiBackend_IsTestOnlyApiEnabled_ReturnsConfigFlagValue(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("enabled=%v", enabled), func(t *testing.T) {
+			require := require.New(t)
+
+			backend := &EthAPIBackend{
+				svc: &Service{
+					config: Config{
+						EnableTestOnlyApi: enabled,
+					},
+				},
+			}
+
+			result := backend.IsTestOnlyApiEnabled()
+			require.Equal(enabled, result)
+		})
+	}
+}
+
+func TestEthApiBackend_ProposeTransactions_ReturnsErrorWhenTestOnlyApiDisabled(t *testing.T) {
+	require := require.New(t)
+
+	backend := &EthAPIBackend{
+		svc: &Service{
+			config: Config{
+				EnableTestOnlyApi: false,
+			},
+		},
+	}
+
+	err := backend.ProposeTransactions(nil)
+	require.Error(err)
+	require.Contains(err.Error(), "disabled")
+}
+
+func TestEthApiBackend_ProposeTransactions_ReturnsErrorWhenNoEmitters(t *testing.T) {
+	require := require.New(t)
+
+	backend := &EthAPIBackend{
+		svc: &Service{
+			config:   Config{EnableTestOnlyApi: true},
+			emitters: []*emitter.Emitter{}, // No emitters available
+		},
+	}
+
+	err := backend.ProposeTransactions(nil)
+	require.Error(err)
+	require.Contains(err.Error(), "no emitters")
+}
+
+func TestEthApiBackend_proposeTransactionsInternal_ForwardsRequestToEmitter(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	emitter := NewMockforceableEmitter(ctrl)
+
+	backend := &EthAPIBackend{
+		svc: &Service{
+			config: Config{EnableTestOnlyApi: true},
+		},
+	}
+
+	txs := []*types.Transaction{
+		types.NewTx(&types.LegacyTx{Nonce: 1}),
+		types.NewTx(&types.LegacyTx{Nonce: 2}),
+	}
+
+	emitter.EXPECT().ForceEventEmissionForTesting(txs).Return(nil)
+	require.NoError(t, backend.proposeTransactionsInternal(txs, emitter))
+}
+
+func TestEthApiBackend_proposeTransactionsInternal_ReturnsEmissionIssue(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	emitter := NewMockforceableEmitter(ctrl)
+
+	backend := &EthAPIBackend{
+		svc: &Service{
+			config: Config{EnableTestOnlyApi: true},
+		},
+	}
+
+	issue := fmt.Errorf("injected test issue")
+
+	emitter.EXPECT().ForceEventEmissionForTesting(nil).Return(issue)
+	require.ErrorIs(t, backend.proposeTransactionsInternal(nil, emitter), issue)
 }
