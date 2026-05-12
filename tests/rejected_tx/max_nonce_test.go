@@ -25,6 +25,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,17 +43,17 @@ func TestAccount_RejectTransactions(t *testing.T) {
 	genesisAccounts := []makefakegenesis.Account{
 		{
 			Address: nonceAccount.Address(),
-			Balance: big.NewInt(1e18),
+			Balance: uint256.NewInt(1e18),
 			Nonce:   math.MaxUint64,
 		},
 		{
 			Address: codeAccount.Address(),
-			Balance: big.NewInt(1e18),
+			Balance: uint256.NewInt(1e18),
 			Code:    []byte{0x01},
 		},
 		{
 			Address: nonceAndCodeAccount.Address(),
-			Balance: big.NewInt(1e18),
+			Balance: uint256.NewInt(1e18),
 			Nonce:   math.MaxUint64,
 			Code:    []byte{0x01},
 		},

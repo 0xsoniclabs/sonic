@@ -101,8 +101,8 @@ func getNodeService(t *testing.T) *gossip.Service {
 
 	genStore := makefakegenesis.FakeGenesisStoreWithRulesAndStart(
 		1,
-		utils.ToFtm(genesisBalance),
-		utils.ToFtm(genesisStake),
+		utils.ToFtmU256(genesisBalance),
+		utils.ToFtmU256(genesisStake),
 		rules,
 		1,
 		2,

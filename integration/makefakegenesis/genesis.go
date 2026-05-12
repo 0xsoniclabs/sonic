@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/integration/makegenesis"
@@ -62,17 +63,17 @@ func FakeKey(n idx.ValidatorID) *ecdsa.PrivateKey {
 	return evmcore.FakeKey(uint32(n))
 }
 
-func FakeGenesisStore(num idx.Validator, balance, stake *big.Int, upgrades opera.Upgrades) *genesisstore.Store {
+func FakeGenesisStore(num idx.Validator, balance, stake *uint256.Int, upgrades opera.Upgrades) *genesisstore.Store {
 	return FakeGenesisStoreWithRules(num, balance, stake, opera.FakeNetRules(upgrades))
 }
 
-func FakeGenesisStoreWithRules(num idx.Validator, balance, stake *big.Int, rules opera.Rules) *genesisstore.Store {
+func FakeGenesisStoreWithRules(num idx.Validator, balance, stake *uint256.Int, rules opera.Rules) *genesisstore.Store {
 	return FakeGenesisStoreWithRulesAndStart(num, balance, stake, rules, 2, 1)
 }
 
 func FakeGenesisStoreWithRulesAndStart(
 	num idx.Validator,
-	balance, stake *big.Int,
+	balance, stake *uint256.Int,
 	rules opera.Rules,
 	epoch idx.Epoch,
 	block idx.Block,
@@ -88,7 +89,7 @@ func FakeGenesisStoreWithRulesAndStart(
 		delegations = append(delegations, drivercall.Delegation{
 			Address:            val.Address,
 			ValidatorID:        val.ID,
-			Stake:              stake,
+			Stake:              stake.ToBig(),
 			LockedStake:        new(big.Int),
 			LockupFromEpoch:    0,
 			LockupEndTime:      0,

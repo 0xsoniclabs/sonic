@@ -31,6 +31,7 @@ import (
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils/objstream"
 	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/holiman/uint256"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -53,7 +54,6 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
-	"github.com/0xsoniclabs/sonic/utils"
 
 	mptIo "github.com/0xsoniclabs/carmen/go/database/mpt/io"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
@@ -64,7 +64,7 @@ type GenesisBuilder struct {
 	carmenDir     string
 	carmenStateDb carmen.StateDB
 
-	totalSupply *big.Int
+	totalSupply *uint256.Int
 
 	blocks       []ibr.LlrIdxFullBlockRecord
 	epochs       []ier.LlrIdxFullEpochRecord
@@ -94,11 +94,11 @@ func DefaultBlockProc() BlockProc {
 	}
 }
 
-func (b *GenesisBuilder) AddBalance(acc common.Address, balance *big.Int) {
+func (b *GenesisBuilder) AddBalance(acc common.Address, balance *uint256.Int) {
 	if len(b.blocks) > 0 {
 		panic("cannot add balance after block zero is finalized")
 	}
-	b.tmpStateDB.AddBalance(acc, utils.BigIntToUint256(balance), tracing.BalanceIncreaseGenesisBalance)
+	b.tmpStateDB.AddBalance(acc, balance, tracing.BalanceIncreaseGenesisBalance)
 	b.totalSupply.Add(b.totalSupply, balance)
 }
 
@@ -128,7 +128,7 @@ func (b *GenesisBuilder) SetCurrentEpoch(er ier.LlrIdxFullEpochRecord) {
 }
 
 func (b *GenesisBuilder) TotalSupply() *big.Int {
-	return b.totalSupply
+	return b.totalSupply.ToBig()
 }
 
 func (b *GenesisBuilder) CurrentHash() hash.Hash {
@@ -159,7 +159,7 @@ func NewGenesisBuilder() *GenesisBuilder {
 		tmpStateDB:    tmpStateDB,
 		carmenDir:     carmenDir,
 		carmenStateDb: carmenStateDb,
-		totalSupply:   new(big.Int),
+		totalSupply:   new(uint256.Int),
 	}
 }
 

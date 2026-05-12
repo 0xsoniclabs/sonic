@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,7 +61,7 @@ func TestMaxBlockSizeIsEnforced(t *testing.T) {
 
 		genesisAccount := makefakegenesis.Account{
 			Address: account.Address(),
-			Balance: big.NewInt(1e18),
+			Balance: uint256.NewInt(1e18),
 			Nonce:   0,
 		}
 		genesisAccounts = append(genesisAccounts, genesisAccount)

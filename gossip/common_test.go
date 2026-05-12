@@ -238,8 +238,8 @@ func newInMemoryStoreWithGenesisData(
 
 	genStore := makefakegenesis.FakeGenesisStoreWithRulesAndStart(
 		numValidators,
-		utils.ToFtm(genesisBalance),
-		utils.ToFtm(genesisStake),
+		utils.ToFtmU256(genesisBalance),
+		utils.ToFtmU256(genesisStake),
 		rules,
 		firstEpoch,
 		2,

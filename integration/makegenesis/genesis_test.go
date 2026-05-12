@@ -44,7 +44,7 @@ func TestGenesisBuilder_ExecuteGenesisTxs_ExecutesTransactionsAccordingToUpgrade
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 	address := crypto.PubkeyToAddress(key.PublicKey)
-	builder.AddBalance(address, big.NewInt(1e18))
+	builder.AddBalance(address, uint256.NewInt(1e18))
 
 	finalizeBlockZero(t, builder, rules)
 

@@ -53,6 +53,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 )
 
 type GenesisJson struct {
@@ -66,7 +67,7 @@ type GenesisJson struct {
 type Account struct {
 	Name    string
 	Address common.Address
-	Balance *big.Int                    `json:",omitempty"`
+	Balance *uint256.Int                `json:",omitempty"`
 	Code    VariableLenCode             `json:",omitempty"`
 	Nonce   uint64                      `json:",omitempty"`
 	Storage map[common.Hash]common.Hash `json:",omitempty"`
@@ -177,8 +178,8 @@ func GenerateFakeJsonGenesis(
 	}
 
 	// Create the validator accounts and provide some tokens.
-	tokensPerValidator := utils.ToFtm(1_000_000_000)
-	totalSupply := big.NewInt(0)
+	tokensPerValidator := utils.ToFtmU256(1_000_000_000)
+	totalSupply := uint256.NewInt(0)
 	validatorParameters := GetFakeValidators(idx.Validator(len(validatorsStake)))
 	for _, validator := range validatorParameters {
 		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
@@ -204,7 +205,7 @@ func GenerateFakeJsonGenesis(
 	}
 
 	// Create the genesis transactions.
-	genesisTxs := GetGenesisTxs(0, validatorParameters, totalSupply, delegations, validatorParameters[0].Address)
+	genesisTxs := GetGenesisTxs(0, validatorParameters, totalSupply.ToBig(), delegations, validatorParameters[0].Address)
 	for _, tx := range genesisTxs {
 		jsonGenesis.Txs = append(jsonGenesis.Txs, Transaction{
 			To:   *tx.To(),

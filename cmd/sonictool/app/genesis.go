@@ -180,8 +180,8 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 
 	genesisStore := makefakegenesis.FakeGenesisStore(
 		idx.Validator(validatorsNumber),
-		futils.ToFtm(1_000_000_000),
-		futils.ToFtm(5_000_000),
+		futils.ToFtmU256(1_000_000_000),
+		futils.ToFtmU256(5_000_000),
 		upgrades,
 	)
 	defer caution.CloseAndReportError(&err, genesisStore, "failed to close the genesis store")
