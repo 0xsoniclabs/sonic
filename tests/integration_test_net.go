@@ -118,6 +118,16 @@ type IntegrationTestNetSession interface {
 	// GetReceipts waits for the receipts of the given transaction hashes to be available.
 	GetReceipts(txHash []common.Hash) ([]*types.Receipt, error)
 
+	// TryGetReceipt waits for the receipt of the given transaction hash to be
+	// available, returning an error if no receipt can be obtained within the
+	// given timeout or a communication error occurred.
+	TryGetReceipt(timeout time.Duration, txHash common.Hash) (*types.Receipt, error)
+
+	// TryGetReceipts waits for the receipt of the given transaction hashes to be
+	// available, returning an error if not all receipts can be obtained within
+	// the given timeout or a communication error occurred.
+	TryGetReceipts(timeout time.Duration, txHashes []common.Hash) ([]*types.Receipt, error)
+
 	// GetTransactOptions provides transaction options to be used to send a transaction
 	// from the given account.
 	GetTransactOptions(account *Account) (*bind.TransactOpts, error)
@@ -1261,6 +1271,23 @@ func (s *Session) GetReceipt(txHash common.Hash) (*types.Receipt, error) {
 }
 
 func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
+	return s.TryGetReceipts(100*time.Second, txHash)
+}
+
+func (s *Session) TryGetReceipt(timeout time.Duration, txHash common.Hash) (*types.Receipt, error) {
+	receipts, err := s.TryGetReceipts(timeout, []common.Hash{txHash})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get receipt: %w", err)
+
+	}
+	return receipts[0], nil
+}
+
+func (s *Session) TryGetReceipts(timeout time.Duration, txHash []common.Hash) ([]*types.Receipt, error) {
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	res := make([]*types.Receipt, len(txHash))
 	err := runParallelWithClient(
 		s.net,
@@ -1268,7 +1295,7 @@ func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 		func(client *PooledEhtClient, i int) error {
 			hash := txHash[i]
 
-			err := WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
+			err := WaitFor(ctx, func(ctx context.Context) (bool, error) {
 				receipt, err := client.TransactionReceipt(ctx, hash)
 				if errors.Is(err, ethereum.NotFound) {
 					return false, nil // receipt not yet available, keep waiting
