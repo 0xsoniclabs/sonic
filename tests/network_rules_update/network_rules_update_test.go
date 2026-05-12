@@ -17,6 +17,7 @@
 package network_rules_update
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -376,8 +377,15 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 
 		forEachClientInNet(t, net, func(t *testing.T, client *tests.PooledEhtClient) {
 
-			// make sure that this client has already processed the transaction
-			_, err := net.GetReceipt(tx.Hash())
+			// Query receipt from each node, this will ensure that the transaction
+			// is executed and the new rules are in effect on all nodes.
+			err := tests.WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+				_, err := client.TransactionReceipt(ctx, tx.Hash())
+				if err != nil {
+					return false, nil
+				}
+				return true, nil
+			})
 			require.NoError(t, err, "failed to get receipt for the transaction")
 
 			code, err := client.CodeAt(t.Context(), account.Address(), nil)
