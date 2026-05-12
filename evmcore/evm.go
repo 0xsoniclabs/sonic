@@ -19,6 +19,7 @@ package evmcore
 //go:generate mockgen -source=evm.go -destination=evm_mock.go -package=evmcore
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/core"
@@ -91,11 +92,28 @@ func NewEVMBlockContextWithDifficulty(
 }
 
 // NewEVMTxContext creates a new transaction context for a single transaction.
-func NewEVMTxContext(msg *core.Message) vm.TxContext {
-	return vm.TxContext{
-		Origin:   msg.From,
-		GasPrice: uint256.MustFromBig(msg.GasPrice),
+// This is a wrapper around core.NewEVMTxContext to ensure that the gas price is
+// valid. If the gas price is invalid, an error is returned.
+func NewEVMTxContext(msg *core.Message) (vm.TxContext, error) {
+	if msg == nil {
+		return vm.TxContext{}, fmt.Errorf("message cannot be nil")
 	}
+	_, overflow := uint256.FromBig(msg.GasPrice)
+	if msg.GasPrice.Sign() < 0 || overflow {
+		return vm.TxContext{}, fmt.Errorf("invalid gas price %v", msg.GasPrice)
+	}
+	return core.NewEVMTxContext(msg), nil
+}
+
+// MustNewEVMTxContext is a helper function that wraps NewEVMTxContext and
+// panics if an error occurs. Use this with care, when you are sure that the
+// input message is valid.
+func MustNewEVMTxContext(msg *core.Message) vm.TxContext {
+	txContext, err := NewEVMTxContext(msg)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create EVM transaction context: %v", err))
+	}
+	return txContext
 }
 
 // GetHashFn returns a GetHashFunc which retrieves header hashes by number

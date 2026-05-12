@@ -241,7 +241,11 @@ func (s *PublicTxTraceAPI) traceCallExec(
 	}
 
 	// Set tx context in EVM
-	tracedEVM.vmenv.SetTxContext(evmcore.NewEVMTxContext(msg))
+	vmContext, err := evmcore.NewEVMTxContext(msg)
+	if err != nil {
+		return nil, err
+	}
+	tracedEVM.vmenv.SetTxContext(vmContext)
 
 	// Execute the transaction using core.ApplyMessage to capture raw return data.
 	result, applyErr := core.ApplyMessage(tracedEVM.vmenv, msg, core.NewGasPool(msg.GasLimit))
@@ -427,7 +431,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 
 			vmenv, _, err := s.b.GetEVM(ctx, state, block.Header(), &vmConfig, nil)
 			if err != nil {
-				return nil, fmt.Errorf("cannot initialize vm for transaction %s, error: %s", tx.Hash().String(), err.Error())
+				return nil, fmt.Errorf("cannot initialize vm for transaction %s, error: %w", tx.Hash().String(), err)
 			}
 
 			if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
