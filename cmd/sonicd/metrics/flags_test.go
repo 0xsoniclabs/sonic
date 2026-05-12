@@ -43,7 +43,7 @@ func waitForServer(t *testing.T, addr string) {
 		if err != nil {
 			return false
 		}
-		conn.Close()
+		require.NoError(t, conn.Close())
 		return true
 	}, 2*time.Second, 10*time.Millisecond)
 }
@@ -65,7 +65,9 @@ func TestSetupMetricsServer_ServesAllEndpoints(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			resp, err := client.Get("http://" + addr + path)
 			require.NoError(t, err)
-			defer resp.Body.Close()
+			defer func() {
+				require.NoError(t, resp.Body.Close())
+			}()
 			require.Equal(t, http.StatusOK, resp.StatusCode)
 
 			_, err = io.ReadAll(resp.Body)
@@ -82,6 +84,8 @@ func TestSetupMetricsServer_Returns404ForUnknownPaths(t *testing.T) {
 	client := &http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Get("http://" + addr + "/unknown")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		require.NoError(t, resp.Body.Close())
+	}()
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
