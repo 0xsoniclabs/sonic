@@ -69,6 +69,7 @@ type BundleState struct {
 	Executable         bool     // True if the bundle can be executed with the current state.
 	TemporarilyBlocked bool     // True if the bundle is currently blocked but may become executable later.
 	Reasons            []string // A list of human-readable strings describing why the bundle is not executable or is blocked.
+	GasEfficiency      float64  // The gas efficiency of the bundle, defined as sum of usedGas of receipts / total execution cost.
 }
 
 // GetBundleState determines the state of the bundle based on the current
@@ -91,7 +92,7 @@ func getBundleState(
 	chain ChainStateForBundleEval,
 	stateDb state.StateDB,
 	envelope *types.Transaction,
-	trialRunner func(*types.Transaction, ChainStateForBundleEval, state.StateDB) bool,
+	trialRunner func(*types.Transaction, ChainStateForBundleEval, state.StateDB) (bool, float64),
 ) BundleState {
 	chainId := big.NewInt(int64(chain.GetCurrentNetworkRules().NetworkID))
 	signer := types.LatestSignerForChainID(chainId)
@@ -150,10 +151,11 @@ func getBundleState(
 	snapshot := stateDb.InterTxSnapshot()
 	defer stateDb.RevertToInterTxSnapshot(snapshot)
 
-	if success := trialRunner(envelope, chain, stateDb); !success {
+	success, gasEfficiency := trialRunner(envelope, chain, stateDb)
+	if !success {
 		return makePermanentlyBlockedState("bundle trial-run failed")
 	}
-	return makeRunnableState()
+	return makeRunnableState(gasEfficiency)
 }
 
 // ChainStateForBundleEval is an extension of the ChainState interface providing
@@ -193,7 +195,7 @@ func checkForNonceConflicts(
 		nonceTracker: &nonceTracker{source: nonceSource},
 	}
 	if bundle.RunBundle(txBundle, strictRunner) {
-		return makeRunnableState()
+		return makeRunnableState(0.0)
 	}
 
 	// Step 2: check with future nonces, to check whether the bundle may become
@@ -341,7 +343,7 @@ func trialRunBundle(
 	envelope *types.Transaction,
 	chain ChainStateForBundleEval,
 	stateDb state.StateDB,
-) bool {
+) (bool, float64) {
 	return trialRunBundleInternal(
 		envelope,
 		chain,
@@ -359,14 +361,14 @@ func trialRunBundleInternal(
 	stateDb state.StateDB,
 	factory transactionProcessorFactory,
 	readRandom func([]byte) (int, error),
-) bool {
+) (bool, float64) {
 	latestHeader := chain.GetLatestHeader()
 	blobBaseFee := GetBlobBaseFee()
 
 	// Create a random fake-PrevRandao for the trial run.
 	var fakePrevRandao common.Hash
 	if n, err := readRandom(fakePrevRandao[:]); n != len(fakePrevRandao) || err != nil {
-		return false
+		return false, 0
 	}
 
 	// Make sure that everything this function does is reverted at the end.
@@ -397,18 +399,22 @@ func trialRunBundleInternal(
 		}
 	}
 
-	if summary.ExecutionCost == 0 || float64(usedGas)/float64(summary.ExecutionCost) < MinBundleEfficiency {
-		return false
+	gasEfficiency := 0.0
+	if summary.ExecutionCost > 0 {
+		gasEfficiency = float64(usedGas) / float64(summary.ExecutionCost)
+	}
+	if summary.ExecutionCost == 0 || gasEfficiency < MinBundleEfficiency {
+		return false, gasEfficiency
 	}
 
 	// Check if the bundle lead to any accepted transactions. If so, it is
 	// a success, otherwise it is a failure.
 	for _, tx := range summary.ProcessedTransactions {
 		if tx.Receipt != nil {
-			return true
+			return true, gasEfficiency
 		}
 	}
-	return false
+	return false, gasEfficiency
 }
 
 type transactionProcessorFactory interface {
@@ -429,8 +435,8 @@ func (realTransactionProcessorFactory) newTransactionProcessor(
 	return NewTransactionProcessorForBlock(chain, stateDb, block)
 }
 
-func makeRunnableState() BundleState {
-	return BundleState{Executable: true}
+func makeRunnableState(gasEfficiency float64) BundleState {
+	return BundleState{Executable: true, GasEfficiency: gasEfficiency}
 }
 
 func makeTemporaryBlockedState(reason string) BundleState {
@@ -493,7 +499,7 @@ func (c *bundleEvaluationCache) GetBundleState(
 ) BundleState {
 
 	if !bundle.IsEnvelope(envelope) {
-		return makeRunnableState()
+		return makeRunnableState(1.0)
 	}
 
 	chainId := big.NewInt(int64(chain.GetCurrentNetworkRules().NetworkID))

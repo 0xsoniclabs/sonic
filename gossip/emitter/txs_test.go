@@ -84,10 +84,17 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 			if bundlesEnabled {
 				// if bundles are enabled, it will be evaluated
 				bundleEvaluator.EXPECT().GetBundleState(gomock.Any(), gomock.Any(), tx).
-					Return(evmcore.BundleState{Executable: true})
+					Return(evmcore.BundleState{Executable: true, GasEfficiency: 1.0})
 			}
 
-			require.Equal(bundlesEnabled, emitter.isRunnableBundleTxInternal(tx, bundleEvaluator))
+			runnable, gasEfficiency := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
+			if bundlesEnabled {
+				require.True(runnable)
+				require.Equal(1.0, gasEfficiency)
+			} else {
+				require.False(runnable)
+				require.Equal(0.0, gasEfficiency)
+			}
 		})
 	}
 }
@@ -128,7 +135,9 @@ func Test_Emitter_isValidBundleTx_RejectsInvalidBundle(t *testing.T) {
 				world: World{External: external},
 			}
 
-			require.False(emitter.isValidBundleTx(tx))
+			valid, gasEfficiency := emitter.evaluateBundleTx(tx)
+			require.False(valid)
+			require.Equal(0.0, gasEfficiency)
 		})
 	}
 }
@@ -170,10 +179,17 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 			if !processed {
 				// if not processed already, it will be evaluated
 				bundleEvaluator.EXPECT().GetBundleState(gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(evmcore.BundleState{Executable: true})
+					Return(evmcore.BundleState{Executable: true, GasEfficiency: 1.0})
 			}
 
-			require.Equal(t, !processed, emitter.isRunnableBundleTxInternal(tx, bundleEvaluator))
+			got, gasEfficiency := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
+			if processed {
+				require.False(t, got)
+				require.Equal(t, 0.0, gasEfficiency)
+			} else {
+				require.True(t, got)
+				require.Equal(t, 1.0, gasEfficiency)
+			}
 		})
 	}
 }
@@ -247,4 +263,67 @@ func Test_preCheckStateAdapter_ForwardsGetLatestHeader(t *testing.T) {
 	returnedHeader := adapter.GetLatestHeader()
 
 	require.Same(t, header, returnedHeader)
+}
+
+func Test_Emitter_evaluateBundleTx_ReturnsGasEfficiencyFromEvaluator(t *testing.T) {
+	tests := map[string]struct {
+		gasEfficiency float64
+		executable    bool
+	}{
+		"low efficiency rejected": {
+			gasEfficiency: 0.1,
+			executable:    false,
+		},
+		"medium efficiency accepted": {
+			gasEfficiency: 0.5,
+			executable:    true,
+		},
+		"full efficiency accepted": {
+			gasEfficiency: 1.0,
+			executable:    true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			rules := opera.Rules{
+				NetworkID: 12,
+				Upgrades: opera.Upgrades{
+					TransactionBundles: true,
+				},
+			}
+
+			db := state.NewMockStateDB(ctrl)
+			db.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(false).AnyTimes()
+			db.EXPECT().Release().AnyTimes()
+
+			external := NewMockExternal(ctrl)
+			external.EXPECT().GetRules().Return(rules).AnyTimes()
+			external.EXPECT().GetLatestBlockIndex().Return(idx.Block(100)).AnyTimes()
+			external.EXPECT().StateDB().Return(db).AnyTimes()
+
+			signer := types.LatestSignerForChainID(big.NewInt(int64(rules.NetworkID)))
+			emitter := &Emitter{
+				world: World{
+					External:          external,
+					TransactionSigner: signer,
+				},
+			}
+
+			tx := bundle.NewBuilder().SetEarliest(50).SetRangeLength(100).WithSigner(signer).Build()
+
+			bundleEvaluator := evmcore.NewMockBundleEvaluator(ctrl)
+			bundleEvaluator.EXPECT().GetBundleState(gomock.Any(), gomock.Any(), tx).
+				Return(evmcore.BundleState{
+					Executable:    tc.executable,
+					GasEfficiency: tc.gasEfficiency,
+				})
+
+			valid, gasEfficiency := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
+			require.Equal(t, tc.executable, valid)
+			require.Equal(t, tc.gasEfficiency, gasEfficiency)
+		})
+	}
 }

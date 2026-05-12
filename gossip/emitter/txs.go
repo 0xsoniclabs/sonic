@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
@@ -35,6 +36,14 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
+)
+
+var (
+	effectiveBundleGasHistogram = utils.MetricsHistogramWrapper(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
+		Name:    "emitter_bundle_gas_effective",
+		Help:    "Effective gas usage ratio for bundle transactions",
+		Buckets: prometheus.LinearBuckets(0.0, 0.1, 11), // 0, 0.1, 0.2, ..., 1.0
+	}))
 )
 
 const (
@@ -218,9 +227,13 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 			continue
 		}
 		// check validity of bundled transactions
-		if em.world.GetRules().Upgrades.Brio && bundle.IsEnvelope(resolvedTx) && !em.isValidBundleTx(resolvedTx) {
-			sorted.Pop()
-			continue
+		if em.world.GetRules().Upgrades.Brio && bundle.IsEnvelope(resolvedTx) {
+			valid, gasEfficiency := em.evaluateBundleTx(resolvedTx)
+			effectiveBundleGasHistogram.Update(gasEfficiency)
+			if !valid {
+				sorted.Pop()
+				continue
+			}
 		}
 
 		// add
@@ -232,37 +245,37 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 	}
 }
 
-// isValidBundleTx checks whether the given transaction is a valid bundle that
+// evaluateBundleTx checks whether the given transaction is a valid bundle that
 // could be emitted by this emitter.
-func (em *Emitter) isValidBundleTx(tx *types.Transaction) bool {
-	return em.isRunnableBundleTxInternal(tx, em.bundleCache)
+func (em *Emitter) evaluateBundleTx(tx *types.Transaction) (bool, float64) {
+	return em.evaluateBundleTxInternal(tx, em.bundleCache)
 }
 
-func (em *Emitter) isRunnableBundleTxInternal(
+func (em *Emitter) evaluateBundleTxInternal(
 	tx *types.Transaction,
 	evalBundle evmcore.BundleEvaluator,
-) bool {
+) (bool, float64) {
 	// Ignore if bundled transactions are not enabled.
 	if !em.world.GetRules().Upgrades.TransactionBundles {
-		return false
+		return false, 0.0
 	}
 
 	// Ignore if not a bundle transaction.
 	if !bundle.IsEnvelope(tx) {
-		return false
+		return false, 0.0
 	}
 
 	// Ignore if it is not a valid bundle transaction.
 	_, plan, err := bundle.ValidateEnvelope(em.world.TransactionSigner, tx)
 	if err != nil {
-		return false
+		return false, 0.0
 	}
 
 	// Ignore if the next block is no longer in the range. If it is just the
 	// next block, it is likely anyway too late, since the DAG consensus is
 	// pipelined, but it is fine to error on the safe side here.
 	if !plan.Range.IsInRange(uint64(em.world.GetLatestBlockIndex()) + 1) {
-		return false
+		return false, 0.0
 	}
 
 	stateDb := em.world.StateDB()
@@ -270,12 +283,13 @@ func (em *Emitter) isRunnableBundleTxInternal(
 
 	// Ignore if the same bundle has already been processed.
 	if stateDb.HasBundleRecentlyBeenProcessed(plan.Hash()) {
-		return false
+		return false, 0.0
 	}
 
 	// Skip bundles that are not runnable in the current state.
 	adapter := &preCheckChainStateAdapter{external: em.world}
-	return evalBundle.GetBundleState(adapter, stateDb, tx).Executable
+	bundleState := evalBundle.GetBundleState(adapter, stateDb, tx)
+	return bundleState.Executable, bundleState.GasEfficiency
 }
 
 type preCheckChainStateAdapter struct {
