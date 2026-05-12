@@ -42,7 +42,7 @@ var (
 	effectiveBundleGasHistogram = utils.MetricsHistogramWrapper(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
 		Name:    "emitter_bundle_gas_effective",
 		Help:    "Effective gas usage ratio for bundle transactions",
-		Buckets: prometheus.LinearBuckets(0.0, 0.1, 11), // 0, 0.1, 0.2, ..., 1.0
+		Buckets: prometheus.LinearBuckets(0.0, 0.1, 11), // bucket intervals [0, 0.1, 0.2, ..., 1.0]
 	}))
 )
 
@@ -228,7 +228,7 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 		}
 		// check validity of bundled transactions
 		if em.world.GetRules().Upgrades.Brio && bundle.IsEnvelope(resolvedTx) {
-			valid, gasEfficiency := em.evaluateBundleTx(resolvedTx)
+			gasEfficiency, valid := em.evaluateBundleTx(resolvedTx)
 			effectiveBundleGasHistogram.Update(gasEfficiency)
 			if !valid {
 				sorted.Pop()
@@ -245,37 +245,37 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 	}
 }
 
-// evaluateBundleTx checks whether the given transaction is a valid bundle that
-// could be emitted by this emitter.
-func (em *Emitter) evaluateBundleTx(tx *types.Transaction) (bool, float64) {
+// evaluateBundleTx calculates the effective gas of the bundle and whether the
+// given transaction is a valid bundle that could be emitted by this emitter.
+func (em *Emitter) evaluateBundleTx(tx *types.Transaction) (float64, bool) {
 	return em.evaluateBundleTxInternal(tx, em.bundleCache)
 }
 
 func (em *Emitter) evaluateBundleTxInternal(
 	tx *types.Transaction,
 	evalBundle evmcore.BundleEvaluator,
-) (bool, float64) {
+) (float64, bool) {
 	// Ignore if bundled transactions are not enabled.
 	if !em.world.GetRules().Upgrades.TransactionBundles {
-		return false, 0.0
+		return 0.0, false
 	}
 
 	// Ignore if not a bundle transaction.
 	if !bundle.IsEnvelope(tx) {
-		return false, 0.0
+		return 0.0, false
 	}
 
 	// Ignore if it is not a valid bundle transaction.
 	_, plan, err := bundle.ValidateEnvelope(em.world.TransactionSigner, tx)
 	if err != nil {
-		return false, 0.0
+		return 0.0, false
 	}
 
 	// Ignore if the next block is no longer in the range. If it is just the
 	// next block, it is likely anyway too late, since the DAG consensus is
 	// pipelined, but it is fine to error on the safe side here.
 	if !plan.Range.IsInRange(uint64(em.world.GetLatestBlockIndex()) + 1) {
-		return false, 0.0
+		return 0.0, false
 	}
 
 	stateDb := em.world.StateDB()
@@ -283,13 +283,13 @@ func (em *Emitter) evaluateBundleTxInternal(
 
 	// Ignore if the same bundle has already been processed.
 	if stateDb.HasBundleRecentlyBeenProcessed(plan.Hash()) {
-		return false, 0.0
+		return 0.0, false
 	}
 
 	// Skip bundles that are not runnable in the current state.
 	adapter := &preCheckChainStateAdapter{external: em.world}
 	bundleState := evalBundle.GetBundleState(adapter, stateDb, tx)
-	return bundleState.Executable, bundleState.GasEfficiency
+	return bundleState.GasEfficiency, bundleState.Executable
 }
 
 type preCheckChainStateAdapter struct {

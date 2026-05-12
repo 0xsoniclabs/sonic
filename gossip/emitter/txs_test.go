@@ -87,7 +87,7 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 					Return(evmcore.BundleState{Executable: true, GasEfficiency: 1.0})
 			}
 
-			runnable, gasEfficiency := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
+			gasEfficiency, runnable := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
 			if bundlesEnabled {
 				require.True(runnable)
 				require.Equal(1.0, gasEfficiency)
@@ -135,7 +135,7 @@ func Test_Emitter_isValidBundleTx_RejectsInvalidBundle(t *testing.T) {
 				world: World{External: external},
 			}
 
-			valid, gasEfficiency := emitter.evaluateBundleTx(tx)
+			gasEfficiency, valid := emitter.evaluateBundleTx(tx)
 			require.False(valid)
 			require.Equal(0.0, gasEfficiency)
 		})
@@ -182,12 +182,12 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 					Return(evmcore.BundleState{Executable: true, GasEfficiency: 1.0})
 			}
 
-			got, gasEfficiency := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
+			gasEfficiency, valid := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
 			if processed {
-				require.False(t, got)
+				require.False(t, valid)
 				require.Equal(t, 0.0, gasEfficiency)
 			} else {
-				require.True(t, got)
+				require.True(t, valid)
 				require.Equal(t, 1.0, gasEfficiency)
 			}
 		})
@@ -321,7 +321,7 @@ func Test_Emitter_evaluateBundleTx_ReturnsGasEfficiencyFromEvaluator(t *testing.
 					GasEfficiency: tc.gasEfficiency,
 				})
 
-			valid, gasEfficiency := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
+			gasEfficiency, valid := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
 			require.Equal(t, tc.executable, valid)
 			require.Equal(t, tc.gasEfficiency, gasEfficiency)
 		})

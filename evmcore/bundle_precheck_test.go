@@ -237,8 +237,8 @@ func Test_GetBundleState_FailedTrialRun_ReturnsNonExecutable(t *testing.T) {
 		SetRangeLength(10).
 		Build()
 
-	rejectEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) (bool, float64) {
-		return false, 0.0
+	rejectEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) (float64, bool) {
+		return 0.0, false
 	}
 
 	state := getBundleState(chainState, stateDb, envelope, rejectEverything)
@@ -269,8 +269,8 @@ func Test_GetBundleState_ValidBundle_ReturnsRunnable(t *testing.T) {
 		SetRangeLength(10).
 		Build()
 
-	acceptEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) (bool, float64) {
-		return true, 1.0
+	acceptEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) (float64, bool) {
+		return 1.0, true
 	}
 
 	state := getBundleState(chainState, stateDb, envelope, acceptEverything)
@@ -341,8 +341,8 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 			_, _, err := bundle.ValidateEnvelope(signer, envelope)
 			require.NoError(t, err)
 
-			acceptEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) (bool, float64) {
-				return true, 1.0
+			acceptEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) (float64, bool) {
+				return 1.0, true
 			}
 
 			got := getBundleState(chainState, db, envelope, acceptEverything)
@@ -652,8 +652,8 @@ func Test_trialRunBundle_DoesRunTransactionsThroughEVMAndReturnsIfTransactionsGo
 			stateDb.EXPECT().EndTransaction().AnyTimes()
 
 			// run the bundle through the EVM and check the result
-			got, gasEfficiency := trialRunBundle(tc.envelope, chainState, stateDb)
-			require.Equal(t, tc.expectedResult, got)
+			gasEfficiency, valid := trialRunBundle(tc.envelope, chainState, stateDb)
+			require.Equal(t, tc.expectedResult, valid)
 			require.GreaterOrEqual(t, gasEfficiency, 0.0)
 			require.LessOrEqual(t, gasEfficiency, 1.0)
 		})
@@ -732,8 +732,8 @@ func Test_trialRunBundleInternal_RejectsBundlesWhereEfficiencyIsBelowThreshold(t
 			db.EXPECT().InterTxSnapshot()
 			db.EXPECT().RevertToInterTxSnapshot(any)
 
-			got, gasEfficiency := trialRunBundleInternal(envelope, chainState, db, factory, rand.Read)
-			require.Equal(t, tc.expectAccept, got)
+			gasEfficiency, valid := trialRunBundleInternal(envelope, chainState, db, factory, rand.Read)
+			require.Equal(t, tc.expectAccept, valid)
 
 			expectedEfficiency := 0.0
 			if tc.execCost > 0 {
@@ -942,8 +942,8 @@ func Test_trialRunBundleInternal_FailsIfRandomSourceFails(t *testing.T) {
 				return tc.n, tc.err
 			}
 
-			got, gasEfficiency := trialRunBundleInternal(nil, chain, nil, nil, readRandom)
-			require.False(t, got)
+			gasEfficiency, valid := trialRunBundleInternal(nil, chain, nil, nil, readRandom)
+			require.False(t, valid)
 			require.InDelta(t, 0.0, gasEfficiency, 1e-9)
 		})
 	}
@@ -1073,8 +1073,8 @@ func Test_trialRunBundleInternal_UsesPresentsOfReceiptToDecideResult(t *testing.
 			db.EXPECT().InterTxSnapshot()
 			db.EXPECT().RevertToInterTxSnapshot(any)
 
-			got, _ := trialRunBundleInternal(myEnvelope, chainState, db, factory, rand.Read)
-			require.Equal(t, tc.expectedResult, got)
+			_, valid := trialRunBundleInternal(myEnvelope, chainState, db, factory, rand.Read)
+			require.Equal(t, tc.expectedResult, valid)
 		})
 	}
 }
@@ -1402,8 +1402,8 @@ func Test_trialRunBundleInternal_ReturnsCorrectGasEfficiency(t *testing.T) {
 			db.EXPECT().InterTxSnapshot()
 			db.EXPECT().RevertToInterTxSnapshot(any)
 
-			got, gasEfficiency := trialRunBundleInternal(envelope, chainState, db, factory, rand.Read)
-			require.Equal(t, tc.expectedAccept, got)
+			gasEfficiency, valid := trialRunBundleInternal(envelope, chainState, db, factory, rand.Read)
+			require.Equal(t, tc.expectedAccept, valid)
 			require.InDelta(t, tc.expectedEfficiency, gasEfficiency, 1e-9)
 		})
 	}
@@ -1437,8 +1437,8 @@ func Test_getBundleState_PropagatesGasEfficiencyFromTrialRunner(t *testing.T) {
 		Build()
 
 	expectedEfficiency := 0.75
-	trialRunner := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) (bool, float64) {
-		return true, expectedEfficiency
+	trialRunner := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) (float64, bool) {
+		return expectedEfficiency, true
 	}
 
 	result := getBundleState(chainState, stateDb, envelope, trialRunner)
