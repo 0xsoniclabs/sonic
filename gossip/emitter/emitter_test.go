@@ -512,6 +512,7 @@ func TestEmitter_EmitEvent_logsErrorAndSkipsMalformedTxs(t *testing.T) {
 		},
 		"overflow GasTipCap": {
 			tx: types.NewTx(&types.DynamicFeeTx{
+				GasFeeCap: big.NewInt(1),
 				GasTipCap: new(big.Int).Sub(big.NewInt(0), new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)),
 			}),
 			expectedLog:      "Failed to convert tx tip cap to uint256",
