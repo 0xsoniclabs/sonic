@@ -19,7 +19,6 @@ package emitter
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"math/big"
 	"math/rand/v2"
 	"os"
@@ -363,13 +362,10 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 				BlobGas:   tx.BlobGas(),
 			})
 		}
-		txs[from] = lazyTxs
+		if len(lazyTxs) != 0 {
+			txs[from] = lazyTxs
+		}
 	}
-
-	// clean addresses yielding no transactions
-	maps.DeleteFunc(txs, func(_ common.Address, txs []*txpool.LazyTransaction) bool {
-		return len(txs) == 0
-	})
 
 	sortedTxs := newTransactionsByPriceAndNonce(em.world.TransactionSigner, txs, baseFee)
 	em.cache.sortedTxs = sortedTxs
