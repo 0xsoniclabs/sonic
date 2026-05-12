@@ -482,6 +482,108 @@ func TestEmitter_EmitEvent(t *testing.T) {
 	require.NotNil(t, e)
 }
 
+func TestEmitter_EmitEvent_logsErrorAndSkipsMalformedTxs(t *testing.T) {
+	any := gomock.Any()
+
+	validator := idx.ValidatorID(1)
+	builder := pos.NewBuilder()
+	builder.Set(validator, pos.Weight(1))
+	validators := builder.Build()
+
+	tests := map[string]struct {
+		tx               *types.Transaction
+		expectedLog      string
+		expectedArgument string
+	}{
+
+		"overflow GasPrice": {
+			tx: types.NewTx(&types.LegacyTx{
+				GasPrice: new(big.Int).Sub(big.NewInt(0), new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)),
+			}),
+			expectedLog:      "Failed to convert tx fee cap to uint256",
+			expectedArgument: "gasFeeCap",
+		},
+		"overflow GasFeeCap": {
+			tx: types.NewTx(&types.DynamicFeeTx{
+				GasFeeCap: new(big.Int).Sub(big.NewInt(0), new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)),
+			}),
+			expectedLog:      "Failed to convert tx fee cap to uint256",
+			expectedArgument: "gasFeeCap",
+		},
+		"overflow GasTipCap": {
+			tx: types.NewTx(&types.DynamicFeeTx{
+				GasTipCap: new(big.Int).Sub(big.NewInt(0), new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)),
+			}),
+			expectedLog:      "Failed to convert tx tip cap to uint256",
+			expectedArgument: "gasTipCap",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			ctrl := gomock.NewController(t)
+
+			world := NewMockExternal(ctrl)
+			world.EXPECT().GetRules().AnyTimes()
+			world.EXPECT().GetLastEvent(any, any).AnyTimes()
+			world.EXPECT().Build(any, any).AnyTimes()
+			world.EXPECT().Check(any, any).Return(nil).AnyTimes()
+			world.EXPECT().GetLatestBlock().Return(&inter.Block{}).AnyTimes()
+			world.EXPECT().GetLatestBlockIndex().Return(idx.Block(1)).AnyTimes()
+			world.EXPECT().IsBusy().AnyTimes()
+			world.EXPECT().Lock()
+			world.EXPECT().Unlock()
+			world.EXPECT().Process(any)
+			world.EXPECT().Broadcast(any)
+
+			log := logger.NewMockLogger(ctrl)
+
+			txPool := NewMockTxPool(ctrl)
+			txPool.EXPECT().Count().Return(1)
+
+			transactions := map[common.Address]types.Transactions{
+				{1}: {tt.tx},
+			}
+
+			txPool.EXPECT().Pending(gomock.Any()).Return(transactions, nil)
+
+			signer := valkeystore.NewMockSignerAuthority(ctrl)
+			signer.EXPECT().Sign(gomock.Any()).AnyTimes()
+
+			baseFeeSource := NewMockBaseFeeSource(ctrl)
+			baseFeeSource.EXPECT().GetCurrentBaseFee()
+
+			em := &Emitter{
+				baseFeeSource: baseFeeSource,
+				Periodic: logger.Periodic{
+					Instance: logger.Instance{
+						Log: log,
+					},
+				},
+				config: config.Config{
+					MaxTxsPerAddress: 1,
+					Validator: config.ValidatorConfig{
+						ID: validator,
+					},
+				},
+				world: World{
+					External:     world,
+					TxPool:       txPool,
+					EventsSigner: signer,
+				},
+			}
+			em.validators.Store(validators)
+
+			log.EXPECT().Error(tt.expectedLog, "hash", gomock.Any(), tt.expectedArgument, gomock.Any())
+
+			e, err := em.EmitEvent()
+			require.NoError(t, err)
+			require.NotNil(t, e)
+		})
+	}
+}
+
 func TestEmitter_ThrottlerWorldAdapter_ReturnsNilIfNoEventIsFound(t *testing.T) {
 	validator := idx.ValidatorID(1)
 

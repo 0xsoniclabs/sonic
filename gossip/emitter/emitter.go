@@ -19,6 +19,7 @@ package emitter
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"math/rand/v2"
 	"os"
@@ -30,7 +31,6 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 	"github.com/Fantom-foundation/lachesis-base/emitter/ancestor"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -41,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/holiman/uint256"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
@@ -334,23 +335,41 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 			pendingTxs[from] = txs[:em.config.MaxTxsPerAddress]
 		}
 	}
+
 	// Convert to lists of LazyTransactions
 	txs := make(map[common.Address][]*txpool.LazyTransaction, len(pendingTxs))
 	for from, list := range pendingTxs {
 		lazyTxs := make([]*txpool.LazyTransaction, 0, len(list))
 		for _, tx := range list {
+
+			gasFee, overflow := uint256.FromBig(tx.GasFeeCap())
+			if overflow {
+				em.Log.Error("Failed to convert tx fee cap to uint256", "hash", tx.Hash(), "gasFeeCap", tx.GasFeeCap())
+				continue
+			}
+			gasTip, overflow := uint256.FromBig(tx.GasTipCap())
+			if overflow {
+				em.Log.Error("Failed to convert tx tip cap to uint256", "hash", tx.Hash(), "gasTipCap", tx.GasTipCap())
+				continue
+			}
+
 			lazyTxs = append(lazyTxs, &txpool.LazyTransaction{
 				Hash:      tx.Hash(),
 				Tx:        tx,
 				Time:      tx.Time(),
-				GasFeeCap: utils.BigIntToUint256(tx.GasFeeCap()),
-				GasTipCap: utils.BigIntToUint256(tx.GasTipCap()),
+				GasFeeCap: gasFee,
+				GasTipCap: gasTip,
 				Gas:       tx.Gas(),
 				BlobGas:   tx.BlobGas(),
 			})
 		}
 		txs[from] = lazyTxs
 	}
+
+	// clean addresses yielding no transactions
+	maps.DeleteFunc(txs, func(_ common.Address, txs []*txpool.LazyTransaction) bool {
+		return len(txs) == 0
+	})
 
 	sortedTxs := newTransactionsByPriceAndNonce(em.world.TransactionSigner, txs, baseFee)
 	em.cache.sortedTxs = sortedTxs
