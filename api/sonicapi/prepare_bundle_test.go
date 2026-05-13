@@ -991,7 +991,9 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 				planHashes := collectLeafHashes(result.ExecutionPlan.Steps)
 				// For EIP-1559 (type 2), the access list is part of the signing hash.
 				// Without stripping the marker the hash must differ from the plan hash.
-				withMarker := signer.Hash(result.Transactions[0].ToTransaction())
+				markerTx, err := result.Transactions[0].ToTransaction()
+				require.NoError(t, err)
+				withMarker := signer.Hash(markerTx)
 				require.NotEqual(t, planHashes[0], withMarker, "stripping bundle marker must be necessary for EIP-1559 txs")
 			},
 		},
@@ -1029,7 +1031,8 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			expectedHashes := make([]common.Hash, len(result.Transactions))
 			for i, txArgs := range result.Transactions {
 				clean := stripBundleMarker(txArgs)
-				tx := toTransactionForBundles(clean)
+				tx, err := toTransactionForBundles(clean)
+				require.NoError(t, err)
 				expectedHashes[i] = signer.Hash(tx)
 			}
 			planHashes := collectLeafHashes(result.ExecutionPlan.Steps)
