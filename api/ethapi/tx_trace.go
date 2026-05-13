@@ -431,7 +431,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 
 			vmenv, _, err := s.b.GetEVM(ctx, state, block.Header(), &vmConfig, nil)
 			if err != nil {
-				return nil, fmt.Errorf("cannot initialize vm for transaction %s, error: %w", tx.Hash().String(), err)
+				return nil, fmt.Errorf("cannot initialize vm for transaction %s, error: %s", tx.Hash().String(), err.Error())
 			}
 
 			if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
