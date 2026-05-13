@@ -383,6 +383,42 @@ func TestTraceCallExec_BothTypes(t *testing.T) {
 	require.NotNil(t, result.StateDiff, "stateDiff must be non-nil when requested")
 }
 
+func TestTraceCallExec_InvalidGasPrice_ReturnsError(t *testing.T) {
+	tests := map[string]*core.Message{
+		"negative gas price": {
+			GasPrice: big.NewInt(-1),
+		},
+		"excessively large gas price": {
+			GasPrice: new(big.Int).Lsh(big.NewInt(1), 256),
+		},
+	}
+
+	for name, msg := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockState := state.NewMockStateDB(ctrl)
+			backend := setupBackendForTracing(ctrl, mockState)
+
+			mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+
+			api := &PublicTxTraceAPI{b: backend}
+			result, err := api.traceCallExec(
+				t.Context(),
+				traceTestBlock(),
+				msg,
+				mockState,
+				traceTestTx(),
+				0,
+				true,
+				false,
+			)
+
+			require.ErrorContains(t, err, "invalid gas price")
+			require.Nil(t, result, "result must be nil on error")
+		})
+	}
+}
+
 // setupBackendForCallMany returns a MockBackend pre-configured with all expectations
 // needed by CallMany: BlockByNumber, StateAndBlockByNumberOrHash, RPCGasCap, and
 // everything required by setupTracedEVM (GetNetworkRules, RPCEVMTimeout, GetEVM).

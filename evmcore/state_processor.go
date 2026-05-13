@@ -729,7 +729,11 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 		}
 	}
 	// Create a new context to be used in the EVM environment.
-	txContext := NewEVMTxContext(msg)
+	txContext, err := NewEVMTxContext(msg)
+	if err != nil {
+		statedb.EndTransaction()
+		return nil, fmt.Errorf("failed to create EVM transaction context: %w", err)
+	}
 	evm.SetTxContext(txContext)
 
 	// For now, Sonic only supports Blob transactions without blob data.
@@ -745,6 +749,7 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 	// Apply the transaction to the current state (included in the env).
 	result, err := core.ApplyMessage(evm, msg, gp)
 	if err != nil {
+		statedb.EndTransaction()
 		return nil, err
 	}
 
@@ -798,8 +803,8 @@ func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM, stateDb state.Sta
 		Data:      prevHash.Bytes(),
 	}
 
-	txContext := NewEVMTxContext(msg)
-	evm.SetTxContext(txContext)
+	// Must is fine, since all inputs are practically hardcoded above.
+	evm.SetTxContext(MustNewEVMTxContext(msg))
 
 	stateDb.AddAddressToAccessList(params.HistoryStorageAddress)
 	_, _, _ = evm.Call(msg.From, *msg.To, msg.Data, 30_000_000, common.U2560)
@@ -826,7 +831,11 @@ func applyTransaction(
 	error,
 ) {
 	// Create a new context to be used in the EVM environment.
-	txContext := NewEVMTxContext(msg)
+	txContext, err := NewEVMTxContext(msg)
+	if err != nil {
+		statedb.EndTransaction()
+		return nil, 0, fmt.Errorf("failed to create EVM transaction context: %w", err)
+	}
 	evm.SetTxContext(txContext)
 
 	// Skip checking of base fee limits for internal transactions.
