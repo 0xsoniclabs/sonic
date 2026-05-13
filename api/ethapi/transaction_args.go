@@ -32,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/holiman/uint256"
 
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -300,6 +299,10 @@ func (args *TransactionArgs) ToTransaction() (*types.Transaction, error) {
 		if args.AccessList != nil {
 			al = *args.AccessList
 		}
+		chainId, err := utils.BigIntToUint256Err((*big.Int)(args.ChainID))
+		if err != nil {
+			return nil, fmt.Errorf("invalid ChainID: %w", err)
+		}
 		gasFeeCap, err := utils.BigIntToUint256Err((*big.Int)(args.MaxFeePerGas))
 		if err != nil {
 			return nil, fmt.Errorf("invalid MaxFeePerGas: %w", err)
@@ -308,14 +311,19 @@ func (args *TransactionArgs) ToTransaction() (*types.Transaction, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid MaxPriorityFeePerGas: %w", err)
 		}
+		value, err := utils.BigIntToUint256Err((*big.Int)(args.Value))
+		if err != nil {
+			return nil, fmt.Errorf("invalid Value: %w", err)
+		}
+
 		data = &types.SetCodeTx{
 			To:         *args.To,
-			ChainID:    uint256.MustFromBig((*big.Int)(args.ChainID)),
+			ChainID:    chainId,
 			Nonce:      uint64(*args.Nonce),
 			Gas:        uint64(*args.Gas),
 			GasFeeCap:  gasFeeCap,
 			GasTipCap:  gasTipCap,
-			Value:      uint256.MustFromBig((*big.Int)(args.Value)),
+			Value:      value,
 			Data:       args.data(),
 			AccessList: al,
 			AuthList:   ([]types.SetCodeAuthorization)(args.AuthorizationList),
@@ -325,6 +333,10 @@ func (args *TransactionArgs) ToTransaction() (*types.Transaction, error) {
 		al := types.AccessList{}
 		if args.AccessList != nil {
 			al = *args.AccessList
+		}
+		chainId, err := utils.BigIntToUint256Err((*big.Int)(args.ChainID))
+		if err != nil {
+			return nil, fmt.Errorf("invalid ChainID: %w", err)
 		}
 		gasFeeCap, err := utils.BigIntToUint256Err((*big.Int)(args.MaxFeePerGas))
 		if err != nil {
@@ -338,14 +350,18 @@ func (args *TransactionArgs) ToTransaction() (*types.Transaction, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid BlobFeeCap: %w", err)
 		}
+		value, err := utils.BigIntToUint256Err((*big.Int)(args.Value))
+		if err != nil {
+			return nil, fmt.Errorf("invalid Value: %w", err)
+		}
 		data = &types.BlobTx{
 			To:         *args.To,
-			ChainID:    uint256.MustFromBig((*big.Int)(args.ChainID)),
+			ChainID:    chainId,
 			Nonce:      uint64(*args.Nonce),
 			Gas:        uint64(*args.Gas),
 			GasFeeCap:  gasFeeCap,
 			GasTipCap:  gasTipCap,
-			Value:      uint256.MustFromBig((*big.Int)(args.Value)),
+			Value:      value,
 			Data:       args.data(),
 			AccessList: al,
 			BlobFeeCap: blobFeeCap,
