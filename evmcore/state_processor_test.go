@@ -703,6 +703,18 @@ func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 	}
 }
 
+func TestApplyTransaction_FailsForTransactionWithInvalidGasPrice(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().EndTransaction()
+
+	msg := &core.Message{
+		GasPrice: big.NewInt(-1),
+	}
+	_, _, err := applyTransaction(msg, nil, stateDb, nil, nil, nil, nil, nil)
+	require.ErrorContains(t, err, "failed to create EVM transaction context")
+}
+
 func TestApplyTransaction_BlobHashesNotSupportedAndSkipped(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
