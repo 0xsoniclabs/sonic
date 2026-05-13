@@ -246,12 +246,13 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 // evaluateBundleTx calculates the effective gas of the bundle and whether the
 // given transaction is a valid bundle that could be emitted by this emitter.
 func (em *Emitter) evaluateBundleTx(tx *types.Transaction) bool {
-	return em.evaluateBundleTxInternal(tx, em.bundleCache)
+	return em.evaluateBundleTxInternal(tx, em.bundleCache, effectiveBundleGasHistogram)
 }
 
 func (em *Emitter) evaluateBundleTxInternal(
 	tx *types.Transaction,
 	evalBundle evmcore.BundleEvaluator,
+	effectiveGasHistogram utils.MetricsHistogramWrapper,
 ) bool {
 	// Ignore if bundled transactions are not enabled.
 	if !em.world.GetRules().Upgrades.TransactionBundles {
@@ -289,7 +290,7 @@ func (em *Emitter) evaluateBundleTxInternal(
 	bundleState := evalBundle.GetBundleState(adapter, stateDb, tx)
 
 	// Update the gas efficiency metric for the bundle.
-	effectiveBundleGasHistogram.Update(bundleState.GasEfficiency)
+	effectiveGasHistogram.Update(bundleState.GasEfficiency)
 	return bundleState.Executable
 }
 

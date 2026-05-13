@@ -88,7 +88,7 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 					Return(evmcore.BundleState{Executable: true})
 			}
 
-			runnable := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
+			runnable := emitter.evaluateBundleTxInternal(tx, bundleEvaluator, effectiveBundleGasHistogram)
 			require.Equal(bundlesEnabled, runnable)
 		})
 	}
@@ -176,7 +176,7 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 					Return(evmcore.BundleState{Executable: true, GasEfficiency: 1.0})
 			}
 
-			valid := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
+			valid := emitter.evaluateBundleTxInternal(tx, bundleEvaluator, effectiveBundleGasHistogram)
 			require.Equal(t, !processed, valid)
 		})
 	}
@@ -310,14 +310,10 @@ func Test_Emitter_evaluateBundleTx_ReturnsGasEfficiencyFromEvaluator(t *testing.
 				})
 
 			gasEfficiencyMock := utils.NewMockMetricsHistogramWrapper(ctrl)
-			originalHistogram := effectiveBundleGasHistogram
-			effectiveBundleGasHistogram = gasEfficiencyMock
-			defer func() { effectiveBundleGasHistogram = originalHistogram }()
-
 			// ensure the metric is updated with the correct gas efficiency value
 			gasEfficiencyMock.EXPECT().Update(tc.gasEfficiency)
 
-			valid := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
+			valid := emitter.evaluateBundleTxInternal(tx, bundleEvaluator, gasEfficiencyMock)
 			require.Equal(t, tc.executable, valid)
 		})
 	}
