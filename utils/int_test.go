@@ -129,6 +129,10 @@ func TestBigIntToUint256Err_ValidConversions(t *testing.T) {
 
 			// verify round-trip: converting back should yield the original
 			roundTrip := Uint256ToBigInt(result)
+			if tt.input == nil {
+				require.Nil(t, roundTrip, "round-trip failed: input=%v got=%v", tt.input, roundTrip)
+				return
+			}
 			require.Equal(t, 0, tt.input.Cmp(roundTrip),
 				"round-trip failed: input=%v got=%v", tt.input, roundTrip)
 		})
