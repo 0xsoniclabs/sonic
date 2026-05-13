@@ -17,11 +17,15 @@
 package utils
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/holiman/uint256"
 )
 
+// BigIntToUint256 converts a big.Int to a uint256.Int.
+// It panics if the value is negative or too large to fit into a uint256.Int.
+// FIXME: remove in favour of BigIntToUint256Err
 func BigIntToUint256(value *big.Int) *uint256.Int {
 	if value.Sign() < 0 {
 		panic("unable to convert negative big.Int to uint256")
@@ -31,6 +35,24 @@ func BigIntToUint256(value *big.Int) *uint256.Int {
 		panic("unable to convert big.Int exceeding 32 bytes to uint256")
 	}
 	return new(uint256.Int).SetBytes(bytes)
+}
+
+// BigIntToUint256Err converts a big.Int to a uint256.Int.
+// It returns an error if the value is negative or too large to fit into a uint256.Int.
+// If the value is nil, nil is returned.
+// FIXME: rename to BigIntToUint256 once the panicking version is removed
+func BigIntToUint256Err(value *big.Int) (*uint256.Int, error) {
+	if value == nil {
+		return nil, nil
+	}
+	if value.Sign() < 0 {
+		return nil, fmt.Errorf("unable to convert negative big.Int to uint256")
+	}
+	res, overflow := uint256.FromBig(value)
+	if overflow {
+		return nil, fmt.Errorf("unable to convert big.Int exceeding 32 bytes to uint256")
+	}
+	return res, nil
 }
 
 // BigIntToUint256Clamped converts a big.Int to a uint256.Int. If the value is
@@ -50,6 +72,8 @@ func BigIntToUint256Clamped(value *big.Int) *uint256.Int {
 	return res
 }
 
+// Uint256ToBigInt converts a uint256.Int to a big.Int.
+// If the input is nil, nil is returned.
 func Uint256ToBigInt(value *uint256.Int) *big.Int {
-	return new(big.Int).SetBytes(value.Bytes())
+	return value.ToBig()
 }
