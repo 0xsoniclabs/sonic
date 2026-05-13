@@ -341,13 +341,13 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 		lazyTxs := make([]*txpool.LazyTransaction, 0, len(list))
 		for _, tx := range list {
 
-			gasFee, err := utils.BigIntToUint256Err(tx.GasFeeCap())
+			gasFee, err := utils.BigIntToUint256(tx.GasFeeCap())
 			if err != nil {
 				em.Log.Warn("Failed to convert tx fee cap to uint256", "hash", tx.Hash(), "gasFeeCap", tx.GasFeeCap(), "err", err)
 				// stop iteration, skipped transaction invalidates the rest of transactions because they introduce a nonce gap
 				break
 			}
-			gasTip, err := utils.BigIntToUint256Err(tx.GasTipCap())
+			gasTip, err := utils.BigIntToUint256(tx.GasTipCap())
 			if err != nil {
 				em.Log.Warn("Failed to convert tx tip cap to uint256", "hash", tx.Hash(), "gasTipCap", tx.GasTipCap(), "err", err)
 				// stop iteration, skipped transaction invalidates the rest of transactions because they introduce a nonce gap
