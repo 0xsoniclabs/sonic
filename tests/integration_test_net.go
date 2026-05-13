@@ -416,6 +416,12 @@ func StartIntegrationTestNetWithJsonGenesis(
 	// Speed up the block generation time to reduce test time.
 	jsonGenesis.Rules.Emitter.Interval = inter.Timestamp(time.Millisecond)
 
+	// Set a long stall threshold to avoid the network switching into stall
+	// mode during tests. On slow machines or under heavy load each node may
+	// start stalling if the bootstrap phase takes longer than StallThreshold,
+	// this can prevent consensus from being formed.
+	jsonGenesis.Rules.Emitter.StallThreshold = inter.Timestamp(1 * time.Hour)
+
 	encoded, err := json.MarshalIndent(jsonGenesis, "", "  ")
 	require.NoError(t, err, "failed to marshal genesis json")
 
