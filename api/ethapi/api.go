@@ -1792,7 +1792,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		statedb.Release()
 		if err != nil {
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction from sender %v and nonce %d: %w",
-				args.from(), args.Nonce, err)
+				args.from(), uint64(*args.Nonce), err)
 		}
 		if tracer.Equal(prevTracer) {
 			return accessList, res.UsedGas, res.Err, nil
