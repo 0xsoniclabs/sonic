@@ -1324,12 +1324,12 @@ func Test_trialRunBundleInternal_ReturnsCorrectGasEfficiency(t *testing.T) {
 		expectedEfficiency float64
 		expectedAccept     bool
 	}{
-		// "zero execution cost returns nil efficiency": {
-		// 	processedTxs:       []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 50}}},
-		// 	execCost:           core_types.ExecutionCost(0),
-		// 	expectedEfficiency: 0.0,
-		// 	expectedAccept:     false,
-		// },
+		"zero execution cost returns zero efficiency": {
+			processedTxs:       []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 50}}},
+			execCost:           core_types.ExecutionCost(0),
+			expectedEfficiency: 0.0,
+			expectedAccept:     false,
+		},
 		"below threshold efficiency": {
 			processedTxs:       []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 10}}},
 			execCost:           core_types.ExecutionCost(100),
