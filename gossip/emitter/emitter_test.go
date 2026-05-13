@@ -498,7 +498,7 @@ func TestEmitter_EmitEvent_logsErrorAndSkipsMalformedTxs(t *testing.T) {
 
 		"overflow GasPrice": {
 			tx: types.NewTx(&types.LegacyTx{
-				GasPrice: new(big.Int).Sub(big.NewInt(0), new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)),
+				GasPrice: new(big.Int).Lsh(big.NewInt(1), 256),
 			}),
 			expectedLog:      "Failed to convert tx fee cap to uint256",
 			expectedArgument: "gasFeeCap",
