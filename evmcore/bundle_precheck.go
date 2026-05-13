@@ -399,7 +399,7 @@ func trialRunBundleInternal(
 		}
 	}
 
-	gasEfficiency := 0.0
+	gasEfficiency := 1.0
 	if summary.ExecutionCost > 0 {
 		gasEfficiency = float64(usedGas) / float64(summary.ExecutionCost)
 	}

@@ -40,9 +40,11 @@ import (
 
 var (
 	effectiveBundleGasHistogram = utils.MetricsHistogramWrapper(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
-		Name:    "emitter_bundle_gas_effective",
-		Help:    "Effective gas usage ratio for bundle transactions",
-		Buckets: prometheus.LinearBuckets(0.0, 0.1, 11), // bucket intervals [0, 0.1, 0.2, ..., 1.0]
+		Name: "emitter_bundle_gas_effective",
+		Help: "Effective gas usage ratio for bundle transactions",
+		// Due to the accuracy of floating point numbers, the width is increase a little
+		// to avoid having 100% efficient bundles in the +inf bucket.
+		Buckets: prometheus.LinearBuckets(0.1, 0.10000000001, 10), // buckets: [0.0, 0.1, ..., 1.0, +inf]
 	}))
 )
 
@@ -229,10 +231,11 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 		// check validity of bundled transactions
 		if em.world.GetRules().Upgrades.Brio && bundle.IsEnvelope(resolvedTx) {
 			gasEfficiency, valid := em.evaluateBundleTx(resolvedTx)
-			effectiveBundleGasHistogram.Update(gasEfficiency)
 			if !valid {
 				sorted.Pop()
 				continue
+			} else {
+				effectiveBundleGasHistogram.Update(gasEfficiency)
 			}
 		}
 
