@@ -229,14 +229,9 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 			continue
 		}
 		// check validity of bundled transactions
-		if em.world.GetRules().Upgrades.Brio && bundle.IsEnvelope(resolvedTx) {
-			gasEfficiency, valid := em.evaluateBundleTx(resolvedTx)
-			if !valid {
-				sorted.Pop()
-				continue
-			} else {
-				effectiveBundleGasHistogram.Update(gasEfficiency)
-			}
+		if em.world.GetRules().Upgrades.Brio && bundle.IsEnvelope(resolvedTx) && !em.evaluateBundleTx(resolvedTx) {
+			sorted.Pop()
+			continue
 		}
 
 		// add
@@ -250,35 +245,35 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 
 // evaluateBundleTx calculates the effective gas of the bundle and whether the
 // given transaction is a valid bundle that could be emitted by this emitter.
-func (em *Emitter) evaluateBundleTx(tx *types.Transaction) (float64, bool) {
+func (em *Emitter) evaluateBundleTx(tx *types.Transaction) bool {
 	return em.evaluateBundleTxInternal(tx, em.bundleCache)
 }
 
 func (em *Emitter) evaluateBundleTxInternal(
 	tx *types.Transaction,
 	evalBundle evmcore.BundleEvaluator,
-) (float64, bool) {
+) bool {
 	// Ignore if bundled transactions are not enabled.
 	if !em.world.GetRules().Upgrades.TransactionBundles {
-		return 0.0, false
+		return false
 	}
 
 	// Ignore if not a bundle transaction.
 	if !bundle.IsEnvelope(tx) {
-		return 0.0, false
+		return false
 	}
 
 	// Ignore if it is not a valid bundle transaction.
 	_, plan, err := bundle.ValidateEnvelope(em.world.TransactionSigner, tx)
 	if err != nil {
-		return 0.0, false
+		return false
 	}
 
 	// Ignore if the next block is no longer in the range. If it is just the
 	// next block, it is likely anyway too late, since the DAG consensus is
 	// pipelined, but it is fine to error on the safe side here.
 	if !plan.Range.IsInRange(uint64(em.world.GetLatestBlockIndex()) + 1) {
-		return 0.0, false
+		return false
 	}
 
 	stateDb := em.world.StateDB()
@@ -286,13 +281,16 @@ func (em *Emitter) evaluateBundleTxInternal(
 
 	// Ignore if the same bundle has already been processed.
 	if stateDb.HasBundleRecentlyBeenProcessed(plan.Hash()) {
-		return 0.0, false
+		return false
 	}
 
 	// Skip bundles that are not runnable in the current state.
 	adapter := &preCheckChainStateAdapter{external: em.world}
 	bundleState := evalBundle.GetBundleState(adapter, stateDb, tx)
-	return bundleState.GasEfficiency, bundleState.Executable
+
+	// Update the gas efficiency metric for the bundle.
+	effectiveBundleGasHistogram.Update(bundleState.GasEfficiency)
+	return bundleState.Executable
 }
 
 type preCheckChainStateAdapter struct {

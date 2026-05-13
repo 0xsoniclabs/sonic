@@ -1329,7 +1329,7 @@ func Test_trialRunBundleInternal_ReturnsCorrectGasEfficiency(t *testing.T) {
 			expectedEfficiency: 0.0,
 			expectedAccept:     false,
 		},
-		"50% efficiency below threshold": {
+		"below threshold efficiency": {
 			processedTxs:       []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 10}}},
 			execCost:           core_types.ExecutionCost(100),
 			expectedEfficiency: 0.1,

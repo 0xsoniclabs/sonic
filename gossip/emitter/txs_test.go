@@ -27,6 +27,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -84,17 +85,11 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 			if bundlesEnabled {
 				// if bundles are enabled, it will be evaluated
 				bundleEvaluator.EXPECT().GetBundleState(gomock.Any(), gomock.Any(), tx).
-					Return(evmcore.BundleState{Executable: true, GasEfficiency: 1.0})
+					Return(evmcore.BundleState{Executable: true})
 			}
 
-			gasEfficiency, runnable := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
-			if bundlesEnabled {
-				require.True(runnable)
-				require.Equal(1.0, gasEfficiency)
-			} else {
-				require.False(runnable)
-				require.Equal(0.0, gasEfficiency)
-			}
+			runnable := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
+			require.Equal(bundlesEnabled, runnable)
 		})
 	}
 }
@@ -135,9 +130,8 @@ func Test_Emitter_isValidBundleTx_RejectsInvalidBundle(t *testing.T) {
 				world: World{External: external},
 			}
 
-			gasEfficiency, valid := emitter.evaluateBundleTx(tx)
+			valid := emitter.evaluateBundleTx(tx)
 			require.False(valid)
-			require.Equal(0.0, gasEfficiency)
 		})
 	}
 }
@@ -182,14 +176,8 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 					Return(evmcore.BundleState{Executable: true, GasEfficiency: 1.0})
 			}
 
-			gasEfficiency, valid := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
-			if processed {
-				require.False(t, valid)
-				require.Equal(t, 0.0, gasEfficiency)
-			} else {
-				require.True(t, valid)
-				require.Equal(t, 1.0, gasEfficiency)
-			}
+			valid := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
+			require.Equal(t, !processed, valid)
 		})
 	}
 }
@@ -321,9 +309,16 @@ func Test_Emitter_evaluateBundleTx_ReturnsGasEfficiencyFromEvaluator(t *testing.
 					GasEfficiency: tc.gasEfficiency,
 				})
 
-			gasEfficiency, valid := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
+			gasEfficiencyMock := utils.NewMockMetricsHistogramWrapper(ctrl)
+			originalHistogram := effectiveBundleGasHistogram
+			effectiveBundleGasHistogram = gasEfficiencyMock
+			defer func() { effectiveBundleGasHistogram = originalHistogram }()
+
+			// ensure the metric is updated with the correct gas efficiency value
+			gasEfficiencyMock.EXPECT().Update(tc.gasEfficiency)
+
+			valid := emitter.evaluateBundleTxInternal(tx, bundleEvaluator)
 			require.Equal(t, tc.executable, valid)
-			require.Equal(t, tc.gasEfficiency, gasEfficiency)
 		})
 	}
 }
