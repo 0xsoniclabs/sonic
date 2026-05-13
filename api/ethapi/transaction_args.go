@@ -291,7 +291,7 @@ func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int, lo
 
 // ToTransaction converts the arguments to an unsigned `types.transaction`.
 // This assumes that setDefaults has been called.
-func (args *TransactionArgs) ToTransaction() *types.Transaction {
+func (args *TransactionArgs) ToTransaction() (*types.Transaction, error) {
 	var data types.TxData
 
 	switch {
@@ -300,13 +300,21 @@ func (args *TransactionArgs) ToTransaction() *types.Transaction {
 		if args.AccessList != nil {
 			al = *args.AccessList
 		}
+		gasFeeCap, err := utils.BigIntToUint256((*big.Int)(args.MaxFeePerGas))
+		if err != nil {
+			return nil, fmt.Errorf("invalid MaxFeePerGas: %w", err)
+		}
+		gasTipCap, err := utils.BigIntToUint256((*big.Int)(args.MaxPriorityFeePerGas))
+		if err != nil {
+			return nil, fmt.Errorf("invalid MaxPriorityFeePerGas: %w", err)
+		}
 		data = &types.SetCodeTx{
 			To:         *args.To,
 			ChainID:    uint256.MustFromBig((*big.Int)(args.ChainID)),
 			Nonce:      uint64(*args.Nonce),
 			Gas:        uint64(*args.Gas),
-			GasFeeCap:  utils.BigIntToUint256((*big.Int)(args.MaxFeePerGas)),
-			GasTipCap:  utils.BigIntToUint256((*big.Int)(args.MaxPriorityFeePerGas)),
+			GasFeeCap:  gasFeeCap,
+			GasTipCap:  gasTipCap,
 			Value:      uint256.MustFromBig((*big.Int)(args.Value)),
 			Data:       args.data(),
 			AccessList: al,
@@ -318,17 +326,29 @@ func (args *TransactionArgs) ToTransaction() *types.Transaction {
 		if args.AccessList != nil {
 			al = *args.AccessList
 		}
+		gasFeeCap, err := utils.BigIntToUint256((*big.Int)(args.MaxFeePerGas))
+		if err != nil {
+			return nil, fmt.Errorf("invalid MaxFeePerGas: %w", err)
+		}
+		gasTipCap, err := utils.BigIntToUint256((*big.Int)(args.MaxPriorityFeePerGas))
+		if err != nil {
+			return nil, fmt.Errorf("invalid MaxPriorityFeePerGas: %w", err)
+		}
+		blobFeeCap, err := utils.BigIntToUint256((*big.Int)(args.BlobFeeCap))
+		if err != nil {
+			return nil, fmt.Errorf("invalid BlobFeeCap: %w", err)
+		}
 		data = &types.BlobTx{
 			To:         *args.To,
 			ChainID:    uint256.MustFromBig((*big.Int)(args.ChainID)),
 			Nonce:      uint64(*args.Nonce),
 			Gas:        uint64(*args.Gas),
-			GasFeeCap:  utils.BigIntToUint256((*big.Int)(args.MaxFeePerGas)),
-			GasTipCap:  utils.BigIntToUint256((*big.Int)(args.MaxPriorityFeePerGas)),
+			GasFeeCap:  gasFeeCap,
+			GasTipCap:  gasTipCap,
 			Value:      uint256.MustFromBig((*big.Int)(args.Value)),
 			Data:       args.data(),
 			AccessList: al,
-			BlobFeeCap: utils.BigIntToUint256((*big.Int)(args.BlobFeeCap)),
+			BlobFeeCap: blobFeeCap,
 			BlobHashes: args.BlobHashes,
 		}
 
@@ -369,5 +389,5 @@ func (args *TransactionArgs) ToTransaction() *types.Transaction {
 			Data:     args.data(),
 		}
 	}
-	return types.NewTx(data)
+	return types.NewTx(data), nil
 }
