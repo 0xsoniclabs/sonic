@@ -40,11 +40,9 @@ import (
 
 var (
 	effectiveBundleGasHistogram = utils.MetricsHistogramWrapper(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
-		Name: "emitter_bundle_gas_effective",
-		Help: "Effective gas usage ratio for bundle transactions",
-		// Due to the accuracy of floating point numbers, the width is increase a little
-		// to avoid having 100% efficient bundles in the +inf bucket.
-		Buckets: prometheus.LinearBuckets(0.1, 0.10000000001, 10), // buckets: [0.0, 0.1, ..., 1.0, +inf]
+		Name:    "emitter_bundle_gas_effective",
+		Help:    "Effective gas usage ratio for bundle transactions",
+		Buckets: prometheus.LinearBuckets(0.0, 0.01, 100), // buckets: [0.0, 0.01, ..., 0.99, +inf]
 	}))
 )
 
@@ -229,7 +227,7 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 			continue
 		}
 		// check validity of bundled transactions
-		if em.world.GetRules().Upgrades.Brio && bundle.IsEnvelope(resolvedTx) && !em.evaluateBundleTx(resolvedTx) {
+		if em.world.GetRules().Upgrades.Brio && bundle.IsEnvelope(resolvedTx) && !em.isValidBundleTx(resolvedTx) {
 			sorted.Pop()
 			continue
 		}
@@ -243,13 +241,13 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 	}
 }
 
-// evaluateBundleTx calculates the effective gas of the bundle and whether the
-// given transaction is a valid bundle that could be emitted by this emitter.
-func (em *Emitter) evaluateBundleTx(tx *types.Transaction) bool {
-	return em.evaluateBundleTxInternal(tx, em.bundleCache, effectiveBundleGasHistogram)
+// isValidBundleTx checks whether the given transaction is a valid bundle that
+// could be emitted by this emitter.
+func (em *Emitter) isValidBundleTx(tx *types.Transaction) bool {
+	return em.isRunnableBundleTxInternal(tx, em.bundleCache, effectiveBundleGasHistogram)
 }
 
-func (em *Emitter) evaluateBundleTxInternal(
+func (em *Emitter) isRunnableBundleTxInternal(
 	tx *types.Transaction,
 	evalBundle evmcore.BundleEvaluator,
 	effectiveGasHistogram utils.MetricsHistogramWrapper,
@@ -290,7 +288,9 @@ func (em *Emitter) evaluateBundleTxInternal(
 	bundleState := evalBundle.GetBundleState(adapter, stateDb, tx)
 
 	// Update the gas efficiency metric for the bundle.
-	effectiveGasHistogram.Update(bundleState.GasEfficiency)
+	if bundleState.GasEfficiency != nil {
+		effectiveGasHistogram.Update(*bundleState.GasEfficiency)
+	}
 	return bundleState.Executable
 }
 

@@ -88,7 +88,7 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 					Return(evmcore.BundleState{Executable: true})
 			}
 
-			runnable := emitter.evaluateBundleTxInternal(tx, bundleEvaluator, effectiveBundleGasHistogram)
+			runnable := emitter.isRunnableBundleTxInternal(tx, bundleEvaluator, effectiveBundleGasHistogram)
 			require.Equal(bundlesEnabled, runnable)
 		})
 	}
@@ -130,7 +130,7 @@ func Test_Emitter_isValidBundleTx_RejectsInvalidBundle(t *testing.T) {
 				world: World{External: external},
 			}
 
-			valid := emitter.evaluateBundleTx(tx)
+			valid := emitter.isValidBundleTx(tx)
 			require.False(valid)
 		})
 	}
@@ -173,10 +173,10 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 			if !processed {
 				// if not processed already, it will be evaluated
 				bundleEvaluator.EXPECT().GetBundleState(gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(evmcore.BundleState{Executable: true, GasEfficiency: 1.0})
+					Return(evmcore.BundleState{Executable: true})
 			}
 
-			valid := emitter.evaluateBundleTxInternal(tx, bundleEvaluator, effectiveBundleGasHistogram)
+			valid := emitter.isRunnableBundleTxInternal(tx, bundleEvaluator, effectiveBundleGasHistogram)
 			require.Equal(t, !processed, valid)
 		})
 	}
@@ -254,20 +254,23 @@ func Test_preCheckStateAdapter_ForwardsGetLatestHeader(t *testing.T) {
 }
 
 func Test_Emitter_evaluateBundleTx_ReturnsGasEfficiencyFromEvaluator(t *testing.T) {
+	asPointer := func(f float64) *float64 {
+		return &f
+	}
 	tests := map[string]struct {
-		gasEfficiency float64
+		gasEfficiency *float64
 		executable    bool
 	}{
 		"low efficiency rejected": {
-			gasEfficiency: 0.1,
+			gasEfficiency: asPointer(0.1),
 			executable:    false,
 		},
 		"medium efficiency accepted": {
-			gasEfficiency: 0.5,
+			gasEfficiency: asPointer(0.5),
 			executable:    true,
 		},
 		"full efficiency accepted": {
-			gasEfficiency: 1.0,
+			gasEfficiency: asPointer(1.0),
 			executable:    true,
 		},
 	}
@@ -311,9 +314,9 @@ func Test_Emitter_evaluateBundleTx_ReturnsGasEfficiencyFromEvaluator(t *testing.
 
 			gasEfficiencyMock := utils.NewMockMetricsHistogramWrapper(ctrl)
 			// ensure the metric is updated with the correct gas efficiency value
-			gasEfficiencyMock.EXPECT().Update(tc.gasEfficiency)
+			gasEfficiencyMock.EXPECT().Update(*tc.gasEfficiency)
 
-			valid := emitter.evaluateBundleTxInternal(tx, bundleEvaluator, gasEfficiencyMock)
+			valid := emitter.isRunnableBundleTxInternal(tx, bundleEvaluator, gasEfficiencyMock)
 			require.Equal(t, tc.executable, valid)
 		})
 	}
