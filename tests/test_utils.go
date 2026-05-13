@@ -443,6 +443,26 @@ func GetStateRoot(t *testing.T, client *PooledEhtClient, blockNumber int) common
 	return common.BytesToHash(crypto.Keccak256(data))
 }
 
+// WaitForBlock waits until the block with the given number is available in the node, it errors
+// if the block is not available after a timeout.
+// It can be used to wait in multiple nodes for the same block, to ensure they have all processed it.
+func WaitForBlock(t *testing.T, client *PooledEhtClient, blockNumber int) *types.Block {
+	var block *types.Block
+	err := WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+		var err error
+		block, err = client.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
+		if err != nil {
+			if err == ethereum.NotFound {
+				return false, nil
+			}
+			return false, err
+		}
+		return true, nil
+	})
+	require.NoError(t, err, "failed to wait for block %d", blockNumber)
+	return block
+}
+
 func WaitForProofOf(t *testing.T, client *PooledEhtClient, blockNumber int) {
 	err := WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
 		_, err := getProofFor(t, client, blockNumber)
