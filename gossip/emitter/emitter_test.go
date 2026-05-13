@@ -482,6 +482,192 @@ func TestEmitter_EmitEvent(t *testing.T) {
 	require.NotNil(t, e)
 }
 
+func TestEmitter_EmitEvent_logsErrorAndSkipsMalformedTxs(t *testing.T) {
+	any := gomock.Any()
+
+	validator := idx.ValidatorID(1)
+	builder := pos.NewBuilder()
+	builder.Set(validator, pos.Weight(1))
+	validators := builder.Build()
+
+	tests := map[string]struct {
+		tx               *types.Transaction
+		expectedLog      string
+		expectedArgument string
+	}{
+
+		"overflow GasPrice": {
+			tx: types.NewTx(&types.LegacyTx{
+				GasPrice: new(big.Int).Sub(big.NewInt(0), new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)),
+			}),
+			expectedLog:      "Failed to convert tx fee cap to uint256",
+			expectedArgument: "gasFeeCap",
+		},
+		"overflow GasFeeCap": {
+			tx: types.NewTx(&types.DynamicFeeTx{
+				GasFeeCap: new(big.Int).Sub(big.NewInt(0), new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)),
+			}),
+			expectedLog:      "Failed to convert tx fee cap to uint256",
+			expectedArgument: "gasFeeCap",
+		},
+		"overflow GasTipCap": {
+			tx: types.NewTx(&types.DynamicFeeTx{
+				GasFeeCap: big.NewInt(1),
+				GasTipCap: new(big.Int).Sub(big.NewInt(0), new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)),
+			}),
+			expectedLog:      "Failed to convert tx tip cap to uint256",
+			expectedArgument: "gasTipCap",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			ctrl := gomock.NewController(t)
+
+			world := NewMockExternal(ctrl)
+			world.EXPECT().GetRules().AnyTimes()
+			world.EXPECT().GetLastEvent(any, any).AnyTimes()
+			world.EXPECT().Build(any, any).AnyTimes()
+			world.EXPECT().Check(any, any).Return(nil).AnyTimes()
+			world.EXPECT().GetLatestBlock().Return(&inter.Block{}).AnyTimes()
+			world.EXPECT().GetLatestBlockIndex().Return(idx.Block(1)).AnyTimes()
+			world.EXPECT().IsBusy().AnyTimes()
+			world.EXPECT().Lock()
+			world.EXPECT().Unlock()
+			world.EXPECT().Process(any)
+			world.EXPECT().Broadcast(any)
+
+			log := logger.NewMockLogger(ctrl)
+
+			txPool := NewMockTxPool(ctrl)
+			txPool.EXPECT().Count().Return(1)
+
+			transactions := map[common.Address]types.Transactions{
+				{1}: {tt.tx},
+			}
+
+			txPool.EXPECT().Pending(gomock.Any()).Return(transactions, nil)
+
+			signer := valkeystore.NewMockSignerAuthority(ctrl)
+			signer.EXPECT().Sign(gomock.Any()).AnyTimes()
+
+			baseFeeSource := NewMockBaseFeeSource(ctrl)
+			baseFeeSource.EXPECT().GetCurrentBaseFee()
+
+			em := &Emitter{
+				baseFeeSource: baseFeeSource,
+				Periodic: logger.Periodic{
+					Instance: logger.Instance{
+						Log: log,
+					},
+				},
+				config: config.Config{
+					MaxTxsPerAddress: 1,
+					Validator: config.ValidatorConfig{
+						ID: validator,
+					},
+				},
+				world: World{
+					External:     world,
+					TxPool:       txPool,
+					EventsSigner: signer,
+				},
+			}
+			em.validators.Store(validators)
+
+			log.EXPECT().Warn(tt.expectedLog, "hash", gomock.Any(), tt.expectedArgument, gomock.Any(), "err", gomock.Any())
+
+			e, err := em.EmitEvent()
+			require.NoError(t, err)
+			require.NotNil(t, e)
+		})
+	}
+}
+
+func TestEmitter_EmitEvent_skippingTxsAlsoSkipsGappedNoncesTxs(t *testing.T) {
+	any := gomock.Any()
+
+	validator := idx.ValidatorID(1)
+	builder := pos.NewBuilder()
+	builder.Set(validator, pos.Weight(1))
+	validators := builder.Build()
+
+	sender := common.Address{1}
+	validTx0 := types.NewTx(&types.LegacyTx{
+		Nonce:    0,
+		GasPrice: big.NewInt(1000),
+		Gas:      21000,
+	})
+	malformedTx1 := types.NewTx(&types.LegacyTx{
+		Nonce:    1,
+		GasPrice: new(big.Int).Neg(new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)),
+		Gas:      21000,
+	})
+	validTx2 := types.NewTx(&types.LegacyTx{
+		Nonce:    2,
+		GasPrice: big.NewInt(1000),
+		Gas:      21000,
+	})
+
+	ctrl := gomock.NewController(t)
+
+	world := NewMockExternal(ctrl)
+	world.EXPECT().GetRules().AnyTimes()
+	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(1)).AnyTimes()
+
+	log := logger.NewMockLogger(ctrl)
+	// Expect exactly one warning for the malformed tx at nonce=1.
+	// The valid tx at nonce=2 should be silently skipped (no second warning).
+	log.EXPECT().Warn("Failed to convert tx fee cap to uint256",
+		"hash", malformedTx1.Hash(), "gasFeeCap", malformedTx1.GasPrice(), "err", gomock.Any())
+
+	txPool := NewMockTxPool(ctrl)
+	txPool.EXPECT().Count().Return(3)
+	txPool.EXPECT().Pending(any).Return(
+		map[common.Address]types.Transactions{
+			sender: {validTx0, malformedTx1, validTx2},
+		}, nil,
+	)
+
+	txSigner := NewMockTxSigner(ctrl)
+	txSigner.EXPECT().Sender(any).Return(sender, nil).AnyTimes()
+
+	em := &Emitter{
+		Periodic: logger.Periodic{
+			Instance: logger.Instance{
+				Log: log,
+			},
+		},
+		config: config.Config{
+			MaxTxsPerAddress: 10,
+			Validator: config.ValidatorConfig{
+				ID: validator,
+			},
+		},
+		world: World{
+			External:          world,
+			TxPool:            txPool,
+			TransactionSigner: txSigner,
+		},
+	}
+	em.validators.Store(validators)
+
+	sorted := em.getSortedTxs(big.NewInt(0))
+	require.NotNil(t, sorted)
+
+	// Only the valid tx at nonce=0 should survive.
+	// The malformed tx at nonce=1 was skipped, which breaks the loop
+	// and also drops the valid tx at nonce=2 due to the nonce gap.
+	tx, _ := sorted.Peek()
+	require.NotNil(t, tx, "expected the valid tx at nonce=0 to be present")
+	require.Equal(t, validTx0.Hash(), tx.Hash)
+
+	sorted.Shift()
+	tx, _ = sorted.Peek()
+	require.Nil(t, tx, "expected no more txs after the nonce gap")
+}
+
 func TestEmitter_ThrottlerWorldAdapter_ReturnsNilIfNoEventIsFound(t *testing.T) {
 	validator := idx.ValidatorID(1)
 
