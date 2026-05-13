@@ -334,22 +334,37 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 			pendingTxs[from] = txs[:em.config.MaxTxsPerAddress]
 		}
 	}
+
 	// Convert to lists of LazyTransactions
 	txs := make(map[common.Address][]*txpool.LazyTransaction, len(pendingTxs))
 	for from, list := range pendingTxs {
 		lazyTxs := make([]*txpool.LazyTransaction, 0, len(list))
 		for _, tx := range list {
+
+			gasFee, err := utils.BigIntToUint256(tx.GasFeeCap())
+			if err != nil {
+				em.Log.Warn("Failed to convert tx fee cap to uint256", "hash", tx.Hash(), "gasFeeCap", tx.GasFeeCap(), "err", err)
+				continue
+			}
+			gasTip, err := utils.BigIntToUint256(tx.GasTipCap())
+			if err != nil {
+				em.Log.Warn("Failed to convert tx tip cap to uint256", "hash", tx.Hash(), "gasTipCap", tx.GasTipCap(), "err", err)
+				continue
+			}
+
 			lazyTxs = append(lazyTxs, &txpool.LazyTransaction{
 				Hash:      tx.Hash(),
 				Tx:        tx,
 				Time:      tx.Time(),
-				GasFeeCap: utils.BigIntToUint256(tx.GasFeeCap()),
-				GasTipCap: utils.BigIntToUint256(tx.GasTipCap()),
+				GasFeeCap: gasFee,
+				GasTipCap: gasTip,
 				Gas:       tx.Gas(),
 				BlobGas:   tx.BlobGas(),
 			})
 		}
-		txs[from] = lazyTxs
+		if len(lazyTxs) != 0 {
+			txs[from] = lazyTxs
+		}
 	}
 
 	sortedTxs := newTransactionsByPriceAndNonce(em.world.TransactionSigner, txs, baseFee)
