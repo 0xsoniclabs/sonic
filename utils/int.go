@@ -17,20 +17,21 @@
 package utils
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/holiman/uint256"
 )
 
-func BigIntToUint256(value *big.Int) *uint256.Int {
+func BigIntToUint256(value *big.Int) (*uint256.Int, error) {
 	if value.Sign() < 0 {
-		panic("unable to convert negative big.Int to uint256")
+		return nil, fmt.Errorf("unable to convert negative big.Int to uint256")
 	}
-	bytes := value.Bytes()
-	if len(bytes) > 32 {
-		panic("unable to convert big.Int exceeding 32 bytes to uint256")
+	res, overflow := uint256.FromBig(value)
+	if overflow {
+		return nil, fmt.Errorf("unable to convert big.Int exceeding 32 bytes to uint256")
 	}
-	return new(uint256.Int).SetBytes(bytes)
+	return res, nil
 }
 
 // BigIntToUint256Clamped converts a big.Int to a uint256.Int. If the value is
