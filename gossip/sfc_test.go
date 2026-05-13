@@ -217,7 +217,7 @@ func circleTransfers(t *testing.T, env *testEnv, count uint64) {
 		rr, err := env.ApplyTxs(sameEpoch, txs...)
 		require.NoError(err)
 		for i, r := range rr {
-			fee := uint256.NewInt(0).Mul(new(uint256.Int).SetUint64(r.GasUsed), utils.BigIntToUint256(txs[i].GasPrice()))
+			fee := uint256.NewInt(0).Mul(new(uint256.Int).SetUint64(r.GasUsed), utils.BigIntToUint256Clamped(txs[i].GasPrice()))
 			balances[i] = uint256.NewInt(0).Sub(balances[i], fee)
 		}
 	}
