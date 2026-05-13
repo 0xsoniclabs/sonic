@@ -505,7 +505,7 @@ func TestEmitter_EmitEvent_logsErrorAndSkipsMalformedTxs(t *testing.T) {
 		},
 		"overflow GasFeeCap": {
 			tx: types.NewTx(&types.DynamicFeeTx{
-				GasFeeCap: new(big.Int).Sub(big.NewInt(0), new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)),
+				GasFeeCap: new(big.Int).Lsh(big.NewInt(1), 256),
 			}),
 			expectedLog:      "Failed to convert tx fee cap to uint256",
 			expectedArgument: "gasFeeCap",
@@ -513,7 +513,29 @@ func TestEmitter_EmitEvent_logsErrorAndSkipsMalformedTxs(t *testing.T) {
 		"overflow GasTipCap": {
 			tx: types.NewTx(&types.DynamicFeeTx{
 				GasFeeCap: big.NewInt(1),
-				GasTipCap: new(big.Int).Sub(big.NewInt(0), new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)),
+				GasTipCap: new(big.Int).Lsh(big.NewInt(1), 256),
+			}),
+			expectedLog:      "Failed to convert tx tip cap to uint256",
+			expectedArgument: "gasTipCap",
+		},
+		"negative GasPrice": {
+			tx: types.NewTx(&types.LegacyTx{
+				GasPrice: big.NewInt(-1),
+			}),
+			expectedLog:      "Failed to convert tx fee cap to uint256",
+			expectedArgument: "gasFeeCap",
+		},
+		"negative GasFeeCap": {
+			tx: types.NewTx(&types.DynamicFeeTx{
+				GasFeeCap: big.NewInt(-1),
+			}),
+			expectedLog:      "Failed to convert tx fee cap to uint256",
+			expectedArgument: "gasFeeCap",
+		},
+		"negative GasTipCap": {
+			tx: types.NewTx(&types.DynamicFeeTx{
+				GasFeeCap: big.NewInt(1),
+				GasTipCap: big.NewInt(-1),
 			}),
 			expectedLog:      "Failed to convert tx tip cap to uint256",
 			expectedArgument: "gasTipCap",
