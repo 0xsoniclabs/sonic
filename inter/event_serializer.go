@@ -144,6 +144,9 @@ func eventUnmarshalCSER(r *cser.Reader, e *MutableEventPayload) (err error) {
 	for i := uint32(0); i < parentsNum; i++ {
 		// lamport difference
 		lamportDiff := r.U32()
+		if lamportDiff > lamport {
+			return cser.ErrMalformedEncoding
+		}
 		// hash
 		h := [24]byte{}
 		r.FixedBytes(h[:])
