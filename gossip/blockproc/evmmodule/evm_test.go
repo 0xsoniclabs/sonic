@@ -224,7 +224,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 	).Return(summary2)
 
 	processor := &OperaEVMProcessor{
-		processorFactory: factory,
+		ProcessorFactory: factory,
 	}
 
 	tx := types.NewTx(&types.LegacyTx{
@@ -264,7 +264,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorProducesTransactionsAndBundles_
 
 	stateProcessor.EXPECT().Process(any, any, any, any, any, any, any).Return(summary)
 	processor := &OperaEVMProcessor{
-		processorFactory: factory,
+		ProcessorFactory: factory,
 	}
 
 	tx := types.NewTx(&types.LegacyTx{})
@@ -318,8 +318,8 @@ func TestOperaEVMProcessor_Execute_UsesNumberOfAcceptedTransactionsAsTransaction
 				})
 
 			processor := &OperaEVMProcessor{
-				processorFactory: factory,
-				processedTxs:     processedTransactions,
+				ProcessorFactory: factory,
+				ProcessedTxs:     processedTransactions,
 			}
 
 			summary := processor.Execute(nil, 0)
@@ -370,8 +370,8 @@ func TestOperaEVMProcessor_Execute_UsesNumberOfTransactionsWithReceiptsAsTransac
 			stateProcessor.EXPECT().Process(any, any, any, any, any, wantedOffset, any)
 
 			processor := &OperaEVMProcessor{
-				processorFactory: factory,
-				processedTxs:     processedTransactions,
+				ProcessorFactory: factory,
+				ProcessedTxs:     processedTransactions,
 			}
 
 			processor.Execute(nil, 0)

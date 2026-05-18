@@ -986,7 +986,7 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactions(t *
 
 	context := &runContext{
 		runner:   runner,
-		upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
+		Upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
 	}
 	gomock.InOrder(
 		runner.EXPECT().runRegularTransaction(context, txs[0], 4).Return(
@@ -1072,7 +1072,7 @@ func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyP
 
 	context := &runContext{
 		runner: runner,
-		upgrades: opera.Upgrades{
+		Upgrades: opera.Upgrades{
 			Brio:               true,
 			GasSubsidies:       true,
 			TransactionBundles: true,
@@ -1137,10 +1137,10 @@ func TestRunTransaction_GasSubsidiesDisabled_ProcessesRegularTransaction(t *test
 			runner := NewMock_transactionRunner(ctrl)
 			context := &runContext{
 				runner:   runner,
-				upgrades: opera.Upgrades{GasSubsidies: false},
+				Upgrades: opera.Upgrades{GasSubsidies: false},
 			}
 			runner.EXPECT().runRegularTransaction(context, tx, 0)
-			runTransaction(context, tx, 0)
+			RunTransaction(context, tx, 0)
 		})
 	}
 }
@@ -1157,10 +1157,10 @@ func TestRunTransaction_GasSubsidiesEnabled_RunsRegularTransactionWithoutSponsor
 
 	context := &runContext{
 		runner:   runner,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		Upgrades: opera.Upgrades{GasSubsidies: true},
 	}
 	runner.EXPECT().runRegularTransaction(context, tx, 123).Return(processed, core_types.TransactionResultSuccessful)
-	got, status, execCost := runTransaction(context, tx, 123)
+	got, status, execCost := RunTransaction(context, tx, 123)
 	require.Equal(t, []ProcessedTransaction{processed}, got)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	require.EqualValues(t, processed.Receipt.GasUsed, execCost)
@@ -1174,7 +1174,7 @@ func TestRunTransaction_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorshi
 
 	context := &runContext{
 		runner:   runner,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		Upgrades: opera.Upgrades{GasSubsidies: true},
 	}
 	runner.EXPECT().runSponsoredTransaction(context, tx, 123).Return(
 		[]ProcessedTransaction{{
@@ -1183,7 +1183,7 @@ func TestRunTransaction_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorshi
 		}},
 		core_types.TransactionResultSuccessful,
 	)
-	processed, status, execCost := runTransaction(context, tx, 123)
+	processed, status, execCost := RunTransaction(context, tx, 123)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1203,11 +1203,11 @@ func TestRunTransaction_GasSubsidiesEnabled_ForReplay_RunsSponsorshipRequestAsRe
 
 	context := &runContext{
 		runner:    runner,
-		upgrades:  opera.Upgrades{GasSubsidies: true},
-		forReplay: true,
+		Upgrades:  opera.Upgrades{GasSubsidies: true},
+		ForReplay: true,
 	}
 	runner.EXPECT().runRegularTransaction(context, tx, 123).Return(processed, core_types.TransactionResultSuccessful)
-	got, status, execCost := runTransaction(context, tx, 123)
+	got, status, execCost := RunTransaction(context, tx, 123)
 	require.Equal(t, []ProcessedTransaction{processed}, got)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	require.Equal(t, core_types.ExecutionCost(1), execCost)
@@ -1221,7 +1221,7 @@ func TestRunTransactions_GasSubsidiesDisabled_BundlesDisabled_ProcessesAsRegular
 
 	context := &runContext{
 		runner:   runner,
-		upgrades: opera.Upgrades{TransactionBundles: false, GasSubsidies: false},
+		Upgrades: opera.Upgrades{TransactionBundles: false, GasSubsidies: false},
 	}
 	runner.EXPECT().runRegularTransaction(context, tx, 123).Return(
 		ProcessedTransaction{
@@ -1245,7 +1245,7 @@ func TestRunTransactions_GasSubsidiesEnabled_BundlesDisabled_ProcessesAsSponsors
 
 	context := &runContext{
 		runner:   runner,
-		upgrades: opera.Upgrades{TransactionBundles: false, GasSubsidies: true},
+		Upgrades: opera.Upgrades{TransactionBundles: false, GasSubsidies: true},
 	}
 	runner.EXPECT().runSponsoredTransaction(context, tx, 123).Return(
 		[]ProcessedTransaction{{
@@ -1270,7 +1270,7 @@ func TestRunTransactions_BundlesEnabled_RunsRegularTransactionOnItsOwn(t *testin
 
 	context := &runContext{
 		runner:   runner,
-		upgrades: opera.Upgrades{TransactionBundles: true},
+		Upgrades: opera.Upgrades{TransactionBundles: true},
 	}
 	runner.EXPECT().runRegularTransaction(context, tx, 123).Return(
 		ProcessedTransaction{
@@ -1294,7 +1294,7 @@ func TestRunTransactions_BundlesEnabled_RunsSponsorshipRequestWithSponsorship(t 
 
 	context := &runContext{
 		runner:   runner,
-		upgrades: opera.Upgrades{GasSubsidies: true, TransactionBundles: true},
+		Upgrades: opera.Upgrades{GasSubsidies: true, TransactionBundles: true},
 	}
 	runner.EXPECT().runSponsoredTransaction(context, tx, 123).Return(
 		[]ProcessedTransaction{{
@@ -1382,7 +1382,7 @@ func TestRunTransactions_EnvelopeAndBundleOnly_SemanticsEnabledByBrio_ExecutionE
 			runner := NewMock_transactionRunner(ctrl)
 			context := &runContext{
 				runner: runner,
-				upgrades: opera.Upgrades{
+				Upgrades: opera.Upgrades{
 					Brio:               tc.brio,
 					TransactionBundles: tc.transactionBundles,
 				},
@@ -1445,11 +1445,11 @@ func TestRunTransactions_BundleOnlyTxsAreNotFilteredDuringReplay(t *testing.T) {
 			runner := NewMock_transactionRunner(ctrl)
 			context := &runContext{
 				runner: runner,
-				upgrades: opera.Upgrades{
+				Upgrades: opera.Upgrades{
 					Brio:               tc.brio,
 					TransactionBundles: tc.transactionBundles,
 				},
-				forReplay: true, // this is the relevant part for this test
+				ForReplay: true, // this is the relevant part for this test
 			}
 
 			runner.EXPECT().runRegularTransaction(context, bundleOnlyTx, 0).
@@ -1506,7 +1506,7 @@ func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) 
 				statedb:  state,
 				signer:   types.LatestSignerForChainID(nil),
 				baseFee:  big.NewInt(1),
-				upgrades: opera.Upgrades{GasSubsidies: true},
+				Upgrades: opera.Upgrades{GasSubsidies: true},
 			}
 
 			// Snapshot for the IsCovered call
@@ -1547,7 +1547,7 @@ func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) 
 				})
 			}
 
-			runner := &transactionRunner{evm: evm}
+			runner := &TransactionRunner{Evm: evm}
 			got, status := runner.runSponsoredTransaction(context, tx, 0)
 			if test.shouldSkip {
 				require.Equal(t, core_types.TransactionResultInvalid, status)
@@ -1588,10 +1588,10 @@ func TestRunSponsoredTransaction_SponsorshipNotCovered_ReturnsASkippedTransactio
 	context := &runContext{
 		statedb:  state,
 		gasPool:  gasPool,
-		upgrades: opera.Upgrades{GasSubsidies: false}, // < nothing is covered
+		Upgrades: opera.Upgrades{GasSubsidies: false}, // < nothing is covered
 	}
 
-	runner := &transactionRunner{}
+	runner := &TransactionRunner{}
 	got, status := runner.runSponsoredTransaction(context, tx, 0)
 	require.Equal(t, core_types.TransactionResultInvalid, status)
 	want := []ProcessedTransaction{{
@@ -1623,10 +1623,10 @@ func TestRunSponsoredTransaction_SponsorshipCoverageCheckFails_ReturnsASkippedTr
 		signer:   types.LatestSignerForChainID(nil),
 		baseFee:  big.NewInt(1),
 		gasPool:  gasPool,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		Upgrades: opera.Upgrades{GasSubsidies: true},
 	}
 
-	runner := &transactionRunner{evm: evm}
+	runner := &TransactionRunner{Evm: evm}
 	got, status := runner.runSponsoredTransaction(context, tx, 0)
 	require.Equal(t, core_types.TransactionResultInvalid, status)
 	want := []ProcessedTransaction{{
@@ -1667,10 +1667,10 @@ func TestRunSponsoredTransaction_SponsoredTransactionIsSkipped_NoFeeDeductionTxI
 		signer:   types.LatestSignerForChainID(nil),
 		baseFee:  big.NewInt(1),
 		gasPool:  gasPool,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		Upgrades: opera.Upgrades{GasSubsidies: true},
 	}
 
-	runner := &transactionRunner{evm: evm}
+	runner := &TransactionRunner{Evm: evm}
 	got, status := runner.runSponsoredTransaction(context, tx, 0)
 	require.Equal(t, core_types.TransactionResultInvalid, status)
 	want := []ProcessedTransaction{{
@@ -1736,10 +1736,10 @@ func TestRunSponsoredTransaction_FailingCreationOfFeeDeduction_TransactionIsAcce
 		signer:   types.LatestSignerForChainID(nil),
 		baseFee:  gasPrice,
 		gasPool:  gasPool,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		Upgrades: opera.Upgrades{GasSubsidies: true},
 	}
 
-	runner := &transactionRunner{evm: evm}
+	runner := &TransactionRunner{Evm: evm}
 	got, status := runner.runSponsoredTransaction(context, tx, 0)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	want := []ProcessedTransaction{processed}
@@ -1790,10 +1790,10 @@ func TestRunSponsoredTransaction_FeeDeductionTxIsSkipped_TransactionIsAcceptedWi
 		signer:   types.LatestSignerForChainID(nil),
 		baseFee:  big.NewInt(1),
 		gasPool:  gasPool,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		Upgrades: opera.Upgrades{GasSubsidies: true},
 	}
 
-	runner := &transactionRunner{evm: evm}
+	runner := &TransactionRunner{Evm: evm}
 	got, status := runner.runSponsoredTransaction(context, tx, 0)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	want := []ProcessedTransaction{
@@ -1849,10 +1849,10 @@ func TestRunSponsoredTransaction_FeeDeductionTxFails_TransactionIsAcceptedWithou
 		signer:   types.LatestSignerForChainID(nil),
 		baseFee:  big.NewInt(1),
 		gasPool:  gasPool,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		Upgrades: opera.Upgrades{GasSubsidies: true},
 	}
 
-	runner := &transactionRunner{evm: evm}
+	runner := &TransactionRunner{Evm: evm}
 	got, status := runner.runSponsoredTransaction(context, tx, 0)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	want := []ProcessedTransaction{
@@ -1901,10 +1901,10 @@ func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testin
 		signer:   types.LatestSignerForChainID(nil),
 		baseFee:  big.NewInt(1),
 		gasPool:  gasPool,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		Upgrades: opera.Upgrades{GasSubsidies: true},
 	}
 
-	runner := &transactionRunner{evm: evm}
+	runner := &TransactionRunner{Evm: evm}
 	got, status := runner.runSponsoredTransaction(context, tx, txIndex)
 	require.Equal(t, core_types.TransactionResultFailed, status)
 	require.Len(t, got, 2)
@@ -2059,7 +2059,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 		Random: &common.Hash{}, // < signals Revision >= Merge
 	}
 	vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
-	runner := &transactionRunner{evm{vm}}
+	runner := &TransactionRunner{Evm{vm}}
 
 	gasPool := core.NewGasPool(1_000_000)
 	usedGas := new(uint64)
@@ -2070,7 +2070,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 		gasPool:  gasPool,
 		usedGas:  usedGas,
 		runner:   runner,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		Upgrades: opera.Upgrades{GasSubsidies: true},
 	}
 
 	// --- start of actual test ---
@@ -2172,7 +2172,7 @@ func TestRunSponsoredTransaction_MatchesCoveredAndReceiptToStatus(t *testing.T) 
 				signer:   types.LatestSignerForChainID(nil),
 				baseFee:  big.NewInt(1),
 				gasPool:  gasPool,
-				upgrades: opera.Upgrades{GasSubsidies: true},
+				Upgrades: opera.Upgrades{GasSubsidies: true},
 			}
 
 			// Snapshot for the IsCovered call
@@ -2212,7 +2212,7 @@ func TestRunSponsoredTransaction_MatchesCoveredAndReceiptToStatus(t *testing.T) 
 				}
 			}
 
-			runner := transactionRunner{evm}
+			runner := TransactionRunner{evm}
 			_, status := runner.runSponsoredTransaction(ctxt, tx, txIndex)
 			require.Equal(t, test.status, status)
 		})
@@ -2227,10 +2227,10 @@ func TestRunTransactionBundle_BundlesDisabled_ReturnsEnvelopeAndResultInvalid(t 
 	tx := types.NewTx(&types.LegacyTx{})
 
 	context := &runContext{
-		upgrades: opera.Upgrades{TransactionBundles: false},
+		Upgrades: opera.Upgrades{TransactionBundles: false},
 	}
 
-	runner := &transactionRunner{}
+	runner := &TransactionRunner{}
 
 	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, log)
 	require.Len(t, processedTransactions, 1)
@@ -2250,10 +2250,10 @@ func TestRunTransactionBundle_InvalidEnvelope_ReturnsEnvelopeAndResultInvalid(t 
 
 	context := &runContext{
 		signer:   types.LatestSignerForChainID(big.NewInt(1)),
-		upgrades: opera.Upgrades{TransactionBundles: true},
+		Upgrades: opera.Upgrades{TransactionBundles: true},
 	}
 
-	runner := &transactionRunner{}
+	runner := &TransactionRunner{}
 
 	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, log)
 	require.Len(t, processedTransactions, 1)
@@ -2288,11 +2288,11 @@ func TestRunTransactionBundle_BundleOutOfRange_ReturnsEnvelopeAndResultInvalid(t
 
 	context := &runContext{
 		signer:      signer,
-		upgrades:    opera.Upgrades{TransactionBundles: true},
+		Upgrades:    opera.Upgrades{TransactionBundles: true},
 		blockNumber: big.NewInt(int64(blockNumber)),
 	}
 
-	runner := &transactionRunner{}
+	runner := &TransactionRunner{}
 
 	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, log)
 	require.Len(t, processedTransactions, 1)
@@ -2327,12 +2327,12 @@ func TestRunTransactionBundle_BundleOutOfTime_ReturnsEnvelopeAndResultInvalid(t 
 
 	context := &runContext{
 		signer:      signer,
-		upgrades:    opera.Upgrades{TransactionBundles: true},
+		Upgrades:    opera.Upgrades{TransactionBundles: true},
 		blockNumber: big.NewInt(int64(blockNumber)),
 		blockTime:   blockTime,
 	}
 
-	runner := &transactionRunner{}
+	runner := &TransactionRunner{}
 
 	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, log)
 	require.Len(t, processedTransactions, 1)
@@ -2360,11 +2360,11 @@ func TestRunTransactionBundle_PreviouslyProcessedBundle_ReturnsEnvelopeAndResult
 	context := &runContext{
 		signer:      signer,
 		statedb:     state,
-		upgrades:    opera.Upgrades{TransactionBundles: true},
+		Upgrades:    opera.Upgrades{TransactionBundles: true},
 		blockNumber: big.NewInt(0),
 	}
 
-	runner := &transactionRunner{}
+	runner := &TransactionRunner{}
 
 	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, log)
 	require.Len(t, processedTransactions, 1)
@@ -2403,11 +2403,11 @@ func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResu
 		baseFee:     big.NewInt(1),
 		usedGas:     new(uint64),
 		gasPool:     gasPool,
-		upgrades:    opera.Upgrades{TransactionBundles: true},
+		Upgrades:    opera.Upgrades{TransactionBundles: true},
 		blockNumber: big.NewInt(0),
 	}
 
-	runner := &transactionRunner{evm: evm}
+	runner := &TransactionRunner{Evm: evm}
 
 	processedTransactions, result, execCost := runner.runTransactionBundle(context, tx, txOffset)
 	require.Len(t, processedTransactions, 0)
@@ -2438,7 +2438,7 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 		}),
 	)
 
-	runner := &transactionRunner{evm: evm}
+	runner := &TransactionRunner{Evm: evm}
 
 	context := &runContext{
 		statedb:     state,
@@ -2446,7 +2446,7 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 		baseFee:     big.NewInt(1),
 		usedGas:     new(uint64),
 		gasPool:     core.NewGasPool(1_000_000),
-		upgrades:    opera.Upgrades{TransactionBundles: true},
+		Upgrades:    opera.Upgrades{TransactionBundles: true},
 		blockNumber: big.NewInt(0),
 		runner:      runner,
 	}
@@ -2566,7 +2566,7 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 				signer:  signer,
 				usedGas: new(uint64),
 				gasPool: core.NewGasPool(1_000_000),
-				upgrades: opera.Upgrades{
+				Upgrades: opera.Upgrades{
 					GasSubsidies:       true,
 					TransactionBundles: true,
 				},
@@ -2574,7 +2574,7 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 				runner:      innerRunner,
 			}
 
-			runner := &transactionRunner{}
+			runner := &TransactionRunner{}
 			processedTransactions, result, execCost := runner.runTransactionBundle(context, envelope, int(trueTxOffset))
 			require.Equal(t, execResult, processedTransactions)
 			require.Equal(t, core_types.TransactionResultSuccessful, result)
@@ -2636,7 +2636,7 @@ func TestRunRegularTransaction_InternalTransactions_SkipsTransactionChecksTrue(t
 	}
 
 	vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
-	runner := &transactionRunner{evm{vm}}
+	runner := &TransactionRunner{Evm{vm}}
 	// enough max gas per block to accommodate for the internal transaction.
 	gasPool := core.NewGasPool(maxTxGas * 3)
 	usedGas := new(uint64)
@@ -2647,7 +2647,7 @@ func TestRunRegularTransaction_InternalTransactions_SkipsTransactionChecksTrue(t
 		gasPool:  gasPool,
 		usedGas:  usedGas,
 		runner:   runner,
-		upgrades: opera.Upgrades{Brio: true},
+		Upgrades: opera.Upgrades{Brio: true},
 	}
 
 	// -- end of setup --
@@ -2762,7 +2762,7 @@ func TestRunRegularTransaction_RegularTransaction(t *testing.T) {
 			}
 
 			vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
-			runner := &transactionRunner{evm{vm}}
+			runner := &TransactionRunner{Evm{vm}}
 			// enough max gas per block to accommodate for the internal transaction.
 			gasPool := core.NewGasPool(maxTxGas * 3)
 			usedGas := new(uint64)
@@ -2773,7 +2773,7 @@ func TestRunRegularTransaction_RegularTransaction(t *testing.T) {
 				gasPool:  gasPool,
 				usedGas:  usedGas,
 				runner:   runner,
-				upgrades: opera.Upgrades{Brio: true},
+				Upgrades: opera.Upgrades{Brio: true},
 			}
 
 			// -- end of setup --
@@ -2828,7 +2828,7 @@ func TestRunRegularTransaction_MatchesReceiptToStatus(t *testing.T) {
 				},
 			)
 
-			runner := transactionRunner{evm}
+			runner := TransactionRunner{evm}
 			_, status := runner.runRegularTransaction(ctxt, tx, 12)
 			require.Equal(t, test.status, status)
 		})
@@ -2839,7 +2839,7 @@ func TestBundleTransactionRunner_Run_KeepsTrackOfProcessedTransactions(t *testin
 	ctrl := gomock.NewController(t)
 	runner := NewMock_transactionRunner(ctrl)
 
-	ctxt := &runContext{runner: runner, upgrades: opera.Upgrades{GasSubsidies: true}}
+	ctxt := &runContext{runner: runner, Upgrades: opera.Upgrades{GasSubsidies: true}}
 	bundleTransactionRunner := &bundleTransactionRunner{ctxt: ctxt}
 
 	tx1 := getRegularTransaction(t)
@@ -2881,7 +2881,7 @@ func TestBundleTransactionRunner_Run_IncrementsTrueOffsetBasedOnProcessedTransac
 
 	trueStartOffset := 50
 
-	ctxt := &runContext{runner: runner, upgrades: opera.Upgrades{GasSubsidies: true}}
+	ctxt := &runContext{runner: runner, Upgrades: opera.Upgrades{GasSubsidies: true}}
 	bundleTransactionRunner := &bundleTransactionRunner{
 		ctxt:         ctxt,
 		trueTxOffset: trueStartOffset,
@@ -3065,7 +3065,7 @@ func TestBundleTransactionRunner_Run_ForwardsLegacyTransactionOffsetToSponsoredT
 			ctrl := gomock.NewController(t)
 			runner := NewMock_transactionRunner(ctrl)
 
-			ctxt := &runContext{runner: runner, upgrades: opera.Upgrades{GasSubsidies: true}}
+			ctxt := &runContext{runner: runner, Upgrades: opera.Upgrades{GasSubsidies: true}}
 			bundleTransactionRunner := &bundleTransactionRunner{
 				ctxt:         ctxt,
 				trueTxOffset: offset + 1,
@@ -3086,7 +3086,7 @@ func TestBundleTransactionRunner_Run_ForwardsTrueTransactionOffsetToBundleTxCall
 			runner := NewMock_transactionRunner(ctrl)
 
 			upgrades := opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true}
-			ctxt := &runContext{runner: runner, upgrades: upgrades}
+			ctxt := &runContext{runner: runner, Upgrades: upgrades}
 			bundleTransactionRunner := &bundleTransactionRunner{
 				ctxt:         ctxt,
 				trueTxOffset: trueOffset,
@@ -3129,7 +3129,7 @@ func TestBundleTransactionRunner_Run_UpdatesTxIndexBasedOnNumberOfAcceptedTransa
 
 			trueStartOffset := 7
 
-			ctxt := &runContext{runner: runner, upgrades: opera.Upgrades{GasSubsidies: true}}
+			ctxt := &runContext{runner: runner, Upgrades: opera.Upgrades{GasSubsidies: true}}
 			bundleTransactionRunner := &bundleTransactionRunner{
 				ctxt:         ctxt,
 				trueTxOffset: trueStartOffset,
@@ -3219,7 +3219,7 @@ func TestBundleTransactionRunner_Run_CollectsProcessedTransactionsInOrder(t *tes
 		)
 	}
 
-	ctxt := &runContext{runner: txRunner, upgrades: opera.Upgrades{GasSubsidies: true}}
+	ctxt := &runContext{runner: txRunner, Upgrades: opera.Upgrades{GasSubsidies: true}}
 	runner := &bundleTransactionRunner{ctxt: ctxt}
 
 	var want []ProcessedTransaction
@@ -3539,7 +3539,7 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 			runner.EXPECT().runTransactionBundle(any, any, any).DoAndReturn(
 				// we want to use the real implementation here to check the
 				// correct forwarding of the transaction indices
-				new(transactionRunner).runTransactionBundle,
+				new(TransactionRunner).runTransactionBundle,
 			).AnyTimes()
 
 			// The execution of the transactions does not really reach the
@@ -3557,14 +3557,14 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 				signer:      signer,
 				usedGas:     new(uint64),
 				gasPool:     core.NewGasPool(1_000_000),
-				upgrades:    upgrades,
+				Upgrades:    upgrades,
 				blockNumber: big.NewInt(0),
 				statedb:     stateDb,
 				runner:      runner,
 			}
 
 			// the actual execution of the test case
-			runTransaction(ctxt, tx, 0)
+			RunTransaction(ctxt, tx, 0)
 
 			// make sure that all transactions have indeed been processed
 			wantedTxNonces := collectAllReferencedTransactionNonces(t, signer, tx)
@@ -3686,7 +3686,7 @@ func TestRunTransactions_AccumulatesExecutionCostFromAllTransactions(t *testing.
 
 	context := &runContext{
 		runner:   runner,
-		upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
+		Upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
 	}
 
 	txs := []*types.Transaction{
@@ -3722,7 +3722,7 @@ func TestRunTransaction_RegularTransaction_ReturnsExecutionCostFromReceipt(t *te
 	ctrl := gomock.NewController(t)
 	runner := NewMock_transactionRunner(ctrl)
 
-	context := &runContext{runner: runner, upgrades: opera.Upgrades{}}
+	context := &runContext{runner: runner, Upgrades: opera.Upgrades{}}
 
 	tx := getRegularTransaction(t)
 
@@ -3747,7 +3747,7 @@ func TestRunTransaction_RegularTransaction_ReturnsExecutionCostFromReceipt(t *te
 				core_types.TransactionResultSuccessful,
 			)
 
-			_, _, execCost := runTransaction(context, tx, 0)
+			_, _, execCost := RunTransaction(context, tx, 0)
 			require.Equal(t, tc.expectExecCost, execCost)
 		})
 	}
@@ -3757,7 +3757,7 @@ func TestRunTransaction_SponsoredTransaction_ReturnsExecutionCostFromReceipts(t 
 	ctrl := gomock.NewController(t)
 	runner := NewMock_transactionRunner(ctrl)
 
-	context := &runContext{runner: runner, upgrades: opera.Upgrades{GasSubsidies: true}}
+	context := &runContext{runner: runner, Upgrades: opera.Upgrades{GasSubsidies: true}}
 
 	tx := getSponsorshipRequest(t)
 
@@ -3789,7 +3789,7 @@ func TestRunTransaction_SponsoredTransaction_ReturnsExecutionCostFromReceipts(t 
 				core_types.TransactionResultSuccessful,
 			)
 
-			_, _, execCost := runTransaction(context, tx, 0)
+			_, _, execCost := RunTransaction(context, tx, 0)
 			require.Equal(t, tc.expectExecCost, execCost)
 		})
 	}
@@ -3802,7 +3802,7 @@ func TestRunTransaction_Bundle_ReturnsExecutionCostFromBundleExecution(t *testin
 	tx := getTransactionBundle(t)
 	context := &runContext{
 		runner: runner,
-		upgrades: opera.Upgrades{
+		Upgrades: opera.Upgrades{
 			Brio:               true,
 			TransactionBundles: true,
 		},
@@ -3814,6 +3814,6 @@ func TestRunTransaction_Bundle_ReturnsExecutionCostFromBundleExecution(t *testin
 		core_types.ExecutionCost(150_000), // higher than receipt gas due to rolled-back steps
 	)
 
-	_, _, execCost := runTransaction(context, tx, 0)
+	_, _, execCost := RunTransaction(context, tx, 0)
 	require.Equal(t, core_types.ExecutionCost(150_000), execCost)
 }

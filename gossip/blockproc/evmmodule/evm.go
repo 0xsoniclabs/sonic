@@ -71,55 +71,55 @@ func (p *EVMModule) Start(
 
 	return &OperaEVMProcessor{
 		block:            block,
-		reader:           reader,
-		statedb:          statedb,
-		onNewLog:         onNewLog,
-		rules:            rules,
-		evmCfg:           evmCfg,
+		Reader:           reader,
+		Statedb:          statedb,
+		OnNewLog:         onNewLog,
+		Rules:            rules,
+		EvmCfg:           evmCfg,
 		blockIdx:         uint64(block.Idx),
 		prevBlockHash:    prevBlockHash,
 		prevRandao:       prevrandao,
 		gasBaseFee:       baseFee,
-		processorFactory: stateProcessorFactory{},
+		ProcessorFactory: stateProcessorFactory{},
 	}
 }
 
 type OperaEVMProcessor struct {
 	block    iblockproc.BlockCtx
-	reader   evmcore.DummyChain
-	statedb  state.StateDB
-	onNewLog func(*core_types.Log)
-	rules    opera.Rules
-	evmCfg   *params.ChainConfig
+	Reader   evmcore.DummyChain
+	Statedb  state.StateDB
+	OnNewLog func(*core_types.Log)
+	Rules    opera.Rules
+	EvmCfg   *params.ChainConfig
 
 	blockIdx      uint64
 	prevBlockHash common.Hash
 	gasBaseFee    *big.Int
 
-	gasUsed uint64
+	GasUsed uint64
 
-	processedTxs []evmcore.ProcessedTransaction
+	ProcessedTxs []evmcore.ProcessedTransaction
 	prevRandao   common.Hash
 
-	processorFactory _stateProcessorFactory
+	ProcessorFactory _stateProcessorFactory
 }
 
-func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlock {
-	baseFee := p.rules.Economy.MinGasPrice
-	if !p.rules.Upgrades.London {
+func (p *OperaEVMProcessor) EvmBlockWith(txs types.Transactions) *evmcore.EvmBlock {
+	baseFee := p.Rules.Economy.MinGasPrice
+	if !p.Rules.Upgrades.London {
 		baseFee = nil
-	} else if p.rules.Upgrades.Sonic {
+	} else if p.Rules.Upgrades.Sonic {
 		baseFee = p.gasBaseFee
 	}
 
 	prevRandao := common.Hash{}
 	// This condition must be kept, otherwise Sonic will not be able to synchronize
-	if p.rules.Upgrades.Sonic {
+	if p.Rules.Upgrades.Sonic {
 		prevRandao = p.prevRandao
 	}
 
 	var withdrawalsHash *common.Hash = nil
-	if p.rules.Upgrades.Sonic {
+	if p.Rules.Upgrades.Sonic {
 		withdrawalsHash = &types.EmptyWithdrawalsHash
 	}
 
@@ -130,8 +130,8 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 		Root:            common.Hash{}, // state root is added later
 		Time:            p.block.Time,
 		Coinbase:        evmcore.GetCoinbase(),
-		GasLimit:        p.rules.Blocks.MaxBlockGas,
-		GasUsed:         p.gasUsed,
+		GasLimit:        p.Rules.Blocks.MaxBlockGas,
+		GasUsed:         p.GasUsed,
 		BaseFee:         baseFee,
 		BlobBaseFee:     blobBaseFee.ToBig(),
 		PrevRandao:      prevRandao,
@@ -143,29 +143,29 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 }
 
 func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evmcore.ProcessSummary {
-	evmProcessor := p.processorFactory.NewStateProcessorForHeadState(p.evmCfg, p.reader, p.rules.Upgrades)
+	evmProcessor := p.ProcessorFactory.NewStateProcessorForHeadState(p.EvmCfg, p.Reader, p.Rules.Upgrades)
 	trueTxsOffset := int(0)
-	for _, tx := range p.processedTxs {
+	for _, tx := range p.ProcessedTxs {
 		if tx.Receipt != nil {
 			trueTxsOffset++
 		}
 	}
 
-	vmConfig := opera.GetVmConfig(p.rules)
+	vmConfig := opera.GetVmConfig(p.Rules)
 
 	// Process txs
-	evmBlock := p.evmBlockWith(txs)
-	summary := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, trueTxsOffset, p.onNewLog)
+	evmBlock := p.EvmBlockWith(txs)
+	summary := evmProcessor.Process(evmBlock, p.Statedb, vmConfig, gasLimit, &p.GasUsed, trueTxsOffset, p.OnNewLog)
 
-	p.processedTxs = append(p.processedTxs, summary.ProcessedTransactions...)
+	p.ProcessedTxs = append(p.ProcessedTxs, summary.ProcessedTransactions...)
 
 	return summary
 }
 
 func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts) {
-	transactions := make(types.Transactions, 0, len(p.processedTxs))
-	receipts = make(types.Receipts, 0, len(p.processedTxs))
-	for _, tx := range p.processedTxs {
+	transactions := make(types.Transactions, 0, len(p.ProcessedTxs))
+	receipts = make(types.Receipts, 0, len(p.ProcessedTxs))
+	for _, tx := range p.ProcessedTxs {
 		if tx.Receipt != nil {
 			transactions = append(transactions, tx.Transaction)
 			receipts = append(receipts, tx.Receipt)
@@ -174,10 +174,10 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 		}
 	}
 
-	evmBlock = p.evmBlockWith(transactions)
+	evmBlock = p.EvmBlockWith(transactions)
 
 	// Commit block
-	done := p.statedb.EndBlock(evmBlock.Number.Uint64())
+	done := p.Statedb.EndBlock(evmBlock.Number.Uint64())
 	// Use asynchronous commit for blocks older than one hour to speed up catching up.
 	// For recent blocks (within the last hour), wait for the commit to complete
 	// to ensure the latest state is available for both live and archive databases.
@@ -191,7 +191,7 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 	}
 
 	// Get state root
-	evmBlock.Root = p.statedb.GetStateHash()
+	evmBlock.Root = p.Statedb.GetStateHash()
 
 	return
 }

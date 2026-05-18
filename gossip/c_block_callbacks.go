@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
+	"math/big"
 	"slices"
 	"sort"
 	"sync"
@@ -38,13 +39,16 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/lachesis"
 	"github.com/Fantom-foundation/lachesis-base/utils/workers"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
@@ -611,11 +615,78 @@ func consensusCallbackBeginBlockFn(
 
 // processUserTransactionsNoLimits executes user transactions in order, adding them to the block.
 func processUserTransactionsNoLimits(
-	evmProcessor blockproc.EVMProcessor,
+	processorInterface blockproc.EVMProcessor,
 	blockBuilder *inter.BlockBuilder,
 	orderedTxs []*types.Transaction,
 	userTransactionGasLimit uint64) {
-	for _, processed := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit).ProcessedTransactions {
+
+	evmProcessor := processorInterface.(*evmmodule.OperaEVMProcessor)
+	processor := evmProcessor.ProcessorFactory.NewStateProcessorForHeadState(evmProcessor.EvmCfg, evmProcessor.Reader, evmProcessor.Rules.Upgrades)
+	stateProcessor := processor.(*evmcore.StateProcessor)
+	trueTxsOffset := int(0)
+	for _, tx := range evmProcessor.ProcessedTxs {
+		if tx.Receipt != nil {
+			trueTxsOffset++
+		}
+	}
+
+	vmConfig := opera.GetVmConfig(evmProcessor.Rules)
+
+	// Process txs
+	evmBlock := evmProcessor.EvmBlockWith(orderedTxs)
+
+	var (
+		sonicDifficulty = big.NewInt(1)
+		gp              = core.NewGasPool(userTransactionGasLimit)
+		header          = evmBlock.Header()
+		time            = uint64(evmBlock.Time.Unix())
+		blockContext    = evmcore.NewEVMBlockContextWithDifficulty(header, stateProcessor.Bc, nil, sonicDifficulty)
+		vmenv           = vm.NewEVM(blockContext, evmProcessor.Statedb, stateProcessor.Config, vmConfig)
+		blockNumber     = evmBlock.Number
+		signer          = types.LatestSignerForChainID(stateProcessor.Config.ChainID)
+	)
+
+	// execute EIP-2935 HistoryStorage contract.
+	if stateProcessor.Config.IsPrague(blockNumber, time) {
+		evmcore.ProcessParentBlockHash(evmBlock.ParentHash, vmenv, evmProcessor.Statedb)
+	}
+
+	// Iterate over and process the individual transactions
+	context := evmcore.NewRunContext(
+		signer, header.BaseFee, evmProcessor.Statedb, gp, blockNumber, evmBlock.Time, &evmProcessor.GasUsed,
+		evmProcessor.OnNewLog, stateProcessor.Upgrades, &evmcore.TransactionRunner{Evm: evmcore.Evm{EVM: vmenv}}, stateProcessor.ForReplay,
+	)
+
+	transactions := evmBlock.Transactions
+	processedTxs := make([]evmcore.ProcessedTransaction, 0, len(transactions))
+	totalExecCost := core_types.ExecutionCost(0)
+	for _, tx := range transactions {
+		// Bundle-only transactions are only valid within a bundle and must
+		// be rejected at the top level when processing the head state.
+		if !context.ForReplay && context.Upgrades.Brio && bundle.IsBundleOnly(tx) {
+			processedTxs = append(processedTxs, evmcore.ProcessedTransaction{Transaction: tx})
+			continue
+		}
+
+		txs, _, execCost := evmcore.RunTransaction(context, tx, trueTxsOffset)
+		totalExecCost += execCost
+
+		for _, tx := range txs {
+			if tx.Receipt != nil { // < only transactions included in the block
+				trueTxsOffset++
+			}
+		}
+		processedTxs = append(processedTxs, txs...)
+
+	}
+	summary := evmcore.ProcessSummary{
+		ProcessedTransactions: processedTxs,
+		ExecutionCost:         totalExecCost,
+	}
+
+	evmProcessor.ProcessedTxs = append(evmProcessor.ProcessedTxs, summary.ProcessedTransactions...)
+
+	for _, processed := range summary.ProcessedTransactions {
 		if processed.Receipt != nil { // < nil if skipped
 			blockBuilder.AddTransaction(
 				processed.Transaction,
