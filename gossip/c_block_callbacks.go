@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 	"sync"
@@ -428,17 +429,13 @@ func consensusCallbackBeginBlockFn(
 						}
 					}
 
-					orderedTxs := proposal.Transactions
-					numSkippedDueToBlockLimits := 0
-					var txCausedBy map[common.Hash]common.Hash
-					if es.Rules.Upgrades.Brio {
-						// Limit block size and gas while adding user transactions
-						numSkippedDueToBlockLimits, txCausedBy =
-							processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
-					} else {
-						// Pre brio there were no limits on user transactions
-						processUserTransactionsNoLimits(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
-					}
+					numSkippedDueToBlockLimits, txCausedBy := processUserTransactions(
+						evmProcessor,
+						blockBuilder,
+						proposal.Transactions,
+						userTransactionGasLimit,
+						es.Rules.Upgrades,
+					)
 
 					evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
 					numSkippedTxs += numSkippedDueToBlockLimits
@@ -609,22 +606,6 @@ func consensusCallbackBeginBlockFn(
 	}
 }
 
-// processUserTransactionsNoLimits executes user transactions in order, adding them to the block.
-func processUserTransactionsNoLimits(
-	evmProcessor blockproc.EVMProcessor,
-	blockBuilder *inter.BlockBuilder,
-	orderedTxs []*types.Transaction,
-	userTransactionGasLimit uint64) {
-	for _, processed := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit).ProcessedTransactions {
-		if processed.Receipt != nil { // < nil if skipped
-			blockBuilder.AddTransaction(
-				processed.Transaction,
-				processed.Receipt,
-			)
-		}
-	}
-}
-
 // rlpEncodedMaxHeaderSizeInBytes is an upper bound of the EVM block header size
 // used for block size calculations.
 const rlpEncodedMaxHeaderSizeInBytes = 1024
@@ -639,27 +620,34 @@ func processUserTransactions(
 	blockBuilder *inter.BlockBuilder,
 	orderedTxs []*types.Transaction,
 	userTransactionGasLimit uint64,
+	upgrades opera.Upgrades,
 ) (
 	skippedCount int,
 	causedBy map[common.Hash]common.Hash,
 ) {
 	remainingGas := userTransactionGasLimit
 	remainingSize := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
+	if !upgrades.Brio {
+		remainingSize = math.MaxUint64
+	}
+
+	// Account for internal transactions in block size.
 	internalTxs := blockBuilder.GetTransactions()
 	for _, tx := range internalTxs {
 		txSize := tx.Size()
-		if txSize > remainingSize {
+		if upgrades.Brio && txSize > remainingSize {
 			log.Warn("block filled with only internal transactions")
 			return len(orderedTxs), nil
 		}
 		remainingSize -= txSize
 	}
 
+	// Process user transactions in order.
 	causedBy = make(map[common.Hash]common.Hash)
 	skippedCounter := 0
 	for _, tx := range orderedTxs {
 		neededSpace := txSizeIncludingSubsidies(tx)
-		if neededSpace <= remainingSize {
+		if !upgrades.Brio || neededSpace <= remainingSize {
 			for _, processed := range evmProcessor.Execute([]*types.Transaction{tx}, remainingGas).ProcessedTransactions {
 				if processed.Receipt != nil { // < nil if skipped
 					blockBuilder.AddTransaction(
@@ -674,6 +662,11 @@ func processUserTransactions(
 		} else {
 			skippedCounter++
 		}
+	}
+
+	// Ensure returned values are unchanged to original version.
+	if !upgrades.Brio {
+		return 0, nil
 	}
 	return skippedCounter, causedBy
 }
