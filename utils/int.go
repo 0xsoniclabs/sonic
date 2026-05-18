@@ -26,7 +26,6 @@ import (
 // BigIntToUint256 converts a big.Int to a uint256.Int.
 // It returns an error if the value is negative or too large to fit into a uint256.Int.
 // If the value is nil, nil is returned.
-// FIXME: rename to BigIntToUint256 once the panicking version is removed
 func BigIntToUint256(value *big.Int) (*uint256.Int, error) {
 	if value == nil {
 		return nil, nil
