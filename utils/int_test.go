@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBigIntToUint256Err_ValidConversions(t *testing.T) {
+func TestBigIntToUint256_ValidConversions(t *testing.T) {
 	tests := map[string]struct {
 		input    *big.Int
 		expected *uint256.Int
@@ -139,7 +139,7 @@ func TestBigIntToUint256Err_ValidConversions(t *testing.T) {
 	}
 }
 
-func TestBigIntToUint256Err_ErrorCases(t *testing.T) {
+func TestBigIntToUint256_ErrorCases(t *testing.T) {
 	tests := map[string]struct {
 		input       *big.Int
 		expectedErr string
