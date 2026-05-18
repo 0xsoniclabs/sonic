@@ -433,16 +433,7 @@ func consensusCallbackBeginBlockFn(
 					}
 
 					orderedTxs := proposal.Transactions
-					numSkippedDueToBlockLimits := 0
-					var txCausedBy map[common.Hash]common.Hash
-					if es.Rules.Upgrades.Brio {
-						// Limit block size and gas while adding user transactions
-						numSkippedDueToBlockLimits, txCausedBy =
-							processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
-					} else {
-						// Pre brio there were no limits on user transactions
-						processUserTransactionsNoLimits(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
-					}
+					numSkippedDueToBlockLimits, txCausedBy := processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
 
 					evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
 					numSkippedTxs += numSkippedDueToBlockLimits
@@ -613,13 +604,23 @@ func consensusCallbackBeginBlockFn(
 	}
 }
 
-// processUserTransactionsNoLimits executes user transactions in order, adding them to the block.
-func processUserTransactionsNoLimits(
+// rlpEncodedMaxHeaderSizeInBytes is an upper bound of the EVM block header size
+// used for block size calculations.
+const rlpEncodedMaxHeaderSizeInBytes = 1024
+
+// processUserTransactions executes user transactions in order, adding them to
+// the block until all transactions are processed or the gas/block size limit is
+// reached. The function returns the number of input transactions skipped due
+// to capacity limitations as well as a map linking the hashes of accepted
+// transactions to the transaction they are derived from in the given list.
+func processUserTransactions(
 	processorInterface blockproc.EVMProcessor,
 	blockBuilder *inter.BlockBuilder,
 	orderedTxs []*types.Transaction,
-	userTransactionGasLimit uint64) {
-
+	userTransactionGasLimit uint64) (
+	skippedCount int,
+	causedBy map[common.Hash]common.Hash,
+) {
 	evmProcessor := processorInterface.(*evmmodule.OperaEVMProcessor)
 	processor := evmProcessor.ProcessorFactory.NewStateProcessorForHeadState(evmProcessor.EvmCfg, evmProcessor.Reader, evmProcessor.Rules.Upgrades)
 	stateProcessor := processor.(*evmcore.StateProcessor)
@@ -657,6 +658,20 @@ func processUserTransactionsNoLimits(
 		evmProcessor.OnNewLog, stateProcessor.Upgrades, &evmcore.TransactionRunner{Evm: evmcore.Evm{EVM: vmenv}}, stateProcessor.ForReplay,
 	)
 
+	remainingSize := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
+	internalTxs := blockBuilder.GetTransactions()
+	for _, tx := range internalTxs {
+		txSize := tx.Size()
+		if txSize > remainingSize {
+			log.Warn("block filled with only internal transactions")
+			return len(orderedTxs), nil
+		}
+		remainingSize -= txSize
+	}
+
+	causedBy = make(map[common.Hash]common.Hash)
+	skippedCounter := 0
+
 	transactions := evmBlock.Transactions
 	processedTxs := make([]evmcore.ProcessedTransaction, 0, len(transactions))
 	totalExecCost := core_types.ExecutionCost(0)
@@ -668,12 +683,20 @@ func processUserTransactionsNoLimits(
 			continue
 		}
 
+		neededSpace := txSizeIncludingSubsidies(tx)
+		if stateProcessor.Upgrades.Brio && neededSpace > remainingSize {
+			skippedCounter++
+			continue
+		}
+
 		txs, _, execCost := evmcore.RunTransaction(context, tx, trueTxsOffset)
 		totalExecCost += execCost
 
-		for _, tx := range txs {
-			if tx.Receipt != nil { // < only transactions included in the block
+		for _, processedTx := range txs {
+			if processedTx.Receipt != nil { // < only transactions included in the block
 				trueTxsOffset++
+				remainingSize -= processedTx.Transaction.Size()
+				causedBy[processedTx.Transaction.Hash()] = tx.Hash()
 			}
 		}
 		processedTxs = append(processedTxs, txs...)
@@ -692,60 +715,11 @@ func processUserTransactionsNoLimits(
 				processed.Transaction,
 				processed.Receipt,
 			)
-		}
-	}
-}
-
-// rlpEncodedMaxHeaderSizeInBytes is an upper bound of the EVM block header size
-// used for block size calculations.
-const rlpEncodedMaxHeaderSizeInBytes = 1024
-
-// processUserTransactions executes user transactions in order, adding them to
-// the block until all transactions are processed or the gas/block size limit is
-// reached. The function returns the number of input transactions skipped due
-// to capacity limitations as well as a map linking the hashes of accepted
-// transactions to the transaction they are derived from in the given list.
-func processUserTransactions(
-	evmProcessor blockproc.EVMProcessor,
-	blockBuilder *inter.BlockBuilder,
-	orderedTxs []*types.Transaction,
-	userTransactionGasLimit uint64,
-) (
-	skippedCount int,
-	causedBy map[common.Hash]common.Hash,
-) {
-	remainingGas := userTransactionGasLimit
-	remainingSize := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
-	internalTxs := blockBuilder.GetTransactions()
-	for _, tx := range internalTxs {
-		txSize := tx.Size()
-		if txSize > remainingSize {
-			log.Warn("block filled with only internal transactions")
-			return len(orderedTxs), nil
-		}
-		remainingSize -= txSize
-	}
-
-	causedBy = make(map[common.Hash]common.Hash)
-	skippedCounter := 0
-	for _, tx := range orderedTxs {
-		neededSpace := txSizeIncludingSubsidies(tx)
-		if neededSpace <= remainingSize {
-			for _, processed := range evmProcessor.Execute([]*types.Transaction{tx}, remainingGas).ProcessedTransactions {
-				if processed.Receipt != nil { // < nil if skipped
-					blockBuilder.AddTransaction(
-						processed.Transaction,
-						processed.Receipt,
-					)
-					remainingGas -= processed.Receipt.GasUsed
-					remainingSize -= processed.Transaction.Size()
-					causedBy[processed.Transaction.Hash()] = tx.Hash()
-				}
-			}
 		} else {
 			skippedCounter++
 		}
 	}
+
 	return skippedCounter, causedBy
 }
 
