@@ -42,6 +42,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -78,13 +79,20 @@ var (
 	confirmedEventsMeter = metrics.GetOrRegisterMeter("chain/events/confirmed", nil) // events received from lachesis
 	spilledEventsMeter   = metrics.GetOrRegisterMeter("chain/events/spilled", nil)   // tx excluded because of MaxBlockGas
 
-	sponsoredCounter        = utils.MetricsCounterWrapper(metrics.GetOrRegisterCounter("chain/sponsored", nil))
-	skippedSponsoredCounter = utils.MetricsCounterWrapper(metrics.GetOrRegisterCounter("chain/sponsored/skipped", nil))
-	bundleCounter           = utils.MetricsCounterWrapper(metrics.GetOrRegisterCounter("chain/bundles", nil))
-	skippedBundleCounter    = utils.MetricsCounterWrapper(metrics.GetOrRegisterCounter("chain/bundles/skipped", nil))
-	effectiveGasHistogram   = utils.MetricsHistogramWrapper(
-		metrics.GetOrRegisterHistogram("chain/gas/effective", nil, metrics.NewExpDecaySample(1028, 0.015)),
-	)
+	sponsoredCounter           = utils.MetricsCounterWrapper(metrics.GetOrRegisterCounter("chain/sponsored", nil))
+	skippedSponsoredCounter    = utils.MetricsCounterWrapper(metrics.GetOrRegisterCounter("chain/sponsored/skipped", nil))
+	bundleCounter              = utils.MetricsCounterWrapper(metrics.GetOrRegisterCounter("chain/bundles", nil))
+	skippedBundleCounter       = utils.MetricsCounterWrapper(metrics.GetOrRegisterCounter("chain/bundles/skipped", nil))
+	effectiveBlockGasHistogram = utils.MetricsHistogramWrapper(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
+		Name:    "chain_block_gas_effective",
+		Help:    "Effective gas usage percentage for block transactions",
+		Buckets: prometheus.LinearBuckets(0.00, 0.01, 100), // Buckets [0.00, 0.01, ..., 0.99, +inf]
+	}))
+	effectiveBundleGasHistogram = utils.MetricsHistogramWrapper(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
+		Name:    "chain_bundle_gas_effective",
+		Help:    "Effective gas usage percentage for a bundle transactions",
+		Buckets: prometheus.LinearBuckets(0.00, 0.01, 100), // Buckets [0.00, 0.01, ..., 0.99, +inf]
+	}))
 )
 
 type ExtendedTxPosition struct {
@@ -627,7 +635,7 @@ func processUserTransactionsNoLimits(
 
 	summary := evmProcessor.Execute(orderedTxs, userTransactionGasLimit)
 	for _, processed := range summary.ProcessedTransactions {
-		updateMetricsInputTx(processed.Transaction)
+		updateMetricsInputTx(processed.Transaction, false)
 		if processed.Receipt != nil { // < nil if skipped
 			blockBuilder.AddTransaction(
 				processed.Transaction,
@@ -635,9 +643,9 @@ func processUserTransactionsNoLimits(
 			)
 			sumGasUsed += processed.Receipt.GasUsed
 		}
-		updateMetricsSkippedTx(processed.Transaction, processed.Receipt)
+		updateMetricsSkippedTx(processed.Transaction, processed.Receipt, false)
 	}
-	updateMetricsEffectiveGas(uint64(summary.ExecutionCost), sumGasUsed)
+	updateMetricsEffectiveGas(effectiveBlockGasHistogram, uint64(summary.ExecutionCost), sumGasUsed)
 }
 
 // rlpEncodedMaxHeaderSizeInBytes is an upper bound of the EVM block header size
@@ -670,16 +678,17 @@ func processUserTransactions(
 		remainingSize -= txSize
 	}
 	summaryGasSum := core_types.ExecutionCost(0)
-	receiptGasSum := uint64(0)
+	userTxGasSum := uint64(0)
 
 	causedBy = make(map[common.Hash]common.Hash)
 	skippedCounter := 0
 	for _, tx := range orderedTxs {
-		updateMetricsInputTx(tx)
+		updateMetricsInputTx(tx, true)
 		neededSpace := txSizeIncludingSubsidies(tx)
 		if neededSpace <= remainingSize {
 			summary := evmProcessor.Execute([]*types.Transaction{tx}, userTransactionGasLimit)
 			summaryGasSum += summary.ExecutionCost
+			bundleGasSum := uint64(0)
 			for _, processed := range summary.ProcessedTransactions {
 				if processed.Receipt != nil { // < nil if skipped
 					blockBuilder.AddTransaction(
@@ -689,46 +698,48 @@ func processUserTransactions(
 					remainingGas -= processed.Receipt.GasUsed
 					remainingSize -= processed.Transaction.Size()
 					causedBy[processed.Transaction.Hash()] = tx.Hash()
-					receiptGasSum += processed.Receipt.GasUsed
+					bundleGasSum += processed.Receipt.GasUsed
+					userTxGasSum += processed.Receipt.GasUsed
 				}
 
-				updateMetricsSkippedTx(processed.Transaction, processed.Receipt)
+				updateMetricsSkippedTx(processed.Transaction, processed.Receipt, true)
+			}
+			if bundle.IsEnvelope(tx) {
+				updateMetricsEffectiveGas(effectiveBundleGasHistogram, uint64(summary.ExecutionCost), bundleGasSum)
 			}
 		} else {
 			skippedCounter++
 		}
 	}
 
-	updateMetricsEffectiveGas(uint64(summaryGasSum), receiptGasSum)
+	updateMetricsEffectiveGas(effectiveBlockGasHistogram, uint64(summaryGasSum), userTxGasSum)
 
 	return skippedCounter, causedBy
 }
 
-func updateMetricsInputTx(tx *types.Transaction) {
-	if bundle.IsEnvelope(tx) {
+func updateMetricsInputTx(tx *types.Transaction, isBrio bool) {
+	if isBrio && bundle.IsEnvelope(tx) {
 		bundleCounter.Inc(1)
 	} else if subsidies.IsSponsorshipRequest(tx) {
 		sponsoredCounter.Inc(1)
 	}
 }
 
-func updateMetricsSkippedTx(tx *types.Transaction, receipt *types.Receipt) {
+func updateMetricsSkippedTx(tx *types.Transaction, receipt *types.Receipt, isBrio bool) {
 	// The envelope is only part of the processed transactions if the bundle failed
-	if bundle.IsEnvelope(tx) {
+	if isBrio && bundle.IsEnvelope(tx) {
 		skippedBundleCounter.Inc(1)
 	} else if subsidies.IsSponsorshipRequest(tx) && receipt == nil {
 		skippedSponsoredCounter.Inc(1)
 	}
 }
 
-func updateMetricsEffectiveGas(summaryGasSum, receiptGasSum uint64) {
-	if summaryGasSum == 0 && receiptGasSum == 0 {
-		effectiveGasHistogram.Update(100)
-	} else if summaryGasSum == 0 {
-		effectiveGasHistogram.Update(0)
+func updateMetricsEffectiveGas(histogram utils.MetricsHistogramWrapper, summaryGasSum, receiptGasSum uint64) {
+	if summaryGasSum == 0 {
+		histogram.Update(100)
 	} else {
 		effective := float64(receiptGasSum) / float64(summaryGasSum)
-		effectiveGasHistogram.Update(int64(effective * 100))
+		histogram.Update(effective)
 	}
 }
 

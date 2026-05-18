@@ -1528,15 +1528,15 @@ func TestProcessUserTransactionsNoLimit_ProducesExpectedMetrics(t *testing.T) {
 
 			tmpSponsoredCounter := sponsoredCounter
 			tmpSkipped := skippedSponsoredCounter
-			tmpHistogram := effectiveGasHistogram
+			tmpHistogram := effectiveBlockGasHistogram
 			defer func() {
 				sponsoredCounter = tmpSponsoredCounter
 				skippedSponsoredCounter = tmpSkipped
-				effectiveGasHistogram = tmpHistogram
+				effectiveBlockGasHistogram = tmpHistogram
 			}()
 			sponsoredCounter = sponsoredCounterMock
 			skippedSponsoredCounter = skippedSponsoredCounterMock
-			effectiveGasHistogram = effectiveGasHistogramMock
+			effectiveBlockGasHistogram = effectiveGasHistogramMock
 
 			test.metricsMockSetup(sponsoredCounterMock, skippedSponsoredCounterMock, effectiveGasHistogramMock)
 
@@ -1711,19 +1711,19 @@ func TestProcessUserTransactions_ProducesExpectedMetrics(t *testing.T) {
 			tmpSkippedSponsored := skippedSponsoredCounter
 			tmpBundle := bundleCounter
 			tmpSkippedBundle := skippedBundleCounter
-			tmpHistogram := effectiveGasHistogram
+			tmpHistogram := effectiveBlockGasHistogram
 			defer func() {
 				sponsoredCounter = tmpSponsored
 				skippedSponsoredCounter = tmpSkippedSponsored
 				bundleCounter = tmpBundle
 				skippedBundleCounter = tmpSkippedBundle
-				effectiveGasHistogram = tmpHistogram
+				effectiveBlockGasHistogram = tmpHistogram
 			}()
 			sponsoredCounter = sponsoredMock
 			skippedSponsoredCounter = skippedSponsoredMock
 			bundleCounter = bundleMock
 			skippedBundleCounter = skippedBundleMock
-			effectiveGasHistogram = effectiveGasMock
+			effectiveBlockGasHistogram = effectiveGasMock
 
 			test.metricsMockSetup(sponsoredMock, skippedSponsoredMock, bundleMock, skippedBundleMock, effectiveGasMock)
 
