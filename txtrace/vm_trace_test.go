@@ -151,9 +151,7 @@ func TestComputePushed_ZeroReturnOpcodes(t *testing.T) {
 	ops := []vm.OpCode{
 		vm.STOP, vm.MSTORE, vm.MSTORE8, vm.SSTORE,
 		vm.JUMP, vm.JUMPI, vm.JUMPDEST,
-		vm.POP, vm.RETURN, vm.REVERT,
-		vm.CALL, vm.DELEGATECALL, vm.STATICCALL,
-		vm.CREATE, vm.CREATE2, vm.SELFDESTRUCT,
+		vm.POP, vm.RETURN, vm.REVERT, vm.SELFDESTRUCT,
 	}
 	stack := makeStack(1, 2, 3)
 	for _, op := range ops {
