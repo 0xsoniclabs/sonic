@@ -17,10 +17,8 @@
 package bundles
 
 import (
-	"context"
 	"math/big"
 	"testing"
-	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -33,104 +31,97 @@ func TestBundle_BundleContainingAnyEmptyGroupIsRejected(t *testing.T) {
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.TransactionBundles = true
 
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-		ClientExtraArguments: []string{
-			"--disable-txPool-validation",
-		},
-	})
+	for mode, net := range GetUnfilteredNetVariants(t, upgrades) {
+		t.Run(mode, func(t *testing.T) {
 
-	client, err := net.GetClient()
-	require.NoError(t, err)
-	defer client.Close()
-
-	signer := types.LatestSignerForChainID(net.GetChainId())
-
-	senders := tests.MakeAccountsWithBalance(t, net, 4, big.NewInt(1e18))
-
-	tx := types.AccessListTx{}
-
-	cases := map[string]struct {
-		root         bundle.BuilderStep
-		ExpectReject bool
-	}{
-		"AllOf/NonEmpty": {
-			root: bundle.AllOf(
-				Step(t, net, senders[0], &tx),
-			),
-			ExpectReject: false,
-		},
-		"AllOf/Empty": {
-			root:         bundle.AllOf(),
-			ExpectReject: true,
-		},
-		"OneOf/NonEmpty": {
-			root: bundle.OneOf(
-				Step(t, net, senders[1], &tx),
-			),
-			ExpectReject: false,
-		},
-		"OneOf/Empty": {
-			root:         bundle.OneOf(),
-			ExpectReject: true,
-		},
-		"Layered/NonEmpty": {
-			root: bundle.AllOf(
-				bundle.AllOf(
-					Step(t, net, senders[2], &tx),
-				),
-			),
-			ExpectReject: false,
-		},
-		"Layered/EmptyAndNonEmptySubGroups": {
-			root: bundle.AllOf(
-				bundle.AllOf(
-					Step(t, net, senders[3], &tx),
-				),
-				bundle.AllOf(),
-			),
-			ExpectReject: false,
-		},
-		"Layered/OnlyEmptySubGroups": {
-			root: bundle.AllOf(
-				bundle.AllOf(),
-			),
-			ExpectReject: true,
-		},
-	}
-
-	for name, c := range cases {
-		t.Run(name, func(t *testing.T) {
-			blockNumber, err := client.BlockNumber(t.Context())
+			client, err := net.GetClient()
 			require.NoError(t, err)
+			defer client.Close()
 
-			envelope, bundle, plan := bundle.NewBuilder().
-				WithSigner(signer).
-				SetEarliest(blockNumber).
-				With(c.root).
-				BuildEnvelopeBundleAndPlan()
+			signer := types.LatestSignerForChainID(net.GetChainId())
 
-			// Send the bundle.
-			_, err = net.Send(envelope)
-			require.NoError(t, err)
+			senders := tests.MakeAccountsWithBalance(t, net, 4, big.NewInt(1e18))
 
-			// Wait for the bundle to be processed.
-			timeout, timeoutCancel := context.WithTimeout(t.Context(), 1*time.Second)
-			defer timeoutCancel()
-			info, err := WaitForBundleExecution(timeout, client.Client(), plan.Hash())
+			tx := types.AccessListTx{}
 
-			if c.ExpectReject {
-				require.ErrorIs(t, err, context.DeadlineExceeded)
-				return
+			cases := map[string]struct {
+				root         bundle.BuilderStep
+				ExpectReject bool
+			}{
+				"AllOf/NonEmpty": {
+					root: bundle.AllOf(
+						Step(t, net, senders[0], &tx),
+					),
+					ExpectReject: false,
+				},
+				"AllOf/Empty": {
+					root:         bundle.AllOf(),
+					ExpectReject: true,
+				},
+				"OneOf/NonEmpty": {
+					root: bundle.OneOf(
+						Step(t, net, senders[1], &tx),
+					),
+					ExpectReject: false,
+				},
+				"OneOf/Empty": {
+					root:         bundle.OneOf(),
+					ExpectReject: true,
+				},
+				"Layered/NonEmpty": {
+					root: bundle.AllOf(
+						bundle.AllOf(
+							Step(t, net, senders[2], &tx),
+						),
+					),
+					ExpectReject: false,
+				},
+				"Layered/EmptyAndNonEmptySubGroups": {
+					root: bundle.AllOf(
+						bundle.AllOf(
+							Step(t, net, senders[3], &tx),
+						),
+						bundle.AllOf(),
+					),
+					ExpectReject: false,
+				},
+				"Layered/OnlyEmptySubGroups": {
+					root: bundle.AllOf(
+						bundle.AllOf(),
+					),
+					ExpectReject: true,
+				},
 			}
 
-			require.NoError(t, err)
+			for name, c := range cases {
+				t.Run(name, func(t *testing.T) {
+					blockNumber, err := client.BlockNumber(t.Context())
+					require.NoError(t, err)
 
-			blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(info.Block.Int64()))
-			bundleTxs := bundle.GetTransactionsInReferencedOrder()
+					envelope, bundle, plan := bundle.NewBuilder().
+						WithSigner(signer).
+						SetEarliest(blockNumber).
+						With(c.root).
+						BuildEnvelopeBundleAndPlan()
 
-			require.Equal(t, 1, int(info.Count))
-			require.Contains(t, blockTxsHashes, bundleTxs[0].Hash())
+					_, err = net.Send(envelope)
+					require.NoError(t, err)
+
+					if c.ExpectReject {
+						net.Require_BundleYieldsZeroTransactions(t, plan.Hash())
+						return
+					}
+
+					info, err := WaitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+					require.NoError(t, err)
+
+					blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(info.Block.Int64()))
+					bundleTxs := bundle.GetTransactionsInReferencedOrder()
+
+					require.Equal(t, 1, int(info.Count))
+					require.Contains(t, blockTxsHashes, bundleTxs[0].Hash())
+				})
+			}
 		})
 	}
 }
