@@ -368,3 +368,81 @@ func (m *mockOpContext) Address() common.Address  { return common.Address{} }
 func (m *mockOpContext) CallValue() *uint256.Int  { return uint256.NewInt(0) }
 func (m *mockOpContext) CallInput() []byte        { return nil }
 func (m *mockOpContext) ContractCode() []byte     { return nil }
+
+func TestVmTraceLogger_MemNilForNonMemoryOp(t *testing.T) {
+	// PUSH1 does not write memory → Ex.Mem must be nil.
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+
+	// Both contexts have empty memory — nothing changes.
+	l.onOpcode(0, byte(vm.PUSH1), 1000, 3, &mockOpContext{}, nil, 0, nil)
+	l.onOpcode(2, byte(vm.STOP), 997, 0, &mockOpContext{}, nil, 0, nil)
+	l.onExit(0, nil, 3, nil, false)
+
+	result := l.GetResult()
+	require.Len(t, result.Ops, 2)
+	require.Nil(t, result.Ops[0].Ex.Mem, "PUSH1 must have Mem=nil (no memory write)")
+}
+
+func TestVmTraceLogger_MemSetAfterMSTORE(t *testing.T) {
+	// MSTORE writes 32 bytes; Ex.Mem must carry the post-execution memory with Off=0.
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+
+	// Before MSTORE: memory empty.
+	ctxBeforeMstore := &mockOpContext{memory: []byte{}}
+	l.onOpcode(0, byte(vm.MSTORE), 1000, 6, ctxBeforeMstore, nil, 0, nil)
+
+	// After MSTORE: 32 bytes, last byte = 0x42.
+	memAfter := make([]byte, 32)
+	memAfter[31] = 0x42
+	ctxAfterMstore := &mockOpContext{memory: memAfter}
+	l.onOpcode(33, byte(vm.STOP), 994, 0, ctxAfterMstore, nil, 0, nil)
+
+	l.onExit(0, nil, 6, nil, false)
+
+	result := l.GetResult()
+	require.Len(t, result.Ops, 2)
+
+	mstoreOp := result.Ops[0]
+	require.NotNil(t, mstoreOp.Ex)
+	require.NotNil(t, mstoreOp.Ex.Mem, "MSTORE must have Mem set")
+	require.Equal(t, uint64(0), mstoreOp.Ex.Mem.Off, "Mem.Off must be 0")
+	require.Equal(t, []byte(memAfter), []byte(mstoreOp.Ex.Mem.Data), "Mem.Data must equal post-MSTORE memory")
+}
+
+func TestVmTraceLogger_MemOffAlwaysZero(t *testing.T) {
+	// Off must be 0 regardless of memory size — never len(data).
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+
+	l.onOpcode(0, byte(vm.MSTORE), 1000, 6, &mockOpContext{memory: []byte{}}, nil, 0, nil)
+
+	// 64-byte post-execution memory (two MSTORE slots).
+	bigMem := make([]byte, 64)
+	bigMem[31] = 0x01
+	bigMem[63] = 0x02
+	l.onOpcode(33, byte(vm.STOP), 994, 0, &mockOpContext{memory: bigMem}, nil, 0, nil)
+	l.onExit(0, nil, 6, nil, false)
+
+	result := l.GetResult()
+	require.Len(t, result.Ops, 2)
+	mem := result.Ops[0].Ex.Mem
+	require.NotNil(t, mem)
+	require.Equal(t, uint64(0), mem.Off, "Off must be 0, not len(data)")
+	require.NotEqual(t, uint64(len(mem.Data)), mem.Off, "Off must not equal len(Data)")
+}
+
+func TestVmTraceLogger_MemLastOpIsNil(t *testing.T) {
+	// The last op in a frame has no subsequent onOpcode to finalize it,
+	// so Ex.Mem must remain nil (post-execution state unavailable in onExit).
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+
+	l.onOpcode(0, byte(vm.STOP), 1000, 0, &mockOpContext{}, nil, 0, nil)
+	l.onExit(0, nil, 0, nil, false)
+
+	result := l.GetResult()
+	require.Len(t, result.Ops, 1)
+	require.Nil(t, result.Ops[0].Ex.Mem, "last op must have Mem=nil")
+}

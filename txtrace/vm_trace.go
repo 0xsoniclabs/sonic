@@ -17,6 +17,7 @@
 package txtrace
 
 import (
+	"bytes"
 	"errors"
 	"math/big"
 
@@ -161,15 +162,12 @@ func (l *VmTraceLogger) onExit(depth int, _ []byte, _ uint64, _ error, _ bool) {
 	frame := l.traceStack[len(l.traceStack)-1]
 	l.traceStack = l.traceStack[:len(l.traceStack)-1]
 
-	// Finalize the last operation's Mem and Store using the saved memory snapshot.
+	// Finalize the last operation's Store. Mem is left nil: terminal ops (STOP,
+	// RETURN, REVERT) do not write memory, and post-execution memory is unavailable
+	// in onExit since scope is gone.
 	if frame.lastOpIdx >= 0 {
 		op := &frame.trace.Ops[frame.lastOpIdx]
 		if op.Ex != nil {
-			memData := frame.memSnapshot
-			if memData == nil {
-				memData = []byte{}
-			}
-			op.Ex.Mem = &MemoryDiff{Off: uint64(len(memData)), Data: hexutil.Bytes(memData)}
 			if l.pendingStore != nil {
 				op.Ex.Store = l.pendingStore
 				l.pendingStore = nil
@@ -198,11 +196,15 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 		prevOp := &frame.trace.Ops[frame.lastOpIdx]
 		if prevOp.Ex != nil {
 			prevOp.Ex.Push = computePushed(frame.lastOp, scope.StackData())
-			memData := frame.memSnapshot
-			if memData == nil {
-				memData = []byte{}
+			// scope.MemoryData() here is post-execution of the previous op.
+			// Compare against the pre-execution snapshot; only record a Mem diff
+			// when the opcode actually wrote to memory.
+			curMem := scope.MemoryData()
+			if !bytes.Equal(curMem, frame.memSnapshot) {
+				postMem := make([]byte, len(curMem))
+				copy(postMem, curMem)
+				prevOp.Ex.Mem = &MemoryDiff{Off: 0, Data: hexutil.Bytes(postMem)}
 			}
-			prevOp.Ex.Mem = &MemoryDiff{Off: uint64(len(memData)), Data: hexutil.Bytes(memData)}
 			if l.pendingStore != nil {
 				prevOp.Ex.Store = l.pendingStore
 				l.pendingStore = nil
