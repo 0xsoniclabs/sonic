@@ -28,6 +28,7 @@ import (
 	rpctest "github.com/0xsoniclabs/sonic/api/rpc_test"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
@@ -1050,8 +1051,197 @@ func Test_convertProposalToPlan(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tt.plan, plan)
 			require.Equal(t, tt.plan.Hash(), plan.Hash())
+		})
+	}
+}
 
-			t.Log("plan", plan.Root.String())
+func Test_convertProposalToPlan_ReturnsErrors(t *testing.T) {
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	address := common.Address{1}
+
+	validRange := &RPCRange{
+		First:  *rpctest.ToHexUint64(0),
+		Length: *rpctest.ToHexUint64(1023),
+	}
+
+	validStep := RPCExecutionStepProposal{
+		TransactionArgs: ethapi.TransactionArgs{
+			From:  &address,
+			To:    &common.Address{2},
+			Nonce: rpctest.ToHexUint64(1),
+			Gas:   rpctest.ToHexUint64(21000),
+		},
+	}
+
+	// a value that overflows uint256
+	overflowingValue := new(big.Int).Lsh(big.NewInt(1), 257)
+
+	tests := map[string]struct {
+		proposal    RPCExecutionProposal
+		expectedErr string
+	}{
+		// --- missing fields ---
+		"missing block range": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{validStep},
+				},
+			},
+			expectedErr: "execution proposal must include block range",
+		},
+		"missing from in step": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								To:    &common.Address{2},
+								Nonce: rpctest.ToHexUint64(1),
+								Gas:   rpctest.ToHexUint64(21000),
+							},
+						},
+					},
+				},
+			},
+			expectedErr: "transaction in bundle must include from",
+		},
+
+		// --- empty / wrong structure ---
+		"empty steps": {
+			proposal: RPCExecutionProposal{
+				BlockRange:            validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{Steps: []any{}},
+			},
+			expectedErr: "proposed group must include at least one step",
+		},
+		"empty nested group": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{Steps: []any{}},
+					},
+				},
+			},
+			expectedErr: "proposed group must include at least one step",
+		},
+		"nil step element in group": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{nil},
+				},
+			},
+			expectedErr: "invalid execution proposal level",
+		},
+		"wrong type in steps slice": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{"not a step"},
+				},
+			},
+			expectedErr: "invalid execution proposal level",
+		},
+
+		// --- wrong transactions (overflow in gas fee fields) ---
+		"SetCodeTx with overflowing MaxFeePerGas": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								From:              &address,
+								To:                &common.Address{2},
+								Nonce:             rpctest.ToHexUint64(1),
+								Gas:               rpctest.ToHexUint64(21000),
+								MaxFeePerGas:      (*hexutil.Big)(overflowingValue),
+								AuthorizationList: []types.SetCodeAuthorization{{}},
+							},
+						},
+					},
+				},
+			},
+			expectedErr: "invalid MaxFeePerGas",
+		},
+		"SetCodeTx with negative MaxPriorityFeePerGas": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								From:                 &address,
+								To:                   &common.Address{2},
+								Nonce:                rpctest.ToHexUint64(1),
+								Gas:                  rpctest.ToHexUint64(21000),
+								MaxFeePerGas:         (*hexutil.Big)(big.NewInt(1)),
+								MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(-1)),
+								AuthorizationList:    []types.SetCodeAuthorization{{}},
+							},
+						},
+					},
+				},
+			},
+			expectedErr: "invalid MaxPriorityFeePerGas",
+		},
+		"BlobTx with overflowing BlobFeeCap": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								From:                 &address,
+								To:                   &common.Address{2},
+								Nonce:                rpctest.ToHexUint64(1),
+								Gas:                  rpctest.ToHexUint64(21000),
+								MaxFeePerGas:         (*hexutil.Big)(big.NewInt(1)),
+								MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(1)),
+								BlobFeeCap:           (*hexutil.Big)(overflowingValue),
+								BlobHashes:           []common.Hash{{1}},
+							},
+						},
+					},
+				},
+			},
+			expectedErr: "invalid BlobFeeCap",
+		},
+
+		// --- wrong transaction nested in group ---
+		"error propagates from nested group step": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							OneOf: true,
+							Steps: []any{
+								RPCExecutionStepProposal{
+									TransactionArgs: ethapi.TransactionArgs{
+										// missing From
+										To:    &common.Address{2},
+										Nonce: rpctest.ToHexUint64(1),
+										Gas:   rpctest.ToHexUint64(21000),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedErr: "transaction in bundle must include from",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := convertProposalToPlan(signer, tt.proposal)
+			require.Error(t, err)
+			require.ErrorContains(t, err, tt.expectedErr)
 		})
 	}
 }
