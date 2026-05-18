@@ -27,6 +27,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -87,7 +88,8 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 					Return(evmcore.BundleState{Executable: true})
 			}
 
-			require.Equal(bundlesEnabled, emitter.isRunnableBundleTxInternal(tx, bundleEvaluator))
+			runnable := emitter.isRunnableBundleTxInternal(tx, bundleEvaluator, effectiveBundleGasHistogram)
+			require.Equal(bundlesEnabled, runnable)
 		})
 	}
 }
@@ -128,7 +130,8 @@ func Test_Emitter_isValidBundleTx_RejectsInvalidBundle(t *testing.T) {
 				world: World{External: external},
 			}
 
-			require.False(emitter.isValidBundleTx(tx))
+			valid := emitter.isValidBundleTx(tx)
+			require.False(valid)
 		})
 	}
 }
@@ -173,7 +176,8 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 					Return(evmcore.BundleState{Executable: true})
 			}
 
-			require.Equal(t, !processed, emitter.isRunnableBundleTxInternal(tx, bundleEvaluator))
+			valid := emitter.isRunnableBundleTxInternal(tx, bundleEvaluator, effectiveBundleGasHistogram)
+			require.Equal(t, !processed, valid)
 		})
 	}
 }
@@ -247,4 +251,73 @@ func Test_preCheckStateAdapter_ForwardsGetLatestHeader(t *testing.T) {
 	returnedHeader := adapter.GetLatestHeader()
 
 	require.Same(t, header, returnedHeader)
+}
+
+func Test_Emitter_evaluateBundleTx_ReturnsGasEfficiencyFromEvaluator(t *testing.T) {
+	asPointer := func(f float64) *float64 {
+		return &f
+	}
+	tests := map[string]struct {
+		gasEfficiency *float64
+		executable    bool
+	}{
+		"low efficiency rejected": {
+			gasEfficiency: asPointer(0.1),
+			executable:    false,
+		},
+		"medium efficiency accepted": {
+			gasEfficiency: asPointer(0.5),
+			executable:    true,
+		},
+		"full efficiency accepted": {
+			gasEfficiency: asPointer(1.0),
+			executable:    true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			rules := opera.Rules{
+				NetworkID: 12,
+				Upgrades: opera.Upgrades{
+					TransactionBundles: true,
+				},
+			}
+
+			db := state.NewMockStateDB(ctrl)
+			db.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(false).AnyTimes()
+			db.EXPECT().Release().AnyTimes()
+
+			external := NewMockExternal(ctrl)
+			external.EXPECT().GetRules().Return(rules).AnyTimes()
+			external.EXPECT().GetLatestBlockIndex().Return(idx.Block(100)).AnyTimes()
+			external.EXPECT().StateDB().Return(db).AnyTimes()
+
+			signer := types.LatestSignerForChainID(big.NewInt(int64(rules.NetworkID)))
+			emitter := &Emitter{
+				world: World{
+					External:          external,
+					TransactionSigner: signer,
+				},
+			}
+
+			tx := bundle.NewBuilder().SetEarliest(50).SetRangeLength(100).WithSigner(signer).Build()
+
+			bundleEvaluator := evmcore.NewMockBundleEvaluator(ctrl)
+			bundleEvaluator.EXPECT().GetBundleState(gomock.Any(), gomock.Any(), tx).
+				Return(evmcore.BundleState{
+					Executable:    tc.executable,
+					GasEfficiency: tc.gasEfficiency,
+				})
+
+			gasEfficiencyMock := utils.NewMockMetricsHistogramWrapper(ctrl)
+			// ensure the metric is updated with the correct gas efficiency value
+			gasEfficiencyMock.EXPECT().Update(*tc.gasEfficiency)
+
+			valid := emitter.isRunnableBundleTxInternal(tx, bundleEvaluator, gasEfficiencyMock)
+			require.Equal(t, tc.executable, valid)
+		})
+	}
 }

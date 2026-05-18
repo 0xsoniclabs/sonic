@@ -622,7 +622,8 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			converted := test.args.ToTransaction()
+			converted, err := test.args.ToTransaction()
+			require.NoError(t, err)
 
 			// expected type must match
 			require.Equal(t, test.expected.Type(), converted.Type())
@@ -648,6 +649,268 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 
 			// set code authorizations
 			require.Equal(t, test.expected.SetCodeAuthorizations(), converted.SetCodeAuthorizations())
+		})
+	}
+}
+
+func TestToTransaction_ReturnsErrors(t *testing.T) {
+	addr := common.Address{1}
+	nonce := hexutil.Uint64(1)
+	gas := hexutil.Uint64(21000)
+	validFee := (*hexutil.Big)(big.NewInt(1000))
+
+	negative := (*hexutil.Big)(big.NewInt(-1))
+	overflow := (*hexutil.Big)(new(big.Int).Lsh(big.NewInt(1), 257))
+
+	tests := map[string]struct {
+		args        TransactionArgs
+		expectedErr string
+	}{
+		// --- SetCodeTx errors (triggered by AuthorizationList) ---
+		"SetCodeTx: negative MaxFeePerGas": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				MaxFeePerGas:         negative,
+				MaxPriorityFeePerGas: validFee,
+				AuthorizationList:    []types.SetCodeAuthorization{{}},
+			},
+			expectedErr: "invalid MaxFeePerGas",
+		},
+		"SetCodeTx: overflowing MaxFeePerGas": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				MaxFeePerGas:         overflow,
+				MaxPriorityFeePerGas: validFee,
+				AuthorizationList:    []types.SetCodeAuthorization{{}},
+			},
+			expectedErr: "invalid MaxFeePerGas",
+		},
+		"SetCodeTx: negative MaxPriorityFeePerGas": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: negative,
+				AuthorizationList:    []types.SetCodeAuthorization{{}},
+			},
+			expectedErr: "invalid MaxPriorityFeePerGas",
+		},
+		"SetCodeTx: overflowing MaxPriorityFeePerGas": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: overflow,
+				AuthorizationList:    []types.SetCodeAuthorization{{}},
+			},
+			expectedErr: "invalid MaxPriorityFeePerGas",
+		},
+		"SetCodeTx: negative ChainID": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				ChainID:              negative,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: validFee,
+				AuthorizationList:    []types.SetCodeAuthorization{{}},
+			},
+			expectedErr: "invalid ChainID",
+		},
+		"SetCodeTx: overflowing ChainID": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				ChainID:              overflow,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: validFee,
+				AuthorizationList:    []types.SetCodeAuthorization{{}},
+			},
+			expectedErr: "invalid ChainID",
+		},
+		"SetCodeTx: negative Value": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				Value:                negative,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: validFee,
+				AuthorizationList:    []types.SetCodeAuthorization{{}},
+			},
+			expectedErr: "invalid Value",
+		},
+		"SetCodeTx: overflowing Value": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				Value:                overflow,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: validFee,
+				AuthorizationList:    []types.SetCodeAuthorization{{}},
+			},
+			expectedErr: "invalid Value",
+		},
+
+		// --- BlobTx errors (triggered by BlobFeeCap or BlobHashes) ---
+		"BlobTx: negative MaxFeePerGas": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				MaxFeePerGas:         negative,
+				MaxPriorityFeePerGas: validFee,
+				BlobFeeCap:           validFee,
+				BlobHashes:           []common.Hash{{1}},
+			},
+			expectedErr: "invalid MaxFeePerGas",
+		},
+		"BlobTx: overflowing MaxFeePerGas": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				MaxFeePerGas:         overflow,
+				MaxPriorityFeePerGas: validFee,
+				BlobFeeCap:           validFee,
+				BlobHashes:           []common.Hash{{1}},
+			},
+			expectedErr: "invalid MaxFeePerGas",
+		},
+		"BlobTx: negative MaxPriorityFeePerGas": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: negative,
+				BlobFeeCap:           validFee,
+				BlobHashes:           []common.Hash{{1}},
+			},
+			expectedErr: "invalid MaxPriorityFeePerGas",
+		},
+		"BlobTx: overflowing MaxPriorityFeePerGas": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: overflow,
+				BlobFeeCap:           validFee,
+				BlobHashes:           []common.Hash{{1}},
+			},
+			expectedErr: "invalid MaxPriorityFeePerGas",
+		},
+		"BlobTx: negative BlobFeeCap": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: validFee,
+				BlobFeeCap:           negative,
+				BlobHashes:           []common.Hash{{1}},
+			},
+			expectedErr: "invalid BlobFeeCap",
+		},
+		"BlobTx: overflowing BlobFeeCap": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: validFee,
+				BlobFeeCap:           overflow,
+				BlobHashes:           []common.Hash{{1}},
+			},
+			expectedErr: "invalid BlobFeeCap",
+		},
+		"BlobTx: negative ChainID": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				ChainID:              negative,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: validFee,
+				BlobFeeCap:           validFee,
+				BlobHashes:           []common.Hash{{1}},
+			},
+			expectedErr: "invalid ChainID",
+		},
+		"BlobTx: overflowing ChainID": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				ChainID:              overflow,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: validFee,
+				BlobFeeCap:           validFee,
+				BlobHashes:           []common.Hash{{1}},
+			},
+			expectedErr: "invalid ChainID",
+		},
+		"BlobTx: negative Value": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				Value:                negative,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: validFee,
+				BlobFeeCap:           validFee,
+				BlobHashes:           []common.Hash{{1}},
+			},
+			expectedErr: "invalid Value",
+		},
+		"BlobTx: overflowing Value": {
+			args: TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				Value:                overflow,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: validFee,
+				BlobFeeCap:           validFee,
+				BlobHashes:           []common.Hash{{1}},
+			},
+			expectedErr: "invalid Value",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			tx, err := tt.args.ToTransaction()
+			require.Error(t, err)
+			require.Nil(t, tx)
+			require.ErrorContains(t, err, tt.expectedErr)
 		})
 	}
 }

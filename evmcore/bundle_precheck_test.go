@@ -237,8 +237,8 @@ func Test_GetBundleState_FailedTrialRun_ReturnsNonExecutable(t *testing.T) {
 		SetRangeLength(10).
 		Build()
 
-	rejectEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) bool {
-		return false
+	rejectEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) (*float64, bool) {
+		return nil, false
 	}
 
 	state := getBundleState(chainState, stateDb, envelope, rejectEverything)
@@ -269,16 +269,17 @@ func Test_GetBundleState_ValidBundle_ReturnsRunnable(t *testing.T) {
 		SetRangeLength(10).
 		Build()
 
-	acceptEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) bool {
-		return true
+	gasEfficiency := 1.0
+	acceptEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) (*float64, bool) {
+		return &gasEfficiency, true
 	}
 
 	state := getBundleState(chainState, stateDb, envelope, acceptEverything)
-	require.Equal(t, state, makeRunnableState())
+	require.Equal(t, makeRunnableState(&gasEfficiency), state)
 }
 
 func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
-
+	fullEfficiency := 1.0
 	temporaryBlocked := makeTemporaryBlockedState("gapped nonce")
 	permanentlyBlocked := makePermanentlyBlockedState("bundle nonce check execution failed")
 
@@ -289,11 +290,11 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 	}{
 		"bundle with no transactions": {
 			bundle: allOf(), // < will always succeed
-			result: makeRunnableState(),
+			result: makeRunnableState(&fullEfficiency),
 		},
 		"bundle with one transaction with correct nonce": {
 			bundle: allOf(1), // one tx with nonce 1
-			result: makeRunnableState(),
+			result: makeRunnableState(&fullEfficiency),
 		},
 		"bundle with future nonce": {
 			bundle: allOf(2), // one tx with nonce 2, which is in the future
@@ -305,7 +306,7 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 		},
 		"bundle with different senders": {
 			bundle: allOf(0xA1, 0xB1), // two txs from different senders with correct nonces
-			result: makeRunnableState(),
+			result: makeRunnableState(&fullEfficiency),
 		},
 		"bundle with nonce gap": {
 			bundle: allOf(1, 3), // two txs from the same sender with a nonce gap (nonce 2 is missing)
@@ -341,8 +342,8 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 			_, _, err := bundle.ValidateEnvelope(signer, envelope)
 			require.NoError(t, err)
 
-			acceptEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) bool {
-				return true
+			acceptEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) (*float64, bool) {
+				return &fullEfficiency, true
 			}
 
 			got := getBundleState(chainState, db, envelope, acceptEverything)
@@ -360,7 +361,7 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 	}{
 		"empty all-of bundle is runnable": {
 			bundle: allOf(), // < will always succeed
-			result: makeRunnableState(),
+			result: makeRunnableState(nil),
 		},
 		"empty one-of bundle is non-executable": {
 			bundle: oneOf(), // < can never succeed
@@ -368,11 +369,11 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 		},
 		"single all-of transaction with correct nonce": {
 			bundle: allOf(1), // one tx with nonce 1
-			result: makeRunnableState(),
+			result: makeRunnableState(nil),
 		},
 		"single one-of transaction with correct nonce": {
 			bundle: oneOf(1),
-			result: makeRunnableState(),
+			result: makeRunnableState(nil),
 		},
 		"single all-of transaction with old nonce": {
 			bundle: allOf(0),
@@ -392,11 +393,11 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 		},
 		"multiple all-of transactions with correct nonce order": {
 			bundle: allOf(1, 2, 3), // three txs with nonces 1, 2, 3
-			result: makeRunnableState(),
+			result: makeRunnableState(nil),
 		},
 		"multiple one-of transactions with correct nonce order": {
 			bundle: oneOf(1, 2, 3),
-			result: makeRunnableState(),
+			result: makeRunnableState(nil),
 		},
 		"multiple all-of transactions out of order": {
 			bundle: allOf(2, 1, 3),
@@ -404,7 +405,7 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 		},
 		"multiple one-of transactions out of order": {
 			bundle: oneOf(2, 1, 3),
-			result: makeRunnableState(),
+			result: makeRunnableState(nil),
 		},
 		"multiple all-of with old nonce": {
 			bundle: allOf(0, 1, 2),
@@ -416,7 +417,7 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 		},
 		"multiple one-of with old nonce": {
 			bundle: oneOf(0, 1, 2),
-			result: makeRunnableState(),
+			result: makeRunnableState(nil),
 		},
 		"multiple one-of with too old and too new nonces": {
 			bundle: oneOf(0, 2),
@@ -428,7 +429,7 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 		},
 		"one-of with nonce gap": {
 			bundle: oneOf(1, 3),
-			result: makeRunnableState(),
+			result: makeRunnableState(nil),
 		},
 		"all-of with nonce gap in the future": {
 			bundle: allOf(2, 4),
@@ -440,7 +441,7 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 		},
 		"nested all-of with consecutive nonces": {
 			bundle: allOf(1, allOf(2, 3), 4),
-			result: makeRunnableState(),
+			result: makeRunnableState(nil),
 		},
 		"nested all-of with future nonces": {
 			bundle: allOf(2, allOf(3, 4), 5),
@@ -452,12 +453,12 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 		},
 		"nested one-of in all-of": {
 			bundle: allOf(1, oneOf(2, 3), 3),
-			result: makeRunnableState(),
+			result: makeRunnableState(nil),
 		},
 		"multiple transactions from different senders with correct nonces": {
 			// two txs from sender A with nonces 1 and 2, one tx from sender B with nonce 1
 			bundle: allOf(0xA1, 0xB1, 0xA2),
-			result: makeRunnableState(),
+			result: makeRunnableState(nil),
 		},
 		"multiple transactions from different senders with nonce gap for one sender": {
 			bundle: allOf(0xA1, 0xB1, 0xA3),
@@ -469,7 +470,7 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 		},
 		"one-of outdated nonce for one sender but not the other": {
 			bundle: oneOf(0xA0, 0xB1),
-			result: makeRunnableState(),
+			result: makeRunnableState(nil),
 		},
 		"one-of with distinct future nonce options": {
 			bundle: oneOf(allOf(2, 3), allOf(4, 5)),
@@ -528,11 +529,13 @@ func Test_runner_Run_ReturnsInvalidForTransactionsWithoutSignature(t *testing.T)
 }
 
 func Test_makeRunnableState_ReturnsRunnableState(t *testing.T) {
-	state := makeRunnableState()
+	fullEfficiency := 1.0
+	state := makeRunnableState(&fullEfficiency)
 	require.Equal(t, BundleState{
 		Executable:         true,
 		TemporarilyBlocked: false,
 		Reasons:            nil,
+		GasEfficiency:      &fullEfficiency,
 	}, state)
 }
 
@@ -651,8 +654,9 @@ func Test_trialRunBundle_DoesRunTransactionsThroughEVMAndReturnsIfTransactionsGo
 			stateDb.EXPECT().EndTransaction().AnyTimes()
 
 			// run the bundle through the EVM and check the result
-			got := trialRunBundle(tc.envelope, chainState, stateDb)
-			require.Equal(t, tc.expectedResult, got)
+			gasEfficiency, valid := trialRunBundle(tc.envelope, chainState, stateDb)
+			require.Equal(t, tc.expectedResult, valid)
+			require.NotNil(t, gasEfficiency)
 		})
 	}
 }
@@ -729,8 +733,18 @@ func Test_trialRunBundleInternal_RejectsBundlesWhereEfficiencyIsBelowThreshold(t
 			db.EXPECT().InterTxSnapshot()
 			db.EXPECT().RevertToInterTxSnapshot(any)
 
-			got := trialRunBundleInternal(envelope, chainState, db, factory, rand.Read)
-			require.Equal(t, tc.expectAccept, got)
+			gasEfficiency, valid := trialRunBundleInternal(envelope, chainState, db, factory, rand.Read)
+			require.Equal(t, tc.expectAccept, valid)
+
+			expectedEfficiency := 0.0
+			if tc.execCost > 0 {
+				gasUsed := uint64(0)
+				for _, tx := range tc.processedTxs {
+					gasUsed += tx.Receipt.GasUsed
+				}
+				expectedEfficiency = float64(gasUsed) / float64(tc.execCost)
+			}
+			require.InDelta(t, expectedEfficiency, *gasEfficiency, 1e-9)
 		})
 	}
 }
@@ -929,7 +943,9 @@ func Test_trialRunBundleInternal_FailsIfRandomSourceFails(t *testing.T) {
 				return tc.n, tc.err
 			}
 
-			require.False(t, trialRunBundleInternal(nil, chain, nil, nil, readRandom))
+			gasEfficiency, valid := trialRunBundleInternal(nil, chain, nil, nil, readRandom)
+			require.False(t, valid)
+			require.Nil(t, gasEfficiency)
 		})
 	}
 }
@@ -1058,8 +1074,8 @@ func Test_trialRunBundleInternal_UsesPresentsOfReceiptToDecideResult(t *testing.
 			db.EXPECT().InterTxSnapshot()
 			db.EXPECT().RevertToInterTxSnapshot(any)
 
-			got := trialRunBundleInternal(myEnvelope, chainState, db, factory, rand.Read)
-			require.Equal(t, tc.expectedResult, got)
+			_, valid := trialRunBundleInternal(myEnvelope, chainState, db, factory, rand.Read)
+			require.Equal(t, tc.expectedResult, valid)
 		})
 	}
 }
@@ -1276,7 +1292,7 @@ func Test_BundleEvaluationCache_IgnoresNonEnvelopes(t *testing.T) {
 	cache := NewBundleEvaluationCache()
 
 	result := cache.GetBundleState(chainState, stateDb, tx)
-	require.Equal(t, makeRunnableState(), result)
+	require.Equal(t, makeRunnableState(nil), result)
 }
 
 func Test_BundleEvaluationCache_ReturnsErrorForInvalidEnvelope(t *testing.T) {
@@ -1299,4 +1315,154 @@ func Test_BundleEvaluationCache_ReturnsErrorForInvalidEnvelope(t *testing.T) {
 
 	result := cache.GetBundleState(chainState, stateDb, tx)
 	require.Equal(t, makePermanentlyBlockedState("failed to decode transaction bundle: unexpected EOF"), result)
+}
+
+func Test_trialRunBundleInternal_ReturnsCorrectGasEfficiency(t *testing.T) {
+	tests := map[string]struct {
+		processedTxs       []ProcessedTransaction
+		execCost           core_types.ExecutionCost
+		expectedEfficiency float64
+		expectedAccept     bool
+	}{
+		"zero execution cost returns zero efficiency": {
+			processedTxs:       []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 50}}},
+			execCost:           core_types.ExecutionCost(0),
+			expectedEfficiency: 0.0,
+			expectedAccept:     false,
+		},
+		"below threshold efficiency": {
+			processedTxs:       []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 10}}},
+			execCost:           core_types.ExecutionCost(100),
+			expectedEfficiency: 0.1,
+			expectedAccept:     false,
+		},
+		"exact threshold efficiency": {
+			processedTxs:       []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 20}}},
+			execCost:           core_types.ExecutionCost(100),
+			expectedEfficiency: 0.2,
+			expectedAccept:     true, // < not <=
+		},
+		"above threshold single receipt": {
+			processedTxs:       []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 50}}},
+			execCost:           core_types.ExecutionCost(100),
+			expectedEfficiency: 0.5,
+			expectedAccept:     true,
+		},
+		"above threshold multiple receipts": {
+			processedTxs: []ProcessedTransaction{
+				{Receipt: &types.Receipt{GasUsed: 30}},
+				{Receipt: &types.Receipt{GasUsed: 40}},
+			},
+			execCost:           core_types.ExecutionCost(100),
+			expectedEfficiency: 0.7,
+			expectedAccept:     true,
+		},
+		"full efficiency": {
+			processedTxs:       []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 100}}},
+			execCost:           core_types.ExecutionCost(100),
+			expectedEfficiency: 1.0,
+			expectedAccept:     true,
+		},
+		"receipts mixed with nil receipts": {
+			processedTxs: []ProcessedTransaction{
+				{Receipt: &types.Receipt{GasUsed: 25}},
+				{},
+				{Receipt: &types.Receipt{GasUsed: 25}},
+			},
+			execCost:           core_types.ExecutionCost(100),
+			expectedEfficiency: 0.5,
+			expectedAccept:     true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			envelope := types.NewTx(&types.LegacyTx{})
+
+			chainState := NewMockChainStateForBundleEval(ctrl)
+			chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+				Number: big.NewInt(0),
+			})
+
+			any := gomock.Any()
+
+			processor := NewMocktransactionProcessor(ctrl)
+			processor.EXPECT().Run(any, any).Return(
+				ProcessSummary{
+					ProcessedTransactions: tc.processedTxs,
+					ExecutionCost:         tc.execCost,
+				},
+			)
+
+			factory := NewMocktransactionProcessorFactory(ctrl)
+			factory.EXPECT().newTransactionProcessor(any, any, any).Return(processor)
+
+			db := state.NewMockStateDB(ctrl)
+			db.EXPECT().InterTxSnapshot()
+			db.EXPECT().RevertToInterTxSnapshot(any)
+
+			gasEfficiency, valid := trialRunBundleInternal(envelope, chainState, db, factory, rand.Read)
+			require.Equal(t, tc.expectedAccept, valid)
+			require.InDelta(t, tc.expectedEfficiency, *gasEfficiency, 1e-9)
+		})
+	}
+}
+
+func Test_getBundleState_PropagatesGasEfficiencyFromTrialRunner(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	rules := opera.Rules{
+		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
+	}
+
+	chainState := NewMockChainStateForBundleEval(ctrl)
+	chainState.EXPECT().GetCurrentNetworkRules().Return(rules).AnyTimes()
+	chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+		Number: big.NewInt(100),
+	}).AnyTimes()
+
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(false).AnyTimes()
+	stateDb.EXPECT().InterTxSnapshot().AnyTimes()
+	stateDb.EXPECT().RevertToInterTxSnapshot(gomock.Any()).AnyTimes()
+
+	signer := types.LatestSignerForChainID(big.NewInt(int64(rules.NetworkID)))
+	envelope := bundle.NewBuilder().
+		WithSigner(signer).
+		SetEarliest(50).
+		SetRangeLength(100).
+		Build()
+
+	expectedEfficiency := 0.75
+	trialRunner := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) (*float64, bool) {
+		return &expectedEfficiency, true
+	}
+
+	result := getBundleState(chainState, stateDb, envelope, trialRunner)
+	require.True(t, result.Executable)
+	require.Equal(t, expectedEfficiency, *result.GasEfficiency)
+}
+
+func Test_makeRunnableState_StoresGasEfficiency(t *testing.T) {
+	tests := map[string]float64{
+		"zero": 0.0,
+		"low":  0.25,
+		"half": 0.5,
+		"high": 0.9,
+		"full": 1.0,
+	}
+
+	for name, efficiency := range tests {
+		t.Run(name, func(t *testing.T) {
+			state := makeRunnableState(&efficiency)
+			require.True(t, state.Executable)
+			require.False(t, state.TemporarilyBlocked)
+			require.Nil(t, state.Reasons)
+			require.Equal(t, efficiency, *state.GasEfficiency)
+		})
+	}
 }

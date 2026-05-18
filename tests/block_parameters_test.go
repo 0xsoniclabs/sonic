@@ -85,8 +85,7 @@ func testBlockHeaderMatchesObservableBlockParameters(
 
 			// Verify those block parameters against the block headers.
 			for blockNumber, fromTx := range fromBlocks {
-				block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
-				require.NoError(err, "Failed to get block by number")
+				block := WaitForBlock(t, client, int(blockNumber))
 
 				require.Equal(fromTx.ChainId, net.GetChainId())
 				require.Equal(fromTx.Number, block.Number())

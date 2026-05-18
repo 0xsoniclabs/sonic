@@ -63,8 +63,9 @@ func TestRandao_randaoIntegrationTest(t *testing.T) {
 					require.NoError(t, err)
 					defer client.Close()
 
-					block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
-					require.NoError(t, err)
+					// The receipt was obtained from node 0, but other
+					// nodes may not have synced the block yet.
+					block := WaitForBlock(t, client, int(receipt.BlockNumber.Int64()))
 					require.NotZero(t, block.Header().MixDigest)
 					randaoList[i] = block.Header().MixDigest
 				}

@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
@@ -35,6 +36,14 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
+)
+
+var (
+	effectiveBundleGasHistogram = utils.MetricsHistogramWrapper(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
+		Name:    "emitter_bundle_gas_effective",
+		Help:    "Effective gas usage ratio for bundle transactions",
+		Buckets: prometheus.LinearBuckets(0.0, 0.01, 100), // buckets: [0.0, 0.01, ..., 0.99, +inf]
+	}))
 )
 
 const (
@@ -235,12 +244,13 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 // isValidBundleTx checks whether the given transaction is a valid bundle that
 // could be emitted by this emitter.
 func (em *Emitter) isValidBundleTx(tx *types.Transaction) bool {
-	return em.isRunnableBundleTxInternal(tx, em.bundleCache)
+	return em.isRunnableBundleTxInternal(tx, em.bundleCache, effectiveBundleGasHistogram)
 }
 
 func (em *Emitter) isRunnableBundleTxInternal(
 	tx *types.Transaction,
 	evalBundle evmcore.BundleEvaluator,
+	effectiveGasHistogram utils.MetricsHistogramWrapper,
 ) bool {
 	// Ignore if bundled transactions are not enabled.
 	if !em.world.GetRules().Upgrades.TransactionBundles {
@@ -275,7 +285,13 @@ func (em *Emitter) isRunnableBundleTxInternal(
 
 	// Skip bundles that are not runnable in the current state.
 	adapter := &preCheckChainStateAdapter{external: em.world}
-	return evalBundle.GetBundleState(adapter, stateDb, tx).Executable
+	bundleState := evalBundle.GetBundleState(adapter, stateDb, tx)
+
+	// Update the gas efficiency metric for the bundle.
+	if bundleState.GasEfficiency != nil {
+		effectiveGasHistogram.Update(*bundleState.GasEfficiency)
+	}
+	return bundleState.Executable
 }
 
 type preCheckChainStateAdapter struct {
