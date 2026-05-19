@@ -302,7 +302,7 @@ func (b *EthAPIBackend) epochWithDefault(ctx context.Context, epoch rpc.BlockNum
 		requested = current
 	case isLatestBlockNumber(epoch):
 		requested = current - 1
-	case epoch >= 0 && idx.Epoch(epoch) <= current:
+	case epoch >= 0 && epoch <= rpc.BlockNumber(current):
 		requested = idx.Epoch(epoch)
 	default:
 		err = errors.New("epoch is not in range")

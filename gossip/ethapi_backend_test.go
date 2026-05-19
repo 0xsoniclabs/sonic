@@ -26,6 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -182,4 +183,23 @@ func TestEthApiBackend_proposeTransactionsInternal_ReturnsEmissionIssue(t *testi
 
 	emitter.EXPECT().ForceEventEmissionForTesting(nil).Return(issue)
 	require.ErrorIs(t, backend.proposeTransactionsInternal(nil, emitter), issue)
+}
+
+func TestEthApiBackend_epochWithDefault_RejectsEpochsAboveUint32Max(t *testing.T) {
+	const currentEpoch = idx.Epoch(1000)
+
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	store.SetBlockEpochState(iblockproc.BlockState{}, iblockproc.EpochState{Epoch: currentEpoch})
+	backend := &EthAPIBackend{
+		svc: &Service{
+			store: store,
+		},
+	}
+
+	// 2^32 + currentEpoch truncates to currentEpoch when cast to uint32,
+	// so a naive idx.Epoch(epoch) <= current check would incorrectly accept it.
+	outOfRange := rpc.BlockNumber(1<<32 + int64(currentEpoch))
+	_, err = backend.epochWithDefault(t.Context(), outOfRange)
+	require.Error(t, err, "epoch value above uint32 max must be rejected")
 }
