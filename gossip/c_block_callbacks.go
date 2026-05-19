@@ -868,6 +868,7 @@ func filterNonPermissibleTransactions(
 	log log.Logger,
 	counter metricCounter,
 ) []*types.Transaction {
+
 	// This filter is only enabled with the Allegro upgrade.
 	if !rules.Upgrades.Allegro {
 		return transactions
@@ -913,6 +914,16 @@ func isPermissibleInternal(
 ) error {
 	if tx == nil {
 		return fmt.Errorf("nil transaction")
+	}
+
+	// -- Check static properties --
+
+	// TODO: verify whether the static checks are backward compatible to allow
+	// this to be enabled before Brio as well.
+	if rules.Upgrades.Brio {
+		if err := evmcore.ValidateTxStatic(tx); err != nil {
+			return err
+		}
 	}
 
 	// -- Check transaction type --

@@ -235,7 +235,9 @@ func Test_bundlesRPC_PrepareAndSubmit_PoolsValidBundles(t *testing.T) {
 			for i, tx := range prepared.Transactions {
 				// Note: all transactions at this stage have access list, therefore
 				// toTransactionForBundles is not needed.
-				signedTx, err := types.SignTx(tx.ToTransaction(), signer, addrToKey[*tx.From])
+				txToSign, err := tx.ToTransaction()
+				require.NoError(t, err)
+				signedTx, err := types.SignTx(txToSign, signer, addrToKey[*tx.From])
 				require.NoError(t, err)
 
 				encodedTx, err := signedTx.MarshalBinary()

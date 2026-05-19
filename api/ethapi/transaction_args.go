@@ -32,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/holiman/uint256"
 
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -291,7 +290,7 @@ func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int, lo
 
 // ToTransaction converts the arguments to an unsigned `types.transaction`.
 // This assumes that setDefaults has been called.
-func (args *TransactionArgs) ToTransaction() *types.Transaction {
+func (args *TransactionArgs) ToTransaction() (*types.Transaction, error) {
 	var data types.TxData
 
 	switch {
@@ -300,14 +299,31 @@ func (args *TransactionArgs) ToTransaction() *types.Transaction {
 		if args.AccessList != nil {
 			al = *args.AccessList
 		}
+		chainId, err := utils.BigIntToUint256Err((*big.Int)(args.ChainID))
+		if err != nil {
+			return nil, fmt.Errorf("invalid ChainID: %w", err)
+		}
+		gasFeeCap, err := utils.BigIntToUint256Err((*big.Int)(args.MaxFeePerGas))
+		if err != nil {
+			return nil, fmt.Errorf("invalid MaxFeePerGas: %w", err)
+		}
+		gasTipCap, err := utils.BigIntToUint256Err((*big.Int)(args.MaxPriorityFeePerGas))
+		if err != nil {
+			return nil, fmt.Errorf("invalid MaxPriorityFeePerGas: %w", err)
+		}
+		value, err := utils.BigIntToUint256Err((*big.Int)(args.Value))
+		if err != nil {
+			return nil, fmt.Errorf("invalid Value: %w", err)
+		}
+
 		data = &types.SetCodeTx{
 			To:         *args.To,
-			ChainID:    uint256.MustFromBig((*big.Int)(args.ChainID)),
+			ChainID:    chainId,
 			Nonce:      uint64(*args.Nonce),
 			Gas:        uint64(*args.Gas),
-			GasFeeCap:  utils.BigIntToUint256((*big.Int)(args.MaxFeePerGas)),
-			GasTipCap:  utils.BigIntToUint256((*big.Int)(args.MaxPriorityFeePerGas)),
-			Value:      uint256.MustFromBig((*big.Int)(args.Value)),
+			GasFeeCap:  gasFeeCap,
+			GasTipCap:  gasTipCap,
+			Value:      value,
 			Data:       args.data(),
 			AccessList: al,
 			AuthList:   ([]types.SetCodeAuthorization)(args.AuthorizationList),
@@ -318,17 +334,37 @@ func (args *TransactionArgs) ToTransaction() *types.Transaction {
 		if args.AccessList != nil {
 			al = *args.AccessList
 		}
+		chainId, err := utils.BigIntToUint256Err((*big.Int)(args.ChainID))
+		if err != nil {
+			return nil, fmt.Errorf("invalid ChainID: %w", err)
+		}
+		gasFeeCap, err := utils.BigIntToUint256Err((*big.Int)(args.MaxFeePerGas))
+		if err != nil {
+			return nil, fmt.Errorf("invalid MaxFeePerGas: %w", err)
+		}
+		gasTipCap, err := utils.BigIntToUint256Err((*big.Int)(args.MaxPriorityFeePerGas))
+		if err != nil {
+			return nil, fmt.Errorf("invalid MaxPriorityFeePerGas: %w", err)
+		}
+		blobFeeCap, err := utils.BigIntToUint256Err((*big.Int)(args.BlobFeeCap))
+		if err != nil {
+			return nil, fmt.Errorf("invalid BlobFeeCap: %w", err)
+		}
+		value, err := utils.BigIntToUint256Err((*big.Int)(args.Value))
+		if err != nil {
+			return nil, fmt.Errorf("invalid Value: %w", err)
+		}
 		data = &types.BlobTx{
 			To:         *args.To,
-			ChainID:    uint256.MustFromBig((*big.Int)(args.ChainID)),
+			ChainID:    chainId,
 			Nonce:      uint64(*args.Nonce),
 			Gas:        uint64(*args.Gas),
-			GasFeeCap:  utils.BigIntToUint256((*big.Int)(args.MaxFeePerGas)),
-			GasTipCap:  utils.BigIntToUint256((*big.Int)(args.MaxPriorityFeePerGas)),
-			Value:      uint256.MustFromBig((*big.Int)(args.Value)),
+			GasFeeCap:  gasFeeCap,
+			GasTipCap:  gasTipCap,
+			Value:      value,
 			Data:       args.data(),
 			AccessList: al,
-			BlobFeeCap: utils.BigIntToUint256((*big.Int)(args.BlobFeeCap)),
+			BlobFeeCap: blobFeeCap,
 			BlobHashes: args.BlobHashes,
 		}
 
@@ -369,5 +405,5 @@ func (args *TransactionArgs) ToTransaction() *types.Transaction {
 			Data:     args.data(),
 		}
 	}
-	return types.NewTx(data)
+	return types.NewTx(data), nil
 }

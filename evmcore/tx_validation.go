@@ -212,43 +212,134 @@ func ValidateTxForNetwork(tx *types.Transaction, rules NetworkRules, chain State
 }
 
 // ValidateTxStatic runs a set of verification independent from any context with
-// the aim to identify malformed transactions. It checks the transaction's:
-// - value (must be positive)
-// - gas fee cap and tip cap must be within the 256 bit range
-// - gas fee cap must be greater than or equal to the tip cap
-// - set code transactions must not have an empty authorization list
+// the aim to identify malformed transactions. It checks that the given
+// transaction is able to provide a valid value for the following fields:
+//   - value
+//   - nonce
+//   - gas fee cap
+//   - gas tip cap
+//   - gas price
+//   - cost
+//
+// Furthermore, the following relations between fields are checked:
+//   - gas fee cap must be greater than or equal to gas tip cap
+//   - if the transaction is a blob transaction, the blob gas fee cap must be valid as well
+//   - if the transaction is a set code transaction, it must have a non-empty authorization list
 //
 // It returns an error if any of the checks fail.
-func ValidateTxStatic(tx *types.Transaction) error {
+//
+// This function does not make any assumptions on the implementation of the
+// given transaction. Instead, it verifies the observable properties made
+// available through its public interface.
+func ValidateTxStatic(tx txValidationTarget) error {
 
-	// Transactions can't be negative. This may never happen using RLP decoded
-	// transactions but may occur if you create a transaction using the RPC.
-	if tx.Value().Sign() < 0 {
-		return ErrNegativeValue
+	// Check value ranges of individual fields.
+	if err := validateValueRanges(tx); err != nil {
+		return err
 	}
 
-	// Sanity check for extremely large numbers
-	if tx.GasFeeCap().BitLen() > 256 {
-		return ErrFeeCapVeryHigh
-	}
-	if tx.GasTipCap().BitLen() > 256 {
-		return ErrTipVeryHigh
-	}
+	// -- field combinations checks --
 
 	// Ensure gasFeeCap is greater than or equal to gasTipCap.
-	if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
+	feeCap := tx.GasFeeCap()
+	tipCap := tx.GasTipCap()
+	if feeCap.Cmp(tipCap) < 0 {
 		return ErrTipAboveFeeCap
 	}
 
+	// The gas price must be less or equal the fee cap.
+	gasPrice := tx.GasPrice()
+	if gasPrice.Cmp(feeCap) > 0 {
+		return ErrGasPriceAboveFeeCap
+	}
+
 	// Check non-empty authorization list
-	if tx.Type() == types.SetCodeTxType && len(tx.SetCodeAuthorizations()) == 0 {
-		return ErrEmptyAuthorizations
+	if tx.Type() == types.SetCodeTxType {
+		if len(tx.SetCodeAuthorizations()) == 0 {
+			return ErrEmptyAuthorizations
+		}
+	} else if len(tx.SetCodeAuthorizations()) > 0 {
+		return ErrNonEmptyAuthorizations
+	}
+
+	return nil
+}
+
+// validateValueRanges checks that all big.Int values that can be read from a
+// transaction are within valid ranges.
+func validateValueRanges(tx txValidationTarget) error {
+	// Range-check all big.Int values retrievable from transactions to be valid
+	// uint256 values. This is a sanity check to prevent any potential value
+	// range issues in the EVM execution.
+
+	if err := validateU256(tx.Value(), ErrValueMissing, ErrValueNegative, ErrValueTooHigh); err != nil {
+		return err
+	}
+
+	if err := validateU256(tx.GasFeeCap(), ErrFeeCapMissing, ErrFeeCapNegative, ErrFeeCapTooHigh); err != nil {
+		return err
+	}
+
+	if err := validateU256(tx.GasTipCap(), ErrTipCapMissing, ErrTipCapNegative, ErrTipCapTooHigh); err != nil {
+		return err
+	}
+
+	if err := validateU256(tx.GasPrice(), ErrGasPriceMissing, ErrGasPriceNegative, ErrGasPriceTooHigh); err != nil {
+		return err
+	}
+
+	if err := validateU256(tx.Cost(), ErrCostMissing, ErrCostNegative, ErrCostTooHigh); err != nil {
+		return err
 	}
 
 	if tx.Nonce() == math.MaxUint64 {
 		return ErrNonceTooHigh
 	}
 
+	// Check blob gas fee cap range if transaction is a blob transaction.
+	if tx.Type() == types.BlobTxType || tx.BlobGasFeeCap() != nil {
+		if err := validateU256(tx.BlobGasFeeCap(), ErrBlobGasFeeCapMissing, ErrBlobGasFeeCapNegative, ErrBlobGasFeeCapTooHigh); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// txValidationTarget is an interface that abstracts the properties of a
+// transaction that are relevant for validation.
+type txValidationTarget interface {
+	Type() uint8
+	Nonce() uint64
+	Value() *big.Int
+
+	GasFeeCap() *big.Int
+	GasTipCap() *big.Int
+	BlobGasFeeCap() *big.Int
+
+	GasPrice() *big.Int
+	Cost() *big.Int
+
+	SetCodeAuthorizations() []types.SetCodeAuthorization
+}
+
+// validateU256 is a helper function to check that a big.Int value is a valid
+// uint256 and not nil.
+func validateU256(
+	value *big.Int,
+	missing error,
+	toLow error,
+	toHigh error,
+) error {
+	if value == nil {
+		return missing
+	}
+	if value.Sign() < 0 {
+		return toLow
+	}
+	if value.BitLen() > 256 {
+		return toHigh
+	}
 	return nil
 }
 

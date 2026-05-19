@@ -1193,8 +1193,8 @@ func TestTransactionNegativeValue(t *testing.T) {
 	tx, _ := types.SignTx(types.NewTransaction(0, common.Address{}, big.NewInt(-1), 200_000, big.NewInt(1), nil), types.HomesteadSigner{}, key)
 	from, _ := deriveSender(tx)
 	testAddBalance(pool, from, big.NewInt(1))
-	if err := pool.AddRemote(tx); err != ErrNegativeValue {
-		t.Error("expected", ErrNegativeValue, "got", err)
+	if err := pool.AddRemote(tx); err != ErrValueNegative {
+		t.Error("expected", ErrValueNegative, "got", err)
 	}
 }
 
@@ -1221,13 +1221,13 @@ func TestTransactionVeryHighValues(t *testing.T) {
 	veryBigNumber.Lsh(veryBigNumber, 300)
 
 	tx := dynamicFeeTx(0, 200_000, big.NewInt(1), veryBigNumber, key)
-	if err := pool.AddRemote(tx); err != ErrTipVeryHigh {
-		t.Error("expected", ErrTipVeryHigh, "got", err)
+	if err := pool.AddRemote(tx); err != ErrTipCapTooHigh {
+		t.Error("expected", ErrTipCapTooHigh, "got", err)
 	}
 
 	tx2 := dynamicFeeTx(0, 200_000, veryBigNumber, big.NewInt(1), key)
-	if err := pool.AddRemote(tx2); err != ErrFeeCapVeryHigh {
-		t.Error("expected", ErrFeeCapVeryHigh, "got", err)
+	if err := pool.AddRemote(tx2); err != ErrFeeCapTooHigh {
+		t.Error("expected", ErrFeeCapTooHigh, "got", err)
 	}
 }
 

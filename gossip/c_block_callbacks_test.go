@@ -793,6 +793,59 @@ func TestIsPermissible_AcceptsSetCodeTransactionsInAllegroAndBeyond(t *testing.T
 	}
 }
 
+func TestIsPermissible_WithBrio_RejectsTransactionsFailingStaticChecks(t *testing.T) {
+
+	invalidTx := types.NewTx(&types.DynamicFeeTx{
+		GasFeeCap: big.NewInt(-1), // Invalid gas price
+	})
+
+	issue := evmcore.ValidateTxStatic(invalidTx)
+	require.Error(t, issue)
+
+	// Before Brio, static checks are ignored for permissibility.
+	rules := opera.Rules{Upgrades: opera.Upgrades{Brio: false}}
+	require.NoError(t, isPermissible(invalidTx, &rules, nil))
+
+	// With Brio, transactions failing static checks are not permissible.
+	rules = opera.Rules{Upgrades: opera.Upgrades{Brio: true}}
+	require.ErrorIs(t, isPermissible(invalidTx, &rules, nil), issue)
+}
+
+func TestIsPermissible_WithBrio_DetectsInvalidTransactionsInBundles(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	invalidInnerTx := types.NewTx(&types.DynamicFeeTx{
+		GasFeeCap: new(big.Int).Lsh(big.NewInt(1), 256), // Invalid fee cap
+	})
+	issue := evmcore.ValidateTxStatic(invalidInnerTx)
+	require.Error(t, issue)
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	tests := map[string]*types.Transaction{
+		"invalid transaction in bundle": bundle.NewBuilder().AllOf(
+			bundle.Step(key, invalidInnerTx),
+		).WithSigner(signer).Build(),
+		"invalid nested transaction in bundle": bundle.NewBuilder().OneOf(
+			bundle.Step(key, bundle.NewBuilder().AllOf(
+				bundle.Step(key, invalidInnerTx),
+			).WithSigner(signer).Build()),
+		).WithSigner(signer).Build(),
+	}
+
+	for name, tx := range tests {
+		t.Run(name, func(t *testing.T) {
+			rules := opera.Rules{Upgrades: opera.Upgrades{
+				Brio:               true,
+				TransactionBundles: true,
+			}}
+			got := isPermissible(tx, &rules, signer)
+			require.ErrorIs(t, got, issue)
+		})
+	}
+}
+
 func TestIsPermissible_WithBrio_RejectsBundleOnlyTransactions(t *testing.T) {
 	require := require.New(t)
 	tx := types.NewTx(&types.AccessListTx{

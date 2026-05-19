@@ -350,7 +350,10 @@ func (sim *simulator) processBlock(
 			return nil, nil, nil, nil, err
 		}
 
-		tx := call.ToTransaction()
+		tx, err := call.ToTransaction()
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
 		txHash := tx.Hash()
 		txes[i] = tx
 		senders[txHash] = call.from()
