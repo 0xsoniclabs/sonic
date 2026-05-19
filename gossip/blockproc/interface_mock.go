@@ -393,17 +393,17 @@ func (m *MockEVMProcessor) EXPECT() *MockEVMProcessorMockRecorder {
 }
 
 // Execute mocks base method.
-func (m *MockEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evmcore.ProcessSummary {
+func (m *MockEVMProcessor) Execute(txs types.Transactions, gasLimit, sizeLimit uint64) evmcore.ProcessSummary {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Execute", txs, gasLimit)
+	ret := m.ctrl.Call(m, "Execute", txs, gasLimit, sizeLimit)
 	ret0, _ := ret[0].(evmcore.ProcessSummary)
 	return ret0
 }
 
 // Execute indicates an expected call of Execute.
-func (mr *MockEVMProcessorMockRecorder) Execute(txs, gasLimit any) *gomock.Call {
+func (mr *MockEVMProcessorMockRecorder) Execute(txs, gasLimit, sizeLimit any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockEVMProcessor)(nil).Execute), txs, gasLimit)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockEVMProcessor)(nil).Execute), txs, gasLimit, sizeLimit)
 }
 
 // Finalize mocks base method.
