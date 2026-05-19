@@ -74,7 +74,7 @@ type ConfirmedEventsModule interface {
 }
 
 type EVMProcessor interface {
-	Execute(txs types.Transactions, gasLimit uint64) evmcore.ProcessSummary
+	Execute(txs types.Transactions, gasLimit uint64, sizeLimit uint64) evmcore.ProcessSummary
 	Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts)
 }
 

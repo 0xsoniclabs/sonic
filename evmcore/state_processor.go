@@ -86,6 +86,7 @@ func NewStateProcessorForReplay(
 type ProcessSummary struct {
 	ProcessedTransactions []ProcessedTransaction
 	ExecutionCost         core_types.ExecutionCost
+	CausedBy              map[common.Hash]common.Hash
 }
 
 // ProcessedTransaction represents a transaction that was considered for
@@ -121,10 +122,10 @@ type ProcessedTransaction struct {
 // consistent.
 func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
-	usedGas *uint64, trueTxOffset int, onNewLog func(*core_types.Log),
+	usedGas *uint64, trueTxOffset int, onNewLog func(*core_types.Log), remainingSize uint64,
 ) ProcessSummary {
 	sonicDifficulty := big.NewInt(1)
-	return p.ProcessWithDifficulty(block, statedb, cfg, gasLimit, usedGas, trueTxOffset, onNewLog, sonicDifficulty)
+	return p.ProcessWithDifficulty(block, statedb, cfg, gasLimit, usedGas, trueTxOffset, onNewLog, sonicDifficulty, remainingSize)
 }
 
 // ProcessWithDifficulty is the same as Process, but allows specifying a custom
@@ -134,7 +135,7 @@ func (p *StateProcessor) Process(
 func (p *StateProcessor) ProcessWithDifficulty(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, trueTxOffset int, onNewLog func(*core_types.Log),
-	difficulty *big.Int,
+	difficulty *big.Int, remainingSize uint64,
 ) ProcessSummary {
 	var (
 		gp           = core.NewGasPool(gasLimit)
@@ -155,7 +156,7 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	return runTransactions(newRunContext(
 		signer, header.BaseFee, statedb, gp, blockNumber, block.Time, usedGas,
 		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}}, p.forReplay,
-	), block.Transactions, trueTxOffset)
+	), block.Transactions, trueTxOffset, remainingSize)
 }
 
 // runContext bundles the parameters required for processing transactions in a
@@ -217,9 +218,11 @@ func runTransactions(
 	context *runContext,
 	transactions types.Transactions,
 	trueTxIndexOffset int,
+	remainingSize uint64,
 ) ProcessSummary {
 	processedTxs := make([]ProcessedTransaction, 0, len(transactions))
 	totalExecCost := core_types.ExecutionCost(0)
+	causedBy := make(map[common.Hash]common.Hash)
 	for _, tx := range transactions {
 		// Bundle-only transactions are only valid within a bundle and must
 		// be rejected at the top level when processing the head state.
@@ -228,12 +231,21 @@ func runTransactions(
 			continue
 		}
 
+		neededSpace := realTxSize(context, tx)
+		if context.upgrades.Brio && neededSpace > remainingSize {
+			// Add the transaction to the processed ones with a nil receipt to increase skipped counter.
+			processedTxs = append(processedTxs, ProcessedTransaction{Transaction: tx})
+			continue
+		}
+
 		txs, _, execCost := runTransaction(context, tx, trueTxIndexOffset)
 		totalExecCost += execCost
 
-		for _, tx := range txs {
-			if tx.Receipt != nil { // < only transactions included in the block
+		for _, processedTx := range txs {
+			if processedTx.Receipt != nil { // < only transactions included in the block
 				trueTxIndexOffset++
+				remainingSize -= processedTx.Transaction.Size()
+				causedBy[processedTx.Transaction.Hash()] = tx.Hash()
 			}
 		}
 		processedTxs = append(processedTxs, txs...)
@@ -242,7 +254,32 @@ func runTransactions(
 	return ProcessSummary{
 		ProcessedTransactions: processedTxs,
 		ExecutionCost:         totalExecCost,
+		CausedBy:              causedBy,
 	}
+}
+
+// realTxSize returns the size of the transaction,
+// including any overhead introduced by sponsorship requests.
+func realTxSize(context *runContext, tx *types.Transaction) uint64 {
+	if context.upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
+		size := uint64(0)
+		txBundle, _, err := bundle.ValidateEnvelope(context.signer, tx)
+		if err != nil {
+			return size // = 0, in case the bundle can not be unpacked, it will not be added to the block.
+		}
+		for _, innerTx := range txBundle.Transactions {
+			size += realTxSize(context, innerTx)
+		}
+		return size
+	}
+
+	if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
+		size := tx.Size()
+		size += subsidies.RlpEncodedFeeChargingTxSizeInBytes
+		return size
+	}
+
+	return tx.Size()
 }
 
 // runTransaction processes the given transaction and returns a list of all
@@ -713,7 +750,7 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber, tp.blockTime,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
 		false,
-	), []*types.Transaction{tx}, i)
+	), []*types.Transaction{tx}, i, math.MaxUint64)
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database

@@ -18,6 +18,7 @@ package tests
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"os"
 	"testing"
@@ -257,6 +258,7 @@ func (s *State) ApplyBlock(
 		&usedGas,
 		0, // tx index offset
 		nil,
+		math.MaxUint64, // the blocks have already been produced, the size limit is not relevant for the replay
 	).ProcessedTransactions
 
 	receipts := types.Receipts{}

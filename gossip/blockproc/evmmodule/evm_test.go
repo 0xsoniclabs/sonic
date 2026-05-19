@@ -98,7 +98,7 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 	nonce := uint64(15)
 	inner := types.NewTransaction(nonce, targetAddress, common.Big0, 1e10, common.Big0, nil)
 
-	summary := processor.Execute([]*types.Transaction{inner}, math.MaxUint64)
+	summary := processor.Execute([]*types.Transaction{inner}, math.MaxUint64, math.MaxUint64)
 	processed := summary.ProcessedTransactions
 
 	if len(processed) != 1 {
@@ -169,7 +169,7 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInReceipts(t *test
 	// transactions and some have just one.
 	txIndex := uint(0)
 	for range N {
-		summary := processor.Execute([]*types.Transaction{tx, tx}, math.MaxUint64)
+		summary := processor.Execute([]*types.Transaction{tx, tx}, math.MaxUint64, math.MaxUint64)
 		processed := summary.ProcessedTransactions
 		require.Len(processed, 2)
 		require.NotNil(processed[0].Receipt)
@@ -179,7 +179,7 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInReceipts(t *test
 		require.Equal(txIndex, processed[1].Receipt.TransactionIndex)
 		txIndex++
 
-		summary = processor.Execute([]*types.Transaction{tx}, math.MaxUint64)
+		summary = processor.Execute([]*types.Transaction{tx}, math.MaxUint64, math.MaxUint64)
 		processed = summary.ProcessedTransactions
 		require.Len(processed, 1)
 		require.NotNil(processed[0].Receipt)
@@ -216,11 +216,11 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 	}
 
 	stateProcessor.EXPECT().Process(
-		any, any, any, any, any, 0, any,
+		any, any, any, any, any, 0, any, any,
 	).Return(summary1)
 
 	stateProcessor.EXPECT().Process(
-		any, any, any, any, any, 5, any,
+		any, any, any, any, any, 5, any, any,
 	).Return(summary2)
 
 	processor := &OperaEVMProcessor{
@@ -232,14 +232,14 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 	})
 
 	// The first patch should index transactions as they are executed.
-	result := processor.Execute([]*types.Transaction{tx}, math.MaxUint64)
+	result := processor.Execute([]*types.Transaction{tx}, math.MaxUint64, math.MaxUint64)
 	require.Equal(summary1, result)
 	for i, p := range result.ProcessedTransactions {
 		require.Equal(uint(i), p.Receipt.TransactionIndex)
 	}
 
 	// the next batch should be offset by the first patch
-	result = processor.Execute([]*types.Transaction{tx}, math.MaxUint64)
+	result = processor.Execute([]*types.Transaction{tx}, math.MaxUint64, math.MaxUint64)
 	require.Equal(summary2, result)
 	for i, p := range result.ProcessedTransactions {
 		require.Equal(uint(i+len(summary1.ProcessedTransactions)), p.Receipt.TransactionIndex)
@@ -262,7 +262,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorProducesTransactionsAndBundles_
 		},
 	}
 
-	stateProcessor.EXPECT().Process(any, any, any, any, any, any, any).Return(summary)
+	stateProcessor.EXPECT().Process(any, any, any, any, any, any, any, any).Return(summary)
 	processor := &OperaEVMProcessor{
 		processorFactory: factory,
 	}
@@ -270,7 +270,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorProducesTransactionsAndBundles_
 	tx := types.NewTx(&types.LegacyTx{})
 
 	// The result of the processor should be returned without modifications.
-	result := processor.Execute([]*types.Transaction{tx}, math.MaxUint64)
+	result := processor.Execute([]*types.Transaction{tx}, math.MaxUint64, math.MaxUint64)
 	require.Equal(summary, result)
 }
 
@@ -309,7 +309,7 @@ func TestOperaEVMProcessor_Execute_UsesNumberOfAcceptedTransactionsAsTransaction
 			}
 
 			stateProcessor.EXPECT().
-				Process(any, any, any, any, any, numPreAccepted, any).
+				Process(any, any, any, any, any, numPreAccepted, any, any).
 				Return(evmcore.ProcessSummary{
 					ProcessedTransactions: []evmcore.ProcessedTransaction{
 						{Receipt: &types.Receipt{TransactionIndex: uint(numPreAccepted)}},
@@ -322,7 +322,7 @@ func TestOperaEVMProcessor_Execute_UsesNumberOfAcceptedTransactionsAsTransaction
 				processedTxs:     processedTransactions,
 			}
 
-			summary := processor.Execute(nil, 0)
+			summary := processor.Execute(nil, 0, 0)
 
 			require.Len(t, summary.ProcessedTransactions, 2)
 			for i, cur := range summary.ProcessedTransactions {
@@ -367,14 +367,14 @@ func TestOperaEVMProcessor_Execute_UsesNumberOfTransactionsWithReceiptsAsTransac
 					wantedOffset++
 				}
 			}
-			stateProcessor.EXPECT().Process(any, any, any, any, any, wantedOffset, any)
+			stateProcessor.EXPECT().Process(any, any, any, any, any, wantedOffset, any, any)
 
 			processor := &OperaEVMProcessor{
 				processorFactory: factory,
 				processedTxs:     processedTransactions,
 			}
 
-			processor.Execute(nil, 0)
+			processor.Execute(nil, 0, 0)
 		})
 	}
 }
@@ -431,7 +431,7 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 		To: &common.Address{}, Nonce: 1, Gas: 21_0000,
 	})
 
-	processed := processor.Execute(types.Transactions{validTx}, math.MaxUint64).ProcessedTransactions
+	processed := processor.Execute(types.Transactions{validTx}, math.MaxUint64, math.MaxUint64).ProcessedTransactions
 	require.Len(processed, 1)
 	require.Equal(validTx, processed[0].Transaction)
 	require.NotNil(processed[0].Receipt)
@@ -439,7 +439,7 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	_, numSkipped, _ := processor.Finalize()
 	require.Equal(0, numSkipped)
 
-	processed = processor.Execute(types.Transactions{skippedTx}, math.MaxUint64).ProcessedTransactions
+	processed = processor.Execute(types.Transactions{skippedTx}, math.MaxUint64, math.MaxUint64).ProcessedTransactions
 	require.Len(processed, 1)
 	require.Equal(skippedTx, processed[0].Transaction)
 	require.Nil(processed[0].Receipt)
@@ -447,7 +447,7 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	_, numSkipped, _ = processor.Finalize()
 	require.Equal(1, numSkipped)
 
-	processed = processor.Execute(types.Transactions{skippedTx, validTx, skippedTx}, math.MaxUint64).ProcessedTransactions
+	processed = processor.Execute(types.Transactions{skippedTx, validTx, skippedTx}, math.MaxUint64, math.MaxUint64).ProcessedTransactions
 	require.Len(processed, 3)
 	require.Equal(skippedTx, processed[0].Transaction)
 	require.Nil(processed[0].Receipt)

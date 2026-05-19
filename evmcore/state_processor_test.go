@@ -51,7 +51,7 @@ import (
 // Process method.
 func (p *StateProcessor) process_iteratively(
 	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, gasLimit uint64,
-	usedGas *uint64, trueTxOffset int, onNewLog func(*core_types.Log),
+	usedGas *uint64, trueTxOffset int, onNewLog func(*core_types.Log), maxBlockSize uint64,
 ) ProcessSummary {
 	// This implementation is a wrapper around the BeginBlock function, which
 	// handles the actual transaction processing.
@@ -127,7 +127,7 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 			gasLimit := uint64(blockGasLimit)
 			usedGas := new(uint64)
 
-			summary := process(block, state, vmConfig, gasLimit, usedGas, 0, onLog)
+			summary := process(block, state, vmConfig, gasLimit, usedGas, 0, onLog, math.MaxUint64)
 			processed := summary.ProcessedTransactions
 
 			// Receipts should be set accordingly.
@@ -232,7 +232,7 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 			gasLimit := uint64(math.MaxUint64)
 			usedGas := new(uint64)
 
-			summary := process(block, state, vmConfig, gasLimit, usedGas, 0, nil)
+			summary := process(block, state, vmConfig, gasLimit, usedGas, 0, nil, math.MaxUint64)
 			processed := summary.ProcessedTransactions
 
 			require.Len(processed, len(transactions))
@@ -307,7 +307,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 				vmConfig := vm.Config{}
 				gasLimit := uint64(math.MaxUint64)
 				usedGas := new(uint64)
-				processed := process(block, state, vmConfig, gasLimit, usedGas, 0, nil).ProcessedTransactions
+				processed := process(block, state, vmConfig, gasLimit, usedGas, 0, nil, math.MaxUint64).ProcessedTransactions
 				require.Empty(processed)
 			})
 		}
@@ -366,7 +366,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	// Process the block
 	gasLimit := uint64(math.MaxUint64)
 	usedGas := new(uint64)
-	processed := processor.Process(block, state, vm.Config{}, gasLimit, usedGas, 0, nil).ProcessedTransactions
+	processed := processor.Process(block, state, vm.Config{}, gasLimit, usedGas, 0, nil, math.MaxUint64).ProcessedTransactions
 
 	require.Len(t, processed, 2)
 	require.Equal(t, processed[0].Transaction, block.Transactions[0])
@@ -445,7 +445,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					require := require.New(t)
 					gasLimit := test.gasLimit
-					processed := process(block, state, vmConfig, gasLimit, usedGas, 0, nil).ProcessedTransactions
+					processed := process(block, state, vmConfig, gasLimit, usedGas, 0, nil, math.MaxUint64).ProcessedTransactions
 					require.Len(processed, 3)
 
 					for i, tx := range transactions {
@@ -471,7 +471,7 @@ func TestProcess_UsesDifficultyOfOne(t *testing.T) {
 	state, block := createScenarioWithTxCheckingDifficulty(ctrl, big.NewInt(1))
 
 	// Check that the difficulty of 1 is used.
-	results := processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), 0, nil).ProcessedTransactions
+	results := processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), 0, nil, math.MaxUint64).ProcessedTransactions
 	require.Len(t, results, 1)
 	require.NotNil(t, results[0].Receipt)
 	require.Equal(t, types.ReceiptStatusSuccessful, results[0].Receipt.Status)
@@ -479,7 +479,7 @@ func TestProcess_UsesDifficultyOfOne(t *testing.T) {
 	// Check that an unexpected difficulty causes a revert.
 	wrongDifficulty := big.NewInt(2)
 	state, block = createScenarioWithTxCheckingDifficulty(ctrl, wrongDifficulty)
-	results = processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), 0, nil).ProcessedTransactions
+	results = processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), 0, nil, math.MaxUint64).ProcessedTransactions
 	require.Len(t, results, 1)
 	require.NotNil(t, results[0].Receipt)
 	require.Equal(t, types.ReceiptStatusFailed, results[0].Receipt.Status)
@@ -495,7 +495,7 @@ func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 			state, block := createScenarioWithTxCheckingDifficulty(ctrl, difficulty)
 			results := processor.ProcessWithDifficulty(
 				block, state, vm.Config{}, math.MaxUint64,
-				new(uint64), 0, nil, difficulty,
+				new(uint64), 0, nil, difficulty, math.MaxUint64,
 			).ProcessedTransactions
 			require.Len(t, results, 1)
 			require.NotNil(t, results[0].Receipt)
@@ -595,7 +595,7 @@ func TestProcessWithDifficulty_ForwardsTimeToBundleProcessing(t *testing.T) {
 
 	summary := processor.ProcessWithDifficulty(
 		block, stateDb, vm.Config{}, math.MaxUint64,
-		new(uint64), 0, nil, big.NewInt(1),
+		new(uint64), 0, nil, big.NewInt(1), math.MaxUint64,
 	)
 
 	// The rejected bundle should be listed in the summary, the accepted not,
@@ -660,7 +660,7 @@ func TestProcess_ForwardsCorrectIndexToTransactionProcessor(t *testing.T) {
 			}
 
 			// run the block on the processor with the desired initial offset
-			processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), offset, nil)
+			processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), offset, nil, math.MaxUint64)
 		})
 	}
 }
@@ -891,6 +891,7 @@ type processFunction = func(
 	usedGas *uint64,
 	trueTxOffset int,
 	onNewLog func(*core_types.Log),
+	maxBlockSize uint64,
 ) ProcessSummary
 
 func getStateDbMockForTransactions(
@@ -1006,7 +1007,7 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactions(t *
 
 	// run the transactions; as a side-effect, check that the
 	// transaction offset is correctly initialized and updated.
-	summary := runTransactions(context, txs, 4)
+	summary := runTransactions(context, txs, 4, math.MaxUint64)
 	got := summary.ProcessedTransactions
 	require.Len(t, got, 6)
 
@@ -1113,7 +1114,7 @@ func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyP
 		),
 	)
 
-	summary := runTransactions(context, txs, trueStartIndex)
+	summary := runTransactions(context, txs, trueStartIndex, math.MaxUint64)
 	got := summary.ProcessedTransactions
 
 	want := []ProcessedTransaction{}
@@ -1230,7 +1231,7 @@ func TestRunTransactions_GasSubsidiesDisabled_BundlesDisabled_ProcessesAsRegular
 		},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, 123)
+	summary := runTransactions(context, []*types.Transaction{tx}, 123, math.MaxUint64)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1255,7 +1256,7 @@ func TestRunTransactions_GasSubsidiesEnabled_BundlesDisabled_ProcessesAsSponsors
 		}},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, 123)
+	summary := runTransactions(context, []*types.Transaction{tx}, 123, math.MaxUint64)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1279,7 +1280,7 @@ func TestRunTransactions_BundlesEnabled_RunsRegularTransactionOnItsOwn(t *testin
 		},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, 123)
+	summary := runTransactions(context, []*types.Transaction{tx}, 123, math.MaxUint64)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1303,7 +1304,7 @@ func TestRunTransactions_BundlesEnabled_RunsSponsorshipRequestWithSponsorship(t 
 		}},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, 123)
+	summary := runTransactions(context, []*types.Transaction{tx}, 123, math.MaxUint64)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1397,7 +1398,7 @@ func TestRunTransactions_EnvelopeAndBundleOnly_SemanticsEnabledByBrio_ExecutionE
 					Return([]ProcessedTransaction{{Transaction: tc.tx, Receipt: &types.Receipt{}}}, core_types.TransactionResultSuccessful, core_types.ExecutionCost(0))
 			}
 
-			summary := runTransactions(context, []*types.Transaction{tc.tx}, 0)
+			summary := runTransactions(context, []*types.Transaction{tc.tx}, 0, math.MaxUint64)
 			processed := summary.ProcessedTransactions
 			require.Len(t, processed, 1)
 			if tc.expectInvalid {
@@ -1455,7 +1456,7 @@ func TestRunTransactions_BundleOnlyTxsAreNotFilteredDuringReplay(t *testing.T) {
 			runner.EXPECT().runRegularTransaction(context, bundleOnlyTx, 0).
 				Return(ProcessedTransaction{Transaction: bundleOnlyTx, Receipt: &types.Receipt{}}, core_types.TransactionResultSuccessful)
 
-			summary := runTransactions(context, []*types.Transaction{bundleOnlyTx}, 0)
+			summary := runTransactions(context, []*types.Transaction{bundleOnlyTx}, 0, math.MaxUint64)
 			processed := summary.ProcessedTransactions
 			require.Len(t, processed, 1)
 			require.Equal(t, ProcessedTransaction{bundleOnlyTx, &types.Receipt{}}, processed[0])
@@ -3703,7 +3704,7 @@ func TestRunTransactions_AccumulatesExecutionCostFromAllTransactions(t *testing.
 		runner.EXPECT().runSponsoredTransaction(context, txs[1], 1).Return(
 			[]ProcessedTransaction{
 				{Transaction: txs[1], Receipt: &types.Receipt{GasUsed: 200}},
-				{Transaction: &types.Transaction{}, Receipt: &types.Receipt{GasUsed: 300}},
+				{Transaction: types.NewTx(&types.LegacyTx{}), Receipt: &types.Receipt{GasUsed: 300}},
 			},
 			core_types.TransactionResultSuccessful,
 		),
@@ -3714,7 +3715,7 @@ func TestRunTransactions_AccumulatesExecutionCostFromAllTransactions(t *testing.
 		),
 	)
 
-	summary := runTransactions(context, txs, 0)
+	summary := runTransactions(context, txs, 0, math.MaxUint64)
 	require.Equal(t, core_types.ExecutionCost(100+200+300+500), summary.ExecutionCost)
 }
 
@@ -3816,4 +3817,84 @@ func TestRunTransaction_Bundle_ReturnsExecutionCostFromBundleExecution(t *testin
 
 	_, _, execCost := runTransaction(context, tx, 0)
 	require.Equal(t, core_types.ExecutionCost(150_000), execCost)
+}
+
+func TestRealTransactionSize_CanHandleAllTxTypes(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	basicTx := types.NewTx(&types.AccessListTx{
+		To:       &common.Address{0x42},
+		GasPrice: big.NewInt(100),
+		V:        big.NewInt(1),
+	})
+
+	sponsoredTx := types.NewTx(&types.LegacyTx{
+		To:       &common.Address{0x42},
+		GasPrice: big.NewInt(0),
+		V:        big.NewInt(1),
+	})
+
+	bundleTx := bundle.AllOf(bundle.Step(key, basicTx)).Build()
+
+	bundleWithSponsorTx := bundle.AllOf(
+		bundle.Step(key, basicTx),
+		bundle.Step(key, &types.AccessListTx{
+			To:       &common.Address{0x42},
+			GasPrice: big.NewInt(0), // < makes it a sponsorship request
+		}),
+	).Build()
+
+	// Compute expected sizes from the actual inner transactions in the built bundles.
+	bundleTxInner, _, err := bundle.ValidateEnvelope(signer, bundleTx)
+	require.NoError(t, err)
+	expectedBundleSize := uint64(0)
+	for _, tx := range bundleTxInner.Transactions {
+		expectedBundleSize += tx.Size()
+	}
+
+	bundleWithSponsorInner, _, err := bundle.ValidateEnvelope(signer, bundleWithSponsorTx)
+	require.NoError(t, err)
+	expectedBundleWithSponsorSize := uint64(0)
+	for _, tx := range bundleWithSponsorInner.Transactions {
+		expectedBundleWithSponsorSize += tx.Size()
+		if subsidies.IsSponsorshipRequest(tx) {
+			expectedBundleWithSponsorSize += subsidies.RlpEncodedFeeChargingTxSizeInBytes
+		}
+	}
+
+	tests := map[string]struct {
+		tx           *types.Transaction
+		expectedSize uint64
+	}{
+		"regular tx": {
+			tx:           basicTx,
+			expectedSize: basicTx.Size(),
+		},
+		"sponsored tx": {
+			tx:           sponsoredTx,
+			expectedSize: sponsoredTx.Size() + subsidies.RlpEncodedFeeChargingTxSizeInBytes,
+		},
+		"bundle tx": {
+			tx:           bundleTx,
+			expectedSize: expectedBundleSize,
+		},
+		"bundle tx with sponsorship request": {
+			tx:           bundleWithSponsorTx,
+			expectedSize: expectedBundleWithSponsorSize,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			context := &runContext{signer: signer, upgrades: opera.Upgrades{
+				Brio:               true,
+				TransactionBundles: true,
+				GasSubsidies:       true,
+			}}
+			size := realTxSize(context, test.tx)
+			require.Equal(t, test.expectedSize, size)
+		})
+	}
 }
