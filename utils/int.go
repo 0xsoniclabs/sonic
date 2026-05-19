@@ -24,24 +24,9 @@ import (
 )
 
 // BigIntToUint256 converts a big.Int to a uint256.Int.
-// It panics if the value is negative or too large to fit into a uint256.Int.
-// FIXME: remove in favour of BigIntToUint256Err
-func BigIntToUint256(value *big.Int) *uint256.Int {
-	if value.Sign() < 0 {
-		panic("unable to convert negative big.Int to uint256")
-	}
-	bytes := value.Bytes()
-	if len(bytes) > 32 {
-		panic("unable to convert big.Int exceeding 32 bytes to uint256")
-	}
-	return new(uint256.Int).SetBytes(bytes)
-}
-
-// BigIntToUint256Err converts a big.Int to a uint256.Int.
 // It returns an error if the value is negative or too large to fit into a uint256.Int.
 // If the value is nil, nil is returned.
-// FIXME: rename to BigIntToUint256 once the panicking version is removed
-func BigIntToUint256Err(value *big.Int) (*uint256.Int, error) {
+func BigIntToUint256(value *big.Int) (*uint256.Int, error) {
 	if value == nil {
 		return nil, nil
 	}

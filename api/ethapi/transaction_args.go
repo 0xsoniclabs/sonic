@@ -299,19 +299,19 @@ func (args *TransactionArgs) ToTransaction() (*types.Transaction, error) {
 		if args.AccessList != nil {
 			al = *args.AccessList
 		}
-		chainId, err := utils.BigIntToUint256Err((*big.Int)(args.ChainID))
+		chainId, err := utils.BigIntToUint256((*big.Int)(args.ChainID))
 		if err != nil {
 			return nil, fmt.Errorf("invalid ChainID: %w", err)
 		}
-		gasFeeCap, err := utils.BigIntToUint256Err((*big.Int)(args.MaxFeePerGas))
+		gasFeeCap, err := utils.BigIntToUint256((*big.Int)(args.MaxFeePerGas))
 		if err != nil {
 			return nil, fmt.Errorf("invalid MaxFeePerGas: %w", err)
 		}
-		gasTipCap, err := utils.BigIntToUint256Err((*big.Int)(args.MaxPriorityFeePerGas))
+		gasTipCap, err := utils.BigIntToUint256((*big.Int)(args.MaxPriorityFeePerGas))
 		if err != nil {
 			return nil, fmt.Errorf("invalid MaxPriorityFeePerGas: %w", err)
 		}
-		value, err := utils.BigIntToUint256Err((*big.Int)(args.Value))
+		value, err := utils.BigIntToUint256((*big.Int)(args.Value))
 		if err != nil {
 			return nil, fmt.Errorf("invalid Value: %w", err)
 		}
@@ -334,23 +334,23 @@ func (args *TransactionArgs) ToTransaction() (*types.Transaction, error) {
 		if args.AccessList != nil {
 			al = *args.AccessList
 		}
-		chainId, err := utils.BigIntToUint256Err((*big.Int)(args.ChainID))
+		chainId, err := utils.BigIntToUint256((*big.Int)(args.ChainID))
 		if err != nil {
 			return nil, fmt.Errorf("invalid ChainID: %w", err)
 		}
-		gasFeeCap, err := utils.BigIntToUint256Err((*big.Int)(args.MaxFeePerGas))
+		gasFeeCap, err := utils.BigIntToUint256((*big.Int)(args.MaxFeePerGas))
 		if err != nil {
 			return nil, fmt.Errorf("invalid MaxFeePerGas: %w", err)
 		}
-		gasTipCap, err := utils.BigIntToUint256Err((*big.Int)(args.MaxPriorityFeePerGas))
+		gasTipCap, err := utils.BigIntToUint256((*big.Int)(args.MaxPriorityFeePerGas))
 		if err != nil {
 			return nil, fmt.Errorf("invalid MaxPriorityFeePerGas: %w", err)
 		}
-		blobFeeCap, err := utils.BigIntToUint256Err((*big.Int)(args.BlobFeeCap))
+		blobFeeCap, err := utils.BigIntToUint256((*big.Int)(args.BlobFeeCap))
 		if err != nil {
 			return nil, fmt.Errorf("invalid BlobFeeCap: %w", err)
 		}
-		value, err := utils.BigIntToUint256Err((*big.Int)(args.Value))
+		value, err := utils.BigIntToUint256((*big.Int)(args.Value))
 		if err != nil {
 			return nil, fmt.Errorf("invalid Value: %w", err)
 		}
