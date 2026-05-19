@@ -206,9 +206,6 @@ func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t
 func testSkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t *testing.T, upgrades opera.Upgrades) {
 	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
 		Upgrades: &upgrades,
-		ClientExtraArguments: []string{
-			"--disable-txPool-validation",
-		},
 	})
 
 	client, err := net.GetClient()
@@ -264,7 +261,7 @@ func testSkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t *testin
 	}
 
 	// Send skipped transaction
-	err = client.SendTransaction(t.Context(), skippedTx)
+	_, err = net.ForceEmit(t.Context(), skippedTx)
 	require.NoError(t, err)
 
 	// Send second half of simple transactions

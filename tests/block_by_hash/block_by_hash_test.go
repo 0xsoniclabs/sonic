@@ -32,9 +32,6 @@ func TestRPCGetLogs_BlockWithSkippedTransaction_HasCorrectTxIndexes(t *testing.T
 
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: tests.AsPointer(opera.GetBrioUpgrades()),
-		ClientExtraArguments: []string{
-			"--disable-txPool-validation",
-		},
 	})
 
 	contract, receipt, err := tests.DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
@@ -60,7 +57,7 @@ func TestRPCGetLogs_BlockWithSkippedTransaction_HasCorrectTxIndexes(t *testing.T
 		}, accountSkipped)
 
 		// Send the transaction
-		err = client.SendTransaction(t.Context(), txSkip)
+		_, err = net.ForceEmit(t.Context(), txSkip)
 		require.NoError(t, err)
 
 		// make a transaction to log something

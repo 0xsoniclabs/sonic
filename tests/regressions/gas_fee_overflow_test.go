@@ -129,9 +129,6 @@ func TestGasFeeOverflow_TransactionWithFeeOverflowInBundleAreIgnoredByBlockProce
 	// In this setup, all TxPool and RPC checks are enabled.
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
-		ClientExtraArguments: []string{
-			"--disable-txPool-validation",
-		},
 	})
 
 	account := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))

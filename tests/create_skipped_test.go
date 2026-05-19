@@ -42,9 +42,6 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 		t.Run(name, func(t *testing.T) {
 			net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
 				Upgrades: &version,
-				ClientExtraArguments: []string{
-					"--disable-txPool-validation",
-				},
 			})
 
 			client, err := net.GetClient()
@@ -78,7 +75,7 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 			require.NoError(t, err)
 
 			// Send the transaction
-			err = client.SendTransaction(t.Context(), tx)
+			_, err = net.ForceEmit(t.Context(), tx)
 			require.NoError(t, err)
 
 			// Send another simple transaction to ensure a block is created
