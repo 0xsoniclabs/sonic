@@ -58,7 +58,7 @@ func TestValidateTxStatic_Value_RejectsTxWithNegativeValue(t *testing.T) {
 	for _, tx := range txs {
 		t.Run(transactionTypeName(tx), func(t *testing.T) {
 			err := ValidateTxStatic(types.NewTx(tx))
-			require.ErrorIs(t, err, ErrNegativeValue)
+			require.ErrorIs(t, err, ErrValueNegative)
 		})
 	}
 }
@@ -84,7 +84,7 @@ func TestValidateTxStatic_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 		for _, tx := range txs {
 			t.Run(transactionTypeName(tx), func(t *testing.T) {
 				err := ValidateTxStatic(types.NewTx(tx))
-				require.ErrorIs(t, err, ErrFeeCapVeryHigh)
+				require.ErrorIs(t, err, ErrFeeCapTooHigh)
 			})
 		}
 	})
@@ -101,7 +101,7 @@ func TestValidateTxStatic_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 		for _, tx := range txs {
 			t.Run(transactionTypeName(tx), func(t *testing.T) {
 				err := ValidateTxStatic(types.NewTx(tx))
-				require.ErrorIs(t, err, ErrTipVeryHigh)
+				require.ErrorIs(t, err, ErrTipCapTooHigh)
 			})
 		}
 	})
@@ -172,6 +172,320 @@ func TestValidateTxStatic_AcceptsValidTransactions(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestValidateTxStatic_DetectsValueRangeIssues(t *testing.T) {
+	fakeTx := makeValidFakeTx()
+	require.NoError(t, ValidateTxStatic(fakeTx))
+
+	fakeTx.value = big.NewInt(-1)
+	err := ValidateTxStatic(fakeTx)
+	require.ErrorIs(t, err, ErrValueNegative)
+}
+
+func TestValidateTxStatic_IdentifiesFeeCapsHigherThanTipCaps(t *testing.T) {
+	tests := map[string]struct {
+		feeCap, tipCap int
+		ok             bool
+	}{
+		"fee cap > tip cap": {feeCap: 2, tipCap: 1, ok: true},
+		"fee cap = tip cap": {feeCap: 1, tipCap: 1, ok: true},
+		"fee cap < tip cap": {feeCap: 1, tipCap: 2, ok: false},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			tx := makeValidFakeTx()
+			tx.gasFeeCap = big.NewInt(int64(test.feeCap))
+			tx.gasTipCap = big.NewInt(int64(test.tipCap))
+			err := ValidateTxStatic(tx)
+			if test.ok {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, ErrTipAboveFeeCap)
+			}
+		})
+	}
+}
+
+func TestValidateTxStatic_IdentifiesGasPriceHigherThanFeeCap(t *testing.T) {
+	tests := map[string]struct {
+		gasPrice, feeCap int
+		ok               bool
+	}{
+		"gas price > fee cap": {gasPrice: 2, feeCap: 1, ok: false},
+		"gas price = fee cap": {gasPrice: 1, feeCap: 1, ok: true},
+		"gas price < fee cap": {gasPrice: 1, feeCap: 2, ok: true},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			tx := makeValidFakeTx()
+			tx.gasPrice = big.NewInt(int64(test.gasPrice))
+			tx.gasFeeCap = big.NewInt(int64(test.feeCap))
+			err := ValidateTxStatic(tx)
+			if test.ok {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, ErrGasPriceAboveFeeCap)
+			}
+		})
+	}
+}
+
+func TestValidateTxStatic_IdentifiesUnexpectedCodeAuthorizations(t *testing.T) {
+	tests := map[string]struct {
+		txType   uint8
+		authList []types.SetCodeAuthorization
+		expected error
+	}{
+		"non-SetCodeTx with empty auth list": {
+			txType:   types.LegacyTxType,
+			authList: nil,
+			expected: nil,
+		},
+		"non-SetCodeTx with non-empty auth list": {
+			txType:   types.LegacyTxType,
+			authList: []types.SetCodeAuthorization{{}},
+			expected: ErrNonEmptyAuthorizations,
+		},
+		"SetCodeTx with empty auth list": {
+			txType:   types.SetCodeTxType,
+			authList: nil,
+			expected: ErrEmptyAuthorizations,
+		},
+		"SetCodeTx with non-empty auth list": {
+			txType:   types.SetCodeTxType,
+			authList: []types.SetCodeAuthorization{{}},
+			expected: nil,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			tx := makeValidFakeTx()
+			tx.txType = test.txType
+			tx.authList = test.authList
+			err := ValidateTxStatic(tx)
+			if test.expected != nil {
+				require.ErrorIs(t, err, test.expected)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func Test_validateValueRanges_IdentifyExpectedIssues(t *testing.T) {
+
+	properties := map[string]struct {
+		set                        func(*fakeTxValidationTarget, *big.Int)
+		missing, negative, tooHigh error
+	}{
+		"value": {
+			set:      func(tx *fakeTxValidationTarget, val *big.Int) { tx.value = val },
+			missing:  ErrValueMissing,
+			negative: ErrValueNegative,
+			tooHigh:  ErrValueTooHigh,
+		},
+		"gas fee cap": {
+			set:      func(tx *fakeTxValidationTarget, val *big.Int) { tx.gasFeeCap = val },
+			missing:  ErrFeeCapMissing,
+			negative: ErrFeeCapNegative,
+			tooHigh:  ErrFeeCapTooHigh,
+		},
+		"gas tip cap": {
+			set:      func(tx *fakeTxValidationTarget, val *big.Int) { tx.gasTipCap = val },
+			missing:  ErrTipCapMissing,
+			negative: ErrTipCapNegative,
+			tooHigh:  ErrTipCapTooHigh,
+		},
+		"gas price": {
+			set:      func(tx *fakeTxValidationTarget, val *big.Int) { tx.gasPrice = val },
+			missing:  ErrGasPriceMissing,
+			negative: ErrGasPriceNegative,
+			tooHigh:  ErrGasPriceTooHigh,
+		},
+		"total cost": {
+			set:      func(tx *fakeTxValidationTarget, val *big.Int) { tx.cost = val },
+			missing:  ErrCostMissing,
+			negative: ErrCostNegative,
+			tooHigh:  ErrCostTooHigh,
+		},
+		"blob gas fee cap": {
+			set: func(tx *fakeTxValidationTarget, val *big.Int) {
+				tx.txType = types.BlobTxType
+				tx.blobGasFeeCap = val
+			},
+			missing:  ErrBlobGasFeeCapMissing,
+			negative: ErrBlobGasFeeCapNegative,
+			tooHigh:  ErrBlobGasFeeCapTooHigh,
+		},
+	}
+
+	type testCase struct {
+		mod      func(*fakeTxValidationTarget)
+		expected error
+	}
+	tests := map[string]testCase{}
+
+	minusOne := big.NewInt(-1)
+	zero := big.NewInt(0)
+	twoTo256 := new(big.Int).Lsh(big.NewInt(1), 256)
+	max := new(big.Int).Sub(twoTo256, big.NewInt(1))
+	for name, props := range properties {
+		tests[fmt.Sprintf("%s missing", name)] = testCase{
+			mod: func(tx *fakeTxValidationTarget) {
+				props.set(tx, nil)
+			},
+			expected: props.missing,
+		}
+		tests[fmt.Sprintf("%s negative", name)] = testCase{
+			mod: func(tx *fakeTxValidationTarget) {
+				props.set(tx, minusOne)
+			},
+			expected: props.negative,
+		}
+		tests[fmt.Sprintf("%s zero", name)] = testCase{
+			mod: func(tx *fakeTxValidationTarget) {
+				props.set(tx, zero)
+			},
+			expected: nil,
+		}
+		tests[fmt.Sprintf("%s max", name)] = testCase{
+			mod: func(tx *fakeTxValidationTarget) {
+				props.set(tx, max)
+			},
+			expected: nil,
+		}
+		tests[fmt.Sprintf("%s too high", name)] = testCase{
+			mod: func(tx *fakeTxValidationTarget) {
+				props.set(tx, twoTo256)
+			},
+			expected: props.tooHigh,
+		}
+	}
+
+	tests["nonce is zero"] = testCase{
+		mod: func(tx *fakeTxValidationTarget) {
+			tx.nonce = 0
+		},
+		expected: nil,
+	}
+
+	tests["nonce is max"] = testCase{
+		mod: func(tx *fakeTxValidationTarget) {
+			tx.nonce = math.MaxUint64
+		},
+		expected: ErrNonceTooHigh,
+	}
+
+	tests["nonce is max-1"] = testCase{
+		mod: func(tx *fakeTxValidationTarget) {
+			tx.nonce = math.MaxUint64 - 1
+		},
+		expected: nil,
+	}
+
+	tests["non-blob transactions can have nil as blob gas fee cap"] = testCase{
+		mod: func(tx *fakeTxValidationTarget) {
+			tx.txType = types.LegacyTxType
+			tx.blobGasFeeCap = nil
+		},
+		expected: nil,
+	}
+
+	tests["if present, blob gas fee cap must not be negative"] = testCase{
+		mod: func(tx *fakeTxValidationTarget) {
+			tx.txType = types.LegacyTxType
+			tx.blobGasFeeCap = minusOne
+		},
+		expected: ErrBlobGasFeeCapNegative,
+	}
+
+	tests["if present, blob gas fee cap must not exceed uint256"] = testCase{
+		mod: func(tx *fakeTxValidationTarget) {
+			tx.txType = types.LegacyTxType
+			tx.blobGasFeeCap = twoTo256
+		},
+		expected: ErrBlobGasFeeCapTooHigh,
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			valid := makeValidFakeTx()
+			require.NoError(t, validateValueRanges(valid))
+			test.mod(valid)
+			err := validateValueRanges(valid)
+			if test.expected == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, test.expected)
+			}
+		})
+	}
+
+}
+
+type fakeTxValidationTarget struct {
+	txType        uint8
+	nonce         uint64
+	value         *big.Int
+	gasPrice      *big.Int
+	gasTipCap     *big.Int
+	gasFeeCap     *big.Int
+	blobGasFeeCap *big.Int
+	cost          *big.Int
+	authList      []types.SetCodeAuthorization
+}
+
+func makeValidFakeTx() *fakeTxValidationTarget {
+	return &fakeTxValidationTarget{
+		txType:    types.DynamicFeeTxType,
+		nonce:     0,
+		value:     big.NewInt(0),
+		gasPrice:  big.NewInt(0),
+		gasTipCap: big.NewInt(0),
+		gasFeeCap: big.NewInt(0),
+		cost:      big.NewInt(0),
+		authList:  nil,
+	}
+}
+
+func (f *fakeTxValidationTarget) Type() uint8 {
+	return f.txType
+}
+
+func (f *fakeTxValidationTarget) Nonce() uint64 {
+	return f.nonce
+}
+
+func (f *fakeTxValidationTarget) Value() *big.Int {
+	return f.value
+}
+
+func (f *fakeTxValidationTarget) GasPrice() *big.Int {
+	return f.gasPrice
+}
+
+func (f *fakeTxValidationTarget) GasTipCap() *big.Int {
+	return f.gasTipCap
+}
+
+func (f *fakeTxValidationTarget) GasFeeCap() *big.Int {
+	return f.gasFeeCap
+}
+
+func (f *fakeTxValidationTarget) BlobGasFeeCap() *big.Int {
+	return f.blobGasFeeCap
+}
+
+func (f *fakeTxValidationTarget) Cost() *big.Int {
+	return f.cost
+}
+
+func (f *fakeTxValidationTarget) SetCodeAuthorizations() []types.SetCodeAuthorization {
+	return f.authList
 }
 
 ////////////////////////////////////////////////////////////////////////////////

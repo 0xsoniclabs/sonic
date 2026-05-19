@@ -338,7 +338,10 @@ func convertProposalToPlanInternal(signer types.Signer, proposalStep any) (bundl
 			return empty, fmt.Errorf("transaction in bundle must include from")
 		}
 
-		tx := toTransactionForBundles(step.TransactionArgs)
+		tx, err := toTransactionForBundles(step.TransactionArgs)
+		if err != nil {
+			return empty, fmt.Errorf("invalid transaction in bundle: %w", err)
+		}
 		hash := signer.Hash(tx)
 
 		return bundle.NewTxStep(bundle.TxReference{
@@ -395,8 +398,11 @@ func convertProposalToPlanInternal(signer types.Signer, proposalStep any) (bundl
 // toTransactionForBundles converts ethapi.TransactionArgs to types.Transaction
 // for computing execution plan transaction reference hashes. Legacy transactions
 // are promoted to AccessList transactions to prevent poisoning the plan hash.
-func toTransactionForBundles(step ethapi.TransactionArgs) *types.Transaction {
-	tx := step.ToTransaction()
+func toTransactionForBundles(step ethapi.TransactionArgs) (*types.Transaction, error) {
+	tx, err := step.ToTransaction()
+	if err != nil {
+		return nil, err
+	}
 
 	// legacy transactions cannot be included in a bundle.
 	// if the transaction arguments correspond to a legacy transaction,
@@ -411,7 +417,7 @@ func toTransactionForBundles(step ethapi.TransactionArgs) *types.Transaction {
 			GasPrice: tx.GasPrice(),
 		})
 	}
-	return tx
+	return tx, nil
 }
 
 func transform(

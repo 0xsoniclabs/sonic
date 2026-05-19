@@ -17,6 +17,7 @@
 package gossip
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/eventcheck"
@@ -28,8 +29,11 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/discover/discfilter"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -128,6 +132,46 @@ func TestValidateEventPropertiesDependingOnParents(t *testing.T) {
 			), test.expected)
 		})
 	}
+}
+
+func TestHandleMsgEventsStreamResponse(t *testing.T) {
+	h, err := makeFuzzedHandler(t)
+	require.NoError(t, err)
+
+	peerCfg := DefaultPeerCacheConfig(cachescale.Identity)
+	makeTestPeer := func(rw p2p.MsgReadWriter) *peer {
+		return newPeer(1, p2p.NewPeer(randomID(), "test-peer", []p2p.Cap{}), rw, peerCfg)
+	}
+	sendChunk := func(chunk dagChunk) error {
+		encoded, err := rlp.EncodeToBytes(chunk)
+		require.NoError(t, err)
+		msg := &p2p.Msg{
+			Code:    EventsStreamResponse,
+			Size:    uint32(len(encoded)),
+			Payload: bytes.NewReader(encoded),
+		}
+		return h.handleMsg(makeTestPeer(&fuzzMsgReadWriter{msg}))
+	}
+
+	t.Run("empty chunk with Done=false is rejected", func(t *testing.T) {
+		err := sendChunk(dagChunk{SessionID: 1, Done: false})
+		require.Error(t, err)
+	})
+
+	t.Run("empty chunk with Done=true is accepted", func(t *testing.T) {
+		err := sendChunk(dagChunk{SessionID: 1, Done: true})
+		require.NoError(t, err)
+	})
+
+	t.Run("chunk with IDs and Done=false is accepted", func(t *testing.T) {
+		err := sendChunk(dagChunk{SessionID: 1, Done: false, IDs: hash.Events{hash.Event{}}})
+		require.NoError(t, err)
+	})
+
+	t.Run("chunk with IDs and Done=true is accepted", func(t *testing.T) {
+		err := sendChunk(dagChunk{SessionID: 1, Done: true, IDs: hash.Events{hash.Event{}}})
+		require.NoError(t, err)
+	})
 }
 
 func TestIsUseless(t *testing.T) {
