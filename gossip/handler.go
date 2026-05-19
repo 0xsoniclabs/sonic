@@ -927,6 +927,9 @@ func (h *handler) handleMsg(p *peer) (err error) {
 		if (len(chunk.Events) != 0) && (len(chunk.IDs) != 0) {
 			return errors.New("expected either events or event hashes")
 		}
+		if len(chunk.Events) == 0 && len(chunk.IDs) == 0 && !chunk.Done {
+			return errors.New("expected events, hashes or Done mark")
+		}
 		var last hash.Event
 		if len(chunk.IDs) != 0 {
 			h.handleEventHashes(p, chunk.IDs)
