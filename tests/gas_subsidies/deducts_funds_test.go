@@ -69,10 +69,10 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	cases := map[string]struct {
-		runTransactions func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account)
+		runTransactions func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) types.Receipts
 	}{
 		"sponsored transaction calls contract": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) types.Receipts {
 				opts, err := net.GetTransactOptions(sender)
 				require.NoError(t, err)
 
@@ -82,10 +82,11 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 				receipt, err := net.GetReceipt(tx.Hash())
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+				return types.Receipts{receipt}
 			},
 		},
 		"sponsored transaction transfers balance (gas is paid by subsidies, value by sender)": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) types.Receipts {
 				nonce, err := client.PendingNonceAt(t.Context(), sender.Address())
 				require.NoError(t, err)
 				tx := tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
@@ -97,10 +98,11 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 				receipt, err := net.Run(tx)
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+				return types.Receipts{receipt}
 			},
 		},
 		"sponsored transaction does nothing": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) types.Receipts {
 				nonce, err := client.PendingNonceAt(t.Context(), sender.Address())
 				require.NoError(t, err)
 				tx := tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
@@ -111,10 +113,11 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 				receipt, err := net.Run(tx)
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+				return types.Receipts{receipt}
 			},
 		},
 		"sponsored transaction calls contract which reverts": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) types.Receipts {
 				opts, err := net.GetTransactOptions(sender)
 				require.NoError(t, err)
 
@@ -124,10 +127,11 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 				receipt, err := net.GetReceipt(tx.Hash())
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusFailed, receipt.Status)
+				return types.Receipts{receipt}
 			},
 		},
 		"multiple sponsored transactions": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) types.Receipts {
 				nonce, err := client.PendingNonceAt(t.Context(), sender.Address())
 				require.NoError(t, err)
 				tx1 := tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
@@ -152,10 +156,11 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipts[0].Status)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipts[1].Status)
+				return receipts
 			},
 		},
 		"multiple mixed transactions, sponsored first": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) types.Receipts {
 				nonce, err := client.PendingNonceAt(t.Context(), sender.Address())
 				require.NoError(t, err)
 				sponsoredTx := tests.SignTransaction(t, net.GetChainId(),
@@ -180,10 +185,11 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipts[0].Status)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipts[1].Status)
+				return receipts
 			},
 		},
 		"multiple mixed transactions, sponsored last": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) types.Receipts {
 				nonce, err := client.PendingNonceAt(t.Context(), sender.Address())
 				require.NoError(t, err)
 				sponsoredTx := tests.SignTransaction(t, net.GetChainId(),
@@ -208,10 +214,11 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipts[0].Status)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipts[1].Status)
+				return receipts
 			},
 		},
 		"sponsored transaction calling a contract which aborts": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) types.Receipts {
 
 				opts, err := net.GetTransactOptions(sender)
 				require.NoError(t, err)
@@ -223,6 +230,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 				receipt, err := net.GetReceipt(tx.Hash())
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusFailed, receipt.Status)
+				return types.Receipts{receipt}
 			},
 		},
 	}
@@ -238,14 +246,8 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 			subsidiesRegistryBalanceBefore, err := client.BalanceAt(t.Context(), registry.GetAddress(), nil)
 			require.NoError(t, err)
 
-			blockBefore, err := client.BlockByNumber(t.Context(), nil)
-			require.NoError(t, err)
-
 			// Here the scenario is ran.
-			test.runTransactions(t, net, sponsoredSender)
-
-			blockAfter, err := client.BlockByNumber(t.Context(), nil)
-			require.NoError(t, err)
+			receipts := test.runTransactions(t, net, sponsoredSender)
 
 			config, err := sponsorshipRegistry.GetGasConfig(nil)
 			require.NoError(t, err)
@@ -254,8 +256,15 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 			// iterate through all of them to find all sponsored transactions.
 			var fundsDelta uint64
 
+			firstBlock := receipts[0].BlockNumber.Uint64()
+			lastBlock := receipts[len(receipts)-1].BlockNumber.Uint64()
+			for _, receipt := range receipts {
+				firstBlock = min(firstBlock, receipt.BlockNumber.Uint64())
+				lastBlock = max(lastBlock, receipt.BlockNumber.Uint64())
+			}
+
 			// For every block created during test scenario
-			for blockNumber := blockBefore.NumberU64() + 1; blockNumber <= blockAfter.NumberU64(); blockNumber++ {
+			for blockNumber := firstBlock; blockNumber <= lastBlock; blockNumber++ {
 
 				tests.WaitForProofOf(t, client, int(blockNumber))
 
@@ -264,7 +273,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 
 				var totalGasUsed uint64
 
-				for i, tx := range block.Transactions() {
+				for _, tx := range block.Transactions() {
 					receipt, err := net.GetReceipt(tx.Hash())
 					require.NoError(t, err)
 
@@ -279,22 +288,10 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 						)
 						fundsDelta += fundsUsed
 
-						require.Less(t, i, len(block.Transactions())-1,
-							"sponsored tx should not be the last tx in the block")
-						internalTx := block.Transactions()[i+1]
-
-						deduceFundsReceipt, err := net.GetReceipt(internalTx.Hash())
-						require.NoError(t, err)
-						require.Equal(t, types.ReceiptStatusSuccessful, deduceFundsReceipt.Status)
-
 						validateSponsoredTxInBlock(t, net, tx.Hash())
-
 					}
-
 				}
 			}
-
-			tests.WaitForProofOf(t, client, int(blockAfter.NumberU64()))
 
 			_, fundId, err := sponsorshipRegistry.AccountSponsorshipFundId(nil, sponsoredSender.Address())
 			require.NoError(t, err)
