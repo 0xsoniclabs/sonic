@@ -622,10 +622,8 @@ func processUserTransactions(
 ) (
 	causedBy map[common.Hash]common.Hash,
 ) {
-	var remainingSize uint64
-	if !upgrades.Brio {
-		remainingSize = math.MaxUint64
-	} else {
+	remainingSize := uint64(math.MaxUint64)
+	if upgrades.Brio {
 		remainingSize = uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
 		for _, tx := range blockBuilder.GetTransactions() {
 			txSize := tx.Size()

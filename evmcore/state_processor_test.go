@@ -3892,7 +3892,7 @@ func TestRealTransactionSize_CanHandleAllTxTypes(t *testing.T) {
 				TransactionBundles: true,
 				GasSubsidies:       true,
 			}}
-			size := realTxSize(context, test.tx)
+			size := computeRealTxSize(context, test.tx)
 			require.Equal(t, test.expectedSize, size)
 		})
 	}
@@ -3926,13 +3926,13 @@ func TestRealTransactionSize_OnlyConsidersSpecialTxsWhenEnabled(t *testing.T) {
 			upgrades := opera.Upgrades{} // no special tx types enabled
 
 			context := &runContext{signer: signer, upgrades: upgrades}
-			size := realTxSize(context, tx)
+			size := computeRealTxSize(context, tx)
 			require.Equal(t, tx.Size(), size)
 		})
 	}
 }
 
-func TestRunTransactions_EnforcesBlockSizeLimit(t *testing.T) {
+func TestRunTransactions_SkipsTransactionsExceedingBlockSizeLimit(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
@@ -3948,14 +3948,14 @@ func TestRunTransactions_EnforcesBlockSizeLimit(t *testing.T) {
 		wantProcessed int
 		wantIncluded  int // transactions with non-nil receipt
 	}{
-		"single large transaction": {
+		"single transaction": {
 			txs:           []*types.Transaction{regular1},
 			remainingSize: regular1.Size() - 1, // too small
 			setupMock:     func(_ *runContext, _ *Mock_transactionRunner) {},
 			wantProcessed: 1,
 			wantIncluded:  0,
 		},
-		"multiple transactions exceeding limit": {
+		"multiple transactions": {
 			txs:           []*types.Transaction{regular1, regular2, regular3},
 			remainingSize: regular1.Size() + regular2.Size(),
 			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
@@ -3973,19 +3973,14 @@ func TestRunTransactions_EnforcesBlockSizeLimit(t *testing.T) {
 			wantProcessed: 3,
 			wantIncluded:  2,
 		},
-		"transaction followed by sponsored transactions": {
-			txs:           []*types.Transaction{regular1, sponsored},
-			remainingSize: regular1.Size() + sponsored.Size(), // not enough for sponsored + fee-charging tx
-			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
-				runner.EXPECT().runRegularTransaction(ctx, regular1, 0).Return(
-					ProcessedTransaction{Transaction: regular1, Receipt: &types.Receipt{}},
-					core_types.TransactionResultSuccessful,
-				)
-			},
-			wantProcessed: 2,
-			wantIncluded:  1,
+		"sponsored transactions with payment": {
+			txs:           []*types.Transaction{sponsored},
+			remainingSize: sponsored.Size(), // not enough for sponsored + fee-charging tx
+			setupMock:     func(_ *runContext, _ *Mock_transactionRunner) {},
+			wantProcessed: 1,
+			wantIncluded:  0,
 		},
-		"bundle transaction exceeding limit": {
+		"bundle transaction": {
 			txs:           []*types.Transaction{bundle.AllOf(bundle.Step(key, regular1)).Build()},
 			remainingSize: regular1.Size() - 1, // too small for the inner transaction
 			setupMock:     func(_ *runContext, _ *Mock_transactionRunner) {},
@@ -4016,6 +4011,196 @@ func TestRunTransactions_EnforcesBlockSizeLimit(t *testing.T) {
 				}
 			}
 			require.Equal(t, tc.wantIncluded, included)
+		})
+	}
+}
+
+func TestRunTransactions_ProcessesAllTransactionsWithinBlockSizeLimit(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	regular1 := getRegularTransaction(t)
+	regular2 := getRegularTransaction(t)
+	regular3 := getRegularTransaction(t)
+	sponsored := getSponsorshipRequest(t)
+	paymentTx := types.NewTx(&types.LegacyTx{Nonce: 99})
+
+	tests := map[string]struct {
+		txs           []*types.Transaction
+		remainingSize uint64
+		setupMock     func(*runContext, *Mock_transactionRunner)
+		wantProcessed int
+		wantIncluded  int
+	}{
+		"single transaction": {
+			txs:           []*types.Transaction{regular1},
+			remainingSize: regular1.Size(),
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				runner.EXPECT().runRegularTransaction(ctx, regular1, 0).Return(
+					ProcessedTransaction{Transaction: regular1, Receipt: &types.Receipt{}},
+					core_types.TransactionResultSuccessful,
+				)
+			},
+			wantProcessed: 1,
+			wantIncluded:  1,
+		},
+		"multiple transactions": {
+			txs:           []*types.Transaction{regular1, regular2, regular3},
+			remainingSize: regular1.Size() + regular2.Size() + regular3.Size(),
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				gomock.InOrder(
+					runner.EXPECT().runRegularTransaction(ctx, regular1, 0).Return(
+						ProcessedTransaction{Transaction: regular1, Receipt: &types.Receipt{}},
+						core_types.TransactionResultSuccessful,
+					),
+					runner.EXPECT().runRegularTransaction(ctx, regular2, 1).Return(
+						ProcessedTransaction{Transaction: regular2, Receipt: &types.Receipt{}},
+						core_types.TransactionResultSuccessful,
+					),
+					runner.EXPECT().runRegularTransaction(ctx, regular3, 2).Return(
+						ProcessedTransaction{Transaction: regular3, Receipt: &types.Receipt{}},
+						core_types.TransactionResultSuccessful,
+					),
+				)
+			},
+			wantProcessed: 3,
+			wantIncluded:  3,
+		},
+		"sponsored transaction with payment": {
+			txs:           []*types.Transaction{sponsored},
+			remainingSize: sponsored.Size() + subsidies.RlpEncodedFeeChargingTxSizeInBytes,
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				runner.EXPECT().runSponsoredTransaction(ctx, sponsored, 0).Return(
+					[]ProcessedTransaction{
+						{Transaction: sponsored, Receipt: &types.Receipt{}},
+						{Transaction: paymentTx, Receipt: &types.Receipt{}},
+					},
+					core_types.TransactionResultSuccessful,
+				)
+			},
+			wantProcessed: 2,
+			wantIncluded:  2,
+		},
+		"bundle transaction": {
+			txs:           []*types.Transaction{bundle.AllOf(bundle.Step(key, regular1)).Build()},
+			remainingSize: regular1.Size() + 1024, // Add some extra space for the bundle overhead
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				runner.EXPECT().runTransactionBundle(ctx, gomock.Any(), 0).Return(
+					[]ProcessedTransaction{
+						{Transaction: regular1, Receipt: &types.Receipt{}},
+					},
+					core_types.TransactionResultSuccessful,
+					core_types.ExecutionCost(0),
+				)
+			},
+			wantProcessed: 1,
+			wantIncluded:  1,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMock_transactionRunner(ctrl)
+
+			context := &runContext{
+				upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
+				signer:   types.LatestSignerForChainID(big.NewInt(1)),
+				runner:   runner,
+			}
+			tc.setupMock(context, runner)
+
+			summary := runTransactions(context, tc.txs, 0, tc.remainingSize)
+
+			require.Len(t, summary.ProcessedTransactions, tc.wantProcessed)
+			included := 0
+			for _, processedTx := range summary.ProcessedTransactions {
+				if processedTx.Receipt != nil {
+					included++
+				}
+			}
+			require.Equal(t, tc.wantIncluded, included)
+		})
+	}
+}
+
+func TestRunTransaction_CollectsCausedByInformationForAllTransactionTypes(t *testing.T) {
+
+	regularTx := getRegularTransaction(t)
+	sponsoredTx := getSponsorshipRequest(t)
+	bundleTx := getTransactionBundle(t)
+
+	// Simulated output transactions from the runner.
+	paymentTx := types.NewTx(&types.LegacyTx{Nonce: 99})
+	bundleInner1 := types.NewTx(&types.LegacyTx{Nonce: 200})
+	bundleInner2 := types.NewTx(&types.LegacyTx{Nonce: 201})
+
+	tests := map[string]struct {
+		tx           *types.Transaction
+		setupMock    func(*runContext, *Mock_transactionRunner)
+		wantCausedBy map[common.Hash]common.Hash
+	}{
+		"basic transaction": {
+			tx: regularTx,
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				runner.EXPECT().runRegularTransaction(ctx, regularTx, 0).Return(
+					ProcessedTransaction{Transaction: regularTx, Receipt: &types.Receipt{}},
+					core_types.TransactionResultSuccessful,
+				)
+			},
+			wantCausedBy: map[common.Hash]common.Hash{
+				regularTx.Hash(): regularTx.Hash(),
+			},
+		},
+		"sponsored transaction": {
+			tx: sponsoredTx,
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				runner.EXPECT().runSponsoredTransaction(ctx, sponsoredTx, 0).Return(
+					[]ProcessedTransaction{
+						{Transaction: sponsoredTx, Receipt: &types.Receipt{}},
+						{Transaction: paymentTx, Receipt: &types.Receipt{}},
+					},
+					core_types.TransactionResultSuccessful,
+				)
+			},
+			wantCausedBy: map[common.Hash]common.Hash{
+				sponsoredTx.Hash(): sponsoredTx.Hash(),
+				paymentTx.Hash():   sponsoredTx.Hash(),
+			},
+		},
+		"bundle transaction": {
+			tx: bundleTx,
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				runner.EXPECT().runTransactionBundle(ctx, bundleTx, 0).Return(
+					[]ProcessedTransaction{
+						{Transaction: bundleInner1, Receipt: &types.Receipt{}},
+						{Transaction: bundleInner2, Receipt: &types.Receipt{}},
+					},
+					core_types.TransactionResultSuccessful,
+					core_types.ExecutionCost(0),
+				)
+			},
+			wantCausedBy: map[common.Hash]common.Hash{
+				bundleInner1.Hash(): bundleTx.Hash(),
+				bundleInner2.Hash(): bundleTx.Hash(),
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMock_transactionRunner(ctrl)
+
+			context := &runContext{
+				signer:   types.LatestSignerForChainID(big.NewInt(1)),
+				upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
+				runner:   runner,
+			}
+			tc.setupMock(context, runner)
+
+			summary := runTransactions(context, []*types.Transaction{tc.tx}, 0, math.MaxUint64)
+			require.Equal(t, tc.wantCausedBy, summary.CausedBy)
 		})
 	}
 }

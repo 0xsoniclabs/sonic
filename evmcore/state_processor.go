@@ -84,9 +84,9 @@ func NewStateProcessorForReplay(
 // processing, including gas from rolled-back bundles, which distinguishes it
 // from the usedGas counter that gets reverted on snapshot rollback.
 type ProcessSummary struct {
-	ProcessedTransactions []ProcessedTransaction
-	ExecutionCost         core_types.ExecutionCost
-	CausedBy              map[common.Hash]common.Hash
+	ProcessedTransactions []ProcessedTransaction      // List of processed transactions with their receipts (nil receipt for skipped transactions).
+	ExecutionCost         core_types.ExecutionCost    // Total execution cost (gas used) for all processed transactions, including rolled-back bundles.
+	CausedBy              map[common.Hash]common.Hash // Mapping from transaction hash to the hash of the transaction that caused it.
 }
 
 // ProcessedTransaction represents a transaction that was considered for
@@ -231,7 +231,7 @@ func runTransactions(
 			continue
 		}
 
-		neededSpace := realTxSize(context, tx)
+		neededSpace := computeRealTxSize(context, tx)
 		if context.upgrades.Brio && neededSpace > remainingSize {
 			// Add the transaction to the processed ones with a nil receipt to increase skipped counter.
 			processedTxs = append(processedTxs, ProcessedTransaction{Transaction: tx})
@@ -258,12 +258,12 @@ func runTransactions(
 	}
 }
 
-// realTxSize returns the size of the transaction, including any
+// computeRealTxSize returns the size of the transaction, including any
 // overhead introduced by sponsorship requests and bundles.
-func realTxSize(context *runContext, tx *types.Transaction) uint64 {
+func computeRealTxSize(context *runContext, tx *types.Transaction) uint64 {
 	if context.upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
 		size := uint64(0)
-		txBundle, _, err := bundle.ValidateEnvelope(context.signer, tx)
+		txBundle, err := bundle.OpenEnvelope(context.signer, tx)
 		if err != nil {
 			return size // = 0, in case the bundle can not be unpacked, it will not be added to the block.
 		}
@@ -271,7 +271,7 @@ func realTxSize(context *runContext, tx *types.Transaction) uint64 {
 		// The full size of the bundle have to be considered even if not
 		// all transactions of the bundle are included in the block.
 		for _, innerTx := range txBundle.Transactions {
-			size += realTxSize(context, innerTx)
+			size += computeRealTxSize(context, innerTx)
 		}
 		return size
 	}
