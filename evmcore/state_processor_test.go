@@ -3830,7 +3830,11 @@ func TestRunTransactions_AccumulatesExecutionCostFromAllTransactions(t *testing.
 	)
 
 	summary := runTransactions(context, txs, 0, math.MaxUint64)
-	require.Equal(t, core_types.ExecutionCost(100+200+300+500), summary.ExecutionCost)
+	require.Equal(t, map[common.Hash]core_types.ExecutionCost{
+		txs[0].Hash(): 100,
+		txs[1].Hash(): 200 + 300,
+		txs[2].Hash(): 500,
+	}, summary.ExecutionCost)
 }
 
 func TestRunTransaction_RegularTransaction_ReturnsExecutionCostFromReceipt(t *testing.T) {

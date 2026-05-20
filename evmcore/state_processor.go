@@ -84,9 +84,9 @@ func NewStateProcessorForReplay(
 // processing, including gas from rolled-back bundles, which distinguishes it
 // from the usedGas counter that gets reverted on snapshot rollback.
 type ProcessSummary struct {
-	ProcessedTransactions []ProcessedTransaction      // List of processed transactions with their receipts (nil receipt for skipped transactions).
-	ExecutionCost         core_types.ExecutionCost    // Total execution cost (gas used) for all processed transactions, including rolled-back bundles.
-	CausedBy              map[common.Hash]common.Hash // Mapping from transaction hash to the hash of the transaction that caused it.
+	ProcessedTransactions []ProcessedTransaction                   // List of processed transactions with their receipts (nil receipt for skipped transactions).
+	ExecutionCost         map[common.Hash]core_types.ExecutionCost // Mapping from transaction hash to the execution cost of the transaction, including rolled-back bundles.
+	CausedBy              map[common.Hash]common.Hash              // Mapping from transaction hash to the hash of the transaction that caused it.
 }
 
 // ProcessedTransaction represents a transaction that was considered for
@@ -221,7 +221,7 @@ func runTransactions(
 	remainingSize uint64,
 ) ProcessSummary {
 	processedTxs := make([]ProcessedTransaction, 0, len(transactions))
-	totalExecCost := core_types.ExecutionCost(0)
+	execCosts := make(map[common.Hash]core_types.ExecutionCost)
 	causedBy := make(map[common.Hash]common.Hash)
 	for _, tx := range transactions {
 		// Bundle-only transactions are only valid within a bundle and must
@@ -232,7 +232,7 @@ func runTransactions(
 		}
 
 		txs, _, execCost := runTransaction(context, tx, trueTxIndexOffset, remainingSize)
-		totalExecCost += execCost
+		execCosts[tx.Hash()] = execCost
 
 		for _, processedTx := range txs {
 			if processedTx.Receipt != nil { // < only transactions included in the block
@@ -253,7 +253,7 @@ func runTransactions(
 	}
 	return ProcessSummary{
 		ProcessedTransactions: processedTxs,
-		ExecutionCost:         totalExecCost,
+		ExecutionCost:         execCosts,
 		CausedBy:              causedBy,
 	}
 }

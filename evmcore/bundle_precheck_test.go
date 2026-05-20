@@ -665,22 +665,22 @@ func Test_trialRunBundle_DoesRunTransactionsThroughEVMAndReturnsIfTransactionsGo
 func Test_trialRunBundleInternal_RejectsBundlesWhereEfficiencyIsBelowThreshold(t *testing.T) {
 	tests := map[string]struct {
 		processedTxs []ProcessedTransaction
-		execCost     core_types.ExecutionCost
+		execCost     map[common.Hash]core_types.ExecutionCost
 		expectAccept bool
 	}{
 		"below threshold with empty bundle": {
 			processedTxs: []ProcessedTransaction{},
-			execCost:     core_types.ExecutionCost(0),
+			execCost:     map[common.Hash]core_types.ExecutionCost{},
 			expectAccept: false,
 		},
 		"below threshold with no receipts": {
 			processedTxs: []ProcessedTransaction{},
-			execCost:     core_types.ExecutionCost(100),
+			execCost:     map[common.Hash]core_types.ExecutionCost{{}: 100},
 			expectAccept: false,
 		},
 		"below threshold with single receipt": {
 			processedTxs: []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 19}}},
-			execCost:     core_types.ExecutionCost(100),
+			execCost:     map[common.Hash]core_types.ExecutionCost{{}: 100},
 			expectAccept: false,
 		},
 		"below threshold with multiple receipts": {
@@ -688,12 +688,12 @@ func Test_trialRunBundleInternal_RejectsBundlesWhereEfficiencyIsBelowThreshold(t
 				{Receipt: &types.Receipt{GasUsed: 9}},
 				{Receipt: &types.Receipt{GasUsed: 10}},
 			},
-			execCost:     core_types.ExecutionCost(100),
+			execCost:     map[common.Hash]core_types.ExecutionCost{{}: 100},
 			expectAccept: false,
 		},
 		"above threshold with single receipt": {
 			processedTxs: []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 21}}},
-			execCost:     core_types.ExecutionCost(100),
+			execCost:     map[common.Hash]core_types.ExecutionCost{{}: 100},
 			expectAccept: true,
 		},
 		"above threshold with multiple receipts": {
@@ -701,7 +701,7 @@ func Test_trialRunBundleInternal_RejectsBundlesWhereEfficiencyIsBelowThreshold(t
 				{Receipt: &types.Receipt{GasUsed: 10}},
 				{Receipt: &types.Receipt{GasUsed: 11}},
 			},
-			execCost:     core_types.ExecutionCost(100),
+			execCost:     map[common.Hash]core_types.ExecutionCost{{}: 100},
 			expectAccept: true,
 		},
 	}
@@ -745,13 +745,17 @@ func Test_trialRunBundleInternal_RejectsBundlesWhereEfficiencyIsBelowThreshold(t
 			)
 			require.Equal(t, tc.expectAccept, valid)
 
+			totalExecCost := core_types.ExecutionCost(0)
+			for _, cost := range tc.execCost {
+				totalExecCost += cost
+			}
 			expectedEfficiency := 0.0
-			if tc.execCost > 0 {
+			if totalExecCost > 0 {
 				gasUsed := uint64(0)
 				for _, tx := range tc.processedTxs {
 					gasUsed += tx.Receipt.GasUsed
 				}
-				expectedEfficiency = float64(gasUsed) / float64(tc.execCost)
+				expectedEfficiency = float64(gasUsed) / float64(totalExecCost)
 			}
 			require.InDelta(t, expectedEfficiency, *gasEfficiency, 1e-9)
 		})
@@ -1073,7 +1077,7 @@ func Test_trialRunBundleInternal_UsesPresentsOfReceiptToDecideResult(t *testing.
 			processor := NewMocktransactionProcessor(ctrl)
 			processor.EXPECT().Run(any, any).Return(ProcessSummary{
 				ProcessedTransactions: tc.processedTxs,
-				ExecutionCost:         1,
+				ExecutionCost:         map[common.Hash]core_types.ExecutionCost{{}: 1},
 			})
 
 			factory := NewMocktransactionProcessorFactory(ctrl)
@@ -1329,31 +1333,31 @@ func Test_BundleEvaluationCache_ReturnsErrorForInvalidEnvelope(t *testing.T) {
 func Test_trialRunBundleInternal_ReturnsCorrectGasEfficiency(t *testing.T) {
 	tests := map[string]struct {
 		processedTxs       []ProcessedTransaction
-		execCost           core_types.ExecutionCost
+		execCost           map[common.Hash]core_types.ExecutionCost
 		expectedEfficiency float64
 		expectedAccept     bool
 	}{
 		"zero execution cost returns zero efficiency": {
 			processedTxs:       []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 50}}},
-			execCost:           core_types.ExecutionCost(0),
+			execCost:           map[common.Hash]core_types.ExecutionCost{},
 			expectedEfficiency: 0.0,
 			expectedAccept:     false,
 		},
 		"below threshold efficiency": {
 			processedTxs:       []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 10}}},
-			execCost:           core_types.ExecutionCost(100),
+			execCost:           map[common.Hash]core_types.ExecutionCost{{}: 100},
 			expectedEfficiency: 0.1,
 			expectedAccept:     false,
 		},
 		"exact threshold efficiency": {
 			processedTxs:       []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 20}}},
-			execCost:           core_types.ExecutionCost(100),
+			execCost:           map[common.Hash]core_types.ExecutionCost{{}: 100},
 			expectedEfficiency: 0.2,
 			expectedAccept:     true, // < not <=
 		},
 		"above threshold single receipt": {
 			processedTxs:       []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 50}}},
-			execCost:           core_types.ExecutionCost(100),
+			execCost:           map[common.Hash]core_types.ExecutionCost{{}: 100},
 			expectedEfficiency: 0.5,
 			expectedAccept:     true,
 		},
@@ -1362,13 +1366,13 @@ func Test_trialRunBundleInternal_ReturnsCorrectGasEfficiency(t *testing.T) {
 				{Receipt: &types.Receipt{GasUsed: 30}},
 				{Receipt: &types.Receipt{GasUsed: 40}},
 			},
-			execCost:           core_types.ExecutionCost(100),
+			execCost:           map[common.Hash]core_types.ExecutionCost{{}: 100},
 			expectedEfficiency: 0.7,
 			expectedAccept:     true,
 		},
 		"full efficiency": {
 			processedTxs:       []ProcessedTransaction{{Receipt: &types.Receipt{GasUsed: 100}}},
-			execCost:           core_types.ExecutionCost(100),
+			execCost:           map[common.Hash]core_types.ExecutionCost{{}: 100},
 			expectedEfficiency: 1.0,
 			expectedAccept:     true,
 		},
@@ -1378,7 +1382,7 @@ func Test_trialRunBundleInternal_ReturnsCorrectGasEfficiency(t *testing.T) {
 				{},
 				{Receipt: &types.Receipt{GasUsed: 25}},
 			},
-			execCost:           core_types.ExecutionCost(100),
+			execCost:           map[common.Hash]core_types.ExecutionCost{{}: 100},
 			expectedEfficiency: 0.5,
 			expectedAccept:     true,
 		},
