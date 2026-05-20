@@ -501,14 +501,14 @@ func testAddBalance(pool *TxPool, addr common.Address, amount *big.Int) {
 	pool.mu.Lock()
 	original := pool.currentState.(*testTxPoolStateDb).balances[addr]
 	if original == nil {
-		amountU256 := utils.BigIntToUint256(amount)
+		amountU256 := utils.BigIntToUint256Clamped(amount)
 		pool.currentState.(*testTxPoolStateDb).balances[addr] = amountU256
 	} else {
 		if amount.Sign() >= 0 {
-			amountU256 := utils.BigIntToUint256(amount)
+			amountU256 := utils.BigIntToUint256Clamped(amount)
 			pool.currentState.(*testTxPoolStateDb).balances[addr] = original.Add(original, amountU256)
 		} else {
-			amountU256 := utils.BigIntToUint256(new(big.Int).Mul(amount, big.NewInt(-1)))
+			amountU256 := utils.BigIntToUint256Clamped(new(big.Int).Mul(amount, big.NewInt(-1)))
 			pool.currentState.(*testTxPoolStateDb).balances[addr] = original.Sub(original, amountU256)
 		}
 	}

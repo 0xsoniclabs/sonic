@@ -93,53 +93,52 @@ func TestBundle_EnvelopeAndBundleOnly_SemanticsEnabledByBrio_ExecutionEnabledByB
 			upgrades.Brio = tc.brio
 			upgrades.TransactionBundles = tc.transactionBundles
 
-			net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-				Upgrades: &upgrades,
-				ClientExtraArguments: []string{
-					"--disable-txPool-validation",
-				},
-			})
-			client, err := net.GetClient()
-			require.NoError(t, err)
-			defer client.Close()
+			for mode, net := range GetUnfilteredNetVariants(t, upgrades) {
+				t.Run(mode, func(t *testing.T) {
 
-			signer := types.LatestSignerForChainID(net.GetChainId())
+					client, err := net.GetClient()
+					require.NoError(t, err)
+					defer client.Close()
 
-			sender := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+					signer := types.LatestSignerForChainID(net.GetChainId())
 
-			txBundle := bundle.NewBuilder().
-				WithSigner(signer).
-				AllOf(Step(t, net, sender, &types.AccessListTx{})).
-				BuildBundle()
-			gasPrice, err := client.SuggestGasPrice(t.Context())
-			require.NoError(t, err)
-			envelope := bundle.NewEnvelope(signer, sender.PrivateKey, 0, gasPrice, &txBundle)
-			innerTx := txBundle.GetTransactionsInReferencedOrder()[0]
+					sender := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
-			// Submit the transaction.
-			if tc.sendEnvelope {
-				_, err = net.Send(envelope)
-			} else if tc.sendBundleOnly {
-				_, err = net.Send(innerTx)
-			}
-			require.NoError(t, err)
+					txBundle := bundle.NewBuilder().
+						WithSigner(signer).
+						AllOf(Step(t, net, sender, &types.AccessListTx{})).
+						BuildBundle()
+					gasPrice, err := client.SuggestGasPrice(t.Context())
+					require.NoError(t, err)
+					envelope := bundle.NewEnvelope(signer, sender.PrivateKey, 0, gasPrice, &txBundle)
+					innerTx := txBundle.GetTransactionsInReferencedOrder()[0]
 
-			time.Sleep(1 * time.Second)
+					// Submit the transaction.
+					if tc.sendEnvelope {
+						_, err = net.Send(envelope)
+					} else if tc.sendBundleOnly {
+						_, err = net.Send(innerTx)
+					}
+					require.NoError(t, err)
 
-			envelopeReceipt, err := client.TransactionReceipt(t.Context(), envelope.Hash())
-			if tc.expectEnvelopeReceipt {
-				require.NoError(t, err)
-				require.Equal(t, types.ReceiptStatusSuccessful, envelopeReceipt.Status)
-			} else {
-				require.ErrorContains(t, err, "not found")
-			}
+					time.Sleep(1 * time.Second)
 
-			innerReceipt, err := client.TransactionReceipt(t.Context(), innerTx.Hash())
-			if tc.expectInnerReceipt {
-				require.NoError(t, err)
-				require.Equal(t, types.ReceiptStatusSuccessful, innerReceipt.Status)
-			} else {
-				require.ErrorContains(t, err, "not found")
+					envelopeReceipt, err := client.TransactionReceipt(t.Context(), envelope.Hash())
+					if tc.expectEnvelopeReceipt {
+						require.NoError(t, err)
+						require.Equal(t, types.ReceiptStatusSuccessful, envelopeReceipt.Status)
+					} else {
+						require.ErrorContains(t, err, "not found")
+					}
+
+					innerReceipt, err := client.TransactionReceipt(t.Context(), innerTx.Hash())
+					if tc.expectInnerReceipt {
+						require.NoError(t, err)
+						require.Equal(t, types.ReceiptStatusSuccessful, innerReceipt.Status)
+					} else {
+						require.ErrorContains(t, err, "not found")
+					}
+				})
 			}
 		})
 	}

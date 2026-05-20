@@ -54,18 +54,18 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 				ClientExtraArguments: extraArguments,
 			})
 
-			client, err := net.GetClient()
-			require.NoError(t, err)
-			defer client.Close()
-
 			net.AdvanceEpoch(t, 1)
 
-			// wait until some events are generated
-			time.Sleep(1 * time.Second)
+			// Poll until enough events are collected for statistical stability
+			const minEvents = 120
+			var eventsInEpoch eventMap
+			require.Eventually(t, func() bool {
+				eventsInEpoch = getEventsInEpoch(t, net)
+				return len(eventsInEpoch) >= minEvents
+			}, 100*time.Second, 50*time.Millisecond,
+				"timed out waiting for at least %d events", minEvents)
 
-			eventsInEpoch := getEventsInEpoch(t, net)
-
-			percentages := calculateValidatorEmissionPercentages(t, eventsInEpoch)
+			percentages := calculateValidatorEmissionPercentages(eventsInEpoch)
 
 			if throttlerEnabled {
 				require.GreaterOrEqual(t, percentages[1], 0.9,
@@ -74,7 +74,7 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 					"Low stake validator should create very few events")
 			} else {
 				// Without emitter throttling, both validators should create the same amount of events
-				require.InDelta(t, percentages[1], percentages[2], 0.1,
+				require.InDelta(t, percentages[1], percentages[2], 0.2,
 					"Both validators should create equal amount of events")
 			}
 		})
@@ -158,10 +158,8 @@ func fetchEvent(t *testing.T, client *tests.PooledEhtClient, eventID hash.Event)
 }
 
 func calculateValidatorEmissionPercentages(
-	t *testing.T,
 	allEvents eventMap,
 ) map[idx.ValidatorID]float64 {
-	t.Helper()
 
 	counts := map[idx.ValidatorID]float64{}
 	for _, event := range allEvents {

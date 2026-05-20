@@ -29,5 +29,5 @@ func ToFtm(ftm uint64) *big.Int {
 
 // ToFtmU256 number of FTM to Wei using the uint256 type
 func ToFtmU256(ftm uint64) *uint256.Int {
-	return BigIntToUint256(ToFtm(ftm))
+	return BigIntToUint256Clamped(ToFtm(ftm))
 }

@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBigIntToUint256Err_ValidConversions(t *testing.T) {
+func TestBigIntToUint256_ValidConversions(t *testing.T) {
 	tests := map[string]struct {
 		input    *big.Int
 		expected *uint256.Int
@@ -123,7 +123,7 @@ func TestBigIntToUint256Err_ValidConversions(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result, err := BigIntToUint256Err(tt.input)
+			result, err := BigIntToUint256(tt.input)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, result)
 
@@ -139,7 +139,7 @@ func TestBigIntToUint256Err_ValidConversions(t *testing.T) {
 	}
 }
 
-func TestBigIntToUint256Err_ErrorCases(t *testing.T) {
+func TestBigIntToUint256_ErrorCases(t *testing.T) {
 	tests := map[string]struct {
 		input       *big.Int
 		expectedErr string
@@ -182,7 +182,7 @@ func TestBigIntToUint256Err_ErrorCases(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result, err := BigIntToUint256Err(tt.input)
+			result, err := BigIntToUint256(tt.input)
 			require.Error(t, err)
 			require.Nil(t, result)
 			require.ErrorContains(t, err, tt.expectedErr)
