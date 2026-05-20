@@ -3889,12 +3889,133 @@ func TestRealTransactionSize_CanHandleAllTxTypes(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			context := &runContext{signer: signer, upgrades: opera.Upgrades{
-				Brio:               true,
 				TransactionBundles: true,
 				GasSubsidies:       true,
 			}}
 			size := realTxSize(context, test.tx)
 			require.Equal(t, test.expectedSize, size)
+		})
+	}
+}
+
+func TestRealTransactionSize_OnlyConsidersSpecialTxsWhenEnabled(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	basicTx := types.NewTx(&types.AccessListTx{
+		To:       &common.Address{0x42},
+		GasPrice: big.NewInt(100),
+		V:        big.NewInt(1),
+	})
+	sponsoredTx := types.NewTx(&types.LegacyTx{
+		To:       &common.Address{0x42},
+		GasPrice: big.NewInt(0),
+		V:        big.NewInt(1),
+	})
+	bundleTx := bundle.AllOf(bundle.Step(key, basicTx)).Build()
+
+	tests := map[string]*types.Transaction{
+		"basic tx":     basicTx,
+		"sponsored tx": sponsoredTx,
+		"bundle tx":    bundleTx,
+	}
+
+	for name, tx := range tests {
+		t.Run(name, func(t *testing.T) {
+			signer := types.LatestSignerForChainID(big.NewInt(1))
+			upgrades := opera.Upgrades{} // no special tx types enabled
+
+			context := &runContext{signer: signer, upgrades: upgrades}
+			size := realTxSize(context, tx)
+			require.Equal(t, tx.Size(), size)
+		})
+	}
+}
+
+func TestRunTransactions_EnforcesBlockSizeLimit(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	regular1 := getRegularTransaction(t)
+	regular2 := getRegularTransaction(t)
+	regular3 := getRegularTransaction(t)
+	sponsored := getSponsorshipRequest(t)
+
+	tests := map[string]struct {
+		txs           []*types.Transaction
+		remainingSize uint64
+		setupMock     func(*runContext, *Mock_transactionRunner)
+		wantProcessed int
+		wantIncluded  int // transactions with non-nil receipt
+	}{
+		"single large transaction": {
+			txs:           []*types.Transaction{regular1},
+			remainingSize: regular1.Size() - 1, // too small
+			setupMock:     func(_ *runContext, _ *Mock_transactionRunner) {},
+			wantProcessed: 1,
+			wantIncluded:  0,
+		},
+		"multiple transactions exceeding limit": {
+			txs:           []*types.Transaction{regular1, regular2, regular3},
+			remainingSize: regular1.Size() + regular2.Size(),
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				gomock.InOrder(
+					runner.EXPECT().runRegularTransaction(ctx, regular1, 0).Return(
+						ProcessedTransaction{Transaction: regular1, Receipt: &types.Receipt{}},
+						core_types.TransactionResultSuccessful,
+					),
+					runner.EXPECT().runRegularTransaction(ctx, regular2, 1).Return(
+						ProcessedTransaction{Transaction: regular2, Receipt: &types.Receipt{}},
+						core_types.TransactionResultSuccessful,
+					),
+				)
+			},
+			wantProcessed: 3,
+			wantIncluded:  2,
+		},
+		"transaction followed by sponsored transactions": {
+			txs:           []*types.Transaction{regular1, sponsored},
+			remainingSize: regular1.Size() + sponsored.Size(), // not enough for sponsored + fee-charging tx
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				runner.EXPECT().runRegularTransaction(ctx, regular1, 0).Return(
+					ProcessedTransaction{Transaction: regular1, Receipt: &types.Receipt{}},
+					core_types.TransactionResultSuccessful,
+				)
+			},
+			wantProcessed: 2,
+			wantIncluded:  1,
+		},
+		"bundle transaction exceeding limit": {
+			txs:           []*types.Transaction{bundle.AllOf(bundle.Step(key, regular1)).Build()},
+			remainingSize: regular1.Size() - 1, // too small for the inner transaction
+			setupMock:     func(_ *runContext, _ *Mock_transactionRunner) {},
+			wantProcessed: 1,
+			wantIncluded:  0,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMock_transactionRunner(ctrl)
+
+			context := &runContext{
+				upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
+				signer:   types.LatestSignerForChainID(big.NewInt(1)),
+				runner:   runner,
+			}
+			tc.setupMock(context, runner)
+
+			summary := runTransactions(context, tc.txs, 0, tc.remainingSize)
+
+			require.Len(t, summary.ProcessedTransactions, tc.wantProcessed)
+			included := 0
+			for _, processedTx := range summary.ProcessedTransactions {
+				if processedTx.Receipt != nil {
+					included++
+				}
+			}
+			require.Equal(t, tc.wantIncluded, included)
 		})
 	}
 }

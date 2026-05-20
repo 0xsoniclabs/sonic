@@ -258,8 +258,8 @@ func runTransactions(
 	}
 }
 
-// realTxSize returns the size of the transaction,
-// including any overhead introduced by sponsorship requests.
+// realTxSize returns the size of the transaction, including any
+// overhead introduced by sponsorship requests and bundles.
 func realTxSize(context *runContext, tx *types.Transaction) uint64 {
 	if context.upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
 		size := uint64(0)
@@ -267,6 +267,9 @@ func realTxSize(context *runContext, tx *types.Transaction) uint64 {
 		if err != nil {
 			return size // = 0, in case the bundle can not be unpacked, it will not be added to the block.
 		}
+
+		// The full size of the bundle have to be considered even if not
+		// all transactions of the bundle are included in the block.
 		for _, innerTx := range txBundle.Transactions {
 			size += realTxSize(context, innerTx)
 		}

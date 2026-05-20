@@ -1399,6 +1399,8 @@ func TestProcessUserTransactions_SkipUserTransactionIfInternalTransactionsExceed
 			// Create a user tx that would only fit without the internal tx
 			userTx := types.NewTx(&types.LegacyTx{})
 			upgrades := opera.Upgrades{Brio: true}
+
+			evmProcessor.EXPECT().Execute(gomock.Any(), gomock.Any(), gomock.Any()).Return(evmcore.ProcessSummary{})
 			processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000, upgrades)
 
 			// Only internal tx should be present
