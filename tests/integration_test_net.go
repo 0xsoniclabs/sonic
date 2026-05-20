@@ -563,6 +563,10 @@ func (n *IntegrationTestNet) start() error {
 				"--ws", "--ws.addr", "127.0.0.1", "--ws.port", "0",
 				"--ws.api", "admin,eth",
 
+				// extend rpc timeout to avoid flakes in tests that perform heavy operations or run on slow machines
+				"--rpc.timeout", "60s",
+				"--rpc.evmtimeout", "60s",
+
 				//  net options
 				"--port", "0",
 				"--nat", "none",
