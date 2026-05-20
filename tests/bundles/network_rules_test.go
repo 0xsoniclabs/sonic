@@ -19,6 +19,7 @@ package bundles
 import (
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -184,4 +185,134 @@ func TestBundles_BundlesCanBeEnabledAndDisabledStartingFromBrio(t *testing.T) {
 	envelope = buildEnvelope(t)
 	_, err = net.Send(envelope)
 	require.ErrorContains(t, err, "bundled transactions are disabled")
+}
+
+func TestBundles_BundleFeatureFlagIsIgnoredBeforeBrio(t *testing.T) {
+
+	// this test checks that enabling the bundles feature flag before brio has not effect
+	// but it is accumulated once brio is enabled
+
+	net := tests.StartIntegrationTestNetWithFakeGenesis(t,
+		tests.IntegrationTestNetOptions{
+			Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
+		},
+	)
+
+	accounts := tests.MakeAccountsWithBalance(t, net, 4, big.NewInt(1e18))
+
+	expectBundleOnlyTxIsAccepted(t, net, accounts[0])
+	expectBundleOnlyTxIsAccepted(t, net, accounts[1])
+	expectBundleIsRejected(t, net, accounts[2])
+
+	type rulesDiff[T any] struct{ Upgrades T }
+	type bundlesFlag struct{ TransactionBundles bool }
+	tests.UpdateNetworkRules(t, net, rulesDiff[bundlesFlag]{
+		Upgrades: bundlesFlag{TransactionBundles: true},
+	})
+	net.AdvanceEpoch(t, 1)
+
+	expectBundleOnlyTxIsAccepted(t, net, accounts[0])
+	expectBundleOnlyTxIsExecuted(t, net, accounts[1])
+	expectBundleIsRejected(t, net, accounts[2])
+
+	type brioFlag struct{ Brio bool }
+	tests.UpdateNetworkRules(t, net, rulesDiff[brioFlag]{
+		Upgrades: brioFlag{Brio: true},
+	})
+	net.AdvanceEpoch(t, 1)
+
+	expectBundleOnlyTxIsAccepted(t, net, accounts[0])
+	expectBundleOnlyTxIsNotExecuted(t, net, accounts[1])
+	expectBundleOnlyTxIsSkippedInBlockProcessor(t, net, accounts[2])
+	expectBundleIsExecuted(t, net, accounts[3])
+}
+
+// makeBundleOnlyTx creates a transaction marked as bundle-only via the access list.
+func makeBundleOnlyTx(t *testing.T, net *tests.IntegrationTestNet, account *tests.Account) *types.Transaction {
+	t.Helper()
+	tx := tests.CreateTransaction(t, net, &types.AccessListTx{
+		To:    nil,
+		Value: big.NewInt(0),
+		AccessList: types.AccessList{{
+			Address:     bundle.BundleOnly,
+			StorageKeys: []common.Hash{},
+		}},
+	}, account)
+	require.True(t, bundle.IsBundleOnly(tx))
+	return tx
+}
+
+// expectNoReceipt asserts that the given transaction hash has no receipt
+// after waiting for a short period.
+func expectNoReceipt(t *testing.T, net *tests.IntegrationTestNet, txHash common.Hash) {
+	t.Helper()
+	time.Sleep(3 * time.Second)
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+	_, err = client.TransactionReceipt(t.Context(), txHash)
+	require.ErrorContains(t, err, "not found",
+		"bundle-only transaction should not be executed and thus not have a receipt")
+}
+
+func expectBundleOnlyTxIsAccepted(t *testing.T, net *tests.IntegrationTestNet, account *tests.Account) {
+	t.Helper()
+	tx := makeBundleOnlyTx(t, net, account)
+	_, err := net.Send(tx)
+	require.NoError(t, err, "should be able to send bundle-only transaction")
+}
+
+func expectBundleOnlyTxIsExecuted(t *testing.T, net *tests.IntegrationTestNet, account *tests.Account) {
+	t.Helper()
+	tx := makeBundleOnlyTx(t, net, account)
+	receipt, err := net.Run(tx)
+	require.NoError(t, err, "should be able to execute bundle-only transaction")
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status,
+		"bundle-only transaction should execute successfully")
+}
+
+func expectBundleOnlyTxIsNotExecuted(t *testing.T, net *tests.IntegrationTestNet, account *tests.Account) {
+	t.Helper()
+	tx := makeBundleOnlyTx(t, net, account)
+	hash, err := net.Send(tx)
+	require.NoError(t, err, "should be able to send bundle-only transaction")
+	expectNoReceipt(t, net, hash)
+}
+
+func expectBundleOnlyTxIsSkippedInBlockProcessor(t *testing.T, net *tests.IntegrationTestNet, account *tests.Account) {
+	t.Helper()
+	tx := makeBundleOnlyTx(t, net, account)
+	hash, err := net.ForceEmit(t.Context(), tx)
+	require.NoError(t, err, "should be able to emit bundle-only transaction")
+	expectNoReceipt(t, net, hash)
+}
+
+func expectBundleIsRejected(t *testing.T, net *tests.IntegrationTestNet, account *tests.Account) {
+	t.Helper()
+	envelope := bundle.NewBuilder().
+		WithSigner(types.LatestSignerForChainID(net.GetChainId())).
+		SetEarliest(0).
+		AllOf(Step(t, net, account, &types.AccessListTx{})).
+		Build()
+	_, err := net.Send(envelope)
+	require.Error(t, err,
+		"should not be able to send bundle when bundles are disabled")
+}
+
+func expectBundleIsExecuted(t *testing.T, net *tests.IntegrationTestNet, account *tests.Account) {
+	t.Helper()
+	envelope, plan := bundle.NewBuilder().
+		WithSigner(types.LatestSignerForChainID(net.GetChainId())).
+		SetEarliest(0).
+		AllOf(Step(t, net, account, &types.AccessListTx{})).
+		BuildEnvelopeAndPlan()
+	_, err := net.Send(envelope)
+	require.NoError(t, err, "should be able to send bundle when bundles are enabled")
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+	info, err := WaitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+	require.NoError(t, err, "should be able to wait for bundle execution")
+	require.NotZero(t, info.Count, "bundle should be executed")
 }
