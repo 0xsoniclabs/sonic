@@ -237,8 +237,14 @@ func runTransactions(
 		for _, processedTx := range txs {
 			if processedTx.Receipt != nil { // < only transactions included in the block
 				trueTxIndexOffset++
-				remainingSize -= processedTx.Transaction.Size()
 				causedBy[processedTx.Transaction.Hash()] = tx.Hash()
+
+				if remainingSize < processedTx.Transaction.Size() {
+					log.Debug("Block size limit exceeded,", "tx", processedTx.Transaction.Hash().Hex(),
+						"txSize", processedTx.Transaction.Size(), "remainingSize", remainingSize)
+					break
+				}
+				remainingSize -= processedTx.Transaction.Size()
 			}
 		}
 		processedTxs = append(processedTxs, txs...)
@@ -362,7 +368,8 @@ func (r *transactionRunner) runSponsoredTransaction(
 ) ([]ProcessedTransaction, core_types.TransactionResult) {
 	// check whether the size limit is large enough for the transaction and its payment
 	if tx.Size()+subsidies.RlpEncodedFeeChargingTxSizeInBytes > sizeLimit {
-		log.Debug("Transaction skipped due to block size limit", "tx", tx.Hash().Hex(), "txSize", tx.Size(), "estimatedPaymentTxSize", subsidies.RlpEncodedFeeChargingTxSizeInBytes, "sizeLimit", sizeLimit)
+		log.Debug("Transaction skipped due to block size limit",
+			"tx", tx.Hash().Hex(), "txSize", tx.Size(), "estimatedPaymentTxSize", subsidies.RlpEncodedFeeChargingTxSizeInBytes, "sizeLimit", sizeLimit)
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
 

@@ -610,8 +610,7 @@ const rlpEncodedMaxHeaderSizeInBytes = 1024
 
 // processUserTransactions executes user transactions in order, adding them to
 // the block until all transactions are processed or the gas/block size limit is
-// reached. The function returns the number of input transactions skipped due
-// to capacity limitations as well as a map linking the hashes of accepted
+// reached. The function returns a map linking the hashes of accepted
 // transactions to the transaction they are derived from in the given list.
 func processUserTransactions(
 	evmProcessor blockproc.EVMProcessor,
