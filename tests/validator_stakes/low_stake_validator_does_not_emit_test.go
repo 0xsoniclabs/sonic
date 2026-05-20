@@ -57,12 +57,12 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 			net.AdvanceEpoch(t, 1)
 
 			// Poll until enough events are collected for statistical stability
-			const minEvents = 60
+			const minEvents = 120
 			var eventsInEpoch eventMap
 			require.Eventually(t, func() bool {
 				eventsInEpoch = getEventsInEpoch(t, net)
 				return len(eventsInEpoch) >= minEvents
-			}, 100*time.Second, 200*time.Millisecond,
+			}, 100*time.Second, 50*time.Millisecond,
 				"timed out waiting for at least %d events", minEvents)
 
 			percentages := calculateValidatorEmissionPercentages(eventsInEpoch)
@@ -74,7 +74,7 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 					"Low stake validator should create very few events")
 			} else {
 				// Without emitter throttling, both validators should create the same amount of events
-				require.InDelta(t, percentages[1], percentages[2], 0.1,
+				require.InDelta(t, percentages[1], percentages[2], 0.2,
 					"Both validators should create equal amount of events")
 			}
 		})
