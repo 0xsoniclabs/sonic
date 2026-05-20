@@ -104,8 +104,14 @@ func TestLogBloom_query(t *testing.T) {
 			}
 			require.NoError(err)
 
-			if (types.Bloom{} == block.Bloom()) {
-				t.Errorf("expected non-empty bloom in block %d, got empty", block.NumberU64())
+			// Only assert non-empty bloom for blocks that contain transactions,
+			// since the node may seal empty blocks between our transactions.
+			if len(block.Transactions()) > 0 {
+				require.NotEqual(
+					types.Bloom{},
+					block.Bloom(),
+					"expected non-empty bloom in block %d", block.NumberU64(),
+				)
 			}
 
 			blockNumber++
