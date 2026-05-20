@@ -988,6 +988,7 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactions(t *
 	context := &runContext{
 		runner:   runner,
 		upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
+		signer:   types.LatestSignerForChainID(big.NewInt(1)),
 	}
 	gomock.InOrder(
 		runner.EXPECT().runRegularTransaction(context, txs[0], 4).Return(
@@ -1072,6 +1073,7 @@ func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyP
 	}
 
 	context := &runContext{
+		signer: types.LatestSignerForChainID(big.NewInt(1)),
 		runner: runner,
 		upgrades: opera.Upgrades{
 			Brio:               true,
@@ -3686,6 +3688,7 @@ func TestRunTransactions_AccumulatesExecutionCostFromAllTransactions(t *testing.
 	runner := NewMock_transactionRunner(ctrl)
 
 	context := &runContext{
+		signer:   types.LatestSignerForChainID(big.NewInt(1)),
 		runner:   runner,
 		upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
 	}
@@ -3889,6 +3892,7 @@ func TestRealTransactionSize_CanHandleAllTxTypes(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			context := &runContext{signer: signer, upgrades: opera.Upgrades{
+				Brio:               true,
 				TransactionBundles: true,
 				GasSubsidies:       true,
 			}}
@@ -3923,7 +3927,7 @@ func TestRealTransactionSize_OnlyConsidersSpecialTxsWhenEnabled(t *testing.T) {
 	for name, tx := range tests {
 		t.Run(name, func(t *testing.T) {
 			signer := types.LatestSignerForChainID(big.NewInt(1))
-			upgrades := opera.Upgrades{} // no special tx types enabled
+			upgrades := opera.Upgrades{Brio: true} // no special tx types enabled
 
 			context := &runContext{signer: signer, upgrades: upgrades}
 			size := computeRealTxSize(context, tx)

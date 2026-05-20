@@ -261,7 +261,7 @@ func runTransactions(
 // computeRealTxSize returns the size of the transaction, including any
 // overhead introduced by sponsorship requests and bundles.
 func computeRealTxSize(context *runContext, tx *types.Transaction) uint64 {
-	if context.upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
+	if context.upgrades.Brio && context.upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
 		size := uint64(0)
 		txBundle, err := bundle.OpenEnvelope(context.signer, tx)
 		if err != nil {
