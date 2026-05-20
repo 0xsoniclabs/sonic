@@ -181,7 +181,7 @@ func newTestEnvWithUpgrades(
 	var err error
 	env.Service, err = newService(DefaultConfig(cachescale.Identity), store, blockProc, engine, vecClock, func(_ evmcore.StateReader) TxPool {
 		return txPool
-	}, enode.ID{})
+	}, enode.ID{}, nil)
 	if err != nil {
 		panic(err)
 	}

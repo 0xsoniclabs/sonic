@@ -151,6 +151,9 @@ func (s *Service) switchEpochTo(newEpoch idx.Epoch) {
 	// notify event checkers about new validation data
 	s.gasPowerCheckReader.Ctx.Store(NewGasPowerContext(s.store, s.store.GetValidators(), newEpoch, s.store.GetRules().Economy)) // read gaspower check data from disk
 	s.heavyCheckReader.Pubkeys.Store(readEpochPubKeys(s.store, newEpoch))
+	// reset block hash checker for new epoch
+	s.blockHashChecker.reset(newEpoch, s.store.GetValidators())
+
 	// notify about new epoch
 	for _, em := range s.emitters {
 		em.OnNewEpoch(s.store.GetValidators(), newEpoch)
@@ -247,6 +250,9 @@ func (s *Service) processEvent(e *inter.EventPayload) error {
 	if err != nil {
 		return err
 	}
+
+	// check block hashes against local state
+	s.blockHashChecker.check(e)
 
 	newEpoch := s.store.GetEpoch()
 

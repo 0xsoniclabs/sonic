@@ -81,18 +81,18 @@ func New(reader Reader) *Checker {
 // Validate checks whether the event payload is correctly tracking the proposer
 // state and the validity of a potentially included proposal.
 func (v *Checker) Validate(e inter.EventPayloadI) error {
-	// Only version 3 events are allowed to contain proposals.
-	if e.Version() != 3 {
+	// Only version 3 and 4 events are allowed to contain proposals.
+	if e.Version() != 3 && e.Version() != 4 {
 		if payload := e.Payload(); payload != nil {
 			if proposal := payload.Proposal; proposal != nil {
 				return ErrProposalInInvalidEventVersion
 			}
 		}
-		// All remaining checks are only applicable to version 3 events.
+		// All remaining checks are only applicable to version 3/4 events.
 		return nil
 	}
 
-	// Check version 3 properties.
+	// Check version 3/4 properties.
 	if err := checkVersion3EventProperties(e); err != nil {
 		return err
 	}

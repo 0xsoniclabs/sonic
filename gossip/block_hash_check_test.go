@@ -1,0 +1,513 @@
+// Copyright 2026 Sonic Operations Ltd
+// This file is part of the Sonic Client
+//
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
+package gossip
+
+import (
+	"math/big"
+	"testing"
+
+	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/require"
+
+	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/utils/errlock"
+)
+
+func makeTestBlock(number uint64, epoch idx.Epoch) *inter.Block {
+	return inter.NewBlockBuilder().
+		WithNumber(number).
+		WithParentHash(common.Hash{byte(number)}).
+		WithStateRoot(common.Hash{byte(number + 1)}).
+		WithGasLimit(10_000_000).
+		WithBaseFee(big.NewInt(1000)).
+		WithEpoch(epoch).
+		Build()
+}
+
+func makeTestEvent(creator idx.ValidatorID, start idx.Block, epoch idx.Epoch, hashes []hash.Hash) *inter.EventPayload {
+	e := &inter.MutableEventPayload{}
+	e.SetCreator(creator)
+	e.SetBlockHashes(inter.BlockHashes{
+		Start:  start,
+		Epoch:  epoch,
+		Hashes: hashes,
+	})
+	return e.Build()
+}
+
+func makeValidators(stakes map[idx.ValidatorID]pos.Weight) *pos.Validators {
+	builder := pos.NewBuilder()
+	for id, weight := range stakes {
+		builder.Set(id, weight)
+	}
+	return builder.Build()
+}
+
+func TestBlockHashChecker_NilErrorLock(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	checker := newBlockHashChecker(store, nil)
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+	})
+	checker.reset(1, validators)
+
+	block := makeTestBlock(1, 1)
+	store.SetBlock(1, block)
+
+	// Event with wrong hash should not panic when errorLock is nil
+	event := makeTestEvent(1, 1, 1, []hash.Hash{{0xFF}})
+	checker.check(event)
+}
+
+func TestBlockHashChecker_NoBlockHashes(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+	})
+	checker.reset(1, validators)
+
+	// Event with no block hashes (Start == 0) should be a no-op
+	e := &inter.MutableEventPayload{}
+	e.SetCreator(1)
+	checker.check(e.Build())
+	require.NoError(t, errorLock.Check())
+}
+
+func TestBlockHashChecker_MatchingHashes(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	block := makeTestBlock(1, 1)
+	store.SetBlock(1, block)
+
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+	})
+	checker.reset(1, validators)
+
+	// Event with matching hash should not trigger
+	event := makeTestEvent(1, 1, 1, []hash.Hash{hash.Hash(block.Hash())})
+	checker.check(event)
+	require.NoError(t, errorLock.Check())
+	require.Empty(t, checker.disagreements)
+}
+
+func TestBlockHashChecker_BlockNotInStore(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+	})
+	checker.reset(1, validators)
+
+	// Block 5 is not in the store — should be skipped
+	event := makeTestEvent(1, 5, 1, []hash.Hash{{0xFF}})
+	checker.check(event)
+	require.NoError(t, errorLock.Check())
+	require.Empty(t, checker.disagreements)
+}
+
+func TestBlockHashChecker_DisagreementBelowThreshold(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	block := makeTestBlock(1, 1)
+	store.SetBlock(1, block)
+
+	// Validator 1 has weight 100 out of 300 total (33% < 67%)
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+		2: 100,
+		3: 100,
+	})
+	checker.reset(1, validators)
+
+	event := makeTestEvent(1, 1, 1, []hash.Hash{{0xFF}})
+	checker.check(event)
+	require.NoError(t, errorLock.Check())
+	require.Len(t, checker.disagreements[1], 1)
+}
+
+func TestBlockHashChecker_DisagreementExceedsThreshold(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	block := makeTestBlock(1, 1)
+	store.SetBlock(1, block)
+
+	// Total weight = 300, threshold = 200
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+		2: 100,
+		3: 100,
+	})
+	checker.reset(1, validators)
+
+	wrongHash := hash.Hash{0xFF}
+
+	// First disagreement: validator 1 (100/300 = 33%)
+	checker.check(makeTestEvent(1, 1, 1, []hash.Hash{wrongHash}))
+	require.NoError(t, errorLock.Check())
+
+	// Second disagreement: validator 2 (200/300 = 67%)
+	checker.check(makeTestEvent(2, 1, 1, []hash.Hash{wrongHash}))
+	require.NoError(t, errorLock.Check())
+
+	// Third disagreement: validator 3 (300/300 = 100% > 67%)
+	require.Panics(t, func() {
+		checker.check(makeTestEvent(3, 1, 1, []hash.Hash{wrongHash}))
+	})
+}
+
+func TestBlockHashChecker_ThresholdExactlyTwoThirds(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	block := makeTestBlock(1, 1)
+	store.SetBlock(1, block)
+
+	// Total weight = 3, threshold = (3*2)/3 = 2
+	// Disagreement of exactly 2 is NOT > 2, so should not trigger
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 1,
+		2: 1,
+		3: 1,
+	})
+	checker.reset(1, validators)
+
+	wrongHash := hash.Hash{0xFF}
+	checker.check(makeTestEvent(1, 1, 1, []hash.Hash{wrongHash}))
+	checker.check(makeTestEvent(2, 1, 1, []hash.Hash{wrongHash}))
+	// 2/3 is exactly the threshold — should NOT panic (need strictly greater)
+	require.NoError(t, errorLock.Check())
+
+	// Third validator tips it over: 3 > 2
+	require.Panics(t, func() {
+		checker.check(makeTestEvent(3, 1, 1, []hash.Hash{wrongHash}))
+	})
+}
+
+func TestBlockHashChecker_SameValidatorCountedOnce(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	block := makeTestBlock(1, 1)
+	store.SetBlock(1, block)
+
+	// Validator 1 has weight 100 out of 300 (33%)
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+		2: 100,
+		3: 100,
+	})
+	checker.reset(1, validators)
+
+	wrongHash := hash.Hash{0xFF}
+
+	// Same validator sends multiple events — should still only count once
+	checker.check(makeTestEvent(1, 1, 1, []hash.Hash{wrongHash}))
+	checker.check(makeTestEvent(1, 1, 1, []hash.Hash{wrongHash}))
+	checker.check(makeTestEvent(1, 1, 1, []hash.Hash{wrongHash}))
+	require.NoError(t, errorLock.Check())
+	require.Len(t, checker.disagreements[1], 1)
+}
+
+func TestBlockHashChecker_MultipleBlocks(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	block1 := makeTestBlock(1, 1)
+	block2 := makeTestBlock(2, 1)
+	store.SetBlock(1, block1)
+	store.SetBlock(2, block2)
+
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+		2: 100,
+		3: 100,
+	})
+	checker.reset(1, validators)
+
+	// Disagree on block 1 but agree on block 2
+	event := makeTestEvent(1, 1, 1, []hash.Hash{
+		{0xFF},                   // wrong hash for block 1
+		hash.Hash(block2.Hash()), // correct hash for block 2
+	})
+	checker.check(event)
+	require.NoError(t, errorLock.Check())
+	require.Len(t, checker.disagreements[1], 1) // block 1 has disagreement
+	require.Empty(t, checker.disagreements[2])  // block 2 has no disagreement
+}
+
+func TestBlockHashChecker_EpochReset(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	block := makeTestBlock(1, 1)
+	store.SetBlock(1, block)
+
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+		2: 100,
+		3: 100,
+	})
+	checker.reset(1, validators)
+
+	wrongHash := hash.Hash{0xFF}
+
+	// Accumulate disagreements in epoch 1
+	checker.check(makeTestEvent(1, 1, 1, []hash.Hash{wrongHash}))
+	checker.check(makeTestEvent(2, 1, 1, []hash.Hash{wrongHash}))
+	require.Len(t, checker.disagreements[1], 2)
+
+	// Reset for new epoch — disagreements should be cleared
+	checker.reset(2, validators)
+	require.Empty(t, checker.disagreements)
+
+	// After reset, old disagreements don't carry over
+	require.NoError(t, errorLock.Check())
+}
+
+func TestBlockHashChecker_NilValidators(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	// Don't call reset — validators is nil
+	block := makeTestBlock(1, 1)
+	store.SetBlock(1, block)
+
+	// Should not panic with nil validators
+	event := makeTestEvent(1, 1, 1, []hash.Hash{{0xFF}})
+	checker.check(event)
+	require.NoError(t, errorLock.Check())
+}
+
+func TestBlockHashChecker_PartialBlockRange(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	// Only block 2 exists in store, block 3 doesn't
+	block2 := makeTestBlock(2, 1)
+	store.SetBlock(2, block2)
+
+	// Total weight = 3 — single validator with weight 3 exceeds threshold
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 3,
+	})
+	checker.reset(1, validators)
+
+	// Event covers blocks 2 and 3; block 3 is missing so only block 2 is checked
+	event := makeTestEvent(1, 2, 1, []hash.Hash{
+		{0xFF}, // wrong hash for block 2
+		{0xEE}, // block 3 doesn't exist, should be skipped
+	})
+	require.Panics(t, func() {
+		checker.check(event)
+	})
+}
+
+func TestBlockHashChecker_IndependentBlockTracking(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	block1 := makeTestBlock(1, 1)
+	block2 := makeTestBlock(2, 1)
+	store.SetBlock(1, block1)
+	store.SetBlock(2, block2)
+
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+		2: 100,
+		3: 100,
+	})
+	checker.reset(1, validators)
+
+	// Validator 1 disagrees on block 1
+	checker.check(makeTestEvent(1, 1, 1, []hash.Hash{{0xFF}}))
+	// Validator 2 disagrees on block 2
+	checker.check(makeTestEvent(2, 2, 1, []hash.Hash{{0xEE}}))
+	// Neither block has reached 2/3 threshold
+	require.NoError(t, errorLock.Check())
+	require.Len(t, checker.disagreements[1], 1)
+	require.Len(t, checker.disagreements[2], 1)
+}
+
+func TestBlockHashChecker_WrongEpochSkipped(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	block := makeTestBlock(1, 1)
+	store.SetBlock(1, block)
+
+	// Single validator with 100% stake — would trigger halt if processed
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+	})
+	checker.reset(1, validators)
+
+	// Event claims epoch 2 but checker is on epoch 1 — should be ignored entirely
+	event := makeTestEvent(1, 1, 2, []hash.Hash{{0xFF}})
+	checker.check(event)
+	require.NoError(t, errorLock.Check())
+	require.Empty(t, checker.disagreements)
+}
+
+func TestBlockHashChecker_CrossEpochBlockSkipped(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	// Block 1 is stored with epoch 1
+	block := makeTestBlock(1, 1)
+	store.SetBlock(1, block)
+
+	// Single validator with 100% stake
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+	})
+	// Checker is on epoch 2
+	checker.reset(2, validators)
+
+	// Event epoch matches checker (epoch 2), but the local block is from epoch 1
+	// — the per-block guard should skip it
+	event := makeTestEvent(1, 1, 2, []hash.Hash{{0xFF}})
+	checker.check(event)
+	require.NoError(t, errorLock.Check())
+	require.Empty(t, checker.disagreements)
+}
+
+func TestBlockHashChecker_CorrectEpochStillWorks(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	// Block stored in epoch 2
+	block := makeTestBlock(5, 2)
+	store.SetBlock(5, block)
+
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+		2: 100,
+		3: 100,
+	})
+	checker.reset(2, validators)
+
+	// Event with matching epoch 2 and wrong hash — disagreement should be recorded
+	event := makeTestEvent(1, 5, 2, []hash.Hash{{0xFF}})
+	checker.check(event)
+	require.NoError(t, errorLock.Check())
+	require.Len(t, checker.disagreements[5], 1)
+}
+
+func TestBlockHashChecker_MixedEpochBlocks(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	// Block 10 is from epoch 1, block 11 is from epoch 2
+	block10 := makeTestBlock(10, 1)
+	block11 := makeTestBlock(11, 2)
+	store.SetBlock(10, block10)
+	store.SetBlock(11, block11)
+
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+		2: 100,
+		3: 100,
+	})
+	checker.reset(2, validators)
+
+	// Event with epoch 2 covering blocks 10-11; block 10 is epoch 1 in
+	// the store so only block 11 should be tracked
+	event := makeTestEvent(1, 10, 2, []hash.Hash{
+		{0xFF}, // wrong hash for block 10 (epoch 1 — should be skipped)
+		{0xEE}, // wrong hash for block 11 (epoch 2 — should be tracked)
+	})
+	checker.check(event)
+	require.NoError(t, errorLock.Check())
+	require.Empty(t, checker.disagreements[10])  // skipped: wrong epoch in store
+	require.Len(t, checker.disagreements[11], 1) // tracked: correct epoch
+}

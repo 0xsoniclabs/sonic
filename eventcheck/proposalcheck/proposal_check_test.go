@@ -30,12 +30,12 @@ import (
 
 func TestProposalCheck_Validate_NonVersion3WithoutProposal_Passes(t *testing.T) {
 	for version := range uint8(10) {
-		if version == 3 {
+		if version == 3 || version == 4 {
 			continue
 		}
 		ctrl := gomock.NewController(t)
 		event := inter.NewMockEventPayloadI(ctrl)
-		event.EXPECT().Version().Return(version)
+		event.EXPECT().Version().Return(version).AnyTimes()
 		event.EXPECT().Payload().Return(&inter.Payload{})
 
 		checker := New(nil)
@@ -45,12 +45,12 @@ func TestProposalCheck_Validate_NonVersion3WithoutProposal_Passes(t *testing.T) 
 
 func TestProposalCheck_Validate_NonVersion3WithProposal_Fails(t *testing.T) {
 	for version := range uint8(10) {
-		if version == 3 {
+		if version == 3 || version == 4 {
 			continue
 		}
 		ctrl := gomock.NewController(t)
 		event := inter.NewMockEventPayloadI(ctrl)
-		event.EXPECT().Version().Return(version)
+		event.EXPECT().Version().Return(version).AnyTimes()
 		event.EXPECT().Payload().Return(&inter.Payload{
 			Proposal: &inter.Proposal{},
 		})
