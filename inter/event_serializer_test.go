@@ -242,6 +242,50 @@ func TestEventUnmarshalCSER_Version3DetectsUnsupportedPayload(t *testing.T) {
 	}
 }
 
+// TestEventUnmarshalCSER_RejectsLamportUnderflow encodes an event
+// where a parent's lamportDiff exceeds the event's own lamport,
+// which would cause a silent uint32 underflow when reconstructing the parent ID.
+func TestEventUnmarshalCSER_RejectsLamportUnderflow(t *testing.T) {
+	const (
+		eventLamport = uint32(5)
+		lamportDiff  = uint32(10) // greater than eventLamport
+	)
+
+	// encoding such invalid event not allowed by regular EventPayload marshaller
+	encoded, err := cser.MarshalBinaryAdapter(func(w *cser.Writer) error {
+		w.BitsW.Write(2, 0)
+		w.U8(2) // version 2
+		// header
+		w.U16(0)             // netForkID
+		w.U32(1)             // epoch
+		w.U32(eventLamport)  // lamport
+		w.U32(1)             // creator
+		w.U32(1)             // seq
+		w.U32(0)             // frame
+		w.U64(1_000_000_000) // creationTime
+		w.I64(0)             // medianTimeDiff
+		w.U64(0)             // gasPowerUsed
+		w.U64(0)             // gasPowerLeft[0]
+		w.U64(0)             // gasPowerLeft[1]
+		// one parent whose diff exceeds the event's own lamport
+		w.U32(1) // parentsNum
+		w.U32(lamportDiff)
+		w.FixedBytes(make([]byte, 24)) // parent ID hash suffix
+		// remaining fields
+		w.Bool(false)                  // prevEpochHash absent
+		w.Bool(false)                  // anyTxs
+		w.SliceBytes([]byte{})         // extra
+		w.FixedBytes(make([]byte, 64)) // signature (read by UnmarshalCSER after eventUnmarshalCSER)
+		return nil
+	})
+	require.NoError(t, err)
+
+	var decoded EventPayload
+	err = decoded.UnmarshalBinary(encoded)
+	require.ErrorIs(t, err, cser.ErrMalformedEncoding,
+		"lamportDiff > lamport must be rejected, not silently accepted as a garbage parent ID")
+}
+
 func TestEventPayloadMarshalCSER_DetectsInvalidTransactionEncoding(t *testing.T) {
 	require := require.New(t)
 
