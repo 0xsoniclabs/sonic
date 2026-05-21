@@ -497,7 +497,9 @@ func TestValidateBundle_InvalidIndex_Rejected(t *testing.T) {
 	require.NoError(t, validateBundle(signer, bundle))
 
 	ref := slices.Collect(maps.Keys(bundle.Transactions))[0]
-	validTxData := utils.GetTxData(bundle.Transactions[ref]).(*types.AccessListTx)
+	txData, err := utils.GetTxData(bundle.Transactions[ref])
+	require.NoError(t, err)
+	validTxData := txData.(*types.AccessListTx)
 
 	// using an unsigned transaction in the index is detected
 	validTxData.R = nil
@@ -573,8 +575,9 @@ func TestValidateBundle_TransactionNotAgreeingToPlan_Rejected(t *testing.T) {
 	originalTx := bundle.GetTransactionsInReferencedOrder()[0]
 
 	// removing the agreement to the execution plan is detected
-	noAgreementData := utils.GetTxData(originalTx).(*types.AccessListTx)
-	noAgreementData.AccessList = []types.AccessTuple{{Address: BundleOnly}}
+	noAgreementData, err := utils.GetTxData(originalTx)
+	require.NoError(t, err)
+	noAgreementData.(*types.AccessListTx).AccessList = []types.AccessTuple{{Address: BundleOnly}}
 	noAgreement := types.MustSignNewTx(key, signer, noAgreementData)
 	require.True(t, IsBundleOnly(noAgreement))
 
@@ -590,8 +593,9 @@ func TestValidateBundle_TransactionNotAgreeingToPlan_Rejected(t *testing.T) {
 	require.NoError(t, validateBundle(signer, bundle))
 
 	// replacing the agreement with another execution hash is also detected
-	otherAgreementData := utils.GetTxData(originalTx).(*types.AccessListTx)
-	otherAgreementData.AccessList = []types.AccessTuple{{
+	otherAgreementData, err := utils.GetTxData(originalTx)
+	require.NoError(t, err)
+	otherAgreementData.(*types.AccessListTx).AccessList = []types.AccessTuple{{
 		Address:     BundleOnly,
 		StorageKeys: []common.Hash{{0x99}},
 	}}
@@ -640,7 +644,10 @@ func TestValidateBundle_AdditionalTransactionInIndex_Rejected(t *testing.T) {
 	ref1 := slices.Collect(maps.Keys(bundle.Transactions))[0]
 	validTx := bundle.Transactions[ref1]
 
-	extraTx := types.MustSignNewTx(key2, signer, utils.GetTxData(validTx))
+	txData, err := utils.GetTxData(validTx)
+	require.NoError(t, err)
+
+	extraTx := types.MustSignNewTx(key2, signer, txData)
 	refExtra := TxReference{
 		From: crypto.PubkeyToAddress(key2.PublicKey),
 		Hash: ref1.Hash,

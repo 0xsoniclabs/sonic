@@ -27,6 +27,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGetTxData_NilTransaction_ReportsError(t *testing.T) {
+	_, err := GetTxData(nil)
+	require.ErrorContains(t, err, "transaction is nil")
+}
+
 func TestGetTxData_ExtractsAllData(t *testing.T) {
 
 	type msg struct {
@@ -126,7 +131,8 @@ func TestGetTxData_ExtractsAllData(t *testing.T) {
 
 			tx := types.NewTx(original)
 
-			txData := GetTxData(tx)
+			txData, err := GetTxData(tx)
+			require.NoError(t, err)
 
 			restored := txData.(*types.LegacyTx)
 			require.Equal(t, original, restored)
@@ -148,7 +154,8 @@ func TestGetTxData_ExtractsAllData(t *testing.T) {
 
 			tx := types.NewTx(original)
 
-			txData := GetTxData(tx)
+			txData, err := GetTxData(tx)
+			require.NoError(t, err)
 
 			restored := txData.(*types.AccessListTx)
 			require.Equal(t, original, restored)
@@ -172,7 +179,8 @@ func TestGetTxData_ExtractsAllData(t *testing.T) {
 
 			tx := types.NewTx(original)
 
-			txData := GetTxData(tx)
+			txData, err := GetTxData(tx)
+			require.NoError(t, err)
 
 			restored := txData.(*types.DynamicFeeTx)
 			require.Equal(t, original, restored)
@@ -201,7 +209,8 @@ func TestGetTxData_ExtractsAllData(t *testing.T) {
 
 			tx := types.NewTx(original)
 
-			txData := GetTxData(tx)
+			txData, err := GetTxData(tx)
+			require.NoError(t, err)
 
 			restored := txData.(*types.BlobTx)
 			require.Equal(t, original, restored)
@@ -229,7 +238,8 @@ func TestGetTxData_ExtractsAllData(t *testing.T) {
 
 			tx := types.NewTx(original)
 
-			txData := GetTxData(tx)
+			txData, err := GetTxData(tx)
+			require.NoError(t, err)
 
 			restored := txData.(*types.SetCodeTx)
 			require.Equal(t, original, restored)
@@ -237,7 +247,121 @@ func TestGetTxData_ExtractsAllData(t *testing.T) {
 	}
 }
 
-func Test_mustToUint256_ValidInputs_ProducesSameValueResult(t *testing.T) {
+func Test_getTxDataInternal_DetectsUnsupportedTransactionType(t *testing.T) {
+	txDataSource := &fakeTxDataSource{
+		txType: 0x99, // an unsupported transaction type
+	}
+
+	_, err := getTxDataInternal(txDataSource)
+	require.Error(t, err, "unsupported transaction type: 0x99")
+}
+
+func Test_getTxDataInternal_DetectsNilToAddressForBlobTxType(t *testing.T) {
+	txDataSource := &fakeTxDataSource{
+		txType: types.BlobTxType,
+		to:     nil, // BlobTx requires a non-nil To address
+	}
+
+	_, err := getTxDataInternal(txDataSource)
+	require.Error(t, err, "blob transactions must have a recipient")
+}
+
+func Test_getTxDataInternal_BlobTxType_DetectsOutOfDomainValues(t *testing.T) {
+	values := map[string]struct {
+		value *big.Int
+		valid bool
+	}{
+		"nil":       {value: nil, valid: true},
+		"zero":      {value: big.NewInt(0), valid: true},
+		"positive":  {value: big.NewInt(123456789), valid: true},
+		"negative":  {value: big.NewInt(-1), valid: false},
+		"too large": {value: new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil), valid: false},
+	}
+
+	fields := map[string]func(*fakeTxDataSource, *big.Int){
+		"ChainId":    func(f *fakeTxDataSource, v *big.Int) { f.chainId = v },
+		"GasTipCap":  func(f *fakeTxDataSource, v *big.Int) { f.gasTipCap = v },
+		"GasFeeCap":  func(f *fakeTxDataSource, v *big.Int) { f.gasFeeCap = v },
+		"Value":      func(f *fakeTxDataSource, v *big.Int) { f.value = v },
+		"BlobFeeCap": func(f *fakeTxDataSource, v *big.Int) { f.blobGasFeeCap = v },
+		"V":          func(f *fakeTxDataSource, v *big.Int) { f.v = v },
+		"R":          func(f *fakeTxDataSource, v *big.Int) { f.r = v },
+		"S":          func(f *fakeTxDataSource, v *big.Int) { f.s = v },
+	}
+
+	for fieldName, setField := range fields {
+		for valueName, value := range values {
+			t.Run(fmt.Sprintf("%s=%s", fieldName, valueName), func(t *testing.T) {
+				txDataSource := &fakeTxDataSource{
+					txType: types.BlobTxType,
+					to:     &common.Address{0x01},
+				}
+				setField(txDataSource, value.value)
+
+				_, err := getTxDataInternal(txDataSource)
+				if value.valid {
+					require.NoError(t, err)
+				} else {
+					require.Error(t, err, fmt.Sprintf("out of uint256 domain: %v", value))
+				}
+			})
+		}
+	}
+}
+
+func Test_getTxDataInternal_DetectsNilToAddressForSetCodeTxType(t *testing.T) {
+	txDataSource := &fakeTxDataSource{
+		txType: types.SetCodeTxType,
+		to:     nil, // SetCodeTx requires a non-nil To address
+	}
+
+	_, err := getTxDataInternal(txDataSource)
+	require.Error(t, err, "set code transactions must have a recipient")
+}
+
+func Test_getTxDataInternal_SetCodeTxType_DetectsOutOfDomainValues(t *testing.T) {
+	values := map[string]struct {
+		value *big.Int
+		valid bool
+	}{
+		"nil":       {value: nil, valid: true},
+		"zero":      {value: big.NewInt(0), valid: true},
+		"positive":  {value: big.NewInt(123456789), valid: true},
+		"negative":  {value: big.NewInt(-1), valid: false},
+		"too large": {value: new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil), valid: false},
+	}
+
+	fields := map[string]func(*fakeTxDataSource, *big.Int){
+		"ChainId":   func(f *fakeTxDataSource, v *big.Int) { f.chainId = v },
+		"GasTipCap": func(f *fakeTxDataSource, v *big.Int) { f.gasTipCap = v },
+		"GasFeeCap": func(f *fakeTxDataSource, v *big.Int) { f.gasFeeCap = v },
+		"Value":     func(f *fakeTxDataSource, v *big.Int) { f.value = v },
+		"V":         func(f *fakeTxDataSource, v *big.Int) { f.v = v },
+		"R":         func(f *fakeTxDataSource, v *big.Int) { f.r = v },
+		"S":         func(f *fakeTxDataSource, v *big.Int) { f.s = v },
+	}
+
+	for fieldName, setField := range fields {
+		for valueName, value := range values {
+			t.Run(fmt.Sprintf("%s=%s", fieldName, valueName), func(t *testing.T) {
+				txDataSource := &fakeTxDataSource{
+					txType: types.SetCodeTxType,
+					to:     &common.Address{0x01},
+				}
+				setField(txDataSource, value.value)
+
+				_, err := getTxDataInternal(txDataSource)
+				if value.valid {
+					require.NoError(t, err)
+				} else {
+					require.Error(t, err, fmt.Sprintf("out of uint256 domain: %v", value))
+				}
+			})
+		}
+	}
+}
+
+func Test_toUint256_ValidInputs_ProducesSameValueResult(t *testing.T) {
 	tests := map[string]struct {
 		input    *big.Int
 		expected *uint256.Int
@@ -258,7 +382,8 @@ func Test_mustToUint256_ValidInputs_ProducesSameValueResult(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			result := mustToUint256(test.input)
+			result, err := toUint256(test.input)
+			require.NoError(t, err)
 			require.Equal(t, test.expected, result)
 			if test.input != nil {
 				test.input.SetInt64(0)                  // mutate input to check for copying
@@ -268,7 +393,7 @@ func Test_mustToUint256_ValidInputs_ProducesSameValueResult(t *testing.T) {
 	}
 }
 
-func Test_mustToUint256_InvalidInputs_Panics(t *testing.T) {
+func Test_toUint256_InvalidInputs_ReportsError(t *testing.T) {
 	tests := map[string]*big.Int{
 		"-1":     new(big.Int).Sub(big.NewInt(0), big.NewInt(1)),
 		"-20":    new(big.Int).Sub(big.NewInt(0), big.NewInt(20)),
@@ -278,11 +403,88 @@ func Test_mustToUint256_InvalidInputs_Panics(t *testing.T) {
 
 	for name, input := range tests {
 		t.Run(name, func(t *testing.T) {
-			require.PanicsWithValue(t,
-				fmt.Sprintf("out of uint256 domain: %v", input), func() {
-					mustToUint256(input)
-				},
-			)
+			_, err := toUint256(input)
+			require.Error(t, err, fmt.Sprintf("out of uint256 domain: %v", input))
 		})
 	}
+}
+
+type fakeTxDataSource struct {
+	chainId       *big.Int
+	nonce         uint64
+	gasPrice      *big.Int
+	gasFeeCap     *big.Int
+	gasTipCap     *big.Int
+	gas           uint64
+	to            *common.Address
+	value         *big.Int
+	data          []byte
+	accessList    types.AccessList
+	blobGasFeeCap *big.Int
+	blobHashes    []common.Hash
+	authList      []types.SetCodeAuthorization
+	v             *big.Int
+	r             *big.Int
+	s             *big.Int
+	txType        uint8
+}
+
+func (f *fakeTxDataSource) ChainId() *big.Int {
+	return f.chainId
+}
+
+func (f *fakeTxDataSource) Nonce() uint64 {
+	return f.nonce
+}
+
+func (f *fakeTxDataSource) GasPrice() *big.Int {
+	return f.gasPrice
+}
+
+func (f *fakeTxDataSource) GasFeeCap() *big.Int {
+	return f.gasFeeCap
+}
+
+func (f *fakeTxDataSource) GasTipCap() *big.Int {
+	return f.gasTipCap
+}
+
+func (f *fakeTxDataSource) Gas() uint64 {
+	return f.gas
+}
+
+func (f *fakeTxDataSource) To() *common.Address {
+	return f.to
+}
+
+func (f *fakeTxDataSource) Value() *big.Int {
+	return f.value
+}
+
+func (f *fakeTxDataSource) Data() []byte {
+	return f.data
+}
+
+func (f *fakeTxDataSource) AccessList() types.AccessList {
+	return f.accessList
+}
+
+func (f *fakeTxDataSource) BlobGasFeeCap() *big.Int {
+	return f.blobGasFeeCap
+}
+
+func (f *fakeTxDataSource) BlobHashes() []common.Hash {
+	return f.blobHashes
+}
+
+func (f *fakeTxDataSource) SetCodeAuthorizations() []types.SetCodeAuthorization {
+	return f.authList
+}
+
+func (f *fakeTxDataSource) Type() uint8 {
+	return f.txType
+}
+
+func (f *fakeTxDataSource) RawSignatureValues() (v, r, s *big.Int) {
+	return f.v, f.r, f.s
 }
