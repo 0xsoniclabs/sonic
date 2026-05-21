@@ -497,3 +497,69 @@ func expectCanBeDeserialized[T any](t testing.TB, result *T, jsonValue string) {
 	err := json.Unmarshal([]byte(jsonValue), result)
 	require.NoError(t, err, "failed to unmarshal JSON into %T", result)
 }
+
+func Test_RPCExecutionPlanComposable_UnmarshalJSON_FailsOnInvalidTopLevel(t *testing.T) {
+	// Top-level structure cannot be deserialized (not valid JSON at all, or
+	// wrong types for known fields).
+	tests := map[string]string{
+		"not json at all":        `not json`,
+		"top level is an array":  `[]`,
+		"blockRange wrong type":  `{"blockRange": "invalid"}`,
+		"steps is not an array":  `{"steps": 123}`,
+		"oneOf is not a boolean": `{"oneOf": "yes", "steps": []}`,
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			var plan RPCExecutionPlanComposable
+			err := json.Unmarshal([]byte(input), &plan)
+			require.Error(t, err)
+		})
+	}
+}
+
+func Test_RPCExecutionPlanComposable_UnmarshalJSON_FailsOnInvalidFirstLevelStep(t *testing.T) {
+	// A step at the first level of "steps" cannot be deserialized.
+	tests := map[string]string{
+		"step is not an object": `{
+			"steps": [123]
+		}`,
+		"step has invalid from field": `{
+			"steps": [{"from": "not-an-address", "hash": "0x0000000000000000000000000000000000000000000000000000000000000000"}]
+		}`,
+		"step has nested steps with invalid content": `{
+			"steps": [{"steps": [true]}]
+		}`,
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			var plan RPCExecutionPlanComposable
+			err := json.Unmarshal([]byte(input), &plan)
+			require.Error(t, err)
+		})
+	}
+}
+
+func Test_RPCExecutionPlanComposable_UnmarshalJSON_FailsOnInvalidNestedLevelStep(t *testing.T) {
+	// A step at a deeper nested level cannot be deserialized.
+	tests := map[string]string{
+		"nested group contains non-object element": `{
+			"steps": [{"steps": [{"steps": [42]}]}]
+		}`,
+		"nested group contains invalid leaf": `{
+			"steps": [{"steps": [{"steps": [{"from": "bad", "hash": "0x00"}]}]}]
+		}`,
+		"deeply nested group has malformed steps array": `{
+			"steps": [{"steps": [{"steps": "not-an-array"}]}]
+		}`,
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			var plan RPCExecutionPlanComposable
+			err := json.Unmarshal([]byte(input), &plan)
+			require.Error(t, err)
+		})
+	}
+}
