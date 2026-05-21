@@ -740,8 +740,8 @@ func Test_trialRunBundleInternal_RejectsBundlesWhereEfficiencyIsBelowThreshold(t
 				db,
 				factory,
 				rand.Read,
-				evaluatedBundlesCount,
-				evaluatedBundlesExecutionCost,
+				evaluatedBundlesCounter,
+				evaluatedBundlesExecutionCostCounter,
 			)
 			require.Equal(t, tc.expectAccept, valid)
 
@@ -879,7 +879,7 @@ func Test_trialRunBundleInternal_CreatesSnapshotAndRevertsAfterExecution(t *test
 		Number: big.NewInt(0),
 	})
 
-	trialRunBundleInternal(nil, chainState, db, factory, rand.Read, evaluatedBundlesCount, evaluatedBundlesExecutionCost)
+	trialRunBundleInternal(nil, chainState, db, factory, rand.Read, evaluatedBundlesCounter, evaluatedBundlesExecutionCostCounter)
 }
 
 func Test_trialRunBundleInternal_UsesRandomSourceToFillPrevRandao(t *testing.T) {
@@ -927,7 +927,7 @@ func Test_trialRunBundleInternal_UsesRandomSourceToFillPrevRandao(t *testing.T) 
 				Number: big.NewInt(0),
 			})
 
-			trialRunBundleInternal(nil, chainState, db, factory, read, evaluatedBundlesCount, evaluatedBundlesExecutionCost)
+			trialRunBundleInternal(nil, chainState, db, factory, read, evaluatedBundlesCounter, evaluatedBundlesExecutionCostCounter)
 			require.True(called)
 		})
 	}
@@ -952,7 +952,7 @@ func Test_trialRunBundleInternal_FailsIfRandomSourceFails(t *testing.T) {
 				return tc.n, tc.err
 			}
 
-			gasEfficiency, valid := trialRunBundleInternal(nil, chain, nil, nil, readRandom, evaluatedBundlesCount, evaluatedBundlesExecutionCost)
+			gasEfficiency, valid := trialRunBundleInternal(nil, chain, nil, nil, readRandom, evaluatedBundlesCounter, evaluatedBundlesExecutionCostCounter)
 			require.False(t, valid)
 			require.Nil(t, gasEfficiency)
 		})
@@ -999,7 +999,7 @@ func Test_trialRunBundleInternal_DerivesHeaderFieldsFromChainState(t *testing.T)
 	db.EXPECT().InterTxSnapshot()
 	db.EXPECT().RevertToInterTxSnapshot(any)
 
-	trialRunBundleInternal(nil, chainState, db, factory, rand.Read, evaluatedBundlesCount, evaluatedBundlesExecutionCost)
+	trialRunBundleInternal(nil, chainState, db, factory, rand.Read, evaluatedBundlesCounter, evaluatedBundlesExecutionCostCounter)
 }
 
 func Test_trialRunBundleInternal_ForwardsEnvelopeToProcessor(t *testing.T) {
@@ -1025,7 +1025,7 @@ func Test_trialRunBundleInternal_ForwardsEnvelopeToProcessor(t *testing.T) {
 	db.EXPECT().InterTxSnapshot()
 	db.EXPECT().RevertToInterTxSnapshot(any)
 
-	trialRunBundleInternal(myEnvelope, chainState, db, factory, rand.Read, evaluatedBundlesCount, evaluatedBundlesExecutionCost)
+	trialRunBundleInternal(myEnvelope, chainState, db, factory, rand.Read, evaluatedBundlesCounter, evaluatedBundlesExecutionCostCounter)
 }
 
 func Test_trialRunBundleInternal_UsesPresentsOfReceiptToDecideResult(t *testing.T) {
@@ -1083,7 +1083,7 @@ func Test_trialRunBundleInternal_UsesPresentsOfReceiptToDecideResult(t *testing.
 			db.EXPECT().InterTxSnapshot()
 			db.EXPECT().RevertToInterTxSnapshot(any)
 
-			_, valid := trialRunBundleInternal(myEnvelope, chainState, db, factory, rand.Read, evaluatedBundlesCount, evaluatedBundlesExecutionCost)
+			_, valid := trialRunBundleInternal(myEnvelope, chainState, db, factory, rand.Read, evaluatedBundlesCounter, evaluatedBundlesExecutionCostCounter)
 			require.Equal(t, tc.expectedResult, valid)
 		})
 	}
@@ -1412,7 +1412,7 @@ func Test_trialRunBundleInternal_ReturnsCorrectGasEfficiency(t *testing.T) {
 			db.EXPECT().InterTxSnapshot()
 			db.EXPECT().RevertToInterTxSnapshot(any)
 
-			gasEfficiency, valid := trialRunBundleInternal(envelope, chainState, db, factory, rand.Read, evaluatedBundlesCount, evaluatedBundlesExecutionCost)
+			gasEfficiency, valid := trialRunBundleInternal(envelope, chainState, db, factory, rand.Read, evaluatedBundlesCounter, evaluatedBundlesExecutionCostCounter)
 			require.Equal(t, tc.expectedAccept, valid)
 			require.InDelta(t, tc.expectedEfficiency, *gasEfficiency, 1e-9)
 		})
