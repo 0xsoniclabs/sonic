@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
@@ -35,10 +36,15 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 )
 
 //go:generate mockgen -source=state_processor.go -destination=state_processor_mock.go -package=evmcore
+
+var (
+	rolledBackBundleCounter = utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles/rolledBack", nil))
+)
 
 // StateProcessor is a basic Processor, which takes care of transitioning
 // state from one point to another.
@@ -155,7 +161,7 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	// Iterate over and process the individual transactions
 	return runTransactions(newRunContext(
 		signer, header.BaseFee, statedb, gp, blockNumber, block.Time, usedGas,
-		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}}, p.forReplay,
+		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}}, p.forReplay, rolledBackBundleCounter,
 	), block.Transactions, trueTxOffset, remainingSize)
 }
 
@@ -163,17 +169,18 @@ func (p *StateProcessor) ProcessWithDifficulty(
 // block. It is used as input to the runTransactions helper function and passed
 // along the processing layers to make the parameters available where needed.
 type runContext struct {
-	signer      types.Signer
-	baseFee     *big.Int
-	statedb     state.StateDB
-	gasPool     *core.GasPool
-	blockNumber *big.Int
-	blockTime   inter.Timestamp
-	usedGas     *uint64
-	onNewLog    func(*core_types.Log)
-	upgrades    opera.Upgrades
-	runner      _transactionRunner
-	forReplay   bool // Whether the context is used for replaying transactions or for head state processing.
+	signer                  types.Signer
+	baseFee                 *big.Int
+	statedb                 state.StateDB
+	gasPool                 *core.GasPool
+	blockNumber             *big.Int
+	blockTime               inter.Timestamp
+	usedGas                 *uint64
+	onNewLog                func(*core_types.Log)
+	upgrades                opera.Upgrades
+	runner                  _transactionRunner
+	forReplay               bool // Whether the context is used for replaying transactions or for head state processing.
+	rolledBackBundleCounter utils.MetricsCounter
 }
 
 // newRunContext creates a new runContext instance bundling the given parameters
@@ -192,19 +199,21 @@ func newRunContext(
 	upgrades opera.Upgrades,
 	runner _transactionRunner,
 	isReplay bool,
+	metricsRolledBackBundleCounter utils.MetricsCounter,
 ) *runContext {
 	return &runContext{
-		signer:      signer,
-		baseFee:     baseFee,
-		statedb:     statedb,
-		gasPool:     gasPool,
-		blockNumber: blockNumber,
-		blockTime:   blockTime,
-		usedGas:     usedGas,
-		onNewLog:    onNewLog,
-		upgrades:    upgrades,
-		runner:      runner,
-		forReplay:   isReplay,
+		signer:                  signer,
+		baseFee:                 baseFee,
+		statedb:                 statedb,
+		gasPool:                 gasPool,
+		blockNumber:             blockNumber,
+		blockTime:               blockTime,
+		usedGas:                 usedGas,
+		onNewLog:                onNewLog,
+		upgrades:                upgrades,
+		runner:                  runner,
+		forReplay:               isReplay,
+		rolledBackBundleCounter: metricsRolledBackBundleCounter,
 	}
 }
 
@@ -502,6 +511,10 @@ func (r *transactionRunner) runTransactionBundleInternal(
 		sizeLimit:    sizeLimit,
 	}
 	if !bundle.RunBundle(txBundle, &runner) {
+
+		// Track unsuccessful bundle execution in metrics.
+		ctxt.rolledBackBundleCounter.Inc(1)
+
 		// Mark the execution plan as processed in the StateDB to prevent processing
 		// another bundle with the same execution plan in the same block. Also keep
 		// track of the position of the bundle in the block.
@@ -758,7 +771,7 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber, tp.blockTime,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
-		false,
+		false, rolledBackBundleCounter,
 	), []*types.Transaction{tx}, i, math.MaxUint64)
 }
 

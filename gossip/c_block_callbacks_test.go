@@ -1627,3 +1627,181 @@ func (p *fakePayload) Sig() inter.Signature {
 func (p *fakePayload) GasPowerUsed() uint64 {
 	return p.gasUsed
 }
+
+func TestUpdateTransactionMetrics_CountsBundleAndSponsoredTransactions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	bundleAddr := bundle.BundleProcessor
+	envelopeTx := types.NewTx(&types.LegacyTx{To: &bundleAddr, Nonce: 1})
+	sponsoredTx := types.NewTx(&types.LegacyTx{Nonce: 2, GasPrice: big.NewInt(0)})
+	regularTx := types.NewTx(&types.LegacyTx{Nonce: 3, GasPrice: big.NewInt(1)})
+
+	inputTransactions := []*types.Transaction{envelopeTx, sponsoredTx, regularTx}
+
+	summary := evmcore.ProcessSummary{
+		ProcessedTransactions: []evmcore.ProcessedTransaction{
+			{Transaction: envelopeTx, Receipt: &types.Receipt{}},
+			{Transaction: sponsoredTx, Receipt: &types.Receipt{}},
+			{Transaction: regularTx, Receipt: &types.Receipt{}},
+		},
+	}
+
+	upgrades := opera.Upgrades{Allegro: true, Brio: true, GasSubsidies: true, TransactionBundles: true}
+
+	sponsoredCounter := utils.NewMockMetricsCounter(ctrl)
+	skippedSponsoredCounter := utils.NewMockMetricsCounter(ctrl)
+	bundleCounter := utils.NewMockMetricsCounter(ctrl)
+
+	// Expect bundle and sponsored counters to be incremented
+	bundleCounter.EXPECT().Inc(int64(1))
+	sponsoredCounter.EXPECT().Inc(int64(1))
+	// No skipped counters should be called since all have successful receipts
+
+	updateTransactionMetrics(inputTransactions, summary, upgrades, sponsoredCounter, skippedSponsoredCounter, bundleCounter)
+}
+
+func TestUpdateTransactionMetrics_CountsSkippedSponsoredTransactions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	sponsoredTx := types.NewTx(&types.LegacyTx{Nonce: 1, GasPrice: big.NewInt(0)})
+
+	inputTransactions := []*types.Transaction{sponsoredTx}
+
+	summary := evmcore.ProcessSummary{
+		ProcessedTransactions: []evmcore.ProcessedTransaction{
+			{Transaction: sponsoredTx, Receipt: nil}, // skipped
+		},
+	}
+
+	upgrades := opera.Upgrades{Allegro: true, Brio: true, GasSubsidies: true, TransactionBundles: true}
+
+	sponsoredCounter := utils.NewMockMetricsCounter(ctrl)
+	skippedSponsoredCounter := utils.NewMockMetricsCounter(ctrl)
+	bundleCounter := utils.NewMockMetricsCounter(ctrl)
+
+	sponsoredCounter.EXPECT().Inc(int64(1))
+	skippedSponsoredCounter.EXPECT().Inc(int64(1))
+
+	updateTransactionMetrics(inputTransactions, summary, upgrades, sponsoredCounter, skippedSponsoredCounter, bundleCounter)
+}
+
+func TestUpdateTransactionMetrics_DoesNotCountWithoutUpgrades(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	bundleAddr := bundle.BundleProcessor
+	envelopeTx := types.NewTx(&types.LegacyTx{To: &bundleAddr, Nonce: 1})
+	sponsoredTx := types.NewTx(&types.LegacyTx{Nonce: 2, GasPrice: big.NewInt(0)})
+
+	inputTransactions := []*types.Transaction{envelopeTx, sponsoredTx}
+
+	summary := evmcore.ProcessSummary{
+		ProcessedTransactions: []evmcore.ProcessedTransaction{
+			{Transaction: envelopeTx, Receipt: nil},
+			{Transaction: sponsoredTx, Receipt: nil},
+		},
+	}
+
+	// Without upgrades, no counters should be touched
+	upgrades := opera.Upgrades{}
+
+	sponsoredCounter := utils.NewMockMetricsCounter(ctrl)
+	skippedSponsoredCounter := utils.NewMockMetricsCounter(ctrl)
+	bundleCounter := utils.NewMockMetricsCounter(ctrl)
+
+	// No expectations set — any call would fail the test
+
+	updateTransactionMetrics(inputTransactions, summary, upgrades, sponsoredCounter, skippedSponsoredCounter, bundleCounter)
+}
+
+func TestUpdateBundleEfficiencyHistogram_ComputesEfficiencyForBundles(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	histogram := utils.NewMockMetricsHistogramWrapper(ctrl)
+
+	bundleAddr := bundle.BundleProcessor
+	envelopeTx := types.NewTx(&types.LegacyTx{To: &bundleAddr, Nonce: 1})
+	innerTx1 := types.NewTx(&types.LegacyTx{Nonce: 10})
+	innerTx2 := types.NewTx(&types.LegacyTx{Nonce: 11})
+
+	summary := evmcore.ProcessSummary{
+		ProcessedTransactions: []evmcore.ProcessedTransaction{
+			{Transaction: innerTx1, Receipt: &types.Receipt{GasUsed: 50_000}},
+			{Transaction: innerTx2, Receipt: &types.Receipt{GasUsed: 30_000}},
+		},
+		ExecutionCost: map[common.Hash]core_types.ExecutionCost{
+			innerTx1.Hash(): 100_000,
+			innerTx2.Hash(): 100_000,
+		},
+		CausedBy: map[common.Hash]common.Hash{
+			innerTx1.Hash(): envelopeTx.Hash(),
+			innerTx2.Hash(): envelopeTx.Hash(),
+		},
+	}
+
+	// efficiency = (50_000 + 30_000) / (100_000 + 100_000) = 0.4
+	histogram.EXPECT().Update(0.4)
+
+	updateBundleEfficiencyHistogram(summary, []common.Hash{envelopeTx.Hash()}, histogram)
+}
+
+func TestUpdateBundleEfficiencyHistogram_HandlesMultipleBundles(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	histogram := utils.NewMockMetricsHistogramWrapper(ctrl)
+
+	bundleAddr := bundle.BundleProcessor
+	envelope1 := types.NewTx(&types.LegacyTx{To: &bundleAddr, Nonce: 1})
+	envelope2 := types.NewTx(&types.LegacyTx{To: &bundleAddr, Nonce: 2})
+	innerTx1 := types.NewTx(&types.LegacyTx{Nonce: 10})
+	innerTx2 := types.NewTx(&types.LegacyTx{Nonce: 20})
+
+	summary := evmcore.ProcessSummary{
+		ProcessedTransactions: []evmcore.ProcessedTransaction{
+			{Transaction: innerTx1, Receipt: &types.Receipt{GasUsed: 80_000}},
+			{Transaction: innerTx2, Receipt: &types.Receipt{GasUsed: 20_000}},
+		},
+		ExecutionCost: map[common.Hash]core_types.ExecutionCost{
+			innerTx1.Hash(): 100_000,
+			innerTx2.Hash(): 100_000,
+		},
+		CausedBy: map[common.Hash]common.Hash{
+			innerTx1.Hash(): envelope1.Hash(),
+			innerTx2.Hash(): envelope2.Hash(),
+		},
+	}
+
+	// Bundle 1: 80_000 / 100_000 = 0.8
+	// Bundle 2: 20_000 / 100_000 = 0.2
+	histogram.EXPECT().Update(0.8)
+	histogram.EXPECT().Update(0.2)
+
+	updateBundleEfficiencyHistogram(summary, []common.Hash{envelope1.Hash(), envelope2.Hash()}, histogram)
+}
+
+func TestUpdateBundleEfficiencyHistogram_SkippedInnerTransactionsContributeOnlyToExecutionCost(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	histogram := utils.NewMockMetricsHistogramWrapper(ctrl)
+
+	bundleAddr := bundle.BundleProcessor
+	envelopeTx := types.NewTx(&types.LegacyTx{To: &bundleAddr, Nonce: 1})
+	innerTx1 := types.NewTx(&types.LegacyTx{Nonce: 10})
+	innerTx2 := types.NewTx(&types.LegacyTx{Nonce: 11})
+
+	summary := evmcore.ProcessSummary{
+		ProcessedTransactions: []evmcore.ProcessedTransaction{
+			{Transaction: innerTx1, Receipt: &types.Receipt{GasUsed: 50_000}},
+			{Transaction: innerTx2, Receipt: nil}, // skipped, no gas used but has exec cost
+		},
+		ExecutionCost: map[common.Hash]core_types.ExecutionCost{
+			innerTx1.Hash(): 100_000,
+			innerTx2.Hash(): 100_000,
+		},
+		CausedBy: map[common.Hash]common.Hash{
+			innerTx1.Hash(): envelopeTx.Hash(),
+			innerTx2.Hash(): envelopeTx.Hash(),
+		},
+	}
+
+	// efficiency = 50_000 / (100_000 + 100_000) = 0.25
+	histogram.EXPECT().Update(0.25)
+
+	updateBundleEfficiencyHistogram(summary, []common.Hash{envelopeTx.Hash()}, histogram)
+}

@@ -31,6 +31,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -2412,15 +2413,19 @@ func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResu
 		}),
 	)
 
+	counter := utils.NewMockMetricsCounter(ctrl)
+	counter.EXPECT().Inc(int64(1))
+
 	gasPool := core.NewGasPool(1_000_000)
 	context := &runContext{
-		statedb:     state,
-		signer:      signer,
-		baseFee:     big.NewInt(1),
-		usedGas:     new(uint64),
-		gasPool:     gasPool,
-		upgrades:    opera.Upgrades{TransactionBundles: true},
-		blockNumber: big.NewInt(0),
+		statedb:                 state,
+		signer:                  signer,
+		baseFee:                 big.NewInt(1),
+		usedGas:                 new(uint64),
+		gasPool:                 gasPool,
+		upgrades:                opera.Upgrades{TransactionBundles: true},
+		blockNumber:             big.NewInt(0),
+		rolledBackBundleCounter: counter,
 	}
 
 	runner := &transactionRunner{evm: evm}
@@ -2455,17 +2460,21 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 		}),
 	)
 
+	// No calls in case of successful execution.
+	rolledBackBundlesCounter := utils.NewMockMetricsCounter(ctrl)
+
 	runner := &transactionRunner{evm: evm}
 
 	context := &runContext{
-		statedb:     state,
-		signer:      signer,
-		baseFee:     big.NewInt(1),
-		usedGas:     new(uint64),
-		gasPool:     core.NewGasPool(1_000_000),
-		upgrades:    opera.Upgrades{TransactionBundles: true},
-		blockNumber: big.NewInt(0),
-		runner:      runner,
+		statedb:                 state,
+		signer:                  signer,
+		baseFee:                 big.NewInt(1),
+		usedGas:                 new(uint64),
+		gasPool:                 core.NewGasPool(1_000_000),
+		upgrades:                opera.Upgrades{TransactionBundles: true},
+		blockNumber:             big.NewInt(0),
+		runner:                  runner,
+		rolledBackBundleCounter: rolledBackBundlesCounter,
 	}
 
 	txs := txBundle.GetTransactionsInReferencedOrder()
@@ -2579,6 +2588,9 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 				execResult, core_types.TransactionResultSuccessful,
 			)
 
+			// No calls in case of successful execution.
+			rolledBackBundleCounter := utils.NewMockMetricsCounter(ctrl)
+
 			context := &runContext{
 				statedb: state,
 				signer:  signer,
@@ -2588,8 +2600,9 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 					GasSubsidies:       true,
 					TransactionBundles: true,
 				},
-				blockNumber: big.NewInt(0),
-				runner:      innerRunner,
+				blockNumber:             big.NewInt(0),
+				runner:                  innerRunner,
+				rolledBackBundleCounter: rolledBackBundleCounter,
 			}
 
 			runner := &transactionRunner{}
@@ -3668,13 +3681,14 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 			signer := types.LatestSignerForChainID(big.NewInt(1))
 			upgrades := opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true}
 			ctxt := &runContext{
-				signer:      signer,
-				usedGas:     new(uint64),
-				gasPool:     core.NewGasPool(1_000_000),
-				upgrades:    upgrades,
-				blockNumber: big.NewInt(0),
-				statedb:     stateDb,
-				runner:      runner,
+				signer:                  signer,
+				usedGas:                 new(uint64),
+				gasPool:                 core.NewGasPool(1_000_000),
+				upgrades:                upgrades,
+				blockNumber:             big.NewInt(0),
+				statedb:                 stateDb,
+				runner:                  runner,
+				rolledBackBundleCounter: rolledBackBundleCounter,
 			}
 
 			// the actual execution of the test case

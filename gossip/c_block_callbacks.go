@@ -31,6 +31,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/dag"
@@ -77,6 +78,16 @@ var (
 
 	confirmedEventsMeter = metrics.GetOrRegisterMeter("chain/events/confirmed", nil) // events received from lachesis
 	spilledEventsMeter   = metrics.GetOrRegisterMeter("chain/events/spilled", nil)   // tx excluded because of MaxBlockGas
+
+	sponsoredCounter        = utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/sponsored", nil))
+	skippedSponsoredCounter = utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/sponsored/skipped", nil))
+	bundleCounter           = utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles", nil))
+
+	effectiveBundleGasHistogram = utils.MetricsHistogramWrapper(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
+		Name:    "chain_bundle_gas_effective",
+		Help:    "Effective gas usage percentage for a bundle transactions",
+		Buckets: prometheus.LinearBuckets(0.00, 0.01, 100), // Buckets [0.00, 0.01, ..., 0.99, +inf]
+	}))
 )
 
 type ExtendedTxPosition struct {
@@ -646,7 +657,57 @@ func processUserTransactions(
 		}
 	}
 
+	updateTransactionMetrics(orderedTxs, summary, upgrades, sponsoredCounter, skippedSponsoredCounter, bundleCounter)
+
 	return summary.CausedBy
+}
+
+func updateTransactionMetrics(inputTransactions []*types.Transaction, summary evmcore.ProcessSummary, upgrades opera.Upgrades,
+	sponsoredTxCounter, skippedSponsoredTxCounter, bundleTxCounter utils.MetricsCounter) {
+
+	processed := make(map[common.Hash]*types.Receipt, len(summary.ProcessedTransactions))
+	for _, tx := range summary.ProcessedTransactions {
+		processed[tx.Transaction.Hash()] = tx.Receipt
+	}
+
+	bundleTxs := []common.Hash{}
+	for _, tx := range inputTransactions {
+		txHash := tx.Hash()
+		if upgrades.Brio && upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
+			bundleTxs = append(bundleTxs, txHash)
+			bundleTxCounter.Inc(1)
+		} else if upgrades.Allegro && upgrades.GasSubsidies && tx.GasPrice().BitLen() == 0 {
+			sponsoredTxCounter.Inc(1)
+			if receipt, found := processed[txHash]; found && receipt == nil {
+				skippedSponsoredTxCounter.Inc(1)
+			}
+		}
+	}
+
+	updateBundleEfficiencyHistogram(summary, bundleTxs, effectiveBundleGasHistogram)
+}
+
+func updateBundleEfficiencyHistogram(summary evmcore.ProcessSummary, bundleTxs []common.Hash, histogram utils.MetricsHistogramWrapper) {
+	for _, envelopeHash := range bundleTxs {
+		var gasUsed uint64
+		var totalExecCost core_types.ExecutionCost
+
+		for _, processed := range summary.ProcessedTransactions {
+			txHash := processed.Transaction.Hash()
+			if origin, ok := summary.CausedBy[txHash]; ok && origin == envelopeHash {
+				if processed.Receipt != nil {
+					gasUsed += processed.Receipt.GasUsed
+				}
+				totalExecCost += summary.ExecutionCost[txHash]
+			}
+		}
+
+		if totalExecCost == 0 {
+			continue
+		}
+		efficiency := float64(gasUsed) / float64(totalExecCost)
+		histogram.Update(efficiency)
+	}
 }
 
 // resolveRandaoMix computes the randao mix to be used by the block processor

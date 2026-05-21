@@ -1495,7 +1495,7 @@ func Test_trialRunBundleInternal_IncrementsMetrics(t *testing.T) {
 	).Build()
 
 	processedTx := ProcessedTransaction{} // tx after subgroup succeeds
-	expectedExecCost := core_types.ExecutionCost(50_000)
+	expectedExecCost := map[common.Hash]core_types.ExecutionCost{{0x01}: 50_000}
 
 	chainState := NewMockChainStateForBundleEval(ctrl)
 	chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
@@ -1520,7 +1520,7 @@ func Test_trialRunBundleInternal_IncrementsMetrics(t *testing.T) {
 	gasMock := utils.NewMockMetricsCounter(ctrl)
 
 	countMock.EXPECT().Inc(int64(1))
-	gasMock.EXPECT().Inc(int64(expectedExecCost))
+	gasMock.EXPECT().Inc(int64(expectedExecCost[common.Hash{0x01}]))
 
 	trialRunBundleInternal(
 		envelope, chainState, db, factory, rand.Read,
