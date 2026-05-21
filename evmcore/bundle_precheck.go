@@ -34,7 +34,13 @@ import (
 )
 
 var (
-	evaluatedBundlesCount         = metrics.GetOrRegisterCounter("bundles/pre_check/count", nil)
+	// evaluatedBundleTxsCount is a counter of the number of bundle envelopes
+	// that have been trial-run during bundle pre-checks.
+	evaluatedBundlesCount = metrics.GetOrRegisterCounter("bundles/pre_check/count", nil)
+	// evaluatedBundlesExecutionCost is a counter of the total execution cost in gas of
+	// bundle envelopes that have been trial-run during bundle pre-checks.
+	// This counter reports effective execution cost accounting for rolled-back transactions,
+	// so it reflects the actual resource consumption of the trial runs.
 	evaluatedBundlesExecutionCost = metrics.GetOrRegisterCounter("bundles/pre_check/execution_cost", nil)
 )
 
