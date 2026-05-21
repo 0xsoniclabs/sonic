@@ -17,7 +17,7 @@
 package tests
 
 import (
-	"errors"
+	"context"
 	"math/big"
 	"sync"
 	"testing"
@@ -82,7 +82,7 @@ func TestLogBloom_query(t *testing.T) {
 	contract, _, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
 	require.NoError(err)
 
-	stopTest := make(chan struct{})
+	stopTest, cancelTest := context.WithCancel(t.Context())
 	testDone := make(chan struct{})
 	// testFunction monitors the latest available block, ensuring it has logs.
 	testFunction := func(blockNumber uint64) {
@@ -92,23 +92,29 @@ func TestLogBloom_query(t *testing.T) {
 		defer client.Close()
 
 		for {
-			select {
-			case <-stopTest:
+			err := WaitFor(stopTest, func(ctx context.Context) (bool, error) {
+				block, err := client.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
+				if err != nil {
+					return false, nil
+				}
+
+				// Only assert non-empty bloom for blocks that contain transactions,
+				// since the node may seal empty blocks between our transactions.
+				if len(block.Transactions()) > 0 {
+					require.NotEqual(
+						types.Bloom{},
+						block.Bloom(),
+						"expected non-empty bloom in block %d", block.NumberU64(),
+					)
+				}
+
+				blockNumber++
+				return true, nil
+			})
+			if err != nil {
+				require.ErrorIs(err, context.Canceled, "unexpected error while waiting for block: ")
 				return
-			default:
 			}
-
-			block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
-			if errors.Is(err, ethereum.NotFound) {
-				continue
-			}
-			require.NoError(err)
-
-			if (types.Bloom{} == block.Bloom()) {
-				t.Errorf("expected non-empty bloom in block %d, got empty", block.NumberU64())
-			}
-
-			blockNumber++
 		}
 	}
 	launchTest := sync.Once{}
@@ -142,6 +148,6 @@ func TestLogBloom_query(t *testing.T) {
 			})
 	}
 
-	close(stopTest)
+	cancelTest()
 	<-testDone
 }
