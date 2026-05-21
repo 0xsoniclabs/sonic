@@ -1410,6 +1410,32 @@ func TestProcessUserTransactions_SkipUserTransactionIfInternalTransactionsExceed
 	}
 }
 
+func TestProcessUserTransactions_InternalTxsExceedingBlockSizePassesZeroRemainingSize(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+	blockBuilder := inter.NewBlockBuilder()
+
+	// Add two internal transactions: one that nearly fills the block, and one that exceeds the remaining size.
+	smallTx := types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize-rlpEncodedMaxHeaderSizeInBytes-100)})
+	overflowTx := types.NewTx(&types.LegacyTx{Data: make([]byte, 200)})
+	blockBuilder.AddTransaction(smallTx, &types.Receipt{})
+	blockBuilder.AddTransaction(overflowTx, &types.Receipt{})
+
+	userTx := types.NewTx(&types.LegacyTx{})
+	orderedTxs := []*types.Transaction{userTx}
+	upgrades := opera.Upgrades{Brio: true}
+
+	// After the overflow is detected, remainingSize is set to 0
+	evmProcessor.EXPECT().
+		Execute(orderedTxs, uint64(10000), gomock.Any()).
+		DoAndReturn(func(txs []*types.Transaction, gas uint64, size uint64) evmcore.ProcessSummary {
+			require.Equal(t, uint64(0), size) // Ensure the user transactions are processed with zero remaining size
+			return evmcore.ProcessSummary{}
+		})
+
+	processUserTransactions(evmProcessor, blockBuilder, orderedTxs, 10000, upgrades)
+}
+
 func TestProcessUserTransactions_RecordsOriginTransactionForAcceptedProcessedTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)

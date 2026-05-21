@@ -4393,3 +4393,41 @@ func TestRunTransactions_SmallerTransactionsAreProcessedAfterLargeTransactionExc
 		{Transaction: tx1, Receipt: &types.Receipt{}},
 	}, summary.ProcessedTransactions)
 }
+
+func TestRunTransactions_RemainingSizeIsSetToZeroWhenProcessedTxExceedsIt(t *testing.T) {
+	tx0 := getRegularTransaction(t)
+	tx1 := getRegularTransaction(t)
+
+	// Set remaining size smaller than tx0's size. The mock will still return a
+	// receipt (simulating a transaction that passed the runner's size check but
+	// exceeds the tracked remaining budget).
+	remainingSize := tx0.Size() - 1
+
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+
+	context := &runContext{
+		signer:   types.LatestSignerForChainID(big.NewInt(1)),
+		upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
+		runner:   runner,
+	}
+
+	gomock.InOrder(
+		runner.EXPECT().runRegularTransaction(context, tx0, 0, remainingSize).Return(
+			ProcessedTransaction{Transaction: tx0, Receipt: &types.Receipt{}},
+			core_types.TransactionResultSuccessful,
+		),
+
+		// After tx0 exceeds remaining size, remainingSize becomes 0.
+		// The next transaction should be called with sizeLimit = 0.
+		runner.EXPECT().runRegularTransaction(context, tx1, 1, uint64(0)).Return(
+			ProcessedTransaction{Transaction: tx1, Receipt: nil},
+			core_types.TransactionResultInvalid,
+		),
+	)
+
+	summary := runTransactions(context, []*types.Transaction{tx0, tx1}, 0, remainingSize)
+	require.Len(t, summary.ProcessedTransactions, 2)
+	require.NotNil(t, summary.ProcessedTransactions[0].Receipt)
+	require.Nil(t, summary.ProcessedTransactions[1].Receipt)
+}
