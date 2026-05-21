@@ -1460,6 +1460,36 @@ func TestProcessUserTransactions_RecordsOriginTransactionForAcceptedProcessedTra
 	require.Equal(t, wantCausedBy, gotCausedBy)
 }
 
+func TestProcessUserTransactions_BlockSizeLimitIsEnforcedStartingFromBrio(t *testing.T) {
+	tests := map[string]struct {
+		upgrades          opera.Upgrades
+		expectedSizeLimit uint64
+	}{
+		"before Brio, no size limit is enforced": {
+			upgrades:          opera.Upgrades{Brio: false},
+			expectedSizeLimit: math.MaxUint64,
+		},
+		"with Brio, block size limit is enforced": {
+			upgrades:          opera.Upgrades{Brio: true},
+			expectedSizeLimit: uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+			blockBuilder := inter.NewBlockBuilder()
+
+			// Ensure the evmProcessor is called with the expected size limit
+			evmProcessor.EXPECT().Execute(gomock.Any(), gomock.Any(), test.expectedSizeLimit)
+
+			processUserTransactions(
+				evmProcessor, blockBuilder, []*types.Transaction{}, math.MaxUint64, test.upgrades)
+		})
+	}
+}
+
 func TestSpillBlockEvents(t *testing.T) {
 
 	makeEventPayload :=

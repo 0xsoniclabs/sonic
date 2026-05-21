@@ -4013,7 +4013,7 @@ func TestRunSponsoredTransaction_SkipsTransactionExceedingSizeLimit(t *testing.T
 	}
 }
 
-func TestBundleTransactionRunner_Run_DeductsSizeLimit(t *testing.T) {
+func TestBundleTransactionRunner_Run_DeductsSizeLimitOnlyIfReceiptIsNotNil(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMock_transactionRunner(ctrl)
 
@@ -4023,6 +4023,9 @@ func TestBundleTransactionRunner_Run_DeductsSizeLimit(t *testing.T) {
 
 	tx1 := getRegularTransaction(t)
 	tx2 := getRegularTransaction(t)
+	skippedTx := types.NewTx(&types.LegacyTx{
+		Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
+	})
 
 	ctxt := &runContext{
 		runner:  runner,
@@ -4044,6 +4047,16 @@ func TestBundleTransactionRunner_Run_DeductsSizeLimit(t *testing.T) {
 
 	result := bundleRunner.Run(tx1)
 	require.Equal(t, core_types.TransactionResultSuccessful, result)
+	require.Equal(t, initialSizeLimit-tx1.Size(), bundleRunner.sizeLimit)
+
+	// Running a transaction that is skipped (receipt is nil) should not reduce the size limit
+	runner.EXPECT().runRegularTransaction(ctxt, skippedTx, 1, initialSizeLimit-tx1.Size()).Return(
+		ProcessedTransaction{Transaction: skippedTx, Receipt: nil},
+		core_types.TransactionResultInvalid,
+	)
+
+	result = bundleRunner.Run(skippedTx)
+	require.Equal(t, core_types.TransactionResultInvalid, result)
 	require.Equal(t, initialSizeLimit-tx1.Size(), bundleRunner.sizeLimit)
 
 	// Second transaction should get the reduced sizeLimit
@@ -4144,7 +4157,7 @@ func TestRunTransactions_ProcessesAllTransactionsWithinBlockSizeLimit(t *testing
 			txs:           []*types.Transaction{regular1},
 			remainingSize: regular1.Size(),
 			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
-				runner.EXPECT().runRegularTransaction(ctx, regular1, 0, gomock.Any()).Return(
+				runner.EXPECT().runRegularTransaction(ctx, regular1, 0, regular1.Size()).Return(
 					ProcessedTransaction{Transaction: regular1, Receipt: &types.Receipt{}},
 					core_types.TransactionResultSuccessful,
 				)
@@ -4157,15 +4170,15 @@ func TestRunTransactions_ProcessesAllTransactionsWithinBlockSizeLimit(t *testing
 			remainingSize: regular1.Size() + regular2.Size() + regular3.Size(),
 			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
 				gomock.InOrder(
-					runner.EXPECT().runRegularTransaction(ctx, regular1, 0, gomock.Any()).Return(
+					runner.EXPECT().runRegularTransaction(ctx, regular1, 0, regular1.Size()+regular2.Size()+regular3.Size()).Return(
 						ProcessedTransaction{Transaction: regular1, Receipt: &types.Receipt{}},
 						core_types.TransactionResultSuccessful,
 					),
-					runner.EXPECT().runRegularTransaction(ctx, regular2, 1, gomock.Any()).Return(
+					runner.EXPECT().runRegularTransaction(ctx, regular2, 1, regular2.Size()+regular3.Size()).Return(
 						ProcessedTransaction{Transaction: regular2, Receipt: &types.Receipt{}},
 						core_types.TransactionResultSuccessful,
 					),
-					runner.EXPECT().runRegularTransaction(ctx, regular3, 2, gomock.Any()).Return(
+					runner.EXPECT().runRegularTransaction(ctx, regular3, 2, regular3.Size()).Return(
 						ProcessedTransaction{Transaction: regular3, Receipt: &types.Receipt{}},
 						core_types.TransactionResultSuccessful,
 					),
@@ -4191,7 +4204,7 @@ func TestRunTransactions_ProcessesAllTransactionsWithinBlockSizeLimit(t *testing
 		},
 		"bundle transaction": {
 			txs:           []*types.Transaction{bundle.AllOf(bundle.Step(key, regular1)).Build()},
-			remainingSize: regular1.Size() + 1024, // Add some extra space for the bundle overhead
+			remainingSize: regular1.Size() + 1024, // Add some extra space for the bundle marker added by the builder
 			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
 				runner.EXPECT().runTransactionBundle(ctx, gomock.Any(), 0, gomock.Any()).Return(
 					[]ProcessedTransaction{
@@ -4203,6 +4216,28 @@ func TestRunTransactions_ProcessesAllTransactionsWithinBlockSizeLimit(t *testing
 			},
 			wantProcessed: 1,
 			wantIncluded:  1,
+		},
+		"combination of regular and skipped transactions": {
+			txs:           []*types.Transaction{regular1, types.NewTx(&types.LegacyTx{Data: []byte{0}}), regular2},
+			remainingSize: regular1.Size() + regular2.Size(),
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				gomock.InOrder(
+					runner.EXPECT().runRegularTransaction(ctx, regular1, 0, regular1.Size()+regular2.Size()).Return(
+						ProcessedTransaction{Transaction: regular1, Receipt: &types.Receipt{}},
+						core_types.TransactionResultSuccessful,
+					),
+					runner.EXPECT().runRegularTransaction(ctx, gomock.Any(), 1, regular2.Size()).Return(
+						ProcessedTransaction{Transaction: types.NewTx(&types.LegacyTx{Data: []byte{0}}), Receipt: nil},
+						core_types.TransactionResultInvalid,
+					),
+					runner.EXPECT().runRegularTransaction(ctx, regular2, 1, regular2.Size()).Return(
+						ProcessedTransaction{Transaction: regular2, Receipt: &types.Receipt{}},
+						core_types.TransactionResultSuccessful,
+					),
+				)
+			},
+			wantProcessed: 3,
+			wantIncluded:  2,
 		},
 	}
 

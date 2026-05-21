@@ -242,9 +242,10 @@ func runTransactions(
 				if remainingSize < processedTx.Transaction.Size() {
 					log.Debug("Block size limit exceeded,", "tx", processedTx.Transaction.Hash().Hex(),
 						"txSize", processedTx.Transaction.Size(), "remainingSize", remainingSize)
-					break
+					remainingSize = 0
+				} else {
+					remainingSize -= processedTx.Transaction.Size()
 				}
-				remainingSize -= processedTx.Transaction.Size()
 			}
 		}
 		processedTxs = append(processedTxs, txs...)
