@@ -17,18 +17,43 @@
 package bundles
 
 import (
+	"context"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBundle_BundlesWithTooLowEfficiencyAreRejected(t *testing.T) {
-	net := GetIntegrationTestNetWithBundlesEnabled(t)
+
+	t.Run("by the pool", func(t *testing.T) {
+		net := GetIntegrationTestNetWithBundlesEnabled(t)
+		testBundle_BundlesWithTooLowEfficiencyAreRejected(t, net, expectRejectedByPool)
+	})
+
+	t.Run("by the emitter", func(t *testing.T) {
+		upgrades := opera.GetBrioUpgrades()
+		upgrades.TransactionBundles = true
+
+		net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+			Upgrades: &upgrades,
+			ClientExtraArguments: []string{
+				"--disable-txPool-validation",
+			},
+		})
+		testBundle_BundlesWithTooLowEfficiencyAreRejected(t, net, expectRejectedByEmitter)
+	})
+}
+
+func testBundle_BundlesWithTooLowEfficiencyAreRejected(t *testing.T, net *tests.IntegrationTestNet,
+	expectRejected func(t *testing.T, net *tests.IntegrationTestNet, envelope *types.Transaction),
+) {
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -92,10 +117,11 @@ func TestBundle_BundlesWithTooLowEfficiencyAreRejected(t *testing.T) {
 
 			if tc.ExpectBelowThreshold {
 				require.Less(t, float64(usedGas)/float64(execGas), evmcore.MinBundleEfficiency)
-				_, err = net.Send(envelope)
-				require.ErrorContains(t, err, "bundle trial-run failed")
+				expectRejected(t, net, envelope)
 			} else {
+
 				require.GreaterOrEqual(t, float64(usedGas)/float64(execGas), evmcore.MinBundleEfficiency)
+
 				_, err = net.Send(envelope)
 				require.NoError(t, err)
 
@@ -116,4 +142,26 @@ func TestBundle_BundlesWithTooLowEfficiencyAreRejected(t *testing.T) {
 			}
 		})
 	}
+}
+
+func expectRejectedByPool(t *testing.T, net *tests.IntegrationTestNet, envelope *types.Transaction) {
+	t.Helper()
+	_, err := net.Send(envelope)
+	require.ErrorContains(t, err, "bundle trial-run failed")
+}
+
+func expectRejectedByEmitter(t *testing.T, net *tests.IntegrationTestNet, envelope *types.Transaction) {
+	t.Helper()
+	_, err := net.Send(envelope)
+	require.NoError(t, err, "bundle trial-run failed")
+
+	timedCtx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	_, err = WaitForBundleExecution(timedCtx, client.Client(), envelope.Hash())
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
