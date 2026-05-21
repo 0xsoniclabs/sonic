@@ -17,14 +17,17 @@
 package tests
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"math"
 	"math/big"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -214,6 +217,11 @@ type IntegrationTestNetOptions struct {
 	ArchiveCacheSize *int
 	// The number of cached data elements by each StateDb instance.
 	CacheSize *int
+	// ServeMetrics indicates whether the network should serve metrics.
+	// Since monitoring uses global variables, this option is not allowed
+	// when NumNodes is greater than 1.
+	// Metrics tests should not run in parallel neither.
+	ServeMetrics bool
 }
 
 // IntegrationTestNet is a in-process test network for integration tests. When
@@ -581,6 +589,10 @@ func (n *IntegrationTestNet) start() error {
 				// append extra arguments
 				n.options.ClientExtraArguments...,
 			)
+
+			if n.options.ServeMetrics {
+				args = append(args, "--metrics", "--metrics.addr", "127.0.0.1")
+			}
 
 			configFile := filepath.Join(tmp, "config.toml")
 			if err := sonicd.RunWithArgs(append(args, "--dump-config", configFile), &sonicd.AppControl{}); err != nil {
@@ -1489,6 +1501,11 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 		options[0].Upgrades = AsPointer(opera.GetSonicUpgrades())
 	}
 
+	if options[0].ServeMetrics && options[0].NumNodes != 1 {
+		return IntegrationTestNetOptions{},
+			fmt.Errorf("metrics serving is only supported for single-node networks, but got %d nodes", options[0].NumNodes)
+	}
+
 	return options[0], nil
 }
 
@@ -1530,4 +1547,106 @@ func (s *PooledEhtClient) Close() {
 // Client provides access to the underlying RPC Client.
 func (s *PooledEhtClient) Client() *rpc.Client {
 	return s.ethClient.Client()
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Metrics querying
+////////////////////////////////////////////////////////////////////////////////
+
+// MetricsSnapshot is a point-in-time snapshot of all metrics collected by a node.
+// Keys are metric names, values are their numeric values at the time of capture.
+type MetricsSnapshot map[string]float64
+
+// Has returns true if the given metric exists and has a non-zero value.
+func (m MetricsSnapshot) Has(metric string) bool {
+	v, ok := m[metric]
+	return ok && v != 0
+}
+
+// Get returns the value of the given metric, or 0 if it does not exist.
+func (m MetricsSnapshot) Get(metric string) float64 {
+	return m[metric]
+}
+
+// Diff returns the difference between the current snapshot and a previous one.
+// Only metrics whose value has changed are included in the result.
+func (m MetricsSnapshot) Diff(previous MetricsSnapshot) MetricsSnapshot {
+	diff := make(MetricsSnapshot)
+	for k, v := range m {
+		if prev, ok := previous[k]; !ok || v != prev {
+			diff[k] = v - prev
+		}
+	}
+	return diff
+}
+
+// GetMetrics queries the metrics HTTP endpoint and returns a snapshot of all
+// metrics. The network must have been started with --metrics and
+// --metrics.addr 127.0.0.1 in ClientExtraArguments.
+//
+// Note: metrics are collected via global variables in the go-ethereum metrics
+// package, so all nodes in the same process share a single registry. Using
+// this method in multi-node test networks yields unreliable per-node results.
+func (n *IntegrationTestNet) GetMetrics() (MetricsSnapshot, error) {
+
+	snapshot := make(MetricsSnapshot)
+	endpoints := []string{
+		fmt.Sprintf("http://127.0.0.1:%d/debug/metrics/prometheus", 6060),
+		fmt.Sprintf("http://127.0.0.1:%d/debug/metrics/prometheus/native", 6060),
+	}
+	for _, url := range endpoints {
+		resp, err := http.Get(url) //nolint:gosec
+		if err != nil {
+			return nil, fmt.Errorf("failed to query metrics endpoint %s: %w", url, err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("metrics endpoint %s returned status %d: %s", url, resp.StatusCode, string(body))
+		}
+
+		parsed, err := parsePrometheusMetrics(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse metrics from %s: %w", url, err)
+		}
+		for k, v := range parsed {
+			snapshot[k] = v
+		}
+	}
+	return snapshot, nil
+}
+
+// parsePrometheusMetrics parses Prometheus text-format metrics into a flat map.
+// It skips comment lines and HELP/TYPE metadata lines.
+func parsePrometheusMetrics(r io.Reader) (MetricsSnapshot, error) {
+	snapshot := make(MetricsSnapshot)
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Prometheus format: metric_name{labels} value
+		// or:                metric_name value
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+
+		name := parts[0]
+		// Strip labels from name if present: "metric{label=val}" -> "metric"
+		if idx := strings.IndexByte(name, '{'); idx != -1 {
+			name = name[:idx]
+		}
+
+		value, err := strconv.ParseFloat(parts[1], 64)
+		if err != nil {
+			continue
+		}
+		snapshot[name] = value
+	}
+	return snapshot, scanner.Err()
 }

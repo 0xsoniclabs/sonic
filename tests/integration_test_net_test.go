@@ -19,6 +19,7 @@ package tests
 import (
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/config"
@@ -485,6 +486,15 @@ func TestIntegrationTestNet_ValidateAndSanitizeOptions(t *testing.T) {
 				ValidatorsStake: []uint64{10, 20, 30},
 			},
 		},
+		"cannot collect metrics on more than one node": {
+			options: []IntegrationTestNetOptions{
+				{
+					NumNodes:     2,
+					ServeMetrics: true,
+				},
+			},
+			expectError: "metrics serving is only supported for single-node networks, but got 2 nodes",
+		},
 	}
 
 	for name, test := range tests {
@@ -499,7 +509,6 @@ func TestIntegrationTestNet_ValidateAndSanitizeOptions(t *testing.T) {
 			require.Equal(t, test.expectedOptions, options)
 		})
 	}
-
 }
 
 func BenchmarkIntegrationTestNet_StartAndStop(b *testing.B) {
@@ -508,4 +517,88 @@ func BenchmarkIntegrationTestNet_StartAndStop(b *testing.B) {
 		b.StopTimer()
 		net.Stop()
 	}
+}
+
+func TestMetricsSnapshot_Has(t *testing.T) {
+	snapshot := MetricsSnapshot{
+		"metric_a": 42,
+		"metric_b": 0,
+	}
+
+	require.True(t, snapshot.Has("metric_a"))
+	require.False(t, snapshot.Has("metric_b"), "zero value should not count as having data")
+	require.False(t, snapshot.Has("metric_c"), "missing key should not count as having data")
+}
+
+func TestMetricsSnapshot_Get(t *testing.T) {
+	snapshot := MetricsSnapshot{
+		"metric_a": 1.5,
+		"metric_b": 0,
+	}
+
+	require.Equal(t, 1.5, snapshot.Get("metric_a"))
+	require.Equal(t, 0.0, snapshot.Get("metric_b"))
+	require.Equal(t, 0.0, snapshot.Get("missing"), "missing key should return zero")
+}
+
+func TestMetricsSnapshot_Diff(t *testing.T) {
+	before := MetricsSnapshot{
+		"stable":    10,
+		"increased": 5,
+		"decreased": 20,
+	}
+	after := MetricsSnapshot{
+		"stable":    10,
+		"increased": 8,
+		"decreased": 15,
+		"new":       3,
+	}
+
+	diff := after.Diff(before)
+
+	require.False(t, diff.Has("stable"), "unchanged metric should not appear in diff")
+	require.Equal(t, 3.0, diff.Get("increased"))
+	require.Equal(t, -5.0, diff.Get("decreased"))
+	require.Equal(t, 3.0, diff.Get("new"), "new metric should appear with its full value")
+}
+
+func TestMetricsSnapshot_DiffFromEmpty(t *testing.T) {
+	snapshot := MetricsSnapshot{
+		"metric_a": 7,
+		"metric_b": 0,
+	}
+
+	diff := snapshot.Diff(nil)
+
+	require.True(t, diff.Has("metric_a"))
+	require.False(t, diff.Has("metric_b"), "zero-valued metric should not appear")
+}
+
+func TestParsePrometheusMetrics(t *testing.T) {
+	input := `# HELP go_goroutines Number of goroutines.
+# TYPE go_goroutines gauge
+go_goroutines 42
+chain_head_block 100
+p2p_sent_txs{network="main"} 7.5
+invalid_line
+`
+	snapshot, err := parsePrometheusMetrics(strings.NewReader(input))
+	require.NoError(t, err)
+
+	require.Equal(t, 42.0, snapshot.Get("go_goroutines"))
+	require.Equal(t, 100.0, snapshot.Get("chain_head_block"))
+	require.Equal(t, 7.5, snapshot.Get("p2p_sent_txs"), "labels should be stripped from name")
+	require.False(t, snapshot.Has("invalid_line"))
+}
+
+func TestIntegrationTestNet_GetMetricsCollectsData(t *testing.T) {
+	net := StartIntegrationTestNet(t)
+
+	snapshot, err := net.GetMetrics()
+	require.NoError(t, err)
+	require.NotEmpty(t, snapshot, "metrics snapshot should not be empty")
+
+	// The go runtime metrics should always be present.
+	require.True(t, snapshot.Has("go_goroutines"),
+		"expected go_goroutines metric to be present")
 }
