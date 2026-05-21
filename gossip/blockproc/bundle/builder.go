@@ -92,7 +92,10 @@ func Step(key *ecdsa.PrivateKey, tx any) BuilderStep {
 	case types.SetCodeTx:
 		return BuilderStep{txRef: &txReference{key: key, tx: &tx}}
 	case *types.Transaction:
-		txData := utils.GetTxData(tx)
+		txData, err := utils.GetTxData(tx)
+		if err != nil {
+			panic(fmt.Sprintf("failed to get TxData: %v", err))
+		}
 		// Legacy transactions are promoted to AccessListTx in the builder,
 		// to enable marking nested transactions with the bundle-only marker.
 		if data, ok := txData.(*types.LegacyTx); ok {
@@ -402,7 +405,11 @@ func (s BuilderStep) Clone() BuilderStep {
 	if res.txRef != nil {
 		res.txRef = &txReference{}
 		*res.txRef = *s.txRef
-		res.txRef.tx = utils.GetTxData(types.NewTx(res.txRef.tx))
+		tx, err := utils.GetTxData(types.NewTx(res.txRef.tx))
+		if err != nil {
+			panic(fmt.Sprintf("failed to get TxData: %v", err))
+		}
+		res.txRef.tx = tx
 	}
 	for i := range res.steps {
 		res.steps[i] = res.steps[i].Clone()

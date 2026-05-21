@@ -17,19 +17,27 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 )
 
 // GetTxData extracts the inner TxData from a given transaction, which is
 // handy for mutating transactions in various contexts.
-func GetTxData(tx *types.Transaction) types.TxData {
-
+func GetTxData(tx *types.Transaction) (types.TxData, error) {
 	// TODO: consider adding a modification to Sonic's go-ethereum fork to
 	// enable a direct call to tx.inner.copy(), having the same effect.
+	if tx == nil {
+		return nil, fmt.Errorf("transaction is nil")
+	}
+	return getTxDataInternal(tx)
+}
+
+func getTxDataInternal(tx txDataSource) (types.TxData, error) {
 
 	// Manually create a copy of the transactions's inner data type.
 	var txData types.TxData
@@ -77,53 +85,111 @@ func GetTxData(tx *types.Transaction) types.TxData {
 			S:          s,
 		}
 	case types.BlobTxType:
+		chainId, err1 := toUint256(tx.ChainId())
+		gasTipCap, err2 := toUint256(tx.GasTipCap())
+		gasFeeCap, err3 := toUint256(tx.GasFeeCap())
+		value, err4 := toUint256(tx.Value())
+		blobFeeCap, err5 := toUint256(tx.BlobGasFeeCap())
+		v, err6 := toUint256(v)
+		r, err7 := toUint256(r)
+		s, err8 := toUint256(s)
+
+		err := errors.Join(err1, err2, err3, err4, err5, err6, err7, err8)
+		if err != nil {
+			return nil, err
+		}
+
+		if tx.To() == nil {
+			return nil, fmt.Errorf("blob transactions must have a recipient")
+		}
+
 		txData = &types.BlobTx{
-			ChainID:    mustToUint256(tx.ChainId()),
+			ChainID:    chainId,
 			Nonce:      tx.Nonce(),
-			GasTipCap:  mustToUint256(tx.GasTipCap()),
-			GasFeeCap:  mustToUint256(tx.GasFeeCap()),
+			GasTipCap:  gasTipCap,
+			GasFeeCap:  gasFeeCap,
 			Gas:        tx.Gas(),
 			To:         *tx.To(),
-			Value:      mustToUint256(tx.Value()),
+			Value:      value,
 			Data:       tx.Data(),
 			AccessList: tx.AccessList(),
-			BlobFeeCap: mustToUint256(tx.BlobGasFeeCap()),
+			BlobFeeCap: blobFeeCap,
 			BlobHashes: tx.BlobHashes(),
-			V:          mustToUint256(v),
-			R:          mustToUint256(r),
-			S:          mustToUint256(s),
+			V:          v,
+			R:          r,
+			S:          s,
 		}
 
 	case types.SetCodeTxType:
+
+		chainId, err1 := toUint256(tx.ChainId())
+		gasTipCap, err2 := toUint256(tx.GasTipCap())
+		gasFeeCap, err3 := toUint256(tx.GasFeeCap())
+		value, err4 := toUint256(tx.Value())
+		v, err5 := toUint256(v)
+		r, err6 := toUint256(r)
+		s, err7 := toUint256(s)
+
+		err := errors.Join(err1, err2, err3, err4, err5, err6, err7)
+		if err != nil {
+			return nil, err
+		}
+
+		if tx.To() == nil {
+			return nil, fmt.Errorf("set code transactions must have a recipient")
+		}
+
 		txData = &types.SetCodeTx{
-			ChainID:    mustToUint256(tx.ChainId()),
+			ChainID:    chainId,
 			Nonce:      tx.Nonce(),
-			GasTipCap:  mustToUint256(tx.GasTipCap()),
-			GasFeeCap:  mustToUint256(tx.GasFeeCap()),
+			GasTipCap:  gasTipCap,
+			GasFeeCap:  gasFeeCap,
 			Gas:        tx.Gas(),
 			To:         *tx.To(),
-			Value:      mustToUint256(tx.Value()),
+			Value:      value,
 			Data:       tx.Data(),
 			AccessList: tx.AccessList(),
 			AuthList:   tx.SetCodeAuthorizations(),
-			V:          mustToUint256(v),
-			R:          mustToUint256(r),
-			S:          mustToUint256(s),
+			V:          v,
+			R:          r,
+			S:          s,
 		}
+
+	default:
+		return nil, fmt.Errorf("unsupported transaction type: %d", tx.Type())
+
 	}
-	return txData
+	return txData, nil
 }
 
-func mustToUint256(value *big.Int) *uint256.Int {
+type txDataSource interface {
+	ChainId() *big.Int
+	Nonce() uint64
+	GasPrice() *big.Int
+	GasFeeCap() *big.Int
+	GasTipCap() *big.Int
+	Gas() uint64
+	To() *common.Address
+	Value() *big.Int
+	Data() []byte
+	AccessList() types.AccessList
+	BlobGasFeeCap() *big.Int
+	BlobHashes() []common.Hash
+	SetCodeAuthorizations() []types.SetCodeAuthorization
+	Type() uint8
+	RawSignatureValues() (v, r, s *big.Int)
+}
+
+func toUint256(value *big.Int) (*uint256.Int, error) {
 	if value == nil {
-		return nil
+		return nil, nil
 	}
 	if value.Sign() < 0 {
-		panic(fmt.Sprintf("out of uint256 domain: %v", value))
+		return nil, fmt.Errorf("out of uint256 domain: %v", value)
 	}
 	res, overflow := uint256.FromBig(value)
 	if overflow {
-		panic(fmt.Sprintf("out of uint256 domain: %v", value))
+		return nil, fmt.Errorf("out of uint256 domain: %v", value)
 	}
-	return res
+	return res, nil
 }

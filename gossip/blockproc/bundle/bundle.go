@@ -133,6 +133,12 @@ func (tb *TransactionBundle) Copy() TransactionBundle {
 // By doing so, the signature of the transaction is erased. Therefore, the sender
 // or the ChainId can no longer be derived from the resulting transaction.
 func removeBundleOnlyMark(tx *types.Transaction) (*types.Transaction, error) {
+	// Create a copy of the transaction data with the modified access list.
+	txData, err := utils.GetTxData(tx) // < also checks for nil transaction
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transaction data: %w", err)
+	}
+
 	curAccessList := tx.AccessList()
 	newAccessList := make([]types.AccessTuple, 0, len(curAccessList))
 	for _, cur := range curAccessList {
@@ -141,8 +147,6 @@ func removeBundleOnlyMark(tx *types.Transaction) (*types.Transaction, error) {
 		}
 	}
 
-	// Create a copy of the transaction data with the modified access list.
-	txData := utils.GetTxData(tx)
 	switch data := txData.(type) {
 	case *types.AccessListTx:
 		data.AccessList = newAccessList

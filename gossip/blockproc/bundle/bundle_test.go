@@ -270,6 +270,11 @@ func TestTransactionBundle_GetTransactionsInReferencedOrder_ReturnsTransactionsI
 	}
 }
 
+func TestRemoveBundleOnlyMark_DetectsTxDataExtractionError(t *testing.T) {
+	_, err := removeBundleOnlyMark(nil)
+	require.ErrorContains(t, err, "failed to get transaction data")
+}
+
 func TestRemoveBundleOnlyMark_FailsOnUnsupportedTransactionType(t *testing.T) {
 	tx := types.NewTx(&types.LegacyTx{})
 	_, err := removeBundleOnlyMark(tx)
