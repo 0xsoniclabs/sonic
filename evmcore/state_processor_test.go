@@ -4075,8 +4075,12 @@ func TestBundleTransactionRunner_Run_RevertsWhenSizeLimitExceeded(t *testing.T) 
 	runner := NewMock_transactionRunner(ctrl)
 
 	stateDb := state.NewMockStateDB(ctrl)
-	stateDb.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
-	stateDb.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
+
+	interTxSnapshot := 42
+	gomock.InOrder(
+		stateDb.EXPECT().InterTxSnapshot().Return(interTxSnapshot),
+		stateDb.EXPECT().RevertToInterTxSnapshot(interTxSnapshot),
+	)
 
 	tx := getRegularTransaction(t)
 
@@ -4346,4 +4350,46 @@ func TestRunTransaction_CollectsCausedByInformationForAllTransactionTypes(t *tes
 			require.Equal(t, tc.wantCausedBy, summary.CausedBy)
 		})
 	}
+}
+
+func TestRunTransactions_SmallerTransactionsAreProcessedAfterLargeTransactionExceedingSizeLimit(t *testing.T) {
+	sizeLimit := uint64(1_000)
+
+	// Create a tx that exceeds the size limit
+	largeTx := types.NewTx(&types.LegacyTx{Data: make([]byte, sizeLimit+1)})
+
+	// Following txs are not skipped
+	tx0 := getRegularTransaction(t)
+	tx1 := getRegularTransaction(t)
+
+	transactions := []*types.Transaction{largeTx, tx0, tx1}
+
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+
+	context := &runContext{
+		signer:   types.LatestSignerForChainID(big.NewInt(1)),
+		upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
+		runner:   runner,
+	}
+
+	runner.EXPECT().runRegularTransaction(context, largeTx, 0, sizeLimit).Return(
+		ProcessedTransaction{Transaction: largeTx, Receipt: nil},
+		core_types.TransactionResultSuccessful,
+	)
+	runner.EXPECT().runRegularTransaction(context, tx0, 0, sizeLimit).Return(
+		ProcessedTransaction{Transaction: tx0, Receipt: &types.Receipt{}},
+		core_types.TransactionResultInvalid,
+	)
+	runner.EXPECT().runRegularTransaction(context, tx1, 1, sizeLimit-tx0.Size()).Return(
+		ProcessedTransaction{Transaction: tx1, Receipt: &types.Receipt{}},
+		core_types.TransactionResultInvalid,
+	)
+
+	summary := runTransactions(context, transactions, 0, sizeLimit)
+	require.Equal(t, []ProcessedTransaction{
+		{Transaction: largeTx, Receipt: nil},
+		{Transaction: tx0, Receipt: &types.Receipt{}},
+		{Transaction: tx1, Receipt: &types.Receipt{}},
+	}, summary.ProcessedTransactions)
 }

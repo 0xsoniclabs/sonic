@@ -1183,26 +1183,26 @@ func TestProcessUserTransactions_DeductsInternalTxsSize(t *testing.T) {
 	blockBuilder := inter.NewBlockBuilder()
 
 	// Add an internal tx to blockBuilder
-	internalTx := types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/2)})
+	internalTx := types.NewTx(&types.LegacyTx{Data: make([]byte, 1000)})
 	blockBuilder.AddTransaction(internalTx, &types.Receipt{})
 
-	// Create a user tx that would only fit without the internal tx
-	userTx := types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/2)})
+	// Create a user tx
+	userTx := types.NewTx(&types.LegacyTx{Data: make([]byte, 1000)})
 
-	// All user txs are passed to Execute; the EVMProcessor handles size-based skipping
+	// Ensure the evmProcessor is called with the correct remaining size after accounting for the internal transaction.
 	orderedTxs := []*types.Transaction{userTx}
 	evmProcessor.EXPECT().
-		Execute(orderedTxs, uint64(10000), gomock.Any()).
+		Execute(orderedTxs, uint64(10000), params.MaxBlockSize-rlpEncodedMaxHeaderSizeInBytes-internalTx.Size()).
 		Return(evmcore.ProcessSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{
-			{Transaction: userTx, Receipt: nil}, // skipped due to size
+			{Transaction: userTx, Receipt: &types.Receipt{}},
 		}})
 
 	upgrades := opera.Upgrades{Brio: true}
 	processUserTransactions(evmProcessor, blockBuilder, orderedTxs, 10000, upgrades)
 
-	// Only the internal tx should be present
+	// Ensure both internal and user transactions are included.
 	gotTxs := blockBuilder.GetTransactions()
-	require.Equal(t, types.Transactions{internalTx}, gotTxs)
+	require.Equal(t, types.Transactions{internalTx, userTx}, gotTxs)
 }
 
 func TestProcessUserTransactions_SkipsTxsExceedingSizeLimit(t *testing.T) {
