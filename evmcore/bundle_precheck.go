@@ -376,8 +376,8 @@ func trialRunBundleInternal(
 	stateDb state.StateDB,
 	factory transactionProcessorFactory,
 	readRandom func([]byte) (int, error),
-	evaluatedBundlesCount utils.MetricsCounterWrapper,
-	evaluatedBundlesExecutionCost utils.MetricsCounterWrapper,
+	evaluatedBundlesCount utils.MetricsCounter,
+	evaluatedBundlesExecutionCost utils.MetricsCounter,
 ) (*float64, bool) {
 	latestHeader := chain.GetLatestHeader()
 	blobBaseFee := GetBlobBaseFee()

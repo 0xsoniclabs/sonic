@@ -1512,8 +1512,8 @@ func Test_trialRunBundleInternal_IncrementsMetrics(t *testing.T) {
 	db.EXPECT().InterTxSnapshot()
 	db.EXPECT().RevertToInterTxSnapshot(any)
 
-	countMock := utils.NewMockMetricsCounterWrapper(ctrl)
-	gasMock := utils.NewMockMetricsCounterWrapper(ctrl)
+	countMock := utils.NewMockMetricsCounter(ctrl)
+	gasMock := utils.NewMockMetricsCounter(ctrl)
 
 	countMock.EXPECT().Inc(int64(1))
 	gasMock.EXPECT().Inc(int64(expectedExecCost))
