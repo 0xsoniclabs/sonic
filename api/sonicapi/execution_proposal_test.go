@@ -761,44 +761,235 @@ func Test_convertVisitorLeafIntoRPCExecutionPlanProposalLeaf_canReturnErrors(t *
 	}
 }
 
-func Test_transform(t *testing.T) {
+func Test_transform_AppliesFunctionToAllLeaves(t *testing.T) {
+	address := common.Address{1}
 
-	proposal := RPCExecutionProposal{
-		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
-			Steps: []any{
-				RPCExecutionStepProposal{},
-				RPCExecutionPlanGroup{
+	markTolerateFailed := func(step RPCExecutionStepProposal) (RPCExecutionStepProposal, error) {
+		step.TolerateFailed = true
+		return step, nil
+	}
+
+	tests := map[string]struct {
+		proposal RPCExecutionProposal
+		expected RPCExecutionProposal
+	}{
+		"nil steps returns proposal unchanged": {
+			proposal: RPCExecutionProposal{},
+			expected: RPCExecutionProposal{},
+		},
+		"empty steps": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{Steps: []any{}},
+			},
+			expected: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{Steps: []any{}},
+			},
+		},
+		"single leaf step": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{RPCExecutionStepProposal{}},
+				},
+			},
+			expected: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{RPCExecutionStepProposal{TolerateFailed: true}},
+				},
+			},
+		},
+		"multiple leaf steps": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
+						RPCExecutionStepProposal{},
+						RPCExecutionStepProposal{TolerateInvalid: true},
+					},
+				},
+			},
+			expected: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{TolerateFailed: true},
+						RPCExecutionStepProposal{TolerateFailed: true, TolerateInvalid: true},
+					},
+				},
+			},
+		},
+		"leaf mixed with nested group": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{},
+						RPCExecutionPlanGroup{
+							OneOf: true,
+							Steps: []any{RPCExecutionStepProposal{}},
+						},
 						RPCExecutionStepProposal{},
 					},
 				},
-				RPCExecutionStepProposal{},
 			},
-		},
-	}
-
-	newProposal, err := transform(proposal,
-		func(step RPCExecutionStepProposal) (RPCExecutionStepProposal, error) {
-			step.TolerateFailed = true
-			return step, nil
-		})
-	require.NoError(t, err)
-
-	expected := RPCExecutionProposal{
-		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
-			Steps: []any{
-				RPCExecutionStepProposal{TolerateFailed: true},
-				RPCExecutionPlanGroup{
+			expected: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
+						RPCExecutionStepProposal{TolerateFailed: true},
+						RPCExecutionPlanGroup{
+							OneOf: true,
+							Steps: []any{RPCExecutionStepProposal{TolerateFailed: true}},
+						},
 						RPCExecutionStepProposal{TolerateFailed: true},
 					},
 				},
-				RPCExecutionStepProposal{TolerateFailed: true},
+			},
+		},
+		"deeply nested groups": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							Steps: []any{
+								RPCExecutionPlanGroup{
+									OneOf: true,
+									Steps: []any{RPCExecutionStepProposal{}},
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							Steps: []any{
+								RPCExecutionPlanGroup{
+									OneOf: true,
+									Steps: []any{RPCExecutionStepProposal{TolerateFailed: true}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"preserves group flags": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					TolerateFailures: true,
+					OneOf:            true,
+					Steps: []any{
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{From: &address},
+						},
+					},
+				},
+			},
+			expected: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					TolerateFailures: true,
+					OneOf:            true,
+					Steps: []any{
+						RPCExecutionStepProposal{
+							TolerateFailed:  true,
+							TransactionArgs: ethapi.TransactionArgs{From: &address},
+						},
+					},
+				},
+			},
+		},
+		"preserves block range": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{First: 10, Length: 20},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{RPCExecutionStepProposal{}},
+				},
+			},
+			expected: RPCExecutionProposal{
+				BlockRange: &RPCRange{First: 10, Length: 20},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{RPCExecutionStepProposal{TolerateFailed: true}},
+				},
 			},
 		},
 	}
 
-	require.Equal(t, expected, newProposal)
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			result, err := transform(tt.proposal, markTolerateFailed)
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func Test_transform_ReturnsErrors(t *testing.T) {
+	injectedErr := fmt.Errorf("injected error")
+
+	alwaysFails := func(step RPCExecutionStepProposal) (RPCExecutionStepProposal, error) {
+		return step, injectedErr
+	}
+
+	tests := map[string]struct {
+		proposal RPCExecutionProposal
+	}{
+		"error on leaf step at top level": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{RPCExecutionStepProposal{}},
+				},
+			},
+		},
+		"error on leaf step inside nested group": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							Steps: []any{RPCExecutionStepProposal{}},
+						},
+					},
+				},
+			},
+		},
+		"error on leaf step inside deeply nested group": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							Steps: []any{
+								RPCExecutionPlanGroup{
+									Steps: []any{RPCExecutionStepProposal{}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"unknown step type at top level": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{"unexpected string"},
+				},
+			},
+		},
+		"unknown step type inside nested group": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							Steps: []any{42},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := transform(tt.proposal, alwaysFails)
+			require.Error(t, err)
+		})
+	}
 }
 
 func Test_convertProposalToPlan(t *testing.T) {
