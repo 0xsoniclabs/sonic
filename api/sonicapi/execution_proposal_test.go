@@ -1245,3 +1245,68 @@ func Test_convertProposalToPlan_ReturnsErrors(t *testing.T) {
 		})
 	}
 }
+
+func Test_RPCExecutionProposal_UnmarshalJSON_FailsOnInvalidTopLevel(t *testing.T) {
+	tests := map[string]string{
+		"not json at all":        `not json`,
+		"top level is an array":  `[]`,
+		"blockRange wrong type":  `{"blockRange": "invalid"}`,
+		"steps is not an array":  `{"steps": 123}`,
+		"oneOf is not a boolean": `{"oneOf": "yes", "steps": []}`,
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			var proposal RPCExecutionProposal
+			err := json.Unmarshal([]byte(input), &proposal)
+			require.Error(t, err)
+		})
+	}
+}
+
+func Test_RPCExecutionProposal_UnmarshalJSON_FailsOnInvalidFirstLevelStep(t *testing.T) {
+	tests := map[string]string{
+		"step is not an object": `{
+			"steps": [123]
+		}`,
+		"step has invalid from field": `{
+			"steps": [{"from": "not-an-address", "to": "0x0000000000000000000000000000000000000001"}]
+		}`,
+		"step has nested steps with invalid content": `{
+			"steps": [{"steps": [true]}]
+		}`,
+		"step has nested steps with invalid flags": `{
+			"steps": [{"tolerateFailed": "not a boolean"}]
+		}`,
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			var proposal RPCExecutionProposal
+			err := json.Unmarshal([]byte(input), &proposal)
+			require.Error(t, err)
+		})
+	}
+}
+
+func Test_RPCExecutionProposal_UnmarshalJSON_FailsOnInvalidNestedLevelStep(t *testing.T) {
+	tests := map[string]string{
+		"nested group contains non-object element": `{
+			"steps": [{"steps": [{"steps": [42]}]}]
+		}`,
+		"nested group contains invalid leaf": `{
+			"steps": [{"steps": [{"steps": [{"from": "bad"}]}]}]
+		}`,
+		"deeply nested group has malformed steps array": `{
+			"steps": [{"steps": [{"steps": "not-an-array"}]}]
+		}`,
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			var proposal RPCExecutionProposal
+			err := json.Unmarshal([]byte(input), &proposal)
+			require.Error(t, err)
+		})
+	}
+}
