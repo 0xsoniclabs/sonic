@@ -142,7 +142,7 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 	return evmcore.NewEvmBlock(h, txs)
 }
 
-func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evmcore.ProcessSummary {
+func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64, sizeLimit uint64) evmcore.ProcessSummary {
 	evmProcessor := p.processorFactory.NewStateProcessorForHeadState(p.evmCfg, p.reader, p.rules.Upgrades)
 	trueTxsOffset := int(0)
 	for _, tx := range p.processedTxs {
@@ -155,7 +155,7 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evm
 
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
-	summary := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, trueTxsOffset, p.onNewLog)
+	summary := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, trueTxsOffset, p.onNewLog, sizeLimit)
 
 	p.processedTxs = append(p.processedTxs, summary.ProcessedTransactions...)
 
@@ -223,6 +223,7 @@ type _stateProcessor interface {
 		gasUsed *uint64,
 		trueTxOffset int,
 		onNewLog func(*core_types.Log),
+		remainingSize uint64,
 	) evmcore.ProcessSummary
 }
 

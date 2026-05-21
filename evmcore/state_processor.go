@@ -84,8 +84,9 @@ func NewStateProcessorForReplay(
 // processing, including gas from rolled-back bundles, which distinguishes it
 // from the usedGas counter that gets reverted on snapshot rollback.
 type ProcessSummary struct {
-	ProcessedTransactions []ProcessedTransaction
-	ExecutionCost         core_types.ExecutionCost
+	ProcessedTransactions []ProcessedTransaction      // List of processed transactions with their receipts (nil receipt for skipped transactions).
+	ExecutionCost         core_types.ExecutionCost    // Total execution cost (gas used) for all processed transactions, including rolled-back bundles.
+	CausedBy              map[common.Hash]common.Hash // Mapping from transaction hash to the hash of the transaction that caused it.
 }
 
 // ProcessedTransaction represents a transaction that was considered for
@@ -121,10 +122,10 @@ type ProcessedTransaction struct {
 // consistent.
 func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
-	usedGas *uint64, trueTxOffset int, onNewLog func(*core_types.Log),
+	usedGas *uint64, trueTxOffset int, onNewLog func(*core_types.Log), remainingSize uint64,
 ) ProcessSummary {
 	sonicDifficulty := big.NewInt(1)
-	return p.ProcessWithDifficulty(block, statedb, cfg, gasLimit, usedGas, trueTxOffset, onNewLog, sonicDifficulty)
+	return p.ProcessWithDifficulty(block, statedb, cfg, gasLimit, usedGas, trueTxOffset, onNewLog, sonicDifficulty, remainingSize)
 }
 
 // ProcessWithDifficulty is the same as Process, but allows specifying a custom
@@ -134,7 +135,7 @@ func (p *StateProcessor) Process(
 func (p *StateProcessor) ProcessWithDifficulty(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, trueTxOffset int, onNewLog func(*core_types.Log),
-	difficulty *big.Int,
+	difficulty *big.Int, remainingSize uint64,
 ) ProcessSummary {
 	var (
 		gp           = core.NewGasPool(gasLimit)
@@ -155,7 +156,7 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	return runTransactions(newRunContext(
 		signer, header.BaseFee, statedb, gp, blockNumber, block.Time, usedGas,
 		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}}, p.forReplay,
-	), block.Transactions, trueTxOffset)
+	), block.Transactions, trueTxOffset, remainingSize)
 }
 
 // runContext bundles the parameters required for processing transactions in a
@@ -217,9 +218,11 @@ func runTransactions(
 	context *runContext,
 	transactions types.Transactions,
 	trueTxIndexOffset int,
+	remainingSize uint64,
 ) ProcessSummary {
 	processedTxs := make([]ProcessedTransaction, 0, len(transactions))
 	totalExecCost := core_types.ExecutionCost(0)
+	causedBy := make(map[common.Hash]common.Hash)
 	for _, tx := range transactions {
 		// Bundle-only transactions are only valid within a bundle and must
 		// be rejected at the top level when processing the head state.
@@ -228,12 +231,21 @@ func runTransactions(
 			continue
 		}
 
-		txs, _, execCost := runTransaction(context, tx, trueTxIndexOffset)
+		txs, _, execCost := runTransaction(context, tx, trueTxIndexOffset, remainingSize)
 		totalExecCost += execCost
 
-		for _, tx := range txs {
-			if tx.Receipt != nil { // < only transactions included in the block
+		for _, processedTx := range txs {
+			if processedTx.Receipt != nil { // < only transactions included in the block
 				trueTxIndexOffset++
+				causedBy[processedTx.Transaction.Hash()] = tx.Hash()
+
+				if remainingSize < processedTx.Transaction.Size() {
+					log.Debug("Block size limit exceeded,", "tx", processedTx.Transaction.Hash().Hex(),
+						"txSize", processedTx.Transaction.Size(), "remainingSize", remainingSize)
+					remainingSize = 0
+				} else {
+					remainingSize -= processedTx.Transaction.Size()
+				}
 			}
 		}
 		processedTxs = append(processedTxs, txs...)
@@ -242,6 +254,7 @@ func runTransactions(
 	return ProcessSummary{
 		ProcessedTransactions: processedTxs,
 		ExecutionCost:         totalExecCost,
+		CausedBy:              causedBy,
 	}
 }
 
@@ -254,18 +267,19 @@ func runTransaction(
 	context *runContext,
 	tx *types.Transaction,
 	trueTxIndexOffset int,
+	sizeLimit uint64,
 ) ([]ProcessedTransaction, core_types.TransactionResult, core_types.ExecutionCost) {
 	// Since a transaction bundle has a gas-price of 0 it would be considered a
 	// sponsorship request. Thus, we need to check for bundles first.
 	if context.upgrades.Brio && bundle.IsEnvelope(tx) {
 		if context.upgrades.TransactionBundles {
-			return context.runner.runTransactionBundle(context, tx, trueTxIndexOffset)
+			return context.runner.runTransactionBundle(context, tx, trueTxIndexOffset, sizeLimit)
 		} else {
 			return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid, 0
 		}
 	}
 	if !context.forReplay && context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
-		res, result := context.runner.runSponsoredTransaction(context, tx, trueTxIndexOffset)
+		res, result := context.runner.runSponsoredTransaction(context, tx, trueTxIndexOffset, sizeLimit)
 		execCost := core_types.ExecutionCost(0)
 		for _, r := range res {
 			if r.Receipt != nil {
@@ -274,7 +288,7 @@ func runTransaction(
 		}
 		return res, result, execCost
 	} else {
-		res, result := context.runner.runRegularTransaction(context, tx, trueTxIndexOffset)
+		res, result := context.runner.runRegularTransaction(context, tx, trueTxIndexOffset, sizeLimit)
 		execCost := core_types.ExecutionCost(0)
 		if res.Receipt != nil {
 			execCost = core_types.ExecutionCost(res.Receipt.GasUsed)
@@ -291,6 +305,7 @@ type _transactionRunner interface {
 		ctxt *runContext,
 		tx *types.Transaction,
 		trueTxIndexOffset int,
+		sizeLimit uint64,
 	) (
 		ProcessedTransaction,
 		core_types.TransactionResult,
@@ -300,6 +315,7 @@ type _transactionRunner interface {
 		ctxt *runContext,
 		tx *types.Transaction,
 		trueTxIndexOffset int,
+		sizeLimit uint64,
 	) (
 		[]ProcessedTransaction,
 		core_types.TransactionResult,
@@ -309,6 +325,7 @@ type _transactionRunner interface {
 		ctxt *runContext,
 		tx *types.Transaction,
 		trueTxIndexOffset int,
+		sizeLimit uint64,
 	) (
 		[]ProcessedTransaction,
 		core_types.TransactionResult,
@@ -326,7 +343,13 @@ func (r *transactionRunner) runRegularTransaction(
 	ctxt *runContext,
 	tx *types.Transaction,
 	txIndex int,
+	sizeLimit uint64,
 ) (ProcessedTransaction, core_types.TransactionResult) {
+	if size := tx.Size(); size > sizeLimit {
+		log.Debug("Transaction skipped due to block size limit", "tx", tx.Hash().Hex(), "txSize", size, "sizeLimit", sizeLimit)
+		return ProcessedTransaction{Transaction: tx}, core_types.TransactionResultInvalid
+	}
+
 	res := r.evm.runWithBaseFeeCheck(ctxt, tx, txIndex)
 	if res.Receipt != nil {
 		if res.Receipt.Status == types.ReceiptStatusSuccessful {
@@ -342,7 +365,15 @@ func (r *transactionRunner) runSponsoredTransaction(
 	ctxt *runContext,
 	tx *types.Transaction,
 	txIndex int,
+	sizeLimit uint64,
 ) ([]ProcessedTransaction, core_types.TransactionResult) {
+	// check whether the size limit is large enough for the transaction and its payment
+	if tx.Size()+subsidies.RlpEncodedFeeChargingTxSizeInBytes > sizeLimit {
+		log.Debug("Transaction skipped due to block size limit",
+			"tx", tx.Hash().Hex(), "txSize", tx.Size(), "estimatedPaymentTxSize", subsidies.RlpEncodedFeeChargingTxSizeInBytes, "sizeLimit", sizeLimit)
+		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
+	}
+
 	// Run the IsCovered query in a snapshot to avoid spilling any side-effects
 	// like warm storage slots or refunds into the actual transaction.
 	snapshot := ctxt.statedb.Snapshot()
@@ -421,8 +452,9 @@ func (r *transactionRunner) runTransactionBundle(
 	ctxt *runContext,
 	tx *types.Transaction,
 	trueTxIndexOffset int,
+	sizeLimit uint64,
 ) ([]ProcessedTransaction, core_types.TransactionResult, core_types.ExecutionCost) {
-	return r.runTransactionBundleInternal(ctxt, tx, trueTxIndexOffset, log.Root())
+	return r.runTransactionBundleInternal(ctxt, tx, trueTxIndexOffset, log.Root(), sizeLimit)
 }
 
 func (r *transactionRunner) runTransactionBundleInternal(
@@ -430,6 +462,7 @@ func (r *transactionRunner) runTransactionBundleInternal(
 	tx *types.Transaction,
 	trueTxOffset int,
 	log logger,
+	sizeLimit uint64,
 ) ([]ProcessedTransaction, core_types.TransactionResult, core_types.ExecutionCost) {
 	if !ctxt.upgrades.TransactionBundles {
 		log.Warn("Transaction bundles are not enabled, bundle transaction skipped", "tx", tx.Hash().Hex())
@@ -466,6 +499,7 @@ func (r *transactionRunner) runTransactionBundleInternal(
 	runner := bundleTransactionRunner{
 		ctxt:         ctxt,
 		trueTxOffset: trueTxOffset,
+		sizeLimit:    sizeLimit,
 	}
 	if !bundle.RunBundle(txBundle, &runner) {
 		// Mark the execution plan as processed in the StateDB to prevent processing
@@ -505,16 +539,25 @@ type bundleTransactionRunner struct {
 	processedTransactions []ProcessedTransaction
 	snapshots             []bundleTransactionRunnerSnapshot
 	executionCost         core_types.ExecutionCost // not included in snapshots
+	sizeLimit             uint64
 }
 
 func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.TransactionResult {
-	processed, result, execCost := runTransaction(b.ctxt, tx, b.trueTxOffset)
+
+	snapshot := b.CreateSnapshot()
+
+	processed, result, execCost := runTransaction(b.ctxt, tx, b.trueTxOffset, b.sizeLimit)
 	b.executionCost += execCost
 	b.processedTransactions = append(b.processedTransactions, processed...)
 
 	for _, p := range processed {
 		if p.Receipt != nil {
 			b.trueTxOffset++
+			if b.sizeLimit < p.Transaction.Size() {
+				b.RevertToSnapshot(snapshot)
+				return core_types.TransactionResultInvalid
+			}
+			b.sizeLimit -= p.Transaction.Size()
 		}
 	}
 
@@ -528,6 +571,7 @@ func (b *bundleTransactionRunner) CreateSnapshot() int {
 		processedTransactionListLength: len(b.processedTransactions),
 		usedGas:                        *b.ctxt.usedGas,
 		gasPool:                        b.ctxt.gasPool.Snapshot(),
+		sizeLimit:                      b.sizeLimit,
 	}
 	b.snapshots = append(b.snapshots, snapshot)
 	return len(b.snapshots) - 1
@@ -547,6 +591,7 @@ func (b *bundleTransactionRunner) RevertToSnapshot(id int) {
 	b.processedTransactions = b.processedTransactions[:snapshot.processedTransactionListLength]
 	*b.ctxt.usedGas = snapshot.usedGas
 	b.ctxt.gasPool.Set(snapshot.gasPool)
+	b.sizeLimit = snapshot.sizeLimit
 	b.snapshots = b.snapshots[:id]
 }
 
@@ -556,6 +601,7 @@ type bundleTransactionRunnerSnapshot struct {
 	processedTransactionListLength int
 	usedGas                        uint64
 	gasPool                        *core.GasPool
+	sizeLimit                      uint64
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single
@@ -713,7 +759,7 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber, tp.blockTime,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
 		false,
-	), []*types.Transaction{tx}, i)
+	), []*types.Transaction{tx}, i, math.MaxUint64)
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database

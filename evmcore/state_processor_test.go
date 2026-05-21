@@ -51,7 +51,7 @@ import (
 // Process method.
 func (p *StateProcessor) process_iteratively(
 	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, gasLimit uint64,
-	usedGas *uint64, trueTxOffset int, onNewLog func(*core_types.Log),
+	usedGas *uint64, trueTxOffset int, onNewLog func(*core_types.Log), maxBlockSize uint64,
 ) ProcessSummary {
 	// This implementation is a wrapper around the BeginBlock function, which
 	// handles the actual transaction processing.
@@ -127,7 +127,7 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 			gasLimit := uint64(blockGasLimit)
 			usedGas := new(uint64)
 
-			summary := process(block, state, vmConfig, gasLimit, usedGas, 0, onLog)
+			summary := process(block, state, vmConfig, gasLimit, usedGas, 0, onLog, math.MaxUint64)
 			processed := summary.ProcessedTransactions
 
 			// Receipts should be set accordingly.
@@ -232,7 +232,7 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 			gasLimit := uint64(math.MaxUint64)
 			usedGas := new(uint64)
 
-			summary := process(block, state, vmConfig, gasLimit, usedGas, 0, nil)
+			summary := process(block, state, vmConfig, gasLimit, usedGas, 0, nil, math.MaxUint64)
 			processed := summary.ProcessedTransactions
 
 			require.Len(processed, len(transactions))
@@ -307,7 +307,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 				vmConfig := vm.Config{}
 				gasLimit := uint64(math.MaxUint64)
 				usedGas := new(uint64)
-				processed := process(block, state, vmConfig, gasLimit, usedGas, 0, nil).ProcessedTransactions
+				processed := process(block, state, vmConfig, gasLimit, usedGas, 0, nil, math.MaxUint64).ProcessedTransactions
 				require.Empty(processed)
 			})
 		}
@@ -366,7 +366,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	// Process the block
 	gasLimit := uint64(math.MaxUint64)
 	usedGas := new(uint64)
-	processed := processor.Process(block, state, vm.Config{}, gasLimit, usedGas, 0, nil).ProcessedTransactions
+	processed := processor.Process(block, state, vm.Config{}, gasLimit, usedGas, 0, nil, math.MaxUint64).ProcessedTransactions
 
 	require.Len(t, processed, 2)
 	require.Equal(t, processed[0].Transaction, block.Transactions[0])
@@ -445,7 +445,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					require := require.New(t)
 					gasLimit := test.gasLimit
-					processed := process(block, state, vmConfig, gasLimit, usedGas, 0, nil).ProcessedTransactions
+					processed := process(block, state, vmConfig, gasLimit, usedGas, 0, nil, math.MaxUint64).ProcessedTransactions
 					require.Len(processed, 3)
 
 					for i, tx := range transactions {
@@ -471,7 +471,7 @@ func TestProcess_UsesDifficultyOfOne(t *testing.T) {
 	state, block := createScenarioWithTxCheckingDifficulty(ctrl, big.NewInt(1))
 
 	// Check that the difficulty of 1 is used.
-	results := processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), 0, nil).ProcessedTransactions
+	results := processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), 0, nil, math.MaxUint64).ProcessedTransactions
 	require.Len(t, results, 1)
 	require.NotNil(t, results[0].Receipt)
 	require.Equal(t, types.ReceiptStatusSuccessful, results[0].Receipt.Status)
@@ -479,7 +479,7 @@ func TestProcess_UsesDifficultyOfOne(t *testing.T) {
 	// Check that an unexpected difficulty causes a revert.
 	wrongDifficulty := big.NewInt(2)
 	state, block = createScenarioWithTxCheckingDifficulty(ctrl, wrongDifficulty)
-	results = processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), 0, nil).ProcessedTransactions
+	results = processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), 0, nil, math.MaxUint64).ProcessedTransactions
 	require.Len(t, results, 1)
 	require.NotNil(t, results[0].Receipt)
 	require.Equal(t, types.ReceiptStatusFailed, results[0].Receipt.Status)
@@ -495,7 +495,7 @@ func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 			state, block := createScenarioWithTxCheckingDifficulty(ctrl, difficulty)
 			results := processor.ProcessWithDifficulty(
 				block, state, vm.Config{}, math.MaxUint64,
-				new(uint64), 0, nil, difficulty,
+				new(uint64), 0, nil, difficulty, math.MaxUint64,
 			).ProcessedTransactions
 			require.Len(t, results, 1)
 			require.NotNil(t, results[0].Receipt)
@@ -595,7 +595,7 @@ func TestProcessWithDifficulty_ForwardsTimeToBundleProcessing(t *testing.T) {
 
 	summary := processor.ProcessWithDifficulty(
 		block, stateDb, vm.Config{}, math.MaxUint64,
-		new(uint64), 0, nil, big.NewInt(1),
+		new(uint64), 0, nil, big.NewInt(1), math.MaxUint64,
 	)
 
 	// The rejected bundle should be listed in the summary, the accepted not,
@@ -660,7 +660,7 @@ func TestProcess_ForwardsCorrectIndexToTransactionProcessor(t *testing.T) {
 			}
 
 			// run the block on the processor with the desired initial offset
-			processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), offset, nil)
+			processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), offset, nil, math.MaxUint64)
 		})
 	}
 }
@@ -891,6 +891,7 @@ type processFunction = func(
 	usedGas *uint64,
 	trueTxOffset int,
 	onNewLog func(*core_types.Log),
+	maxBlockSize uint64,
 ) ProcessSummary
 
 func getStateDbMockForTransactions(
@@ -987,17 +988,18 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactions(t *
 	context := &runContext{
 		runner:   runner,
 		upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
+		signer:   types.LatestSignerForChainID(big.NewInt(1)),
 	}
 	gomock.InOrder(
-		runner.EXPECT().runRegularTransaction(context, txs[0], 4).Return(
+		runner.EXPECT().runRegularTransaction(context, txs[0], 4, gomock.Any()).Return(
 			regularTxResult,
 			core_types.TransactionResultSuccessful,
 		),
-		runner.EXPECT().runSponsoredTransaction(context, txs[1], 5).Return(
+		runner.EXPECT().runSponsoredTransaction(context, txs[1], 5, gomock.Any()).Return(
 			sponsoredTxResult,
 			core_types.TransactionResultSuccessful,
 		),
-		runner.EXPECT().runTransactionBundle(context, txs[2], 7).Return(
+		runner.EXPECT().runTransactionBundle(context, txs[2], 7, gomock.Any()).Return(
 			bundleTxResult,
 			core_types.TransactionResultSuccessful,
 			core_types.ExecutionCost(0),
@@ -1006,7 +1008,7 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactions(t *
 
 	// run the transactions; as a side-effect, check that the
 	// transaction offset is correctly initialized and updated.
-	summary := runTransactions(context, txs, 4)
+	summary := runTransactions(context, txs, 4, math.MaxUint64)
 	got := summary.ProcessedTransactions
 	require.Len(t, got, 6)
 
@@ -1071,6 +1073,7 @@ func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyP
 	}
 
 	context := &runContext{
+		signer: types.LatestSignerForChainID(big.NewInt(1)),
 		runner: runner,
 		upgrades: opera.Upgrades{
 			Brio:               true,
@@ -1081,25 +1084,25 @@ func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyP
 
 	trueStartIndex := 7
 	gomock.InOrder(
-		runner.EXPECT().runSponsoredTransaction(context, txs[0], trueStartIndex).Return(
+		runner.EXPECT().runSponsoredTransaction(context, txs[0], trueStartIndex, gomock.Any()).Return(
 			sponsoredTxResult1,
 			core_types.TransactionResultSuccessful,
 		),
 		// the sponsored transaction results in two processed transactions: the sponsored transaction itself and an internal fee deduction transaction, so the next transaction should have index startIndex + 2
-		runner.EXPECT().runRegularTransaction(context, txs[1], trueStartIndex+2).Return(
+		runner.EXPECT().runRegularTransaction(context, txs[1], trueStartIndex+2, gomock.Any()).Return(
 			regularTxResult2,
 			core_types.TransactionResultSuccessful,
 		),
 		// the regular transaction has a nil receipt, which does not increase
 		// the transaction offset.
-		runner.EXPECT().runRegularTransaction(context, txs[2], trueStartIndex+2).Return(
+		runner.EXPECT().runRegularTransaction(context, txs[2], trueStartIndex+2, gomock.Any()).Return(
 			regularTxResult3,
 			core_types.TransactionResultSuccessful,
 		),
 		// the bundle transaction has 3 results, one with a nil receipt, but all
 		// should be counted towards the legacy offset of the next transaction,
 		// but only the accepted ones should be counted towards the true offset
-		runner.EXPECT().runTransactionBundle(context, txs[3], trueStartIndex+3).Return(
+		runner.EXPECT().runTransactionBundle(context, txs[3], trueStartIndex+3, gomock.Any()).Return(
 			bundleTxResult4,
 			core_types.TransactionResultSuccessful,
 			core_types.ExecutionCost(0),
@@ -1107,13 +1110,13 @@ func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyP
 		// the next regular transaction should see all transactions processed
 		// for the bundle transaction, even the one with the nil receipt; the
 		// true index ignores the nil receipts.
-		runner.EXPECT().runRegularTransaction(context, txs[4], trueStartIndex+5).Return(
+		runner.EXPECT().runRegularTransaction(context, txs[4], trueStartIndex+5, gomock.Any()).Return(
 			regularTxResult5,
 			core_types.TransactionResultSuccessful,
 		),
 	)
 
-	summary := runTransactions(context, txs, trueStartIndex)
+	summary := runTransactions(context, txs, trueStartIndex, math.MaxUint64)
 	got := summary.ProcessedTransactions
 
 	want := []ProcessedTransaction{}
@@ -1139,8 +1142,9 @@ func TestRunTransaction_GasSubsidiesDisabled_ProcessesRegularTransaction(t *test
 				runner:   runner,
 				upgrades: opera.Upgrades{GasSubsidies: false},
 			}
-			runner.EXPECT().runRegularTransaction(context, tx, 0)
-			runTransaction(context, tx, 0)
+			sizeLimit := uint64(1234)
+			runner.EXPECT().runRegularTransaction(context, tx, 0, sizeLimit)
+			runTransaction(context, tx, 0, sizeLimit)
 		})
 	}
 }
@@ -1159,8 +1163,8 @@ func TestRunTransaction_GasSubsidiesEnabled_RunsRegularTransactionWithoutSponsor
 		runner:   runner,
 		upgrades: opera.Upgrades{GasSubsidies: true},
 	}
-	runner.EXPECT().runRegularTransaction(context, tx, 123).Return(processed, core_types.TransactionResultSuccessful)
-	got, status, execCost := runTransaction(context, tx, 123)
+	runner.EXPECT().runRegularTransaction(context, tx, 123, uint64(456)).Return(processed, core_types.TransactionResultSuccessful)
+	got, status, execCost := runTransaction(context, tx, 123, 456)
 	require.Equal(t, []ProcessedTransaction{processed}, got)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	require.EqualValues(t, processed.Receipt.GasUsed, execCost)
@@ -1176,14 +1180,14 @@ func TestRunTransaction_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorshi
 		runner:   runner,
 		upgrades: opera.Upgrades{GasSubsidies: true},
 	}
-	runner.EXPECT().runSponsoredTransaction(context, tx, 123).Return(
+	runner.EXPECT().runSponsoredTransaction(context, tx, 123, uint64(456)).Return(
 		[]ProcessedTransaction{{
 			Transaction: tx,
 			Receipt:     &types.Receipt{GasUsed: 1},
 		}},
 		core_types.TransactionResultSuccessful,
 	)
-	processed, status, execCost := runTransaction(context, tx, 123)
+	processed, status, execCost := runTransaction(context, tx, 123, 456)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1206,8 +1210,8 @@ func TestRunTransaction_GasSubsidiesEnabled_ForReplay_RunsSponsorshipRequestAsRe
 		upgrades:  opera.Upgrades{GasSubsidies: true},
 		forReplay: true,
 	}
-	runner.EXPECT().runRegularTransaction(context, tx, 123).Return(processed, core_types.TransactionResultSuccessful)
-	got, status, execCost := runTransaction(context, tx, 123)
+	runner.EXPECT().runRegularTransaction(context, tx, 123, uint64(456)).Return(processed, core_types.TransactionResultSuccessful)
+	got, status, execCost := runTransaction(context, tx, 123, 456)
 	require.Equal(t, []ProcessedTransaction{processed}, got)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	require.Equal(t, core_types.ExecutionCost(1), execCost)
@@ -1223,14 +1227,15 @@ func TestRunTransactions_GasSubsidiesDisabled_BundlesDisabled_ProcessesAsRegular
 		runner:   runner,
 		upgrades: opera.Upgrades{TransactionBundles: false, GasSubsidies: false},
 	}
-	runner.EXPECT().runRegularTransaction(context, tx, 123).Return(
+	sizeLimit := uint64(math.MaxUint64)
+	runner.EXPECT().runRegularTransaction(context, tx, 123, sizeLimit).Return(
 		ProcessedTransaction{
 			Transaction: tx,
 			Receipt:     nil,
 		},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, 123)
+	summary := runTransactions(context, []*types.Transaction{tx}, 123, sizeLimit)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1247,7 +1252,8 @@ func TestRunTransactions_GasSubsidiesEnabled_BundlesDisabled_ProcessesAsSponsors
 		runner:   runner,
 		upgrades: opera.Upgrades{TransactionBundles: false, GasSubsidies: true},
 	}
-	runner.EXPECT().runSponsoredTransaction(context, tx, 123).Return(
+	sizeLimit := uint64(math.MaxUint64)
+	runner.EXPECT().runSponsoredTransaction(context, tx, 123, sizeLimit).Return(
 		[]ProcessedTransaction{{
 
 			Transaction: tx,
@@ -1255,7 +1261,7 @@ func TestRunTransactions_GasSubsidiesEnabled_BundlesDisabled_ProcessesAsSponsors
 		}},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, 123)
+	summary := runTransactions(context, []*types.Transaction{tx}, 123, sizeLimit)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1272,14 +1278,15 @@ func TestRunTransactions_BundlesEnabled_RunsRegularTransactionOnItsOwn(t *testin
 		runner:   runner,
 		upgrades: opera.Upgrades{TransactionBundles: true},
 	}
-	runner.EXPECT().runRegularTransaction(context, tx, 123).Return(
+	sizeLimit := uint64(math.MaxUint64)
+	runner.EXPECT().runRegularTransaction(context, tx, 123, sizeLimit).Return(
 		ProcessedTransaction{
 			Transaction: tx,
 			Receipt:     nil,
 		},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, 123)
+	summary := runTransactions(context, []*types.Transaction{tx}, 123, sizeLimit)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1296,14 +1303,15 @@ func TestRunTransactions_BundlesEnabled_RunsSponsorshipRequestWithSponsorship(t 
 		runner:   runner,
 		upgrades: opera.Upgrades{GasSubsidies: true, TransactionBundles: true},
 	}
-	runner.EXPECT().runSponsoredTransaction(context, tx, 123).Return(
+	sizeLimit := uint64(math.MaxUint64)
+	runner.EXPECT().runSponsoredTransaction(context, tx, 123, sizeLimit).Return(
 		[]ProcessedTransaction{{
 			Transaction: tx,
 			Receipt:     nil,
 		}},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, 123)
+	summary := runTransactions(context, []*types.Transaction{tx}, 123, sizeLimit)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1388,16 +1396,17 @@ func TestRunTransactions_EnvelopeAndBundleOnly_SemanticsEnabledByBrio_ExecutionE
 				},
 			}
 
+			sizeLimit := uint64(math.MaxUint64)
 			if tc.expectRunRegular {
-				runner.EXPECT().runRegularTransaction(context, tc.tx, 0).
+				runner.EXPECT().runRegularTransaction(context, tc.tx, 0, sizeLimit).
 					Return(ProcessedTransaction{Transaction: tc.tx, Receipt: &types.Receipt{}}, core_types.TransactionResultSuccessful)
 			}
 			if tc.expectRunBundle {
-				runner.EXPECT().runTransactionBundle(context, tc.tx, 0).
+				runner.EXPECT().runTransactionBundle(context, tc.tx, 0, sizeLimit).
 					Return([]ProcessedTransaction{{Transaction: tc.tx, Receipt: &types.Receipt{}}}, core_types.TransactionResultSuccessful, core_types.ExecutionCost(0))
 			}
 
-			summary := runTransactions(context, []*types.Transaction{tc.tx}, 0)
+			summary := runTransactions(context, []*types.Transaction{tc.tx}, 0, sizeLimit)
 			processed := summary.ProcessedTransactions
 			require.Len(t, processed, 1)
 			if tc.expectInvalid {
@@ -1451,11 +1460,11 @@ func TestRunTransactions_BundleOnlyTxsAreNotFilteredDuringReplay(t *testing.T) {
 				},
 				forReplay: true, // this is the relevant part for this test
 			}
-
-			runner.EXPECT().runRegularTransaction(context, bundleOnlyTx, 0).
+			sizeLimit := uint64(math.MaxUint64)
+			runner.EXPECT().runRegularTransaction(context, bundleOnlyTx, 0, sizeLimit).
 				Return(ProcessedTransaction{Transaction: bundleOnlyTx, Receipt: &types.Receipt{}}, core_types.TransactionResultSuccessful)
 
-			summary := runTransactions(context, []*types.Transaction{bundleOnlyTx}, 0)
+			summary := runTransactions(context, []*types.Transaction{bundleOnlyTx}, 0, sizeLimit)
 			processed := summary.ProcessedTransactions
 			require.Len(t, processed, 1)
 			require.Equal(t, ProcessedTransaction{bundleOnlyTx, &types.Receipt{}}, processed[0])
@@ -1548,7 +1557,8 @@ func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) 
 			}
 
 			runner := &transactionRunner{evm: evm}
-			got, status := runner.runSponsoredTransaction(context, tx, 0)
+			sizeLimit := uint64(math.MaxUint64)
+			got, status := runner.runSponsoredTransaction(context, tx, 0, sizeLimit)
 			if test.shouldSkip {
 				require.Equal(t, core_types.TransactionResultInvalid, status)
 			} else {
@@ -1592,7 +1602,8 @@ func TestRunSponsoredTransaction_SponsorshipNotCovered_ReturnsASkippedTransactio
 	}
 
 	runner := &transactionRunner{}
-	got, status := runner.runSponsoredTransaction(context, tx, 0)
+	sizeLimit := uint64(math.MaxUint64)
+	got, status := runner.runSponsoredTransaction(context, tx, 0, sizeLimit)
 	require.Equal(t, core_types.TransactionResultInvalid, status)
 	want := []ProcessedTransaction{{
 		Transaction: tx,
@@ -1627,7 +1638,8 @@ func TestRunSponsoredTransaction_SponsorshipCoverageCheckFails_ReturnsASkippedTr
 	}
 
 	runner := &transactionRunner{evm: evm}
-	got, status := runner.runSponsoredTransaction(context, tx, 0)
+	sizeLimit := uint64(math.MaxUint64)
+	got, status := runner.runSponsoredTransaction(context, tx, 0, sizeLimit)
 	require.Equal(t, core_types.TransactionResultInvalid, status)
 	want := []ProcessedTransaction{{
 		Transaction: tx,
@@ -1671,7 +1683,8 @@ func TestRunSponsoredTransaction_SponsoredTransactionIsSkipped_NoFeeDeductionTxI
 	}
 
 	runner := &transactionRunner{evm: evm}
-	got, status := runner.runSponsoredTransaction(context, tx, 0)
+	sizeLimit := uint64(math.MaxUint64)
+	got, status := runner.runSponsoredTransaction(context, tx, 0, sizeLimit)
 	require.Equal(t, core_types.TransactionResultInvalid, status)
 	want := []ProcessedTransaction{{
 		Transaction: tx,
@@ -1740,7 +1753,8 @@ func TestRunSponsoredTransaction_FailingCreationOfFeeDeduction_TransactionIsAcce
 	}
 
 	runner := &transactionRunner{evm: evm}
-	got, status := runner.runSponsoredTransaction(context, tx, 0)
+	sizeLimit := uint64(math.MaxUint64)
+	got, status := runner.runSponsoredTransaction(context, tx, 0, sizeLimit)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	want := []ProcessedTransaction{processed}
 	require.Equal(t, want, got)
@@ -1793,8 +1807,9 @@ func TestRunSponsoredTransaction_FeeDeductionTxIsSkipped_TransactionIsAcceptedWi
 		upgrades: opera.Upgrades{GasSubsidies: true},
 	}
 
+	sizeLimit := uint64(math.MaxUint64)
 	runner := &transactionRunner{evm: evm}
-	got, status := runner.runSponsoredTransaction(context, tx, 0)
+	got, status := runner.runSponsoredTransaction(context, tx, 0, sizeLimit)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	want := []ProcessedTransaction{
 		processedSponsoredTransaction,
@@ -1851,9 +1866,9 @@ func TestRunSponsoredTransaction_FeeDeductionTxFails_TransactionIsAcceptedWithou
 		gasPool:  gasPool,
 		upgrades: opera.Upgrades{GasSubsidies: true},
 	}
-
+	sizeLimit := uint64(math.MaxUint64)
 	runner := &transactionRunner{evm: evm}
-	got, status := runner.runSponsoredTransaction(context, tx, 0)
+	got, status := runner.runSponsoredTransaction(context, tx, 0, sizeLimit)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	want := []ProcessedTransaction{
 		processedSponsoredTransaction,
@@ -1905,7 +1920,8 @@ func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testin
 	}
 
 	runner := &transactionRunner{evm: evm}
-	got, status := runner.runSponsoredTransaction(context, tx, txIndex)
+	sizeLimit := uint64(math.MaxUint64)
+	got, status := runner.runSponsoredTransaction(context, tx, txIndex, sizeLimit)
 	require.Equal(t, core_types.TransactionResultFailed, status)
 	require.Len(t, got, 2)
 	require.Equal(t, tx, got[0].Transaction)
@@ -2075,7 +2091,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 
 	// --- start of actual test ---
 
-	processedTransactions, status := runner.runSponsoredTransaction(context, tx, txIndex)
+	processedTransactions, status := runner.runSponsoredTransaction(context, tx, txIndex, math.MaxUint64)
 	require.Equal(core_types.TransactionResultSuccessful, status)
 
 	// the transaction should be sponsored successfully
@@ -2213,7 +2229,7 @@ func TestRunSponsoredTransaction_MatchesCoveredAndReceiptToStatus(t *testing.T) 
 			}
 
 			runner := transactionRunner{evm}
-			_, status := runner.runSponsoredTransaction(ctxt, tx, txIndex)
+			_, status := runner.runSponsoredTransaction(ctxt, tx, txIndex, math.MaxUint64)
 			require.Equal(t, test.status, status)
 		})
 	}
@@ -2232,7 +2248,7 @@ func TestRunTransactionBundle_BundlesDisabled_ReturnsEnvelopeAndResultInvalid(t 
 
 	runner := &transactionRunner{}
 
-	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, log)
+	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, log, math.MaxUint64)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
@@ -2255,7 +2271,7 @@ func TestRunTransactionBundle_InvalidEnvelope_ReturnsEnvelopeAndResultInvalid(t 
 
 	runner := &transactionRunner{}
 
-	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, log)
+	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, log, math.MaxUint64)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
@@ -2294,7 +2310,7 @@ func TestRunTransactionBundle_BundleOutOfRange_ReturnsEnvelopeAndResultInvalid(t
 
 	runner := &transactionRunner{}
 
-	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, log)
+	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, log, math.MaxUint64)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
@@ -2334,7 +2350,7 @@ func TestRunTransactionBundle_BundleOutOfTime_ReturnsEnvelopeAndResultInvalid(t 
 
 	runner := &transactionRunner{}
 
-	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, log)
+	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, log, math.MaxUint64)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
@@ -2366,7 +2382,7 @@ func TestRunTransactionBundle_PreviouslyProcessedBundle_ReturnsEnvelopeAndResult
 
 	runner := &transactionRunner{}
 
-	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, log)
+	processedTransactions, result, execCost := runner.runTransactionBundleInternal(context, tx, 0, log, math.MaxUint64)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
@@ -2409,7 +2425,7 @@ func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResu
 
 	runner := &transactionRunner{evm: evm}
 
-	processedTransactions, result, execCost := runner.runTransactionBundle(context, tx, txOffset)
+	processedTransactions, result, execCost := runner.runTransactionBundle(context, tx, txOffset, math.MaxUint64)
 	require.Len(t, processedTransactions, 0)
 	require.Equal(t, core_types.TransactionResultFailed, result)
 	require.Zero(t, execCost)
@@ -2431,7 +2447,8 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 
 	gomock.InOrder(
 		state.EXPECT().HasBundleRecentlyBeenProcessed(plan.Hash()),
-		state.EXPECT().InterTxSnapshot().Return(1),
+		state.EXPECT().InterTxSnapshot().Return(0), // < snapshot for size check
+		state.EXPECT().InterTxSnapshot().Return(1), // < snapshot for execution
 		state.EXPECT().AddProcessedBundle(plan.Hash(), bundle.PositionInBlock{
 			Offset: uint32(trueTxOffset),
 			Count:  1,
@@ -2459,7 +2476,7 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 			Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful, GasUsed: txs[0].Gas()},
 		})
 
-	processedTransactions, result, execCost := runner.runTransactionBundle(context, envelope, trueTxOffset)
+	processedTransactions, result, execCost := runner.runTransactionBundle(context, envelope, trueTxOffset, math.MaxUint64)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, txs[0], processedTransactions[0].Transaction)
 	require.NotNil(t, processedTransactions[0].Receipt)
@@ -2535,6 +2552,7 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 			state := state.NewMockStateDB(ctrl)
 			gomock.InOrder(
 				state.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()),
+				state.EXPECT().InterTxSnapshot().Return(0),
 				state.EXPECT().InterTxSnapshot().Return(1),
 				state.EXPECT().AddProcessedBundle(gomock.Any(), bundle.PositionInBlock{
 					Offset: test.offset, // < these two fields are the main test targets
@@ -2551,13 +2569,13 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 					receipt = &types.Receipt{GasUsed: 1}
 				}
 				execResult = append(execResult, ProcessedTransaction{
-					Transaction: &types.Transaction{},
+					Transaction: types.NewTx(&types.LegacyTx{}),
 					Receipt:     receipt,
 				})
 			}
 
 			innerRunner := NewMock_transactionRunner(ctrl)
-			innerRunner.EXPECT().runSponsoredTransaction(gomock.Any(), gomock.Any(), int(trueTxOffset)).Return(
+			innerRunner.EXPECT().runSponsoredTransaction(gomock.Any(), gomock.Any(), int(trueTxOffset), uint64(math.MaxUint64)).Return(
 				execResult, core_types.TransactionResultSuccessful,
 			)
 
@@ -2575,7 +2593,7 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 			}
 
 			runner := &transactionRunner{}
-			processedTransactions, result, execCost := runner.runTransactionBundle(context, envelope, int(trueTxOffset))
+			processedTransactions, result, execCost := runner.runTransactionBundle(context, envelope, int(trueTxOffset), math.MaxUint64)
 			require.Equal(t, execResult, processedTransactions)
 			require.Equal(t, core_types.TransactionResultSuccessful, result)
 			execCostExpected := uint64(0)
@@ -2658,7 +2676,7 @@ func TestRunRegularTransaction_InternalTransactions_SkipsTransactionChecksTrue(t
 	require.True(t, internaltx.IsInternal(unsignedTx))
 
 	// run an internal transaction with gas over the max tx gas limit.
-	got, status := runner.runRegularTransaction(context, unsignedTx, 0)
+	got, status := runner.runRegularTransaction(context, unsignedTx, 0, math.MaxUint64)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
 
 	require.Equal(t, unsignedTx, got.Transaction)
@@ -2672,7 +2690,7 @@ func TestRunRegularTransaction_InternalTransactions_SkipsTransactionChecksTrue(t
 	regularTx := types.MustSignNewTx(key, signer, &types.LegacyTx{
 		Nonce: 0, To: &common.Address{1}, Gas: maxTxGas * 2, GasPrice: big.NewInt(1),
 	})
-	got, status = runner.runRegularTransaction(context, regularTx, 0)
+	got, status = runner.runRegularTransaction(context, regularTx, 0, math.MaxUint64)
 	require.Equal(t, core_types.TransactionResultInvalid, status)
 	require.Equal(t, regularTx, got.Transaction)
 	require.Nil(t, got.Receipt)
@@ -2785,7 +2803,7 @@ func TestRunRegularTransaction_RegularTransaction(t *testing.T) {
 				Nonce: 0, To: &common.Address{1}, Gas: maxTxGas + 1, GasPrice: big.NewInt(1),
 			})
 
-			got, status := runner.runRegularTransaction(context, regularTx, 0)
+			got, status := runner.runRegularTransaction(context, regularTx, 0, math.MaxUint64)
 			require.Equal(t, test.status, status)
 
 			require.Equal(t, regularTx, got.Transaction)
@@ -2819,7 +2837,7 @@ func TestRunRegularTransaction_MatchesReceiptToStatus(t *testing.T) {
 			evm := NewMock_evm(ctrl)
 
 			ctxt := &runContext{}
-			tx := &types.Transaction{}
+			tx := types.NewTx(&types.LegacyTx{})
 
 			evm.EXPECT().runWithBaseFeeCheck(ctxt, tx, 12).Return(
 				ProcessedTransaction{
@@ -2829,7 +2847,7 @@ func TestRunRegularTransaction_MatchesReceiptToStatus(t *testing.T) {
 			)
 
 			runner := transactionRunner{evm}
-			_, status := runner.runRegularTransaction(ctxt, tx, 12)
+			_, status := runner.runRegularTransaction(ctxt, tx, 12, math.MaxUint64)
 			require.Equal(t, test.status, status)
 		})
 	}
@@ -2839,19 +2857,30 @@ func TestBundleTransactionRunner_Run_KeepsTrackOfProcessedTransactions(t *testin
 	ctrl := gomock.NewController(t)
 	runner := NewMock_transactionRunner(ctrl)
 
-	ctxt := &runContext{runner: runner, upgrades: opera.Upgrades{GasSubsidies: true}}
-	bundleTransactionRunner := &bundleTransactionRunner{ctxt: ctxt}
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
+	stateDb.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
+
+	ctxt := &runContext{
+		runner:   runner,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+		gasPool:  core.NewGasPool(math.MaxUint64),
+		usedGas:  new(uint64),
+		statedb:  stateDb,
+	}
+	sizeLimit := uint64(math.MaxUint64)
+	bundleTransactionRunner := &bundleTransactionRunner{ctxt: ctxt, sizeLimit: sizeLimit}
 
 	tx1 := getRegularTransaction(t)
 	tx2 := getSponsorshipRequest(t)
 	tx2payment := getSponsorshipRequest(t) // some dummy tx
 	tx3 := getRegularTransaction(t)
 
-	runner.EXPECT().runRegularTransaction(ctxt, tx1, gomock.Any()).
+	runner.EXPECT().runRegularTransaction(ctxt, tx1, gomock.Any(), sizeLimit).
 		Return(ProcessedTransaction{Transaction: tx1}, core_types.TransactionResultSuccessful)
-	runner.EXPECT().runSponsoredTransaction(ctxt, tx2, gomock.Any()).
+	runner.EXPECT().runSponsoredTransaction(ctxt, tx2, gomock.Any(), sizeLimit).
 		Return([]ProcessedTransaction{{Transaction: tx2}, {Transaction: tx2payment}}, core_types.TransactionResultFailed)
-	runner.EXPECT().runRegularTransaction(ctxt, tx3, gomock.Any()).
+	runner.EXPECT().runRegularTransaction(ctxt, tx3, gomock.Any(), sizeLimit).
 		Return(ProcessedTransaction{Transaction: tx3}, core_types.TransactionResultInvalid)
 
 	// one processed transaction with status successful
@@ -2879,12 +2908,23 @@ func TestBundleTransactionRunner_Run_IncrementsTrueOffsetBasedOnProcessedTransac
 	ctrl := gomock.NewController(t)
 	runner := NewMock_transactionRunner(ctrl)
 
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
+	stateDb.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
+
 	trueStartOffset := 50
 
-	ctxt := &runContext{runner: runner, upgrades: opera.Upgrades{GasSubsidies: true}}
+	ctxt := &runContext{
+		runner:   runner,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+		gasPool:  core.NewGasPool(math.MaxUint64),
+		usedGas:  new(uint64),
+		statedb:  stateDb,
+	}
 	bundleTransactionRunner := &bundleTransactionRunner{
 		ctxt:         ctxt,
 		trueTxOffset: trueStartOffset,
+		sizeLimit:    math.MaxUint64,
 	}
 
 	tx1 := getRegularTransaction(t)
@@ -2892,24 +2932,30 @@ func TestBundleTransactionRunner_Run_IncrementsTrueOffsetBasedOnProcessedTransac
 	tx3 := getSponsorshipRequest(t)
 	tx4 := getRegularTransaction(t)
 
-	runner.EXPECT().runRegularTransaction(ctxt, tx1, gomock.Any()).
+	runner.EXPECT().runRegularTransaction(ctxt, tx1, gomock.Any(), gomock.Any()).
 		Return(
-			ProcessedTransaction{Receipt: &types.Receipt{}},
+			ProcessedTransaction{Transaction: tx1, Receipt: &types.Receipt{}},
 			core_types.TransactionResultSuccessful,
 		)
-	runner.EXPECT().runSponsoredTransaction(ctxt, tx2, gomock.Any()).
+	runner.EXPECT().runSponsoredTransaction(ctxt, tx2, gomock.Any(), gomock.Any()).
 		Return(
-			[]ProcessedTransaction{{Receipt: &types.Receipt{}}, {Receipt: &types.Receipt{}}},
+			[]ProcessedTransaction{
+				{Transaction: tx2, Receipt: &types.Receipt{}},
+				{Transaction: tx2, Receipt: &types.Receipt{}},
+			},
 			core_types.TransactionResultFailed,
 		)
-	runner.EXPECT().runSponsoredTransaction(ctxt, tx3, gomock.Any()).
+	runner.EXPECT().runSponsoredTransaction(ctxt, tx3, gomock.Any(), gomock.Any()).
 		Return(
-			[]ProcessedTransaction{{Receipt: &types.Receipt{}}, {Receipt: nil}},
+			[]ProcessedTransaction{
+				{Transaction: tx3, Receipt: &types.Receipt{}},
+				{Transaction: tx3, Receipt: nil},
+			},
 			core_types.TransactionResultInvalid,
 		)
-	runner.EXPECT().runRegularTransaction(ctxt, tx4, gomock.Any()).
+	runner.EXPECT().runRegularTransaction(ctxt, tx4, gomock.Any(), gomock.Any()).
 		Return(
-			ProcessedTransaction{Receipt: nil},
+			ProcessedTransaction{Transaction: tx4, Receipt: nil},
 			core_types.TransactionResultSuccessful,
 		)
 
@@ -2947,6 +2993,7 @@ func TestBundleTransactionRunner_CreateSnapshot_CallsInterTxSnapshotOnStateDbAnd
 		ctxt:                  ctxt,
 		trueTxOffset:          13,
 		processedTransactions: make([]ProcessedTransaction, 14),
+		sizeLimit:             15,
 	}
 
 	snapshotId := bundleTransactionRunner.CreateSnapshot()
@@ -2957,6 +3004,7 @@ func TestBundleTransactionRunner_CreateSnapshot_CallsInterTxSnapshotOnStateDbAnd
 	require.EqualValues(t, 11, bundleTransactionRunner.snapshots[0].usedGas)
 	require.Equal(t, 13, bundleTransactionRunner.snapshots[0].trueTxOffset)
 	require.Equal(t, 14, bundleTransactionRunner.snapshots[0].processedTransactionListLength)
+	require.EqualValues(t, 15, bundleTransactionRunner.snapshots[0].sizeLimit)
 }
 
 func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOnStateDbAndResetsLocalState(t *testing.T) {
@@ -2973,6 +3021,7 @@ func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOn
 		ctxt:                  ctxt,
 		trueTxOffset:          51,
 		processedTransactions: make([]ProcessedTransaction, 100),
+		sizeLimit:             999,
 	}
 
 	bundleTransactionRunner.snapshots = []bundleTransactionRunnerSnapshot{{
@@ -2981,6 +3030,7 @@ func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOn
 		processedTransactionListLength: 5,
 		usedGas:                        6,
 		gasPool:                        core.NewGasPool(7),
+		sizeLimit:                      42,
 	}}
 	bundleTransactionRunner.RevertToSnapshot(0)
 
@@ -2989,6 +3039,7 @@ func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOn
 	require.Len(t, bundleTransactionRunner.processedTransactions, 5)
 	require.EqualValues(t, 6, *ctxt.usedGas)
 	require.EqualValues(t, 7, ctxt.gasPool.Gas())
+	require.EqualValues(t, 42, bundleTransactionRunner.sizeLimit)
 }
 
 func TestBundleTransactionRunner_CreatingAndRevertingSnapshotsDoesNotAlterUsedGasAndGasPoolAddressesOfContext(t *testing.T) {
@@ -3045,15 +3096,26 @@ func TestBundleTransactionRunner_Run_ForwardsLegacyTransactionOffsetToRegularTxC
 			ctrl := gomock.NewController(t)
 			runner := NewMock_transactionRunner(ctrl)
 
-			ctxt := &runContext{runner: runner}
+			stateDb := state.NewMockStateDB(ctrl)
+			stateDb.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
+			stateDb.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
+
+			sizeLimit := uint64(1_000_000)
+			ctxt := &runContext{
+				runner:  runner,
+				gasPool: core.NewGasPool(math.MaxUint64),
+				usedGas: new(uint64),
+				statedb: stateDb,
+			}
 			bundleTransactionRunner := &bundleTransactionRunner{
 				ctxt:         ctxt,
 				trueTxOffset: offset + 1,
+				sizeLimit:    sizeLimit,
 			}
 
 			tx := getRegularTransaction(t)
 
-			runner.EXPECT().runRegularTransaction(ctxt, tx, offset+1)
+			runner.EXPECT().runRegularTransaction(ctxt, tx, offset+1, sizeLimit)
 			bundleTransactionRunner.Run(tx)
 		})
 	}
@@ -3065,15 +3127,27 @@ func TestBundleTransactionRunner_Run_ForwardsLegacyTransactionOffsetToSponsoredT
 			ctrl := gomock.NewController(t)
 			runner := NewMock_transactionRunner(ctrl)
 
-			ctxt := &runContext{runner: runner, upgrades: opera.Upgrades{GasSubsidies: true}}
+			stateDb := state.NewMockStateDB(ctrl)
+			stateDb.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
+			stateDb.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
+
+			sizeLimit := uint64(1_000_000)
+			ctxt := &runContext{
+				runner:   runner,
+				upgrades: opera.Upgrades{GasSubsidies: true},
+				gasPool:  core.NewGasPool(math.MaxUint64),
+				usedGas:  new(uint64),
+				statedb:  stateDb,
+			}
 			bundleTransactionRunner := &bundleTransactionRunner{
 				ctxt:         ctxt,
 				trueTxOffset: offset + 1,
+				sizeLimit:    sizeLimit,
 			}
 
 			tx := getSponsorshipRequest(t)
 
-			runner.EXPECT().runSponsoredTransaction(ctxt, tx, offset+1)
+			runner.EXPECT().runSponsoredTransaction(ctxt, tx, offset+1, sizeLimit)
 			bundleTransactionRunner.Run(tx)
 		})
 	}
@@ -3085,16 +3159,28 @@ func TestBundleTransactionRunner_Run_ForwardsTrueTransactionOffsetToBundleTxCall
 			ctrl := gomock.NewController(t)
 			runner := NewMock_transactionRunner(ctrl)
 
+			stateDb := state.NewMockStateDB(ctrl)
+			stateDb.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
+			stateDb.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
+
+			sizeLimit := uint64(1_000_000)
 			upgrades := opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true}
-			ctxt := &runContext{runner: runner, upgrades: upgrades}
+			ctxt := &runContext{
+				runner:   runner,
+				upgrades: upgrades,
+				gasPool:  core.NewGasPool(math.MaxUint64),
+				usedGas:  new(uint64),
+				statedb:  stateDb,
+			}
 			bundleTransactionRunner := &bundleTransactionRunner{
 				ctxt:         ctxt,
 				trueTxOffset: trueOffset,
+				sizeLimit:    sizeLimit,
 			}
 
 			tx := getTransactionBundle(t)
 
-			runner.EXPECT().runTransactionBundle(ctxt, tx, trueOffset)
+			runner.EXPECT().runTransactionBundle(ctxt, tx, trueOffset, sizeLimit)
 			bundleTransactionRunner.Run(tx)
 		})
 	}
@@ -3127,17 +3213,32 @@ func TestBundleTransactionRunner_Run_UpdatesTxIndexBasedOnNumberOfAcceptedTransa
 			ctrl := gomock.NewController(t)
 			runner := NewMock_transactionRunner(ctrl)
 
+			stateDb := state.NewMockStateDB(ctrl)
+			stateDb.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
+			stateDb.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
+
 			trueStartOffset := 7
 
-			ctxt := &runContext{runner: runner, upgrades: opera.Upgrades{GasSubsidies: true}}
+			ctxt := &runContext{
+				runner:   runner,
+				upgrades: opera.Upgrades{GasSubsidies: true},
+				gasPool:  core.NewGasPool(math.MaxUint64),
+				usedGas:  new(uint64),
+				statedb:  stateDb,
+			}
 			bundleTransactionRunner := &bundleTransactionRunner{
 				ctxt:         ctxt,
 				trueTxOffset: trueStartOffset,
+				sizeLimit:    math.MaxUint64,
 			}
 
 			tx := getSponsorshipRequest(t)
 
-			runner.EXPECT().runSponsoredTransaction(ctxt, tx, trueStartOffset).Return(
+			for i := range test.execResult {
+				test.execResult[i].Transaction = types.NewTx(&types.LegacyTx{})
+			}
+
+			runner.EXPECT().runSponsoredTransaction(ctxt, tx, trueStartOffset, gomock.Any()).Return(
 				test.execResult,
 				core_types.TransactionResultSuccessful,
 			)
@@ -3213,14 +3314,27 @@ func TestBundleTransactionRunner_Run_CollectsProcessedTransactionsInOrder(t *tes
 
 	for i, tx := range txs {
 		require.True(t, subsidies.IsSponsorshipRequest(tx))
-		txRunner.EXPECT().runSponsoredTransaction(gomock.Any(), tx, gomock.Any()).Return(
+		txRunner.EXPECT().runSponsoredTransaction(gomock.Any(), tx, gomock.Any(), gomock.Any()).Return(
 			results[i],
 			core_types.TransactionResultSuccessful,
 		)
 	}
 
-	ctxt := &runContext{runner: txRunner, upgrades: opera.Upgrades{GasSubsidies: true}}
-	runner := &bundleTransactionRunner{ctxt: ctxt}
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
+	stateDb.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
+
+	ctxt := &runContext{
+		runner:   txRunner,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+		gasPool:  core.NewGasPool(math.MaxUint64),
+		usedGas:  new(uint64),
+		statedb:  stateDb,
+	}
+	runner := &bundleTransactionRunner{
+		ctxt:      ctxt,
+		sizeLimit: math.MaxUint64,
+	}
 
 	var want []ProcessedTransaction
 	require.Equal(t, want, runner.processedTransactions)
@@ -3491,10 +3605,10 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 
 			// regular transactions all pass, but we check whether the
 			// given nonce matches the transaction index.
-			runner.EXPECT().runRegularTransaction(any, any, any).DoAndReturn(
+			runner.EXPECT().runRegularTransaction(any, any, any, any).DoAndReturn(
 				func(
 					ctxt *runContext, tx *types.Transaction,
-					trueTxOffset int,
+					trueTxOffset int, sizeLimit uint64,
 				) (ProcessedTransaction, core_types.TransactionResult) {
 					require.Equal(int(tx.Value().Int64()), trueTxOffset)
 					seenTxNonces = append(seenTxNonces, int(tx.Nonce()))
@@ -3515,10 +3629,10 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 
 			// sponsored transactions all pass and produce two successful
 			// processed transactions, the sponsored and the payment tx
-			runner.EXPECT().runSponsoredTransaction(any, any, any).DoAndReturn(
+			runner.EXPECT().runSponsoredTransaction(any, any, any, any).DoAndReturn(
 				func(
 					ctxt *runContext, tx *types.Transaction,
-					trueTxOffset int,
+					trueTxOffset int, sizeLimit uint64,
 				) ([]ProcessedTransaction, core_types.TransactionResult) {
 					require.Equal(int(tx.Value().Int64()), trueTxOffset)
 					seenTxNonces = append(seenTxNonces, int(tx.Nonce()))
@@ -3528,7 +3642,7 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 							Receipt:     &types.Receipt{},
 						},
 						{
-							Transaction: &types.Transaction{},
+							Transaction: types.NewTx(&types.LegacyTx{}), // < the payment transaction, we don't care about the details here
 							Receipt:     &types.Receipt{},
 						},
 					}, core_types.TransactionResultSuccessful
@@ -3536,7 +3650,7 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 			).AnyTimes()
 
 			// bundle envelopes are opened and executed
-			runner.EXPECT().runTransactionBundle(any, any, any).DoAndReturn(
+			runner.EXPECT().runTransactionBundle(any, any, any, any).DoAndReturn(
 				// we want to use the real implementation here to check the
 				// correct forwarding of the transaction indices
 				new(transactionRunner).runTransactionBundle,
@@ -3564,7 +3678,7 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 			}
 
 			// the actual execution of the test case
-			runTransaction(ctxt, tx, 0)
+			runTransaction(ctxt, tx, 0, math.MaxUint64)
 
 			// make sure that all transactions have indeed been processed
 			wantedTxNonces := collectAllReferencedTransactionNonces(t, signer, tx)
@@ -3685,6 +3799,7 @@ func TestRunTransactions_AccumulatesExecutionCostFromAllTransactions(t *testing.
 	runner := NewMock_transactionRunner(ctrl)
 
 	context := &runContext{
+		signer:   types.LatestSignerForChainID(big.NewInt(1)),
 		runner:   runner,
 		upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
 	}
@@ -3696,25 +3811,25 @@ func TestRunTransactions_AccumulatesExecutionCostFromAllTransactions(t *testing.
 	}
 
 	gomock.InOrder(
-		runner.EXPECT().runRegularTransaction(context, txs[0], 0).Return(
+		runner.EXPECT().runRegularTransaction(context, txs[0], 0, gomock.Any()).Return(
 			ProcessedTransaction{Transaction: txs[0], Receipt: &types.Receipt{GasUsed: 100}},
 			core_types.TransactionResultSuccessful,
 		),
-		runner.EXPECT().runSponsoredTransaction(context, txs[1], 1).Return(
+		runner.EXPECT().runSponsoredTransaction(context, txs[1], 1, gomock.Any()).Return(
 			[]ProcessedTransaction{
 				{Transaction: txs[1], Receipt: &types.Receipt{GasUsed: 200}},
-				{Transaction: &types.Transaction{}, Receipt: &types.Receipt{GasUsed: 300}},
+				{Transaction: types.NewTx(&types.LegacyTx{}), Receipt: &types.Receipt{GasUsed: 300}},
 			},
 			core_types.TransactionResultSuccessful,
 		),
-		runner.EXPECT().runTransactionBundle(context, txs[2], 3).Return(
+		runner.EXPECT().runTransactionBundle(context, txs[2], 3, gomock.Any()).Return(
 			[]ProcessedTransaction{{Transaction: txs[2], Receipt: &types.Receipt{GasUsed: 400}}},
 			core_types.TransactionResultSuccessful,
 			core_types.ExecutionCost(500), // higher than receipt gas
 		),
 	)
 
-	summary := runTransactions(context, txs, 0)
+	summary := runTransactions(context, txs, 0, math.MaxUint64)
 	require.Equal(t, core_types.ExecutionCost(100+200+300+500), summary.ExecutionCost)
 }
 
@@ -3742,12 +3857,12 @@ func TestRunTransaction_RegularTransaction_ReturnsExecutionCostFromReceipt(t *te
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			runner.EXPECT().runRegularTransaction(context, tx, 0).Return(
+			runner.EXPECT().runRegularTransaction(context, tx, 0, gomock.Any()).Return(
 				ProcessedTransaction{Transaction: tx, Receipt: tc.receipt},
 				core_types.TransactionResultSuccessful,
 			)
 
-			_, _, execCost := runTransaction(context, tx, 0)
+			_, _, execCost := runTransaction(context, tx, 0, math.MaxUint64)
 			require.Equal(t, tc.expectExecCost, execCost)
 		})
 	}
@@ -3781,7 +3896,7 @@ func TestRunTransaction_SponsoredTransaction_ReturnsExecutionCostFromReceipts(t 
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			runner.EXPECT().runSponsoredTransaction(context, tx, 0).Return(
+			runner.EXPECT().runSponsoredTransaction(context, tx, 0, gomock.Any()).Return(
 				[]ProcessedTransaction{
 					{Transaction: tx, Receipt: tc.receipts[0]},
 					{Transaction: &types.Transaction{}, Receipt: tc.receipts[1]},
@@ -3789,7 +3904,7 @@ func TestRunTransaction_SponsoredTransaction_ReturnsExecutionCostFromReceipts(t 
 				core_types.TransactionResultSuccessful,
 			)
 
-			_, _, execCost := runTransaction(context, tx, 0)
+			_, _, execCost := runTransaction(context, tx, 0, math.MaxUint64)
 			require.Equal(t, tc.expectExecCost, execCost)
 		})
 	}
@@ -3808,12 +3923,511 @@ func TestRunTransaction_Bundle_ReturnsExecutionCostFromBundleExecution(t *testin
 		},
 	}
 
-	runner.EXPECT().runTransactionBundle(context, tx, 0).Return(
+	runner.EXPECT().runTransactionBundle(context, tx, 0, gomock.Any()).Return(
 		[]ProcessedTransaction{{Transaction: tx, Receipt: &types.Receipt{GasUsed: 100_000}}},
 		core_types.TransactionResultSuccessful,
 		core_types.ExecutionCost(150_000), // higher than receipt gas due to rolled-back steps
 	)
 
-	_, _, execCost := runTransaction(context, tx, 0)
+	_, _, execCost := runTransaction(context, tx, 0, math.MaxUint64)
 	require.Equal(t, core_types.ExecutionCost(150_000), execCost)
+}
+
+func TestRunRegularTransaction_AcceptsTransactionIfItIsWithinSizeLimit(t *testing.T) {
+	tx := types.NewTx(&types.LegacyTx{})
+
+	tests := map[string]struct {
+		sizeLimit  uint64
+		successful bool
+	}{
+		"size limit smaller than transaction size": {
+			sizeLimit: tx.Size() - 1,
+		},
+		"size limit equal to transaction size": {
+			sizeLimit:  tx.Size(),
+			successful: true,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			evm := NewMock_evm(ctrl)
+			ctxt := &runContext{}
+
+			if test.successful {
+				evm.EXPECT().runWithBaseFeeCheck(ctxt, tx, 0).Return(
+					ProcessedTransaction{Transaction: tx, Receipt: &types.Receipt{Status: types.ReceiptStatusSuccessful}},
+				)
+			}
+
+			runner := transactionRunner{evm}
+			got, status := runner.runRegularTransaction(ctxt, tx, 0, test.sizeLimit)
+			require.Equal(t, tx, got.Transaction)
+
+			if test.successful {
+				require.Equal(t, core_types.TransactionResultSuccessful, status)
+				require.NotNil(t, got.Receipt)
+			} else {
+				require.Equal(t, core_types.TransactionResultInvalid, status)
+				require.Nil(t, got.Receipt)
+			}
+		})
+	}
+}
+
+func TestRunSponsoredTransaction_SkipsTransactionExceedingSizeLimit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	evm := NewMock_evm(ctrl)
+
+	tx := getSponsorshipRequest(t)
+
+	context := &runContext{
+		upgrades: opera.Upgrades{GasSubsidies: true},
+		signer:   types.LatestSignerForChainID(nil),
+	}
+
+	tests := map[string]struct {
+		sizeLimit uint64
+	}{
+		"no space": {
+			sizeLimit: 0,
+		},
+		"only space for tx, not payment": {
+			sizeLimit: tx.Size(),
+		},
+		"just under the required size": {
+			sizeLimit: tx.Size() + subsidies.RlpEncodedFeeChargingTxSizeInBytes - 1,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			runner := &transactionRunner{evm: evm}
+			got, status := runner.runSponsoredTransaction(context, tx, 0, tc.sizeLimit)
+			require.Equal(t, core_types.TransactionResultInvalid, status)
+			require.Len(t, got, 1)
+			require.Equal(t, tx, got[0].Transaction)
+			require.Nil(t, got[0].Receipt)
+		})
+	}
+}
+
+func TestBundleTransactionRunner_Run_DeductsSizeLimitOnlyIfReceiptIsNotNil(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
+	stateDb.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
+
+	tx1 := getRegularTransaction(t)
+	tx2 := getRegularTransaction(t)
+	skippedTx := types.NewTx(&types.LegacyTx{
+		Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
+	})
+
+	ctxt := &runContext{
+		runner:  runner,
+		gasPool: core.NewGasPool(math.MaxUint64),
+		usedGas: new(uint64),
+		statedb: stateDb,
+	}
+
+	initialSizeLimit := tx1.Size() + tx2.Size()
+	bundleRunner := &bundleTransactionRunner{
+		ctxt:      ctxt,
+		sizeLimit: initialSizeLimit,
+	}
+
+	runner.EXPECT().runRegularTransaction(ctxt, tx1, 0, initialSizeLimit).Return(
+		ProcessedTransaction{Transaction: tx1, Receipt: &types.Receipt{}},
+		core_types.TransactionResultSuccessful,
+	)
+
+	result := bundleRunner.Run(tx1)
+	require.Equal(t, core_types.TransactionResultSuccessful, result)
+	require.Equal(t, initialSizeLimit-tx1.Size(), bundleRunner.sizeLimit)
+
+	// Running a transaction that is skipped (receipt is nil) should not reduce the size limit
+	runner.EXPECT().runRegularTransaction(ctxt, skippedTx, 1, initialSizeLimit-tx1.Size()).Return(
+		ProcessedTransaction{Transaction: skippedTx, Receipt: nil},
+		core_types.TransactionResultInvalid,
+	)
+
+	result = bundleRunner.Run(skippedTx)
+	require.Equal(t, core_types.TransactionResultInvalid, result)
+	require.Equal(t, initialSizeLimit-tx1.Size(), bundleRunner.sizeLimit)
+
+	// Second transaction should get the reduced sizeLimit
+	runner.EXPECT().runRegularTransaction(ctxt, tx2, 1, initialSizeLimit-tx1.Size()).Return(
+		ProcessedTransaction{Transaction: tx2, Receipt: &types.Receipt{}},
+		core_types.TransactionResultSuccessful,
+	)
+
+	result = bundleRunner.Run(tx2)
+	require.Equal(t, core_types.TransactionResultSuccessful, result)
+	require.Equal(t, initialSizeLimit-tx1.Size()-tx2.Size(), bundleRunner.sizeLimit)
+}
+
+func TestBundleTransactionRunner_Run_RevertsWhenSizeLimitExceeded(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+
+	stateDb := state.NewMockStateDB(ctrl)
+
+	interTxSnapshot := 42
+	gomock.InOrder(
+		stateDb.EXPECT().InterTxSnapshot().Return(interTxSnapshot),
+		stateDb.EXPECT().RevertToInterTxSnapshot(interTxSnapshot),
+	)
+
+	tx := getRegularTransaction(t)
+
+	ctxt := &runContext{
+		runner:  runner,
+		gasPool: core.NewGasPool(math.MaxUint64),
+		usedGas: new(uint64),
+		statedb: stateDb,
+	}
+
+	// sizeLimit is smaller than the transaction
+	bundleRunner := &bundleTransactionRunner{
+		ctxt:      ctxt,
+		sizeLimit: tx.Size() - 1,
+	}
+
+	// The transaction will be run (runner is called with sizeLimit),
+	// but since the runner returns a receipt and the processed tx size
+	// exceeds the remaining sizeLimit, the bundle runner reverts.
+	runner.EXPECT().runRegularTransaction(ctxt, tx, 0, tx.Size()-1).Return(
+		ProcessedTransaction{Transaction: tx, Receipt: &types.Receipt{}},
+		core_types.TransactionResultSuccessful,
+	)
+
+	result := bundleRunner.Run(tx)
+	require.Equal(t, core_types.TransactionResultInvalid, result)
+	// After revert, processed transactions should be empty
+	require.Empty(t, bundleRunner.processedTransactions)
+}
+
+func TestBundleTransactionRunner_Snapshot_CoversSizeLimit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().InterTxSnapshot().AnyTimes()
+	stateDb.EXPECT().RevertToInterTxSnapshot(gomock.Any()).AnyTimes()
+
+	runner := &bundleTransactionRunner{
+		ctxt:      &runContext{statedb: stateDb, usedGas: new(uint64), gasPool: core.NewGasPool(1_000_000)},
+		sizeLimit: 1000,
+	}
+
+	s1 := runner.CreateSnapshot()
+	require.EqualValues(t, 1000, runner.snapshots[0].sizeLimit)
+
+	runner.sizeLimit = 500
+	s2 := runner.CreateSnapshot()
+	require.EqualValues(t, 500, runner.snapshots[1].sizeLimit)
+
+	runner.sizeLimit = 100
+
+	// revert to s2, should restore sizeLimit to 500
+	runner.RevertToSnapshot(s2)
+	require.EqualValues(t, 500, runner.sizeLimit)
+
+	// revert to s1, should restore sizeLimit to 1000
+	runner.RevertToSnapshot(s1)
+	require.EqualValues(t, 1000, runner.sizeLimit)
+}
+
+func TestRunTransactions_ProcessesAllTransactionsWithinBlockSizeLimit(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	regular1 := getRegularTransaction(t)
+	regular2 := getRegularTransaction(t)
+	regular3 := getRegularTransaction(t)
+	sponsored := getSponsorshipRequest(t)
+	paymentTx := types.NewTx(&types.LegacyTx{Nonce: 99})
+
+	tests := map[string]struct {
+		txs           []*types.Transaction
+		remainingSize uint64
+		setupMock     func(*runContext, *Mock_transactionRunner)
+		wantProcessed int
+		wantIncluded  int
+	}{
+		"single transaction": {
+			txs:           []*types.Transaction{regular1},
+			remainingSize: regular1.Size(),
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				runner.EXPECT().runRegularTransaction(ctx, regular1, 0, regular1.Size()).Return(
+					ProcessedTransaction{Transaction: regular1, Receipt: &types.Receipt{}},
+					core_types.TransactionResultSuccessful,
+				)
+			},
+			wantProcessed: 1,
+			wantIncluded:  1,
+		},
+		"multiple transactions": {
+			txs:           []*types.Transaction{regular1, regular2, regular3},
+			remainingSize: regular1.Size() + regular2.Size() + regular3.Size(),
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				gomock.InOrder(
+					runner.EXPECT().runRegularTransaction(ctx, regular1, 0, regular1.Size()+regular2.Size()+regular3.Size()).Return(
+						ProcessedTransaction{Transaction: regular1, Receipt: &types.Receipt{}},
+						core_types.TransactionResultSuccessful,
+					),
+					runner.EXPECT().runRegularTransaction(ctx, regular2, 1, regular2.Size()+regular3.Size()).Return(
+						ProcessedTransaction{Transaction: regular2, Receipt: &types.Receipt{}},
+						core_types.TransactionResultSuccessful,
+					),
+					runner.EXPECT().runRegularTransaction(ctx, regular3, 2, regular3.Size()).Return(
+						ProcessedTransaction{Transaction: regular3, Receipt: &types.Receipt{}},
+						core_types.TransactionResultSuccessful,
+					),
+				)
+			},
+			wantProcessed: 3,
+			wantIncluded:  3,
+		},
+		"sponsored transaction with payment": {
+			txs:           []*types.Transaction{sponsored},
+			remainingSize: sponsored.Size() + subsidies.RlpEncodedFeeChargingTxSizeInBytes,
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				runner.EXPECT().runSponsoredTransaction(ctx, sponsored, 0, gomock.Any()).Return(
+					[]ProcessedTransaction{
+						{Transaction: sponsored, Receipt: &types.Receipt{}},
+						{Transaction: paymentTx, Receipt: &types.Receipt{}},
+					},
+					core_types.TransactionResultSuccessful,
+				)
+			},
+			wantProcessed: 2,
+			wantIncluded:  2,
+		},
+		"bundle transaction": {
+			txs:           []*types.Transaction{bundle.AllOf(bundle.Step(key, regular1)).Build()},
+			remainingSize: regular1.Size() + 1024, // Add some extra space for the bundle marker added by the builder
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				runner.EXPECT().runTransactionBundle(ctx, gomock.Any(), 0, gomock.Any()).Return(
+					[]ProcessedTransaction{
+						{Transaction: regular1, Receipt: &types.Receipt{}},
+					},
+					core_types.TransactionResultSuccessful,
+					core_types.ExecutionCost(0),
+				)
+			},
+			wantProcessed: 1,
+			wantIncluded:  1,
+		},
+		"combination of regular and skipped transactions": {
+			txs:           []*types.Transaction{regular1, types.NewTx(&types.LegacyTx{Data: []byte{0}}), regular2},
+			remainingSize: regular1.Size() + regular2.Size(),
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				gomock.InOrder(
+					runner.EXPECT().runRegularTransaction(ctx, regular1, 0, regular1.Size()+regular2.Size()).Return(
+						ProcessedTransaction{Transaction: regular1, Receipt: &types.Receipt{}},
+						core_types.TransactionResultSuccessful,
+					),
+					runner.EXPECT().runRegularTransaction(ctx, gomock.Any(), 1, regular2.Size()).Return(
+						ProcessedTransaction{Transaction: types.NewTx(&types.LegacyTx{Data: []byte{0}}), Receipt: nil},
+						core_types.TransactionResultInvalid,
+					),
+					runner.EXPECT().runRegularTransaction(ctx, regular2, 1, regular2.Size()).Return(
+						ProcessedTransaction{Transaction: regular2, Receipt: &types.Receipt{}},
+						core_types.TransactionResultSuccessful,
+					),
+				)
+			},
+			wantProcessed: 3,
+			wantIncluded:  2,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMock_transactionRunner(ctrl)
+
+			context := &runContext{
+				upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
+				signer:   types.LatestSignerForChainID(big.NewInt(1)),
+				runner:   runner,
+			}
+			tc.setupMock(context, runner)
+
+			summary := runTransactions(context, tc.txs, 0, tc.remainingSize)
+
+			require.Len(t, summary.ProcessedTransactions, tc.wantProcessed)
+			included := 0
+			for _, processedTx := range summary.ProcessedTransactions {
+				if processedTx.Receipt != nil {
+					included++
+				}
+			}
+			require.Equal(t, tc.wantIncluded, included)
+		})
+	}
+}
+
+func TestRunTransaction_CollectsCausedByInformationForAllTransactionTypes(t *testing.T) {
+
+	regularTx := getRegularTransaction(t)
+	sponsoredTx := getSponsorshipRequest(t)
+	bundleTx := getTransactionBundle(t)
+
+	// Simulated output transactions from the runner.
+	paymentTx := types.NewTx(&types.LegacyTx{Nonce: 99})
+	bundleInner1 := types.NewTx(&types.LegacyTx{Nonce: 200})
+	bundleInner2 := types.NewTx(&types.LegacyTx{Nonce: 201})
+
+	tests := map[string]struct {
+		tx           *types.Transaction
+		setupMock    func(*runContext, *Mock_transactionRunner)
+		wantCausedBy map[common.Hash]common.Hash
+	}{
+		"basic transaction": {
+			tx: regularTx,
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				runner.EXPECT().runRegularTransaction(ctx, regularTx, 0, gomock.Any()).Return(
+					ProcessedTransaction{Transaction: regularTx, Receipt: &types.Receipt{}},
+					core_types.TransactionResultSuccessful,
+				)
+			},
+			wantCausedBy: map[common.Hash]common.Hash{
+				regularTx.Hash(): regularTx.Hash(),
+			},
+		},
+		"sponsored transaction": {
+			tx: sponsoredTx,
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				runner.EXPECT().runSponsoredTransaction(ctx, sponsoredTx, 0, gomock.Any()).Return(
+					[]ProcessedTransaction{
+						{Transaction: sponsoredTx, Receipt: &types.Receipt{}},
+						{Transaction: paymentTx, Receipt: &types.Receipt{}},
+					},
+					core_types.TransactionResultSuccessful,
+				)
+			},
+			wantCausedBy: map[common.Hash]common.Hash{
+				sponsoredTx.Hash(): sponsoredTx.Hash(),
+				paymentTx.Hash():   sponsoredTx.Hash(),
+			},
+		},
+		"bundle transaction": {
+			tx: bundleTx,
+			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
+				runner.EXPECT().runTransactionBundle(ctx, bundleTx, 0, gomock.Any()).Return(
+					[]ProcessedTransaction{
+						{Transaction: bundleInner1, Receipt: &types.Receipt{}},
+						{Transaction: bundleInner2, Receipt: &types.Receipt{}},
+					},
+					core_types.TransactionResultSuccessful,
+					core_types.ExecutionCost(0),
+				)
+			},
+			wantCausedBy: map[common.Hash]common.Hash{
+				bundleInner1.Hash(): bundleTx.Hash(),
+				bundleInner2.Hash(): bundleTx.Hash(),
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMock_transactionRunner(ctrl)
+
+			context := &runContext{
+				signer:   types.LatestSignerForChainID(big.NewInt(1)),
+				upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
+				runner:   runner,
+			}
+			tc.setupMock(context, runner)
+
+			summary := runTransactions(context, []*types.Transaction{tc.tx}, 0, math.MaxUint64)
+			require.Equal(t, tc.wantCausedBy, summary.CausedBy)
+		})
+	}
+}
+
+func TestRunTransactions_SmallerTransactionsAreProcessedAfterLargeTransactionExceedingSizeLimit(t *testing.T) {
+	sizeLimit := uint64(1_000)
+
+	// Create a tx that exceeds the size limit
+	largeTx := types.NewTx(&types.LegacyTx{Data: make([]byte, sizeLimit+1)})
+
+	// Following txs are not skipped
+	tx0 := getRegularTransaction(t)
+	tx1 := getRegularTransaction(t)
+
+	transactions := []*types.Transaction{largeTx, tx0, tx1}
+
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+
+	context := &runContext{
+		signer:   types.LatestSignerForChainID(big.NewInt(1)),
+		upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
+		runner:   runner,
+	}
+
+	runner.EXPECT().runRegularTransaction(context, largeTx, 0, sizeLimit).Return(
+		ProcessedTransaction{Transaction: largeTx, Receipt: nil},
+		core_types.TransactionResultSuccessful,
+	)
+	runner.EXPECT().runRegularTransaction(context, tx0, 0, sizeLimit).Return(
+		ProcessedTransaction{Transaction: tx0, Receipt: &types.Receipt{}},
+		core_types.TransactionResultInvalid,
+	)
+	runner.EXPECT().runRegularTransaction(context, tx1, 1, sizeLimit-tx0.Size()).Return(
+		ProcessedTransaction{Transaction: tx1, Receipt: &types.Receipt{}},
+		core_types.TransactionResultInvalid,
+	)
+
+	summary := runTransactions(context, transactions, 0, sizeLimit)
+	require.Equal(t, []ProcessedTransaction{
+		{Transaction: largeTx, Receipt: nil},
+		{Transaction: tx0, Receipt: &types.Receipt{}},
+		{Transaction: tx1, Receipt: &types.Receipt{}},
+	}, summary.ProcessedTransactions)
+}
+
+func TestRunTransactions_RemainingSizeIsSetToZeroWhenProcessedTxExceedsIt(t *testing.T) {
+	tx0 := getRegularTransaction(t)
+	tx1 := getRegularTransaction(t)
+
+	// Set remaining size smaller than tx0's size. The mock will still return a
+	// receipt (simulating a transaction that passed the runner's size check but
+	// exceeds the tracked remaining budget).
+	remainingSize := tx0.Size() - 1
+
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+
+	context := &runContext{
+		signer:   types.LatestSignerForChainID(big.NewInt(1)),
+		upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
+		runner:   runner,
+	}
+
+	gomock.InOrder(
+		runner.EXPECT().runRegularTransaction(context, tx0, 0, remainingSize).Return(
+			ProcessedTransaction{Transaction: tx0, Receipt: &types.Receipt{}},
+			core_types.TransactionResultSuccessful,
+		),
+
+		// After tx0 exceeds remaining size, remainingSize becomes 0.
+		// The next transaction should be called with sizeLimit = 0.
+		runner.EXPECT().runRegularTransaction(context, tx1, 1, uint64(0)).Return(
+			ProcessedTransaction{Transaction: tx1, Receipt: nil},
+			core_types.TransactionResultInvalid,
+		),
+	)
+
+	summary := runTransactions(context, []*types.Transaction{tx0, tx1}, 0, remainingSize)
+	require.Len(t, summary.ProcessedTransactions, 2)
+	require.NotNil(t, summary.ProcessedTransactions[0].Receipt)
+	require.Nil(t, summary.ProcessedTransactions[1].Receipt)
 }
