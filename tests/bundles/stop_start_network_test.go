@@ -49,7 +49,7 @@ func testBundle_GetBundleInfoSurvivesNetworkRestart(t *testing.T, net *tests.Int
 	defer client.Close()
 
 	signer := types.LatestSignerForChainID(net.GetChainId())
-	sender := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	senders := tests.MakeAccountsWithBalance(t, net, numBundles, big.NewInt(1e18))
 
 	block, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
@@ -60,7 +60,7 @@ func testBundle_GetBundleInfoSurvivesNetworkRestart(t *testing.T, net *tests.Int
 		envelope, plan := bundle.NewBuilder().
 			WithSigner(signer).
 			SetEarliest(block).
-			AllOf(Step(t, net, sender, &types.AccessListTx{})).
+			AllOf(Step(t, net, senders[i], &types.AccessListTx{})).
 			BuildEnvelopeAndPlan()
 
 		_, err = net.Send(envelope)
