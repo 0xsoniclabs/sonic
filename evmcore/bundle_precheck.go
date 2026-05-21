@@ -25,10 +25,17 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/metrics"
 	lru "github.com/hashicorp/golang-lru"
+)
+
+var (
+	evaluatedBundlesCount         = metrics.GetOrRegisterCounter("bundles/pre_check/count", nil)
+	evaluatedBundlesExecutionCost = metrics.GetOrRegisterCounter("bundles/pre_check/execution_cost", nil)
 )
 
 //go:generate mockgen -source=bundle_precheck.go -destination=bundle_precheck_mock.go -package=evmcore
@@ -350,6 +357,8 @@ func trialRunBundle(
 		stateDb,
 		realTransactionProcessorFactory{},
 		rand.Read,
+		evaluatedBundlesCount,
+		evaluatedBundlesExecutionCost,
 	)
 }
 
@@ -361,6 +370,8 @@ func trialRunBundleInternal(
 	stateDb state.StateDB,
 	factory transactionProcessorFactory,
 	readRandom func([]byte) (int, error),
+	evaluatedBundlesCount utils.MetricsCounterWrapper,
+	evaluatedBundlesExecutionCost utils.MetricsCounterWrapper,
 ) (*float64, bool) {
 	latestHeader := chain.GetLatestHeader()
 	blobBaseFee := GetBlobBaseFee()
@@ -398,6 +409,9 @@ func trialRunBundleInternal(
 			usedGas += tx.Receipt.GasUsed
 		}
 	}
+
+	evaluatedBundlesCount.Inc(1)
+	evaluatedBundlesExecutionCost.Inc(int64(summary.ExecutionCost))
 
 	// Calculate the gas efficiency of the bundle and check if it meets the minimum threshold.
 	gasEfficiency := new(float64)

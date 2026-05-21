@@ -50,3 +50,39 @@ func (mr *MockMetricsHistogramWrapperMockRecorder) Update(arg0 any) *gomock.Call
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockMetricsHistogramWrapper)(nil).Update), arg0)
 }
+
+// MockMetricsCounterWrapper is a mock of MetricsCounterWrapper interface.
+type MockMetricsCounterWrapper struct {
+	ctrl     *gomock.Controller
+	recorder *MockMetricsCounterWrapperMockRecorder
+	isgomock struct{}
+}
+
+// MockMetricsCounterWrapperMockRecorder is the mock recorder for MockMetricsCounterWrapper.
+type MockMetricsCounterWrapperMockRecorder struct {
+	mock *MockMetricsCounterWrapper
+}
+
+// NewMockMetricsCounterWrapper creates a new mock instance.
+func NewMockMetricsCounterWrapper(ctrl *gomock.Controller) *MockMetricsCounterWrapper {
+	mock := &MockMetricsCounterWrapper{ctrl: ctrl}
+	mock.recorder = &MockMetricsCounterWrapperMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockMetricsCounterWrapper) EXPECT() *MockMetricsCounterWrapperMockRecorder {
+	return m.recorder
+}
+
+// Inc mocks base method.
+func (m *MockMetricsCounterWrapper) Inc(arg0 int64) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Inc", arg0)
+}
+
+// Inc indicates an expected call of Inc.
+func (mr *MockMetricsCounterWrapperMockRecorder) Inc(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Inc", reflect.TypeOf((*MockMetricsCounterWrapper)(nil).Inc), arg0)
+}
