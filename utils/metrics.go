@@ -45,3 +45,9 @@ func NewPrometheusHistogram(opts prometheus.HistogramOpts) *PrometheusHistogram 
 func (h *PrometheusHistogram) Update(v float64) {
 	h.histogram.Observe(v)
 }
+
+// MetricsCounter is an interface that wraps the methods of a
+// prometheus Counter to facilitate testing with mocks.
+type MetricsCounter interface {
+	Inc(int64)
+}

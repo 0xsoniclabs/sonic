@@ -50,3 +50,39 @@ func (mr *MockMetricsHistogramWrapperMockRecorder) Update(arg0 any) *gomock.Call
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockMetricsHistogramWrapper)(nil).Update), arg0)
 }
+
+// MockMetricsCounter is a mock of MetricsCounter interface.
+type MockMetricsCounter struct {
+	ctrl     *gomock.Controller
+	recorder *MockMetricsCounterMockRecorder
+	isgomock struct{}
+}
+
+// MockMetricsCounterMockRecorder is the mock recorder for MockMetricsCounter.
+type MockMetricsCounterMockRecorder struct {
+	mock *MockMetricsCounter
+}
+
+// NewMockMetricsCounter creates a new mock instance.
+func NewMockMetricsCounter(ctrl *gomock.Controller) *MockMetricsCounter {
+	mock := &MockMetricsCounter{ctrl: ctrl}
+	mock.recorder = &MockMetricsCounterMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockMetricsCounter) EXPECT() *MockMetricsCounterMockRecorder {
+	return m.recorder
+}
+
+// Inc mocks base method.
+func (m *MockMetricsCounter) Inc(arg0 int64) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Inc", arg0)
+}
+
+// Inc indicates an expected call of Inc.
+func (mr *MockMetricsCounterMockRecorder) Inc(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Inc", reflect.TypeOf((*MockMetricsCounter)(nil).Inc), arg0)
+}

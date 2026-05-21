@@ -25,10 +25,23 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/metrics"
 	lru "github.com/hashicorp/golang-lru"
+)
+
+var (
+	// evaluatedBundleTxsCount is a counter of the number of bundle envelopes
+	// that have been trial-run during bundle pre-checks.
+	evaluatedBundlesCounter = metrics.GetOrRegisterCounter("bundles/pre_check/count", nil)
+	// evaluatedBundlesExecutionCostCounter is a counter of the total execution cost in gas of
+	// bundle envelopes that have been trial-run during bundle pre-checks.
+	// This counter reports effective execution cost accounting for rolled-back transactions,
+	// so it reflects the actual resource consumption of the trial runs.
+	evaluatedBundlesExecutionCostCounter = metrics.GetOrRegisterCounter("bundles/pre_check/execution_cost", nil)
 )
 
 //go:generate mockgen -source=bundle_precheck.go -destination=bundle_precheck_mock.go -package=evmcore
@@ -350,6 +363,8 @@ func trialRunBundle(
 		stateDb,
 		realTransactionProcessorFactory{},
 		rand.Read,
+		evaluatedBundlesCounter,
+		evaluatedBundlesExecutionCostCounter,
 	)
 }
 
@@ -361,6 +376,8 @@ func trialRunBundleInternal(
 	stateDb state.StateDB,
 	factory transactionProcessorFactory,
 	readRandom func([]byte) (int, error),
+	evaluatedBundlesCount utils.MetricsCounter,
+	evaluatedBundlesExecutionCost utils.MetricsCounter,
 ) (*float64, bool) {
 	latestHeader := chain.GetLatestHeader()
 	blobBaseFee := GetBlobBaseFee()
@@ -398,6 +415,9 @@ func trialRunBundleInternal(
 			usedGas += tx.Receipt.GasUsed
 		}
 	}
+
+	evaluatedBundlesCount.Inc(1)
+	evaluatedBundlesExecutionCost.Inc(int64(summary.ExecutionCost))
 
 	// Calculate the gas efficiency of the bundle and check if it meets the minimum threshold.
 	gasEfficiency := new(float64)
