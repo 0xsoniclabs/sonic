@@ -136,7 +136,7 @@ func removeBundleOnlyMark(tx *types.Transaction) (*types.Transaction, error) {
 	// Create a copy of the transaction data with the modified access list.
 	txData, err := utils.GetTxData(tx) // < also checks for nil transaction
 	if err != nil {
-		return nil, fmt.Errorf("failed to get transaction data: %v", err)
+		return nil, fmt.Errorf("failed to get transaction data: %w", err)
 	}
 
 	curAccessList := tx.AccessList()

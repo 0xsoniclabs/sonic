@@ -249,11 +249,11 @@ func TestGetTxData_ExtractsAllData(t *testing.T) {
 
 func Test_getTxDataInternal_DetectsUnsupportedTransactionType(t *testing.T) {
 	txDataSource := &fakeTxDataSource{
-		txType: 0x99, // an unsupported transaction type
+		txType: 123, // an unsupported transaction type
 	}
 
 	_, err := getTxDataInternal(txDataSource)
-	require.Error(t, err, "unsupported transaction type: 0x99")
+	require.ErrorContains(t, err, "unsupported transaction type: 123")
 }
 
 func Test_getTxDataInternal_DetectsNilToAddressForBlobTxType(t *testing.T) {
@@ -263,7 +263,7 @@ func Test_getTxDataInternal_DetectsNilToAddressForBlobTxType(t *testing.T) {
 	}
 
 	_, err := getTxDataInternal(txDataSource)
-	require.Error(t, err, "blob transactions must have a recipient")
+	require.ErrorContains(t, err, "blob transactions must have a recipient")
 }
 
 func Test_getTxDataInternal_BlobTxType_DetectsOutOfDomainValues(t *testing.T) {
@@ -302,7 +302,7 @@ func Test_getTxDataInternal_BlobTxType_DetectsOutOfDomainValues(t *testing.T) {
 				if value.valid {
 					require.NoError(t, err)
 				} else {
-					require.Error(t, err, fmt.Sprintf("out of uint256 domain: %v", value))
+					require.ErrorContains(t, err, fmt.Sprintf("out of uint256 domain: %v", value.value))
 				}
 			})
 		}
@@ -316,7 +316,7 @@ func Test_getTxDataInternal_DetectsNilToAddressForSetCodeTxType(t *testing.T) {
 	}
 
 	_, err := getTxDataInternal(txDataSource)
-	require.Error(t, err, "set code transactions must have a recipient")
+	require.ErrorContains(t, err, "set code transactions must have a recipient")
 }
 
 func Test_getTxDataInternal_SetCodeTxType_DetectsOutOfDomainValues(t *testing.T) {
@@ -354,7 +354,7 @@ func Test_getTxDataInternal_SetCodeTxType_DetectsOutOfDomainValues(t *testing.T)
 				if value.valid {
 					require.NoError(t, err)
 				} else {
-					require.Error(t, err, fmt.Sprintf("out of uint256 domain: %v", value))
+					require.ErrorContains(t, err, fmt.Sprintf("out of uint256 domain: %v", value.value))
 				}
 			})
 		}
@@ -404,7 +404,7 @@ func Test_toUint256_InvalidInputs_ReportsError(t *testing.T) {
 	for name, input := range tests {
 		t.Run(name, func(t *testing.T) {
 			_, err := toUint256(input)
-			require.Error(t, err, fmt.Sprintf("out of uint256 domain: %v", input))
+			require.ErrorContains(t, err, fmt.Sprintf("out of uint256 domain: %v", input))
 		})
 	}
 }
