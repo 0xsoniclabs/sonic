@@ -33,6 +33,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 )
 
 //go:generate mockgen -source=evm.go -destination=evm_mock.go -package=evmmodule
@@ -51,6 +52,7 @@ func (p *EVMModule) Start(
 	rules opera.Rules,
 	evmCfg *params.ChainConfig,
 	prevrandao common.Hash,
+	rollbackBundlesCounter utils.MetricsCounter,
 ) blockproc.EVMProcessor {
 	var prevBlockHash common.Hash
 	var baseFee *big.Int
@@ -70,17 +72,18 @@ func (p *EVMModule) Start(
 	statedb.BeginBlock(uint64(block.Idx))
 
 	return &OperaEVMProcessor{
-		block:            block,
-		reader:           reader,
-		statedb:          statedb,
-		onNewLog:         onNewLog,
-		rules:            rules,
-		evmCfg:           evmCfg,
-		blockIdx:         uint64(block.Idx),
-		prevBlockHash:    prevBlockHash,
-		prevRandao:       prevrandao,
-		gasBaseFee:       baseFee,
-		processorFactory: stateProcessorFactory{},
+		block:                  block,
+		reader:                 reader,
+		statedb:                statedb,
+		onNewLog:               onNewLog,
+		rules:                  rules,
+		evmCfg:                 evmCfg,
+		blockIdx:               uint64(block.Idx),
+		prevBlockHash:          prevBlockHash,
+		prevRandao:             prevrandao,
+		gasBaseFee:             baseFee,
+		processorFactory:       stateProcessorFactory{},
+		rollbackBundlesCounter: rollbackBundlesCounter,
 	}
 }
 
@@ -102,6 +105,8 @@ type OperaEVMProcessor struct {
 	prevRandao   common.Hash
 
 	processorFactory _stateProcessorFactory
+
+	rollbackBundlesCounter utils.MetricsCounter
 }
 
 func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlock {
@@ -143,7 +148,7 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 }
 
 func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64, sizeLimit uint64) evmcore.ProcessSummary {
-	evmProcessor := p.processorFactory.NewStateProcessorForHeadState(p.evmCfg, p.reader, p.rules.Upgrades)
+	evmProcessor := p.processorFactory.NewStateProcessorForHeadState(p.evmCfg, p.reader, p.rules.Upgrades, p.rollbackBundlesCounter)
 	trueTxsOffset := int(0)
 	for _, tx := range p.processedTxs {
 		if tx.Receipt != nil {
@@ -203,6 +208,7 @@ type _stateProcessorFactory interface {
 		evmCfg *params.ChainConfig,
 		reader evmcore.DummyChain,
 		upgrades opera.Upgrades,
+		rollbackBundlesCounter utils.MetricsCounter,
 	) _stateProcessor
 
 	NewStateProcessorForReplay(
@@ -235,8 +241,9 @@ func (stateProcessorFactory) NewStateProcessorForHeadState(
 	evmCfg *params.ChainConfig,
 	reader evmcore.DummyChain,
 	upgrades opera.Upgrades,
+	rollbackBundlesCounter utils.MetricsCounter,
 ) _stateProcessor {
-	return evmcore.NewStateProcessorForHeadState(evmCfg, reader, upgrades)
+	return evmcore.NewStateProcessorForHeadState(evmCfg, reader, upgrades, rollbackBundlesCounter)
 }
 
 func (stateProcessorFactory) NewStateProcessorForReplay(

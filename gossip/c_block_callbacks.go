@@ -82,6 +82,7 @@ var (
 	sponsoredCounter        = utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/sponsored", nil))
 	skippedSponsoredCounter = utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/sponsored/skipped", nil))
 	bundleCounter           = utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles", nil))
+	rolledBackBundleCounter = utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles/rolledBack", nil))
 
 	effectiveBundleGasHistogram = utils.MetricsHistogramWrapper(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
 		Name:    "chain_bundle_gas_effective",
@@ -344,6 +345,7 @@ func consensusCallbackBeginBlockFn(
 					es.Rules,
 					chainCfg,
 					randao,
+					rolledBackBundleCounter,
 				)
 				executionStart := time.Now()
 

@@ -31,6 +31,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 )
 
 //go:generate mockgen -source=interface.go -package=blockproc -destination=interface_mock.go
@@ -87,5 +88,6 @@ type EVM interface {
 		net opera.Rules,
 		evmCfg *params.ChainConfig,
 		prevrandao common.Hash,
+		rollbackBundlesCounter utils.MetricsCounter,
 	) EVMProcessor
 }

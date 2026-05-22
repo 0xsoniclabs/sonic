@@ -101,7 +101,7 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, nil)
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -212,7 +212,7 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 	}
 
 	state := getStateDbMockForTransactions(ctrl, transactions)
-	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, nil)
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
 		"incremental": processor.process_iteratively,
@@ -273,7 +273,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 		}
 		chain := NewMockDummyChain(ctrl)
 
-		processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{})
+		processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, nil)
 
 		tests := map[string]processFunction{
 			"bulk":        processor.Process,
@@ -321,7 +321,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, nil)
 
 	block := &EvmBlock{
 		EvmHeader: EvmHeader{
@@ -380,7 +380,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, nil)
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -467,7 +467,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 
 func TestProcess_UsesDifficultyOfOne(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{})
+	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{}, nil)
 
 	state, block := createScenarioWithTxCheckingDifficulty(ctrl, big.NewInt(1))
 
@@ -491,7 +491,7 @@ func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 	for _, difficulty := range []*big.Int{big.NewInt(0), big.NewInt(2), big.NewInt(42)} {
 		t.Run(fmt.Sprintf("difficulty=%s", difficulty.String()), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{})
+			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{}, nil)
 
 			state, block := createScenarioWithTxCheckingDifficulty(ctrl, difficulty)
 			results := processor.ProcessWithDifficulty(
@@ -581,7 +581,7 @@ func TestProcessWithDifficulty_ForwardsTimeToBundleProcessing(t *testing.T) {
 	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{
 		Brio:               true,
 		TransactionBundles: true,
-	})
+	}, nil)
 
 	block := &EvmBlock{
 		EvmHeader: EvmHeader{
@@ -613,7 +613,7 @@ func TestProcess_ForwardsCorrectIndexToTransactionProcessor(t *testing.T) {
 		t.Run(fmt.Sprintf("offset=%d", offset), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			upgrades := opera.Upgrades{Brio: true, TransactionBundles: true}
-			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, upgrades)
+			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, upgrades, nil)
 
 			any := gomock.Any()
 			state := state.NewMockStateDB(ctrl)
@@ -2460,21 +2460,17 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 		}),
 	)
 
-	// No calls in case of successful execution.
-	rolledBackBundlesCounter := utils.NewMockMetricsCounter(ctrl)
-
 	runner := &transactionRunner{evm: evm}
 
 	context := &runContext{
-		statedb:                 state,
-		signer:                  signer,
-		baseFee:                 big.NewInt(1),
-		usedGas:                 new(uint64),
-		gasPool:                 core.NewGasPool(1_000_000),
-		upgrades:                opera.Upgrades{TransactionBundles: true},
-		blockNumber:             big.NewInt(0),
-		runner:                  runner,
-		rolledBackBundleCounter: rolledBackBundlesCounter,
+		statedb:     state,
+		signer:      signer,
+		baseFee:     big.NewInt(1),
+		usedGas:     new(uint64),
+		gasPool:     core.NewGasPool(1_000_000),
+		upgrades:    opera.Upgrades{TransactionBundles: true},
+		blockNumber: big.NewInt(0),
+		runner:      runner,
 	}
 
 	txs := txBundle.GetTransactionsInReferencedOrder()
@@ -2588,9 +2584,6 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 				execResult, core_types.TransactionResultSuccessful,
 			)
 
-			// No calls in case of successful execution.
-			rolledBackBundleCounter := utils.NewMockMetricsCounter(ctrl)
-
 			context := &runContext{
 				statedb: state,
 				signer:  signer,
@@ -2600,9 +2593,8 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 					GasSubsidies:       true,
 					TransactionBundles: true,
 				},
-				blockNumber:             big.NewInt(0),
-				runner:                  innerRunner,
-				rolledBackBundleCounter: rolledBackBundleCounter,
+				blockNumber: big.NewInt(0),
+				runner:      innerRunner,
 			}
 
 			runner := &transactionRunner{}
@@ -3681,14 +3673,13 @@ func TestTrackingOfTxIndicesInNestedAndComposedBundles(t *testing.T) {
 			signer := types.LatestSignerForChainID(big.NewInt(1))
 			upgrades := opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true}
 			ctxt := &runContext{
-				signer:                  signer,
-				usedGas:                 new(uint64),
-				gasPool:                 core.NewGasPool(1_000_000),
-				upgrades:                upgrades,
-				blockNumber:             big.NewInt(0),
-				statedb:                 stateDb,
-				runner:                  runner,
-				rolledBackBundleCounter: rolledBackBundleCounter,
+				signer:      signer,
+				usedGas:     new(uint64),
+				gasPool:     core.NewGasPool(1_000_000),
+				upgrades:    upgrades,
+				blockNumber: big.NewInt(0),
+				statedb:     stateDb,
+				runner:      runner,
 			}
 
 			// the actual execution of the test case

@@ -27,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
@@ -42,10 +41,6 @@ import (
 
 //go:generate mockgen -source=state_processor.go -destination=state_processor_mock.go -package=evmcore
 
-var (
-	rolledBackBundleCounter = utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles/rolledBack", nil))
-)
-
 // StateProcessor is a basic Processor, which takes care of transitioning
 // state from one point to another.
 //
@@ -55,6 +50,8 @@ type StateProcessor struct {
 	bc        DummyChain          // Canonical block chain
 	upgrades  opera.Upgrades      // Enabled network upgrades
 	forReplay bool                // Whether the state processor is used for replaying transactions or for head state processing.
+
+	rolledBackBundleCounter utils.MetricsCounter
 }
 
 // NewStateProcessorForHeadState initializes a new StateProcessor for head state processing.
@@ -62,11 +59,13 @@ func NewStateProcessorForHeadState(
 	config *params.ChainConfig,
 	bc DummyChain,
 	upgrades opera.Upgrades,
+	rolledBackBundleCounter utils.MetricsCounter,
 ) *StateProcessor {
 	return &StateProcessor{
-		config:   config,
-		bc:       bc,
-		upgrades: upgrades,
+		config:                  config,
+		bc:                      bc,
+		upgrades:                upgrades,
+		rolledBackBundleCounter: rolledBackBundleCounter,
 	}
 }
 
@@ -181,7 +180,7 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	// Iterate over and process the individual transactions
 	return runTransactions(newRunContext(
 		signer, header.BaseFee, statedb, gp, blockNumber, block.Time, usedGas,
-		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}}, p.forReplay, rolledBackBundleCounter,
+		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}}, p.forReplay, p.rolledBackBundleCounter,
 	), block.Transactions, trueTxOffset, remainingSize)
 }
 
@@ -533,7 +532,9 @@ func (r *transactionRunner) runTransactionBundleInternal(
 	if !bundle.RunBundle(txBundle, &runner) {
 
 		// Track unsuccessful bundle execution in metrics.
-		ctxt.rolledBackBundleCounter.Inc(1)
+		if ctxt.rolledBackBundleCounter != nil {
+			ctxt.rolledBackBundleCounter.Inc(1)
+		}
 
 		// Mark the execution plan as processed in the StateDB to prevent processing
 		// another bundle with the same execution plan in the same block. Also keep
@@ -727,7 +728,7 @@ func NewTransactionProcessorForBlock(
 	// in the scheduler. See the scheduler.Schedule method for details. The
 	// total gas used for attempting to schedule transactions is not limited.
 	gasLimit := uint64(math.MaxUint64)
-	stateProcessor := NewStateProcessorForHeadState(chainCfg, chain, rules.Upgrades)
+	stateProcessor := NewStateProcessorForHeadState(chainCfg, chain, rules.Upgrades, nil)
 	return stateProcessor.BeginBlock(block, state, vmConfig, gasLimit, nil)
 }
 
@@ -791,7 +792,7 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber, tp.blockTime,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
-		false, rolledBackBundleCounter,
+		false, nil,
 	), []*types.Transaction{tx}, i, math.MaxUint64)
 }
 

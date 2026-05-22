@@ -115,3 +115,153 @@ func (mr *MockSignerMockRecorder) SignatureValues(tx, sig any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SignatureValues", reflect.TypeOf((*MockSigner)(nil).SignatureValues), tx, sig)
 }
+
+// MocktxValidationTarget is a mock of txValidationTarget interface.
+type MocktxValidationTarget struct {
+	ctrl     *gomock.Controller
+	recorder *MocktxValidationTargetMockRecorder
+	isgomock struct{}
+}
+
+// MocktxValidationTargetMockRecorder is the mock recorder for MocktxValidationTarget.
+type MocktxValidationTargetMockRecorder struct {
+	mock *MocktxValidationTarget
+}
+
+// NewMocktxValidationTarget creates a new mock instance.
+func NewMocktxValidationTarget(ctrl *gomock.Controller) *MocktxValidationTarget {
+	mock := &MocktxValidationTarget{ctrl: ctrl}
+	mock.recorder = &MocktxValidationTargetMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MocktxValidationTarget) EXPECT() *MocktxValidationTargetMockRecorder {
+	return m.recorder
+}
+
+// BlobGasFeeCap mocks base method.
+func (m *MocktxValidationTarget) BlobGasFeeCap() *big.Int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BlobGasFeeCap")
+	ret0, _ := ret[0].(*big.Int)
+	return ret0
+}
+
+// BlobGasFeeCap indicates an expected call of BlobGasFeeCap.
+func (mr *MocktxValidationTargetMockRecorder) BlobGasFeeCap() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BlobGasFeeCap", reflect.TypeOf((*MocktxValidationTarget)(nil).BlobGasFeeCap))
+}
+
+// Cost mocks base method.
+func (m *MocktxValidationTarget) Cost() *big.Int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Cost")
+	ret0, _ := ret[0].(*big.Int)
+	return ret0
+}
+
+// Cost indicates an expected call of Cost.
+func (mr *MocktxValidationTargetMockRecorder) Cost() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Cost", reflect.TypeOf((*MocktxValidationTarget)(nil).Cost))
+}
+
+// GasFeeCap mocks base method.
+func (m *MocktxValidationTarget) GasFeeCap() *big.Int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GasFeeCap")
+	ret0, _ := ret[0].(*big.Int)
+	return ret0
+}
+
+// GasFeeCap indicates an expected call of GasFeeCap.
+func (mr *MocktxValidationTargetMockRecorder) GasFeeCap() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GasFeeCap", reflect.TypeOf((*MocktxValidationTarget)(nil).GasFeeCap))
+}
+
+// GasPrice mocks base method.
+func (m *MocktxValidationTarget) GasPrice() *big.Int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GasPrice")
+	ret0, _ := ret[0].(*big.Int)
+	return ret0
+}
+
+// GasPrice indicates an expected call of GasPrice.
+func (mr *MocktxValidationTargetMockRecorder) GasPrice() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GasPrice", reflect.TypeOf((*MocktxValidationTarget)(nil).GasPrice))
+}
+
+// GasTipCap mocks base method.
+func (m *MocktxValidationTarget) GasTipCap() *big.Int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GasTipCap")
+	ret0, _ := ret[0].(*big.Int)
+	return ret0
+}
+
+// GasTipCap indicates an expected call of GasTipCap.
+func (mr *MocktxValidationTargetMockRecorder) GasTipCap() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GasTipCap", reflect.TypeOf((*MocktxValidationTarget)(nil).GasTipCap))
+}
+
+// Nonce mocks base method.
+func (m *MocktxValidationTarget) Nonce() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Nonce")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// Nonce indicates an expected call of Nonce.
+func (mr *MocktxValidationTargetMockRecorder) Nonce() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Nonce", reflect.TypeOf((*MocktxValidationTarget)(nil).Nonce))
+}
+
+// SetCodeAuthorizations mocks base method.
+func (m *MocktxValidationTarget) SetCodeAuthorizations() []types.SetCodeAuthorization {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetCodeAuthorizations")
+	ret0, _ := ret[0].([]types.SetCodeAuthorization)
+	return ret0
+}
+
+// SetCodeAuthorizations indicates an expected call of SetCodeAuthorizations.
+func (mr *MocktxValidationTargetMockRecorder) SetCodeAuthorizations() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCodeAuthorizations", reflect.TypeOf((*MocktxValidationTarget)(nil).SetCodeAuthorizations))
+}
+
+// Type mocks base method.
+func (m *MocktxValidationTarget) Type() uint8 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Type")
+	ret0, _ := ret[0].(uint8)
+	return ret0
+}
+
+// Type indicates an expected call of Type.
+func (mr *MocktxValidationTargetMockRecorder) Type() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Type", reflect.TypeOf((*MocktxValidationTarget)(nil).Type))
+}
+
+// Value mocks base method.
+func (m *MocktxValidationTarget) Value() *big.Int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Value")
+	ret0, _ := ret[0].(*big.Int)
+	return ret0
+}
+
+// Value indicates an expected call of Value.
+func (mr *MocktxValidationTargetMockRecorder) Value() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Value", reflect.TypeOf((*MocktxValidationTarget)(nil).Value))
+}

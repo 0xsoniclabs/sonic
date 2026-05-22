@@ -267,6 +267,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 		es.Rules,
 		chainConfig,
 		common.Hash{0x01}, // non-zero PrevRandao necessary to enable Cancun
+		nil,               // no need to track rolled back bundles since there should be no reverts in genesis transactions
 	)
 
 	// Execute genesis transactions

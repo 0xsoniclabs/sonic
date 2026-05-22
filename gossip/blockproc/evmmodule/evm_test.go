@@ -90,6 +90,7 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 			LondonBlock: big.NewInt(0),
 		},
 		common.Hash{},
+		nil, // no metric tracking in tests
 	)
 
 	// This inner transaction has a gas price of 0, which is less than the MinGasPrice
@@ -154,6 +155,7 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInReceipts(t *test
 	processor := evmModule.Start(
 		iblockproc.BlockCtx{}, stateDb, nil, logConsumer.OnNewLog,
 		opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		nil, // no metric tracking in tests
 	)
 
 	key, err := crypto.GenerateKey()
@@ -195,7 +197,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 	stateProcessor := NewMock_stateProcessor(ctrl)
 
 	any := gomock.Any()
-	factory.EXPECT().NewStateProcessorForHeadState(any, any, any).Return(stateProcessor).AnyTimes()
+	factory.EXPECT().NewStateProcessorForHeadState(any, any, any, any).Return(stateProcessor).AnyTimes()
 
 	summary1 := evmcore.ProcessSummary{
 		ProcessedTransactions: []evmcore.ProcessedTransaction{
@@ -253,7 +255,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorProducesTransactionsAndBundles_
 	stateProcessor := NewMock_stateProcessor(ctrl)
 
 	any := gomock.Any()
-	factory.EXPECT().NewStateProcessorForHeadState(any, any, any).Return(stateProcessor).AnyTimes()
+	factory.EXPECT().NewStateProcessorForHeadState(any, any, any, any).Return(stateProcessor).AnyTimes()
 
 	summary := evmcore.ProcessSummary{
 		ProcessedTransactions: []evmcore.ProcessedTransaction{
@@ -299,7 +301,7 @@ func TestOperaEVMProcessor_Execute_UsesNumberOfAcceptedTransactionsAsTransaction
 			stateProcessor := NewMock_stateProcessor(ctrl)
 
 			any := gomock.Any()
-			factory.EXPECT().NewStateProcessorForHeadState(any, any, any).Return(stateProcessor)
+			factory.EXPECT().NewStateProcessorForHeadState(any, any, any, any).Return(stateProcessor)
 
 			numPreAccepted := 0
 			for _, cur := range processedTransactions {
@@ -359,7 +361,7 @@ func TestOperaEVMProcessor_Execute_UsesNumberOfTransactionsWithReceiptsAsTransac
 			stateProcessor := NewMock_stateProcessor(ctrl)
 
 			any := gomock.Any()
-			factory.EXPECT().NewStateProcessorForHeadState(any, any, any).Return(stateProcessor)
+			factory.EXPECT().NewStateProcessorForHeadState(any, any, any, any).Return(stateProcessor)
 
 			wantedOffset := 0
 			for _, cur := range processedTransactions {
@@ -411,6 +413,7 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	processor := evmModule.Start(
 		iblockproc.BlockCtx{}, stateDb, nil, logConsumer.OnNewLog,
 		opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		nil, // no metric tracking in tests
 	)
 
 	key, err := crypto.GenerateKey()
@@ -478,6 +481,7 @@ func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenBlockIsOlderTh
 				Time: inter.FromUnix(blockTime.Unix()),
 			},
 			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+			nil, // no metric tracking in tests
 		)
 
 		finalizeDone := false
@@ -510,6 +514,7 @@ func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenSyncChannelIsN
 				Time: inter.FromUnix(blockTime.Unix()),
 			},
 			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+			nil, // no metric tracking in tests
 		)
 
 		finalizeDone := false
@@ -542,6 +547,7 @@ func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOne
 				Time: inter.FromUnix(blockTime.Unix()),
 			},
 			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+			nil, // no metric tracking in tests
 		)
 
 		finalizeDone := false

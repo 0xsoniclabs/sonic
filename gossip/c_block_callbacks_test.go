@@ -285,8 +285,8 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 
 				evmModule := blockproc.NewMockEVM(ctrl)
 				evmModule.EXPECT().
-					Start(_any, _any, _any, _any, _any, _any, _any).
-					DoAndReturn(func(block iblockproc.BlockCtx, _, _, _, _, _, _ any) blockproc.EVMProcessor {
+					Start(_any, _any, _any, _any, _any, _any, _any, _any).
+					DoAndReturn(func(block iblockproc.BlockCtx, _, _, _, _, _, _, _ any) blockproc.EVMProcessor {
 						require.Equal(t, test.blockTime, block.Time)
 						return evmProcessor
 					})
@@ -1269,6 +1269,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 		opera.Rules{},
 		&params.ChainConfig{},
 		common.Hash{},
+		nil, // no need to track rolled back bundles in this test
 	)
 	blockBuilder := inter.NewBlockBuilder()
 
@@ -1681,6 +1682,34 @@ func TestUpdateTransactionMetrics_CountsSkippedSponsoredTransactions(t *testing.
 
 	sponsoredCounter.EXPECT().Inc(int64(1))
 	skippedSponsoredCounter.EXPECT().Inc(int64(1))
+
+	updateTransactionMetrics(inputTransactions, summary, upgrades, sponsoredCounter, skippedSponsoredCounter, bundleCounter)
+}
+
+func TestUpdateTransactionMetrics_CountsRolledbackBundleTransactions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	bundleAddr := bundle.BundleProcessor
+	envelopeTx := types.NewTx(&types.LegacyTx{To: &bundleAddr, Nonce: 1})
+
+	inputTransactions := []*types.Transaction{envelopeTx}
+
+	// A rolled-back bundle has no processed inner transactions and no receipt
+	// for the envelope itself, but it still counts as a bundle attempt.
+	summary := evmcore.ProcessSummary{
+		ProcessedTransactions: []evmcore.ProcessedTransaction{
+			{Transaction: envelopeTx, Receipt: nil}, // rolled back
+		},
+	}
+
+	upgrades := opera.Upgrades{Allegro: true, Brio: true, GasSubsidies: true, TransactionBundles: true}
+
+	sponsoredCounter := utils.NewMockMetricsCounter(ctrl)
+	skippedSponsoredCounter := utils.NewMockMetricsCounter(ctrl)
+	bundleCounter := utils.NewMockMetricsCounter(ctrl)
+
+	// The bundle counter is still incremented for rolled-back bundles
+	bundleCounter.EXPECT().Inc(int64(1))
 
 	updateTransactionMetrics(inputTransactions, summary, upgrades, sponsoredCounter, skippedSponsoredCounter, bundleCounter)
 }
