@@ -503,7 +503,6 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 			bundle, _, err := bundle.ValidateEnvelope(signer, envelope)
 			require.NoError(t, err)
 
-			// Use dummy values for blockNumber and blockTime, and a nil checker (no processed bundles in these tests)
 			got := checkForNonceConflicts(bundle, signer, source, 0, 0, processedSource)
 			require.Equal(t, test.result, got)
 		})

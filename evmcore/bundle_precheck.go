@@ -284,12 +284,13 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 		if !plan.Period.IsInPeriod(r.blockTime) {
 			return core_types.TransactionResultInvalid
 		}
-		if r.bundlesTracker.HasBundleRecentlyBeenProcessed(plan.Hash()) {
+		planHash := plan.Hash()
+		if r.bundlesTracker.HasBundleRecentlyBeenProcessed(planHash) {
 			return core_types.TransactionResultInvalid
 		}
 
 		// Mark bundle as processed, to detect multiple use.
-		r.bundlesTracker.AddProcessedBundle(plan.Hash())
+		r.bundlesTracker.AddProcessedBundle(planHash)
 
 		if bundle.RunBundle(&txBundle, r) {
 			return core_types.TransactionResultSuccessful
