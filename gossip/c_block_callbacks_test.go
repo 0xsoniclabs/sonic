@@ -285,8 +285,8 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 
 				evmModule := blockproc.NewMockEVM(ctrl)
 				evmModule.EXPECT().
-					Start(_any, _any, _any, _any, _any, _any, _any).
-					DoAndReturn(func(block iblockproc.BlockCtx, _, _, _, _, _, _ any) blockproc.EVMProcessor {
+					Start(_any, _any, _any, _any, _any, _any, _any, _any).
+					DoAndReturn(func(block iblockproc.BlockCtx, _, _, _, _, _, _, _ any) blockproc.EVMProcessor {
 						require.Equal(t, test.blockTime, block.Time)
 						return evmProcessor
 					})
@@ -1269,6 +1269,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 		opera.Rules{},
 		&params.ChainConfig{},
 		common.Hash{},
+		evmcore.NoOpBlockExecutionMetrics,
 	)
 	blockBuilder := inter.NewBlockBuilder()
 

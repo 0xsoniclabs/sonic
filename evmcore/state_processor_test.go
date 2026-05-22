@@ -31,6 +31,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -100,7 +101,7 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, NoOpBlockExecutionMetrics)
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -211,7 +212,7 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 	}
 
 	state := getStateDbMockForTransactions(ctrl, transactions)
-	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, NoOpBlockExecutionMetrics)
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
 		"incremental": processor.process_iteratively,
@@ -272,7 +273,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 		}
 		chain := NewMockDummyChain(ctrl)
 
-		processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{})
+		processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, NoOpBlockExecutionMetrics)
 
 		tests := map[string]processFunction{
 			"bulk":        processor.Process,
@@ -320,7 +321,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, NoOpBlockExecutionMetrics)
 
 	block := &EvmBlock{
 		EvmHeader: EvmHeader{
@@ -379,7 +380,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, NoOpBlockExecutionMetrics)
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -466,7 +467,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 
 func TestProcess_UsesDifficultyOfOne(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{})
+	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{}, NoOpBlockExecutionMetrics)
 
 	state, block := createScenarioWithTxCheckingDifficulty(ctrl, big.NewInt(1))
 
@@ -490,7 +491,7 @@ func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 	for _, difficulty := range []*big.Int{big.NewInt(0), big.NewInt(2), big.NewInt(42)} {
 		t.Run(fmt.Sprintf("difficulty=%s", difficulty.String()), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{})
+			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{}, NoOpBlockExecutionMetrics)
 
 			state, block := createScenarioWithTxCheckingDifficulty(ctrl, difficulty)
 			results := processor.ProcessWithDifficulty(
@@ -580,7 +581,7 @@ func TestProcessWithDifficulty_ForwardsTimeToBundleProcessing(t *testing.T) {
 	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{
 		Brio:               true,
 		TransactionBundles: true,
-	})
+	}, NoOpBlockExecutionMetrics)
 
 	block := &EvmBlock{
 		EvmHeader: EvmHeader{
@@ -612,7 +613,7 @@ func TestProcess_ForwardsCorrectIndexToTransactionProcessor(t *testing.T) {
 		t.Run(fmt.Sprintf("offset=%d", offset), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			upgrades := opera.Upgrades{Brio: true, TransactionBundles: true}
-			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, upgrades)
+			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, upgrades, NoOpBlockExecutionMetrics)
 
 			any := gomock.Any()
 			state := state.NewMockStateDB(ctrl)
@@ -3830,7 +3831,7 @@ func TestRunTransactions_AccumulatesExecutionCostFromAllTransactions(t *testing.
 	)
 
 	summary := runTransactions(context, txs, 0, math.MaxUint64)
-	require.Equal(t, core_types.ExecutionCost(100+200+300+500), summary.ExecutionCost)
+	require.EqualValues(t, 100+200+300+500, summary.ExecutionCost)
 }
 
 func TestRunTransaction_RegularTransaction_ReturnsExecutionCostFromReceipt(t *testing.T) {
@@ -4430,4 +4431,276 @@ func TestRunTransactions_RemainingSizeIsSetToZeroWhenProcessedTxExceedsIt(t *tes
 	require.Len(t, summary.ProcessedTransactions, 2)
 	require.NotNil(t, summary.ProcessedTransactions[0].Receipt)
 	require.Nil(t, summary.ProcessedTransactions[1].Receipt)
+}
+
+func TestRunTransactions_AccumulatesMetricsForBundles(t *testing.T) {
+
+	t.Run("executed bundles are counted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		runner := NewMock_transactionRunner(ctrl)
+		executedBundles := utils.NewMockMetricsCounter(ctrl)
+
+		context := &runContext{
+			signer:   types.LatestSignerForChainID(big.NewInt(1)),
+			runner:   runner,
+			upgrades: opera.Upgrades{Brio: true, TransactionBundles: true},
+			metrics:  BlockExecutionMetrics{ExecutedBundles: executedBundles},
+		}
+
+		txs := []*types.Transaction{getTransactionBundle(t), getTransactionBundle(t)}
+
+		runner.EXPECT().runTransactionBundle(context, txs[0], 0, gomock.Any()).Return(
+			[]ProcessedTransaction{{Transaction: txs[0], Receipt: &types.Receipt{GasUsed: 100}}},
+			core_types.TransactionResultSuccessful,
+			core_types.ExecutionCost(100),
+		)
+		runner.EXPECT().runTransactionBundle(context, txs[1], 1, gomock.Any()).Return(
+			[]ProcessedTransaction{{Transaction: txs[1], Receipt: &types.Receipt{GasUsed: 200}}},
+			core_types.TransactionResultSuccessful,
+			core_types.ExecutionCost(200),
+		)
+		executedBundles.EXPECT().Inc(int64(1)).Times(2)
+
+		runTransactions(context, txs, 0, math.MaxUint64)
+	})
+
+	t.Run("rolled back bundles are counted when yielding zero txs", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		runner := NewMock_transactionRunner(ctrl)
+		rolledBackBundles := utils.NewMockMetricsCounter(ctrl)
+
+		context := &runContext{
+			signer:   types.LatestSignerForChainID(big.NewInt(1)),
+			runner:   runner,
+			upgrades: opera.Upgrades{Brio: true, TransactionBundles: true},
+			metrics:  BlockExecutionMetrics{RolledBackBundles: rolledBackBundles},
+		}
+
+		txs := []*types.Transaction{getTransactionBundle(t)}
+
+		runner.EXPECT().runTransactionBundle(context, txs[0], 0, gomock.Any()).Return(
+			[]ProcessedTransaction{{Transaction: txs[0], Receipt: nil}},
+			core_types.TransactionResultFailed,
+			core_types.ExecutionCost(50),
+		)
+		rolledBackBundles.EXPECT().Inc(int64(1))
+
+		runTransactions(context, txs, 0, math.MaxUint64)
+	})
+
+	t.Run("efficiency is reported for executed bundles", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		runner := NewMock_transactionRunner(ctrl)
+		histogram := utils.NewMockMetricsHistogramWrapper(ctrl)
+
+		context := &runContext{
+			signer:   types.LatestSignerForChainID(big.NewInt(1)),
+			runner:   runner,
+			upgrades: opera.Upgrades{Brio: true, TransactionBundles: true},
+			metrics:  BlockExecutionMetrics{BundleEfficiency: histogram},
+		}
+
+		txs := []*types.Transaction{getTransactionBundle(t)}
+
+		runner.EXPECT().runTransactionBundle(context, txs[0], 0, gomock.Any()).Return(
+			[]ProcessedTransaction{{Transaction: txs[0], Receipt: &types.Receipt{GasUsed: 300}}},
+			core_types.TransactionResultSuccessful,
+			core_types.ExecutionCost(1000),
+		)
+		// efficiency = gasUsed / execCost = 300 / 1000 = 0.3
+		histogram.EXPECT().Update(float64(300) / float64(1000))
+
+		runTransactions(context, txs, 0, math.MaxUint64)
+	})
+
+	t.Run("efficiency not reported when execution cost is zero", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		runner := NewMock_transactionRunner(ctrl)
+		histogram := utils.NewMockMetricsHistogramWrapper(ctrl)
+
+		context := &runContext{
+			signer:   types.LatestSignerForChainID(big.NewInt(1)),
+			runner:   runner,
+			upgrades: opera.Upgrades{Brio: true, TransactionBundles: true},
+			metrics:  BlockExecutionMetrics{BundleEfficiency: histogram},
+		}
+
+		txs := []*types.Transaction{getTransactionBundle(t)}
+
+		runner.EXPECT().runTransactionBundle(context, txs[0], 0, gomock.Any()).Return(
+			[]ProcessedTransaction{{Transaction: txs[0], Receipt: nil}},
+			core_types.TransactionResultFailed,
+			core_types.ExecutionCost(0),
+		)
+		// histogram.Update must NOT be called (division by zero guard)
+
+		runTransactions(context, txs, 0, math.MaxUint64)
+	})
+}
+
+func TestRunTransactions_AccumulatesMetricsForSponsoredTx(t *testing.T) {
+
+	t.Run("executed sponsorships are counted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		runner := NewMock_transactionRunner(ctrl)
+		sponsoredTxs := utils.NewMockMetricsCounter(ctrl)
+
+		context := &runContext{
+			signer:   types.LatestSignerForChainID(big.NewInt(1)),
+			runner:   runner,
+			upgrades: opera.Upgrades{Brio: true, GasSubsidies: true},
+			metrics:  BlockExecutionMetrics{SponsoredTxs: sponsoredTxs},
+		}
+
+		tx := getSponsorshipRequest(t)
+		txs := []*types.Transaction{tx}
+
+		runner.EXPECT().runSponsoredTransaction(context, tx, 0, gomock.Any()).Return(
+			[]ProcessedTransaction{
+				{Transaction: tx, Receipt: &types.Receipt{GasUsed: 100}},
+			},
+			core_types.TransactionResultSuccessful,
+		)
+		sponsoredTxs.EXPECT().Inc(int64(1))
+
+		runTransactions(context, txs, 0, math.MaxUint64)
+	})
+
+	t.Run("skipped sponsorships are counted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		runner := NewMock_transactionRunner(ctrl)
+		skippedSponsoredTxs := utils.NewMockMetricsCounter(ctrl)
+
+		context := &runContext{
+			signer:   types.LatestSignerForChainID(big.NewInt(1)),
+			runner:   runner,
+			upgrades: opera.Upgrades{Brio: true, GasSubsidies: true},
+			metrics:  BlockExecutionMetrics{SkippedSponsoredTxs: skippedSponsoredTxs},
+		}
+
+		tx := getSponsorshipRequest(t)
+		txs := []*types.Transaction{tx}
+
+		runner.EXPECT().runSponsoredTransaction(context, tx, 0, gomock.Any()).Return(
+			[]ProcessedTransaction{
+				{Transaction: tx, Receipt: nil},
+			},
+			core_types.TransactionResultFailed,
+		)
+		skippedSponsoredTxs.EXPECT().Inc(int64(1))
+
+		runTransactions(context, txs, 0, math.MaxUint64)
+	})
+
+	t.Run("executed and skipped are exclusive", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		runner := NewMock_transactionRunner(ctrl)
+		sponsoredTxs := utils.NewMockMetricsCounter(ctrl)
+		skippedSponsoredTxs := utils.NewMockMetricsCounter(ctrl)
+
+		context := &runContext{
+			signer:   types.LatestSignerForChainID(big.NewInt(1)),
+			runner:   runner,
+			upgrades: opera.Upgrades{Brio: true, GasSubsidies: true},
+			metrics: BlockExecutionMetrics{
+				SponsoredTxs:        sponsoredTxs,
+				SkippedSponsoredTxs: skippedSponsoredTxs,
+			},
+		}
+
+		tx1 := getSponsorshipRequest(t)
+		tx2 := getSponsorshipRequest(t)
+		txs := []*types.Transaction{tx1, tx2}
+
+		runner.EXPECT().runSponsoredTransaction(context, tx1, 0, gomock.Any()).Return(
+			[]ProcessedTransaction{
+				{Transaction: tx1, Receipt: &types.Receipt{GasUsed: 100}},
+			},
+			core_types.TransactionResultSuccessful,
+		)
+		runner.EXPECT().runSponsoredTransaction(context, tx2, 1, gomock.Any()).Return(
+			[]ProcessedTransaction{
+				{Transaction: tx2, Receipt: nil},
+			},
+			core_types.TransactionResultFailed,
+		)
+		// One goes to executed, the other to skipped - they are exclusive
+		sponsoredTxs.EXPECT().Inc(int64(1)).Times(1)
+		skippedSponsoredTxs.EXPECT().Inc(int64(1)).Times(1)
+
+		runTransactions(context, txs, 0, math.MaxUint64)
+	})
+}
+
+func TestRunTransactions_AccumulatesMetricsForBundlesAndSponsoredTx(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+	executedBundles := utils.NewMockMetricsCounter(ctrl)
+	rolledBackBundles := utils.NewMockMetricsCounter(ctrl)
+	sponsoredTxs := utils.NewMockMetricsCounter(ctrl)
+	skippedSponsoredTxs := utils.NewMockMetricsCounter(ctrl)
+	histogram := utils.NewMockMetricsHistogramWrapper(ctrl)
+
+	context := &runContext{
+		signer:   types.LatestSignerForChainID(big.NewInt(1)),
+		runner:   runner,
+		upgrades: opera.Upgrades{Brio: true, GasSubsidies: true, TransactionBundles: true},
+		metrics: BlockExecutionMetrics{
+			ExecutedBundles:     executedBundles,
+			RolledBackBundles:   rolledBackBundles,
+			SponsoredTxs:        sponsoredTxs,
+			SkippedSponsoredTxs: skippedSponsoredTxs,
+			BundleEfficiency:    histogram,
+		},
+	}
+
+	sponsoredTx := getSponsorshipRequest(t)
+	skippedSponsoredTx := getSponsorshipRequest(t)
+	executedBundle := getTransactionBundle(t)
+	rolledBackBundle := getTransactionBundle(t)
+	txs := []*types.Transaction{sponsoredTx, executedBundle, skippedSponsoredTx, rolledBackBundle}
+
+	// Inner transactions of bundles are regular txs (non-zero gas price),
+	// not the envelope itself.
+	bundleInnerTx1 := getRegularTransaction(t)
+	bundleInnerTx2 := getRegularTransaction(t)
+
+	gomock.InOrder(
+		runner.EXPECT().runSponsoredTransaction(context, sponsoredTx, 0, gomock.Any()).Return(
+			[]ProcessedTransaction{
+				{Transaction: sponsoredTx, Receipt: &types.Receipt{GasUsed: 100}},
+			},
+			core_types.TransactionResultSuccessful,
+		),
+		runner.EXPECT().runTransactionBundle(context, executedBundle, 1, gomock.Any()).Return(
+			[]ProcessedTransaction{{Transaction: bundleInnerTx1, Receipt: &types.Receipt{GasUsed: 500}}},
+			core_types.TransactionResultSuccessful,
+			core_types.ExecutionCost(800),
+		),
+		runner.EXPECT().runSponsoredTransaction(context, skippedSponsoredTx, 2, gomock.Any()).Return(
+			[]ProcessedTransaction{
+				{Transaction: skippedSponsoredTx, Receipt: nil},
+			},
+			core_types.TransactionResultFailed,
+		),
+		runner.EXPECT().runTransactionBundle(context, rolledBackBundle, 2, gomock.Any()).Return(
+			[]ProcessedTransaction{{Transaction: bundleInnerTx2, Receipt: nil}},
+			core_types.TransactionResultFailed,
+			core_types.ExecutionCost(300),
+		),
+	)
+
+	// Sponsored tx metrics
+	sponsoredTxs.EXPECT().Inc(int64(1))
+	skippedSponsoredTxs.EXPECT().Inc(int64(1))
+
+	// Bundle metrics
+	executedBundles.EXPECT().Inc(int64(1))
+	rolledBackBundles.EXPECT().Inc(int64(1))
+
+	// Efficiency: executed bundle = 500/800, rolled-back bundle has gasUsed=0, execCost=300
+	histogram.EXPECT().Update(float64(500) / float64(800))
+	histogram.EXPECT().Update(float64(0) / float64(300))
+
+	runTransactions(context, txs, 0, math.MaxUint64)
 }
