@@ -496,11 +496,15 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 				source.EXPECT().GetNonce(sender).Return(uint64(initialNonce)).AnyTimes()
 			}
 
+			processedSource := NewMockProcessedBundleSource(ctrl)
+			processedSource.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).AnyTimes()
+
 			envelope := test.bundle.toBundle(keys)
 			bundle, _, err := bundle.ValidateEnvelope(signer, envelope)
 			require.NoError(t, err)
 
-			got := checkForNonceConflicts(bundle, signer, source)
+			// Use dummy values for blockNumber and blockTime, and a nil checker (no processed bundles in these tests)
+			got := checkForNonceConflicts(bundle, signer, source, 0, 0, processedSource)
 			require.Equal(t, test.result, got)
 		})
 	}
@@ -517,6 +521,170 @@ func Test_runner_Run_ReturnsErrorForInvalidNestedBundle(t *testing.T) {
 
 	result := runner.Run(invalidBundle)
 	require.Equal(core_types.TransactionResultInvalid, result)
+}
+
+func Test_runner_Run_ReturnsInvalidResultForOutOfRangeBundle(t *testing.T) {
+	currentBlock := uint64(100)
+	tests := map[string]struct {
+		envelope      *types.Transaction
+		shouldBeValid bool
+	}{
+		"bundle with block range in the past": {
+			envelope: bundle.NewBuilder().
+				SetEarliest(currentBlock - 10).
+				SetRangeLength(1).
+				Build(),
+			shouldBeValid: false,
+		},
+		"bundle with block range in the future": {
+			envelope: bundle.NewBuilder().
+				SetEarliest(currentBlock + 20).
+				SetRangeLength(10).
+				Build(),
+			shouldBeValid: false,
+		},
+		"bundle with valid block range": {
+			envelope: bundle.NewBuilder().
+				SetEarliest(currentBlock - 5).
+				SetRangeLength(10).
+				Build(),
+			shouldBeValid: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			source := NewMockProcessedBundleSource(ctrl)
+
+			if tc.shouldBeValid {
+				source.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(false)
+			}
+
+			runner := &dryRunner{
+				signer:         types.LatestSignerForChainID(big.NewInt(1)),
+				blockNumber:    currentBlock,
+				nonceTracker:   &nonceTracker{},
+				bundlesTracker: &processedBundleTracker{source: source},
+			}
+
+			result := runner.Run(tc.envelope)
+			if tc.shouldBeValid {
+				require.Equal(t, core_types.TransactionResultSuccessful, result)
+			} else {
+				require.Equal(t, core_types.TransactionResultInvalid, result)
+			}
+		})
+	}
+}
+
+func Test_runner_Run_ReturnsInvalidResultForOutOfTimeBundle(t *testing.T) {
+	currentTime := inter.Timestamp(100)
+	tests := map[string]struct {
+		envelope      *types.Transaction
+		shouldBeValid bool
+	}{
+		"bundle with time range in the past": {
+			envelope: bundle.NewBuilder().
+				SetNotBefore(currentTime - 10).
+				SetPeriodDuration(5).
+				SetRangeLength(1).
+				Build(),
+			shouldBeValid: false,
+		},
+		"bundle with time range in the future": {
+			envelope: bundle.NewBuilder().
+				SetNotBefore(currentTime + 20).
+				SetPeriodDuration(10).
+				Build(),
+			shouldBeValid: false,
+		},
+		"bundle with valid time range": {
+			envelope: bundle.NewBuilder().
+				SetNotBefore(currentTime - 5).
+				SetPeriodDuration(10).
+				Build(),
+			shouldBeValid: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			source := NewMockProcessedBundleSource(ctrl)
+
+			if tc.shouldBeValid {
+				source.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(false)
+			}
+
+			runner := &dryRunner{
+				signer:         types.LatestSignerForChainID(big.NewInt(1)),
+				blockTime:      currentTime,
+				nonceTracker:   &nonceTracker{},
+				bundlesTracker: &processedBundleTracker{source: source},
+			}
+
+			result := runner.Run(tc.envelope)
+			if tc.shouldBeValid {
+				require.Equal(t, core_types.TransactionResultSuccessful, result)
+			} else {
+				require.Equal(t, core_types.TransactionResultInvalid, result)
+			}
+		})
+	}
+}
+
+func Test_runner_Run_ReturnsInvalidForAlreadyProcessedBundle(t *testing.T) {
+	envelope, plan := bundle.NewBuilder().BuildEnvelopeAndPlan()
+
+	t.Run("non-processed bundle is accepted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		source := NewMockProcessedBundleSource(ctrl)
+		source.EXPECT().HasBundleRecentlyBeenProcessed(plan.Hash()).Return(false)
+
+		runner := &dryRunner{
+			signer:         types.LatestSignerForChainID(big.NewInt(1)),
+			nonceTracker:   &nonceTracker{},
+			bundlesTracker: &processedBundleTracker{source: source},
+		}
+
+		result := runner.Run(envelope)
+		require.Equal(t, core_types.TransactionResultSuccessful, result)
+	})
+
+	t.Run("already processed bundle is rejected", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		source := NewMockProcessedBundleSource(ctrl)
+		source.EXPECT().HasBundleRecentlyBeenProcessed(plan.Hash()).Return(true)
+
+		runner := &dryRunner{
+			signer:         types.LatestSignerForChainID(big.NewInt(1)),
+			bundlesTracker: &processedBundleTracker{source: source},
+		}
+
+		result := runner.Run(envelope)
+		require.Equal(t, core_types.TransactionResultInvalid, result)
+	})
+}
+
+func Test_runner_Run_ProcessedBundlesAreTracked(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	source := NewMockProcessedBundleSource(ctrl)
+
+	envelope, plan := bundle.NewBuilder().BuildEnvelopeAndPlan()
+	source.EXPECT().HasBundleRecentlyBeenProcessed(plan.Hash()).Return(false)
+
+	runner := &dryRunner{
+		signer:         types.LatestSignerForChainID(big.NewInt(1)),
+		nonceTracker:   &nonceTracker{},
+		bundlesTracker: &processedBundleTracker{source: source},
+	}
+
+	result := runner.Run(envelope)
+	require.Equal(t, core_types.TransactionResultSuccessful, result)
+
+	require.Contains(t, runner.bundlesTracker.processed, plan.Hash())
+	require.True(t, runner.bundlesTracker.HasBundleRecentlyBeenProcessed(plan.Hash()))
 }
 
 func Test_runner_Run_ReturnsInvalidForTransactionsWithoutSignature(t *testing.T) {
