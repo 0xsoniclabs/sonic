@@ -690,7 +690,6 @@ func updateTransactionMetrics(inputTransactions []*types.Transaction, summary ev
 func updateBundleEfficiencyHistogram(summary evmcore.ProcessSummary, bundleTxs []common.Hash, histogram utils.MetricsHistogramWrapper) {
 	for _, envelopeHash := range bundleTxs {
 		var gasUsed uint64
-		var totalExecCost core_types.ExecutionCost
 
 		for _, processed := range summary.ProcessedTransactions {
 			txHash := processed.Transaction.Hash()
@@ -698,10 +697,10 @@ func updateBundleEfficiencyHistogram(summary evmcore.ProcessSummary, bundleTxs [
 				if processed.Receipt != nil {
 					gasUsed += processed.Receipt.GasUsed
 				}
-				totalExecCost += summary.ExecutionCost[txHash]
 			}
 		}
 
+		totalExecCost := summary.ExecutionCost[envelopeHash]
 		if totalExecCost == 0 {
 			continue
 		}
