@@ -87,7 +87,7 @@ var (
 
 	effectiveBundleGasHistogram = utils.MetricsHistogramWrapper(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
 		Name:    "chain_bundle_gas_effective",
-		Help:    "Effective gas usage ratio for a bundle transactions",
+		Help:    "Effective gas usage ratio for a bundle transaction",
 		Buckets: prometheus.LinearBuckets(0.00, 0.01, 100), // Buckets [0.00, 0.01, ..., 0.99, +inf]
 	}))
 )

@@ -1632,9 +1632,15 @@ func (p *fakePayload) GasPowerUsed() uint64 {
 func TestUpdateTransactionMetrics_CountsBundleAndSponsoredTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
 	bundleAddr := bundle.BundleProcessor
 	envelopeTx := types.NewTx(&types.LegacyTx{To: &bundleAddr, Nonce: 1})
-	sponsoredTx := types.NewTx(&types.LegacyTx{Nonce: 2, GasPrice: big.NewInt(0)})
+	sponsoredTx := types.MustSignNewTx(key, signer, &types.LegacyTx{To: &common.Address{}, Nonce: 2, GasPrice: big.NewInt(0)})
 	regularTx := types.NewTx(&types.LegacyTx{Nonce: 3, GasPrice: big.NewInt(1)})
 
 	inputTransactions := []*types.Transaction{envelopeTx, sponsoredTx, regularTx}
@@ -1664,7 +1670,13 @@ func TestUpdateTransactionMetrics_CountsBundleAndSponsoredTransactions(t *testin
 func TestUpdateTransactionMetrics_CountsSkippedSponsoredTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
-	sponsoredTx := types.NewTx(&types.LegacyTx{Nonce: 1, GasPrice: big.NewInt(0)})
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	sponsoredTx := types.MustSignNewTx(key, signer, &types.LegacyTx{To: &common.Address{}, Nonce: 2, GasPrice: big.NewInt(0)})
 
 	inputTransactions := []*types.Transaction{sponsoredTx}
 
