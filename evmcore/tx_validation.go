@@ -538,7 +538,7 @@ func validateBundleTransactionsInternal(
 
 	// Check that the bundle is executable.
 	state := bundleEvaluator.GetBundleState(getBundleStateAdaptor{chainState}, stateDb, tx)
-	if !state.Executable && !state.TemporarilyBlocked {
+	if !state.Executable {
 		err := ErrBundleNonExecutable
 		for _, reason := range state.Reasons {
 			err = errors.Join(err, errors.New(reason))

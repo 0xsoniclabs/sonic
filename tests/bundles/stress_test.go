@@ -34,7 +34,15 @@ func TestBundle_StressWithManyNonceBlockedBundles(t *testing.T) {
 	// Increase this number for profiling to increase load on the system.
 	const N = 2 // Number of blocked bundles
 
-	net := GetIntegrationTestNetWithBundlesEnabled(t)
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+		ClientExtraArguments: []string{
+			"--disable-txPool-validation",
+		},
+	})
 
 	client, err := net.GetClient()
 	require.NoError(t, err)

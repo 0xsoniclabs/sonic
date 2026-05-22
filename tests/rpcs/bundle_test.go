@@ -64,7 +64,7 @@ func TestBundleRPCFunctions(t *testing.T) {
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(err)
 
-	blockFirst := hexutil.EncodeUint64(blockNum + 1)
+	blockFirst := hexutil.EncodeUint64(blockNum)
 	senderAddress := sender.Address().Hex()
 	contract := receipt.ContractAddress.Hex()
 	gasP := hexutil.EncodeBig(gasPrice)
