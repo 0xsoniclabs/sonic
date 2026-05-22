@@ -90,9 +90,29 @@ func NewStateProcessorForReplay(
 // processing, including gas from rolled-back bundles, which distinguishes it
 // from the usedGas counter that gets reverted on snapshot rollback.
 type ProcessSummary struct {
-	ProcessedTransactions []ProcessedTransaction                   // List of processed transactions with their receipts (nil receipt for skipped transactions).
-	ExecutionCost         map[common.Hash]core_types.ExecutionCost // Mapping from transaction hash to the execution cost of the transaction, including rolled-back bundles.
-	CausedBy              map[common.Hash]common.Hash              // Mapping from transaction hash to the hash of the transaction that caused it.
+	// ProcessedTransactions is a list of processed transactions
+	// with their receipts (nil receipt for skipped transactions).
+	ProcessedTransactions []ProcessedTransaction
+
+	// ExecutionCost contains the raw execution cost for each transaction,
+	// this differs from gas used as it also includes the gas from rolled-back
+	// bundles.
+	// This is a map from the hash of the transaction that triggered execution to
+	// its execution cost.
+	// - For regular transactions and sponsored transactions, the key is the
+	// hash of the transaction itself.
+	// - For bundles, the key is the hash of the envelope transaction of the bundle.
+	ExecutionCost map[common.Hash]core_types.ExecutionCost
+
+	// CausedBy is a map tx.Hash -> tx.Hash, where the key is the hash
+	// of the transaction that got processed and the value is the hash
+	// of the transaction that caused the processing of the key transaction.
+	// - For regular transactions, the value is the same as the key.
+	// - For sponsored transactions, the fees-payment transaction is mapped
+	// to the sponsored transaction.
+	// - For transactions included as part of a bundle, the value is the hash
+	// of the envelope transaction of the bundle.
+	CausedBy map[common.Hash]common.Hash
 }
 
 // ProcessedTransaction represents a transaction that was considered for
