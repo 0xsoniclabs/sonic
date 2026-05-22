@@ -2391,6 +2391,42 @@ func TestRunTransactionBundle_PreviouslyProcessedBundle_ReturnsEnvelopeAndResult
 	require.Zero(t, execCost)
 }
 
+func TestRunTransactionBundle_RunBundleNotSuccessful_IncrementsRolledBackBundleCounter(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	evm := NewMock_evm(ctrl)
+
+	tx := bundle.OneOf().Build() // an empty OneOf bundle will fail
+	_, plan, err := bundle.ValidateEnvelope(signer, tx)
+	require.NoError(t, err)
+
+	gomock.InOrder(
+		stateDb.EXPECT().HasBundleRecentlyBeenProcessed(plan.Hash()),
+		stateDb.EXPECT().InterTxSnapshot().Return(1),
+		stateDb.EXPECT().RevertToInterTxSnapshot(1),
+		stateDb.EXPECT().AddProcessedBundle(plan.Hash(), gomock.Any()),
+	)
+
+	counter := utils.NewMockMetricsCounter(ctrl)
+	counter.EXPECT().Inc(int64(1))
+
+	context := &runContext{
+		statedb:                 stateDb,
+		signer:                  signer,
+		baseFee:                 big.NewInt(1),
+		usedGas:                 new(uint64),
+		gasPool:                 core.NewGasPool(1_000_000),
+		upgrades:                opera.Upgrades{TransactionBundles: true},
+		blockNumber:             big.NewInt(0),
+		rolledBackBundleCounter: counter,
+	}
+
+	runner := &transactionRunner{evm: evm}
+	_, result, _ := runner.runTransactionBundle(context, tx, 0, math.MaxUint64)
+	require.Equal(t, core_types.TransactionResultFailed, result)
+}
+
 func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResultFailed_AndMarksBundleAsProcessed(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	ctrl := gomock.NewController(t)
@@ -3839,7 +3875,42 @@ func TestRunTransactions_AccumulatesExecutionCostFromAllTransactions(t *testing.
 		txs[0].Hash(): 100,
 		txs[1].Hash(): 200 + 300,
 		txs[2].Hash(): 500,
-	}, summary.ExecutionCost)
+	}, summary.ExecutionCosts)
+}
+
+func TestProcessSummary_TotalExecutionCost(t *testing.T) {
+	tests := map[string]struct {
+		costs    map[common.Hash]core_types.ExecutionCost
+		expected core_types.ExecutionCost
+	}{
+		"nil map returns zero": {
+			costs:    nil,
+			expected: 0,
+		},
+		"empty map returns zero": {
+			costs:    map[common.Hash]core_types.ExecutionCost{},
+			expected: 0,
+		},
+		"single entry": {
+			costs:    map[common.Hash]core_types.ExecutionCost{{1}: 42},
+			expected: 42,
+		},
+		"multiple entries are summed": {
+			costs: map[common.Hash]core_types.ExecutionCost{
+				{1}: 100,
+				{2}: 200,
+				{3}: 300,
+			},
+			expected: 600,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			summary := ProcessSummary{ExecutionCosts: tc.costs}
+			require.Equal(t, tc.expected, summary.TotalExecutionCost())
+		})
+	}
 }
 
 func TestRunTransaction_RegularTransaction_ReturnsExecutionCostFromReceipt(t *testing.T) {

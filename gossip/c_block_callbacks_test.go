@@ -1756,7 +1756,7 @@ func TestUpdateBundleEfficiencyHistogram_ComputesEfficiencyForBundles(t *testing
 			{Transaction: innerTx1, Receipt: &types.Receipt{GasUsed: 50_000}},
 			{Transaction: innerTx2, Receipt: &types.Receipt{GasUsed: 30_000}},
 		},
-		ExecutionCost: map[common.Hash]core_types.ExecutionCost{
+		ExecutionCosts: map[common.Hash]core_types.ExecutionCost{
 			envelopeTx.Hash(): 200_000,
 		},
 		CausedBy: map[common.Hash]common.Hash{
@@ -1786,7 +1786,7 @@ func TestUpdateBundleEfficiencyHistogram_HandlesMultipleBundles(t *testing.T) {
 			{Transaction: innerTx1, Receipt: &types.Receipt{GasUsed: 80_000}},
 			{Transaction: innerTx2, Receipt: &types.Receipt{GasUsed: 20_000}},
 		},
-		ExecutionCost: map[common.Hash]core_types.ExecutionCost{
+		ExecutionCosts: map[common.Hash]core_types.ExecutionCost{
 			envelope1.Hash(): 100_000,
 			envelope2.Hash(): 100_000,
 		},
@@ -1818,7 +1818,7 @@ func TestUpdateBundleEfficiencyHistogram_SkippedInnerTransactionsContributeOnlyT
 			{Transaction: innerTx1, Receipt: &types.Receipt{GasUsed: 50_000}},
 			{Transaction: innerTx2, Receipt: nil}, // skipped, no gas used but has exec cost
 		},
-		ExecutionCost: map[common.Hash]core_types.ExecutionCost{
+		ExecutionCosts: map[common.Hash]core_types.ExecutionCost{
 			envelopeTx.Hash(): 200_000,
 		},
 		CausedBy: map[common.Hash]common.Hash{

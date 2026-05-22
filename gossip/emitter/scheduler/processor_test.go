@@ -56,7 +56,7 @@ func TestEvmProcessor_Run_IfExecutionSucceeds_ReportsSuccessAndGasUsage(t *testi
 				GasUsed: 10,
 			},
 		}},
-		ExecutionCost: map[common.Hash]core_types.ExecutionCost{{}: 10},
+		ExecutionCosts: map[common.Hash]core_types.ExecutionCost{{}: 10},
 	})
 
 	processor := &evmProcessor{processor: runner, stateDb: stateDb}
@@ -77,7 +77,7 @@ func TestEvmProcessor_Run_IfExecutionProducesMultipleProcessedTransactions_SumsU
 			{Receipt: nil}, // skipped transaction
 			{Receipt: &types.Receipt{GasUsed: 20}},
 		},
-		ExecutionCost: map[common.Hash]core_types.ExecutionCost{{}: 30},
+		ExecutionCosts: map[common.Hash]core_types.ExecutionCost{{}: 30},
 	})
 
 	processor := &evmProcessor{processor: runner, stateDb: stateDb}
@@ -98,7 +98,7 @@ func TestEvmProcessor_Run_IfRequestedTransactionIsNotExecuted_TheTransactionIsSt
 			Transaction: &types.Transaction{}, // different transaction
 			Receipt:     &types.Receipt{GasUsed: 10},
 		}},
-		ExecutionCost: map[common.Hash]core_types.ExecutionCost{{}: 10},
+		ExecutionCosts: map[common.Hash]core_types.ExecutionCost{{}: 10},
 	})
 
 	processor := &evmProcessor{processor: runner, stateDb: stateDb}
@@ -119,7 +119,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecutionAndRevertsSta
 			tx: nil,
 			summary: evmcore.ProcessSummary{
 				ProcessedTransactions: []evmcore.ProcessedTransaction{},
-				ExecutionCost:         map[common.Hash]core_types.ExecutionCost{},
+				ExecutionCosts:        map[common.Hash]core_types.ExecutionCost{},
 			},
 			expectAccept: false,
 		},
@@ -127,7 +127,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecutionAndRevertsSta
 			tx: tx,
 			summary: evmcore.ProcessSummary{
 				ProcessedTransactions: []evmcore.ProcessedTransaction{},
-				ExecutionCost:         map[common.Hash]core_types.ExecutionCost{},
+				ExecutionCosts:        map[common.Hash]core_types.ExecutionCost{},
 			},
 			expectAccept: false,
 		},
@@ -137,7 +137,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecutionAndRevertsSta
 				ProcessedTransactions: []evmcore.ProcessedTransaction{
 					{Transaction: tx, Receipt: nil},
 				},
-				ExecutionCost: map[common.Hash]core_types.ExecutionCost{{}: 100},
+				ExecutionCosts: map[common.Hash]core_types.ExecutionCost{{}: 100},
 			},
 			expectAccept: false,
 		},
@@ -147,7 +147,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecutionAndRevertsSta
 				ProcessedTransactions: []evmcore.ProcessedTransaction{
 					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 100*evmcore.MinBundleEfficiency - 1}},
 				},
-				ExecutionCost: map[common.Hash]core_types.ExecutionCost{{}: 100},
+				ExecutionCosts: map[common.Hash]core_types.ExecutionCost{{}: 100},
 			},
 			expectAccept: false,
 		},
@@ -158,7 +158,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecutionAndRevertsSta
 					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 100/2*evmcore.MinBundleEfficiency - 1}},
 					{Transaction: otherTx, Receipt: &types.Receipt{GasUsed: 100/2*evmcore.MinBundleEfficiency - 1}},
 				},
-				ExecutionCost: map[common.Hash]core_types.ExecutionCost{{}: 100},
+				ExecutionCosts: map[common.Hash]core_types.ExecutionCost{{}: 100},
 			},
 			expectAccept: false,
 		},
@@ -168,7 +168,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecutionAndRevertsSta
 				ProcessedTransactions: []evmcore.ProcessedTransaction{
 					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 100*evmcore.MinBundleEfficiency + 1}},
 				},
-				ExecutionCost: map[common.Hash]core_types.ExecutionCost{{}: 100},
+				ExecutionCosts: map[common.Hash]core_types.ExecutionCost{{}: 100},
 			},
 			expectAccept: true,
 		},
@@ -179,7 +179,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecutionAndRevertsSta
 					{Transaction: tx, Receipt: &types.Receipt{GasUsed: 100/2*evmcore.MinBundleEfficiency + 1}},
 					{Transaction: otherTx, Receipt: &types.Receipt{GasUsed: 100/2*evmcore.MinBundleEfficiency + 1}},
 				},
-				ExecutionCost: map[common.Hash]core_types.ExecutionCost{{}: 100},
+				ExecutionCosts: map[common.Hash]core_types.ExecutionCost{{}: 100},
 			},
 			expectAccept: true,
 		},

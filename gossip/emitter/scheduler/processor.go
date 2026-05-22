@@ -18,7 +18,6 @@ package scheduler
 
 import (
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -100,10 +99,7 @@ func (p *evmProcessor) run(tx *types.Transaction) (bool, uint64) {
 		}
 	}
 
-	totalExecCost := core_types.ExecutionCost(0)
-	for _, cost := range summary.ExecutionCost {
-		totalExecCost += cost
-	}
+	totalExecCost := summary.TotalExecutionCost()
 
 	if totalExecCost == 0 ||
 		float64(gasUsed)/float64(totalExecCost) < evmcore.MinBundleEfficiency {

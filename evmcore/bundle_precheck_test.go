@@ -723,7 +723,7 @@ func Test_trialRunBundleInternal_RejectsBundlesWhereEfficiencyIsBelowThreshold(t
 			processor.EXPECT().Run(any, any).Return(
 				ProcessSummary{
 					ProcessedTransactions: tc.processedTxs,
-					ExecutionCost:         tc.execCost,
+					ExecutionCosts:        tc.execCost,
 				},
 			)
 
@@ -1077,7 +1077,7 @@ func Test_trialRunBundleInternal_UsesPresentsOfReceiptToDecideResult(t *testing.
 			processor := NewMocktransactionProcessor(ctrl)
 			processor.EXPECT().Run(any, any).Return(ProcessSummary{
 				ProcessedTransactions: tc.processedTxs,
-				ExecutionCost:         map[common.Hash]core_types.ExecutionCost{{}: 1},
+				ExecutionCosts:        map[common.Hash]core_types.ExecutionCost{{}: 1},
 			})
 
 			factory := NewMocktransactionProcessorFactory(ctrl)
@@ -1405,7 +1405,7 @@ func Test_trialRunBundleInternal_ReturnsCorrectGasEfficiency(t *testing.T) {
 			processor.EXPECT().Run(any, any).Return(
 				ProcessSummary{
 					ProcessedTransactions: tc.processedTxs,
-					ExecutionCost:         tc.execCost,
+					ExecutionCosts:        tc.execCost,
 				},
 			)
 
@@ -1506,7 +1506,7 @@ func Test_trialRunBundleInternal_IncrementsMetrics(t *testing.T) {
 	processor := NewMocktransactionProcessor(ctrl)
 	processor.EXPECT().Run(any, any).Return(ProcessSummary{
 		ProcessedTransactions: []ProcessedTransaction{processedTx},
-		ExecutionCost:         expectedExecCost,
+		ExecutionCosts:        expectedExecCost,
 	})
 
 	factory := NewMocktransactionProcessorFactory(ctrl)

@@ -47,6 +47,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
@@ -86,7 +87,7 @@ var (
 
 	effectiveBundleGasHistogram = utils.MetricsHistogramWrapper(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
 		Name:    "chain_bundle_gas_effective",
-		Help:    "Effective gas usage percentage for a bundle transactions",
+		Help:    "Effective gas usage ratio for a bundle transactions",
 		Buckets: prometheus.LinearBuckets(0.00, 0.01, 100), // Buckets [0.00, 0.01, ..., 0.99, +inf]
 	}))
 )
@@ -678,7 +679,7 @@ func updateTransactionMetrics(inputTransactions []*types.Transaction, summary ev
 		if upgrades.Brio && upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
 			bundleTxs = append(bundleTxs, txHash)
 			bundleTxCounter.Inc(1)
-		} else if upgrades.Allegro && upgrades.GasSubsidies && tx.GasPrice().BitLen() == 0 {
+		} else if upgrades.Allegro && upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
 			sponsoredTxCounter.Inc(1)
 			if receipt, found := processed[txHash]; found && receipt == nil {
 				skippedSponsoredTxCounter.Inc(1)
@@ -690,25 +691,27 @@ func updateTransactionMetrics(inputTransactions []*types.Transaction, summary ev
 }
 
 func updateBundleEfficiencyHistogram(summary evmcore.ProcessSummary, bundleTxs []common.Hash, histogram utils.MetricsHistogramWrapper) {
-	for _, envelopeHash := range bundleTxs {
-		var gasUsed uint64
-
-		for _, processed := range summary.ProcessedTransactions {
-			txHash := processed.Transaction.Hash()
-			if origin, ok := summary.CausedBy[txHash]; ok && origin == envelopeHash {
-				if processed.Receipt != nil {
-					gasUsed += processed.Receipt.GasUsed
-				}
-			}
+	gasUsedByEnvelope := make(map[common.Hash]uint64, len(bundleTxs))
+	for _, processed := range summary.ProcessedTransactions {
+		if processed.Receipt == nil {
+			continue
 		}
-
-		totalExecCost := summary.ExecutionCost[envelopeHash]
+		txHash := processed.Transaction.Hash()
+		origin, ok := summary.CausedBy[txHash]
+		if !ok {
+			continue
+		}
+		gasUsedByEnvelope[origin] += processed.Receipt.GasUsed
+	}
+	for _, envelopeHash := range bundleTxs {
+		totalExecCost := summary.ExecutionCosts[envelopeHash]
 		if totalExecCost == 0 {
 			continue
 		}
-		efficiency := float64(gasUsed) / float64(totalExecCost)
+		efficiency := float64(gasUsedByEnvelope[envelopeHash]) / float64(totalExecCost)
 		histogram.Update(efficiency)
 	}
+
 }
 
 // resolveRandaoMix computes the randao mix to be used by the block processor

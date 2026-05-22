@@ -93,7 +93,7 @@ type ProcessSummary struct {
 	// with their receipts (nil receipt for skipped transactions).
 	ProcessedTransactions []ProcessedTransaction
 
-	// ExecutionCost contains the raw execution cost for each transaction,
+	// ExecutionCosts contains the raw execution cost for each transaction,
 	// this differs from gas used as it also includes the gas from rolled-back
 	// bundles.
 	// This is a map from the hash of the transaction that triggered execution to
@@ -101,7 +101,7 @@ type ProcessSummary struct {
 	// - For regular transactions and sponsored transactions, the key is the
 	// hash of the transaction itself.
 	// - For bundles, the key is the hash of the envelope transaction of the bundle.
-	ExecutionCost map[common.Hash]core_types.ExecutionCost
+	ExecutionCosts map[common.Hash]core_types.ExecutionCost
 
 	// CausedBy is a map tx.Hash -> tx.Hash, where the key is the hash
 	// of the transaction that got processed and the value is the hash
@@ -112,6 +112,14 @@ type ProcessSummary struct {
 	// - For transactions included as part of a bundle, the value is the hash
 	// of the envelope transaction of the bundle.
 	CausedBy map[common.Hash]common.Hash
+}
+
+func (s ProcessSummary) TotalExecutionCost() core_types.ExecutionCost {
+	var total core_types.ExecutionCost
+	for _, cost := range s.ExecutionCosts {
+		total += cost
+	}
+	return total
 }
 
 // ProcessedTransaction represents a transaction that was considered for
@@ -281,7 +289,7 @@ func runTransactions(
 	}
 	return ProcessSummary{
 		ProcessedTransactions: processedTxs,
-		ExecutionCost:         execCosts,
+		ExecutionCosts:        execCosts,
 		CausedBy:              causedBy,
 	}
 }

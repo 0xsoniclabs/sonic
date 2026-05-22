@@ -417,10 +417,7 @@ func trialRunBundleInternal(
 	}
 
 	// Calculate the gas efficiency of the bundle and check if it meets the minimum threshold.
-	totalExecCost := core_types.ExecutionCost(0)
-	for _, cost := range summary.ExecutionCost {
-		totalExecCost += cost
-	}
+	totalExecCost := summary.TotalExecutionCost()
 
 	evaluatedBundlesCount.Inc(1)
 	evaluatedBundlesExecutionCost.Inc(int64(totalExecCost))
