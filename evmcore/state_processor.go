@@ -491,6 +491,15 @@ func (r *transactionRunner) runTransactionBundleInternal(
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid, 0
 	}
 
+	// If the bundle has a resolvable nonce gap (future nonce), skip it without
+	// marking it as processed so it remains eligible once the gap closes.
+	// Permanently blocked bundles are passed through to let real execution decide.
+	nonceState := checkForNonceConflicts(txBundle, ctxt.signer, ctxt.statedb, ctxt.blockNumber.Uint64(), ctxt.blockTime, ctxt.statedb)
+	if !nonceState.Executable && nonceState.TemporarilyBlocked {
+		log.Warn("Bundle skipped due to future nonce", "tx", tx.Hash().Hex(), "reasons", nonceState.Reasons)
+		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid, 0
+	}
+
 	positionInBlock := bundle.PositionInBlock{
 		Offset: uint32(trueTxOffset),
 	}
