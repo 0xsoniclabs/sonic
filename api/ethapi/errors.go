@@ -134,8 +134,7 @@ func errSendRawSyncQueued(hash common.Hash) error {
 	}
 }
 
-func errSendRawSyncNonceGap(hash common.Hash, expectedNonce uint64) error {
-	_ = hash // hash included for EIP-7966 compatibility but not used in data per spec
+func errSendRawSyncNonceGap(expectedNonce uint64) error {
 	return &sendRawSyncError{
 		code:    errCodeSendRawSyncNonceGap,
 		message: fmt.Sprintf("nonce gap: expected nonce %d", expectedNonce),

@@ -2251,7 +2251,7 @@ func (s *PublicTransactionPoolAPI) SendRawTransactionSync(
 		return nil, err
 	}
 	if tx.Nonce() > expectedNonce {
-		return nil, errSendRawSyncNonceGap(txHash, expectedNonce)
+		return nil, errSendRawSyncNonceGap(expectedNonce)
 	}
 
 	// 4. Submit transaction (validates fee, EIP-155, adds to pool).
