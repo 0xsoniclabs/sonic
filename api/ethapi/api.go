@@ -2279,7 +2279,7 @@ func (s *PublicTransactionPoolAPI) SendRawTransactionSync(
 			}
 			receipts := s.b.FetchReceiptsForBlock(block)
 			if receipts == nil || receipts.Len() <= int(index) {
-				return nil, nil
+				return nil, fmt.Errorf("confirmed transaction %s found in block %d but receipt is unavailable or transaction index %d is out of range", txHash, blockNumber, index)
 			}
 			return s.formatTxReceipt(block.Header(), confirmedTx, index, receipts[index]), nil
 		}
