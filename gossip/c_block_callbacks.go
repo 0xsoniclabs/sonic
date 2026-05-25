@@ -646,6 +646,10 @@ func processUserTransactions(
 		}
 	}
 
+	// Pre-Brio: return nil to preserve the pre-Brio fee attribution behavior.
+	if !upgrades.Brio {
+		return nil
+	}
 	return summary.CausedBy
 }
 
