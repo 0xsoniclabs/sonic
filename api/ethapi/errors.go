@@ -18,7 +18,10 @@ package ethapi
 
 import (
 	"errors"
+	"fmt"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/vm"
 )
@@ -38,6 +41,11 @@ const (
 	errCodeSenderIsNotEOA          = -38024
 	errCodeMaxInitCodeSizeExceeded = -38025
 	errCodeClientLimitExceeded     = -38026
+
+	// EIP-7966 error codes (positive, distinct from standard JSON-RPC negative codes)
+	errCodeSendRawSyncTimeout  = 4
+	errCodeSendRawSyncQueued   = 5
+	errCodeSendRawSyncNonceGap = 6
 )
 
 // simInvalidTxError is an error type for invalid transactions
@@ -95,5 +103,42 @@ func simTxValidationError(err error) *simInvalidTxError {
 			Message: err.Error(),
 			Code:    errCodeInternalError,
 		}
+	}
+}
+
+// sendRawSyncError is a JSON-RPC error for eth_sendRawTransactionSync (EIP-7966).
+// It carries both an ErrorCode and an ErrorData field.
+type sendRawSyncError struct {
+	code    int
+	message string
+	data    interface{}
+}
+
+func (e *sendRawSyncError) Error() string          { return e.message }
+func (e *sendRawSyncError) ErrorCode() int         { return e.code }
+func (e *sendRawSyncError) ErrorData() interface{} { return e.data }
+
+func errSendRawSyncTimeout(hash common.Hash) error {
+	return &sendRawSyncError{
+		code:    errCodeSendRawSyncTimeout,
+		message: "transaction not confirmed within timeout",
+		data:    hash,
+	}
+}
+
+func errSendRawSyncQueued(hash common.Hash) error {
+	return &sendRawSyncError{
+		code:    errCodeSendRawSyncQueued,
+		message: "transaction unknown or still queued after timeout",
+		data:    hash,
+	}
+}
+
+func errSendRawSyncNonceGap(hash common.Hash, expectedNonce uint64) error {
+	_ = hash // hash included for EIP-7966 compatibility but not used in data per spec
+	return &sendRawSyncError{
+		code:    errCodeSendRawSyncNonceGap,
+		message: fmt.Sprintf("nonce gap: expected nonce %d", expectedNonce),
+		data:    hexutil.Uint64(expectedNonce),
 	}
 }
