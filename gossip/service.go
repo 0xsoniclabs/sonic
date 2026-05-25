@@ -561,6 +561,11 @@ func (s *Service) APIs() []rpc.API {
 			Service:   ethapi.NewPublicDebugAPI(s.EthAPI, s.config.MaxResponseSize, s.config.StructLogLimit),
 			Public:    true,
 		}, {
+			// Must be last among "debug" entries — overwrites file-writing methods
+			// from go-ethereum's internal/debug.HandlerT (see debug_api_block.go).
+			Namespace: "debug",
+			Service:   &debugFileWriteBlocker{},
+		}, {
 			Namespace: "trace",
 			Version:   "1.0",
 			Service:   ethapi.NewPublicTxTraceAPI(s.EthAPI, s.config.MaxResponseSize),
