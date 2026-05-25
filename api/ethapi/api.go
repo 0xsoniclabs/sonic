@@ -2219,8 +2219,8 @@ const (
 //   - timeoutMs: optional max wait time in milliseconds (default: 2000ms)
 //
 // Returns receipt on success. On failure, returns a typed JSON-RPC error:
-//   - Code 4: timeout, tx was submitted but not confirmed in time
-//   - Code 5: timeout, tx is still in the pool (queued/unknown)
+//   - Code 4: timeout, tx was submitted but not confirmed in time and is no longer in the pool (status unknown)
+//   - Code 5: timeout, tx was submitted and is still in the pool
 //   - Code 6: nonce gap detected, tx was NOT submitted to the pool
 func (s *PublicTransactionPoolAPI) SendRawTransactionSync(
 	ctx context.Context,
