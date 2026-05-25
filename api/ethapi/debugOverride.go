@@ -1,3 +1,5 @@
+//go:build !enable_debug
+
 // Copyright 2026 Sonic Operations Ltd
 // This file is part of the Sonic Client
 //
