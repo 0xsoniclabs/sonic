@@ -487,7 +487,7 @@ func consensusCallbackBeginBlockFn(
 					// call OnNewReceipt
 					for i, r := range allReceipts {
 						originTx := r.TxHash
-						if origin, found := txCausedBy[r.TxHash]; found {
+						if origin, found := txCausedBy[r.TxHash]; found && es.Rules.Upgrades.Brio {
 							originTx = origin
 						}
 						creator := txPositions[originTx].EventCreator
@@ -646,10 +646,6 @@ func processUserTransactions(
 		}
 	}
 
-	// Pre-Brio: return nil to preserve the pre-Brio fee attribution behavior.
-	if !upgrades.Brio {
-		return nil
-	}
 	return summary.CausedBy
 }
 
