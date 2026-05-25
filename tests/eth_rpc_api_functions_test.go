@@ -49,8 +49,7 @@ import (
 var (
 	knownMissingAPIs = namespaceMap{
 		"eth": {
-			"SendRawTransactionSync": struct{}{},
-			"GetStorageValues":       struct{}{},
+			"GetStorageValues": struct{}{},
 		},
 		"debug": {
 			"DbAncient":                   struct{}{},
