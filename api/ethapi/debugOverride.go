@@ -1,5 +1,3 @@
-//go:build !enable_debug
-
 // Copyright 2026 Sonic Operations Ltd
 // This file is part of the Sonic Client
 //
@@ -15,6 +13,8 @@
 //
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
+//go:build !enable_debug
 
 package ethapi
 
