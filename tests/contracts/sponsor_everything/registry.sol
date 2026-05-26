@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
-// SubsidiesRegistry is a stand-in contract for Sonic's on-chain subsidies 
+// SubsidiesRegistry is a stand-in contract for Sonic's on-chain subsidies
 // registry to be used as a replacement to the development registry used in
 // integration tests.
 contract SubsidiesRegistry {
@@ -31,15 +31,17 @@ contract SubsidiesRegistry {
     // --- Funding infrastructure used by the Sonic client ---
 
     function getGasConfig() public pure returns (
-        uint256 chooseFundLimit, 
-        uint256 deductFeesLimit, 
-        uint256 overheadCharge
+        uint256 chooseFundLimit,
+        uint256 deductFeesLimit,
+        uint256 overheadCharge,
+        uint256 trackGasCost
     ) {
         uint256 getGasConfigCosts = 50_000;
         chooseFundLimit = 1_234_567;  // < different from default
         deductFeesLimit = 654_321;    // < different from default
         overheadCharge = chooseFundLimit + deductFeesLimit + getGasConfigCosts;
-        return (chooseFundLimit, deductFeesLimit, overheadCharge);
+        trackGasCost = 0;
+        return (chooseFundLimit, deductFeesLimit, overheadCharge, trackGasCost);
     }
 
     function chooseFund(
@@ -49,12 +51,12 @@ contract SubsidiesRegistry {
         uint256 /*nonce*/,
         bytes calldata /*callData*/,
         uint256 fee
-    ) public view returns (bytes32 fundId) {
-        // Everything is funded if there is enough balance to cover the fee.
+    ) public view returns (uint256 mode, bytes32 payload) {
+        // Everything is funded (mode 1) if there is enough balance to cover the fee.
         if (address(this).balance >= fee) {
-            return bytes32(uint256(1));
+            return (1, bytes32(uint256(1)));
         }
-        return bytes32(0);
+        return (0, bytes32(0));
     }
 
     function deductFees(bytes32 fundId, uint256 fee) public {
@@ -64,6 +66,9 @@ contract SubsidiesRegistry {
         feeBurner.burnNativeTokens{value: fee}();
     }
 
+    function track(bytes32 /*trackingId*/, uint256 /*fee*/) public view {
+        require(msg.sender == address(0)); // only callable through internal transactions
+    }
 
     // --- Sponsor Policies ---
 

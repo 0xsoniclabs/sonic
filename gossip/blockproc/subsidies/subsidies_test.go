@@ -257,16 +257,16 @@ func TestIsCovered_ConsultsSubsidiesRegistry(t *testing.T) {
 			vmConfig := opera.GetVmConfig(rules)
 			vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
 
-			covered, fundId, config, err := IsCovered(upgrades, vm, signer, tx, baseFee)
+			result, err := IsCovered(upgrades, vm, signer, tx, baseFee)
 			require.NoError(err)
-			require.Equal(test.expectCovered, covered)
+			require.Equal(test.expectCovered, result.mode != sponsorshipModeNotCovered)
 			if test.expectCovered {
-				require.NotEmpty(fundId)
+				require.NotEmpty(result.fundId)
 				// These values are hard-coded in the dev-version of the registry.
-				require.Equal(uint64(60_000), config.DeductFeesGasCost)
-				require.Equal(uint64(210_000), config.SponsorshipOverheadGasCost)
+				require.Equal(uint64(60_000), result.config.DeductFeesGasCost)
+				require.Equal(uint64(210_000), result.config.SponsorshipOverheadGasCost)
 			} else {
-				require.Empty(fundId)
+				require.Empty(result.fundId)
 			}
 		})
 	}
@@ -319,7 +319,7 @@ func TestIsCovered_RegistryNotAvailable_ReturnsError(t *testing.T) {
 	vmConfig := opera.GetVmConfig(rules)
 	vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
 
-	_, _, _, err = IsCovered(upgrades, vm, signer, tx, baseFee)
+	_, err = IsCovered(upgrades, vm, signer, tx, baseFee)
 	require.ErrorContains(err, "subsidies registry contract not found")
 }
 
@@ -349,16 +349,16 @@ func TestIsCovered_GasSubsidiesDisabled_ReturnsFalse(t *testing.T) {
 	})
 	require.True(IsSponsorshipRequest(tx))
 
-	covered, fundId, _, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	result, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
 	require.NoError(err)
-	require.False(covered)
-	require.Empty(fundId)
+	require.Equal(sponsorshipModeNotCovered, result.mode)
+	require.Empty(result.fundId)
 
 	upgrades.GasSubsidies = true
-	covered, fundId, _, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	result, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
 	require.NoError(err)
-	require.True(covered)
-	require.Equal(fundId, selectedFundId)
+	require.Equal(sponsorshipModeFundBacked, result.mode)
+	require.Equal(selectedFundId, result.fundId)
 }
 
 func TestIsCovered_NotASponsorshipRequest_ReturnsFalse(t *testing.T) {
@@ -384,20 +384,20 @@ func TestIsCovered_NotASponsorshipRequest_ReturnsFalse(t *testing.T) {
 	// Non-Sponsorship request (no recipient) is rejected.
 	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{})
 	require.False(IsSponsorshipRequest(tx))
-	covered, fundId, _, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	result, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
 	require.NoError(err)
-	require.False(covered)
-	require.Empty(fundId)
+	require.Equal(sponsorshipModeNotCovered, result.mode)
+	require.Empty(result.fundId)
 
 	// Sponsorship request is accepted.
 	tx = types.MustSignNewTx(key, signer, &types.LegacyTx{
 		To: &common.Address{},
 	})
 	require.True(IsSponsorshipRequest(tx))
-	covered, fundId, _, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	result, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
 	require.NoError(err)
-	require.True(covered)
-	require.Equal(fundId, selectedFundId)
+	require.Equal(sponsorshipModeFundBacked, result.mode)
+	require.Equal(selectedFundId, result.fundId)
 }
 
 func TestIsCovered_NotCoveredByFunds_ReturnsFalse(t *testing.T) {
@@ -417,24 +417,24 @@ func TestIsCovered_NotCoveredByFunds_ReturnsFalse(t *testing.T) {
 		To: &common.Address{},
 	})
 
-	// If the query returns the 0-fund ID, IsCovered returns false.
+	// If the query returns the 0-fund ID, IsCovered returns mode 0 (not covered).
 	any := gomock.Any()
 	selectedFundId := FundId{}
 	vm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 3*32), uint64(0), nil)
 	vm.EXPECT().Call(any, any, any, any, any).Return(selectedFundId[:], uint64(0), nil)
-	covered, fundId, _, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	result, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
 	require.NoError(err)
-	require.False(covered)
-	require.Empty(fundId)
+	require.Equal(sponsorshipModeNotCovered, result.mode)
+	require.Empty(result.fundId)
 
-	// If the query returns a non-zero fund ID, IsCovered returns true.
+	// If the query returns a non-zero fund ID, IsCovered returns mode 1 (fund-backed).
 	selectedFundId = FundId{1, 2, 3}
 	vm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 3*32), uint64(0), nil)
 	vm.EXPECT().Call(any, any, any, any, any).Return(selectedFundId[:], uint64(0), nil)
-	covered, fundId, _, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	result, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
 	require.NoError(err)
-	require.True(covered)
-	require.Equal(fundId, selectedFundId)
+	require.Equal(sponsorshipModeFundBacked, result.mode)
+	require.Equal(selectedFundId, result.fundId)
 }
 
 func TestIsCovered_SenderReaderFails_ReturnsError(t *testing.T) {
@@ -454,7 +454,7 @@ func TestIsCovered_SenderReaderFails_ReturnsError(t *testing.T) {
 	issue := fmt.Errorf("injected issue")
 	signer.EXPECT().Sender(tx).Return(common.Address{}, issue)
 
-	_, _, _, err := IsCovered(upgrades, nil, signer, tx, big.NewInt(1))
+	_, err := IsCovered(upgrades, nil, signer, tx, big.NewInt(1))
 	require.ErrorContains(err, "failed to derive sender")
 	require.ErrorIs(err, issue)
 }
@@ -484,7 +484,7 @@ func TestIsCovered_createChooseFundInputFails_ReturnsError(t *testing.T) {
 
 	// A huge base fee causes createChooseFundInput to fail.
 	baseFee := new(big.Int).Lsh(big.NewInt(1), 256) // 2^256
-	_, _, _, err := IsCovered(upgrades, vm, signer, tx, baseFee)
+	_, err := IsCovered(upgrades, vm, signer, tx, baseFee)
 	require.ErrorContains(err, "fee does not fit into 32 bytes")
 }
 
@@ -509,15 +509,15 @@ func TestIsCovered_EvmCallFails_ReturnsError(t *testing.T) {
 	any := gomock.Any()
 	issue := fmt.Errorf("injected getGasConfig issue")
 	vm.EXPECT().Call(any, any, any, any, any).Return(nil, uint64(0), issue)
-	_, _, _, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	_, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
 	require.ErrorContains(err, "EVM call failed")
 	require.ErrorIs(err, issue)
 
-	// If the chooseFund EVM returns false, IsCovered returns false.
+	// If the chooseFund EVM call fails, IsCovered returns an error.
 	issue = fmt.Errorf("injected chooseFund issue")
 	vm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 3*32), uint64(0), nil)
 	vm.EXPECT().Call(any, any, any, any, any).Return(nil, uint64(0), issue)
-	_, _, _, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	_, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
 	require.ErrorContains(err, "EVM call failed")
 	require.ErrorIs(err, issue)
 }
@@ -543,7 +543,7 @@ func TestIsCovered_EmptyResultFromChooseFund_ReportsMissingContract(t *testing.T
 	any := gomock.Any()
 	vm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 3*32), uint64(0), nil)
 	vm.EXPECT().Call(any, any, any, any, any).Return(nil, uint64(0), nil)
-	_, _, _, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	_, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
 	require.ErrorContains(err, "subsidies registry contract not found")
 }
 
@@ -568,26 +568,29 @@ func TestIsCovered_InvalidReturnFromEvm_ReturnsError(t *testing.T) {
 	any := gomock.Any()
 	vm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 3*32), uint64(0), nil)
 	vm.EXPECT().Call(any, any, any, any, any).Return([]byte{0x01}, uint64(0), nil)
-	_, _, _, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	_, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
 	require.ErrorContains(err, "failed to parse result of subsidies registry call")
 }
 
-func TestRlpEncodedFeeChargingTxSizeInBytes_IsUpperBound(t *testing.T) {
+func TestOverhead_FundBacked_SizeIsUpperBoundForRlpEncodedTx(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	nonceSource := NewMockNonceSource(ctrl)
 	nonceSource.EXPECT().GetNonce(common.Address{}).Return(uint64(math.MaxUint64))
 	id := FundId(make([]byte, 32))
-	gasConfig := GasConfig{math.MaxUint64, math.MaxUint64}
+	gasConfig := GasConfig{SponsorshipOverheadGasCost: math.MaxUint64, DeductFeesGasCost: math.MaxUint64}
 	gasPrice := big.NewInt(math.MaxInt64)
 
-	tx, err := GetFeeChargeTransaction(nonceSource, FundId(id), gasConfig, math.MaxUint64, gasPrice)
+	postTxs, err := (Sponsorship{mode: sponsorshipModeFundBacked, fundId: FundId(id), config: gasConfig}).
+		GetPostTransactions(nonceSource, math.MaxUint64, gasPrice)
 	require.NoError(t, err)
-	data, err := rlp.EncodeToBytes(tx)
+	require.Len(t, postTxs, 1)
+	data, err := rlp.EncodeToBytes(postTxs[0])
 	require.NoError(t, err)
-	require.Less(t, len(data), RlpEncodedFeeChargingTxSizeInBytes)
+	s := Sponsorship{mode: sponsorshipModeFundBacked, config: gasConfig}
+	require.Less(t, len(data), int(s.Overhead().Size))
 }
 
-func TestGetFeeChargeTransaction_ValidInputs_ProducesCorrectInternalTransaction(t *testing.T) {
+func TestGetPostTransactions_FundBacked_ProducesCorrectInternalTransaction(t *testing.T) {
 	nonces := []uint64{
 		0, 1, 42, 1000,
 	}
@@ -624,9 +627,11 @@ func TestGetFeeChargeTransaction_ValidInputs_ProducesCorrectInternalTransaction(
 								}
 
 								gasPrice := big.NewInt(int64(price))
-								tx, err := GetFeeChargeTransaction(nonceSource, fundId, config, uint64(gas), gasPrice)
+								postTxs, err := (Sponsorship{mode: sponsorshipModeFundBacked, fundId: fundId, config: config}).
+									GetPostTransactions(nonceSource, uint64(gas), gasPrice)
 								require.NoError(err)
-								require.NotNil(tx)
+								require.Len(postTxs, 1)
+								tx := postTxs[0]
 
 								require.True(internaltx.IsInternal(tx))
 								require.Equal(nonce, tx.Nonce())
@@ -640,7 +645,7 @@ func TestGetFeeChargeTransaction_ValidInputs_ProducesCorrectInternalTransaction(
 
 								got := tx.Data()
 								fee := uint256.NewInt(uint64(price * (gas + int(config.SponsorshipOverheadGasCost))))
-								want := createDeductFeesInput(fundId, *fee)
+								want := createRegistryCallInput(registry.DeductFeesFunctionSelector, [32]byte(fundId), *fee)
 								require.Equal(want, got)
 							})
 						}
@@ -651,23 +656,24 @@ func TestGetFeeChargeTransaction_ValidInputs_ProducesCorrectInternalTransaction(
 	}
 }
 
-func TestGetFeeChargeTransaction_FeeOverflows_ReturnsError(t *testing.T) {
+func TestGetPostTransactions_FundBacked_FeeOverflows_ReturnsError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	nonceSource := NewMockNonceSource(ctrl)
 	nonceSource.EXPECT().GetNonce(common.Address{}).Return(uint64(0))
 
 	fundId := FundId{}
-	config := GasConfig{1, 1}
+	config := GasConfig{DeductFeesGasCost: 1, SponsorshipOverheadGasCost: 1}
 	gasUsed := uint64(0)
 	gasPrice := new(big.Int).Lsh(big.NewInt(1), 256) // 2^256
-	_, err := GetFeeChargeTransaction(nonceSource, fundId, config, gasUsed, gasPrice)
+	_, err := (Sponsorship{mode: sponsorshipModeFundBacked, fundId: fundId, config: config}).
+		GetPostTransactions(nonceSource, gasUsed, gasPrice)
 	require.ErrorContains(err, "fee calculation overflow")
 }
 
 func TestIsFeeChargeTransaction_ValidFeeChargeTransaction_ReturnsTrue(t *testing.T) {
 	addr := registry.GetAddress()
-	tx := types.NewTx(&types.LegacyTx{To: &addr, Data: createDeductFeesInput(FundId{}, uint256.Int{})})
+	tx := types.NewTx(&types.LegacyTx{To: &addr, Data: createRegistryCallInput(registry.DeductFeesFunctionSelector, [32]byte{}, uint256.Int{})})
 	require.True(t, internaltx.IsInternal(tx))
 	require.True(t, IsFeeChargeTransaction(tx))
 }
@@ -680,7 +686,7 @@ func TestIsFeeChargeTransaction_NonInternalTransaction_ReturnsFalse(t *testing.T
 	addr := registry.GetAddress()
 	tx := types.NewTx(&types.LegacyTx{
 		To:   &addr,
-		Data: createDeductFeesInput(FundId{}, uint256.Int{}),
+		Data: createRegistryCallInput(registry.DeductFeesFunctionSelector, [32]byte{}, uint256.Int{}),
 		V:    big.NewInt(1),
 	})
 	require.False(t, internaltx.IsInternal(tx))
@@ -688,14 +694,14 @@ func TestIsFeeChargeTransaction_NonInternalTransaction_ReturnsFalse(t *testing.T
 }
 
 func TestIsFeeChargeTransaction_NilRecipient_ReturnsFalse(t *testing.T) {
-	tx := types.NewTx(&types.LegacyTx{Data: createDeductFeesInput(FundId{}, uint256.Int{})})
+	tx := types.NewTx(&types.LegacyTx{Data: createRegistryCallInput(registry.DeductFeesFunctionSelector, [32]byte{}, uint256.Int{})})
 	require.True(t, internaltx.IsInternal(tx))
 	require.False(t, IsFeeChargeTransaction(tx))
 }
 
 func TestIsFeeChargeTransaction_WrongRecipient_ReturnsFalse(t *testing.T) {
 	addr := common.Address{0x42}
-	tx := types.NewTx(&types.LegacyTx{To: &addr, Data: createDeductFeesInput(FundId{}, uint256.Int{})})
+	tx := types.NewTx(&types.LegacyTx{To: &addr, Data: createRegistryCallInput(registry.DeductFeesFunctionSelector, [32]byte{}, uint256.Int{})})
 	require.True(t, internaltx.IsInternal(tx))
 	require.False(t, IsFeeChargeTransaction(tx))
 }
@@ -716,7 +722,7 @@ func TestIsFeeChargeTransaction_WrongDataLength_ReturnsFalse(t *testing.T) {
 }
 
 func TestIsFeeChargeTransaction_WrongSelector_ReturnsFalse(t *testing.T) {
-	data := createDeductFeesInput(FundId{}, uint256.Int{})
+	data := createRegistryCallInput(registry.DeductFeesFunctionSelector, [32]byte{}, uint256.Int{})
 	binary.BigEndian.PutUint32(data, registry.DeductFeesFunctionSelector+1)
 	addr := registry.GetAddress()
 	tx := types.NewTx(&types.LegacyTx{To: &addr, Data: data})
@@ -735,7 +741,7 @@ func TestParseFeeChargeAmount_ValidInput_ReturnsFee(t *testing.T) {
 			addr := registry.GetAddress()
 			tx := types.NewTx(&types.LegacyTx{
 				To:   &addr,
-				Data: createDeductFeesInput(FundId{}, *fee),
+				Data: createRegistryCallInput(registry.DeductFeesFunctionSelector, [32]byte{}, *fee),
 			})
 			require.True(t, IsFeeChargeTransaction(tx))
 			got, err := ParseFeeChargeAmount(tx)
@@ -750,7 +756,7 @@ func TestParseFeeChargeAmount_NotAFeeChargeTransaction_ReturnsError(t *testing.T
 		"nil transaction": nil,
 		"non-internal transaction": types.NewTx(&types.LegacyTx{
 			To:   &common.Address{},
-			Data: createDeductFeesInput(FundId{}, uint256.Int{}),
+			Data: createRegistryCallInput(registry.DeductFeesFunctionSelector, [32]byte{}, uint256.Int{}),
 			V:    big.NewInt(1),
 		}),
 	}
@@ -837,8 +843,12 @@ func TestGetGasConfig_InvalidVmResult_ReturnsIssue(t *testing.T) {
 			result: make([]byte, 3*32-1),
 			issue:  "invalid result length",
 		},
-		"too long": {
+		"between 96 and 128": {
 			result: make([]byte, 3*32+1),
+			issue:  "invalid result length",
+		},
+		"too long": {
+			result: make([]byte, 4*32+1),
 			issue:  "invalid result length",
 		},
 	}
@@ -1056,16 +1066,16 @@ func TestCreateChooseFundInput_LongCallData_CallDataIsEncodedCorrectly(t *testin
 
 func TestParseIsCoveredResult_ValidInputs_ParsesCorrectly(t *testing.T) {
 	tests := map[string]struct {
-		covered bool
-		fundId  FundId
+		wantMode sponsorshipMode
+		fundId   FundId
 	}{
 		"empty fund": {
-			covered: false,
-			fundId:  FundId{},
+			wantMode: sponsorshipModeNotCovered,
+			fundId:   FundId{},
 		},
 		"non-empty fund": {
-			covered: true,
-			fundId:  FundId{1, 2, 3},
+			wantMode: sponsorshipModeFundBacked,
+			fundId:   FundId{1, 2, 3},
 		},
 	}
 
@@ -1073,11 +1083,11 @@ func TestParseIsCoveredResult_ValidInputs_ParsesCorrectly(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			input := test.fundId[:]
-			covered, fundId, err := parseChooseFundResult(input)
+			mode, fundId, _, err := parseChooseFundResult(input)
 			require.NoError(err)
-			require.Equal(test.covered, covered)
+			require.Equal(test.wantMode, mode)
 			wantedFund := test.fundId
-			if !test.covered {
+			if test.wantMode == sponsorshipModeNotCovered {
 				wantedFund = FundId{}
 			}
 			require.Equal(wantedFund, fundId)
@@ -1098,8 +1108,12 @@ func TestParseIsCoveredResult_InvalidInputs_ReturnsError(t *testing.T) {
 			input: make([]byte, 31),
 			issue: "invalid result length",
 		},
+		"between 32 and 64": {
+			input: make([]byte, 48),
+			issue: "invalid result length",
+		},
 		"too long": {
-			input: make([]byte, 32+1),
+			input: make([]byte, 65),
 			issue: "invalid result length",
 		},
 	}
@@ -1107,7 +1121,7 @@ func TestParseIsCoveredResult_InvalidInputs_ReturnsError(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			_, _, err := parseChooseFundResult(test.input)
+			_, _, _, err := parseChooseFundResult(test.input)
 			require.ErrorContains(err, test.issue)
 		})
 	}
@@ -1130,7 +1144,7 @@ func TestCreateDeductFeeInput_CombinesFundIdWithFee(t *testing.T) {
 		for _, fee := range fees {
 			t.Run(fmt.Sprintf("id=%v/fee=%s", id, fee.String()), func(t *testing.T) {
 				require := require.New(t)
-				input := createDeductFeesInput(id, *fee)
+				input := createRegistryCallInput(registry.DeductFeesFunctionSelector, [32]byte(id), *fee)
 				require.Equal(4+2*32, len(input))
 
 				// Function Selector
@@ -1150,6 +1164,292 @@ func TestCreateDeductFeeInput_CombinesFundIdWithFee(t *testing.T) {
 			})
 		}
 	}
+}
+
+// --- New tests for modes 2, 3, and backward compatibility ---
+
+func makeTestTx(t *testing.T) (*types.Transaction, types.Signer) {
+	t.Helper()
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(nil)
+	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{To: &common.Address{}, Gas: 21000})
+	return tx, signer
+}
+
+func makeGasConfigResponse(chooseFund, deductFees, overhead uint64) []byte {
+	result := make([]byte, 3*32)
+	binary.BigEndian.PutUint64(result[32*0+24:32*0+32], chooseFund)
+	binary.BigEndian.PutUint64(result[32*1+24:32*1+32], deductFees)
+	binary.BigEndian.PutUint64(result[32*2+24:32*2+32], overhead)
+	return result
+}
+
+func makeGasConfigResponseWithTrack(chooseFund, deductFees, overhead, trackGasCost uint64) []byte {
+	result := make([]byte, 4*32)
+	binary.BigEndian.PutUint64(result[32*0+24:32*0+32], chooseFund)
+	binary.BigEndian.PutUint64(result[32*1+24:32*1+32], deductFees)
+	binary.BigEndian.PutUint64(result[32*2+24:32*2+32], overhead)
+	binary.BigEndian.PutUint64(result[32*3+24:32*3+32], trackGasCost)
+	return result
+}
+
+func makeChooseFundResponse(mode uint8, payload [32]byte) []byte {
+	result := make([]byte, 2*32)
+	result[31] = mode
+	copy(result[32:64], payload[:])
+	return result
+}
+
+// TestIsCovered_Mode2_ReturnsNetworkSponsored verifies that a 64-byte chooseFund
+// response with mode=2 is correctly interpreted as network-sponsored.
+func TestIsCovered_Mode2_ReturnsNetworkSponsored(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	vm := NewMockVirtualMachine(ctrl)
+
+	upgrades := opera.Upgrades{GasSubsidies: true}
+	tx, signer := makeTestTx(t)
+	any := gomock.Any()
+
+	vm.EXPECT().Call(any, any, any, any, any).Return(makeGasConfigResponse(100_000, 60_000, 210_000), uint64(0), nil)
+	vm.EXPECT().Call(any, any, any, any, any).Return(makeChooseFundResponse(2, [32]byte{}), uint64(0), nil)
+
+	result, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	require.NoError(err)
+	require.Equal(sponsorshipModeNetwork, result.mode)
+	require.Equal(FundId{}, result.fundId)
+	require.Equal(TrackingId{}, result.trackingId)
+}
+
+// TestIsCovered_Mode3_ReturnsNetworkSponsoredWithTracking verifies that a 64-byte
+// chooseFund response with mode=3 is correctly interpreted, and that the tracking
+// ID payload is stored in TrackingId (not FundId).
+func TestIsCovered_Mode3_ReturnsNetworkSponsoredWithTracking(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	vm := NewMockVirtualMachine(ctrl)
+
+	upgrades := opera.Upgrades{GasSubsidies: true}
+	tx, signer := makeTestTx(t)
+	any := gomock.Any()
+
+	trackingId := TrackingId{0xde, 0xad, 0xbe, 0xef}
+	vm.EXPECT().Call(any, any, any, any, any).Return(makeGasConfigResponse(100_000, 60_000, 210_000), uint64(0), nil)
+	vm.EXPECT().Call(any, any, any, any, any).Return(makeChooseFundResponse(3, [32]byte(trackingId)), uint64(0), nil)
+
+	result, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	require.NoError(err)
+	require.Equal(sponsorshipModeNetworkWithTracking, result.mode)
+	require.Equal(FundId{}, result.fundId)
+	require.Equal(trackingId, result.trackingId)
+}
+
+// TestIsCovered_LegacyRegistry_32ByteChooseFund_MapsToMode1 verifies that a
+// 32-byte chooseFund response with a non-zero fundId is mapped to mode 1.
+func TestIsCovered_LegacyRegistry_32ByteChooseFund_MapsToMode1(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	vm := NewMockVirtualMachine(ctrl)
+
+	upgrades := opera.Upgrades{GasSubsidies: true}
+	tx, signer := makeTestTx(t)
+	any := gomock.Any()
+
+	fundId := FundId{0x01, 0x02, 0x03}
+	vm.EXPECT().Call(any, any, any, any, any).Return(makeGasConfigResponse(100_000, 60_000, 210_000), uint64(0), nil)
+	vm.EXPECT().Call(any, any, any, any, any).Return(fundId[:], uint64(0), nil)
+
+	result, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	require.NoError(err)
+	require.Equal(sponsorshipModeFundBacked, result.mode)
+	require.Equal(fundId, result.fundId)
+	require.Equal(TrackingId{}, result.trackingId)
+}
+
+// TestIsCovered_LegacyRegistry_32ByteChooseFund_ZeroFundId_MapsToMode0 verifies
+// that a 32-byte chooseFund response with a zero fundId maps to mode 0 (not covered).
+func TestIsCovered_LegacyRegistry_32ByteChooseFund_ZeroFundId_MapsToMode0(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	vm := NewMockVirtualMachine(ctrl)
+
+	upgrades := opera.Upgrades{GasSubsidies: true}
+	tx, signer := makeTestTx(t)
+	any := gomock.Any()
+
+	vm.EXPECT().Call(any, any, any, any, any).Return(makeGasConfigResponse(100_000, 60_000, 210_000), uint64(0), nil)
+	vm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 32), uint64(0), nil) // zero fundId
+
+	result, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	require.NoError(err)
+	require.Equal(sponsorshipModeNotCovered, result.mode)
+}
+
+// TestIsCovered_LegacyGetGasConfig_96Bytes_DefaultsTrackGasCostToZero verifies
+// that a legacy 96-byte getGasConfig response sets TrackGasCost to zero.
+func TestIsCovered_LegacyGetGasConfig_96Bytes_DefaultsTrackGasCostToZero(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	vm := NewMockVirtualMachine(ctrl)
+
+	upgrades := opera.Upgrades{GasSubsidies: true}
+	tx, signer := makeTestTx(t)
+	any := gomock.Any()
+
+	fundId := FundId{0x01}
+	vm.EXPECT().Call(any, any, any, any, any).Return(makeGasConfigResponse(100_000, 60_000, 210_000), uint64(0), nil)
+	vm.EXPECT().Call(any, any, any, any, any).Return(fundId[:], uint64(0), nil)
+
+	result, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	require.NoError(err)
+	require.Equal(uint64(0), result.config.TrackGasCost)
+}
+
+// TestIsCovered_ExtendedGetGasConfig_128Bytes_ParsesTrackGasCost verifies
+// that a 128-byte getGasConfig response correctly provides the TrackGasCost.
+func TestIsCovered_ExtendedGetGasConfig_128Bytes_ParsesTrackGasCost(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	vm := NewMockVirtualMachine(ctrl)
+
+	upgrades := opera.Upgrades{GasSubsidies: true}
+	tx, signer := makeTestTx(t)
+	any := gomock.Any()
+
+	const wantTrackGasCost = uint64(55_000)
+	fundId := FundId{0x01}
+	vm.EXPECT().Call(any, any, any, any, any).Return(makeGasConfigResponseWithTrack(100_000, 60_000, 210_000, wantTrackGasCost), uint64(0), nil)
+	vm.EXPECT().Call(any, any, any, any, any).Return(fundId[:], uint64(0), nil)
+
+	result, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	require.NoError(err)
+	require.Equal(wantTrackGasCost, result.config.TrackGasCost)
+}
+
+// TestIsCovered_UnknownMode_IsRejected verifies that a 64-byte chooseFund response
+// with an out-of-range mode value returns an error and does not panic.
+func TestIsCovered_UnknownMode_IsRejected(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	vm := NewMockVirtualMachine(ctrl)
+
+	upgrades := opera.Upgrades{GasSubsidies: true}
+	tx, signer := makeTestTx(t)
+	any := gomock.Any()
+
+	vm.EXPECT().Call(any, any, any, any, any).Return(makeGasConfigResponse(100_000, 60_000, 210_000), uint64(0), nil)
+	vm.EXPECT().Call(any, any, any, any, any).Return(makeChooseFundResponse(4, [32]byte{}), uint64(0), nil)
+
+	_, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	require.ErrorContains(err, "unknown sponsorship mode")
+}
+
+// TestGetPostTransactions_NetworkWithTracking_ProducesCorrectTransaction verifies
+// that GetPostTransactions builds an internal transaction targeting the registry
+// with the correct selector, tracking ID, and fee encoding.
+func TestGetPostTransactions_NetworkWithTracking_ProducesCorrectTransaction(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	nonceSource := NewMockNonceSource(ctrl)
+	nonceSource.EXPECT().GetNonce(common.Address{}).Return(uint64(7))
+
+	trackingId := TrackingId{0xca, 0xfe, 0xba, 0xbe}
+	config := GasConfig{
+		SponsorshipOverheadGasCost: 10_000,
+		TrackGasCost:               55_000,
+	}
+	gasUsed := uint64(21000)
+	gasPrice := big.NewInt(1_000_000_000)
+
+	postTxs, err := (Sponsorship{mode: sponsorshipModeNetworkWithTracking, trackingId: trackingId, config: config}).
+		GetPostTransactions(nonceSource, gasUsed, gasPrice)
+	require.NoError(err)
+	require.Len(postTxs, 1)
+	tx := postTxs[0]
+
+	require.True(internaltx.IsInternal(tx))
+	require.Equal(uint64(7), tx.Nonce())
+	require.Equal(registry.GetAddress(), *tx.To())
+	require.Equal(common.Big0, tx.Value())
+	require.Equal(uint64(55_000), tx.Gas())
+	require.Equal(common.Big0, tx.GasPrice())
+
+	data := tx.Data()
+	require.Equal(4+2*32, len(data))
+	selector := binary.BigEndian.Uint32(data[:4])
+	require.Equal(uint32(registry.TrackFunctionSelector), selector)
+	require.Equal(trackingId[:], data[4:36])
+
+	wantFee := new(big.Int).Mul(
+		new(big.Int).SetUint64(gasUsed+config.SponsorshipOverheadGasCost),
+		gasPrice,
+	)
+	gotFee := new(uint256.Int).SetBytes32(data[36:68]).ToBig()
+	require.Equal(wantFee, gotFee)
+}
+
+// TestGetPostTransactions_NetworkWithTracking_FeeOverflow_ReturnsError verifies
+// that an overflowing fee calculation returns an error instead of panicking.
+func TestGetPostTransactions_NetworkWithTracking_FeeOverflow_ReturnsError(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	nonceSource := NewMockNonceSource(ctrl)
+	nonceSource.EXPECT().GetNonce(common.Address{}).Return(uint64(0))
+
+	config := GasConfig{SponsorshipOverheadGasCost: 1, TrackGasCost: 1}
+	gasPrice := new(big.Int).Lsh(big.NewInt(1), 256) // 2^256
+	_, err := (Sponsorship{mode: sponsorshipModeNetworkWithTracking, config: config}).
+		GetPostTransactions(nonceSource, 0, gasPrice)
+	require.ErrorContains(err, "fee calculation overflow")
+}
+
+// TestIsTrackTransaction_ValidTrackTransaction_ReturnsTrue verifies detection of
+// track transactions.
+func TestIsTrackTransaction_ValidTrackTransaction_ReturnsTrue(t *testing.T) {
+	addr := registry.GetAddress()
+	tx := types.NewTx(&types.LegacyTx{To: &addr, Data: createRegistryCallInput(registry.TrackFunctionSelector, [32]byte{}, uint256.Int{})})
+	require.True(t, internaltx.IsInternal(tx))
+	require.True(t, IsTrackTransaction(tx))
+}
+
+// TestIsTrackTransaction_FeeChargeTransaction_ReturnsFalse verifies that a
+// deductFees transaction is not identified as a track transaction.
+func TestIsTrackTransaction_FeeChargeTransaction_ReturnsFalse(t *testing.T) {
+	addr := registry.GetAddress()
+	tx := types.NewTx(&types.LegacyTx{To: &addr, Data: createRegistryCallInput(registry.DeductFeesFunctionSelector, [32]byte{}, uint256.Int{})})
+	require.True(t, internaltx.IsInternal(tx))
+	require.False(t, IsTrackTransaction(tx))
+}
+
+// TestParseTrackAmount_ValidInput_ReturnsFee verifies extraction of the fee
+// from a track transaction's calldata.
+func TestParseTrackAmount_ValidInput_ReturnsFee(t *testing.T) {
+	fee := uint256.NewInt(42_000_000_000)
+	addr := registry.GetAddress()
+	tx := types.NewTx(&types.LegacyTx{To: &addr, Data: createRegistryCallInput(registry.TrackFunctionSelector, [32]byte{0x01}, *fee)})
+	require.True(t, IsTrackTransaction(tx))
+	got, err := ParseTrackAmount(tx)
+	require.NoError(t, err)
+	require.Equal(t, fee, got)
+}
+
+// TestOverhead_NetworkWithTracking_SizeIsUpperBoundForRlpEncodedTx verifies
+// that Overhead().Size is also an upper bound for the track transaction size.
+func TestOverhead_NetworkWithTracking_SizeIsUpperBoundForRlpEncodedTx(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	nonceSource := NewMockNonceSource(ctrl)
+	nonceSource.EXPECT().GetNonce(common.Address{}).Return(uint64(math.MaxUint64))
+	config := GasConfig{SponsorshipOverheadGasCost: math.MaxUint64, TrackGasCost: math.MaxUint64}
+	gasPrice := big.NewInt(math.MaxInt64)
+
+	s := Sponsorship{mode: sponsorshipModeNetworkWithTracking, config: config}
+	postTxs, err := s.GetPostTransactions(nonceSource, math.MaxUint64, gasPrice)
+	require.NoError(t, err)
+	require.Len(t, postTxs, 1)
+	data, err := rlp.EncodeToBytes(postTxs[0])
+	require.NoError(t, err)
+	require.Less(t, len(data), int(s.Overhead().Size))
 }
 
 func fillRandom(t *testing.T, b []byte) {
