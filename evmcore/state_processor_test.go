@@ -4470,7 +4470,7 @@ func TestRunTransactions_AccumulatesMetricsForBundles(t *testing.T) {
 		runTransactions(context, txs, 0, math.MaxUint64)
 	})
 
-	t.Run("rolled back bundles are counted when yielding zero txs", func(t *testing.T) {
+	t.Run("rolled back bundles are counted when result is TransactionResultFailed", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		runner := NewMock_transactionRunner(ctrl)
 		mockMetrics := NewMockBlockExecutionMetrics(ctrl)
@@ -4517,31 +4517,6 @@ func TestRunTransactions_AccumulatesMetricsForBundles(t *testing.T) {
 		// efficiency = gasUsed / execCost = 300 / 1000
 		mockMetrics.EXPECT().IncExecutedBundle()
 		mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(300), uint64(1000))
-
-		runTransactions(context, txs, 0, math.MaxUint64)
-	})
-
-	t.Run("efficiency not reported when execution cost is zero", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		runner := NewMock_transactionRunner(ctrl)
-		mockMetrics := NewMockBlockExecutionMetrics(ctrl)
-
-		context := &runContext{
-			signer:   types.LatestSignerForChainID(big.NewInt(1)),
-			runner:   runner,
-			upgrades: opera.Upgrades{Brio: true, TransactionBundles: true},
-			metrics:  mockMetrics,
-		}
-
-		txs := []*types.Transaction{getTransactionBundle(t)}
-
-		runner.EXPECT().runTransactionBundle(context, txs[0], 0, gomock.Any()).Return(
-			[]ProcessedTransaction{{Transaction: txs[0], Receipt: nil}},
-			core_types.TransactionResultFailed,
-			core_types.ExecutionCost(0),
-		)
-		// ObserveBundleEfficiency must NOT be called (division by zero guard)
-		mockMetrics.EXPECT().IncRolledBackBundle()
 
 		runTransactions(context, txs, 0, math.MaxUint64)
 	})

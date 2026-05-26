@@ -18,6 +18,9 @@ package evmcore
 
 import (
 	"testing"
+
+	"github.com/0xsoniclabs/sonic/utils"
+	"go.uber.org/mock/gomock"
 )
 
 func TestBlockExecutionMetrics_NoUpdateIfUnderlyingMetricIsNil(t *testing.T) {
@@ -46,4 +49,35 @@ func TestBlockExecutionMetrics_NoUpdateIfUnderlyingMetricIsNil(t *testing.T) {
 			testCase.call(m)
 		})
 	}
+}
+
+func TestBlockExecutionMetrics_EfficiencyIsRatioOfUsedGasToTotalExecGas(t *testing.T) {
+	tests := map[string]struct {
+		usedGas      uint64
+		totalExecGas uint64
+		want         float64
+	}{
+		"zero used gas":      {usedGas: 0, totalExecGas: 1000, want: 0.0},
+		"low partial usage":  {usedGas: 300, totalExecGas: 1000, want: 0.3},
+		"high partial usage": {usedGas: 700, totalExecGas: 1000, want: 0.7},
+		"full usage":         {usedGas: 500, totalExecGas: 500, want: 1.0},
+	}
+	for name, testCase := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			histogram := utils.NewMockMetricsHistogramWrapper(ctrl)
+			metrics := &defaultBlockExecutionMetrics{bundleEfficiency: histogram}
+			histogram.EXPECT().Update(testCase.want)
+			metrics.ObserveBundleEfficiency(testCase.usedGas, testCase.totalExecGas)
+		})
+	}
+}
+
+func TestBlockExecutionMetrics_EfficiencyNotReportedWhenExecutionCostIsZero(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	histogram := utils.NewMockMetricsHistogramWrapper(ctrl)
+	metrics := &defaultBlockExecutionMetrics{bundleEfficiency: histogram}
+
+	// histogram.Observe must NOT be called when totalExecGas is zero
+	metrics.ObserveBundleEfficiency(0, 0)
 }
