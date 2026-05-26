@@ -196,6 +196,15 @@ type runContext struct {
 	metrics     BlockExecutionMetrics
 }
 
+// getMetrics returns the metrics instance, or NoBlockExecutionMetrics if nil.
+// This guards against tests that create a runContext directly without setting metrics.
+func (r *runContext) getMetrics() BlockExecutionMetrics {
+	if r.metrics == nil {
+		return NoBlockExecutionMetrics
+	}
+	return r.metrics
+}
+
 // newRunContext creates a new runContext instance bundling the given parameters
 // required for processing transactions in a block. In productive code this
 // function should be used instead of directly creating a runContext instance to
@@ -275,9 +284,9 @@ func runTransactions(
 
 			if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(processedTx.Transaction) {
 				if processedTx.Receipt == nil {
-					context.metrics.IncSkippedSponsoredTx()
+					context.getMetrics().IncSkippedSponsoredTx()
 				} else {
-					context.metrics.IncSponsoredTx()
+					context.getMetrics().IncSponsoredTx()
 				}
 			}
 		}
@@ -287,13 +296,15 @@ func runTransactions(
 			// update metrics for bundles
 			switch txResult {
 			case core_types.TransactionResultSuccessful:
-				context.metrics.IncExecutedBundle()
+				context.getMetrics().IncExecutedBundle()
 			case core_types.TransactionResultFailed:
-				context.metrics.IncRolledBackBundle()
+				context.getMetrics().IncRolledBackBundle()
 			}
 
-			// update efficiency histogram
-			context.metrics.ObserveBundleEfficiency(gasUsed, uint64(execCost))
+			// update efficiency histogram (guard against division by zero)
+			if execCost > 0 {
+				context.getMetrics().ObserveBundleEfficiency(gasUsed, uint64(execCost))
+			}
 		}
 	}
 
