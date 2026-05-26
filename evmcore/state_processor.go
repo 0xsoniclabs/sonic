@@ -273,18 +273,17 @@ func runTransactions(
 				gasUsed += processedTx.Receipt.GasUsed
 			}
 
-			if subsidies.IsSponsorshipRequest(processedTx.Transaction) {
-				switch processedTx.Receipt {
-				case nil:
+			if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(processedTx.Transaction) {
+				if processedTx.Receipt == nil {
 					context.metrics.IncSkippedSponsoredTx()
-				default:
+				} else {
 					context.metrics.IncSponsoredTx()
 				}
 			}
 		}
 		processedTxs = append(processedTxs, txs...)
 
-		if bundle.IsEnvelope(tx) {
+		if context.upgrades.Brio && bundle.IsEnvelope(tx) {
 			// update metrics for bundles
 			switch txResult {
 			case core_types.TransactionResultSuccessful:

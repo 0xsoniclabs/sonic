@@ -4704,3 +4704,52 @@ func TestRunTransactions_AccumulatesMetricsForBundlesAndSponsoredTx(t *testing.T
 
 	runTransactions(context, txs, 0, math.MaxUint64)
 }
+
+func TestRunTransactions_SkipsMetricsWithoutUpgrades(t *testing.T) {
+
+	t.Run("sponsorship request before upgrade", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		runner := NewMock_transactionRunner(ctrl)
+		sponsoredTxs := utils.NewMockMetricsCounter(ctrl)
+
+		context := &runContext{
+			signer:   types.LatestSignerForChainID(big.NewInt(1)),
+			runner:   runner,
+			upgrades: opera.GetAllegroUpgrades(),
+			metrics:  BlockExecutionMetrics{SponsoredTxs: sponsoredTxs},
+		}
+
+		tx := getSponsorshipRequest(t)
+		txs := []*types.Transaction{tx}
+
+		runner.EXPECT().runRegularTransaction(context, tx, 0, gomock.Any()).Return(
+			ProcessedTransaction{Transaction: tx},
+			core_types.TransactionResultInvalid,
+		)
+
+		runTransactions(context, txs, 0, math.MaxUint64)
+	})
+
+	t.Run("bundle transaction before upgrade", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		runner := NewMock_transactionRunner(ctrl)
+		executedBundles := utils.NewMockMetricsCounter(ctrl)
+
+		context := &runContext{
+			signer:   types.LatestSignerForChainID(big.NewInt(1)),
+			runner:   runner,
+			upgrades: opera.GetAllegroUpgrades(),
+			metrics:  BlockExecutionMetrics{ExecutedBundles: executedBundles},
+		}
+
+		tx := getTransactionBundle(t)
+		txs := []*types.Transaction{tx}
+
+		runner.EXPECT().runRegularTransaction(context, tx, 0, gomock.Any()).Return(
+			ProcessedTransaction{Transaction: tx, Receipt: &types.Receipt{GasUsed: 100}},
+			core_types.TransactionResultSuccessful,
+		)
+
+		runTransactions(context, txs, 0, math.MaxUint64)
+	})
+}
