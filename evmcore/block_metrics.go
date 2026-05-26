@@ -30,6 +30,11 @@ type BlockExecutionMetrics struct {
 	BundleEfficiency utils.MetricsHistogramWrapper
 }
 
+// NoBlockExecutionMetrics ignores metrics collection, used by tools running
+// block processor functions outside of the context of a block processor
+// (e.g. pre-check, single proposer executor)
+var NoBlockExecutionMetrics BlockExecutionMetrics
+
 func (m *BlockExecutionMetrics) IncSponsoredTx() {
 	if m.SponsoredTxs != nil {
 		m.SponsoredTxs.Inc(int64(1))
@@ -58,8 +63,3 @@ func (m *BlockExecutionMetrics) UpdateBundleEfficiencyHistogram(usedGas, totalGa
 		m.BundleEfficiency.Update(efficiency)
 	}
 }
-
-// NoOpBlockExecutionMetrics ignores metrics collection, used by tools running
-// block processor functions outside of the context of a block processor
-// (e.g. pre-check, single proposer executor)
-var NoOpBlockExecutionMetrics BlockExecutionMetrics
