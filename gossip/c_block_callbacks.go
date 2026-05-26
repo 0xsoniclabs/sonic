@@ -84,7 +84,7 @@ var (
 		SkippedSponsoredTxs: utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/sponsored/skipped", nil)),
 		ExecutedBundles:     utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles", nil)),
 		RolledBackBundles:   utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles/rolledBack", nil)),
-		BundleEfficiency: utils.MetricsHistogramWrapper(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
+		BundleEfficiency: utils.MetricsHistogram(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
 			Name:    "chain_bundle_gas_effective",
 			Help:    "Effective gas usage ratio for a bundle transaction",
 			Buckets: prometheus.LinearBuckets(0.00, 0.01, 100), // Buckets [0.00, 0.01, ..., 0.99, +inf]

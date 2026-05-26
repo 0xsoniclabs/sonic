@@ -293,7 +293,7 @@ func runTransactions(
 			}
 
 			// update efficiency histogram
-			context.metrics.UpdateBundleEfficiencyHistogram(gasUsed, uint64(execCost))
+			context.metrics.ObserveBundleEfficiency(gasUsed, uint64(execCost))
 		}
 	}
 
