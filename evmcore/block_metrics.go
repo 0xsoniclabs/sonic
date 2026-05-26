@@ -18,8 +18,6 @@ package evmcore
 
 import "github.com/0xsoniclabs/sonic/utils"
 
-//go:generate mockgen -source=metrics.go -destination=metrics_mock.go -package=core_types
-
 // BlockExecutionMetrics collects metrics related to the execution of
 // bundles and sponsored transactions within a block.
 type BlockExecutionMetrics struct {
