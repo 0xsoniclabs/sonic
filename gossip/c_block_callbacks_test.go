@@ -1784,7 +1784,7 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupWithBrio(t *te
 			}, 0, types.Receipts{originReceipt, derivedReceipt})
 
 			evmModule := blockproc.NewMockEVM(ctrl)
-			evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+			evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
 
 			txTransactor := blockproc.NewMockTxTransactor(ctrl)
 			txTransactor.EXPECT().PopInternalTxs(_any, _any, _any, _any, _any).Return(types.Transactions{}).AnyTimes()

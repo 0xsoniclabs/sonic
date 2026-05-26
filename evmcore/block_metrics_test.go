@@ -65,9 +65,9 @@ func TestBlockExecutionMetrics_EfficiencyIsRatioOfUsedGasToTotalExecGas(t *testi
 	for name, testCase := range tests {
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			histogram := utils.NewMockMetricsHistogramWrapper(ctrl)
+			histogram := utils.NewMockMetricsHistogram(ctrl)
 			metrics := &defaultBlockExecutionMetrics{bundleEfficiency: histogram}
-			histogram.EXPECT().Update(testCase.want)
+			histogram.EXPECT().Observe(testCase.want)
 			metrics.ObserveBundleEfficiency(testCase.usedGas, testCase.totalExecGas)
 		})
 	}
@@ -75,7 +75,7 @@ func TestBlockExecutionMetrics_EfficiencyIsRatioOfUsedGasToTotalExecGas(t *testi
 
 func TestBlockExecutionMetrics_EfficiencyNotReportedWhenExecutionCostIsZero(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	histogram := utils.NewMockMetricsHistogramWrapper(ctrl)
+	histogram := utils.NewMockMetricsHistogram(ctrl)
 	metrics := &defaultBlockExecutionMetrics{bundleEfficiency: histogram}
 
 	// histogram.Observe must NOT be called when totalExecGas is zero

@@ -88,13 +88,13 @@ func (mr *MockBlockExecutionMetricsMockRecorder) IncSponsoredTx() *gomock.Call {
 }
 
 // ObserveBundleEfficiency mocks base method.
-func (m *MockBlockExecutionMetrics) ObserveBundleEfficiency(usedGas, totalGas uint64) {
+func (m *MockBlockExecutionMetrics) ObserveBundleEfficiency(usedGas, totalExecGas uint64) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "ObserveBundleEfficiency", usedGas, totalGas)
+	m.ctrl.Call(m, "ObserveBundleEfficiency", usedGas, totalExecGas)
 }
 
 // ObserveBundleEfficiency indicates an expected call of ObserveBundleEfficiency.
-func (mr *MockBlockExecutionMetricsMockRecorder) ObserveBundleEfficiency(usedGas, totalGas any) *gomock.Call {
+func (mr *MockBlockExecutionMetricsMockRecorder) ObserveBundleEfficiency(usedGas, totalExecGas any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ObserveBundleEfficiency", reflect.TypeOf((*MockBlockExecutionMetrics)(nil).ObserveBundleEfficiency), usedGas, totalGas)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ObserveBundleEfficiency", reflect.TypeOf((*MockBlockExecutionMetrics)(nil).ObserveBundleEfficiency), usedGas, totalExecGas)
 }
