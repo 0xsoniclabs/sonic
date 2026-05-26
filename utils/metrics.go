@@ -20,14 +20,14 @@ import "github.com/prometheus/client_golang/prometheus"
 
 //go:generate mockgen -source=metrics.go -destination=metrics_mock.go -package=utils
 
-// MetricsHistogramWrapper is an interface that wraps the methods of a
+// MetricsHistogram is an interface that wraps the methods of a
 // prometheus Histogram to facilitate testing with mocks.
-type MetricsHistogramWrapper interface {
-	Update(float64)
+type MetricsHistogram interface {
+	Observe(float64)
 }
 
 // PrometheusHistogram wraps a prometheus.Histogram to implement the
-// MetricsHistogramWrapper interface. Unlike go-metrics histograms, which
+// MetricsHistogram interface. Unlike go-metrics histograms, which
 // are exported as Prometheus summaries (quantiles), this produces a native
 // Prometheus bucketed histogram suitable for Grafana heatmaps.
 type PrometheusHistogram struct {
@@ -42,7 +42,7 @@ func NewPrometheusHistogram(opts prometheus.HistogramOpts) *PrometheusHistogram 
 	return &PrometheusHistogram{histogram: h}
 }
 
-func (h *PrometheusHistogram) Update(v float64) {
+func (h *PrometheusHistogram) Observe(v float64) {
 	h.histogram.Observe(v)
 }
 

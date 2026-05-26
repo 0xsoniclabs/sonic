@@ -27,7 +27,7 @@ type BlockExecutionMetrics struct {
 	ExecutedBundles   utils.MetricsCounter
 	RolledBackBundles utils.MetricsCounter
 
-	BundleEfficiency utils.MetricsHistogramWrapper
+	BundleEfficiency utils.MetricsHistogram
 }
 
 // NoBlockExecutionMetrics ignores metrics collection, used by tools running
@@ -57,9 +57,9 @@ func (m *BlockExecutionMetrics) IncRolledBackBundle() {
 	}
 }
 
-func (m *BlockExecutionMetrics) UpdateBundleEfficiencyHistogram(usedGas, totalGas uint64) {
+func (m *BlockExecutionMetrics) ObserveBundleEfficiency(usedGas, totalGas uint64) {
 	if m.BundleEfficiency != nil && totalGas > 0 {
 		efficiency := float64(usedGas) / float64(totalGas)
-		m.BundleEfficiency.Update(efficiency)
+		m.BundleEfficiency.Observe(efficiency)
 	}
 }

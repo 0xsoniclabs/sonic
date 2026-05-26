@@ -39,8 +39,8 @@ func (m *MockMetricsHistogramWrapper) EXPECT() *MockMetricsHistogramWrapperMockR
 	return m.recorder
 }
 
-// Update mocks base method.
-func (m *MockMetricsHistogramWrapper) Update(arg0 float64) {
+// Observe mocks base method.
+func (m *MockMetricsHistogramWrapper) Observe(arg0 float64) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Update", arg0)
 }
@@ -48,7 +48,7 @@ func (m *MockMetricsHistogramWrapper) Update(arg0 float64) {
 // Update indicates an expected call of Update.
 func (mr *MockMetricsHistogramWrapperMockRecorder) Update(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockMetricsHistogramWrapper)(nil).Update), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockMetricsHistogramWrapper)(nil).Observe), arg0)
 }
 
 // MockMetricsCounter is a mock of MetricsCounter interface.

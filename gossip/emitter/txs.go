@@ -39,7 +39,7 @@ import (
 )
 
 var (
-	effectiveBundleGasHistogram = utils.MetricsHistogramWrapper(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
+	effectiveBundleGasHistogram = utils.MetricsHistogram(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
 		Name:    "emitter_bundle_gas_effective",
 		Help:    "Effective gas usage ratio for bundle transactions",
 		Buckets: prometheus.LinearBuckets(0.0, 0.01, 100), // buckets: [0.0, 0.01, ..., 0.99, +inf]
@@ -250,7 +250,7 @@ func (em *Emitter) isValidBundleTx(tx *types.Transaction) bool {
 func (em *Emitter) isRunnableBundleTxInternal(
 	tx *types.Transaction,
 	evalBundle evmcore.BundleEvaluator,
-	effectiveGasHistogram utils.MetricsHistogramWrapper,
+	effectiveGasHistogram utils.MetricsHistogram,
 ) bool {
 	// Ignore if bundled transactions are not enabled.
 	if !em.world.GetRules().Upgrades.TransactionBundles {
@@ -289,7 +289,7 @@ func (em *Emitter) isRunnableBundleTxInternal(
 
 	// Update the gas efficiency metric for the bundle.
 	if bundleState.GasEfficiency != nil {
-		effectiveGasHistogram.Update(*bundleState.GasEfficiency)
+		effectiveGasHistogram.Observe(*bundleState.GasEfficiency)
 	}
 	return bundleState.Executable
 }
