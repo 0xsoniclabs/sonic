@@ -487,8 +487,10 @@ func consensusCallbackBeginBlockFn(
 					// call OnNewReceipt
 					for i, r := range allReceipts {
 						originTx := r.TxHash
-						if origin, found := txCausedBy[r.TxHash]; found {
-							originTx = origin
+						if es.Rules.Upgrades.Brio {
+							if origin, found := txCausedBy[r.TxHash]; found {
+								originTx = origin
+							}
 						}
 						creator := txPositions[originTx].EventCreator
 						if creator != 0 && es.Validators.Get(creator) == 0 {
