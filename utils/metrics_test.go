@@ -38,10 +38,10 @@ func TestNewPrometheusHistogram_RegistersAndUpdate(t *testing.T) {
 	})
 	require.NotNil(t, histogram)
 
-	histogram.Update(0.5) // bucket <=1
-	histogram.Update(3.0) // bucket <=5
-	histogram.Update(7.0) // bucket <=10
-	histogram.Update(20)  // +Inf bucket
+	histogram.Observe(0.5) // bucket <=1
+	histogram.Observe(3.0) // bucket <=5
+	histogram.Observe(7.0) // bucket <=10
+	histogram.Observe(20)  // +Inf bucket
 
 	gathered, err := reg.Gather()
 	require.NoError(t, err)

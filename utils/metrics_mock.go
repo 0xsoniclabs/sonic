@@ -15,40 +15,40 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockMetricsHistogramWrapper is a mock of MetricsHistogramWrapper interface.
-type MockMetricsHistogramWrapper struct {
+// MockMetricsHistogram is a mock of MetricsHistogram interface.
+type MockMetricsHistogram struct {
 	ctrl     *gomock.Controller
-	recorder *MockMetricsHistogramWrapperMockRecorder
+	recorder *MockMetricsHistogramMockRecorder
 	isgomock struct{}
 }
 
-// MockMetricsHistogramWrapperMockRecorder is the mock recorder for MockMetricsHistogramWrapper.
-type MockMetricsHistogramWrapperMockRecorder struct {
-	mock *MockMetricsHistogramWrapper
+// MockMetricsHistogramMockRecorder is the mock recorder for MockMetricsHistogram.
+type MockMetricsHistogramMockRecorder struct {
+	mock *MockMetricsHistogram
 }
 
-// NewMockMetricsHistogramWrapper creates a new mock instance.
-func NewMockMetricsHistogramWrapper(ctrl *gomock.Controller) *MockMetricsHistogramWrapper {
-	mock := &MockMetricsHistogramWrapper{ctrl: ctrl}
-	mock.recorder = &MockMetricsHistogramWrapperMockRecorder{mock}
+// NewMockMetricsHistogram creates a new mock instance.
+func NewMockMetricsHistogram(ctrl *gomock.Controller) *MockMetricsHistogram {
+	mock := &MockMetricsHistogram{ctrl: ctrl}
+	mock.recorder = &MockMetricsHistogramMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockMetricsHistogramWrapper) EXPECT() *MockMetricsHistogramWrapperMockRecorder {
+func (m *MockMetricsHistogram) EXPECT() *MockMetricsHistogramMockRecorder {
 	return m.recorder
 }
 
-// Update mocks base method.
-func (m *MockMetricsHistogramWrapper) Update(arg0 float64) {
+// Observe mocks base method.
+func (m *MockMetricsHistogram) Observe(arg0 float64) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Update", arg0)
+	m.ctrl.Call(m, "Observe", arg0)
 }
 
-// Update indicates an expected call of Update.
-func (mr *MockMetricsHistogramWrapperMockRecorder) Update(arg0 any) *gomock.Call {
+// Observe indicates an expected call of Observe.
+func (mr *MockMetricsHistogramMockRecorder) Observe(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockMetricsHistogramWrapper)(nil).Update), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Observe", reflect.TypeOf((*MockMetricsHistogram)(nil).Observe), arg0)
 }
 
 // MockMetricsCounter is a mock of MetricsCounter interface.

@@ -285,8 +285,8 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 
 				evmModule := blockproc.NewMockEVM(ctrl)
 				evmModule.EXPECT().
-					Start(_any, _any, _any, _any, _any, _any, _any).
-					DoAndReturn(func(block iblockproc.BlockCtx, _, _, _, _, _, _ any) blockproc.EVMProcessor {
+					Start(_any, _any, _any, _any, _any, _any, _any, _any).
+					DoAndReturn(func(block iblockproc.BlockCtx, _, _, _, _, _, _, _ any) blockproc.EVMProcessor {
 						require.Equal(t, test.blockTime, block.Time)
 						return evmProcessor
 					})
@@ -1269,6 +1269,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 		opera.Rules{},
 		&params.ChainConfig{},
 		common.Hash{},
+		nil,
 	)
 	blockBuilder := inter.NewBlockBuilder()
 
@@ -1288,6 +1289,59 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 
 	gotTxs := blockBuilder.GetTransactions()
 	require.Equal(t, types.Transactions{userTx0}, gotTxs)
+}
+
+func TestProcessUserTransactions_MetricsAreForwardedToStateProcessor(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	statedb := state.NewMockStateDB(ctrl)
+	mockMetrics := evmcore.NewMockBlockExecutionMetrics(ctrl)
+
+	statedb.EXPECT().BeginBlock(gomock.Any())
+	statedb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
+	statedb.EXPECT().SubBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
+	statedb.EXPECT().SetNonce(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().GetCode(gomock.Any()).AnyTimes()
+	statedb.EXPECT().Snapshot().AnyTimes()
+	statedb.EXPECT().RevertToSnapshot(gomock.Any()).AnyTimes()
+	statedb.EXPECT().Exist(gomock.Any()).Return(true).AnyTimes()
+	statedb.EXPECT().AddBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().GetRefund().AnyTimes()
+	statedb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().EndTransaction().AnyTimes()
+	statedb.EXPECT().TxIndex().AnyTimes()
+
+	evmModule := evmmodule.New()
+	evmProcessor := evmModule.Start(
+		iblockproc.BlockCtx{},
+		statedb,
+		&EvmStateReader{},
+		func(l *core_types.Log) {},
+		opera.Rules{Upgrades: opera.Upgrades{Brio: true, GasSubsidies: true}},
+		&params.ChainConfig{},
+		common.Hash{},
+		mockMetrics,
+	)
+	blockBuilder := inter.NewBlockBuilder()
+
+	// A sponsored transaction (gas price 0) will be skipped because there is
+	// no subsidies registry contract deployed. This should trigger the
+	// SkippedSponsoredTxs counter via the metrics forwarded to the state processor.
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(nil)
+	sponsoredTx := types.MustSignNewTx(key, signer, &types.LegacyTx{To: &common.Address{0x42}, Gas: 21_000})
+	require.True(t, subsidies.IsSponsorshipRequest(sponsoredTx))
+
+	mockMetrics.EXPECT().IncSkippedSponsoredTx()
+
+	upgrades := opera.Upgrades{Brio: true, GasSubsidies: true}
+	processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{sponsoredTx}, 30_000, upgrades)
+
+	// The sponsored tx is skipped (no receipt) so it should not appear in the block.
+	require.Empty(t, blockBuilder.GetTransactions())
 }
 
 func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.T) {
@@ -1730,7 +1784,7 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupWithBrio(t *te
 			}, 0, types.Receipts{originReceipt, derivedReceipt})
 
 			evmModule := blockproc.NewMockEVM(ctrl)
-			evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+			evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
 
 			txTransactor := blockproc.NewMockTxTransactor(ctrl)
 			txTransactor.EXPECT().PopInternalTxs(_any, _any, _any, _any, _any).Return(types.Transactions{}).AnyTimes()

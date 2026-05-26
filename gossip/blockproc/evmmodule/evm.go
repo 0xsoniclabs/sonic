@@ -51,6 +51,7 @@ func (p *EVMModule) Start(
 	rules opera.Rules,
 	evmCfg *params.ChainConfig,
 	prevrandao common.Hash,
+	metrics evmcore.BlockExecutionMetrics,
 ) blockproc.EVMProcessor {
 	var prevBlockHash common.Hash
 	var baseFee *big.Int
@@ -81,6 +82,7 @@ func (p *EVMModule) Start(
 		prevRandao:       prevrandao,
 		gasBaseFee:       baseFee,
 		processorFactory: stateProcessorFactory{},
+		metrics:          metrics,
 	}
 }
 
@@ -102,6 +104,8 @@ type OperaEVMProcessor struct {
 	prevRandao   common.Hash
 
 	processorFactory _stateProcessorFactory
+
+	metrics evmcore.BlockExecutionMetrics
 }
 
 func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlock {
@@ -143,7 +147,7 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 }
 
 func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64, sizeLimit uint64) evmcore.ProcessSummary {
-	evmProcessor := p.processorFactory.NewStateProcessorForHeadState(p.evmCfg, p.reader, p.rules.Upgrades)
+	evmProcessor := p.processorFactory.NewStateProcessorForHeadState(p.evmCfg, p.reader, p.rules.Upgrades, p.metrics)
 	trueTxsOffset := int(0)
 	for _, tx := range p.processedTxs {
 		if tx.Receipt != nil {
@@ -203,6 +207,7 @@ type _stateProcessorFactory interface {
 		evmCfg *params.ChainConfig,
 		reader evmcore.DummyChain,
 		upgrades opera.Upgrades,
+		metrics evmcore.BlockExecutionMetrics,
 	) _stateProcessor
 
 	NewStateProcessorForReplay(
@@ -235,8 +240,9 @@ func (stateProcessorFactory) NewStateProcessorForHeadState(
 	evmCfg *params.ChainConfig,
 	reader evmcore.DummyChain,
 	upgrades opera.Upgrades,
+	metrics evmcore.BlockExecutionMetrics,
 ) _stateProcessor {
-	return evmcore.NewStateProcessorForHeadState(evmCfg, reader, upgrades)
+	return evmcore.NewStateProcessorForHeadState(evmCfg, reader, upgrades, metrics)
 }
 
 func (stateProcessorFactory) NewStateProcessorForReplay(
