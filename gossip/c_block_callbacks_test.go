@@ -1269,7 +1269,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 		opera.Rules{},
 		&params.ChainConfig{},
 		common.Hash{},
-		evmcore.NoBlockExecutionMetrics,
+		nil,
 	)
 	blockBuilder := inter.NewBlockBuilder()
 
@@ -1294,7 +1294,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 func TestProcessUserTransactions_MetricsAreForwardedToStateProcessor(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	statedb := state.NewMockStateDB(ctrl)
-	skippedSponsoredTxs := utils.NewMockMetricsCounter(ctrl)
+	mockMetrics := evmcore.NewMockBlockExecutionMetrics(ctrl)
 
 	statedb.EXPECT().BeginBlock(gomock.Any())
 	statedb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
@@ -1313,10 +1313,6 @@ func TestProcessUserTransactions_MetricsAreForwardedToStateProcessor(t *testing.
 	statedb.EXPECT().EndTransaction().AnyTimes()
 	statedb.EXPECT().TxIndex().AnyTimes()
 
-	metrics := evmcore.BlockExecutionMetrics{
-		SkippedSponsoredTxs: skippedSponsoredTxs,
-	}
-
 	evmModule := evmmodule.New()
 	evmProcessor := evmModule.Start(
 		iblockproc.BlockCtx{},
@@ -1326,7 +1322,7 @@ func TestProcessUserTransactions_MetricsAreForwardedToStateProcessor(t *testing.
 		opera.Rules{Upgrades: opera.Upgrades{Brio: true, GasSubsidies: true}},
 		&params.ChainConfig{},
 		common.Hash{},
-		metrics,
+		mockMetrics,
 	)
 	blockBuilder := inter.NewBlockBuilder()
 
@@ -1339,7 +1335,7 @@ func TestProcessUserTransactions_MetricsAreForwardedToStateProcessor(t *testing.
 	sponsoredTx := types.MustSignNewTx(key, signer, &types.LegacyTx{To: &common.Address{0x42}, Gas: 21_000})
 	require.True(t, subsidies.IsSponsorshipRequest(sponsoredTx))
 
-	skippedSponsoredTxs.EXPECT().Inc(int64(1))
+	mockMetrics.EXPECT().IncSkippedSponsoredTx()
 
 	upgrades := opera.Upgrades{Brio: true, GasSubsidies: true}
 	processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{sponsoredTx}, 30_000, upgrades)

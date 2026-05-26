@@ -267,7 +267,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 		es.Rules,
 		chainConfig,
 		common.Hash{0x01}, // non-zero PrevRandao necessary to enable Cancun
-		evmcore.NoBlockExecutionMetrics,
+		nil,
 	)
 
 	// Execute genesis transactions

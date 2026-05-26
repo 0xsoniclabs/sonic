@@ -273,7 +273,7 @@ func runTransactions(
 				gasUsed += processedTx.Receipt.GasUsed
 			}
 
-			if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(processedTx.Transaction) {
+			if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(processedTx.Transaction) && context.metrics != nil {
 				if processedTx.Receipt == nil {
 					context.metrics.IncSkippedSponsoredTx()
 				} else {
@@ -283,7 +283,7 @@ func runTransactions(
 		}
 		processedTxs = append(processedTxs, txs...)
 
-		if context.upgrades.Brio && bundle.IsEnvelope(tx) {
+		if context.upgrades.Brio && bundle.IsEnvelope(tx) && context.metrics != nil {
 			// update metrics for bundles
 			switch txResult {
 			case core_types.TransactionResultSuccessful:
@@ -292,7 +292,7 @@ func runTransactions(
 				context.metrics.IncRolledBackBundle()
 			}
 
-			// update efficiency histogram
+			// update efficiency histogram (guard against division by zero)
 			context.metrics.ObserveBundleEfficiency(gasUsed, uint64(execCost))
 		}
 	}
@@ -744,7 +744,7 @@ func NewTransactionProcessorForBlock(
 		chainCfg,
 		chain,
 		rules.Upgrades,
-		NoBlockExecutionMetrics,
+		nil,
 	)
 	return stateProcessor.BeginBlock(block, state, vmConfig, gasLimit, nil)
 }
@@ -809,7 +809,7 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber, tp.blockTime,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
-		false, NoBlockExecutionMetrics,
+		false, nil,
 	), []*types.Transaction{tx}, i, math.MaxUint64)
 }
 

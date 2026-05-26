@@ -90,7 +90,7 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 			LondonBlock: big.NewInt(0),
 		},
 		common.Hash{},
-		evmcore.NoBlockExecutionMetrics,
+		nil,
 	)
 
 	// This inner transaction has a gas price of 0, which is less than the MinGasPrice
@@ -154,7 +154,7 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInReceipts(t *test
 	evmModule := New()
 	processor := evmModule.Start(
 		iblockproc.BlockCtx{}, stateDb, nil, logConsumer.OnNewLog,
-		opera.Rules{}, &params.ChainConfig{}, common.Hash{}, evmcore.NoBlockExecutionMetrics,
+		opera.Rules{}, &params.ChainConfig{}, common.Hash{}, nil,
 	)
 
 	key, err := crypto.GenerateKey()
@@ -411,7 +411,7 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	evmModule := New()
 	processor := evmModule.Start(
 		iblockproc.BlockCtx{}, stateDb, nil, logConsumer.OnNewLog,
-		opera.Rules{}, &params.ChainConfig{}, common.Hash{}, evmcore.NoBlockExecutionMetrics,
+		opera.Rules{}, &params.ChainConfig{}, common.Hash{}, nil,
 	)
 
 	key, err := crypto.GenerateKey()
@@ -479,7 +479,7 @@ func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenBlockIsOlderTh
 				Time: inter.FromUnix(blockTime.Unix()),
 			},
 			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
-			evmcore.NoBlockExecutionMetrics,
+			nil,
 		)
 
 		finalizeDone := false
@@ -512,7 +512,7 @@ func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenSyncChannelIsN
 				Time: inter.FromUnix(blockTime.Unix()),
 			},
 			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
-			evmcore.NoBlockExecutionMetrics,
+			nil,
 		)
 
 		finalizeDone := false
@@ -545,7 +545,7 @@ func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOne
 				Time: inter.FromUnix(blockTime.Unix()),
 			},
 			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
-			evmcore.NoBlockExecutionMetrics,
+			nil,
 		)
 
 		finalizeDone := false
