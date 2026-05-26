@@ -27,61 +27,51 @@ type BlockExecutionMetrics interface {
 	IncSkippedSponsoredTx()
 	IncExecutedBundle()
 	IncRolledBackBundle()
+	IncInvalidBundle()
 	ObserveBundleEfficiency(usedGas, totalExecGas uint64)
 }
 
-// NewBlockExecutionMetrics creates a new BlockExecutionMetrics instance with
-// the given metric counters and histogram.
-func NewBlockExecutionMetrics(
-	sponsoredTxs utils.MetricsCounter,
-	skippedSponsoredTxs utils.MetricsCounter,
-	executedBundles utils.MetricsCounter,
-	rolledBackBundles utils.MetricsCounter,
-	bundleEfficiency utils.MetricsHistogram,
-) BlockExecutionMetrics {
-	return &defaultBlockExecutionMetrics{
-		sponsoredTxs:        sponsoredTxs,
-		skippedSponsoredTxs: skippedSponsoredTxs,
-		executedBundles:     executedBundles,
-		rolledBackBundles:   rolledBackBundles,
-		bundleEfficiency:    bundleEfficiency,
+type SonicBlockExecutionMetrics struct {
+	SponsoredTxs        utils.MetricsCounter
+	SkippedSponsoredTxs utils.MetricsCounter
+	ExecutedBundles     utils.MetricsCounter
+	RolledBackBundles   utils.MetricsCounter
+	InvalidBundles      utils.MetricsCounter
+	BundleEfficiency    utils.MetricsHistogram
+}
+
+func (m *SonicBlockExecutionMetrics) IncSponsoredTx() {
+	if m.SponsoredTxs != nil {
+		m.SponsoredTxs.Inc(int64(1))
 	}
 }
 
-type defaultBlockExecutionMetrics struct {
-	sponsoredTxs        utils.MetricsCounter
-	skippedSponsoredTxs utils.MetricsCounter
-	executedBundles     utils.MetricsCounter
-	rolledBackBundles   utils.MetricsCounter
-	bundleEfficiency    utils.MetricsHistogram
-}
-
-func (m *defaultBlockExecutionMetrics) IncSponsoredTx() {
-	if m.sponsoredTxs != nil {
-		m.sponsoredTxs.Inc(int64(1))
+func (m *SonicBlockExecutionMetrics) IncSkippedSponsoredTx() {
+	if m.SkippedSponsoredTxs != nil {
+		m.SkippedSponsoredTxs.Inc(int64(1))
 	}
 }
 
-func (m *defaultBlockExecutionMetrics) IncSkippedSponsoredTx() {
-	if m.skippedSponsoredTxs != nil {
-		m.skippedSponsoredTxs.Inc(int64(1))
+func (m *SonicBlockExecutionMetrics) IncExecutedBundle() {
+	if m.ExecutedBundles != nil {
+		m.ExecutedBundles.Inc(int64(1))
 	}
 }
 
-func (m *defaultBlockExecutionMetrics) IncExecutedBundle() {
-	if m.executedBundles != nil {
-		m.executedBundles.Inc(int64(1))
+func (m *SonicBlockExecutionMetrics) IncRolledBackBundle() {
+	if m.RolledBackBundles != nil {
+		m.RolledBackBundles.Inc(int64(1))
 	}
 }
 
-func (m *defaultBlockExecutionMetrics) IncRolledBackBundle() {
-	if m.rolledBackBundles != nil {
-		m.rolledBackBundles.Inc(int64(1))
+func (m *SonicBlockExecutionMetrics) IncInvalidBundle() {
+	if m.InvalidBundles != nil {
+		m.InvalidBundles.Inc(int64(1))
 	}
 }
 
-func (m *defaultBlockExecutionMetrics) ObserveBundleEfficiency(usedGas, totalExecGas uint64) {
-	if m.bundleEfficiency != nil && totalExecGas > 0 {
-		m.bundleEfficiency.Observe(float64(usedGas) / float64(totalExecGas))
+func (m *SonicBlockExecutionMetrics) ObserveBundleEfficiency(usedGas, totalExecGas uint64) {
+	if m.BundleEfficiency != nil && totalExecGas > 0 {
+		m.BundleEfficiency.Observe(float64(usedGas) / float64(totalExecGas))
 	}
 }

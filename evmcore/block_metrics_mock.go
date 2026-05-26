@@ -51,6 +51,18 @@ func (mr *MockBlockExecutionMetricsMockRecorder) IncExecutedBundle() *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncExecutedBundle", reflect.TypeOf((*MockBlockExecutionMetrics)(nil).IncExecutedBundle))
 }
 
+// IncInvalidBundle mocks base method.
+func (m *MockBlockExecutionMetrics) IncInvalidBundle() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "IncInvalidBundle")
+}
+
+// IncInvalidBundle indicates an expected call of IncInvalidBundle.
+func (mr *MockBlockExecutionMetricsMockRecorder) IncInvalidBundle() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncInvalidBundle", reflect.TypeOf((*MockBlockExecutionMetrics)(nil).IncInvalidBundle))
+}
+
 // IncRolledBackBundle mocks base method.
 func (m *MockBlockExecutionMetrics) IncRolledBackBundle() {
 	m.ctrl.T.Helper()

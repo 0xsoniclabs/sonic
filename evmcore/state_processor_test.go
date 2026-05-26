@@ -4495,6 +4495,31 @@ func TestRunTransactions_AccumulatesMetricsForBundles(t *testing.T) {
 		runTransactions(context, txs, 0, math.MaxUint64)
 	})
 
+	t.Run("invalid bundles are counted when result is TransactionResultInvalid", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		runner := NewMock_transactionRunner(ctrl)
+		mockMetrics := NewMockBlockExecutionMetrics(ctrl)
+
+		context := &runContext{
+			signer:   types.LatestSignerForChainID(big.NewInt(1)),
+			runner:   runner,
+			upgrades: opera.Upgrades{Brio: true, TransactionBundles: true},
+			metrics:  mockMetrics,
+		}
+
+		txs := []*types.Transaction{getTransactionBundle(t)}
+
+		runner.EXPECT().runTransactionBundle(context, txs[0], 0, gomock.Any()).Return(
+			[]ProcessedTransaction{{Transaction: txs[0], Receipt: nil}},
+			core_types.TransactionResultInvalid,
+			core_types.ExecutionCost(50),
+		)
+		mockMetrics.EXPECT().IncInvalidBundle()
+		mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(0), uint64(50))
+
+		runTransactions(context, txs, 0, math.MaxUint64)
+	})
+
 	t.Run("efficiency is reported for executed bundles", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		runner := NewMock_transactionRunner(ctrl)
@@ -4722,4 +4747,25 @@ func TestRunTransactions_SkipsMetricsWithoutUpgrades(t *testing.T) {
 
 		runTransactions(context, txs, 0, math.MaxUint64)
 	})
+}
+
+func TestStateProcessor_MetricsAreEnabledInSingleBlockProposerMode(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockMetrics := NewMockBlockExecutionMetrics(ctrl)
+
+	chain := NewMockDummyChain(ctrl)
+	stateDb := state.NewMockStateDB(ctrl)
+
+	processor := NewStateProcessorForHeadState(
+		&params.ChainConfig{},
+		chain,
+		opera.Upgrades{},
+		mockMetrics,
+	)
+
+	block := &EvmBlock{EvmHeader: EvmHeader{Number: big.NewInt(1)}}
+	tp := processor.BeginBlock(block, stateDb, vm.Config{}, math.MaxUint64, nil)
+
+	require.Equal(t, mockMetrics, tp.metrics,
+		"metrics must be forwarded from StateProcessor to TransactionProcessor via BeginBlock")
 }

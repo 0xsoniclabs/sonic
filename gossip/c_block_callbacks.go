@@ -79,17 +79,18 @@ var (
 	confirmedEventsMeter = metrics.GetOrRegisterMeter("chain/events/confirmed", nil) // events received from lachesis
 	spilledEventsMeter   = metrics.GetOrRegisterMeter("chain/events/spilled", nil)   // tx excluded because of MaxBlockGas
 
-	sonicFeaturesMetrics = evmcore.NewBlockExecutionMetrics(
-		utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/sponsored", nil)),
-		utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/sponsored/skipped", nil)),
-		utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles", nil)),
-		utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles/rolledback", nil)),
-		utils.MetricsHistogram(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
+	sonicFeaturesMetrics = &evmcore.SonicBlockExecutionMetrics{
+		SponsoredTxs:        utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/sponsored", nil)),
+		SkippedSponsoredTxs: utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/sponsored/skipped", nil)),
+		ExecutedBundles:     utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles", nil)),
+		RolledBackBundles:   utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles/rolledback", nil)),
+		InvalidBundles:      utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles/invalid", nil)),
+		BundleEfficiency: utils.MetricsHistogram(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
 			Name:    "chain_bundle_gas_effective",
 			Help:    "Effective gas usage ratio for a bundle transaction",
 			Buckets: prometheus.LinearBuckets(0.00, 0.01, 100), // Buckets [0.00, 0.01, ..., 0.99, +inf]
 		})),
-	)
+	}
 )
 
 type ExtendedTxPosition struct {

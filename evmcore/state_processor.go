@@ -290,6 +290,8 @@ func runTransactions(
 				context.metrics.IncExecutedBundle()
 			case core_types.TransactionResultFailed:
 				context.metrics.IncRolledBackBundle()
+			case core_types.TransactionResultInvalid:
+				context.metrics.IncInvalidBundle()
 			}
 
 			// update efficiency histogram (guard against division by zero)
@@ -783,6 +785,7 @@ func (p *StateProcessor) BeginBlock(
 		stateDb:       stateDb,
 		vmEnvironment: vmEnvironment,
 		upgrades:      p.upgrades,
+		metrics:       p.metrics,
 	}
 }
 
@@ -799,6 +802,7 @@ type TransactionProcessor struct {
 	usedGas       uint64
 	vmEnvironment *vm.EVM
 	upgrades      opera.Upgrades
+	metrics       BlockExecutionMetrics
 }
 
 // Run processes a single transaction in the block, where i is the index of
@@ -809,7 +813,7 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber, tp.blockTime,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
-		false, nil,
+		false, tp.metrics,
 	), []*types.Transaction{tx}, i, math.MaxUint64)
 }
 

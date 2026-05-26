@@ -25,27 +25,30 @@ import (
 
 func TestBlockExecutionMetrics_NoUpdateIfUnderlyingMetricIsNil(t *testing.T) {
 	tests := map[string]struct {
-		call func(m *defaultBlockExecutionMetrics)
+		call func(m *SonicBlockExecutionMetrics)
 	}{
 		"IncSponsoredTx": {
-			call: func(m *defaultBlockExecutionMetrics) { m.IncSponsoredTx() },
+			call: func(m *SonicBlockExecutionMetrics) { m.IncSponsoredTx() },
 		},
 		"IncSkippedSponsoredTx": {
-			call: func(m *defaultBlockExecutionMetrics) { m.IncSkippedSponsoredTx() },
+			call: func(m *SonicBlockExecutionMetrics) { m.IncSkippedSponsoredTx() },
 		},
 		"IncExecutedBundle": {
-			call: func(m *defaultBlockExecutionMetrics) { m.IncExecutedBundle() },
+			call: func(m *SonicBlockExecutionMetrics) { m.IncExecutedBundle() },
 		},
 		"IncRolledBackBundle": {
-			call: func(m *defaultBlockExecutionMetrics) { m.IncRolledBackBundle() },
+			call: func(m *SonicBlockExecutionMetrics) { m.IncRolledBackBundle() },
 		},
 		"ObserveBundleEfficiency": {
-			call: func(m *defaultBlockExecutionMetrics) { m.ObserveBundleEfficiency(100, 200) },
+			call: func(m *SonicBlockExecutionMetrics) { m.ObserveBundleEfficiency(100, 200) },
+		},
+		"IncInvalidBundle": {
+			call: func(m *SonicBlockExecutionMetrics) { m.IncInvalidBundle() },
 		},
 	}
 	for name, testCase := range tests {
 		t.Run(name, func(t *testing.T) {
-			m := &defaultBlockExecutionMetrics{} // all underlying metrics are nil
+			m := &SonicBlockExecutionMetrics{} // all underlying metrics are nil
 			testCase.call(m)
 		})
 	}
@@ -66,7 +69,7 @@ func TestBlockExecutionMetrics_EfficiencyIsRatioOfUsedGasToTotalExecGas(t *testi
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			histogram := utils.NewMockMetricsHistogram(ctrl)
-			metrics := &defaultBlockExecutionMetrics{bundleEfficiency: histogram}
+			metrics := &SonicBlockExecutionMetrics{BundleEfficiency: histogram}
 			histogram.EXPECT().Observe(testCase.want)
 			metrics.ObserveBundleEfficiency(testCase.usedGas, testCase.totalExecGas)
 		})
@@ -76,7 +79,7 @@ func TestBlockExecutionMetrics_EfficiencyIsRatioOfUsedGasToTotalExecGas(t *testi
 func TestBlockExecutionMetrics_EfficiencyNotReportedWhenExecutionCostIsZero(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	histogram := utils.NewMockMetricsHistogram(ctrl)
-	metrics := &defaultBlockExecutionMetrics{bundleEfficiency: histogram}
+	metrics := &SonicBlockExecutionMetrics{BundleEfficiency: histogram}
 
 	// histogram.Observe must NOT be called when totalExecGas is zero
 	metrics.ObserveBundleEfficiency(0, 0)
