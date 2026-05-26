@@ -25,10 +25,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/utils/hexutils"
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/status-im/keycard-go/hexutils"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 
 	"github.com/0xsoniclabs/sonic/opera/genesis"

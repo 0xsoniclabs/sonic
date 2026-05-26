@@ -20,9 +20,9 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/utils/hexutils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/status-im/keycard-go/hexutils"
 	"github.com/stretchr/testify/require"
 )
 
