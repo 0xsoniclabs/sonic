@@ -2,7 +2,7 @@
 all: sonicd sonictool
 
 GOPROXY ?= "https://proxy.golang.org,direct"
-.PHONY: sonicd sonictool
+.PHONY: sonicd sonictool sonicd-debug
 sonicd:
 	GIT_COMMIT=`git rev-list -1 HEAD 2>/dev/null || echo ""` && \
 	GIT_DATE=`git log -1 --date=short --pretty=format:%ct 2>/dev/null || echo ""` && \
@@ -24,6 +24,21 @@ sonictool:
 	    -o build/sonictool \
 	    ./cmd/sonictool && \
 	    ./build/sonictool --version
+
+# Builds with go-ethereum's internal debug RPC methods enabled (file-write
+# endpoints such as debug_startCPUProfile are active). For development and
+# diagnostics only — do NOT use in production or on public-facing nodes.
+sonicd-debug:
+	GIT_COMMIT=`git rev-list -1 HEAD 2>/dev/null || echo ""` && \
+	GIT_DATE=`git log -1 --date=short --pretty=format:%ct 2>/dev/null || echo ""` && \
+	GOPROXY=$(GOPROXY) \
+	go build \
+	    -tags enable_debug \
+	    -ldflags "-s -w -X github.com/0xsoniclabs/sonic/version.gitCommit=$${GIT_COMMIT} \
+	                    -X github.com/0xsoniclabs/sonic/version.gitDate=$${GIT_DATE}" \
+	    -o build/sonicd-debug \
+	    ./cmd/sonicd && \
+	    ./build/sonicd-debug version
 
 TAG ?= "latest"
 .PHONY: sonic-image
