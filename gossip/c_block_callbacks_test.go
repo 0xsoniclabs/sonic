@@ -1615,6 +1615,168 @@ func TestSpillBlockEvents(t *testing.T) {
 	}
 }
 
+func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupWithBrio(t *testing.T) {
+	tests := map[string]struct {
+		upgrades             opera.Upgrades
+		wantDerivedTxCreator idx.ValidatorID
+	}{
+		"with Brio, derived tx uses origin tx's event creator": {
+			upgrades:             opera.GetBrioUpgrades(),
+			wantDerivedTxCreator: idx.ValidatorID(1),
+		},
+		"without Brio, derived tx uses its own txPosition (zero, not in any event)": {
+			upgrades:             opera.GetAllegroUpgrades(),
+			wantDerivedTxCreator: idx.ValidatorID(0),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			// Store has 1 validator (ValidatorID 1).
+			store := newInMemoryStoreWithGenesisData(t, test.upgrades, 1, 2)
+
+			// originTx is the sponsored transaction included in validator 1's event.
+			// derivedTx (payment tx) only appears in the EVM execution output, not in any event.
+			originTx := types.NewTx(&types.LegacyTx{Nonce: 1})
+			derivedTx := types.NewTx(&types.LegacyTx{Nonce: 2})
+
+			originReceipt := &types.Receipt{TxHash: originTx.Hash()}
+			derivedReceipt := &types.Receipt{TxHash: derivedTx.Hash()}
+
+			causedBy := map[common.Hash]common.Hash{
+				originTx.Hash():  originTx.Hash(),
+				derivedTx.Hash(): originTx.Hash(),
+			}
+
+			// Create a version-1 event from validator 1 containing originTx.
+			// Version-3 events cannot carry transactions directly (they use proposals),
+			// so version 1 is used here. The payload hash must be set explicitly.
+			var txEventBuilder inter.MutableEventPayload
+			txEventBuilder.SetVersion(1)
+			txEventBuilder.SetEpoch(2)
+			txEventBuilder.SetCreator(idx.ValidatorID(1))
+			txEventBuilder.SetMedianTime(inter.Timestamp(1500))
+			txEventBuilder.SetTxs(types.Transactions{originTx})
+			txEventBuilder.SetPayloadHash(inter.CalcPayloadHash(&txEventBuilder))
+			txEvent := txEventBuilder.Build()
+
+			// Create the atropos event.
+			var atroposBuilder inter.MutableEventPayload
+			atroposBuilder.SetVersion(3)
+			atroposBuilder.SetEpoch(2)
+			atroposBuilder.SetMedianTime(inter.Timestamp(2000))
+			atropos := atroposBuilder.Build()
+
+			// Publish events in the store.
+			store.SetEvent(txEvent)
+			store.SetEvent(atropos)
+
+			// Update the block state to a known time.
+			blockState := store.GetBlockState()
+			blockState.LastBlock = iblockproc.BlockCtx{Time: inter.Timestamp(1000)}
+			epochState := store.GetEpochState()
+			store.SetBlockEpochState(blockState, epochState)
+
+			ctrl := gomock.NewController(t)
+			_any := gomock.Any()
+
+			confirmedEventProcessor := blockproc.NewMockConfirmedEventsProcessor(ctrl)
+			confirmedEventProcessor.EXPECT().Finalize(_any, _any).Return(iblockproc.BlockState{})
+			confirmedEventProcessor.EXPECT().ProcessConfirmedEvent(_any).AnyTimes()
+
+			eventsModule := blockproc.NewMockConfirmedEventsModule(ctrl)
+			eventsModule.EXPECT().Start(_any, _any).Return(confirmedEventProcessor)
+
+			sealer := blockproc.NewMockSealerProcessor(ctrl)
+			sealer.EXPECT().EpochSealing().Return(false)
+
+			sealerModule := blockproc.NewMockSealerModule(ctrl)
+			sealerModule.EXPECT().Start(_any, _any, _any).Return(sealer)
+
+			// Capture the creator argument passed to OnNewReceipt for each receipt.
+			capturedCreators := map[common.Hash]idx.ValidatorID{}
+			txListener := blockproc.NewMockTxListener(ctrl)
+			txListener.EXPECT().Finalize().Return(iblockproc.BlockState{}).AnyTimes()
+			txListener.EXPECT().OnNewReceipt(_any, _any, _any, _any, _any).
+				DoAndReturn(func(_ *types.Transaction, r *types.Receipt, creator idx.ValidatorID, _, _ *big.Int) {
+					capturedCreators[r.TxHash] = creator
+				}).Times(2)
+
+			txListenerModule := blockproc.NewMockTxListenerModule(ctrl)
+			txListenerModule.EXPECT().Start(_any, _any, _any, _any).Return(txListener)
+
+			// EVM processor: 3 Execute calls in order (pre-internal, post-internal, user txs).
+			evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+			userSummary := evmcore.ProcessSummary{
+				ProcessedTransactions: []evmcore.ProcessedTransaction{
+					{Transaction: originTx, Receipt: originReceipt},
+					{Transaction: derivedTx, Receipt: derivedReceipt},
+				},
+				CausedBy: causedBy,
+			}
+			preInternal := evmProcessor.EXPECT().Execute(_any, _any, _any).Return(evmcore.ProcessSummary{})
+			postInternal := evmProcessor.EXPECT().Execute(_any, _any, _any).Return(evmcore.ProcessSummary{})
+			userTxs := evmProcessor.EXPECT().Execute(_any, _any, _any).Return(userSummary)
+			gomock.InOrder(preInternal, postInternal, userTxs)
+
+			evmProcessor.EXPECT().Finalize().Return(&evmcore.EvmBlock{
+				EvmHeader: evmcore.EvmHeader{
+					BaseFee: big.NewInt(0),
+					TxHash:  common.Hash{1, 2, 3},
+				},
+				Transactions: types.Transactions{originTx, derivedTx},
+			}, 0, types.Receipts{originReceipt, derivedReceipt})
+
+			evmModule := blockproc.NewMockEVM(ctrl)
+			evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+
+			txTransactor := blockproc.NewMockTxTransactor(ctrl)
+			txTransactor.EXPECT().PopInternalTxs(_any, _any, _any, _any, _any).Return(types.Transactions{}).AnyTimes()
+
+			proc := BlockProc{
+				EventsModule:     eventsModule,
+				SealerModule:     sealerModule,
+				TxListenerModule: txListenerModule,
+				EVMModule:        evmModule,
+				PreTxTransactor:  txTransactor,
+				PostTxTransactor: txTransactor,
+			}
+
+			stop := make(chan struct{})
+			var workerWaitGroup sync.WaitGroup
+			workers := workers.New(&workerWaitGroup, stop, 1)
+			workers.Start(1)
+			defer func() {
+				close(stop)
+				workerWaitGroup.Wait()
+			}()
+
+			var callbackWaitGroup sync.WaitGroup
+			bootstrapping := false
+			blockBusyFlag := uint32(0)
+			emitters := []*emitter.Emitter{}
+			beginBlock := consensusCallbackBeginBlockFn(
+				workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping, nil,
+			)
+
+			callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
+			callbacks.ApplyEvent(txEvent)
+			callbacks.ApplyEvent(atropos)
+			callbacks.EndBlock()
+			callbackWaitGroup.Wait()
+
+			// The origin tx's creator is always resolved from its event.
+			require.Equal(t, idx.ValidatorID(1), capturedCreators[originTx.Hash()],
+				"origin tx should use its own event creator")
+			// The derived tx's creator depends on whether Brio is enabled.
+			require.Equal(t, test.wantDerivedTxCreator, capturedCreators[derivedTx.Hash()],
+				"derived tx creator should match expected")
+		})
+	}
+}
+
 type fakePayload struct {
 	inter.EventPayloadI // just here to satisfy the interface
 	signature           inter.Signature
