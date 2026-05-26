@@ -101,7 +101,12 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, NoOpBlockExecutionMetrics)
+	processor := NewStateProcessorForHeadState(
+		&chainConfig,
+		chain,
+		opera.Upgrades{},
+		NoBlockExecutionMetrics,
+	)
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -212,7 +217,7 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 	}
 
 	state := getStateDbMockForTransactions(ctrl, transactions)
-	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, NoOpBlockExecutionMetrics)
+	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, NoBlockExecutionMetrics)
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
 		"incremental": processor.process_iteratively,
@@ -273,7 +278,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 		}
 		chain := NewMockDummyChain(ctrl)
 
-		processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, NoOpBlockExecutionMetrics)
+		processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, NoBlockExecutionMetrics)
 
 		tests := map[string]processFunction{
 			"bulk":        processor.Process,
@@ -321,7 +326,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, NoOpBlockExecutionMetrics)
+	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, NoBlockExecutionMetrics)
 
 	block := &EvmBlock{
 		EvmHeader: EvmHeader{
@@ -380,7 +385,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, NoOpBlockExecutionMetrics)
+	processor := NewStateProcessorForHeadState(&chainConfig, chain, opera.Upgrades{}, NoBlockExecutionMetrics)
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -467,7 +472,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 
 func TestProcess_UsesDifficultyOfOne(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{}, NoOpBlockExecutionMetrics)
+	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{}, NoBlockExecutionMetrics)
 
 	state, block := createScenarioWithTxCheckingDifficulty(ctrl, big.NewInt(1))
 
@@ -491,7 +496,7 @@ func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 	for _, difficulty := range []*big.Int{big.NewInt(0), big.NewInt(2), big.NewInt(42)} {
 		t.Run(fmt.Sprintf("difficulty=%s", difficulty.String()), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{}, NoOpBlockExecutionMetrics)
+			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{}, NoBlockExecutionMetrics)
 
 			state, block := createScenarioWithTxCheckingDifficulty(ctrl, difficulty)
 			results := processor.ProcessWithDifficulty(
@@ -581,7 +586,7 @@ func TestProcessWithDifficulty_ForwardsTimeToBundleProcessing(t *testing.T) {
 	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{
 		Brio:               true,
 		TransactionBundles: true,
-	}, NoOpBlockExecutionMetrics)
+	}, NoBlockExecutionMetrics)
 
 	block := &EvmBlock{
 		EvmHeader: EvmHeader{
@@ -613,7 +618,7 @@ func TestProcess_ForwardsCorrectIndexToTransactionProcessor(t *testing.T) {
 		t.Run(fmt.Sprintf("offset=%d", offset), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			upgrades := opera.Upgrades{Brio: true, TransactionBundles: true}
-			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, upgrades, NoOpBlockExecutionMetrics)
+			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, upgrades, NoBlockExecutionMetrics)
 
 			any := gomock.Any()
 			state := state.NewMockStateDB(ctrl)

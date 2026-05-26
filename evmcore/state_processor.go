@@ -740,7 +740,12 @@ func NewTransactionProcessorForBlock(
 	// in the scheduler. See the scheduler.Schedule method for details. The
 	// total gas used for attempting to schedule transactions is not limited.
 	gasLimit := uint64(math.MaxUint64)
-	stateProcessor := NewStateProcessorForHeadState(chainCfg, chain, rules.Upgrades, NoOpBlockExecutionMetrics)
+	stateProcessor := NewStateProcessorForHeadState(
+		chainCfg,
+		chain,
+		rules.Upgrades,
+		NoBlockExecutionMetrics,
+	)
 	return stateProcessor.BeginBlock(block, state, vmConfig, gasLimit, nil)
 }
 
@@ -804,7 +809,7 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber, tp.blockTime,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
-		false, NoOpBlockExecutionMetrics,
+		false, NoBlockExecutionMetrics,
 	), []*types.Transaction{tx}, i, math.MaxUint64)
 }
 

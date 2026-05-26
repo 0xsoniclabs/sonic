@@ -1269,7 +1269,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 		opera.Rules{},
 		&params.ChainConfig{},
 		common.Hash{},
-		evmcore.NoOpBlockExecutionMetrics,
+		evmcore.NoBlockExecutionMetrics,
 	)
 	blockBuilder := inter.NewBlockBuilder()
 
