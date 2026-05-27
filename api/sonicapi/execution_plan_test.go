@@ -527,6 +527,9 @@ func Test_RPCExecutionPlanComposable_UnmarshalJSON_FailsOnInvalidFirstLevelStep(
 		"step has invalid from field": `{
 			"steps": [{"from": "not-an-address", "hash": "0x0000000000000000000000000000000000000000000000000000000000000000"}]
 		}`,
+		"step has invalid hash field": `{
+			"steps": [{"from": "0x0000000000000000000000000000000000000000", "hash": "not-a-hash"}]
+		}`,
 		"step has nested steps with invalid content": `{
 			"steps": [{"steps": [true]}]
 		}`,
