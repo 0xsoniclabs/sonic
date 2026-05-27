@@ -2113,14 +2113,16 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	gasUsed := processedTransactions[0].Receipt.GasUsed
 	gasPrice := baseFee // gas price is base fee for sponsored tx
 
-	gasConfig := subsidies.GasConfig{ // < values hard-coded in dev version of the registry
+	// Values are hard-coded in the dev version of the registry.
+	sponsorship := subsidies.NewFundBackedSponsorship(fundId, subsidies.GasConfig{
 		SponsorshipOverheadGasCost: 210_000,
 		DeductFeesGasCost:          60_000,
-	}
-	feeDeductionTx, err := subsidies.GetFeeChargeTransaction(state, fundId, gasConfig, gasUsed, gasPrice)
+	})
+	postTxs, err := sponsorship.GetPostTransactions(state, gasUsed, gasPrice)
 	require.NoError(err)
+	require.Len(postTxs, 1)
 	got := processedTransactions[1].Transaction
-	require.Equal(feeDeductionTx.Hash(), got.Hash())
+	require.Equal(postTxs[0].Hash(), got.Hash())
 	require.NotNil(processedTransactions[1].Receipt)
 	require.Equal(types.ReceiptStatusSuccessful, processedTransactions[1].Receipt.Status)
 
@@ -3982,15 +3984,7 @@ func TestRunRegularTransaction_AcceptsTransactionIfItIsWithinSizeLimit(t *testin
 }
 
 func TestRunSponsoredTransaction_SkipsTransactionExceedingSizeLimit(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	evm := NewMock_evm(ctrl)
-
 	tx := getSponsorshipRequest(t)
-
-	context := &runContext{
-		upgrades: opera.Upgrades{GasSubsidies: true},
-		signer:   types.LatestSignerForChainID(nil),
-	}
 
 	tests := map[string]struct {
 		sizeLimit uint64
@@ -4002,14 +3996,42 @@ func TestRunSponsoredTransaction_SkipsTransactionExceedingSizeLimit(t *testing.T
 			sizeLimit: tx.Size(),
 		},
 		"just under the required size": {
-			sizeLimit: tx.Size() + subsidies.RlpEncodedFeeChargingTxSizeInBytes - 1,
+			sizeLimit: tx.Size() + subsidies.NewFundBackedSponsorship(subsidies.FundId{}, subsidies.GasConfig{}).Overhead().Size - 1,
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			evm := NewMock_evm(ctrl)
+			stateDb := state.NewMockStateDB(ctrl)
+
+			// IsCovered is now called before the size check, so we need to
+			// mock the statedb and EVM to return a mode-1 (fund-backed) result.
+			// The post-IsCovered size check then rejects the transaction.
+			stateDb.EXPECT().Snapshot().Return(1).AnyTimes()
+			stateDb.EXPECT().RevertToSnapshot(1).AnyTimes()
+
+			gasConfigResponse := make([]byte, 3*32)
+			binary.BigEndian.PutUint64(gasConfigResponse[32*0+24:32*0+32], 100_000) // chooseFundGasLimit
+			binary.BigEndian.PutUint64(gasConfigResponse[32*1+24:32*1+32], 60_000)  // deductFeesGasLimit
+			binary.BigEndian.PutUint64(gasConfigResponse[32*2+24:32*2+32], 210_000) // overheadToCharge
+			fundIdResponse := [32]byte{0x01}                                        // non-zero fundId → mode 1
+			gomock.InOrder(
+				evm.EXPECT().Call(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(gasConfigResponse, uint64(0), nil),
+				evm.EXPECT().Call(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(fundIdResponse[:], uint64(0), nil),
+			)
+
+			ctxt := &runContext{
+				upgrades: opera.Upgrades{GasSubsidies: true},
+				signer:   types.LatestSignerForChainID(nil),
+				statedb:  stateDb,
+				baseFee:  big.NewInt(1),
+			}
 			runner := &transactionRunner{evm: evm}
-			got, status := runner.runSponsoredTransaction(context, tx, 0, tc.sizeLimit)
+			got, status := runner.runSponsoredTransaction(ctxt, tx, 0, tc.sizeLimit)
 			require.Equal(t, core_types.TransactionResultInvalid, status)
 			require.Len(t, got, 1)
 			require.Equal(t, tx, got[0].Transaction)
@@ -4198,7 +4220,7 @@ func TestRunTransactions_ProcessesAllTransactionsWithinBlockSizeLimit(t *testing
 		},
 		"sponsored transaction with payment": {
 			txs:           []*types.Transaction{sponsored},
-			remainingSize: sponsored.Size() + subsidies.RlpEncodedFeeChargingTxSizeInBytes,
+			remainingSize: sponsored.Size() + subsidies.NewFundBackedSponsorship(subsidies.FundId{}, subsidies.GasConfig{}).Overhead().Size,
 			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
 				runner.EXPECT().runSponsoredTransaction(ctx, sponsored, 0, gomock.Any()).Return(
 					[]ProcessedTransaction{

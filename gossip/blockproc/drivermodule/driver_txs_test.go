@@ -200,14 +200,11 @@ func TestDriverTxListener_OnNewReceipt_SwitchesOnBrio(t *testing.T) {
 			nonceSource := subsidies.NewMockNonceSource(ctrl)
 			nonceSource.EXPECT().GetNonce(gomock.Any()).AnyTimes()
 
-			tx, err := subsidies.GetFeeChargeTransaction(
-				nonceSource,
-				subsidies.FundId{},
-				subsidies.GasConfig{},
-				123,
-				big.NewInt(456),
-			)
+			postTxs, err := subsidies.NewFundBackedSponsorship(subsidies.FundId{}, subsidies.GasConfig{}).
+				GetPostTransactions(nonceSource, 123, big.NewInt(456))
 			require.NoError(t, err)
+			require.Len(t, postTxs, 1)
+			tx := postTxs[0]
 
 			fees, err := ComputeEffectiveFee(tx, nil)
 			require.NoError(t, err)
@@ -431,21 +428,17 @@ func TestComputeEffectiveFee_UsesChargedAmountForSponsorshipPayments(t *testing.
 				nonceSource := subsidies.NewMockNonceSource(ctrl)
 				nonceSource.EXPECT().GetNonce(gomock.Any()).AnyTimes()
 
-				tx, err := subsidies.GetFeeChargeTransaction(
-					nonceSource,
-					subsidies.FundId{},
-					subsidies.GasConfig{},
-					used,
-					price,
-				)
+				postTxs, err := subsidies.NewFundBackedSponsorship(subsidies.FundId{}, subsidies.GasConfig{}).
+					GetPostTransactions(nonceSource, used, price)
 				require.NoError(t, err)
+				require.Len(t, postTxs, 1)
 
 				want := new(big.Int).Mul(
 					new(big.Int).SetUint64(used),
 					price,
 				)
 
-				got, err := ComputeEffectiveFee(tx, nil)
+				got, err := ComputeEffectiveFee(postTxs[0], nil)
 				require.NoError(t, err)
 				require.True(t,
 					want.Cmp(got) == 0,
