@@ -277,6 +277,10 @@ func ComputeEffectiveFee(
 		}
 	}
 
+	// Track transactions for network sponsored transactions with tracking have
+	// gasPrice=0, so the effective fee is naturally zero. No special case is
+	// needed; they fall through to the calculation below.
+
 	if r.EffectiveGasPrice == nil {
 		return nil, fmt.Errorf("missing effective gas price in receipt")
 	}
