@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-// SubsidiesRegistry is a stand-in contract for Sonic's on-chain subsidies 
+// SubsidiesRegistry is a stand-in contract for Sonic's on-chain subsidies
 // registry to be used in local testing and development environments.
 contract SubsidiesRegistry {
 
@@ -30,7 +30,7 @@ contract SubsidiesRegistry {
         fund.totalContributions += msg.value;
     }
 
-    // Allows a sponsor to withdraw their contributions from a fund 
+    // Allows a sponsor to withdraw their contributions from a fund
     // proportionally to their share of total contributions.
     // TODO: this policy allows past sponsors to consume fresh funds added by
     // other sponsors. Think about a better policy preventing this.
@@ -54,18 +54,39 @@ contract SubsidiesRegistry {
         contributor.transfer(share);
     }
 
+    // --- Sponsorship mode constants ---
+
+    // MODE_NOT_COVERED is returned by chooseFund when no sponsorship covers the transaction.
+    uint256 constant MODE_NOT_COVERED = 0;
+
+    // MODE_FUND_BACKED is returned by chooseFund when a sponsor fund covers the gas fee.
+    // The payload is the fundId to pass to deductFees.
+    uint256 constant MODE_FUND_BACKED = 1;
+
+    // MODE_NETWORK_SPONSORED is returned by chooseFund when the network absorbs the gas cost
+    // directly. No post-execution transaction is inserted; the payload is ignored.
+    uint256 constant MODE_NETWORK_SPONSORED = 2;
+
+    // MODE_NETWORK_SPONSORED_WITH_TRACKING is returned by chooseFund when the network absorbs
+    // the gas cost and the registry is notified via track(trackingId, fee) afterward.
+    // The payload is the trackingId passed to track.
+    uint256 constant MODE_NETWORK_SPONSORED_WITH_TRACKING = 3;
+
     // --- Funding infrastructure used by the Sonic client ---
 
     function getGasConfig() public pure returns (
-        uint256 chooseFundLimit, 
-        uint256 deductFeesLimit, 
-        uint256 overheadCharge
+        uint256 gasLimitForChooseFund,
+        uint256 gasLimitForDeductFees,
+        uint256 gasLimitForTrack,
+        uint256 overheadChargeForFundBackedSponsorships,
+        uint256 overheadChargeForNetworkSponsorshipsWithTracking
     ) {
         uint256 getGasConfigCosts = 50_000;
-        chooseFundLimit = 100_000;
-        deductFeesLimit = 60_000;
-        overheadCharge = chooseFundLimit + deductFeesLimit + getGasConfigCosts;
-        return (chooseFundLimit, deductFeesLimit, overheadCharge);
+        gasLimitForChooseFund = 100_000;
+        gasLimitForDeductFees = 60_000;
+        gasLimitForTrack = 80_000;
+        overheadChargeForFundBackedSponsorships = gasLimitForChooseFund + gasLimitForDeductFees + getGasConfigCosts;
+        overheadChargeForNetworkSponsorshipsWithTracking = gasLimitForChooseFund + gasLimitForTrack + getGasConfigCosts;
     }
 
     function chooseFund(
@@ -75,35 +96,36 @@ contract SubsidiesRegistry {
         uint256 nonce,
         bytes calldata callData,
         uint256 fee
-    ) public view returns (bytes32 fundId) {
+    ) public view returns (uint256 mode, bytes32 payload) {
         // Check all possible sponsorship funds in order of precedence.
         bool covered;
+        bytes32 fundId;
         (covered, fundId) = approvalSponsorshipFundId(from, to, callData);
         if (covered && sponsorships[fundId].funds >= fee) {
-            return fundId;
+            return (MODE_FUND_BACKED, fundId);
         }
         (covered, fundId) = callSponsorshipFundId(from, to, callData);
         if (covered && sponsorships[fundId].funds >= fee) {
-            return fundId;
+            return (MODE_FUND_BACKED, fundId);
         }
         (covered, fundId) = accountSponsorshipFundId(from);
         if (covered && sponsorships[fundId].funds >= fee) {
-            return fundId;
+            return (MODE_FUND_BACKED, fundId);
         }
         (covered, fundId) = contractSponsorshipFundId(to);
         if (covered && sponsorships[fundId].funds >= fee) {
-            return fundId;
+            return (MODE_FUND_BACKED, fundId);
         }
         (covered, fundId) = bootstrapSponsorshipFund(nonce);
         if (covered && sponsorships[fundId].funds >= fee) {
-            return fundId;
+            return (MODE_FUND_BACKED, fundId);
         }
         (covered, fundId) = globalSponsorshipFundId();
         if (covered && sponsorships[fundId].funds >= fee) {
-            return fundId;
+            return (MODE_FUND_BACKED, fundId);
         }
-        // No sponsorship found to cover the fee, returning the 0 fund.
-        return bytes32(0);
+        // No sponsorship found to cover the fee.
+        return (MODE_NOT_COVERED, bytes32(0));
     }
 
     function deductFees(bytes32 fundId, uint256 fee) public {
@@ -113,6 +135,14 @@ contract SubsidiesRegistry {
         require(fund.funds >= fee, "Not enough funds");
         feeBurner.burnNativeTokens{value: fee}();
         fund.funds -= fee;
+    }
+
+    // track is called after a network-sponsored transaction with tracking (mode 3).
+    // The trackingId identifies the sponsorship context; fee is the gas cost that
+    // would have been charged. In this test registry the call is a no-op; production
+    // registries use it to enforce on-chain rate limits and quotas.
+    function track(bytes32 /*trackingId*/, uint256 /*fee*/) public view {
+        require(msg.sender == address(0)); // only callable through internal transactions
     }
 
     // --- Fund Identifiers ---

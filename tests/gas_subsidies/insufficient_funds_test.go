@@ -54,7 +54,7 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 
 	// The cost of the sponsored transaction is the gas used by the tx
 	// plus the overhead of the sponsorship itself
-	cost := tx.Gas + gasConfig.OverheadCharge.Uint64()
+	cost := tx.Gas + gasConfig.OverheadChargeForFundBackedSponsorships.Uint64()
 
 	// Get the current baseFee to calculate the required funds
 	header, err := client.HeaderByNumber(t.Context(), big.NewInt(0))

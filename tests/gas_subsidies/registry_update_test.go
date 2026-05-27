@@ -71,11 +71,16 @@ func TestRegistryUpdate_UpdateContract_SponsoredTransactionsCanBePerformed(t *te
 	// Check that now the replaced contract is in use.
 	updatedConfig, err := reg.GetGasConfig(nil)
 	require.NoError(t, err)
-	require.EqualValues(t, 1_234_567, updatedConfig.ChooseFundLimit.Uint64())
-	require.EqualValues(t, 654_321, updatedConfig.DeductFeesLimit.Uint64())
+	require.EqualValues(t, 1_234_567, updatedConfig.GasLimitForChooseFund.Uint64())
+	require.EqualValues(t, 654_321, updatedConfig.GasLimitForDeductFees.Uint64())
+	require.EqualValues(t, 707_707, updatedConfig.GasLimitForTrack.Uint64())
 	require.NotEqual(t,
-		updatedConfig.OverheadCharge.Uint64(),
-		initialConfig.OverheadCharge.Uint64(),
+		updatedConfig.OverheadChargeForFundBackedSponsorships.Uint64(),
+		initialConfig.OverheadChargeForFundBackedSponsorships.Uint64(),
+	)
+	require.NotEqual(t,
+		updatedConfig.OverheadChargeForNetworkSponsorshipsWithTracking.Uint64(),
+		initialConfig.OverheadChargeForNetworkSponsorshipsWithTracking.Uint64(),
 	)
 
 	// Run an example sponsored transaction to verify that the new registry
@@ -223,13 +228,13 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 	paymentData0 := makePaymentFeeData(t,
 		gasUsed,
 		basefees[0],
-		initialRegistryConfig.OverheadCharge)
+		initialRegistryConfig.OverheadChargeForFundBackedSponsorships)
 	require.Equal(paymentData0, payments[0].Data()[36:])
 
 	paymentData1 := makePaymentFeeData(t,
 		gasUsed,
 		basefees[1],
-		initialRegistryConfig.OverheadCharge)
+		initialRegistryConfig.OverheadChargeForFundBackedSponsorships)
 	require.Equal(paymentData1, payments[1].Data()[36:])
 
 	// tx4 produced receipt[3], but tx3 is not a sponsored transaction,
@@ -237,7 +242,7 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 	paymentData2 := makePaymentFeeData(t,
 		gasUsed,
 		basefees[2],
-		proxyRegistryConfig.OverheadCharge)
+		proxyRegistryConfig.OverheadChargeForFundBackedSponsorships)
 	require.Equal(paymentData2, payments[2].Data()[36:])
 
 }

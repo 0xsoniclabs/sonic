@@ -415,17 +415,10 @@ func (r *transactionRunner) runSponsoredTransaction(
 	txIndex int,
 	sizeLimit uint64,
 ) ([]ProcessedTransaction, core_types.TransactionResult) {
-	// check whether the size limit is large enough for the transaction and its payment
-	if tx.Size()+subsidies.RlpEncodedFeeChargingTxSizeInBytes > sizeLimit {
-		log.Debug("Transaction skipped due to block size limit",
-			"tx", tx.Hash().Hex(), "txSize", tx.Size(), "estimatedPaymentTxSize", subsidies.RlpEncodedFeeChargingTxSizeInBytes, "sizeLimit", sizeLimit)
-		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
-	}
-
 	// Run the IsCovered query in a snapshot to avoid spilling any side-effects
 	// like warm storage slots or refunds into the actual transaction.
 	snapshot := ctxt.statedb.Snapshot()
-	covered, fundId, config, err := subsidies.IsCovered(
+	sponsorship, err := subsidies.IsCovered(
 		ctxt.upgrades, r.evm, ctxt.signer, tx, ctxt.baseFee,
 	)
 	ctxt.statedb.RevertToSnapshot(snapshot)
@@ -433,14 +426,20 @@ func (r *transactionRunner) runSponsoredTransaction(
 		log.Warn("Failed to query subsidies registry", "tx", tx.Hash().Hex(), "err", err)
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
-	if !covered {
+	if !sponsorship.IsSponsored() {
 		log.Debug("Transaction is not covered by a subsidy", "tx", tx.Hash().Hex())
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
 
-	// Check the remaining available gas to be used in this block.
+	overhead := sponsorship.Overhead()
+	if tx.Size()+overhead.Size > sizeLimit {
+		log.Debug("Transaction skipped due to block size limit",
+			"tx", tx.Hash().Hex(), "txSize", tx.Size(), "estimatedPaymentTxSize", overhead.Size, "sizeLimit", sizeLimit)
+		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
+	}
+
 	available := ctxt.gasPool.Gas()
-	needed := tx.Gas() + config.SponsorshipOverheadGasCost
+	needed := tx.Gas() + overhead.Gas
 	if available < needed {
 		log.Debug("Not enough gas left in block for sponsored transaction",
 			"tx", tx.Hash().Hex(), "available", available, "needed", needed,
@@ -461,33 +460,28 @@ func (r *transactionRunner) runSponsoredTransaction(
 		status = core_types.TransactionResultFailed
 	}
 
-	// Charge the fee for the sponsored transaction to the subsidy fund.
 	gasUsed := processed.Receipt.GasUsed
-	feeChargingTx, err := subsidies.GetFeeChargeTransaction(
-		ctxt.statedb, fundId, config, gasUsed, ctxt.baseFee,
-	)
+
+	postTxs, err := sponsorship.GetPostTransactions(ctxt.statedb, gasUsed, ctxt.baseFee)
 	if err != nil {
-		// Note: at this point the sponsored transaction has been executed, but
-		// we are not able to charge the fee to the subsidy fund. At this point
-		// we can not undo the sponsored transaction, and we can not abort the
-		// block formation. So we have to let this go. This sponsored
-		// transaction was on the house (meaning on the network).
-		log.Warn("Failed to create fee charging transaction", "sponsored-tx", tx.Hash().Hex(), "err", err)
+		// Note: at this point the sponsored transaction has been executed, but we
+		// are not able to build the post-execution transaction. We can not undo
+		// the sponsored transaction, and we can not abort the block formation.
+		log.Warn("Failed to create post-execution transaction", "sponsored-tx", tx.Hash().Hex(), "err", err)
 		return []ProcessedTransaction{processed}, status
 	}
-	processedDeduction := r.evm.runWithoutBaseFeeCheck(ctxt, feeChargingTx, txIndex+1)
-	if processedDeduction.Receipt == nil {
-		// Note: at this point, the deduction transaction was skipped, meaning
-		// the subsidy fund was not charged. We can not abort the block
-		// formation, so we have to let this go.
-		log.Warn("Fee charging transaction was skipped", "sponsored-tx", tx.Hash().Hex())
+
+	out := []ProcessedTransaction{processed}
+	for i, postTx := range postTxs {
+		processedPost := r.evm.runWithoutBaseFeeCheck(ctxt, postTx, txIndex+1+i)
+		if processedPost.Receipt == nil {
+			log.Warn("Post-execution transaction was skipped", "sponsored-tx", tx.Hash().Hex())
+		} else if processedPost.Receipt.Status == types.ReceiptStatusFailed {
+			log.Warn("Post-execution transaction failed", "sponsored-tx", tx.Hash().Hex())
+		}
+		out = append(out, processedPost)
 	}
-	if processedDeduction.Receipt != nil && processedDeduction.Receipt.Status == types.ReceiptStatusFailed {
-		// Note: at this point, the deduction transaction failed, meaning the
-		// subsidy fund was not charged.
-		log.Warn("Fee charging transaction failed", "sponsored-tx", tx.Hash().Hex())
-	}
-	return []ProcessedTransaction{processed, processedDeduction}, status
+	return out, status
 }
 
 // runTransactionBundle processes the bundle-only transactions in the given
