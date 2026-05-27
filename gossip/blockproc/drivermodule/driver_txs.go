@@ -266,6 +266,8 @@ func ComputeEffectiveFee(
 	if fee, err := subsidies.ParseFeeChargeAmount(tx); err == nil {
 		return fee.ToBig(), nil
 	}
+	// Track transactions (mode 3) have gasPrice=0, so gasUsed*effectiveGasPrice=0
+	// naturally. No special case is needed; they fall through to the calculation below.
 
 	// pre-checks
 	if r == nil {

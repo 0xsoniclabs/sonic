@@ -158,31 +158,11 @@ func (s Sponsorship) GetPostTransactions(
 	}
 }
 
-// RlpEncodedFeeChargingTxSizeInBytes is kept for backward compatibility.
-// TODO(PR2): Remove after callers migrate to Sponsorship.Overhead().Size.
-const RlpEncodedFeeChargingTxSizeInBytes = rlpEncodedRegistryCallTxSizeInBytes
-
 // IsCovered checks if the given transaction is covered by available subsidies.
-// TODO(PR2): Remove and rename IsCoveredV2 to IsCovered.
-func IsCovered(
-	upgrades opera.Upgrades,
-	vm VirtualMachine,
-	signer types.Signer,
-	tx *types.Transaction,
-	baseFee *big.Int,
-) (bool, FundId, GasConfig, error) {
-	s, err := IsCoveredV2(upgrades, vm, signer, tx, baseFee)
-	if err != nil {
-		return false, FundId{}, GasConfig{}, err
-	}
-	return s.IsSponsored(), s.fundId, s.config, nil
-}
-
-// IsCoveredV2 checks if the given transaction is covered by available subsidies.
 // If preconditions are met, it queries the subsidies registry contract. If
 // there are sufficient funds, it returns a Sponsorship with IsSponsored true,
 // otherwise IsSponsored returns false.
-func IsCoveredV2(
+func IsCovered(
 	upgrades opera.Upgrades,
 	vm VirtualMachine,
 	signer types.Signer,
@@ -269,22 +249,6 @@ type VirtualMachine interface {
 		gasLeft uint64,
 		err error,
 	)
-}
-
-// GetFeeChargeTransaction creates the fee-charging transaction for a fund-backed sponsorship.
-// TODO(PR2): Remove after callers migrate to NewFundBackedSponsorship(...).GetPostTransactions(...).
-func GetFeeChargeTransaction(
-	nonceSource NonceSource,
-	fundId FundId,
-	config GasConfig,
-	gasUsed uint64,
-	gasPrice *big.Int,
-) (*types.Transaction, error) {
-	txs, err := NewFundBackedSponsorship(fundId, config).GetPostTransactions(nonceSource, gasUsed, gasPrice)
-	if err != nil {
-		return nil, err
-	}
-	return txs[0], nil
 }
 
 // buildRegistryCallTransaction is the shared implementation behind
