@@ -209,7 +209,10 @@ func TestDriverTxListener_OnNewReceipt_SwitchesOnBrio(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			fees, err := ComputeEffectiveFee(tx, nil)
+			receipt := &types.Receipt{
+				Status: types.ReceiptStatusSuccessful,
+			}
+			fees, err := ComputeEffectiveFee(tx, receipt)
 			require.NoError(t, err)
 			require.Equal(t, uint64(123*456), fees.Uint64())
 
@@ -217,8 +220,6 @@ func TestDriverTxListener_OnNewReceipt_SwitchesOnBrio(t *testing.T) {
 			valsBuilder := pos.NewBuilder()
 			valsBuilder.Set(validatorId, 100)
 			validators := valsBuilder.Build()
-
-			receipt := &types.Receipt{}
 
 			listener := &DriverTxListener{
 				es: iblockproc.EpochState{
@@ -445,7 +446,10 @@ func TestComputeEffectiveFee_UsesChargedAmountForSponsorshipPayments(t *testing.
 					price,
 				)
 
-				got, err := ComputeEffectiveFee(tx, nil)
+				receipt := &types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+				}
+				got, err := ComputeEffectiveFee(tx, receipt)
 				require.NoError(t, err)
 				require.True(t,
 					want.Cmp(got) == 0,
@@ -454,6 +458,37 @@ func TestComputeEffectiveFee_UsesChargedAmountForSponsorshipPayments(t *testing.
 			})
 		}
 	}
+}
+
+func TestComputeEffectiveFee_FailedFeeChargeTransaction_ReturnsZeroFee(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	nonceSource := subsidies.NewMockNonceSource(ctrl)
+	nonceSource.EXPECT().GetNonce(gomock.Any()).AnyTimes()
+
+	tx, err := subsidies.GetFeeChargeTransaction(
+		nonceSource,
+		subsidies.FundId{},
+		subsidies.GasConfig{},
+		1234,
+		big.NewInt(4321),
+	)
+	require.NoError(t, err)
+	require.True(t, subsidies.IsFeeChargeTransaction(tx))
+
+	// If the fee charge failed, no fees have been actually charged.
+	receipt := &types.Receipt{
+		Status:            types.ReceiptStatusFailed,
+		EffectiveGasPrice: big.NewInt(0),
+	}
+	fee, err := ComputeEffectiveFee(tx, receipt)
+	require.NoError(t, err)
+	require.Zero(t, fee.Uint64())
+
+	// If the fee charge transaction succeeded, the fee should be computed as normal.
+	receipt.Status = types.ReceiptStatusSuccessful
+	fee, err = ComputeEffectiveFee(tx, receipt)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1234*4321), fee.Uint64())
 }
 
 func TestComputeEffectiveFee_MissingReceipt_ReportsError(t *testing.T) {
