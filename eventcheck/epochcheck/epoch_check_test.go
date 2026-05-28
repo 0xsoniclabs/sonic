@@ -18,16 +18,76 @@ package epochcheck
 
 import (
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	base "github.com/Fantom-foundation/lachesis-base/eventcheck/epochcheck"
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	pos "github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+func newMockEvent(t *testing.T,
+	txs types.Transactions,
+	parents int,
+	extraLen int,
+	mps int,
+	blockVotes int,
+	hasEpochVote bool,
+) inter.EventPayloadI {
+	ctrl := gomock.NewController(t)
+	e := inter.NewMockEventPayloadI(ctrl)
+	e.EXPECT().TransactionsToMeter().Return(txs).AnyTimes()
+	e.EXPECT().Parents().Return(make([]hash.Event, parents)).AnyTimes()
+	e.EXPECT().Extra().Return(make([]byte, extraLen)).AnyTimes()
+	e.EXPECT().MisbehaviourProofs().Return(make([]inter.MisbehaviourProof, mps)).AnyTimes()
+	bvs := inter.LlrBlockVotes{Votes: make([]hash.Hash, blockVotes)}
+	if blockVotes > 0 {
+		bvs.Start = idx.Block(1)
+	}
+	e.EXPECT().BlockVotes().Return(bvs).AnyTimes()
+	ev := inter.LlrEpochVote{}
+	if hasEpochVote {
+		ev.Epoch = idx.Epoch(1)
+	}
+	e.EXPECT().EpochVote().Return(ev).AnyTimes()
+	return e
+}
+
+func txWithGas(gas uint64) *types.Transaction {
+	return types.NewTx(&types.LegacyTx{Gas: gas})
+}
+
+func TestCalcGasPowerUsed(t *testing.T) {
+	preBrio := opera.Rules{
+		Economy: opera.EconomyRules{Gas: opera.GasRules{
+			EventGas:             1000,
+			ParentGas:            100,
+			ExtraDataGas:         10,
+			MisbehaviourProofGas: 500,
+			BlockVotesBaseGas:    200,
+			BlockVoteGas:         50,
+			EpochVoteGas:         300,
+		}},
+		Dag:      opera.DagRules{MaxFreeParents: 3},
+		Upgrades: opera.Upgrades{Sonic: true, Allegro: true},
+	}
+
+	t.Run("all components combined", func(t *testing.T) {
+		e := newMockEvent(t, types.Transactions{txWithGas(21000)}, 5, 7, 3, 4, true)
+		require.Equal(t, uint64(24470), CalcGasPowerUsed(e, preBrio))
+	})
+
+	t.Run("txsGas uint64 overflow pre-Brio", func(t *testing.T) {
+		e := newMockEvent(t, types.Transactions{txWithGas(math.MaxUint64 - 500), txWithGas(600)}, 5, 7, 3, 4, true)
+		require.Equal(t, uint64(3569), CalcGasPowerUsed(e, preBrio))
+	})
+}
 
 func TestChecker_Validate_SingleProposerIntroducesNewFormat(t *testing.T) {
 
