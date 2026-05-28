@@ -64,12 +64,7 @@ func (b *PostTxBuilder) ForNetworkSponsoredWithTracking() *PostTxBuilder {
 	return b
 }
 
-func (b *PostTxBuilder) WithFundId(id Identifier) *PostTxBuilder {
-	b.identifier = &id
-	return b
-}
-
-func (b *PostTxBuilder) WithTrackingId(id Identifier) *PostTxBuilder {
+func (b *PostTxBuilder) WithId(id Identifier) *PostTxBuilder {
 	b.identifier = &id
 	return b
 }
@@ -151,7 +146,7 @@ func (b *PostTxBuilder) BuildForTesting() *types.Transaction {
 	}
 	tx, err := sponsorship.GetPostTransactions(nonceSource, gasUsed, gasPrice)
 	if err != nil || len(tx) == 0 {
-		panic(fmt.Sprintf("failed to create tracking transaction for testing: %v", err))
+		panic(fmt.Sprintf("failed to create post-sponsorship transaction for testing: %v", err))
 	}
 	return tx[0]
 }

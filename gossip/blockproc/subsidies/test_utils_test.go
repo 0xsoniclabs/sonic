@@ -60,7 +60,7 @@ func TestPostTxBuilder_ForNetworkSponsoredWithTracking_ProducesValidTransaction(
 
 func TestPostTxBuilder_WithCustomFundId_ProducesTransactionWithCorrectFundId(t *testing.T) {
 	fundId := Identifier(common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"))
-	tx := NewPostTxBuilder().ForFundBacked().WithFundId(fundId).BuildForTesting()
+	tx := NewPostTxBuilder().ForFundBacked().WithId(fundId).BuildForTesting()
 	require.NotNil(t, tx)
 	require.True(t, IsFeeChargeTransaction(tx))
 
@@ -70,7 +70,7 @@ func TestPostTxBuilder_WithCustomFundId_ProducesTransactionWithCorrectFundId(t *
 
 func TestPostTxBuilder_WithCustomTrackingId_ProducesTransactionWithCorrectTrackingId(t *testing.T) {
 	trackingId := Identifier(common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"))
-	tx := NewPostTxBuilder().ForNetworkSponsoredWithTracking().WithTrackingId(trackingId).BuildForTesting()
+	tx := NewPostTxBuilder().ForNetworkSponsoredWithTracking().WithId(trackingId).BuildForTesting()
 	require.NotNil(t, tx)
 	require.True(t, IsTrackTransaction(tx))
 
@@ -124,7 +124,7 @@ func TestPostTxBuilder_WithNonce_ProducesTxWithGivenNonce(t *testing.T) {
 
 func TestPostTxBuilder_OverflowFees_Panics(t *testing.T) {
 	require.PanicsWithValue(t,
-		"failed to create tracking transaction for testing: fee calculation overflow",
+		"failed to create post-sponsorship transaction for testing: fee calculation overflow",
 		func() {
 			NewPostTxBuilder().
 				ForFundBacked().
