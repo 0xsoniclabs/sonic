@@ -61,36 +61,62 @@ func New(reader Reader) *Checker {
 }
 
 func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) uint64 {
-	txsGas := uint64(0)
-	// In the single-proposer protocol, the gas usage of individual transactions
-	// is not attributed to the individual proposer, since each proposer needs
-	// to be able to create proposals with the full gas limit. Thus, only the
-	// transactions being part of the distributed proposal protocol are counted.
-	for _, tx := range e.TransactionsToMeter() {
-		txsGas += tx.Gas()
-	}
-
 	gasCfg := rules.Economy.Gas
 
+	if !rules.Upgrades.Brio {
+		// Pre-Brio: original unchecked arithmetic preserved for consensus compatibility.
+		// In the single-proposer protocol, the gas usage of individual transactions
+		// is not attributed to the individual proposer, since each proposer needs
+		// to be able to create proposals with the full gas limit. Thus, only the
+		// transactions being part of the distributed proposal protocol are counted.
+		txsGas := uint64(0)
+		for _, tx := range e.TransactionsToMeter() {
+			txsGas += tx.Gas()
+		}
+		parentsGas := uint64(0)
+		if idx.Event(len(e.Parents())) > rules.Dag.MaxFreeParents {
+			parentsGas = uint64(idx.Event(len(e.Parents()))-rules.Dag.MaxFreeParents) * gasCfg.ParentGas
+		}
+		bvsGas := uint64(0)
+		if e.BlockVotes().Start != 0 {
+			bvsGas = gasCfg.BlockVotesBaseGas + uint64(len(e.BlockVotes().Votes))*gasCfg.BlockVoteGas
+		}
+		ersGas := uint64(0)
+		if e.EpochVote().Epoch != 0 {
+			ersGas = gasCfg.EpochVoteGas
+		}
+		return txsGas + parentsGas + uint64(len(e.Extra()))*gasCfg.ExtraDataGas + gasCfg.EventGas + uint64(len(e.MisbehaviourProofs()))*gasCfg.MisbehaviourProofGas + bvsGas + ersGas
+	}
+
+	// Brio+: saturating arithmetic prevents a validator from crafting a tx list whose
+	// Gas() sum wraps around uint64 to a small value, bypassing MaxEventGas (SONIC-001).
+	// Any overflow returns math.MaxUint64, which always exceeds MaxEventGas and causes
+	// checkGas to reject the event with ErrTooBigGasUsed.
+	txsGas := uint64(0)
+	for _, tx := range e.TransactionsToMeter() {
+		txsGas = safeAdd(txsGas, tx.Gas())
+	}
 	parentsGas := uint64(0)
 	if idx.Event(len(e.Parents())) > rules.Dag.MaxFreeParents {
-		parentsGas = uint64(idx.Event(len(e.Parents()))-rules.Dag.MaxFreeParents) * gasCfg.ParentGas
+		parentsGas = safeMul(uint64(idx.Event(len(e.Parents()))-rules.Dag.MaxFreeParents), gasCfg.ParentGas)
 	}
-	extraGas := uint64(len(e.Extra())) * gasCfg.ExtraDataGas
-
-	mpsGas := uint64(len(e.MisbehaviourProofs())) * gasCfg.MisbehaviourProofGas
-
 	bvsGas := uint64(0)
 	if e.BlockVotes().Start != 0 {
-		bvsGas = gasCfg.BlockVotesBaseGas + uint64(len(e.BlockVotes().Votes))*gasCfg.BlockVoteGas
+		bvsGas = safeAdd(gasCfg.BlockVotesBaseGas, safeMul(uint64(len(e.BlockVotes().Votes)), gasCfg.BlockVoteGas))
 	}
-
 	ersGas := uint64(0)
 	if e.EpochVote().Epoch != 0 {
 		ersGas = gasCfg.EpochVoteGas
 	}
-
-	return txsGas + parentsGas + extraGas + gasCfg.EventGas + mpsGas + bvsGas + ersGas
+	return safeAdd(
+		txsGas,
+		parentsGas,
+		safeMul(uint64(len(e.Extra())), gasCfg.ExtraDataGas),
+		gasCfg.EventGas,
+		safeMul(uint64(len(e.MisbehaviourProofs())), gasCfg.MisbehaviourProofGas),
+		bvsGas,
+		ersGas,
+	)
 }
 
 func (v *Checker) checkGas(e inter.EventPayloadI, rules opera.Rules) error {

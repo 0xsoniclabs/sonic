@@ -77,6 +77,8 @@ func TestCalcGasPowerUsed(t *testing.T) {
 		Dag:      opera.DagRules{MaxFreeParents: 3},
 		Upgrades: opera.Upgrades{Sonic: true, Allegro: true},
 	}
+	withBrio := preBrio
+	withBrio.Upgrades.Brio = true
 
 	t.Run("all components combined", func(t *testing.T) {
 		e := newMockEvent(t, types.Transactions{txWithGas(21000)}, 5, 7, 3, 4, true)
@@ -86,6 +88,16 @@ func TestCalcGasPowerUsed(t *testing.T) {
 	t.Run("txsGas uint64 overflow pre-Brio", func(t *testing.T) {
 		e := newMockEvent(t, types.Transactions{txWithGas(math.MaxUint64 - 500), txWithGas(600)}, 5, 7, 3, 4, true)
 		require.Equal(t, uint64(3569), CalcGasPowerUsed(e, preBrio))
+	})
+
+	t.Run("all components combined with Brio", func(t *testing.T) {
+		e := newMockEvent(t, types.Transactions{txWithGas(21000)}, 5, 7, 3, 4, true)
+		require.Equal(t, uint64(24470), CalcGasPowerUsed(e, withBrio))
+	})
+
+	t.Run("txsGas uint64 overflow saturates to MaxUint64 with Brio (SONIC-001 fix)", func(t *testing.T) {
+		e := newMockEvent(t, types.Transactions{txWithGas(math.MaxUint64 - 500), txWithGas(600)}, 5, 7, 3, 4, true)
+		require.Equal(t, uint64(math.MaxUint64), CalcGasPowerUsed(e, withBrio))
 	})
 }
 
