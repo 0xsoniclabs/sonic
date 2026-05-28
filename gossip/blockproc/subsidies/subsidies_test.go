@@ -835,8 +835,10 @@ func TestOverhead_SizeIsUpperBoundForRlpEncodedTx(t *testing.T) {
 			id := Identifier{}
 			fillRandom(t, id[:])
 			gasConfig := gasConfig{
-				overheadFundBackedSponsoring: math.MaxUint64,
-				gasLimitForDeductFees:        math.MaxUint64,
+				gasLimitForDeductFees:            math.MaxUint64,
+				gasLimitForTrack:                 math.MaxUint64,
+				overheadFundBackedSponsoring:     math.MaxUint64,
+				overheadNetworkTrackedSponsoring: math.MaxUint64,
 			}
 			gasPrice := big.NewInt(math.MaxInt64)
 
@@ -858,7 +860,7 @@ func TestOverhead_SizeIsUpperBoundForRlpEncodedTx(t *testing.T) {
 	}
 }
 
-func TestGetPostTransactions_FundBacked_ProducesCorrectInternalTransaction(t *testing.T) {
+func TestGetPostTransactions_ProducesCorrectInternalTransaction(t *testing.T) {
 	nonces := []uint64{
 		0, 1, 42, 1000,
 	}
@@ -953,7 +955,7 @@ func TestGetPostTransactions_FundBacked_ProducesCorrectInternalTransaction(t *te
 	}
 }
 
-func TestGetPostTransactions_FundBacked_FeeOverflows_ReturnsError(t *testing.T) {
+func TestGetPostTransactions_FeeOverflows_ReturnsError(t *testing.T) {
 	modesWithPostTxs := []sponsorshipMode{
 		sponsorshipModeFundBacked,
 		sponsorshipModeNetworkWithTracking,

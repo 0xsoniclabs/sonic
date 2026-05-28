@@ -2114,7 +2114,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	gasPrice := baseFee // gas price is base fee for sponsored tx
 	paymentTx := subsidies.NewPostTxBuilder().
 		WithNonce(123).
-		WithFundId(fundId).
+		WithId(fundId).
 		WithOverhead(210_000). // < hard-coded in dev version of registry
 		WithGasLimit(60_000).  // < hard-coded in dev version of registry
 		WithUsedGas(gasUsed).

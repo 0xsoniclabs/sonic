@@ -246,17 +246,17 @@ type NonceSource interface {
 }
 
 // IsFeeChargeTransaction returns true if the transaction is a fee-charge
-// transaction created by Sponsorship.GetFeeChargeTransaction. It checks that
-// the transaction is internal, targets the subsidies registry, and carries
+// transaction created as a follow-up to fund-backed sponsorships. It checks
+// that the transaction is internal, targets the subsidies registry, and carries
 // calldata with the correct length and deductFees function selector.
 func IsFeeChargeTransaction(tx *types.Transaction) bool {
 	return isRegistryCallTransaction(tx, registry.DeductFeesFunctionSelector)
 }
 
 // IsTrackTransaction returns true if the transaction is a track transaction
-// created by Sponsorship.GetTrackTransaction. It checks that the transaction
-// is internal, targets the subsidies registry, and carries calldata with the
-// correct length and track function selector.
+// created as a follow-up to network-sponsored transactions with tracking. It
+// checks that the transaction is internal, targets the subsidies registry, and
+// carries calldata with the correct length and track function selector.
 func IsTrackTransaction(tx *types.Transaction) bool {
 	return isRegistryCallTransaction(tx, registry.TrackFunctionSelector)
 }
