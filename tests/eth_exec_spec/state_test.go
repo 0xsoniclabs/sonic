@@ -37,21 +37,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestMain is the entry point for the test suite. It silences the go-ethereum
-// global logger before running any tests, preventing verbose internal log output
-// (e.g. from the geth state DB) from polluting test results. All Test*
-// functions are executed via m.Run(), whose exit code is forwarded to the shell
-// so that CI and other tooling can correctly detect pass/fail.
-func TestMain(m *testing.M) {
-	log.SetDefault(log.NewLogger(log.NewTerminalHandler(io.Discard, false)))
-	os.Exit(m.Run())
-}
+// In order to run these tests, the test data has to be downloaded from the ethereum
+// github page. The execution spec tests can be found as release assets at
+// https://github.com/ethereum/execution-spec-tests/releases
+// after downloading, unpack them in this folder. Run either all permutations of supported
+// VMs and stateDBs or a specific combination by calling a sub-test. In case of an error,
+// the DisTestState_DebugTestCase can be enabled and used to run a single test case.
 
 var (
 	testPaths = []string{
-		filepath.Join(".", "testdata", "EIPTests", "StateTests"),
-		filepath.Join(".", "testdata", "GeneralStateTests"),
-		filepath.Join(".", "execution-spec-tests", "fixtures", "state_tests"),
+		filepath.Join(".", "fixtures", "state_tests"),
 	}
 
 	unsupportedForks = map[string]struct{}{
@@ -63,6 +58,8 @@ var (
 	}
 )
 
+// TestBlockProcessing_EthereumExecutionSpecTests runs the Ethereum execution spec tests
+// using different VM and StateDB implementations.
 func TestBlockProcessing_EthereumExecutionSpecTests(t *testing.T) {
 	defaultConfig := newEthSpecVmConfig()
 
@@ -117,6 +114,7 @@ func DisTestState_DebugTestCase(t *testing.T) {
 	})
 }
 
+// runTestCases iterates over all test directories and runs each discovered StateTest using the provided vm.Config.
 func runTestCases(t *testing.T, config vm.Config, useCarmen bool) {
 	matcher := &tests.TestMatcher{}
 	walkTestDirs(t, matcher, func(t *testing.T, name string, test *tests.StateTest) {
@@ -207,4 +205,14 @@ func createCarmenFactory(t *testing.T) carmenFactory {
 	})
 
 	return carmenFactory{st: st}
+}
+
+// TestMain is the entry point for the test suite. It silences the go-ethereum
+// global logger before running any tests, preventing verbose internal log output
+// (e.g. from the geth state DB) from polluting test results. All Test*
+// functions are executed via m.Run(), whose exit code is forwarded to the shell
+// so that CI and other tooling can correctly detect pass/fail.
+func TestMain(m *testing.M) {
+	log.SetDefault(log.NewLogger(log.NewTerminalHandler(io.Discard, false)))
+	os.Exit(m.Run())
 }
