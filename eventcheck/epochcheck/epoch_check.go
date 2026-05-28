@@ -64,12 +64,12 @@ func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) uint64 {
 	gasCfg := rules.Economy.Gas
 
 	if !rules.Upgrades.Brio {
-		// Pre-Brio: original unchecked arithmetic preserved for consensus compatibility.
+		// ignore overflows
+		txsGas := uint64(0)
 		// In the single-proposer protocol, the gas usage of individual transactions
 		// is not attributed to the individual proposer, since each proposer needs
 		// to be able to create proposals with the full gas limit. Thus, only the
 		// transactions being part of the distributed proposal protocol are counted.
-		txsGas := uint64(0)
 		for _, tx := range e.TransactionsToMeter() {
 			txsGas += tx.Gas()
 		}
@@ -88,11 +88,11 @@ func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) uint64 {
 		return txsGas + parentsGas + uint64(len(e.Extra()))*gasCfg.ExtraDataGas + gasCfg.EventGas + uint64(len(e.MisbehaviourProofs()))*gasCfg.MisbehaviourProofGas + bvsGas + ersGas
 	}
 
-	// Brio+: saturating arithmetic prevents a validator from crafting a tx list whose
-	// Gas() sum wraps around uint64 to a small value, bypassing MaxEventGas (SONIC-001).
-	// Any overflow returns math.MaxUint64, which always exceeds MaxEventGas and causes
-	// checkGas to reject the event with ErrTooBigGasUsed.
 	txsGas := uint64(0)
+	// In the single-proposer protocol, the gas usage of individual transactions
+	// is not attributed to the individual proposer, since each proposer needs
+	// to be able to create proposals with the full gas limit. Thus, only the
+	// transactions being part of the distributed proposal protocol are counted.
 	for _, tx := range e.TransactionsToMeter() {
 		txsGas = safeAdd(txsGas, tx.Gas())
 	}
@@ -100,6 +100,8 @@ func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) uint64 {
 	if idx.Event(len(e.Parents())) > rules.Dag.MaxFreeParents {
 		parentsGas = safeMul(uint64(idx.Event(len(e.Parents()))-rules.Dag.MaxFreeParents), gasCfg.ParentGas)
 	}
+	extraGas := safeMul(uint64(len(e.Extra())), gasCfg.ExtraDataGas)
+	mpsGas := safeMul(uint64(len(e.MisbehaviourProofs())), gasCfg.MisbehaviourProofGas)
 	bvsGas := uint64(0)
 	if e.BlockVotes().Start != 0 {
 		bvsGas = safeAdd(gasCfg.BlockVotesBaseGas, safeMul(uint64(len(e.BlockVotes().Votes)), gasCfg.BlockVoteGas))
@@ -111,9 +113,9 @@ func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) uint64 {
 	return safeAdd(
 		txsGas,
 		parentsGas,
-		safeMul(uint64(len(e.Extra())), gasCfg.ExtraDataGas),
+		extraGas,
 		gasCfg.EventGas,
-		safeMul(uint64(len(e.MisbehaviourProofs())), gasCfg.MisbehaviourProofGas),
+		mpsGas,
 		bvsGas,
 		ersGas,
 	)

@@ -18,15 +18,16 @@ package epochcheck
 
 import (
 	"math"
-	"math/bits"
+
+	gomath "github.com/ethereum/go-ethereum/common/math"
 )
 
 // safeAdd returns the sum of all arguments, or math.MaxUint64 if any addition overflows.
 func safeAdd(vals ...uint64) uint64 {
 	sum := uint64(0)
 	for _, v := range vals {
-		sum += v
-		if sum < v {
+		var overflow bool
+		if sum, overflow = gomath.SafeAdd(sum, v); overflow {
 			return math.MaxUint64
 		}
 	}
@@ -35,9 +36,9 @@ func safeAdd(vals ...uint64) uint64 {
 
 // safeMul returns a*b, or math.MaxUint64 if the multiplication overflows.
 func safeMul(a, b uint64) uint64 {
-	hi, lo := bits.Mul64(a, b)
-	if hi != 0 {
+	product, overflow := gomath.SafeMul(a, b)
+	if overflow {
 		return math.MaxUint64
 	}
-	return lo
+	return product
 }

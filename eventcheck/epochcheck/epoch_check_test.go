@@ -32,30 +32,27 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func newMockEvent(t *testing.T,
+func newTestEvent(
 	txs types.Transactions,
 	parents int,
 	extraLen int,
 	mps int,
 	blockVotes int,
 	hasEpochVote bool,
-) inter.EventPayloadI {
-	ctrl := gomock.NewController(t)
-	e := inter.NewMockEventPayloadI(ctrl)
-	e.EXPECT().TransactionsToMeter().Return(txs).AnyTimes()
-	e.EXPECT().Parents().Return(make([]hash.Event, parents)).AnyTimes()
-	e.EXPECT().Extra().Return(make([]byte, extraLen)).AnyTimes()
-	e.EXPECT().MisbehaviourProofs().Return(make([]inter.MisbehaviourProof, mps)).AnyTimes()
+) *inter.MutableEventPayload {
+	e := &inter.MutableEventPayload{}
+	e.SetTxs(txs)
+	e.SetParents(make(hash.Events, parents))
+	e.SetExtra(make([]byte, extraLen))
+	e.SetMisbehaviourProofs(make([]inter.MisbehaviourProof, mps))
 	bvs := inter.LlrBlockVotes{Votes: make([]hash.Hash, blockVotes)}
 	if blockVotes > 0 {
 		bvs.Start = idx.Block(1)
 	}
-	e.EXPECT().BlockVotes().Return(bvs).AnyTimes()
-	ev := inter.LlrEpochVote{}
+	e.SetBlockVotes(bvs)
 	if hasEpochVote {
-		ev.Epoch = idx.Epoch(1)
+		e.SetEpochVote(inter.LlrEpochVote{Epoch: idx.Epoch(1)})
 	}
-	e.EXPECT().EpochVote().Return(ev).AnyTimes()
 	return e
 }
 
@@ -81,22 +78,22 @@ func TestCalcGasPowerUsed(t *testing.T) {
 	withBrio.Upgrades.Brio = true
 
 	t.Run("all components combined", func(t *testing.T) {
-		e := newMockEvent(t, types.Transactions{txWithGas(21000)}, 5, 7, 3, 4, true)
+		e := newTestEvent(types.Transactions{txWithGas(21000)}, 5, 7, 3, 4, true)
 		require.Equal(t, uint64(24470), CalcGasPowerUsed(e, preBrio))
 	})
 
 	t.Run("txsGas uint64 overflow pre-Brio", func(t *testing.T) {
-		e := newMockEvent(t, types.Transactions{txWithGas(math.MaxUint64 - 500), txWithGas(600)}, 5, 7, 3, 4, true)
+		e := newTestEvent(types.Transactions{txWithGas(math.MaxUint64 - 500), txWithGas(600)}, 5, 7, 3, 4, true)
 		require.Equal(t, uint64(3569), CalcGasPowerUsed(e, preBrio))
 	})
 
 	t.Run("all components combined with Brio", func(t *testing.T) {
-		e := newMockEvent(t, types.Transactions{txWithGas(21000)}, 5, 7, 3, 4, true)
+		e := newTestEvent(types.Transactions{txWithGas(21000)}, 5, 7, 3, 4, true)
 		require.Equal(t, uint64(24470), CalcGasPowerUsed(e, withBrio))
 	})
 
-	t.Run("txsGas uint64 overflow saturates to MaxUint64 with Brio (SONIC-001 fix)", func(t *testing.T) {
-		e := newMockEvent(t, types.Transactions{txWithGas(math.MaxUint64 - 500), txWithGas(600)}, 5, 7, 3, 4, true)
+	t.Run("txsGas uint64 overflow fixed with Brio", func(t *testing.T) {
+		e := newTestEvent(types.Transactions{txWithGas(math.MaxUint64 - 500), txWithGas(600)}, 5, 7, 3, 4, true)
 		require.Equal(t, uint64(math.MaxUint64), CalcGasPowerUsed(e, withBrio))
 	})
 }
