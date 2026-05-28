@@ -312,9 +312,9 @@ func Test_Emitter_evaluateBundleTx_ReturnsGasEfficiencyFromEvaluator(t *testing.
 					GasEfficiency: tc.gasEfficiency,
 				})
 
-			gasEfficiencyMock := utils.NewMockMetricsHistogramWrapper(ctrl)
+			gasEfficiencyMock := utils.NewMockMetricsHistogram(ctrl)
 			// ensure the metric is updated with the correct gas efficiency value
-			gasEfficiencyMock.EXPECT().Update(*tc.gasEfficiency)
+			gasEfficiencyMock.EXPECT().Observe(*tc.gasEfficiency)
 
 			valid := emitter.isRunnableBundleTxInternal(tx, bundleEvaluator, gasEfficiencyMock)
 			require.Equal(t, tc.executable, valid)

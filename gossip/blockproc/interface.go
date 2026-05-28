@@ -87,5 +87,6 @@ type EVM interface {
 		net opera.Rules,
 		evmCfg *params.ChainConfig,
 		prevrandao common.Hash,
+		metrics evmcore.BlockExecutionMetrics,
 	) EVMProcessor
 }

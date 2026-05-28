@@ -256,28 +256,28 @@ func convertToTransactionArgs(signer types.Signer, tx *types.Transaction) (ethap
 	}
 
 	if tx.Nonce() != 0 {
-		res.Nonce = toPtr(hexutil.Uint64(tx.Nonce()))
+		res.Nonce = new(hexutil.Uint64(tx.Nonce()))
 	}
 
 	if tx.To() == nil && tx.Data() != nil {
-		res.Input = toPtr(hexutil.Bytes(tx.Data()))
+		res.Input = new(hexutil.Bytes(tx.Data()))
 	}
 	if tx.To() != nil && tx.Data() != nil {
-		res.Data = toPtr(hexutil.Bytes(tx.Data()))
+		res.Data = new(hexutil.Bytes(tx.Data()))
 	}
 
 	if tx.Value() != nil && tx.Value().Cmp(big.NewInt(0)) > 0 {
-		res.Value = toPtr(hexutil.Big(*tx.Value()))
+		res.Value = new(hexutil.Big(*tx.Value()))
 	}
 
 	if tx.Gas() != 0 {
-		res.Gas = toPtr(hexutil.Uint64(tx.Gas()))
+		res.Gas = new(hexutil.Uint64(tx.Gas()))
 	}
 
 	// Type 1 tx
 
 	if tx.Type() >= types.AccessListTxType && len(tx.AccessList()) > 0 {
-		res.AccessList = toPtr(tx.AccessList())
+		res.AccessList = new(tx.AccessList())
 	}
 
 	// Type 2 txs, dynamic fees
@@ -285,14 +285,14 @@ func convertToTransactionArgs(signer types.Signer, tx *types.Transaction) (ethap
 	switch tx.Type() {
 	case types.LegacyTxType, types.AccessListTxType:
 		if tx.GasPrice().Cmp(big.NewInt(0)) > 0 {
-			res.GasPrice = toPtr(hexutil.Big(*tx.GasPrice()))
+			res.GasPrice = new(hexutil.Big(*tx.GasPrice()))
 		}
 	case types.DynamicFeeTxType, types.BlobTxType, types.SetCodeTxType:
 		if tx.GasTipCap().Cmp(big.NewInt(0)) > 0 {
-			res.MaxPriorityFeePerGas = toPtr(hexutil.Big(*tx.GasTipCap()))
+			res.MaxPriorityFeePerGas = new(hexutil.Big(*tx.GasTipCap()))
 		}
 		if tx.GasFeeCap().Cmp(big.NewInt(0)) > 0 {
-			res.MaxFeePerGas = toPtr(hexutil.Big(*tx.GasFeeCap()))
+			res.MaxFeePerGas = new(hexutil.Big(*tx.GasFeeCap()))
 		}
 	}
 
@@ -460,8 +460,4 @@ func transform(
 			Steps:            resultSteps,
 		},
 	}, nil
-}
-
-func toPtr[T any](v T) *T {
-	return &v
 }

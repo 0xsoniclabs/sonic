@@ -31,6 +31,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/dag"
@@ -77,6 +78,19 @@ var (
 
 	confirmedEventsMeter = metrics.GetOrRegisterMeter("chain/events/confirmed", nil) // events received from lachesis
 	spilledEventsMeter   = metrics.GetOrRegisterMeter("chain/events/spilled", nil)   // tx excluded because of MaxBlockGas
+
+	sonicFeaturesMetrics = &evmcore.SonicBlockExecutionMetrics{
+		SponsoredTxs:        utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/sponsored", nil)),
+		SkippedSponsoredTxs: utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/sponsored/skipped", nil)),
+		ExecutedBundles:     utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles", nil)),
+		RolledBackBundles:   utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles/rolledback", nil)),
+		InvalidBundles:      utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles/invalid", nil)),
+		BundleEfficiency: utils.MetricsHistogram(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
+			Name:    "chain_bundle_gas_effective",
+			Help:    "Effective gas usage ratio for a bundle transaction",
+			Buckets: prometheus.LinearBuckets(0.00, 0.01, 100), // Buckets [0.00, 0.01, ..., 0.99, +inf]
+		})),
+	}
 )
 
 type ExtendedTxPosition struct {
@@ -333,6 +347,7 @@ func consensusCallbackBeginBlockFn(
 					es.Rules,
 					chainCfg,
 					randao,
+					sonicFeaturesMetrics,
 				)
 				executionStart := time.Now()
 
@@ -487,8 +502,10 @@ func consensusCallbackBeginBlockFn(
 					// call OnNewReceipt
 					for i, r := range allReceipts {
 						originTx := r.TxHash
-						if origin, found := txCausedBy[r.TxHash]; found {
-							originTx = origin
+						if es.Rules.Upgrades.Brio {
+							if origin, found := txCausedBy[r.TxHash]; found {
+								originTx = origin
+							}
 						}
 						creator := txPositions[originTx].EventCreator
 						if creator != 0 && es.Validators.Get(creator) == 0 {

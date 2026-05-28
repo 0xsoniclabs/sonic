@@ -49,6 +49,8 @@ type StateProcessor struct {
 	bc        DummyChain          // Canonical block chain
 	upgrades  opera.Upgrades      // Enabled network upgrades
 	forReplay bool                // Whether the state processor is used for replaying transactions or for head state processing.
+
+	metrics BlockExecutionMetrics
 }
 
 // NewStateProcessorForHeadState initializes a new StateProcessor for head state processing.
@@ -56,11 +58,13 @@ func NewStateProcessorForHeadState(
 	config *params.ChainConfig,
 	bc DummyChain,
 	upgrades opera.Upgrades,
+	metrics BlockExecutionMetrics,
 ) *StateProcessor {
 	return &StateProcessor{
 		config:   config,
 		bc:       bc,
 		upgrades: upgrades,
+		metrics:  metrics,
 	}
 }
 
@@ -84,9 +88,23 @@ func NewStateProcessorForReplay(
 // processing, including gas from rolled-back bundles, which distinguishes it
 // from the usedGas counter that gets reverted on snapshot rollback.
 type ProcessSummary struct {
-	ProcessedTransactions []ProcessedTransaction      // List of processed transactions with their receipts (nil receipt for skipped transactions).
-	ExecutionCost         core_types.ExecutionCost    // Total execution cost (gas used) for all processed transactions, including rolled-back bundles.
-	CausedBy              map[common.Hash]common.Hash // Mapping from transaction hash to the hash of the transaction that caused it.
+	// ProcessedTransactions is a list of processed transactions
+	// with their receipts (nil receipt for skipped transactions).
+	ProcessedTransactions []ProcessedTransaction
+
+	// ExecutionCost is the total execution cost of processing the transactions,
+	// including gas from rolled-back bundles.
+	ExecutionCost core_types.ExecutionCost
+
+	// CausedBy is a map tx.Hash -> tx.Hash, where the key is the hash
+	// of the transaction that got processed and the value is the hash
+	// of the transaction that caused the processing of the key transaction.
+	// - For regular transactions, the value is the same as the key.
+	// - For sponsored transactions, the fees-payment transaction is mapped
+	// to the sponsored transaction.
+	// - For transactions included as part of a bundle, the value is the hash
+	// of the envelope transaction of the bundle.
+	CausedBy map[common.Hash]common.Hash
 }
 
 // ProcessedTransaction represents a transaction that was considered for
@@ -155,8 +173,9 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	// Iterate over and process the individual transactions
 	return runTransactions(newRunContext(
 		signer, header.BaseFee, statedb, gp, blockNumber, block.Time, usedGas,
-		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}}, p.forReplay,
-	), block.Transactions, trueTxOffset, remainingSize)
+		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}}, p.forReplay, p.metrics,
+	),
+		block.Transactions, trueTxOffset, remainingSize)
 }
 
 // runContext bundles the parameters required for processing transactions in a
@@ -174,6 +193,7 @@ type runContext struct {
 	upgrades    opera.Upgrades
 	runner      _transactionRunner
 	forReplay   bool // Whether the context is used for replaying transactions or for head state processing.
+	metrics     BlockExecutionMetrics
 }
 
 // newRunContext creates a new runContext instance bundling the given parameters
@@ -192,6 +212,7 @@ func newRunContext(
 	upgrades opera.Upgrades,
 	runner _transactionRunner,
 	isReplay bool,
+	metrics BlockExecutionMetrics,
 ) *runContext {
 	return &runContext{
 		signer:      signer,
@@ -205,6 +226,7 @@ func newRunContext(
 		upgrades:    upgrades,
 		runner:      runner,
 		forReplay:   isReplay,
+		metrics:     metrics,
 	}
 }
 
@@ -221,7 +243,7 @@ func runTransactions(
 	remainingSize uint64,
 ) ProcessSummary {
 	processedTxs := make([]ProcessedTransaction, 0, len(transactions))
-	totalExecCost := core_types.ExecutionCost(0)
+	var execCosts core_types.ExecutionCost
 	causedBy := make(map[common.Hash]common.Hash)
 	for _, tx := range transactions {
 		// Bundle-only transactions are only valid within a bundle and must
@@ -231,9 +253,10 @@ func runTransactions(
 			continue
 		}
 
-		txs, _, execCost := runTransaction(context, tx, trueTxIndexOffset, remainingSize)
-		totalExecCost += execCost
+		txs, txResult, execCost := runTransaction(context, tx, trueTxIndexOffset, remainingSize)
+		execCosts += execCost
 
+		gasUsed := uint64(0)
 		for _, processedTx := range txs {
 			if processedTx.Receipt != nil { // < only transactions included in the block
 				trueTxIndexOffset++
@@ -246,14 +269,39 @@ func runTransactions(
 				} else {
 					remainingSize -= processedTx.Transaction.Size()
 				}
+
+				gasUsed += processedTx.Receipt.GasUsed
+			}
+
+			if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(processedTx.Transaction) && context.metrics != nil {
+				if processedTx.Receipt == nil {
+					context.metrics.IncSkippedSponsoredTx()
+				} else {
+					context.metrics.IncSponsoredTx()
+				}
 			}
 		}
 		processedTxs = append(processedTxs, txs...)
 
+		if context.upgrades.Brio && bundle.IsEnvelope(tx) && context.metrics != nil {
+			// update metrics for bundles
+			switch txResult {
+			case core_types.TransactionResultSuccessful:
+				context.metrics.IncExecutedBundle()
+			case core_types.TransactionResultFailed:
+				context.metrics.IncRolledBackBundle()
+			case core_types.TransactionResultInvalid:
+				context.metrics.IncInvalidBundle()
+			}
+
+			// update efficiency histogram (guard against division by zero)
+			context.metrics.ObserveBundleEfficiency(gasUsed, uint64(execCost))
+		}
 	}
+
 	return ProcessSummary{
 		ProcessedTransactions: processedTxs,
-		ExecutionCost:         totalExecCost,
+		ExecutionCost:         execCosts,
 		CausedBy:              causedBy,
 	}
 }
@@ -694,7 +742,12 @@ func NewTransactionProcessorForBlock(
 	// in the scheduler. See the scheduler.Schedule method for details. The
 	// total gas used for attempting to schedule transactions is not limited.
 	gasLimit := uint64(math.MaxUint64)
-	stateProcessor := NewStateProcessorForHeadState(chainCfg, chain, rules.Upgrades)
+	stateProcessor := NewStateProcessorForHeadState(
+		chainCfg,
+		chain,
+		rules.Upgrades,
+		nil,
+	)
 	return stateProcessor.BeginBlock(block, state, vmConfig, gasLimit, nil)
 }
 
@@ -732,6 +785,7 @@ func (p *StateProcessor) BeginBlock(
 		stateDb:       stateDb,
 		vmEnvironment: vmEnvironment,
 		upgrades:      p.upgrades,
+		metrics:       p.metrics,
 	}
 }
 
@@ -748,6 +802,7 @@ type TransactionProcessor struct {
 	usedGas       uint64
 	vmEnvironment *vm.EVM
 	upgrades      opera.Upgrades
+	metrics       BlockExecutionMetrics
 }
 
 // Run processes a single transaction in the block, where i is the index of
@@ -758,7 +813,7 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber, tp.blockTime,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
-		false,
+		false, tp.metrics,
 	), []*types.Transaction{tx}, i, math.MaxUint64)
 }
 

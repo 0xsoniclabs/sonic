@@ -447,15 +447,15 @@ func (m *MockEVM) EXPECT() *MockEVMMockRecorder {
 }
 
 // Start mocks base method.
-func (m *MockEVM) Start(block iblockproc.BlockCtx, statedb state.StateDB, reader evmcore.DummyChain, onNewLog func(*core_types.Log), net opera.Rules, evmCfg *params.ChainConfig, prevrandao common.Hash) EVMProcessor {
+func (m *MockEVM) Start(block iblockproc.BlockCtx, statedb state.StateDB, reader evmcore.DummyChain, onNewLog func(*core_types.Log), net opera.Rules, evmCfg *params.ChainConfig, prevrandao common.Hash, metrics evmcore.BlockExecutionMetrics) EVMProcessor {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Start", block, statedb, reader, onNewLog, net, evmCfg, prevrandao)
+	ret := m.ctrl.Call(m, "Start", block, statedb, reader, onNewLog, net, evmCfg, prevrandao, metrics)
 	ret0, _ := ret[0].(EVMProcessor)
 	return ret0
 }
 
 // Start indicates an expected call of Start.
-func (mr *MockEVMMockRecorder) Start(block, statedb, reader, onNewLog, net, evmCfg, prevrandao any) *gomock.Call {
+func (mr *MockEVMMockRecorder) Start(block, statedb, reader, onNewLog, net, evmCfg, prevrandao, metrics any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockEVM)(nil).Start), block, statedb, reader, onNewLog, net, evmCfg, prevrandao)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockEVM)(nil).Start), block, statedb, reader, onNewLog, net, evmCfg, prevrandao, metrics)
 }

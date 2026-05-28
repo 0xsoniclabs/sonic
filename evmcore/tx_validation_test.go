@@ -2097,12 +2097,12 @@ func Test_validateBundleTransactionsInternal_EvaluatesBundleUsingGetBundleState(
 			},
 			expectedErr: nil,
 		},
-		"bundle temporarily not executable is accepted": {
+		"bundle temporarily not executable is rejected": {
 			bundleState: BundleState{
 				Executable:         false,
 				TemporarilyBlocked: true,
 			},
-			expectedErr: nil,
+			expectedErr: ErrBundleNonExecutable,
 		},
 		"bundle non-ever executable": {
 			bundleState: BundleState{
