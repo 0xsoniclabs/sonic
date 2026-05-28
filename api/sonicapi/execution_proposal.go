@@ -386,10 +386,11 @@ func convertProposalToPlanInternal(signer types.Signer, proposalStep any) (bundl
 			return steps[0], nil
 		}
 
-		return bundle.NewGroupStep(
-			step.OneOf,
-			steps...,
-		), nil
+		group := bundle.NewGroupStep(step.OneOf, steps...)
+		if step.TolerateFailures {
+			group = group.WithFlags(bundle.EF_TolerateFailed)
+		}
+		return group, nil
 	}
 
 	return empty, fmt.Errorf("invalid execution proposal level: must have either executionStep or group")
