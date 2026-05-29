@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"math/rand/v2"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
@@ -353,11 +354,13 @@ func TestDriverTxListener_onNewReceiptPostBrioInternal_WarnsOnOriginatorZero(t *
 	receipt := &types.Receipt{
 		EffectiveGasPrice: big.NewInt(100),
 		GasUsed:           50,
+		BlockNumber:       big.NewInt(rand.Int64()),
 	}
 
 	log.EXPECT().Warn(
 		"failed to attribute transaction to validator, fees got burned",
 		"tx", tx.Hash(),
+		"block", receipt.BlockNumber.Uint64(),
 		"fees", big.NewInt(100*50),
 	)
 

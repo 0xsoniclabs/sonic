@@ -242,8 +242,13 @@ func (p *DriverTxListener) onNewReceiptPostBrioInternal(
 		return
 	}
 
+	var blockNumber uint64
+	if r != nil && r.BlockNumber != nil {
+		blockNumber = r.BlockNumber.Uint64()
+	}
+
 	if originator == 0 {
-		log.Warn("failed to attribute transaction to validator, fees got burned", "tx", tx.Hash(), "fees", fee)
+		log.Warn("failed to attribute transaction to validator, fees got burned", "tx", tx.Hash(), "block", blockNumber, "fees", fee)
 		return
 	}
 
