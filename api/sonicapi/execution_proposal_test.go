@@ -1234,6 +1234,57 @@ func Test_convertProposalToPlan(t *testing.T) {
 				).
 				BuildBundle().Plan,
 		},
+		"group TolerateFailures flag is preserved": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					First:  *rpctest.ToHexUint64(0),
+					Length: *rpctest.ToHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							TolerateFailures: true,
+							Steps: []any{
+								RPCExecutionStepProposal{
+									TransactionArgs: ethapi.TransactionArgs{
+										From:  &address1,
+										To:    &common.Address{123},
+										Nonce: rpctest.ToHexUint64(1),
+										Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+									},
+								},
+								RPCExecutionStepProposal{
+									TransactionArgs: ethapi.TransactionArgs{
+										From:  &address2,
+										To:    &common.Address{1},
+										Nonce: rpctest.ToHexUint64(2),
+										Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetRangeLength(1023).
+				WithSigner(signer).
+				With(
+					bundle.AllOf(
+						bundle.Step(key1, &types.AccessListTx{
+							To:    &common.Address{123},
+							Nonce: 1,
+							Gas:   21000,
+						}),
+						bundle.Step(key2, &types.AccessListTx{
+							To:    &common.Address{1},
+							Nonce: 2,
+							Gas:   21000,
+						}),
+					).WithFlags(bundle.EF_TolerateFailed),
+				).
+				BuildBundle().Plan,
+		},
 	}
 
 	for name, tt := range tests {
