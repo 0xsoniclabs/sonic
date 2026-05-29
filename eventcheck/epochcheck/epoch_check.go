@@ -21,7 +21,7 @@ import (
 
 	base "github.com/Fantom-foundation/lachesis-base/eventcheck/epochcheck"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	gomath "github.com/ethereum/go-ethereum/common/math"
+	ethmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/inter"
@@ -72,35 +72,35 @@ func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) (uint64, error) 
 		// to be able to create proposals with the full gas limit. Thus, only the
 		// transactions being part of the distributed proposal protocol are counted.
 		for _, tx := range e.TransactionsToMeter() {
-			if txsGas, overflow = gomath.SafeAdd(txsGas, tx.Gas()); overflow {
+			if txsGas, overflow = ethmath.SafeAdd(txsGas, tx.Gas()); overflow {
 				return 0, ErrTooBigGasUsed
 			}
 		}
 
 		parentsGas := uint64(0)
 		if idx.Event(len(e.Parents())) > rules.Dag.MaxFreeParents {
-			if parentsGas, overflow = gomath.SafeMul(uint64(idx.Event(len(e.Parents()))-rules.Dag.MaxFreeParents), gasCfg.ParentGas); overflow {
+			if parentsGas, overflow = ethmath.SafeMul(uint64(idx.Event(len(e.Parents()))-rules.Dag.MaxFreeParents), gasCfg.ParentGas); overflow {
 				return 0, ErrTooBigGasUsed
 			}
 		}
 
 		var extraGas uint64
-		if extraGas, overflow = gomath.SafeMul(uint64(len(e.Extra())), gasCfg.ExtraDataGas); overflow {
+		if extraGas, overflow = ethmath.SafeMul(uint64(len(e.Extra())), gasCfg.ExtraDataGas); overflow {
 			return 0, ErrTooBigGasUsed
 		}
 
 		var mpsGas uint64
-		if mpsGas, overflow = gomath.SafeMul(uint64(len(e.MisbehaviourProofs())), gasCfg.MisbehaviourProofGas); overflow {
+		if mpsGas, overflow = ethmath.SafeMul(uint64(len(e.MisbehaviourProofs())), gasCfg.MisbehaviourProofGas); overflow {
 			return 0, ErrTooBigGasUsed
 		}
 
 		bvsGas := uint64(0)
 		if e.BlockVotes().Start != 0 {
 			var blockVotesGas uint64
-			if blockVotesGas, overflow = gomath.SafeMul(uint64(len(e.BlockVotes().Votes)), gasCfg.BlockVoteGas); overflow {
+			if blockVotesGas, overflow = ethmath.SafeMul(uint64(len(e.BlockVotes().Votes)), gasCfg.BlockVoteGas); overflow {
 				return 0, ErrTooBigGasUsed
 			}
-			if bvsGas, overflow = gomath.SafeAdd(gasCfg.BlockVotesBaseGas, blockVotesGas); overflow {
+			if bvsGas, overflow = ethmath.SafeAdd(gasCfg.BlockVotesBaseGas, blockVotesGas); overflow {
 				return 0, ErrTooBigGasUsed
 			}
 		}
@@ -112,7 +112,7 @@ func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) (uint64, error) 
 
 		total := uint64(0)
 		for _, v := range []uint64{txsGas, parentsGas, extraGas, gasCfg.EventGas, mpsGas, bvsGas, ersGas} {
-			if total, overflow = gomath.SafeAdd(total, v); overflow {
+			if total, overflow = ethmath.SafeAdd(total, v); overflow {
 				return 0, ErrTooBigGasUsed
 			}
 		}
