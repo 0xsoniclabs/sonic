@@ -79,22 +79,29 @@ func TestCalcGasPowerUsed(t *testing.T) {
 
 	t.Run("all components combined", func(t *testing.T) {
 		e := newTestEvent(types.Transactions{txWithGas(21000)}, 5, 7, 3, 4, true)
-		require.Equal(t, uint64(24470), CalcGasPowerUsed(e, preBrio))
+		gas, err := CalcGasPowerUsed(e, preBrio)
+		require.NoError(t, err)
+		require.Equal(t, uint64(24470), gas)
 	})
 
 	t.Run("txsGas uint64 overflow pre-Brio", func(t *testing.T) {
 		e := newTestEvent(types.Transactions{txWithGas(math.MaxUint64 - 500), txWithGas(600)}, 5, 7, 3, 4, true)
-		require.Equal(t, uint64(3569), CalcGasPowerUsed(e, preBrio))
+		gas, err := CalcGasPowerUsed(e, preBrio)
+		require.NoError(t, err)
+		require.Equal(t, uint64(3569), gas)
 	})
 
 	t.Run("all components combined with Brio", func(t *testing.T) {
 		e := newTestEvent(types.Transactions{txWithGas(21000)}, 5, 7, 3, 4, true)
-		require.Equal(t, uint64(24470), CalcGasPowerUsed(e, withBrio))
+		gas, err := CalcGasPowerUsed(e, withBrio)
+		require.NoError(t, err)
+		require.Equal(t, uint64(24470), gas)
 	})
 
-	t.Run("txsGas uint64 overflow fixed with Brio", func(t *testing.T) {
+	t.Run("txsGas uint64 overflow returns error with Brio", func(t *testing.T) {
 		e := newTestEvent(types.Transactions{txWithGas(math.MaxUint64 - 500), txWithGas(600)}, 5, 7, 3, 4, true)
-		require.Equal(t, uint64(math.MaxUint64), CalcGasPowerUsed(e, withBrio))
+		_, err := CalcGasPowerUsed(e, withBrio)
+		require.ErrorIs(t, err, ErrTooBigGasUsed)
 	})
 }
 
