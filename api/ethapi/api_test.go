@@ -1362,6 +1362,7 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 		blockCtx := vm.BlockContext{
 			BlockNumber: block.Number,
 			BaseFee:     big.NewInt(1_000),
+			BlobBaseFee: big.NewInt(1_000),
 			Transfer:    vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int, _ *params.Rules) {}),
 			CanTransfer: vm.CanTransferFunc(func(sd vm.StateDB, a1 common.Address, i *uint256.Int) bool { return true }),
 		}
@@ -1397,18 +1398,18 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 		}))
 		api := NewPublicDebugAPI(mockBackend, 10000, 10000)
 
-		// Replay the second transaction (includes replaying the first one to initialize the state)
+		// replay tx
 		_, err := api.TraceTransaction(context.Background(), common.Hash{}, &tracers.TraceConfig{})
 		require.NoError(t, err, "must be possible to trace the blob transaction")
 
-		// Replay the whole block
+		// replay complete block
 		res, err := api.TraceBlockByNumber(context.Background(), rpc.BlockNumber(5), &tracers.TraceConfig{})
 		require.NoError(t, err, "trace block must succeed")
 		require.Empty(t, res[0].Error, "tx must succeed")
 		require.Empty(t, res[1].Error, "tx must succeed")
 	})
 
-	t.Run("provides proper error for non-empty BlockHashes", func(t *testing.T) {
+	t.Run("succeed with non-empty BlockHashes", func(t *testing.T) {
 		mockBackend := prepareMockBackend(types.NewTx(&types.BlobTx{
 			Gas:        21000,
 			GasFeeCap:  uint256.NewInt(1_000_000_000_000),
@@ -1419,13 +1420,15 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 		}))
 		api := NewPublicDebugAPI(mockBackend, 10000, 10000)
 
-		// Replay the second transaction - initialization by replaing the first one is expected to fail
+		// replay tx
 		_, err := api.TraceTransaction(context.Background(), common.Hash{}, &tracers.TraceConfig{})
-		require.Equal(t, err.Error(), "tracing failed: blob data is not supported")
+		require.NoError(t, err, "must be possible to trace the blob transaction")
 
-		// Replay the whole block - should return errors for individual txs
-		_, err = api.TraceBlockByNumber(context.Background(), rpc.BlockNumber(5), &tracers.TraceConfig{})
-		require.Error(t, err, "tracing failed: blob data is not supported")
+		// replay complete block
+		res, err := api.TraceBlockByNumber(context.Background(), rpc.BlockNumber(5), &tracers.TraceConfig{})
+		require.NoError(t, err, "trace block must succeed")
+		require.Empty(t, res[0].Error, "tx must succeed")
+		require.Empty(t, res[1].Error, "tx must succeed")
 	})
 }
 
