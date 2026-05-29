@@ -60,6 +60,7 @@ func NewEVMBlockContextWithDifficulty(
 		baseFee     *big.Int
 		random      *common.Hash
 	)
+
 	// If we don't have an explicit author (i.e. not mining), extract from the header
 	if author == nil {
 		beneficiary = header.Coinbase
@@ -73,7 +74,12 @@ func NewEVMBlockContextWithDifficulty(
 	if header.PrevRandao.Cmp(common.Hash{}) != 0 {
 		random = &header.PrevRandao
 		// Difficulty must be set to 0 when PREVRANDAO is enabled.
-		difficulty.SetUint64(0)
+		difficulty = big.NewInt(0)
+	}
+
+	blobBaseFee := big.NewInt(1) // default for Sonic networks, overridden by header if present
+	if header.BlobBaseFee != nil {
+		blobBaseFee = new(big.Int).Set(header.BlobBaseFee)
 	}
 
 	return vm.BlockContext{
@@ -87,7 +93,7 @@ func NewEVMBlockContextWithDifficulty(
 		BaseFee:     baseFee,
 		GasLimit:    header.GasLimit,
 		Random:      random,
-		BlobBaseFee: big.NewInt(1), // TODO issue #147
+		BlobBaseFee: blobBaseFee,
 	}
 }
 
