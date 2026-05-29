@@ -156,7 +156,7 @@ func (v *Checker) checkGas(e inter.EventPayloadI, rules opera.Rules) error {
 	}
 	calculatedGasPowerUsed, err := CalcGasPowerUsed(e, rules)
 	if err != nil {
-		return ErrWrongGasUsed
+		return ErrTooBigGasUsed
 	}
 	if e.GasPowerUsed() != calculatedGasPowerUsed {
 		return ErrWrongGasUsed
