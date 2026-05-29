@@ -140,10 +140,10 @@ func TestNewEVMBlockContextWithDifficulty_UsesHeaderParametersIfDefinedOrSonicDe
 	// an execution context which can process both recorded and live blocks,
 	// by correctly using header parameters when defined.
 	// The following parameters are tested:
-	// - Base is nil in sonic (at this stage), but it uses  the base fee from the header if defined.
-	// - BlobBaseFee is 1 by default, but it uses the value from the header if defined.
-	// - Coinbase is taken from the header if author parameter is nil, otherwise it uses the author.
-	// - PrevRandao is used if defined, and difficulty is set to 0 in that case. Otherwise, difficulty remains being the header value.
+	// - BaseFee is nil on Sonic (at this stage), but it uses the base fee from the header if defined.
+	// - BlobBaseFee defaults to 1, but it uses the value from the header if defined.
+	// - Coinbase is taken from the header if the author parameter is nil; otherwise it uses the author.
+	// - PrevRandao is used if defined and difficulty is set to 0 in that case; otherwise difficulty remains the header value.
 
 	const defaultBlobBaseFee int64 = 1
 

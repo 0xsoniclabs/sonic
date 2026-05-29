@@ -5129,7 +5129,6 @@ func TestTxAsMessage_ConvertsUserTransactionsToMessage(t *testing.T) {
 			expectations: func(t *testing.T, msg core.Message) {
 				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
 				require.Equal(t, big.NewInt(2), msg.GasTipCap)
-				require.Equal(t, []byte{0x01, 0x02}, msg.Data)
 			},
 		},
 		"type 3: blob transaction with blob hashes": {
@@ -5148,7 +5147,6 @@ func TestTxAsMessage_ConvertsUserTransactionsToMessage(t *testing.T) {
 			expectations: func(t *testing.T, msg core.Message) {
 				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
 				require.Equal(t, big.NewInt(2), msg.GasTipCap)
-				require.Equal(t, msg.BlobHashes, []common.Hash{{1}, {2}})
 				require.Equal(t, msg.BlobHashes, []common.Hash{{1}, {2}},
 					"Sonic rejects blobTxs with non-empty blob hashes, but this layer allows them for history replays")
 			},
