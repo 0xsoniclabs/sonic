@@ -73,7 +73,11 @@ func (s *Service) buildEvent(e *inter.MutableEventPayload, onIndexed func()) err
 	e.SetMedianTime(s.dagIndexer.MedianTime(e.ID(), s.store.GetEpochState().EpochStart))
 
 	// calc initial GasPower
-	e.SetGasPowerUsed(epochcheck.CalcGasPowerUsed(e, s.store.GetRules()))
+	gasPowerUsed, err := epochcheck.CalcGasPowerUsed(e, s.store.GetRules())
+	if err != nil {
+		return err
+	}
+	e.SetGasPowerUsed(gasPowerUsed)
 	var selfParent *inter.Event
 	if e.SelfParent() != nil {
 		selfParent = s.store.GetEvent(*e.SelfParent())

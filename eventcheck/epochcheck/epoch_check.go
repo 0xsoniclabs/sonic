@@ -21,6 +21,7 @@ import (
 
 	base "github.com/Fantom-foundation/lachesis-base/eventcheck/epochcheck"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	ethmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/inter"
@@ -60,7 +61,65 @@ func New(reader Reader) *Checker {
 	}
 }
 
-func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) uint64 {
+func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) (uint64, error) {
+	gasCfg := rules.Economy.Gas
+
+	if rules.Upgrades.Brio {
+		var overflow bool
+		txsGas := uint64(0)
+		// In the single-proposer protocol, the gas usage of individual transactions
+		// is not attributed to the individual proposer, since each proposer needs
+		// to be able to create proposals with the full gas limit. Thus, only the
+		// transactions being part of the distributed proposal protocol are counted.
+		for _, tx := range e.TransactionsToMeter() {
+			if txsGas, overflow = ethmath.SafeAdd(txsGas, tx.Gas()); overflow {
+				return 0, ErrTooBigGasUsed
+			}
+		}
+
+		parentsGas := uint64(0)
+		if idx.Event(len(e.Parents())) > rules.Dag.MaxFreeParents {
+			if parentsGas, overflow = ethmath.SafeMul(uint64(idx.Event(len(e.Parents()))-rules.Dag.MaxFreeParents), gasCfg.ParentGas); overflow {
+				return 0, ErrTooBigGasUsed
+			}
+		}
+
+		var extraGas uint64
+		if extraGas, overflow = ethmath.SafeMul(uint64(len(e.Extra())), gasCfg.ExtraDataGas); overflow {
+			return 0, ErrTooBigGasUsed
+		}
+
+		var mpsGas uint64
+		if mpsGas, overflow = ethmath.SafeMul(uint64(len(e.MisbehaviourProofs())), gasCfg.MisbehaviourProofGas); overflow {
+			return 0, ErrTooBigGasUsed
+		}
+
+		bvsGas := uint64(0)
+		if e.BlockVotes().Start != 0 {
+			var blockVotesGas uint64
+			if blockVotesGas, overflow = ethmath.SafeMul(uint64(len(e.BlockVotes().Votes)), gasCfg.BlockVoteGas); overflow {
+				return 0, ErrTooBigGasUsed
+			}
+			if bvsGas, overflow = ethmath.SafeAdd(gasCfg.BlockVotesBaseGas, blockVotesGas); overflow {
+				return 0, ErrTooBigGasUsed
+			}
+		}
+
+		ersGas := uint64(0)
+		if e.EpochVote().Epoch != 0 {
+			ersGas = gasCfg.EpochVoteGas
+		}
+
+		total := uint64(0)
+		for _, v := range []uint64{txsGas, parentsGas, extraGas, gasCfg.EventGas, mpsGas, bvsGas, ersGas} {
+			if total, overflow = ethmath.SafeAdd(total, v); overflow {
+				return 0, ErrTooBigGasUsed
+			}
+		}
+		return total, nil
+	}
+
+	// preBrio: ignore overflows
 	txsGas := uint64(0)
 	// In the single-proposer protocol, the gas usage of individual transactions
 	// is not attributed to the individual proposer, since each proposer needs
@@ -69,8 +128,6 @@ func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) uint64 {
 	for _, tx := range e.TransactionsToMeter() {
 		txsGas += tx.Gas()
 	}
-
-	gasCfg := rules.Economy.Gas
 
 	parentsGas := uint64(0)
 	if idx.Event(len(e.Parents())) > rules.Dag.MaxFreeParents {
@@ -90,14 +147,18 @@ func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) uint64 {
 		ersGas = gasCfg.EpochVoteGas
 	}
 
-	return txsGas + parentsGas + extraGas + gasCfg.EventGas + mpsGas + bvsGas + ersGas
+	return txsGas + parentsGas + extraGas + gasCfg.EventGas + mpsGas + bvsGas + ersGas, nil
 }
 
 func (v *Checker) checkGas(e inter.EventPayloadI, rules opera.Rules) error {
 	if e.GasPowerUsed() > rules.Economy.Gas.MaxEventGas {
 		return ErrTooBigGasUsed
 	}
-	if e.GasPowerUsed() != CalcGasPowerUsed(e, rules) {
+	calculatedGasPowerUsed, err := CalcGasPowerUsed(e, rules)
+	if err != nil {
+		return ErrTooBigGasUsed
+	}
+	if e.GasPowerUsed() != calculatedGasPowerUsed {
 		return ErrWrongGasUsed
 	}
 	return nil
