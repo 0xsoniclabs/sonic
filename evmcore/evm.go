@@ -77,7 +77,8 @@ func NewEVMBlockContextWithDifficulty(
 		difficulty = big.NewInt(0)
 	}
 
-	blobBaseFee := big.NewInt(1) // default for Sonic networks, overridden by header if present
+	// default for Sonic networks, overridden by header if present
+	blobBaseFee := GetBlobBaseFee().ToBig()
 	if header.BlobBaseFee != nil {
 		blobBaseFee = new(big.Int).Set(header.BlobBaseFee)
 	}

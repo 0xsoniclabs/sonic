@@ -277,7 +277,7 @@ func makeProposal(
 			MixHash:     randaoMix,
 			Coinbase:    evmcore.GetCoinbase(),
 			BaseFee:     *baseFee256,
-			BlobBaseFee: evmcore.GetBlobBaseFee(),
+			BlobBaseFee: *evmcore.GetBlobBaseFee(),
 		},
 		candidates,
 		scheduler.Limits{

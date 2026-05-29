@@ -383,7 +383,7 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 			GasLimit:    rules.Blocks.MaxBlockGas,
 			MixHash:     someRandao,
 			BaseFee:     *uint256.NewInt(100),
-			BlobBaseFee: *uint256.NewInt(0),
+			BlobBaseFee: *evmcore.GetBlobBaseFee(),
 		},
 		nil,
 		scheduler.Limits{
@@ -657,7 +657,7 @@ func TestMakeProposal_SchedulerIsRunWithCorrectBaseFee(t *testing.T) {
 			MixHash:     randaoMix,
 			Coinbase:    evmcore.GetCoinbase(),
 			BaseFee:     *uint256.MustFromBig(expectedBaseFee),
-			BlobBaseFee: evmcore.GetBlobBaseFee(),
+			BlobBaseFee: *evmcore.GetBlobBaseFee(),
 		},
 		gomock.Any(),
 		gomock.Any(),
