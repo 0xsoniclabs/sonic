@@ -24,6 +24,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -103,53 +104,56 @@ func testInternalTransactionsDoNotChangeReceiptIndex(t *testing.T, upgrades oper
 	// Run one transaction to not interfere with still pending delayed genesis.
 	receipt, err := net.EndowAccount(common.Address{}, big.NewInt(1e18))
 	require.NoError(t, err)
-	before := receipt.BlockNumber.Uint64()
-
-	initialEpoch := GetEpochOfBlock(t, client, int(before))
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// Send transaction instructing the network to advance one epoch.
 	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
 	require.NoError(t, err)
-	txOpts, err := net.GetTransactOptions(&net.account)
-	require.NoError(t, err)
-	tx, err := contract.AdvanceEpochs(txOpts, big.NewInt(int64(1)))
-	require.NoError(t, err)
-	require.NotNil(t, tx)
 
-	// Wait for the epoch to progress while sending in new transactions, hoping
-	// to get a transaction into the epoch-sealing block.
-	for {
-		current, err := client.BlockNumber(t.Context())
-		require.NoError(t, err)
+	// Create a separate user account to avoid nonce conflicts with the account
+	// used for epoch advancement.
+	userAccount := MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
-		currentEpoch := GetEpochOfBlock(t, client, int(current))
-		if currentEpoch > initialEpoch {
-			break
-		}
-
-		_, err = net.EndowAccount(common.Address{}, big.NewInt(1e18))
-		require.NoError(t, err)
-	}
-
-	after, err := client.BlockNumber(t.Context())
-	require.NoError(t, err)
-
-	// Search for block containing the internal sealing transactions.
+	// Retry until we find a sealing block that contains both internal and user
+	// transactions. The timing of when the sealing block is created relative to
+	// when user transactions arrive is inherently racy, so we retry up to N times.
 	var sealingBlock *types.Block
-	for cur := before; cur <= after; cur++ {
-		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(cur)))
+	const maxRetries = 10
+	for attempt := 0; attempt < maxRetries && sealingBlock == nil; attempt++ {
+		// Send a user transaction (non-blocking), then immediately advance the epoch.
+		// This gives the user transaction a chance to be included in the epoch-sealing block.
+		userTx := CreateTransaction(t, net, &types.LegacyTx{
+			To:  &common.Address{0x42},
+			Gas: 21_000,
+		}, userAccount)
+		err = client.SendTransaction(t.Context(), userTx)
 		require.NoError(t, err)
 
-		if len(block.Transactions()) == 0 {
-			continue
-		}
-		first := block.Transactions()[0]
-
-		sender, err := getSenderOfTransaction(client, first.Hash())
+		// This test interacts directly with the drive contract to avoid
+		// overheads of the usual testing tools which make it difficult
+		// to schedule the previous sponsored transaction within the same block
+		receipt, err := net.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
+			return contract.AdvanceEpochs(ops, big.NewInt(1))
+		})
 		require.NoError(t, err)
-		if sender == (common.Address{}) {
-			sealingBlock = block
-			break
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status,
+			"AdvanceEpochs transaction failed")
+
+		// Wait for the user transaction to be executed.
+		userReceipt, err := net.GetReceipt(userTx.Hash())
+		require.NoError(t, err)
+		require.Equal(t, types.ReceiptStatusSuccessful, userReceipt.Status)
+
+		// Check if the user transaction landed in the sealing block.
+		block, err := client.BlockByNumber(t.Context(), userReceipt.BlockNumber)
+		require.NoError(t, err)
+
+		if len(block.Transactions()) > 2 {
+			sender, err := getSenderOfTransaction(client, block.Transactions()[0].Hash())
+			require.NoError(t, err)
+			if sender == (common.Address{}) {
+				sealingBlock = block
+			}
 		}
 	}
 	require.NotNil(t, sealingBlock, "No block found with internal transactions")
