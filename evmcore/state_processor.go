@@ -415,6 +415,16 @@ func (r *transactionRunner) runSponsoredTransaction(
 	txIndex int,
 	sizeLimit uint64,
 ) ([]ProcessedTransaction, core_types.TransactionResult) {
+	return r.runSponsoredTransactionInternal(ctxt, tx, txIndex, sizeLimit, subsidies.Sponsorship.GetPostTransactions)
+}
+
+func (r *transactionRunner) runSponsoredTransactionInternal(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+	sizeLimit uint64,
+	getPostTransactions func(subsidies.Sponsorship, subsidies.NonceSource, uint64, *big.Int) ([]*types.Transaction, error),
+) ([]ProcessedTransaction, core_types.TransactionResult) {
 	// Run the IsCovered query in a snapshot to avoid spilling any side-effects
 	// like warm storage slots or refunds into the actual transaction.
 	snapshot := ctxt.statedb.Snapshot()
@@ -462,7 +472,7 @@ func (r *transactionRunner) runSponsoredTransaction(
 
 	gasUsed := processed.Receipt.GasUsed
 
-	postTxs, err := sponsorship.GetPostTransactions(ctxt.statedb, gasUsed, ctxt.baseFee)
+	postTxs, err := getPostTransactions(sponsorship, ctxt.statedb, gasUsed, ctxt.baseFee)
 	if err != nil {
 		// Note: at this point the sponsored transaction has been executed, but we
 		// are not able to build the post-execution transaction. We can not undo
@@ -471,15 +481,19 @@ func (r *transactionRunner) runSponsoredTransaction(
 		return []ProcessedTransaction{processed}, status
 	}
 
+	txIndex++
 	out := []ProcessedTransaction{processed}
-	for i, postTx := range postTxs {
-		processedPost := r.evm.runWithoutBaseFeeCheck(ctxt, postTx, txIndex+1+i)
+	for _, postTx := range postTxs {
+		processedPost := r.evm.runWithoutBaseFeeCheck(ctxt, postTx, txIndex)
 		if processedPost.Receipt == nil {
 			log.Warn("Post-execution transaction was skipped", "sponsored-tx", tx.Hash().Hex())
 		} else if processedPost.Receipt.Status == types.ReceiptStatusFailed {
 			log.Warn("Post-execution transaction failed", "sponsored-tx", tx.Hash().Hex())
 		}
 		out = append(out, processedPost)
+		if processedPost.Receipt != nil {
+			txIndex++
+		}
 	}
 	return out, status
 }

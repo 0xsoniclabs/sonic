@@ -2057,6 +2057,162 @@ func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testin
 	require.NotNil(t, got[1].Receipt)
 }
 
+func TestRunSponsoredTransaction_ProcessesAllPostTransactionsInOrder(t *testing.T) {
+	tests := map[string][]ProcessedTransaction{
+		"no post-tx": {},
+		"one successful post-tx": {
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+				},
+			},
+		},
+		"one failed post-tx": {
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusFailed,
+				},
+			},
+		},
+		"one invalid post-tx": {
+			{
+				Transaction: &types.Transaction{},
+				Receipt:     nil,
+			},
+		},
+		"multiple successful post-txs": {
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+				},
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+				},
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+				},
+			},
+		},
+		"mix of successful, failed and invalid post-txs": {
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+				},
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusFailed,
+				},
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt:     nil,
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+				},
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusFailed,
+				},
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt:     nil,
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+				},
+			},
+		},
+	}
+
+	for name, processedPostTxs := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+			evm := NewMock_evm(ctrl)
+
+			tx := getSponsorshipRequest(t)
+
+			// Snapshot for the IsCovered call
+			state.EXPECT().Snapshot().Return(1)
+			state.EXPECT().RevertToSnapshot(1)
+
+			any := gomock.Any()
+			evm.EXPECT().Call(any, any, any, any, any).
+				Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+			evm.EXPECT().Call(any, any, any, any, any).
+				Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+
+			// Run of the sponsored transaction.
+			txIndex := 7
+			evm.EXPECT().runWithoutBaseFeeCheck(any, tx, txIndex).
+				Return(ProcessedTransaction{
+					Transaction: tx,
+					Receipt:     &types.Receipt{},
+				})
+
+			// Run of the post-transactions, also checking the tx-index.
+			postTxIndex := txIndex + 1
+			for _, postTx := range processedPostTxs {
+				evm.EXPECT().runWithoutBaseFeeCheck(any, postTx.Transaction, postTxIndex).
+					Return(postTx)
+				if postTx.Receipt != nil {
+					postTxIndex++
+				}
+			}
+
+			gasPool := core.NewGasPool(1_000_000)
+			context := &runContext{
+				statedb:  state,
+				signer:   types.LatestSignerForChainID(nil),
+				baseFee:  big.NewInt(1),
+				gasPool:  gasPool,
+				upgrades: opera.Upgrades{GasSubsidies: true},
+			}
+
+			getPostTxs := func(subsidies.Sponsorship, subsidies.NonceSource, uint64, *big.Int) ([]*types.Transaction, error) {
+				txs := []*types.Transaction{}
+				for _, postTx := range processedPostTxs {
+					txs = append(txs, postTx.Transaction)
+				}
+				return txs, nil
+			}
+
+			runner := &transactionRunner{evm: evm}
+			sizeLimit := uint64(math.MaxUint64)
+			got, status := runner.runSponsoredTransactionInternal(context, tx, txIndex, sizeLimit, getPostTxs)
+			require.Equal(t, core_types.TransactionResultFailed, status)
+			require.Len(t, got, len(processedPostTxs)+1)
+			require.Equal(t, tx, got[0].Transaction)
+			require.NotNil(t, got[0].Receipt)
+			for i, postTx := range processedPostTxs {
+				require.Equal(t, postTx.Transaction, got[i+1].Transaction)
+				require.Equal(t, postTx.Receipt, got[i+1].Receipt)
+			}
+		})
+	}
+}
+
 func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSuccessfully(t *testing.T) {
 	// This test is an integration test covering the combination of the state
 	// processor's runTransaction function, the subsidies package's utility
