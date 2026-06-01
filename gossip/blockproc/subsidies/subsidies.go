@@ -82,8 +82,8 @@ func IsCovered(
 
 	// Build the input data for the chooseFund call.
 	maxOverhead := max(gasConfig.overheadFundBackedSponsoring, gasConfig.overheadNetworkTrackedSponsoring)
-	maxGas := tx.Gas() + maxOverhead // < maximum what is charged for
-	maxFee := new(big.Int).Mul(baseFee, new(big.Int).SetUint64(maxGas))
+	maxGas := new(big.Int).Add(new(big.Int).SetUint64(tx.Gas()), new(big.Int).SetUint64(maxOverhead))
+	maxFee := new(big.Int).Mul(baseFee, maxGas)
 	input, err := createChooseFundInput(sender, tx, maxFee)
 	if err != nil {
 		return Sponsorship{}, fmt.Errorf("failed to create input for subsidies registry call: %w", err)
