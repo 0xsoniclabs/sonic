@@ -204,10 +204,10 @@ type VirtualMachine interface {
 	)
 }
 
-// buildRegistryCallTransaction is the shared implementation behind
-// GetFeeChargeTransaction and GetTrackTransaction. It encodes the ABI call
-// (selector, id, fee) and wraps it in an internal transaction targeting the
-// subsidies registry.
+// buildRegistryCallTransaction is the shared implementation used to construct
+// post-execution registry call transactions (deductFees and track). It encodes
+// the ABI call (selector, id, fee) and wraps it in an internal transaction
+// targeting the subsidies registry.
 func buildRegistryCallTransaction(
 	nonceSource NonceSource,
 	payload Identifier,
