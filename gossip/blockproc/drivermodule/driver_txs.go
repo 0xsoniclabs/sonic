@@ -242,8 +242,13 @@ func (p *DriverTxListener) onNewReceiptPostBrioInternal(
 		return
 	}
 
+	var blockNumber uint64
+	if r != nil && r.BlockNumber != nil {
+		blockNumber = r.BlockNumber.Uint64()
+	}
+
 	if originator == 0 {
-		log.Warn("failed to attribute transaction to validator, fees got burned", "tx", tx.Hash(), "fees", fee)
+		log.Warn("failed to attribute transaction to validator, fees got burned", "tx", tx.Hash(), "block", blockNumber, "fees", fee)
 		return
 	}
 
@@ -263,14 +268,20 @@ func ComputeEffectiveFee(
 	tx *types.Transaction,
 	r *types.Receipt,
 ) (*big.Int, error) {
-	if fee, err := subsidies.ParseFeeChargeAmount(tx); err == nil {
-		return fee.ToBig(), nil
-	}
-
 	// pre-checks
 	if r == nil {
 		return nil, fmt.Errorf("missing receipt")
 	}
+
+	// Special case: fee charge transactions have their effective fee specified
+	// in the input data, and not in the receipt gas used and gas price fields.
+	// The fees only get charged if the transaction succeeded.
+	if subsidies.IsFeeChargeTransaction(tx) && r.Status == types.ReceiptStatusSuccessful {
+		if fee, err := subsidies.ParseFeeChargeAmount(tx); err == nil {
+			return fee.ToBig(), nil
+		}
+	}
+
 	if r.EffectiveGasPrice == nil {
 		return nil, fmt.Errorf("missing effective gas price in receipt")
 	}
