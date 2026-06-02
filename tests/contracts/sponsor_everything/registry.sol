@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
-// SubsidiesRegistry is a stand-in contract for Sonic's on-chain subsidies 
+// SubsidiesRegistry is a stand-in contract for Sonic's on-chain subsidies
 // registry to be used as a replacement to the development registry used in
 // integration tests.
 contract SubsidiesRegistry {
@@ -67,6 +67,9 @@ contract SubsidiesRegistry {
         feeBurner.burnNativeTokens{value: fee}();
     }
 
+    function track(bytes32 /*trackingId*/, uint256 /*fee*/) public view {
+        require(msg.sender == address(0)); // only callable through internal transactions
+    }
 
     // --- Sponsor Policies ---
 
