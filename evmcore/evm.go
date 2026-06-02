@@ -74,7 +74,7 @@ func NewEVMBlockContextWithDifficulty(
 	if header.PrevRandao.Cmp(common.Hash{}) != 0 {
 		random = &header.PrevRandao
 		// Difficulty must be set to 0 when PREVRANDAO is enabled.
-		difficulty = big.NewInt(0)
+		difficulty.SetUint64(0)
 	}
 
 	// default for Sonic networks, overridden by header if present
