@@ -50,7 +50,11 @@ import (
 // to run a single test case.
 
 var (
-	fixturesDir string
+	fixturesDir = flag.String(
+		"test-data",
+		"",
+		"path to the fixtures directory. If empty, tests will be skipped.",
+	)
 
 	unsupportedForks = map[string]struct{}{
 		"ConstantinopleFix": {},
@@ -64,14 +68,14 @@ var (
 // TestBlockProcessing_EthereumExecutionSpecTests runs the Ethereum execution spec tests
 // using different VM and StateDB implementations.
 func TestBlockProcessing_EthereumExecutionSpecTests(t *testing.T) {
-	if fixturesDir == "" {
+	if *fixturesDir == "" {
 		t.Skip("fixtures directory not provided; re-run with -test-data /path/to/fixtures")
 	}
-	if _, err := os.Stat(fixturesDir); os.IsNotExist(err) {
-		t.Fatalf("directory %s not does not exist", fixturesDir)
+	if _, err := os.Stat(*fixturesDir); os.IsNotExist(err) {
+		t.Fatalf("directory %s not does not exist", *fixturesDir)
 	}
-	if _, err := os.Stat(fixturesDir + "/state_tests"); os.IsNotExist(err) {
-		t.Fatalf("state_tests directory not found in %s", fixturesDir)
+	if _, err := os.Stat(*fixturesDir + "/state_tests"); os.IsNotExist(err) {
+		t.Fatalf("state_tests directory not found in %s", *fixturesDir)
 	}
 
 	defaultConfig := newEthSpecVmConfig()
@@ -169,7 +173,7 @@ func runSubtests(t *testing.T, matcher *tests.TestMatcher, test *tests.StateTest
 // for each discovered test. The directory is skipped with a log message if absent.
 func walkTestDirs(t *testing.T, matcher *tests.TestMatcher, fn func(t *testing.T, name string, test *tests.StateTest)) {
 	t.Helper()
-	dir := filepath.Join(fixturesDir, "state_tests")
+	dir := filepath.Join(*fixturesDir, "state_tests")
 	dirinfo, err := os.Stat(dir)
 	if errors.Is(err, os.ErrNotExist) || (err == nil && !dirinfo.IsDir()) {
 		t.Logf("Skipping %s: directory does not exist", dir)
@@ -230,7 +234,6 @@ func createCarmenFactory(t *testing.T) carmenFactory {
 // of m.Run() to the shell so CI can detect pass/fail.
 func TestMain(m *testing.M) {
 	var verbose bool
-	flag.StringVar(&fixturesDir, "test-data", "", "path to the fixtures directory (required)")
 	flag.BoolVar(&verbose, "verbose", false, "enable go-ethereum global logger output")
 	flag.Parse()
 	if !verbose {
