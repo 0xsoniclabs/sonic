@@ -46,7 +46,7 @@ import (
 // Fixtures can be downloaded from the Ethereum execution-spec-tests releases page:
 // https://github.com/ethereum/execution-spec-tests/releases
 // Run either all permutations of supported VMs and stateDBs or a specific combination
-// by calling a sub-test. In case of an error, DisTestState_DebugTestCase can be used
+// by calling a sub-test. In case of an error, TestState_RunSingleCase can be used
 // to run a single test case.
 
 var (
@@ -111,20 +111,27 @@ func TestBlockProcessing_EthereumExecutionSpecTests(t *testing.T) {
 	})
 }
 
-// TestState_DebugTestCase is a helper function to debug a single test case.
-func DisTestState_DebugTestCase(t *testing.T) {
-	path := "/path/to/input.json"
-	targetName := "TestCaseName"
+// TestState_RunSingleCase runs a single test case from the execution
+// spec tests, useful for debugging specific cases.
+//
+// It defaults to an example test case committed in the repository,
+// The path can be modified to point to any test case in the fixtures directory,
+// and the test will be run only if the name contains the targetName substring.
+func TestState_RunSingleCase(t *testing.T) {
+
+	path := "test_data/test_call_types.json"
+	targetName := "tests/prague/eip2537_bls_12_381_precompiles/test_bls12_g1add.py::test_call_types[fork_Osaka-state_test-inf_plus_generator-call_opcode_CALLCODE-]"
 
 	vmConfig := newEthSpecVmConfig()
 	useCarmen := true
 
 	testMatcher := &tests.TestMatcher{}
-	testMatcher.RunTestFile(t, path, "", func(t *testing.T, name string, test *tests.StateTest) {
-		if strings.Contains(name, targetName) {
-			runSubtests(t, testMatcher, test, vmConfig, useCarmen)
-		}
-	})
+	testMatcher.RunTestFile(t, path, "",
+		func(t *testing.T, name string, test *tests.StateTest) {
+			if strings.Contains(name, targetName) {
+				runSubtests(t, testMatcher, test, vmConfig, useCarmen)
+			}
+		})
 }
 
 // runTestCases iterates over all test directories and runs each discovered StateTest using the provided vm.Config.
