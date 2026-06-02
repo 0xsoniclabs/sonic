@@ -5077,11 +5077,25 @@ func TestTxAsMessage_ConvertsUserTransactionsToMessage(t *testing.T) {
 	signer := types.LatestSignerForChainID(chainId)
 	sender := crypto.PubkeyToAddress(key.PublicKey)
 
+	accessList := types.AccessList{
+		{
+			Address:     common.Address{2},
+			StorageKeys: []common.Hash{{1}, {2}},
+		},
+	}
+
+	setCodeAuthorizations := []types.SetCodeAuthorization{
+		{
+			Address: common.Address{3},
+			Nonce:   1,
+		},
+	}
+
 	test := map[string]struct {
 		tx           types.TxData
 		expectations func(*testing.T, core.Message)
 	}{
-		"type 0: legacy transaction": {
+		"legacy transaction": {
 			tx: &types.LegacyTx{
 				Nonce:    0,
 				To:       &common.Address{1},
@@ -5091,83 +5105,38 @@ func TestTxAsMessage_ConvertsUserTransactionsToMessage(t *testing.T) {
 				Data:     []byte{0x01, 0x02},
 			},
 		},
-		"type 1: access list transaction": {
+		"access list transaction": {
 			tx: &types.AccessListTx{
-				Nonce:    0,
-				To:       &common.Address{1},
-				Gas:      21_000,
-				GasPrice: big.NewInt(1),
-				Value:    big.NewInt(100),
-				Data:     []byte{0x01, 0x02},
-				AccessList: types.AccessList{
-					{
-						Address:     common.Address{2},
-						StorageKeys: []common.Hash{{1}, {2}},
-					},
-				},
+				Nonce:      0,
+				To:         &common.Address{1},
+				Gas:        21_000,
+				GasPrice:   big.NewInt(1),
+				Value:      big.NewInt(100),
+				Data:       []byte{0x01, 0x02},
+				AccessList: accessList,
 			},
 			expectations: func(t *testing.T, msg core.Message) {
-				require.Equal(t,
-					types.AccessList{
-						{
-							Address:     common.Address{2},
-							StorageKeys: []common.Hash{{1}, {2}},
-						},
-					}, msg.AccessList)
+				require.Equal(t, accessList, msg.AccessList)
 			},
 		},
-		"type 2: dynamic fee transaction": {
+		"dynamic fee transaction": {
 			tx: &types.DynamicFeeTx{
-				Nonce:     0,
-				To:        &common.Address{1},
-				Gas:       21_000,
-				GasFeeCap: big.NewInt(1),
-				GasTipCap: big.NewInt(2),
-				Value:     big.NewInt(100),
-				Data:      []byte{0x01, 0x02},
+				Nonce:      0,
+				To:         &common.Address{1},
+				Gas:        21_000,
+				GasFeeCap:  big.NewInt(1),
+				GasTipCap:  big.NewInt(2),
+				Value:      big.NewInt(100),
+				Data:       []byte{0x01, 0x02},
+				AccessList: accessList,
 			},
 			expectations: func(t *testing.T, msg core.Message) {
 				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
 				require.Equal(t, big.NewInt(2), msg.GasTipCap)
+				require.Equal(t, accessList, msg.AccessList)
 			},
 		},
-		"type 3: blob transaction with blob hashes": {
-			tx: &types.BlobTx{
-				Nonce:     0,
-				To:        common.Address{1},
-				Gas:       21_000,
-				GasFeeCap: uint256.NewInt(1),
-				GasTipCap: uint256.NewInt(2),
-				Value:     uint256.NewInt(100),
-				Data:      []byte{0x01, 0x02},
-				BlobHashes: []common.Hash{
-					{1}, {2},
-				},
-			},
-			expectations: func(t *testing.T, msg core.Message) {
-				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
-				require.Equal(t, big.NewInt(2), msg.GasTipCap)
-				require.Equal(t, msg.BlobHashes, []common.Hash{{1}, {2}},
-					"Sonic rejects blobTxs with non-empty blob hashes, but this layer allows them for history replays")
-			},
-		},
-		"type 3: blob transaction with nil blob hashes": {
-			tx: &types.BlobTx{
-				Nonce:     0,
-				To:        common.Address{1},
-				Gas:       21_000,
-				GasFeeCap: uint256.NewInt(1),
-				GasTipCap: uint256.NewInt(2),
-				Value:     uint256.NewInt(100),
-				Data:      []byte{0x01, 0x02},
-			},
-			expectations: func(t *testing.T, msg core.Message) {
-				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
-				require.Equal(t, big.NewInt(2), msg.GasTipCap)
-				require.Nil(t, msg.BlobHashes, "Sonic allows empty blob txs, go-ethereum allows processing nil")
-			},
-		},
-		"type 3: blob transaction with empty blob hashes": {
+		"blob transaction with blob hashes": {
 			tx: &types.BlobTx{
 				Nonce:      0,
 				To:         common.Address{1},
@@ -5176,12 +5145,85 @@ func TestTxAsMessage_ConvertsUserTransactionsToMessage(t *testing.T) {
 				GasTipCap:  uint256.NewInt(2),
 				Value:      uint256.NewInt(100),
 				Data:       []byte{0x01, 0x02},
+				AccessList: accessList,
+				BlobHashes: []common.Hash{
+					{1}, {2},
+				},
+			},
+			expectations: func(t *testing.T, msg core.Message) {
+				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
+				require.Equal(t, big.NewInt(2), msg.GasTipCap)
+				require.Equal(t, accessList, msg.AccessList)
+				require.Equal(t, msg.BlobHashes, []common.Hash{{1}, {2}},
+					"Sonic rejects blobTxs with non-empty blob hashes, but this layer allows them for history replays")
+			},
+		},
+		"blob transaction with nil blob hashes": {
+			tx: &types.BlobTx{
+				Nonce:      0,
+				To:         common.Address{1},
+				Gas:        21_000,
+				GasFeeCap:  uint256.NewInt(1),
+				GasTipCap:  uint256.NewInt(2),
+				Value:      uint256.NewInt(100),
+				AccessList: accessList,
+				Data:       []byte{0x01, 0x02},
+			},
+			expectations: func(t *testing.T, msg core.Message) {
+				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
+				require.Equal(t, big.NewInt(2), msg.GasTipCap)
+				require.Equal(t, accessList, msg.AccessList)
+				require.Nil(t, msg.BlobHashes, "Sonic allows empty blob txs, go-ethereum allows processing nil")
+			},
+		},
+		"blob transaction with empty blob hashes": {
+			tx: &types.BlobTx{
+				Nonce:      0,
+				To:         common.Address{1},
+				Gas:        21_000,
+				GasFeeCap:  uint256.NewInt(1),
+				GasTipCap:  uint256.NewInt(2),
+				Value:      uint256.NewInt(100),
+				Data:       []byte{0x01, 0x02},
+				AccessList: accessList,
 				BlobHashes: []common.Hash{},
 			},
 			expectations: func(t *testing.T, msg core.Message) {
 				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
 				require.Equal(t, big.NewInt(2), msg.GasTipCap)
+				require.Equal(t, accessList, msg.AccessList)
 				require.Nil(t, msg.BlobHashes, "Sonic allows empty blob txs, go-ethereum allows processing nil")
+			},
+		},
+		"set code transaction": {
+			tx: &types.SetCodeTx{
+				Nonce:      0,
+				To:         common.Address{1},
+				Gas:        21_000,
+				Value:      uint256.NewInt(100),
+				Data:       []byte{0x01, 0x02},
+				AccessList: accessList,
+				AuthList:   setCodeAuthorizations,
+			},
+			expectations: func(t *testing.T, msg core.Message) {
+				require.Equal(t, common.Address{1}, *msg.To)
+				require.Equal(t, accessList, msg.AccessList)
+				require.Equal(t, setCodeAuthorizations, msg.SetCodeAuthorizations)
+			},
+		},
+		"set code transaction, empty auth list": {
+			tx: &types.SetCodeTx{
+				Nonce:      0,
+				To:         common.Address{1},
+				Gas:        21_000,
+				Value:      uint256.NewInt(100),
+				Data:       []byte{0x01, 0x02},
+				AccessList: accessList,
+			},
+			expectations: func(t *testing.T, msg core.Message) {
+				require.Equal(t, common.Address{1}, *msg.To)
+				require.Equal(t, accessList, msg.AccessList)
+				require.Empty(t, msg.SetCodeAuthorizations)
 			},
 		},
 	}
