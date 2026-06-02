@@ -80,14 +80,12 @@ func testSingleProposerProtocol_CanProcessTransactions(
 	// --- check processing of transactions ---
 
 	chainId := net.GetChainId()
-	signer := types.NewPragueSigner(chainId)
+	signer := types.LatestSignerForChainID(chainId)
 	target := common.Address{0x42}
 
-	startBlock, err := client.BlockNumber(t.Context())
-	require.NoError(err)
-
-	// Send a sequence of transactions to the network, in several rounds,
-	// across multiple epochs, and check that all get processed.
+	// Create all transactions offline, to avoid any influence of transaction
+	// creation on the test results.
+	txs := map[uint64][]*types.Transaction{}
 	for round := range uint64(NumRounds) {
 		transactions := []*types.Transaction{}
 		for sender := range NumTxsPerRound {
@@ -95,7 +93,6 @@ func testSingleProposerProtocol_CanProcessTransactions(
 				accounts[sender].PrivateKey,
 				signer,
 				&types.DynamicFeeTx{
-					ChainID:   chainId,
 					Nonce:     round,
 					To:        &target,
 					Value:     big.NewInt(1),
@@ -106,8 +103,16 @@ func testSingleProposerProtocol_CanProcessTransactions(
 			)
 			transactions = append(transactions, transaction)
 		}
+		txs[round] = transactions
+	}
 
-		receipts, err := net.RunAll(transactions)
+	startBlock, err := client.BlockNumber(t.Context())
+	require.NoError(err)
+
+	// Send a sequence of transactions to the network, in several rounds,
+	// across multiple epochs, and check that all get processed.
+	for round := range uint64(NumRounds) {
+		receipts, err := net.RunAll(txs[round])
 		require.NoError(err, "failed to run transactions")
 		require.Len(receipts, NumTxsPerRound, "unexpected number of receipts")
 		for _, receipt := range receipts {
@@ -129,8 +134,8 @@ func testSingleProposerProtocol_CanProcessTransactions(
 	endBlock, err := client.BlockNumber(t.Context())
 	require.NoError(err)
 
-	duration := endBlock - startBlock
-	require.Less(duration, uint64(2*NumRounds))
+	blockSpan := endBlock - startBlock
+	require.Less(blockSpan, uint64(2*NumRounds))
 }
 
 func TestSingleProposerProtocol_CanBeEnabledAndDisabled(t *testing.T) {
