@@ -79,6 +79,17 @@ type Transaction struct {
 	receipt     *types.Receipt
 }
 
+// NewTransaction creates a Transaction with the given parameters.
+// receipt may be nil for tests that don't require receipt data.
+func NewTransaction(tx *types.Transaction, blockNumber uint64, txIndex uint64, receipt *types.Receipt) *Transaction {
+	return &Transaction{
+		tx:          tx,
+		blockNumber: blockNumber,
+		txIndex:     txIndex,
+		receipt:     receipt,
+	}
+}
+
 type backendBuilder struct {
 	be fakeBackend
 }
@@ -179,6 +190,12 @@ func (b backendBuilder) Build() *fakeBackend {
 		b.be.upgrades[0] = opera.GetBrioUpgrades()
 	}
 	return &b.be
+}
+
+// BuildAsBackend constructs the fakeBackend and returns it as an ethapi.Backend.
+// Use this when the fake backend needs to be used from outside this package.
+func (b backendBuilder) BuildAsBackend() ethapi.Backend {
+	return b.Build()
 }
 
 // defaultBlockHistory returns a default block history with a single block (number 1, hash "0x1").
