@@ -63,10 +63,10 @@ func (s *SubsidiesIntegrationImplementation) isSponsored(tx *types.Transaction) 
 	vm := vm.NewEVM(blockContext, s.state, s.chain.CurrentConfig(), vmConfig)
 
 	// Query the subsidies registry contract to determine if the transaction is sponsored.
-	isSponsored, _, _, err := subsidies.IsCovered(s.rules.Upgrades, vm, s.signer, tx, baseFee)
+	result, err := subsidies.IsCovered(s.rules.Upgrades, vm, s.signer, tx, baseFee)
 	if err != nil {
 		log.Warn("Error checking if tx is sponsored", "tx", tx.Hash(), "err", err)
 		return false
 	}
-	return isSponsored
+	return result.IsSponsored()
 }

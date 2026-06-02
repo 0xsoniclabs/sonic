@@ -31,15 +31,18 @@ contract SubsidiesRegistry {
     // --- Funding infrastructure used by the Sonic client ---
 
     function getGasConfig() public pure returns (
-        uint256 chooseFundLimit, 
-        uint256 deductFeesLimit, 
-        uint256 overheadCharge
+        uint256 chooseFundLimit,
+        uint256 deductFeesLimit,
+        uint256 traceLimit,
+        uint256 fundBackedOverheadCharge,
+        uint256 networkTrackedOverheadCharge
     ) {
         uint256 getGasConfigCosts = 50_000;
         chooseFundLimit = 1_234_567;  // < different from default
         deductFeesLimit = 654_321;    // < different from default
-        overheadCharge = chooseFundLimit + deductFeesLimit + getGasConfigCosts;
-        return (chooseFundLimit, deductFeesLimit, overheadCharge);
+        traceLimit = 707_707;         // < different from default
+        fundBackedOverheadCharge = chooseFundLimit + deductFeesLimit + getGasConfigCosts;
+        networkTrackedOverheadCharge = chooseFundLimit + traceLimit + getGasConfigCosts;
     }
 
     function chooseFund(
@@ -49,12 +52,12 @@ contract SubsidiesRegistry {
         uint256 /*nonce*/,
         bytes calldata /*callData*/,
         uint256 fee
-    ) public view returns (bytes32 fundId) {
+    ) public view returns (uint256 mode, bytes32 fundId) {
         // Everything is funded if there is enough balance to cover the fee.
         if (address(this).balance >= fee) {
-            return bytes32(uint256(1));
+            return (1, bytes32(uint256(1)));
         }
-        return bytes32(0);
+        return (0, bytes32(0));
     }
 
     function deductFees(bytes32 fundId, uint256 fee) public {

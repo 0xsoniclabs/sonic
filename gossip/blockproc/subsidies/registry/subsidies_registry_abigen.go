@@ -31,8 +31,8 @@ var (
 
 // RegistryMetaData contains all meta data concerning the Registry contract.
 var RegistryMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"}],\"name\":\"accountSponsorshipFundId\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"callData\",\"type\":\"bytes\"}],\"name\":\"approvalSponsorshipFundId\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"bootstrapSponsorshipFund\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"callData\",\"type\":\"bytes\"}],\"name\":\"callSponsorshipFundId\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"callData\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"fee\",\"type\":\"uint256\"}],\"name\":\"chooseFund\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"fundId\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"}],\"name\":\"contractSponsorshipFundId\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"fundId\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"fee\",\"type\":\"uint256\"}],\"name\":\"deductFees\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getGasConfig\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"chooseFundLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"deductFeesLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"overheadCharge\",\"type\":\"uint256\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"globalSponsorshipFundId\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"fundId\",\"type\":\"bytes32\"}],\"name\":\"sponsor\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"id\",\"type\":\"bytes32\"}],\"name\":\"sponsorships\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"fundId\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"withdraw\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
-	Bin: "0x6080604052348015600e575f80fd5b50610cd48061001c5f395ff3fe6080604052600436106100a5575f3560e01c8063779a43ac11610062578063779a43ac1461019f5780639ec88e99146101b3578063a5dc4518146101c6578063b9ed9f26146101e5578063e327d1ac14610204578063fecb2bc314610223575f80fd5b8063040cf020146100a95780630ad1fcfc146100ca578063399f59ca146101055780634b5c54c01461013257806351ee41a01461016157806363f2cdca14610180575b5f80fd5b3480156100b4575f80fd5b506100c86100c33660046109ec565b61026a565b005b3480156100d5575f80fd5b506100e96100e4366004610a68565b610477565b6040805192151583526020830191909152015b60405180910390f35b348015610110575f80fd5b5061012461011f366004610ac9565b610576565b6040519081526020016100fc565b34801561013d575f80fd5b506101466106b9565b604080519384526020840192909252908201526060016100fc565b34801561016c575f80fd5b506100e961017b366004610b48565b6106e1565b34801561018b575f80fd5b506100e961019a366004610b6a565b61072c565b3480156101aa575f80fd5b506100e9610759565b6100c86101c1366004610b6a565b610792565b3480156101d1575f80fd5b506100e96101e0366004610a68565b6107fb565b3480156101f0575f80fd5b506100c86101ff3660046109ec565b6108a1565b34801561020f575f80fd5b506100e961021e366004610b48565b6109bc565b34801561022e575f80fd5b5061025561023d366004610b6a565b5f602081905290815260409020805460019091015482565b604080519283526020830191909152016100fc565b5f3a116102e45760405162461bcd60e51b815260206004820152603c60248201527f5769746864726177616c7320617265206e6f7420737570706f7274656420746860448201527f726f7567682073706f6e736f726564207472616e73616374696f6e730000000060648201526084015b60405180910390fd5b5f82815260208181526040808320338085526002820190935292205483111561035b5760405162461bcd60e51b8152602060048201526024808201527f4e6f7420656e6f75676820636f6e747269627574696f6e7320746f20776974686044820152636472617760e01b60648201526084016102db565b600182015482545f919061036f9086610b95565b6103799190610bb2565b83549091508111156103dc5760405162461bcd60e51b815260206004820152602660248201527f4e6f7420656e6f75676820617661696c61626c652066756e647320746f20776960448201526574686472617760d01b60648201526084016102db565b6001600160a01b0382165f90815260028401602052604081208054869290610405908490610bd1565b9250508190555083836001015f82825461041f9190610bd1565b90915550508254819084905f90610437908490610bd1565b90915550506040516001600160a01b0383169082156108fc029083905f818181858888f1935050505015801561046f573d5f803e3d5ffd5b505050505050565b5f806001600160a01b0385161580610490575060448314155b1561049f57505f90508061056d565b5f6104ad6004828688610be4565b6104b691610c0b565b905063095ea7b360e01b6001600160e01b03198216146104dc57505f915081905061056d565b5f806104eb866004818a610be4565b8101906104f89190610c3b565b91509150600181101561051457505f935083925061056d915050565b604051606160f81b60208201526001600160601b031960608b811b821660218401528a811b8216603584015284901b166049820152600190605d0160405160208183030381529060405280519060200120945094505050505b94509492505050565b5f8061058489898787610477565b925090508080156105a257505f828152602081905260409020548311155b156105ad57506106ae565b6105b9898987876107fb565b925090508080156105d757505f828152602081905260409020548311155b156105e257506106ae565b6105eb896106e1565b9250905080801561060957505f828152602081905260409020548311155b1561061457506106ae565b61061d886109bc565b9250905080801561063b57505f828152602081905260409020548311155b1561064657506106ae565b61064f8661072c565b9250905080801561066d57505f828152602081905260409020548311155b1561067857506106ae565b610680610759565b9250905080801561069e57505f828152602081905260409020548311155b156106a957506106ae565b505f90505b979650505050505050565b620186a061ea605f61c350806106cf8486610c65565b6106d99190610c65565b915050909192565b604051606160f81b60208201526001600160601b0319606083901b1660218201525f9081906001906035015b6040516020818303038152906040528051906020012091509150915091565b5f80600383101561074f57604051603160f91b602082015260019060210161070d565b505f928392509050565b5f80600160405160200161077490606760f81b815260010190565b60405160208183030381529060405280519060200120915091509091565b5f8181526020819052604081208054909134918391906107b3908490610c65565b9091555050335f908152600282016020526040812080543492906107d8908490610c65565b9250508190555034816001015f8282546107f29190610c65565b90915550505050565b5f806001600160a01b03851615806108135750600483105b1561082257505f90508061056d565b5f6108306004828688610be4565b61083991610c0b565b604051606360f81b60208201526001600160601b031960608a811b8216602184015289901b1660358201526001600160e01b031982166049820152909150600190604d0160405160208183030381529060405280519060200120925092505094509492505050565b33156108ab575f80fd5b816108f85760405162461bcd60e51b815260206004820152601a60248201527f4e6f2073706f6e736f72736869702066756e642063686f73656e00000000000060448201526064016102db565b5f82815260208190526040902080548211156109495760405162461bcd60e51b815260206004820152601060248201526f4e6f7420656e6f7567682066756e647360801b60448201526064016102db565b637e007d6760811b6001600160a01b031663850a10c0836040518263ffffffff1660e01b81526004015f604051808303818588803b158015610989575f80fd5b505af115801561099b573d5f803e3d5ffd5b505050505081815f015f8282546109b29190610bd1565b9091555050505050565b604051606360f81b60208201526001600160601b0319606083901b1660218201525f90819060019060350161070d565b5f80604083850312156109fd575f80fd5b50508035926020909101359150565b6001600160a01b0381168114610a20575f80fd5b50565b5f8083601f840112610a33575f80fd5b50813567ffffffffffffffff811115610a4a575f80fd5b602083019150836020828501011115610a61575f80fd5b9250929050565b5f805f8060608587031215610a7b575f80fd5b8435610a8681610a0c565b93506020850135610a9681610a0c565b9250604085013567ffffffffffffffff811115610ab1575f80fd5b610abd87828801610a23565b95989497509550505050565b5f805f805f805f60c0888a031215610adf575f80fd5b8735610aea81610a0c565b96506020880135610afa81610a0c565b95506040880135945060608801359350608088013567ffffffffffffffff811115610b23575f80fd5b610b2f8a828b01610a23565b989b979a5095989497959660a090950135949350505050565b5f60208284031215610b58575f80fd5b8135610b6381610a0c565b9392505050565b5f60208284031215610b7a575f80fd5b5035919050565b634e487b7160e01b5f52601160045260245ffd5b8082028115828204841417610bac57610bac610b81565b92915050565b5f82610bcc57634e487b7160e01b5f52601260045260245ffd5b500490565b81810381811115610bac57610bac610b81565b5f8085851115610bf2575f80fd5b83861115610bfe575f80fd5b5050820193919092039150565b6001600160e01b03198135818116916004851015610c335780818660040360031b1b83161692505b505092915050565b5f8060408385031215610c4c575f80fd5b8235610c5781610a0c565b946020939093013593505050565b80820180821115610bac57610bac610b8156fea2646970667358221220e35d1aab0674e81a57b70b67b8bb12aa870db3180e805fb970993f00dd02b3e764736f6c637828302e382e32352d646576656c6f702e323032342e322e32342b636f6d6d69742e64626137353465630059",
+	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"}],\"name\":\"accountSponsorshipFundId\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"callData\",\"type\":\"bytes\"}],\"name\":\"approvalSponsorshipFundId\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"bootstrapSponsorshipFund\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"callData\",\"type\":\"bytes\"}],\"name\":\"callSponsorshipFundId\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"callData\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"fee\",\"type\":\"uint256\"}],\"name\":\"chooseFund\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"mode\",\"type\":\"uint256\"},{\"internalType\":\"bytes32\",\"name\":\"payload\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"}],\"name\":\"contractSponsorshipFundId\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"fundId\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"fee\",\"type\":\"uint256\"}],\"name\":\"deductFees\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getGasConfig\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"gasLimitForChooseFund\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"gasLimitForDeductFees\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"gasLimitForTrack\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"overheadChargeForFundBackedSponsorships\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"overheadChargeForNetworkSponsorshipsWithTracking\",\"type\":\"uint256\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"globalSponsorshipFundId\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"fundId\",\"type\":\"bytes32\"}],\"name\":\"sponsor\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"id\",\"type\":\"bytes32\"}],\"name\":\"sponsorships\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"track\",\"outputs\":[],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"fundId\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"withdraw\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
+	Bin: "0x6080604052348015600e575f80fd5b50610d6f8061001c5f395ff3fe6080604052600436106100bf575f3560e01c8063779a43ac1161007c578063b9ed9f2611610057578063b9ed9f2614610213578063bf70eb1514610232578063e327d1ac14610251578063fecb2bc314610270575f80fd5b8063779a43ac146101cd5780639ec88e99146101e1578063a5dc4518146101f4575f80fd5b8063040cf020146100c35780630ad1fcfc146100e4578063399f59ca1461011f5780634b5c54c01461015357806351ee41a01461018f57806363f2cdca146101ae575b5f80fd5b3480156100ce575f80fd5b506100e26100dd366004610a87565b6102a2565b005b3480156100ef575f80fd5b506101036100fe366004610b03565b6104af565b6040805192151583526020830191909152015b60405180910390f35b34801561012a575f80fd5b5061013e610139366004610b64565b6105ae565b60408051928352602083019190915201610116565b34801561015e575f80fd5b50610167610728565b604080519586526020860194909452928401919091526060830152608082015260a001610116565b34801561019a575f80fd5b506101036101a9366004610be3565b61076e565b3480156101b9575f80fd5b506101036101c8366004610c05565b6107b9565b3480156101d8575f80fd5b506101036107e6565b6100e26101ef366004610c05565b61081f565b3480156101ff575f80fd5b5061010361020e366004610b03565b610888565b34801561021e575f80fd5b506100e261022d366004610a87565b61092e565b34801561023d575f80fd5b506100e261024c366004610a87565b610a49565b34801561025c575f80fd5b5061010361026b366004610be3565b610a57565b34801561027b575f80fd5b5061013e61028a366004610c05565b5f602081905290815260409020805460019091015482565b5f3a1161031c5760405162461bcd60e51b815260206004820152603c60248201527f5769746864726177616c7320617265206e6f7420737570706f7274656420746860448201527f726f7567682073706f6e736f726564207472616e73616374696f6e730000000060648201526084015b60405180910390fd5b5f8281526020818152604080832033808552600282019093529220548311156103935760405162461bcd60e51b8152602060048201526024808201527f4e6f7420656e6f75676820636f6e747269627574696f6e7320746f20776974686044820152636472617760e01b6064820152608401610313565b600182015482545f91906103a79086610c30565b6103b19190610c4d565b83549091508111156104145760405162461bcd60e51b815260206004820152602660248201527f4e6f7420656e6f75676820617661696c61626c652066756e647320746f20776960448201526574686472617760d01b6064820152608401610313565b6001600160a01b0382165f9081526002840160205260408120805486929061043d908490610c6c565b9250508190555083836001015f8282546104579190610c6c565b90915550508254819084905f9061046f908490610c6c565b90915550506040516001600160a01b0383169082156108fc029083905f818181858888f193505050501580156104a7573d5f803e3d5ffd5b505050505050565b5f806001600160a01b03851615806104c8575060448314155b156104d757505f9050806105a5565b5f6104e56004828688610c7f565b6104ee91610ca6565b905063095ea7b360e01b6001600160e01b031982161461051457505f91508190506105a5565b5f80610523866004818a610c7f565b8101906105309190610cd6565b91509150600181101561054c57505f93508392506105a5915050565b604051606160f81b60208201526001600160601b031960608b811b821660218401528a811b8216603584015284901b166049820152600190605d0160405160208183030381529060405280519060200120945094505050505b94509492505050565b5f805f806105be8b8b89896104af565b90925090508180156105dd57505f818152602081905260409020548511155b156105ef5760019350915061071c9050565b6105fb8b8b8989610888565b909250905081801561061a57505f818152602081905260409020548511155b1561062c5760019350915061071c9050565b6106358b61076e565b909250905081801561065457505f818152602081905260409020548511155b156106665760019350915061071c9050565b61066f8a610a57565b909250905081801561068e57505f818152602081905260409020548511155b156106a05760019350915061071c9050565b6106a9886107b9565b90925090508180156106c857505f818152602081905260409020548511155b156106da5760019350915061071c9050565b6106e26107e6565b909250905081801561070157505f818152602081905260409020548511155b156107135760019350915061071c9050565b505f9250829150505b97509795505050505050565b620186a061ea60620138805f8061c350806107438688610d00565b61074d9190610d00565b92508061075a8588610d00565b6107649190610d00565b9150509091929394565b604051606160f81b60208201526001600160601b0319606083901b1660218201525f9081906001906035015b6040516020818303038152906040528051906020012091509150915091565b5f8060038310156107dc57604051603160f91b602082015260019060210161079a565b505f928392509050565b5f80600160405160200161080190606760f81b815260010190565b60405160208183030381529060405280519060200120915091509091565b5f818152602081905260408120805490913491839190610840908490610d00565b9091555050335f90815260028201602052604081208054349290610865908490610d00565b9250508190555034816001015f82825461087f9190610d00565b90915550505050565b5f806001600160a01b03851615806108a05750600483105b156108af57505f9050806105a5565b5f6108bd6004828688610c7f565b6108c691610ca6565b604051606360f81b60208201526001600160601b031960608a811b8216602184015289901b1660358201526001600160e01b031982166049820152909150600190604d0160405160208183030381529060405280519060200120925092505094509492505050565b3315610938575f80fd5b816109855760405162461bcd60e51b815260206004820152601a60248201527f4e6f2073706f6e736f72736869702066756e642063686f73656e0000000000006044820152606401610313565b5f82815260208190526040902080548211156109d65760405162461bcd60e51b815260206004820152601060248201526f4e6f7420656e6f7567682066756e647360801b6044820152606401610313565b637e007d6760811b6001600160a01b031663850a10c0836040518263ffffffff1660e01b81526004015f604051808303818588803b158015610a16575f80fd5b505af1158015610a28573d5f803e3d5ffd5b505050505081815f015f828254610a3f9190610c6c565b9091555050505050565b3315610a53575f80fd5b5050565b604051606360f81b60208201526001600160601b0319606083901b1660218201525f90819060019060350161079a565b5f8060408385031215610a98575f80fd5b50508035926020909101359150565b6001600160a01b0381168114610abb575f80fd5b50565b5f8083601f840112610ace575f80fd5b50813567ffffffffffffffff811115610ae5575f80fd5b602083019150836020828501011115610afc575f80fd5b9250929050565b5f805f8060608587031215610b16575f80fd5b8435610b2181610aa7565b93506020850135610b3181610aa7565b9250604085013567ffffffffffffffff811115610b4c575f80fd5b610b5887828801610abe565b95989497509550505050565b5f805f805f805f60c0888a031215610b7a575f80fd5b8735610b8581610aa7565b96506020880135610b9581610aa7565b95506040880135945060608801359350608088013567ffffffffffffffff811115610bbe575f80fd5b610bca8a828b01610abe565b989b979a5095989497959660a090950135949350505050565b5f60208284031215610bf3575f80fd5b8135610bfe81610aa7565b9392505050565b5f60208284031215610c15575f80fd5b5035919050565b634e487b7160e01b5f52601160045260245ffd5b8082028115828204841417610c4757610c47610c1c565b92915050565b5f82610c6757634e487b7160e01b5f52601260045260245ffd5b500490565b81810381811115610c4757610c47610c1c565b5f8085851115610c8d575f80fd5b83861115610c99575f80fd5b5050820193919092039150565b6001600160e01b03198135818116916004851015610cce5780818660040360031b1b83161692505b505092915050565b5f8060408385031215610ce7575f80fd5b8235610cf281610aa7565b946020939093013593505050565b80820180821115610c4757610c47610c1c56fea26469706673582212203ba1354181a41b7e6c649ef4bc0d1071fdaf3a4abd14a88ebac9f2e825ca3ab964736f6c637828302e382e32352d646576656c6f702e323032342e322e32342b636f6d6d69742e64626137353465630059",
 }
 
 // RegistryABI is the input ABI used to generate the binding from.
@@ -332,32 +332,46 @@ func (_Registry *RegistryCallerSession) CallSponsorshipFundId(from common.Addres
 
 // ChooseFund is a free data retrieval call binding the contract method 0x399f59ca.
 //
-// Solidity: function chooseFund(address from, address to, uint256 , uint256 nonce, bytes callData, uint256 fee) view returns(bytes32 fundId)
-func (_Registry *RegistryCaller) ChooseFund(opts *bind.CallOpts, from common.Address, to common.Address, arg2 *big.Int, nonce *big.Int, callData []byte, fee *big.Int) ([32]byte, error) {
+// Solidity: function chooseFund(address from, address to, uint256 , uint256 nonce, bytes callData, uint256 fee) view returns(uint256 mode, bytes32 payload)
+func (_Registry *RegistryCaller) ChooseFund(opts *bind.CallOpts, from common.Address, to common.Address, arg2 *big.Int, nonce *big.Int, callData []byte, fee *big.Int) (struct {
+	Mode    *big.Int
+	Payload [32]byte
+}, error) {
 	var out []interface{}
 	err := _Registry.contract.Call(opts, &out, "chooseFund", from, to, arg2, nonce, callData, fee)
 
+	outstruct := new(struct {
+		Mode    *big.Int
+		Payload [32]byte
+	})
 	if err != nil {
-		return *new([32]byte), err
+		return *outstruct, err
 	}
 
-	out0 := *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
+	outstruct.Mode = *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
+	outstruct.Payload = *abi.ConvertType(out[1], new([32]byte)).(*[32]byte)
 
-	return out0, err
+	return *outstruct, err
 
 }
 
 // ChooseFund is a free data retrieval call binding the contract method 0x399f59ca.
 //
-// Solidity: function chooseFund(address from, address to, uint256 , uint256 nonce, bytes callData, uint256 fee) view returns(bytes32 fundId)
-func (_Registry *RegistrySession) ChooseFund(from common.Address, to common.Address, arg2 *big.Int, nonce *big.Int, callData []byte, fee *big.Int) ([32]byte, error) {
+// Solidity: function chooseFund(address from, address to, uint256 , uint256 nonce, bytes callData, uint256 fee) view returns(uint256 mode, bytes32 payload)
+func (_Registry *RegistrySession) ChooseFund(from common.Address, to common.Address, arg2 *big.Int, nonce *big.Int, callData []byte, fee *big.Int) (struct {
+	Mode    *big.Int
+	Payload [32]byte
+}, error) {
 	return _Registry.Contract.ChooseFund(&_Registry.CallOpts, from, to, arg2, nonce, callData, fee)
 }
 
 // ChooseFund is a free data retrieval call binding the contract method 0x399f59ca.
 //
-// Solidity: function chooseFund(address from, address to, uint256 , uint256 nonce, bytes callData, uint256 fee) view returns(bytes32 fundId)
-func (_Registry *RegistryCallerSession) ChooseFund(from common.Address, to common.Address, arg2 *big.Int, nonce *big.Int, callData []byte, fee *big.Int) ([32]byte, error) {
+// Solidity: function chooseFund(address from, address to, uint256 , uint256 nonce, bytes callData, uint256 fee) view returns(uint256 mode, bytes32 payload)
+func (_Registry *RegistryCallerSession) ChooseFund(from common.Address, to common.Address, arg2 *big.Int, nonce *big.Int, callData []byte, fee *big.Int) (struct {
+	Mode    *big.Int
+	Payload [32]byte
+}, error) {
 	return _Registry.Contract.ChooseFund(&_Registry.CallOpts, from, to, arg2, nonce, callData, fee)
 }
 
@@ -395,27 +409,33 @@ func (_Registry *RegistryCallerSession) ContractSponsorshipFundId(to common.Addr
 
 // GetGasConfig is a free data retrieval call binding the contract method 0x4b5c54c0.
 //
-// Solidity: function getGasConfig() pure returns(uint256 chooseFundLimit, uint256 deductFeesLimit, uint256 overheadCharge)
+// Solidity: function getGasConfig() pure returns(uint256 gasLimitForChooseFund, uint256 gasLimitForDeductFees, uint256 gasLimitForTrack, uint256 overheadChargeForFundBackedSponsorships, uint256 overheadChargeForNetworkSponsorshipsWithTracking)
 func (_Registry *RegistryCaller) GetGasConfig(opts *bind.CallOpts) (struct {
-	ChooseFundLimit *big.Int
-	DeductFeesLimit *big.Int
-	OverheadCharge  *big.Int
+	GasLimitForChooseFund                            *big.Int
+	GasLimitForDeductFees                            *big.Int
+	GasLimitForTrack                                 *big.Int
+	OverheadChargeForFundBackedSponsorships          *big.Int
+	OverheadChargeForNetworkSponsorshipsWithTracking *big.Int
 }, error) {
 	var out []interface{}
 	err := _Registry.contract.Call(opts, &out, "getGasConfig")
 
 	outstruct := new(struct {
-		ChooseFundLimit *big.Int
-		DeductFeesLimit *big.Int
-		OverheadCharge  *big.Int
+		GasLimitForChooseFund                            *big.Int
+		GasLimitForDeductFees                            *big.Int
+		GasLimitForTrack                                 *big.Int
+		OverheadChargeForFundBackedSponsorships          *big.Int
+		OverheadChargeForNetworkSponsorshipsWithTracking *big.Int
 	})
 	if err != nil {
 		return *outstruct, err
 	}
 
-	outstruct.ChooseFundLimit = *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
-	outstruct.DeductFeesLimit = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
-	outstruct.OverheadCharge = *abi.ConvertType(out[2], new(*big.Int)).(**big.Int)
+	outstruct.GasLimitForChooseFund = *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
+	outstruct.GasLimitForDeductFees = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
+	outstruct.GasLimitForTrack = *abi.ConvertType(out[2], new(*big.Int)).(**big.Int)
+	outstruct.OverheadChargeForFundBackedSponsorships = *abi.ConvertType(out[3], new(*big.Int)).(**big.Int)
+	outstruct.OverheadChargeForNetworkSponsorshipsWithTracking = *abi.ConvertType(out[4], new(*big.Int)).(**big.Int)
 
 	return *outstruct, err
 
@@ -423,22 +443,26 @@ func (_Registry *RegistryCaller) GetGasConfig(opts *bind.CallOpts) (struct {
 
 // GetGasConfig is a free data retrieval call binding the contract method 0x4b5c54c0.
 //
-// Solidity: function getGasConfig() pure returns(uint256 chooseFundLimit, uint256 deductFeesLimit, uint256 overheadCharge)
+// Solidity: function getGasConfig() pure returns(uint256 gasLimitForChooseFund, uint256 gasLimitForDeductFees, uint256 gasLimitForTrack, uint256 overheadChargeForFundBackedSponsorships, uint256 overheadChargeForNetworkSponsorshipsWithTracking)
 func (_Registry *RegistrySession) GetGasConfig() (struct {
-	ChooseFundLimit *big.Int
-	DeductFeesLimit *big.Int
-	OverheadCharge  *big.Int
+	GasLimitForChooseFund                            *big.Int
+	GasLimitForDeductFees                            *big.Int
+	GasLimitForTrack                                 *big.Int
+	OverheadChargeForFundBackedSponsorships          *big.Int
+	OverheadChargeForNetworkSponsorshipsWithTracking *big.Int
 }, error) {
 	return _Registry.Contract.GetGasConfig(&_Registry.CallOpts)
 }
 
 // GetGasConfig is a free data retrieval call binding the contract method 0x4b5c54c0.
 //
-// Solidity: function getGasConfig() pure returns(uint256 chooseFundLimit, uint256 deductFeesLimit, uint256 overheadCharge)
+// Solidity: function getGasConfig() pure returns(uint256 gasLimitForChooseFund, uint256 gasLimitForDeductFees, uint256 gasLimitForTrack, uint256 overheadChargeForFundBackedSponsorships, uint256 overheadChargeForNetworkSponsorshipsWithTracking)
 func (_Registry *RegistryCallerSession) GetGasConfig() (struct {
-	ChooseFundLimit *big.Int
-	DeductFeesLimit *big.Int
-	OverheadCharge  *big.Int
+	GasLimitForChooseFund                            *big.Int
+	GasLimitForDeductFees                            *big.Int
+	GasLimitForTrack                                 *big.Int
+	OverheadChargeForFundBackedSponsorships          *big.Int
+	OverheadChargeForNetworkSponsorshipsWithTracking *big.Int
 }, error) {
 	return _Registry.Contract.GetGasConfig(&_Registry.CallOpts)
 }
@@ -518,6 +542,35 @@ func (_Registry *RegistryCallerSession) Sponsorships(id [32]byte) (struct {
 	TotalContributions *big.Int
 }, error) {
 	return _Registry.Contract.Sponsorships(&_Registry.CallOpts, id)
+}
+
+// Track is a free data retrieval call binding the contract method 0xbf70eb15.
+//
+// Solidity: function track(bytes32 , uint256 ) view returns()
+func (_Registry *RegistryCaller) Track(opts *bind.CallOpts, arg0 [32]byte, arg1 *big.Int) error {
+	var out []interface{}
+	err := _Registry.contract.Call(opts, &out, "track", arg0, arg1)
+
+	if err != nil {
+		return err
+	}
+
+	return err
+
+}
+
+// Track is a free data retrieval call binding the contract method 0xbf70eb15.
+//
+// Solidity: function track(bytes32 , uint256 ) view returns()
+func (_Registry *RegistrySession) Track(arg0 [32]byte, arg1 *big.Int) error {
+	return _Registry.Contract.Track(&_Registry.CallOpts, arg0, arg1)
+}
+
+// Track is a free data retrieval call binding the contract method 0xbf70eb15.
+//
+// Solidity: function track(bytes32 , uint256 ) view returns()
+func (_Registry *RegistryCallerSession) Track(arg0 [32]byte, arg1 *big.Int) error {
+	return _Registry.Contract.Track(&_Registry.CallOpts, arg0, arg1)
 }
 
 // DeductFees is a paid mutator transaction binding the contract method 0xb9ed9f26.

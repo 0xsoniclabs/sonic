@@ -273,7 +273,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 
 					if subsidies.IsSponsorshipRequest(tx) {
 						fundsUsed := (receipt.GasUsed +
-							config.OverheadCharge.Uint64()) * block.BaseFee().Uint64()
+							config.OverheadChargeForFundBackedSponsorships.Uint64()) * block.BaseFee().Uint64()
 						require.Greater(t, fundsUsed, uint64(0),
 							"sponsored tx must have a non-zero funds cost",
 						)
@@ -350,7 +350,7 @@ func TestGasSubsidies_SubsidizedTransaction_SkipTransactionIfDeduceFundsDoesNotF
 
 	net.AdvanceEpoch(t, 1)
 
-	tooLargeToFit := 3_000_000 - config.OverheadCharge.Uint64() + 1
+	tooLargeToFit := 3_000_000 - config.OverheadChargeForFundBackedSponsorships.Uint64() + 1
 
 	opts, err := net.GetTransactOptions(sponsoredSender)
 	require.NoError(t, err)

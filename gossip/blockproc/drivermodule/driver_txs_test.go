@@ -197,18 +197,11 @@ func TestDriverTxListener_OnNewReceipt_SwitchesOnBrio(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			nonceSource := subsidies.NewMockNonceSource(ctrl)
-			nonceSource.EXPECT().GetNonce(gomock.Any()).AnyTimes()
-
-			tx, err := subsidies.GetFeeChargeTransaction(
-				nonceSource,
-				subsidies.FundId{},
-				subsidies.GasConfig{},
-				123,
-				big.NewInt(456),
-			)
-			require.NoError(t, err)
+			tx := subsidies.NewPostTxBuilder().
+				WithOverhead(100).
+				WithUsedGas(23).
+				WithGasPrice(big.NewInt(456)).
+				BuildForTesting()
 
 			receipt := &types.Receipt{
 				Status: types.ReceiptStatusSuccessful,
@@ -431,18 +424,10 @@ func TestComputeEffectiveFee_UsesChargedAmountForSponsorshipPayments(t *testing.
 	for _, price := range prices {
 		for _, used := range uses {
 			t.Run(fmt.Sprintf("price=%v/used=%d", price, used), func(t *testing.T) {
-				ctrl := gomock.NewController(t)
-				nonceSource := subsidies.NewMockNonceSource(ctrl)
-				nonceSource.EXPECT().GetNonce(gomock.Any()).AnyTimes()
-
-				tx, err := subsidies.GetFeeChargeTransaction(
-					nonceSource,
-					subsidies.FundId{},
-					subsidies.GasConfig{},
-					used,
-					price,
-				)
-				require.NoError(t, err)
+				tx := subsidies.NewPostTxBuilder().
+					WithUsedGas(used).
+					WithGasPrice(price).
+					BuildForTesting()
 
 				want := new(big.Int).Mul(
 					new(big.Int).SetUint64(used),
@@ -464,18 +449,11 @@ func TestComputeEffectiveFee_UsesChargedAmountForSponsorshipPayments(t *testing.
 }
 
 func TestComputeEffectiveFee_FailedFeeChargeTransaction_ReturnsZeroFee(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	nonceSource := subsidies.NewMockNonceSource(ctrl)
-	nonceSource.EXPECT().GetNonce(gomock.Any()).AnyTimes()
+	tx := subsidies.NewPostTxBuilder().
+		WithUsedGas(1234).
+		WithGasPrice(big.NewInt(4321)).
+		BuildForTesting()
 
-	tx, err := subsidies.GetFeeChargeTransaction(
-		nonceSource,
-		subsidies.FundId{},
-		subsidies.GasConfig{},
-		1234,
-		big.NewInt(4321),
-	)
-	require.NoError(t, err)
 	require.True(t, subsidies.IsFeeChargeTransaction(tx))
 
 	// If the fee charge failed, no fees have been actually charged.

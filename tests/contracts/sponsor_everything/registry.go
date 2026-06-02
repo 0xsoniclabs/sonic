@@ -31,8 +31,8 @@ var (
 
 // SponsorEverythingMetaData contains all meta data concerning the SponsorEverything contract.
 var SponsorEverythingMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"accountSponsorshipFundId\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"fee\",\"type\":\"uint256\"}],\"name\":\"chooseFund\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"fundId\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"fundId\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"fee\",\"type\":\"uint256\"}],\"name\":\"deductFees\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getGasConfig\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"chooseFundLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"deductFeesLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"overheadCharge\",\"type\":\"uint256\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"fundId\",\"type\":\"bytes32\"}],\"name\":\"sponsor\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"id\",\"type\":\"bytes32\"}],\"name\":\"sponsorships\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
-	Bin: "0x6080604052348015600e575f5ffd5b506108888061001c5f395ff3fe608060405260043610610054575f3560e01c8063399f59ca146100585780634b5c54c01461009457806351ee41a0146100c05780639ec88e99146100fd578063b9ed9f2614610119578063fecb2bc314610141575b5f5ffd5b348015610063575f5ffd5b5061007e600480360381019061007991906104cd565b61017e565b60405161008b919061058f565b60405180910390f35b34801561009f575f5ffd5b506100a86101a2565b6040516100b7939291906105b7565b60405180910390f35b3480156100cb575f5ffd5b506100e660048036038101906100e191906105ec565b6101d6565b6040516100f4929190610631565b60405180910390f35b61011760048036038101906101129190610682565b6101e6565b005b348015610124575f5ffd5b5061013f600480360381019061013a91906106ad565b610285565b005b34801561014c575f5ffd5b5061016760048036038101906101629190610682565b6103b8565b6040516101759291906106eb565b60405180910390f35b5f8147106101915760015f1b9050610197565b5f5f1b90505b979650505050505050565b5f5f5f5f61c35090506212d68793506209fbf192508083856101c4919061073f565b6101ce919061073f565b915050909192565b5f5f6001805f1b91509150915091565b5f5f5f8381526020019081526020015f20905034815f015f82825461020b919061073f565b9250508190555034816002015f3373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020015f205f828254610260919061073f565b9250508190555034816001015f82825461027a919061073f565b925050819055505050565b5f73ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff16146102bc575f5ffd5b5f5f1b8203610300576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004016102f7906107cc565b60405180910390fd5b80471015610343576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040161033a90610834565b60405180910390fd5b73fc00face0000000000000000000000000000000073ffffffffffffffffffffffffffffffffffffffff1663850a10c0826040518263ffffffff1660e01b81526004015f604051808303818588803b15801561039d575f5ffd5b505af11580156103af573d5f5f3e3d5ffd5b50505050505050565b5f602052805f5260405f205f91509050805f0154908060010154905082565b5f5ffd5b5f5ffd5b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f610408826103df565b9050919050565b610418816103fe565b8114610422575f5ffd5b50565b5f813590506104338161040f565b92915050565b5f819050919050565b61044b81610439565b8114610455575f5ffd5b50565b5f8135905061046681610442565b92915050565b5f5ffd5b5f5ffd5b5f5ffd5b5f5f83601f84011261048d5761048c61046c565b5b8235905067ffffffffffffffff8111156104aa576104a9610470565b5b6020830191508360018202830111156104c6576104c5610474565b5b9250929050565b5f5f5f5f5f5f5f60c0888a0312156104e8576104e76103d7565b5b5f6104f58a828b01610425565b97505060206105068a828b01610425565b96505060406105178a828b01610458565b95505060606105288a828b01610458565b945050608088013567ffffffffffffffff811115610549576105486103db565b5b6105558a828b01610478565b935093505060a06105688a828b01610458565b91505092959891949750929550565b5f819050919050565b61058981610577565b82525050565b5f6020820190506105a25f830184610580565b92915050565b6105b181610439565b82525050565b5f6060820190506105ca5f8301866105a8565b6105d760208301856105a8565b6105e460408301846105a8565b949350505050565b5f60208284031215610601576106006103d7565b5b5f61060e84828501610425565b91505092915050565b5f8115159050919050565b61062b81610617565b82525050565b5f6040820190506106445f830185610622565b6106516020830184610580565b9392505050565b61066181610577565b811461066b575f5ffd5b50565b5f8135905061067c81610658565b92915050565b5f60208284031215610697576106966103d7565b5b5f6106a48482850161066e565b91505092915050565b5f5f604083850312156106c3576106c26103d7565b5b5f6106d08582860161066e565b92505060206106e185828601610458565b9150509250929050565b5f6040820190506106fe5f8301856105a8565b61070b60208301846105a8565b9392505050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b5f61074982610439565b915061075483610439565b925082820190508082111561076c5761076b610712565b5b92915050565b5f82825260208201905092915050565b7f4e6f2073706f6e736f72736869702066756e642063686f73656e0000000000005f82015250565b5f6107b6601a83610772565b91506107c182610782565b602082019050919050565b5f6020820190508181035f8301526107e3816107aa565b9050919050565b7f4e6f7420656e6f7567682066756e6473000000000000000000000000000000005f82015250565b5f61081e601083610772565b9150610829826107ea565b602082019050919050565b5f6020820190508181035f83015261084b81610812565b905091905056fea2646970667358221220c0b8ceba4026befc5f7d3a75a3015e34ec7b952bf463ce7360d2f605d26fe20264736f6c634300081b0033",
+	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"accountSponsorshipFundId\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"fee\",\"type\":\"uint256\"}],\"name\":\"chooseFund\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"mode\",\"type\":\"uint256\"},{\"internalType\":\"bytes32\",\"name\":\"fundId\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"fundId\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"fee\",\"type\":\"uint256\"}],\"name\":\"deductFees\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getGasConfig\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"chooseFundLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"deductFeesLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"traceLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"fundBackedOverheadCharge\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"networkTrackedOverheadCharge\",\"type\":\"uint256\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"fundId\",\"type\":\"bytes32\"}],\"name\":\"sponsor\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"id\",\"type\":\"bytes32\"}],\"name\":\"sponsorships\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
+	Bin: "0x6080604052348015600e575f80fd5b506109068061001c5f395ff3fe608060405260043610610054575f3560e01c8063399f59ca146100585780634b5c54c01461009557806351ee41a0146100c35780639ec88e9914610100578063b9ed9f261461011c578063fecb2bc314610144575b5f80fd5b348015610063575f80fd5b5061007e600480360381019061007991906104fb565b610181565b60405161008c9291906105cc565b60405180910390f35b3480156100a0575f80fd5b506100a96101ad565b6040516100ba9594939291906105f3565b60405180910390f35b3480156100ce575f80fd5b506100e960048036038101906100e49190610644565b610204565b6040516100f7929190610689565b60405180910390f35b61011a600480360381019061011591906106da565b610214565b005b348015610127575f80fd5b50610142600480360381019061013d9190610705565b6102b3565b005b34801561014f575f80fd5b5061016a600480360381019061016591906106da565b6103e6565b604051610178929190610743565b60405180910390f35b5f80824710610198576001805f1b915091506101a1565b5f805f1b915091505b97509795505050505050565b5f805f805f8061c35090506212d68795506209fbf19450620acc7b93508085876101d79190610797565b6101e19190610797565b92508084876101f09190610797565b6101fa9190610797565b9150509091929394565b5f806001805f1b91509150915091565b5f805f8381526020019081526020015f20905034815f015f8282546102399190610797565b9250508190555034816002015f3373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020015f205f82825461028e9190610797565b9250508190555034816001015f8282546102a89190610797565b925050819055505050565b5f73ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff16146102ea575f80fd5b5f801b820361032e576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040161032590610824565b60405180910390fd5b80471015610371576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004016103689061088c565b60405180910390fd5b73fc00face0000000000000000000000000000000073ffffffffffffffffffffffffffffffffffffffff1663850a10c0826040518263ffffffff1660e01b81526004015f604051808303818588803b1580156103cb575f80fd5b505af11580156103dd573d5f803e3d5ffd5b50505050505050565b5f602052805f5260405f205f91509050805f0154908060010154905082565b5f80fd5b5f80fd5b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f6104368261040d565b9050919050565b6104468161042c565b8114610450575f80fd5b50565b5f813590506104618161043d565b92915050565b5f819050919050565b61047981610467565b8114610483575f80fd5b50565b5f8135905061049481610470565b92915050565b5f80fd5b5f80fd5b5f80fd5b5f8083601f8401126104bb576104ba61049a565b5b8235905067ffffffffffffffff8111156104d8576104d761049e565b5b6020830191508360018202830111156104f4576104f36104a2565b5b9250929050565b5f805f805f805f60c0888a03121561051657610515610405565b5b5f6105238a828b01610453565b97505060206105348a828b01610453565b96505060406105458a828b01610486565b95505060606105568a828b01610486565b945050608088013567ffffffffffffffff81111561057757610576610409565b5b6105838a828b016104a6565b935093505060a06105968a828b01610486565b91505092959891949750929550565b6105ae81610467565b82525050565b5f819050919050565b6105c6816105b4565b82525050565b5f6040820190506105df5f8301856105a5565b6105ec60208301846105bd565b9392505050565b5f60a0820190506106065f8301886105a5565b61061360208301876105a5565b61062060408301866105a5565b61062d60608301856105a5565b61063a60808301846105a5565b9695505050505050565b5f6020828403121561065957610658610405565b5b5f61066684828501610453565b91505092915050565b5f8115159050919050565b6106838161066f565b82525050565b5f60408201905061069c5f83018561067a565b6106a960208301846105bd565b9392505050565b6106b9816105b4565b81146106c3575f80fd5b50565b5f813590506106d4816106b0565b92915050565b5f602082840312156106ef576106ee610405565b5b5f6106fc848285016106c6565b91505092915050565b5f806040838503121561071b5761071a610405565b5b5f610728858286016106c6565b925050602061073985828601610486565b9150509250929050565b5f6040820190506107565f8301856105a5565b61076360208301846105a5565b9392505050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b5f6107a182610467565b91506107ac83610467565b92508282019050808211156107c4576107c361076a565b5b92915050565b5f82825260208201905092915050565b7f4e6f2073706f6e736f72736869702066756e642063686f73656e0000000000005f82015250565b5f61080e601a836107ca565b9150610819826107da565b602082019050919050565b5f6020820190508181035f83015261083b81610802565b9050919050565b7f4e6f7420656e6f7567682066756e6473000000000000000000000000000000005f82015250565b5f6108766010836107ca565b915061088182610842565b602082019050919050565b5f6020820190508181035f8301526108a38161086a565b905091905056fea2646970667358221220ad124e2ad445550b526fe56511d9e8af06b04cd0e30a9f3f918b000c4744458364736f6c637828302e382e32352d646576656c6f702e323032342e322e32342b636f6d6d69742e64626137353465630059",
 }
 
 // SponsorEverythingABI is the input ABI used to generate the binding from.
@@ -236,50 +236,68 @@ func (_SponsorEverything *SponsorEverythingCallerSession) AccountSponsorshipFund
 
 // ChooseFund is a free data retrieval call binding the contract method 0x399f59ca.
 //
-// Solidity: function chooseFund(address , address , uint256 , uint256 , bytes , uint256 fee) view returns(bytes32 fundId)
-func (_SponsorEverything *SponsorEverythingCaller) ChooseFund(opts *bind.CallOpts, arg0 common.Address, arg1 common.Address, arg2 *big.Int, arg3 *big.Int, arg4 []byte, fee *big.Int) ([32]byte, error) {
+// Solidity: function chooseFund(address , address , uint256 , uint256 , bytes , uint256 fee) view returns(uint256 mode, bytes32 fundId)
+func (_SponsorEverything *SponsorEverythingCaller) ChooseFund(opts *bind.CallOpts, arg0 common.Address, arg1 common.Address, arg2 *big.Int, arg3 *big.Int, arg4 []byte, fee *big.Int) (struct {
+	Mode   *big.Int
+	FundId [32]byte
+}, error) {
 	var out []interface{}
 	err := _SponsorEverything.contract.Call(opts, &out, "chooseFund", arg0, arg1, arg2, arg3, arg4, fee)
 
+	outstruct := new(struct {
+		Mode   *big.Int
+		FundId [32]byte
+	})
 	if err != nil {
-		return *new([32]byte), err
+		return *outstruct, err
 	}
 
-	out0 := *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
+	outstruct.Mode = *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
+	outstruct.FundId = *abi.ConvertType(out[1], new([32]byte)).(*[32]byte)
 
-	return out0, err
+	return *outstruct, err
 
 }
 
 // ChooseFund is a free data retrieval call binding the contract method 0x399f59ca.
 //
-// Solidity: function chooseFund(address , address , uint256 , uint256 , bytes , uint256 fee) view returns(bytes32 fundId)
-func (_SponsorEverything *SponsorEverythingSession) ChooseFund(arg0 common.Address, arg1 common.Address, arg2 *big.Int, arg3 *big.Int, arg4 []byte, fee *big.Int) ([32]byte, error) {
+// Solidity: function chooseFund(address , address , uint256 , uint256 , bytes , uint256 fee) view returns(uint256 mode, bytes32 fundId)
+func (_SponsorEverything *SponsorEverythingSession) ChooseFund(arg0 common.Address, arg1 common.Address, arg2 *big.Int, arg3 *big.Int, arg4 []byte, fee *big.Int) (struct {
+	Mode   *big.Int
+	FundId [32]byte
+}, error) {
 	return _SponsorEverything.Contract.ChooseFund(&_SponsorEverything.CallOpts, arg0, arg1, arg2, arg3, arg4, fee)
 }
 
 // ChooseFund is a free data retrieval call binding the contract method 0x399f59ca.
 //
-// Solidity: function chooseFund(address , address , uint256 , uint256 , bytes , uint256 fee) view returns(bytes32 fundId)
-func (_SponsorEverything *SponsorEverythingCallerSession) ChooseFund(arg0 common.Address, arg1 common.Address, arg2 *big.Int, arg3 *big.Int, arg4 []byte, fee *big.Int) ([32]byte, error) {
+// Solidity: function chooseFund(address , address , uint256 , uint256 , bytes , uint256 fee) view returns(uint256 mode, bytes32 fundId)
+func (_SponsorEverything *SponsorEverythingCallerSession) ChooseFund(arg0 common.Address, arg1 common.Address, arg2 *big.Int, arg3 *big.Int, arg4 []byte, fee *big.Int) (struct {
+	Mode   *big.Int
+	FundId [32]byte
+}, error) {
 	return _SponsorEverything.Contract.ChooseFund(&_SponsorEverything.CallOpts, arg0, arg1, arg2, arg3, arg4, fee)
 }
 
 // GetGasConfig is a free data retrieval call binding the contract method 0x4b5c54c0.
 //
-// Solidity: function getGasConfig() pure returns(uint256 chooseFundLimit, uint256 deductFeesLimit, uint256 overheadCharge)
+// Solidity: function getGasConfig() pure returns(uint256 chooseFundLimit, uint256 deductFeesLimit, uint256 traceLimit, uint256 fundBackedOverheadCharge, uint256 networkTrackedOverheadCharge)
 func (_SponsorEverything *SponsorEverythingCaller) GetGasConfig(opts *bind.CallOpts) (struct {
-	ChooseFundLimit *big.Int
-	DeductFeesLimit *big.Int
-	OverheadCharge  *big.Int
+	ChooseFundLimit              *big.Int
+	DeductFeesLimit              *big.Int
+	TraceLimit                   *big.Int
+	FundBackedOverheadCharge     *big.Int
+	NetworkTrackedOverheadCharge *big.Int
 }, error) {
 	var out []interface{}
 	err := _SponsorEverything.contract.Call(opts, &out, "getGasConfig")
 
 	outstruct := new(struct {
-		ChooseFundLimit *big.Int
-		DeductFeesLimit *big.Int
-		OverheadCharge  *big.Int
+		ChooseFundLimit              *big.Int
+		DeductFeesLimit              *big.Int
+		TraceLimit                   *big.Int
+		FundBackedOverheadCharge     *big.Int
+		NetworkTrackedOverheadCharge *big.Int
 	})
 	if err != nil {
 		return *outstruct, err
@@ -287,7 +305,9 @@ func (_SponsorEverything *SponsorEverythingCaller) GetGasConfig(opts *bind.CallO
 
 	outstruct.ChooseFundLimit = *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
 	outstruct.DeductFeesLimit = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
-	outstruct.OverheadCharge = *abi.ConvertType(out[2], new(*big.Int)).(**big.Int)
+	outstruct.TraceLimit = *abi.ConvertType(out[2], new(*big.Int)).(**big.Int)
+	outstruct.FundBackedOverheadCharge = *abi.ConvertType(out[3], new(*big.Int)).(**big.Int)
+	outstruct.NetworkTrackedOverheadCharge = *abi.ConvertType(out[4], new(*big.Int)).(**big.Int)
 
 	return *outstruct, err
 
@@ -295,22 +315,26 @@ func (_SponsorEverything *SponsorEverythingCaller) GetGasConfig(opts *bind.CallO
 
 // GetGasConfig is a free data retrieval call binding the contract method 0x4b5c54c0.
 //
-// Solidity: function getGasConfig() pure returns(uint256 chooseFundLimit, uint256 deductFeesLimit, uint256 overheadCharge)
+// Solidity: function getGasConfig() pure returns(uint256 chooseFundLimit, uint256 deductFeesLimit, uint256 traceLimit, uint256 fundBackedOverheadCharge, uint256 networkTrackedOverheadCharge)
 func (_SponsorEverything *SponsorEverythingSession) GetGasConfig() (struct {
-	ChooseFundLimit *big.Int
-	DeductFeesLimit *big.Int
-	OverheadCharge  *big.Int
+	ChooseFundLimit              *big.Int
+	DeductFeesLimit              *big.Int
+	TraceLimit                   *big.Int
+	FundBackedOverheadCharge     *big.Int
+	NetworkTrackedOverheadCharge *big.Int
 }, error) {
 	return _SponsorEverything.Contract.GetGasConfig(&_SponsorEverything.CallOpts)
 }
 
 // GetGasConfig is a free data retrieval call binding the contract method 0x4b5c54c0.
 //
-// Solidity: function getGasConfig() pure returns(uint256 chooseFundLimit, uint256 deductFeesLimit, uint256 overheadCharge)
+// Solidity: function getGasConfig() pure returns(uint256 chooseFundLimit, uint256 deductFeesLimit, uint256 traceLimit, uint256 fundBackedOverheadCharge, uint256 networkTrackedOverheadCharge)
 func (_SponsorEverything *SponsorEverythingCallerSession) GetGasConfig() (struct {
-	ChooseFundLimit *big.Int
-	DeductFeesLimit *big.Int
-	OverheadCharge  *big.Int
+	ChooseFundLimit              *big.Int
+	DeductFeesLimit              *big.Int
+	TraceLimit                   *big.Int
+	FundBackedOverheadCharge     *big.Int
+	NetworkTrackedOverheadCharge *big.Int
 }, error) {
 	return _SponsorEverything.Contract.GetGasConfig(&_SponsorEverything.CallOpts)
 }

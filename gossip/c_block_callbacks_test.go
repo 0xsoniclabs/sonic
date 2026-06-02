@@ -1381,10 +1381,7 @@ func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.
 			var processedTxs []evmcore.ProcessedTransaction
 			var feeChargingTransaction *types.Transaction
 			if test.gasPrice == 0 {
-				feeChargingTransaction = types.NewTx(&types.LegacyTx{
-					// Fill the tx to simulate the size of a fee charging tx
-					Data: make([]byte, subsidies.RlpEncodedFeeChargingTxSizeInBytes),
-				})
+				feeChargingTransaction = subsidies.NewPostTxBuilder().BuildForTesting()
 				processedTxs = []evmcore.ProcessedTransaction{
 					{Transaction: tx0, Receipt: &types.Receipt{}},
 					{Transaction: tx1, Receipt: &types.Receipt{}},

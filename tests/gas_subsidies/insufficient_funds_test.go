@@ -53,8 +53,11 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 	require.NoError(t, err)
 
 	// The cost of the sponsored transaction is the gas used by the tx
-	// plus the overhead of the sponsorship itself
-	cost := tx.Gas + gasConfig.OverheadCharge.Uint64()
+	// plus the maximum overhead charged, depending on the sponsorship type.
+	limit := tx.Gas + max(
+		gasConfig.OverheadChargeForFundBackedSponsorships.Uint64(),
+		gasConfig.OverheadChargeForNetworkSponsorshipsWithTracking.Uint64(),
+	)
 
 	// Get the current baseFee to calculate the required funds
 	header, err := client.HeaderByNumber(t.Context(), big.NewInt(0))
@@ -62,7 +65,7 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 	baseFee := header.BaseFee
 
 	// Only add half the required funds
-	sponsorshipAmount := big.NewInt(int64(cost) * baseFee.Int64() / 2)
+	sponsorshipAmount := big.NewInt(int64(limit) * baseFee.Int64() / 2)
 	ok, fundId, err := sponsorRegistry.AccountSponsorshipFundId(nil, sponsee.Address())
 	require.NoError(t, err)
 	require.True(t, ok, "registry should have a fund ID")
@@ -118,5 +121,6 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 	fundsAfter := sponsorship.Funds.Uint64()
 
 	// Check that the funds were reduced by the expected amount
+	cost := tx.Gas + gasConfig.OverheadChargeForFundBackedSponsorships.Uint64()
 	require.Equal(t, fundsBefore-cost*baseFee.Uint64(), fundsAfter)
 }

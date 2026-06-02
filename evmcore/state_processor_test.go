@@ -1882,6 +1882,128 @@ func TestRunSponsoredTransaction_FeeDeductionTxFails_TransactionIsAcceptedWithou
 	require.Equal(t, want, got)
 }
 
+func TestRunSponsoredTransaction_TxIsNetworkSponsored_TransactionIsAcceptedWithoutPostTransaction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	evm := NewMock_evm(ctrl)
+
+	tx := getSponsorshipRequest(t)
+
+	// Snapshot for the IsCovered call
+	state.EXPECT().Snapshot().Return(1)
+	state.EXPECT().RevertToSnapshot(1)
+
+	// Let the IsCovered call indicate that the transaction is covered by a
+	// network sponsorship without tracking.
+	any := gomock.Any()
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{31: 2, 63: 0}, uint64(0), nil) // indicates "network covered"
+
+	// Expect the sponsored transaction to be processed successfully.
+	processedSponsoredTransaction := ProcessedTransaction{
+		Transaction: tx,
+		Receipt: &types.Receipt{
+			Status:  types.ReceiptStatusSuccessful,
+			GasUsed: 21_000,
+		},
+	}
+	evm.EXPECT().runWithoutBaseFeeCheck(any, tx, any).Return(processedSponsoredTransaction)
+
+	// expect no additional post-transaction for fee deduction or tracking.
+
+	gasPool := core.NewGasPool(1_000_000)
+	context := &runContext{
+		statedb:  state,
+		signer:   types.LatestSignerForChainID(nil),
+		baseFee:  big.NewInt(1),
+		gasPool:  gasPool,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+	}
+	sizeLimit := uint64(math.MaxUint64)
+	runner := &transactionRunner{evm: evm}
+	got, status := runner.runSponsoredTransaction(context, tx, 0, sizeLimit)
+	require.Equal(t, core_types.TransactionResultSuccessful, status)
+	want := []ProcessedTransaction{
+		processedSponsoredTransaction,
+	}
+	require.Equal(t, want, got)
+}
+
+func TestRunSponsoredTransaction_TxIsNetworkSponsoredWithTracking_TransactionIsAcceptedWithTrackingTx(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	evm := NewMock_evm(ctrl)
+
+	tx := getSponsorshipRequest(t)
+
+	// Snapshot for the IsCovered call
+	state.EXPECT().Snapshot().Return(1)
+	state.EXPECT().RevertToSnapshot(1)
+
+	// Nonce request for the post-transaction
+	state.EXPECT().GetNonce(common.Address{}).Return(uint64(123))
+
+	// Let the IsCovered call indicate that the transaction is covered,
+	any := gomock.Any()
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{31: 3, 63: 12}, uint64(0), nil) // indicates network-sponsored with tracking
+
+	// Expect the sponsored transaction to be processed successfully.
+	processedSponsoredTransaction := ProcessedTransaction{
+		Transaction: tx,
+		Receipt: &types.Receipt{
+			Status:  types.ReceiptStatusSuccessful,
+			GasUsed: 21_000,
+		},
+	}
+	evm.EXPECT().runWithoutBaseFeeCheck(any, tx, any).Return(processedSponsoredTransaction)
+
+	baseFee := big.NewInt(0)
+
+	trackingTx := subsidies.NewPostTxBuilder().
+		ForNetworkSponsoredWithTracking().
+		WithNonce(123).
+		WithGasPrice(baseFee).
+		WithGasLimit(0).
+		WithId(subsidies.Identifier{31: 12}).
+		BuildForTesting()
+
+	processedTrackingTx := ProcessedTransaction{
+		Transaction: trackingTx,
+		Receipt: &types.Receipt{
+			Status: types.ReceiptStatusSuccessful,
+		},
+	}
+
+	evm.EXPECT().runWithoutBaseFeeCheck(any, any, any).
+		DoAndReturn(func(_ *runContext, tx *types.Transaction, _ int) ProcessedTransaction {
+			require.Equal(t, trackingTx.Hash(), tx.Hash())
+			return processedTrackingTx
+		})
+
+	gasPool := core.NewGasPool(1_000_000)
+	context := &runContext{
+		statedb:  state,
+		signer:   types.LatestSignerForChainID(nil),
+		baseFee:  baseFee,
+		gasPool:  gasPool,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+	}
+	sizeLimit := uint64(math.MaxUint64)
+	runner := &transactionRunner{evm: evm}
+	got, status := runner.runSponsoredTransaction(context, tx, 0, sizeLimit)
+	require.Equal(t, core_types.TransactionResultSuccessful, status)
+	want := []ProcessedTransaction{
+		processedSponsoredTransaction,
+		processedTrackingTx,
+	}
+	require.Equal(t, want, got)
+}
+
 func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
@@ -1933,6 +2055,162 @@ func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testin
 	require.NotNil(t, got[0].Receipt)
 	require.NotNil(t, got[1].Transaction)
 	require.NotNil(t, got[1].Receipt)
+}
+
+func TestRunSponsoredTransaction_ProcessesAllPostTransactionsInOrder(t *testing.T) {
+	tests := map[string][]ProcessedTransaction{
+		"no post-tx": {},
+		"one successful post-tx": {
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+				},
+			},
+		},
+		"one failed post-tx": {
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusFailed,
+				},
+			},
+		},
+		"one invalid post-tx": {
+			{
+				Transaction: &types.Transaction{},
+				Receipt:     nil,
+			},
+		},
+		"multiple successful post-txs": {
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+				},
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+				},
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+				},
+			},
+		},
+		"mix of successful, failed and invalid post-txs": {
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+				},
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusFailed,
+				},
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt:     nil,
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+				},
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusFailed,
+				},
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt:     nil,
+			},
+			{
+				Transaction: &types.Transaction{},
+				Receipt: &types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+				},
+			},
+		},
+	}
+
+	for name, processedPostTxs := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+			evm := NewMock_evm(ctrl)
+
+			tx := getSponsorshipRequest(t)
+
+			// Snapshot for the IsCovered call
+			state.EXPECT().Snapshot().Return(1)
+			state.EXPECT().RevertToSnapshot(1)
+
+			any := gomock.Any()
+			evm.EXPECT().Call(any, any, any, any, any).
+				Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+			evm.EXPECT().Call(any, any, any, any, any).
+				Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+
+			// Run of the sponsored transaction.
+			txIndex := 7
+			evm.EXPECT().runWithoutBaseFeeCheck(any, tx, txIndex).
+				Return(ProcessedTransaction{
+					Transaction: tx,
+					Receipt:     &types.Receipt{},
+				})
+
+			// Run of the post-transactions, also checking the tx-index.
+			postTxIndex := txIndex + 1
+			for _, postTx := range processedPostTxs {
+				evm.EXPECT().runWithoutBaseFeeCheck(any, postTx.Transaction, postTxIndex).
+					Return(postTx)
+				if postTx.Receipt != nil {
+					postTxIndex++
+				}
+			}
+
+			gasPool := core.NewGasPool(1_000_000)
+			context := &runContext{
+				statedb:  state,
+				signer:   types.LatestSignerForChainID(nil),
+				baseFee:  big.NewInt(1),
+				gasPool:  gasPool,
+				upgrades: opera.Upgrades{GasSubsidies: true},
+			}
+
+			getPostTxs := func(subsidies.Sponsorship, subsidies.NonceSource, uint64, *big.Int) ([]*types.Transaction, error) {
+				txs := []*types.Transaction{}
+				for _, postTx := range processedPostTxs {
+					txs = append(txs, postTx.Transaction)
+				}
+				return txs, nil
+			}
+
+			runner := &transactionRunner{evm: evm}
+			sizeLimit := uint64(math.MaxUint64)
+			got, status := runner.runSponsoredTransactionInternal(context, tx, txIndex, sizeLimit, getPostTxs)
+			require.Equal(t, core_types.TransactionResultFailed, status)
+			require.Len(t, got, len(processedPostTxs)+1)
+			require.Equal(t, tx, got[0].Transaction)
+			require.NotNil(t, got[0].Receipt)
+			for i, postTx := range processedPostTxs {
+				require.Equal(t, postTx.Transaction, got[i+1].Transaction)
+				require.Equal(t, postTx.Receipt, got[i+1].Receipt)
+			}
+		})
+	}
 }
 
 func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSuccessfully(t *testing.T) {
@@ -2109,18 +2387,20 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	callData := processedTransactions[1].Transaction.Data()
 	require.Equal(4+2*32, len(callData)) // chooseFund + deductFees
 
-	fundId := subsidies.FundId(callData[4:])
+	fundId := subsidies.Identifier(callData[4:])
 	gasUsed := processedTransactions[0].Receipt.GasUsed
 	gasPrice := baseFee // gas price is base fee for sponsored tx
+	paymentTx := subsidies.NewPostTxBuilder().
+		WithNonce(123).
+		WithId(fundId).
+		WithOverhead(210_000). // < hard-coded in dev version of registry
+		WithGasLimit(60_000).  // < hard-coded in dev version of registry
+		WithUsedGas(gasUsed).
+		WithGasPrice(gasPrice).
+		BuildForTesting()
 
-	gasConfig := subsidies.GasConfig{ // < values hard-coded in dev version of the registry
-		SponsorshipOverheadGasCost: 210_000,
-		DeductFeesGasCost:          60_000,
-	}
-	feeDeductionTx, err := subsidies.GetFeeChargeTransaction(state, fundId, gasConfig, gasUsed, gasPrice)
-	require.NoError(err)
 	got := processedTransactions[1].Transaction
-	require.Equal(feeDeductionTx.Hash(), got.Hash())
+	require.Equal(paymentTx.Hash(), got.Hash())
 	require.NotNil(processedTransactions[1].Receipt)
 	require.Equal(types.ReceiptStatusSuccessful, processedTransactions[1].Receipt.Status)
 
@@ -3982,15 +4262,7 @@ func TestRunRegularTransaction_AcceptsTransactionIfItIsWithinSizeLimit(t *testin
 }
 
 func TestRunSponsoredTransaction_SkipsTransactionExceedingSizeLimit(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	evm := NewMock_evm(ctrl)
-
 	tx := getSponsorshipRequest(t)
-
-	context := &runContext{
-		upgrades: opera.Upgrades{GasSubsidies: true},
-		signer:   types.LatestSignerForChainID(nil),
-	}
 
 	tests := map[string]struct {
 		sizeLimit uint64
@@ -4002,14 +4274,44 @@ func TestRunSponsoredTransaction_SkipsTransactionExceedingSizeLimit(t *testing.T
 			sizeLimit: tx.Size(),
 		},
 		"just under the required size": {
-			sizeLimit: tx.Size() + subsidies.RlpEncodedFeeChargingTxSizeInBytes - 1,
+			sizeLimit: tx.Size() + subsidies.GetMaxPostTxSizeForTests() - 1,
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			evm := NewMock_evm(ctrl)
+			stateDb := state.NewMockStateDB(ctrl)
+
+			// IsCovered is called before the size check, since the extra
+			// size needed depends on the sponsorship mode. So we need to
+			// mock the EVM to report a fund-backed sponsorship mode, which
+			// is one of the modes that requires the maximum extra size, to
+			// trigger the size check in the tested code.
+			stateDb.EXPECT().Snapshot().Return(1).AnyTimes()
+			stateDb.EXPECT().RevertToSnapshot(1).AnyTimes()
+
+			gasConfigResponse := make([]byte, 3*32)
+			binary.BigEndian.PutUint64(gasConfigResponse[32*0+24:32*0+32], 100_000) // chooseFundGasLimit
+			binary.BigEndian.PutUint64(gasConfigResponse[32*1+24:32*1+32], 60_000)  // deductFeesGasLimit
+			binary.BigEndian.PutUint64(gasConfigResponse[32*2+24:32*2+32], 210_000) // overheadCharge (legacy shared overhead)
+			fundIdResponse := [32]byte{0x01}                                        // non-zero fundId → mode 1
+			gomock.InOrder(
+				evm.EXPECT().Call(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(gasConfigResponse, uint64(0), nil),
+				evm.EXPECT().Call(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(fundIdResponse[:], uint64(0), nil),
+			)
+
+			ctxt := &runContext{
+				upgrades: opera.Upgrades{GasSubsidies: true},
+				signer:   types.LatestSignerForChainID(nil),
+				statedb:  stateDb,
+				baseFee:  big.NewInt(1),
+			}
 			runner := &transactionRunner{evm: evm}
-			got, status := runner.runSponsoredTransaction(context, tx, 0, tc.sizeLimit)
+			got, status := runner.runSponsoredTransaction(ctxt, tx, 0, tc.sizeLimit)
 			require.Equal(t, core_types.TransactionResultInvalid, status)
 			require.Len(t, got, 1)
 			require.Equal(t, tx, got[0].Transaction)
@@ -4198,7 +4500,7 @@ func TestRunTransactions_ProcessesAllTransactionsWithinBlockSizeLimit(t *testing
 		},
 		"sponsored transaction with payment": {
 			txs:           []*types.Transaction{sponsored},
-			remainingSize: sponsored.Size() + subsidies.RlpEncodedFeeChargingTxSizeInBytes,
+			remainingSize: sponsored.Size() + subsidies.GetMaxPostTxSizeForTests(),
 			setupMock: func(ctx *runContext, runner *Mock_transactionRunner) {
 				runner.EXPECT().runSponsoredTransaction(ctx, sponsored, 0, gomock.Any()).Return(
 					[]ProcessedTransaction{

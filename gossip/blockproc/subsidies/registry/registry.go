@@ -51,6 +51,10 @@ const ChooseFundFunctionSelector = 0x399f59ca
 // function in the SubsidiesRegistry contract.
 const DeductFeesFunctionSelector = 0xb9ed9f26
 
+// TrackFunctionSelector is the function selector of the `track` function
+// in the SubsidiesRegistry contract.
+const TrackFunctionSelector = 0xbf70eb15
+
 // GasLimitForGetGasConfig is the gas limit to be used when calling the
 // `getGasConfig` function in the SubsidiesRegistry contract.
 const GasLimitForGetGasConfig = 50_000

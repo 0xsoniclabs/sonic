@@ -119,7 +119,7 @@ func validateSponsoredTxInBlock(
 			require.Equal(types.ReceiptStatusSuccessful, substractReceipt.Status)
 
 			// check that the deduced amount matches the (gas used + overhead) * market price
-			feeCharged := (receipt.GasUsed + config.OverheadCharge.Uint64()) * block.BaseFee().Uint64()
+			feeCharged := (receipt.GasUsed + config.OverheadChargeForFundBackedSponsorships.Uint64()) * block.BaseFee().Uint64()
 			require.Len(substractReceipt.Logs, 1, "no logs found in the payment transaction receipt")
 			log := substractReceipt.Logs[0]
 			reportedCharge := new(big.Int).SetBytes(log.Data)
