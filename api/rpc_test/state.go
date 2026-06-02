@@ -51,14 +51,13 @@ func NewTestState(t *testing.T) *testState {
 	// In tests we do not support the tracking of processed bundles yet.
 	var processedBundleStore evmstore.ProcessedBundleStore = nil
 	carmenStateDb := carmen.CreateNonCommittableStateDBUsing(carmenState)
-	return &testState{evmstore.CreateNonCommittableCarmenStateDb(
-		carmenStateDb,
-		processedBundleStore,
-	)}
+	return &testState{
+		StateDB: evmstore.CreateNonCommittableCarmenStateDb(carmenStateDb, processedBundleStore),
+	}
 }
 
 func (t *testState) Copy() state.StateDB {
-	return &testState{t.StateDB.Copy()}
+	return &testState{StateDB: t.StateDB.Copy()}
 }
 
 func (t *testState) setAccount(addr common.Address, acc AccountState) {

@@ -14,7 +14,7 @@ import (
 
 var executionAPIsDir = flag.String(
 	"execution.apis",
-	"",
+	"/home/luis/code/execution-apis",
 	"Path to the cloned github.com/ethereum/execution-apis repository. "+
 		"If empty, conformance tests are skipped.",
 )
@@ -31,8 +31,11 @@ var skipMethods = map[string]string{
 	"txpool_status":                           "different pool semantics",
 	"eth_getTransactionCount":                 "not implemented in Sonic",
 	"eth_getTransactionByBlockNumberAndIndex": "not implemented in Sonic",
-	"debug_getRawBlock":                       "not implemented in Sonic",
-	"eth_getStorageAt":                        "not implemented in Sonic",
+
+	"debug_getRawBlock":    "not implemented in Sonic",
+	"debug_getRawReceipts": "not implemented in Sonic",
+
+	"eth_getStorageAt": "not implemented in Sonic",
 }
 
 // skipTests lists individual test files to skip (relative to tests/ dir).
@@ -42,16 +45,11 @@ var skipTests = map[string]string{
 	// Example: "eth_getBlockByNumber/get-block-prague-fork.io": "Prague not yet activated",
 }
 
-// receiptDependentMethods are methods that require receipt data from execution.
-// Since we don't replay the chain, these are skipped.
+// receiptDependentMethods are methods that require live pool or features beyond
+// static chain replay.
 var receiptDependentMethods = map[string]string{
-	"eth_getTransactionReceipt": "requires chain replay for receipts",
-	"eth_getBlockReceipts":      "requires chain replay for receipts",
-	"eth_getLogs":               "requires chain replay for receipts/logs",
-	"debug_getRawReceipts":      "requires chain replay for receipts",
-	"eth_sendRawTransaction":    "requires live transaction pool",
-	"eth_createAccessList":      "requires EVM execution",
-	"eth_feeHistory":            "requires full block history with gas data",
+	"eth_sendRawTransaction": "requires live transaction pool",
+	"eth_feeHistory":         "requires full block history with gas data",
 }
 
 func TestConformance(t *testing.T) {
@@ -70,27 +68,17 @@ func TestConformance(t *testing.T) {
 
 	// Load chain
 	chainPath := filepath.Join(testsDir, "chain.rlp")
-	chainBlocks, err := LoadChain(chainPath)
+	rawBlocks, err := LoadChain(chainPath)
 	if err != nil {
 		t.Fatalf("Failed to load chain: %v", err)
 	}
 
-	// Build block history
-	genesisBlk := GenesisBlock(genesis)
-	allBlocks := ChainBlocks(genesisBlk, chainBlocks)
-
 	// Build fake backend
-	builder := rpctest.NewBackendBuilder(t).
-		WithChainID(genesis.Config.ChainID.Uint64()).
-		WithBlockHistory(allBlocks)
-
-	// Load genesis accounts into state
-	accounts := GenesisAccounts(genesis)
-	for addr, acc := range accounts {
-		builder = builder.WithAccount(addr, acc)
+	backend, err := rpctest.NewBackendBuilder(t).
+		BuildFromReplay(genesis, rawBlocks)
+	if err != nil {
+		t.Fatalf("Failed to build backend from replay: %v", err)
 	}
-
-	backend := builder.BuildAsBackend()
 
 	// Set up dispatcher with RPC APIs
 	apis := buildAPIs(backend)

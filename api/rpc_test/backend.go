@@ -29,6 +29,7 @@ package rpctest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"sort"
 	"testing"
@@ -41,6 +42,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
@@ -183,6 +185,55 @@ func (b backendBuilder) WithUpgrade(blockHeight idx.Block, upgrades opera.Upgrad
 	return b
 }
 
+func (b backendBuilder) BuildFromReplay(genesis *core.Genesis, rawBlocks []*types.Block) (ethapi.Backend, error) {
+	b.be.chainID = genesis.Config.ChainID.Uint64()
+	accounts := extractGenesisAccounts(genesis)
+	for addr, account := range accounts {
+		b.be.state.setAccount(addr, account)
+	}
+
+	rules, err := RulesFromChainConfig(genesis.Config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive network rules from chain config: %w", err)
+	}
+	b.be.upgrades = map[idx.Block]opera.Upgrades{
+		0: rules.Upgrades,
+	}
+
+	result, err := ReplayChain(b.be.state, genesis.Config, rawBlocks)
+	if err != nil {
+		return nil, fmt.Errorf("failed to replay chain: %w", err)
+	}
+	b.be.blockHistory = result
+
+	return b.Build(), nil
+}
+
+// RulesFromChainConfig converts an Ethereum chain configuration into Sonic rules.
+// The conversion derives upgrade flags from configured hard-forks and uses
+// fake-network defaults for non-upgrade rule fields.
+func RulesFromChainConfig(cfg *params.ChainConfig) (opera.Rules, error) {
+	if cfg == nil {
+		return opera.Rules{}, errors.New("chain config is nil")
+	}
+	if cfg.ChainID == nil {
+		return opera.Rules{}, errors.New("chain config chain ID is nil")
+	}
+
+	upgrades := opera.Upgrades{
+		Berlin:  cfg.BerlinBlock != nil,
+		London:  cfg.LondonBlock != nil,
+		Llr:     false,
+		Sonic:   cfg.CancunTime != nil,
+		Allegro: cfg.PragueTime != nil,
+		Brio:    cfg.OsakaTime != nil,
+	}
+
+	rules := opera.FakeNetRules(upgrades)
+	rules.NetworkID = cfg.ChainID.Uint64()
+	return rules, nil
+}
+
 // Build constructs the fakeBackend instance with the configured parameters.
 func (b backendBuilder) Build() *fakeBackend {
 	if b.be.upgrades == nil {
@@ -190,12 +241,6 @@ func (b backendBuilder) Build() *fakeBackend {
 		b.be.upgrades[0] = opera.GetBrioUpgrades()
 	}
 	return &b.be
-}
-
-// BuildAsBackend constructs the fakeBackend and returns it as an ethapi.Backend.
-// Use this when the fake backend needs to be used from outside this package.
-func (b backendBuilder) BuildAsBackend() ethapi.Backend {
-	return b.Build()
 }
 
 // StateDB returns the underlying state database used by the builder.
@@ -441,6 +486,25 @@ func (b *fakeBackend) GetReceiptsByNumber(ctx context.Context, number rpc.BlockN
 		receipts = append(receipts, tx.receipt)
 	}
 	return receipts, nil
+}
+
+// FetchReceiptsForBlock returns receipts for the given block.
+func (b *fakeBackend) FetchReceiptsForBlock(block *evmcore.EvmBlock) types.Receipts {
+	if block == nil {
+		return nil
+	}
+	for _, blk := range b.blockHistory {
+		if blk.Number == block.Number.Uint64() {
+			receipts := make(types.Receipts, 0, len(blk.Transactions))
+			for _, tx := range blk.Transactions {
+				if tx.receipt != nil {
+					receipts = append(receipts, tx.receipt)
+				}
+			}
+			return receipts
+		}
+	}
+	return nil
 }
 
 // blockByNumber is a helper function that looks up a block by its number in the fake backend's block history.
