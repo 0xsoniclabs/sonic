@@ -76,6 +76,11 @@ func NewEVMBlockContextWithDifficulty(
 		difficulty.SetUint64(0)
 	}
 
+	blobBaseFee := big.NewInt(1) // default for Sonic networks, overridden by header if present
+	if header.BlobBaseFee != nil {
+		blobBaseFee = new(big.Int).Set(header.BlobBaseFee)
+	}
+
 	return vm.BlockContext{
 		CanTransfer: CanTransfer,
 		Transfer:    Transfer,
@@ -87,7 +92,7 @@ func NewEVMBlockContextWithDifficulty(
 		BaseFee:     baseFee,
 		GasLimit:    header.GasLimit,
 		Random:      random,
-		BlobBaseFee: big.NewInt(1), // TODO issue #147
+		BlobBaseFee: blobBaseFee,
 	}
 }
 
