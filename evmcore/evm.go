@@ -60,6 +60,7 @@ func NewEVMBlockContextWithDifficulty(
 		baseFee     *big.Int
 		random      *common.Hash
 	)
+
 	// If we don't have an explicit author (i.e. not mining), extract from the header
 	if author == nil {
 		beneficiary = header.Coinbase
@@ -76,6 +77,12 @@ func NewEVMBlockContextWithDifficulty(
 		difficulty.SetUint64(0)
 	}
 
+	// default for Sonic networks, overridden by header if present
+	blobBaseFee := GetBlobBaseFee().ToBig()
+	if header.BlobBaseFee != nil {
+		blobBaseFee = new(big.Int).Set(header.BlobBaseFee)
+	}
+
 	return vm.BlockContext{
 		CanTransfer: CanTransfer,
 		Transfer:    Transfer,
@@ -87,7 +94,7 @@ func NewEVMBlockContextWithDifficulty(
 		BaseFee:     baseFee,
 		GasLimit:    header.GasLimit,
 		Random:      random,
-		BlobBaseFee: big.NewInt(1), // TODO issue #147
+		BlobBaseFee: blobBaseFee,
 	}
 }
 

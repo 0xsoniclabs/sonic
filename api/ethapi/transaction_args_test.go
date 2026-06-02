@@ -21,11 +21,13 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -101,7 +103,7 @@ func TestTransactionArgs_ToMessage_CapsGasToProvidedGlobalAndLogsWarning(t *test
 	t.Parallel()
 
 	args := TransactionArgs{
-		Gas: asPointer(hexutil.Uint64(150)),
+		Gas: new(hexutil.Uint64(150)),
 	}
 
 	ctrl := gomock.NewController(t)
@@ -147,11 +149,11 @@ func TestTransactionArgs_ToMessage_TrivialFieldsAreCopied(t *testing.T) {
 
 	txArgs := TransactionArgs{
 		To:    &common.Address{0x1},
-		Nonce: asPointer(hexutil.Uint64(0x2)),
+		Nonce: new(hexutil.Uint64(0x2)),
 		Value: (*hexutil.Big)(big.NewInt(0x3)),
-		Data:  asPointer(hexutil.Bytes([]byte{0x4})),
-		Gas:   asPointer(hexutil.Uint64(0x5)),
-		AccessList: asPointer(
+		Data:  new(hexutil.Bytes([]byte{0x4})),
+		Gas:   new(hexutil.Uint64(0x5)),
+		AccessList: new(
 			types.AccessList{
 				{
 					Address: common.Address{0x1},
@@ -453,11 +455,11 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 		"legacy transaction": {
 			args: TransactionArgs{
 				To:       &common.Address{0x41},
-				Nonce:    asPointer(hexutil.Uint64(0x42)),
-				Gas:      asPointer(hexutil.Uint64(0x43)),
+				Nonce:    new(hexutil.Uint64(0x42)),
+				Gas:      new(hexutil.Uint64(0x43)),
 				GasPrice: (*hexutil.Big)(big.NewInt(0x44)),
 				Value:    (*hexutil.Big)(big.NewInt(0x45)),
-				Data:     asPointer(hexutil.Bytes{0x46}),
+				Data:     new(hexutil.Bytes{0x46}),
 			},
 			expected: types.NewTx(&types.LegacyTx{
 				To:       &common.Address{0x41},
@@ -471,12 +473,12 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 		"accessList transaction": {
 			args: TransactionArgs{
 				To:       &common.Address{0x41},
-				Nonce:    asPointer(hexutil.Uint64(0x42)),
-				Gas:      asPointer(hexutil.Uint64(0x43)),
+				Nonce:    new(hexutil.Uint64(0x42)),
+				Gas:      new(hexutil.Uint64(0x43)),
 				GasPrice: (*hexutil.Big)(big.NewInt(0x44)),
 				Value:    (*hexutil.Big)(big.NewInt(0x45)),
-				Data:     asPointer(hexutil.Bytes{0x46}),
-				AccessList: asPointer(types.AccessList{
+				Data:     new(hexutil.Bytes{0x46}),
+				AccessList: new(types.AccessList{
 					{
 						Address: common.Address{0x01},
 						StorageKeys: []common.Hash{
@@ -507,13 +509,13 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 		"dynamicFee transaction": {
 			args: TransactionArgs{
 				To:                   &common.Address{0x41},
-				Nonce:                asPointer(hexutil.Uint64(0x42)),
-				Gas:                  asPointer(hexutil.Uint64(0x43)),
+				Nonce:                new(hexutil.Uint64(0x42)),
+				Gas:                  new(hexutil.Uint64(0x43)),
 				MaxFeePerGas:         (*hexutil.Big)(big.NewInt(0x44)),
 				MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(0x45)),
 				Value:                (*hexutil.Big)(big.NewInt(0x46)),
-				Data:                 asPointer(hexutil.Bytes{0x47}),
-				AccessList: asPointer(types.AccessList{
+				Data:                 new(hexutil.Bytes{0x47}),
+				AccessList: new(types.AccessList{
 					{
 						Address: common.Address{0x01},
 					},
@@ -537,13 +539,13 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 		"blob transaction": {
 			args: TransactionArgs{
 				To:                   &common.Address{0x41},
-				Nonce:                asPointer(hexutil.Uint64(0x42)),
-				Gas:                  asPointer(hexutil.Uint64(0x43)),
+				Nonce:                new(hexutil.Uint64(0x42)),
+				Gas:                  new(hexutil.Uint64(0x43)),
 				MaxFeePerGas:         (*hexutil.Big)(big.NewInt(0x44)),
 				MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(0x45)),
 				Value:                (*hexutil.Big)(big.NewInt(0x46)),
-				Data:                 asPointer(hexutil.Bytes{0x47}),
-				AccessList: asPointer(types.AccessList{
+				Data:                 new(hexutil.Bytes{0x47}),
+				AccessList: new(types.AccessList{
 					{
 						Address: common.Address{0x01},
 					},
@@ -577,13 +579,13 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 		"setCode transaction": {
 			args: TransactionArgs{
 				To:                   &common.Address{0x41},
-				Nonce:                asPointer(hexutil.Uint64(0x42)),
-				Gas:                  asPointer(hexutil.Uint64(0x43)),
+				Nonce:                new(hexutil.Uint64(0x42)),
+				Gas:                  new(hexutil.Uint64(0x43)),
 				MaxFeePerGas:         (*hexutil.Big)(big.NewInt(0x44)),
 				MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(0x45)),
 				Value:                (*hexutil.Big)(big.NewInt(0x46)),
-				Data:                 asPointer(hexutil.Bytes{0x47}),
-				AccessList: asPointer(types.AccessList{
+				Data:                 new(hexutil.Bytes{0x47}),
+				AccessList: new(types.AccessList{
 					{
 						Address: common.Address{0x01},
 					},
@@ -915,8 +917,133 @@ func TestToTransaction_ReturnsErrors(t *testing.T) {
 	}
 }
 
-// asPointer is a helper function to convert a value to a pointer,
-// useful to inline hexutil types in tests.
-func asPointer[T any](v T) *T {
-	return &v
+func TestTransactionArgs_ToMessageIsEquivalentToEvmcoreToMessage(t *testing.T) {
+	t.Parallel()
+
+	// Verify tx args -> message conversion is equivalent to
+	// tx args -> transaction -> message conversion.
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	from := crypto.PubkeyToAddress(key.PublicKey)
+	to := common.Address{0xaa}
+	nonce := hexutil.Uint64(7)
+	gas := hexutil.Uint64(123_456)
+	chainID := (*hexutil.Big)(big.NewInt(1337))
+	gasPrice := (*hexutil.Big)(big.NewInt(21))
+	maxFeePerGas := (*hexutil.Big)(big.NewInt(100))
+	maxPriorityFeePerGas := (*hexutil.Big)(big.NewInt(3))
+	blobFeeCap := (*hexutil.Big)(big.NewInt(7))
+	baseFee := big.NewInt(2)
+	inputData := hexutil.Bytes{0x01, 0x02, 0x03}
+	accessList := types.AccessList{{Address: common.Address{0x01}}}
+
+	tests := map[string]TransactionArgs{
+		"legacy tx": {
+			From:     &from,
+			To:       &to,
+			Nonce:    &nonce,
+			Gas:      &gas,
+			GasPrice: gasPrice,
+			Value:    (*hexutil.Big)(big.NewInt(11)),
+			Input:    &inputData,
+		},
+		"access list tx": {
+			From:       &from,
+			To:         &to,
+			Nonce:      &nonce,
+			Gas:        &gas,
+			GasPrice:   gasPrice,
+			Value:      (*hexutil.Big)(big.NewInt(11)),
+			Input:      &inputData,
+			AccessList: &accessList,
+			ChainID:    chainID,
+		},
+		"dynamic fee tx": {
+			From:                 &from,
+			To:                   &to,
+			Nonce:                &nonce,
+			Gas:                  &gas,
+			Value:                (*hexutil.Big)(big.NewInt(11)),
+			Input:                &inputData,
+			AccessList:           &accessList,
+			ChainID:              chainID,
+			MaxFeePerGas:         maxFeePerGas,
+			MaxPriorityFeePerGas: maxPriorityFeePerGas,
+		},
+		"blob tx with blob hashes": {
+			From:                 &from,
+			To:                   &to,
+			Nonce:                &nonce,
+			Gas:                  &gas,
+			Value:                (*hexutil.Big)(big.NewInt(11)),
+			Input:                &inputData,
+			AccessList:           &accessList,
+			ChainID:              chainID,
+			MaxFeePerGas:         maxFeePerGas,
+			MaxPriorityFeePerGas: maxPriorityFeePerGas,
+			BlobFeeCap:           blobFeeCap,
+			BlobHashes: []common.Hash{
+				common.HexToHash("0x49"),
+				common.HexToHash("0x4a"),
+			},
+		},
+		"blob tx with empty blob hashes": {
+			From:                 &from,
+			To:                   &to,
+			Nonce:                &nonce,
+			Gas:                  &gas,
+			Value:                (*hexutil.Big)(big.NewInt(11)),
+			Input:                &inputData,
+			AccessList:           &accessList,
+			ChainID:              chainID,
+			MaxFeePerGas:         maxFeePerGas,
+			MaxPriorityFeePerGas: maxPriorityFeePerGas,
+			BlobFeeCap:           blobFeeCap,
+			BlobHashes:           []common.Hash{},
+		},
+		"set code tx": {
+			From:                 &from,
+			To:                   &to,
+			Nonce:                &nonce,
+			Gas:                  &gas,
+			Value:                (*hexutil.Big)(big.NewInt(11)),
+			Input:                &inputData,
+			AccessList:           &accessList,
+			ChainID:              chainID,
+			MaxFeePerGas:         maxFeePerGas,
+			MaxPriorityFeePerGas: maxPriorityFeePerGas,
+			AuthorizationList: []types.SetCodeAuthorization{
+				{
+					Address: common.Address{0x01},
+					Nonce:   0x02,
+					ChainID: *uint256.NewInt(0x03),
+				},
+			},
+		},
+	}
+
+	for name, args := range tests {
+		t.Run(name, func(t *testing.T) {
+			directMsg, err := args.ToMessage(0, baseFee, nil)
+			require.NoError(t, err)
+
+			tx, err := args.ToTransaction()
+			require.NoError(t, err)
+
+			signer := types.LatestSignerForChainID(args.ChainID.ToInt())
+			signedTx, err := types.SignTx(tx, signer, key)
+			require.NoError(t, err)
+
+			msgFromTx, err := evmcore.TxAsMessage(signedTx, signer, baseFee)
+			require.NoError(t, err)
+
+			// RPC messages usually skip checks; normalize to compare payload fields.
+			directMsg.SkipNonceChecks = false
+			directMsg.SkipTransactionChecks = false
+
+			require.Equal(t, directMsg, msgFromTx)
+		})
+	}
 }

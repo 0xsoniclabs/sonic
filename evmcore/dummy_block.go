@@ -70,8 +70,16 @@ func GetCoinbase() common.Address {
 }
 
 // GetBlobBaseFee returns the blob base fee to be used by blocks on Sonic networks.
-func GetBlobBaseFee() uint256.Int {
-	return uint256.Int{}
+func GetBlobBaseFee() *uint256.Int {
+	// The reason is that https://eips.ethereum.org/EIPS/eip-4844 defines a formula for the computation of the blob-base-fee:
+	//
+	//    the function get_base_fee_per_blob_gas is defines as:
+	//    - BLOB_BASE_FEE = MIN_BASE_FEE_PER_BLOB_GAS * e ^ (header.excess_blob_gas / BLOB_BASE_FEE_UPDATE_FRACTION)
+	//    - MIN_BASE_FEE_PER_BLOB_GAS = 1
+	//    - BLOB_BASE_FEE_UPDATE_FRACTION = 3338477
+	//
+	// In sonic the excess_blob_gas is always 0, since Sonic does not offer blob gas this reduces to 1 * e^0 = 1.
+	return uint256.NewInt(1)
 }
 
 // NewEvmBlock constructor.

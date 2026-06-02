@@ -133,3 +133,116 @@ func TestMustNewEVMTxContext_PanicsOnInvalidGasPrice(t *testing.T) {
 		func() { MustNewEVMTxContext(msg) },
 	)
 }
+
+func TestNewEVMBlockContextWithDifficulty_UsesHeaderParametersIfDefinedOrSonicDefaults(t *testing.T) {
+
+	// This test verifies that NewEVMBlockContextWithDifficulty can both be used to create
+	// an execution context which can process both recorded and live blocks,
+	// by correctly using header parameters when defined.
+	// The following parameters are tested:
+	// - BaseFee is nil on Sonic (at this stage), but it uses the base fee from the header if defined.
+	// - BlobBaseFee defaults to 1, but it uses the value from the header if defined.
+	// - Coinbase is taken from the header if the author parameter is nil; otherwise it uses the author.
+	// - PrevRandao is used if defined and difficulty is set to 0 in that case; otherwise difficulty remains the header value.
+
+	const defaultBlobBaseFee int64 = 1
+
+	someBaseFee := big.NewInt(7)
+	someBlobBaseFee := big.NewInt(123)
+	someDifficulty := big.NewInt(321)
+
+	tests := map[string]struct {
+		header      *EvmHeader
+		author      *common.Address
+		difficulty  *big.Int
+		expectation func(t testing.TB, ctx vm.BlockContext)
+	}{
+		"uses header.BaseFee when defined": {
+			header: &EvmHeader{
+				Number:  big.NewInt(1),
+				BaseFee: someBaseFee,
+			},
+			expectation: func(t testing.TB, ctx vm.BlockContext) {
+				require.Equal(t, someBaseFee, ctx.BaseFee)
+				require.NotSame(t, someBaseFee, ctx.BaseFee, "BaseFee should be copied, not aliased")
+			},
+		},
+		"uses nil BaseFee when header.BaseFee is not defined": {
+			header: &EvmHeader{
+				Number: big.NewInt(1),
+			},
+			expectation: func(t testing.TB, ctx vm.BlockContext) {
+				require.Nil(t, ctx.BaseFee)
+			},
+		},
+		"header.blockBaseFee overrides default": {
+			header: &EvmHeader{
+				Number:      big.NewInt(1),
+				BlobBaseFee: someBlobBaseFee,
+			},
+			expectation: func(t testing.TB, ctx vm.BlockContext) {
+				require.Equal(t, someBlobBaseFee, ctx.BlobBaseFee)
+				require.NotSame(t, someBlobBaseFee, ctx.BlobBaseFee, "BlobBaseFee should be copied, not aliased")
+			},
+		},
+		"uses default blobBaseFee when header.blobBaseFee is not defined": {
+			header: &EvmHeader{
+				Number: big.NewInt(1),
+			},
+			expectation: func(t testing.TB, ctx vm.BlockContext) {
+				require.Equal(t, defaultBlobBaseFee, ctx.BlobBaseFee.Int64())
+
+			},
+		},
+		"uses header coinbase when author is nil": {
+			header: &EvmHeader{
+				Number:   big.NewInt(1),
+				Coinbase: common.Address{0xAA},
+			},
+			author: nil,
+			expectation: func(t testing.TB, ctx vm.BlockContext) {
+				require.Equal(t, common.Address{0xAA}, ctx.Coinbase)
+			},
+		},
+		"author overrides header coinbase": {
+			header: &EvmHeader{
+				Number:   big.NewInt(1),
+				Coinbase: common.Address{0xAA},
+			},
+			author: &common.Address{0xBB},
+			expectation: func(t testing.TB, ctx vm.BlockContext) {
+				require.Equal(t, common.Address{0xBB}, ctx.Coinbase)
+			},
+		},
+		"uses header.prevRandao and 0 difficulty when prevRandao is set": {
+			header: &EvmHeader{
+				Number:     big.NewInt(1),
+				PrevRandao: common.Hash{0x01},
+			},
+			difficulty: someDifficulty,
+			expectation: func(t testing.TB, ctx vm.BlockContext) {
+				require.NotNil(t, ctx.Random)
+				require.Equal(t, common.Hash{0x01}, *ctx.Random)
+				require.Equal(t, int64(0), ctx.Difficulty.Int64())
+			},
+		},
+		"keeps provided difficulty and nil random when prevRandao is zero": {
+			header: &EvmHeader{
+				Number:     big.NewInt(1),
+				PrevRandao: common.Hash{},
+			},
+			difficulty: someDifficulty,
+			expectation: func(t testing.TB, ctx vm.BlockContext) {
+				require.Nil(t, ctx.Random)
+				require.Equal(t, someDifficulty, ctx.Difficulty)
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := NewEVMBlockContextWithDifficulty(test.header, nil, test.author, test.difficulty)
+			test.expectation(t, ctx)
+		})
+	}
+}

@@ -269,6 +269,11 @@ func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int, lo
 		blobGasFeeCap = args.BlobFeeCap.ToInt()
 	}
 
+	blobHashes := args.BlobHashes
+	if len(blobHashes) == 0 {
+		blobHashes = nil
+	}
+
 	return &core.Message{
 		From:                  addr,
 		To:                    args.To,
@@ -281,7 +286,7 @@ func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int, lo
 		Data:                  data,
 		AccessList:            accessList,
 		BlobGasFeeCap:         blobGasFeeCap,
-		BlobHashes:            args.BlobHashes,
+		BlobHashes:            blobHashes,
 		SetCodeAuthorizations: args.AuthorizationList,
 		SkipNonceChecks:       true,
 		SkipTransactionChecks: true,

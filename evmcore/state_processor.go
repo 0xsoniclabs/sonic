@@ -828,7 +828,20 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
 // and uses the input parameters for its environment similar to ApplyTransaction. However,
 // this method takes an already created EVM instance as input.
-func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *core.GasPool, statedb state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) (receipt *types.Receipt, err error) {
+//
+// The primary use case for this method is to apply transactions from RPC calls or
+// traces.
+func ApplyTransactionWithEVM(
+	msg *core.Message,
+	config *params.ChainConfig,
+	gp *core.GasPool,
+	statedb state.StateDB,
+	blockNumber *big.Int,
+	blockHash common.Hash,
+	tx *types.Transaction,
+	usedGas *uint64,
+	evm *vm.EVM,
+) (receipt *types.Receipt, err error) {
 	if evm.Config.Tracer != nil && evm.Config.Tracer.OnTxStart != nil {
 		evm.Config.Tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
 		if evm.Config.Tracer.OnTxEnd != nil {
@@ -844,16 +857,6 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 		return nil, fmt.Errorf("failed to create EVM transaction context: %w", err)
 	}
 	evm.SetTxContext(txContext)
-
-	// For now, Sonic only supports Blob transactions without blob data.
-	if msg.BlobHashes != nil {
-		if len(msg.BlobHashes) > 0 {
-			statedb.EndTransaction()
-			return nil, fmt.Errorf("blob data is not supported")
-		}
-		// PreCheck requires non-nil blobHashes not to be empty
-		msg.BlobHashes = nil
-	}
 
 	// Apply the transaction to the current state (included in the env).
 	result, err := core.ApplyMessage(evm, msg, gp)
@@ -950,16 +953,6 @@ func applyTransaction(
 	// Skip checking of base fee limits for internal transactions.
 	evm.Config.NoBaseFee = evm.Config.NoBaseFee || msg.SkipNonceChecks
 
-	// For now, Sonic only supports Blob transactions without blob data.
-	if msg.BlobHashes != nil {
-		if len(msg.BlobHashes) > 0 {
-			statedb.EndTransaction()
-			return nil, 0, fmt.Errorf("blob data is not supported")
-		}
-		// PreCheck requires non-nil blobHashes not to be empty
-		msg.BlobHashes = nil
-	}
-
 	isAllegro := evm.ChainConfig().IsPrague(blockNumber, evm.Context.Time)
 	var snapshot int
 	if isAllegro {
@@ -1021,9 +1014,8 @@ func applyTransaction(
 }
 
 func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (*core.Message, error) {
-	if !internaltx.IsInternal(tx) {
-		return core.TransactionToMessage(tx, signer, baseFee)
-	} else {
+	if internaltx.IsInternal(tx) {
+
 		return &core.Message{ // internal tx - no signature checking
 			From:                  internaltx.InternalSender(tx),
 			To:                    tx.To(),
@@ -1041,6 +1033,21 @@ func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (
 			SkipTransactionChecks: true,
 		}, nil
 	}
+
+	msg, err := core.TransactionToMessage(tx, signer, baseFee)
+	if err != nil {
+		return nil, err
+	}
+
+	// Patch BlobHashes to allow execution of ethereum history and sonic semantics:
+	// - ethereum does not allow blob txs without BlobHashes, but preChecks will not
+	// check it if BlobHashes is nil
+	// - Sonic only allows blob txs if BlobHashes is empty
+	if len(msg.BlobHashes) == 0 {
+		msg.BlobHashes = nil
+	}
+
+	return msg, nil
 }
 
 // logger is an internal interface to enable the mocking of logging in tests.

@@ -720,29 +720,6 @@ func TestApplyTransaction_FailsForTransactionWithInvalidGasPrice(t *testing.T) {
 	require.ErrorContains(t, err, "failed to create EVM transaction context")
 }
 
-func TestApplyTransaction_BlobHashesNotSupportedAndSkipped(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	state := state.NewMockStateDB(ctrl)
-	evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{}, vm.Config{})
-	gp := core.NewGasPool(1000000)
-
-	state.EXPECT().EndTransaction()
-
-	msg := &core.Message{
-		From:       common.Address{1},
-		To:         &common.Address{2},
-		GasLimit:   21000,
-		GasPrice:   big.NewInt(1),
-		BlobHashes: []common.Hash{{0x01}},
-	}
-	usedGas := uint64(0)
-	receipt, gasUsed, err :=
-		applyTransaction(msg, gp, state, big.NewInt(1), nil, &usedGas, evm, nil)
-	require.ErrorContains(t, err, "blob data is not supported")
-	require.Nil(t, receipt)
-	require.Equal(t, uint64(0), gasUsed)
-}
-
 func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T) {
 	versions := map[string]bool{
 		"pre prague": false,
@@ -3691,7 +3668,7 @@ func getRegularTransaction(t *testing.T) *types.Transaction {
 	})
 }
 
-func getSponsorshipRequestUnsigned(t *testing.T) *types.Transaction {
+func getSponsorshipRequestUnsigned(*testing.T) *types.Transaction {
 	return types.NewTx(&types.LegacyTx{
 		Nonce: 0, To: &common.Address{1}, Gas: 21_000,
 	})
@@ -5070,4 +5047,207 @@ func TestStateProcessor_MetricsAreEnabledInSingleBlockProposerMode(t *testing.T)
 
 	require.Equal(t, mockMetrics, tp.metrics,
 		"metrics must be forwarded from StateProcessor to TransactionProcessor via BeginBlock")
+}
+
+func TestTxAsMessage_ConvertsInternalTransactionToMessage(t *testing.T) {
+
+	tx := types.NewTx(&types.LegacyTx{
+		Nonce:    0,
+		To:       &common.Address{1},
+		Gas:      21_000,
+		GasPrice: big.NewInt(1),
+		Value:    big.NewInt(100),
+		Data:     []byte{0x01, 0x02},
+	})
+
+	msg, err := TxAsMessage(tx, nil, big.NewInt(1))
+	require.NoError(t, err)
+	require.Equal(t, common.Address{}, msg.From)
+	require.Equal(t, tx.To(), msg.To)
+	require.Equal(t, tx.Gas(), msg.GasLimit)
+	require.Equal(t, tx.GasPrice(), msg.GasPrice)
+	require.Equal(t, tx.Value(), msg.Value)
+	require.Equal(t, tx.Data(), msg.Data)
+}
+
+func TestTxAsMessage_ConvertsUserTransactionsToMessage(t *testing.T) {
+	chainId := big.NewInt(1)
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(chainId)
+	sender := crypto.PubkeyToAddress(key.PublicKey)
+
+	accessList := types.AccessList{
+		{
+			Address:     common.Address{2},
+			StorageKeys: []common.Hash{{1}, {2}},
+		},
+	}
+
+	setCodeAuthorizations := []types.SetCodeAuthorization{
+		{
+			Address: common.Address{3},
+			Nonce:   1,
+		},
+	}
+
+	test := map[string]struct {
+		tx           types.TxData
+		expectations func(*testing.T, core.Message)
+	}{
+		"legacy transaction": {
+			tx: &types.LegacyTx{
+				Nonce:    0,
+				To:       &common.Address{1},
+				Gas:      21_000,
+				GasPrice: big.NewInt(1),
+				Value:    big.NewInt(100),
+				Data:     []byte{0x01, 0x02},
+			},
+		},
+		"access list transaction": {
+			tx: &types.AccessListTx{
+				Nonce:      0,
+				To:         &common.Address{1},
+				Gas:        21_000,
+				GasPrice:   big.NewInt(1),
+				Value:      big.NewInt(100),
+				Data:       []byte{0x01, 0x02},
+				AccessList: accessList,
+			},
+			expectations: func(t *testing.T, msg core.Message) {
+				require.Equal(t, accessList, msg.AccessList)
+			},
+		},
+		"dynamic fee transaction": {
+			tx: &types.DynamicFeeTx{
+				Nonce:      0,
+				To:         &common.Address{1},
+				Gas:        21_000,
+				GasFeeCap:  big.NewInt(1),
+				GasTipCap:  big.NewInt(2),
+				Value:      big.NewInt(100),
+				Data:       []byte{0x01, 0x02},
+				AccessList: accessList,
+			},
+			expectations: func(t *testing.T, msg core.Message) {
+				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
+				require.Equal(t, big.NewInt(2), msg.GasTipCap)
+				require.Equal(t, accessList, msg.AccessList)
+			},
+		},
+		"blob transaction with blob hashes": {
+			tx: &types.BlobTx{
+				Nonce:      0,
+				To:         common.Address{1},
+				Gas:        21_000,
+				GasFeeCap:  uint256.NewInt(1),
+				GasTipCap:  uint256.NewInt(2),
+				Value:      uint256.NewInt(100),
+				Data:       []byte{0x01, 0x02},
+				AccessList: accessList,
+				BlobHashes: []common.Hash{
+					{1}, {2},
+				},
+			},
+			expectations: func(t *testing.T, msg core.Message) {
+				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
+				require.Equal(t, big.NewInt(2), msg.GasTipCap)
+				require.Equal(t, accessList, msg.AccessList)
+				require.Equal(t, msg.BlobHashes, []common.Hash{{1}, {2}},
+					"Sonic rejects blobTxs with non-empty blob hashes, but this layer allows them for history replays")
+			},
+		},
+		"blob transaction with nil blob hashes": {
+			tx: &types.BlobTx{
+				Nonce:      0,
+				To:         common.Address{1},
+				Gas:        21_000,
+				GasFeeCap:  uint256.NewInt(1),
+				GasTipCap:  uint256.NewInt(2),
+				Value:      uint256.NewInt(100),
+				AccessList: accessList,
+				Data:       []byte{0x01, 0x02},
+			},
+			expectations: func(t *testing.T, msg core.Message) {
+				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
+				require.Equal(t, big.NewInt(2), msg.GasTipCap)
+				require.Equal(t, accessList, msg.AccessList)
+				require.Nil(t, msg.BlobHashes, "Sonic allows empty blob txs, go-ethereum allows processing nil")
+			},
+		},
+		"blob transaction with empty blob hashes": {
+			tx: &types.BlobTx{
+				Nonce:      0,
+				To:         common.Address{1},
+				Gas:        21_000,
+				GasFeeCap:  uint256.NewInt(1),
+				GasTipCap:  uint256.NewInt(2),
+				Value:      uint256.NewInt(100),
+				Data:       []byte{0x01, 0x02},
+				AccessList: accessList,
+				BlobHashes: []common.Hash{},
+			},
+			expectations: func(t *testing.T, msg core.Message) {
+				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
+				require.Equal(t, big.NewInt(2), msg.GasTipCap)
+				require.Equal(t, accessList, msg.AccessList)
+				require.Nil(t, msg.BlobHashes, "Sonic allows empty blob txs, go-ethereum allows processing nil")
+			},
+		},
+		"set code transaction": {
+			tx: &types.SetCodeTx{
+				Nonce:      0,
+				To:         common.Address{1},
+				Gas:        21_000,
+				Value:      uint256.NewInt(100),
+				Data:       []byte{0x01, 0x02},
+				AccessList: accessList,
+				AuthList:   setCodeAuthorizations,
+			},
+			expectations: func(t *testing.T, msg core.Message) {
+				require.Equal(t, common.Address{1}, *msg.To)
+				require.Equal(t, accessList, msg.AccessList)
+				require.Equal(t, setCodeAuthorizations, msg.SetCodeAuthorizations)
+			},
+		},
+		"set code transaction, empty auth list": {
+			tx: &types.SetCodeTx{
+				Nonce:      0,
+				To:         common.Address{1},
+				Gas:        21_000,
+				Value:      uint256.NewInt(100),
+				Data:       []byte{0x01, 0x02},
+				AccessList: accessList,
+			},
+			expectations: func(t *testing.T, msg core.Message) {
+				require.Equal(t, common.Address{1}, *msg.To)
+				require.Equal(t, accessList, msg.AccessList)
+				require.Empty(t, msg.SetCodeAuthorizations)
+			},
+		},
+	}
+
+	for name, tc := range test {
+		t.Run(name, func(t *testing.T) {
+			basefee := big.NewInt(1)
+			tx := types.MustSignNewTx(key, signer, tc.tx)
+			msg, err := TxAsMessage(tx, signer, basefee)
+			require.NoError(t, err)
+			require.NotNil(t, msg)
+
+			require.Equal(t, sender, msg.From)
+			require.Equal(t, tx.To(), msg.To)
+			require.Equal(t, tx.GasPrice(), msg.GasPrice)
+			require.Equal(t, tx.GasFeeCap(), msg.GasFeeCap)
+			require.Equal(t, tx.GasTipCap(), msg.GasTipCap)
+			require.Equal(t, tx.Value(), msg.Value)
+			require.Equal(t, tx.Gas(), msg.GasLimit)
+			require.Equal(t, tx.Data(), msg.Data)
+
+			if tc.expectations != nil {
+				tc.expectations(t, *msg)
+			}
+		})
+	}
 }
