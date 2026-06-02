@@ -198,6 +198,13 @@ func (b backendBuilder) BuildAsBackend() ethapi.Backend {
 	return b.Build()
 }
 
+// StateDB returns the underlying state database used by the builder.
+// This allows external packages to perform operations on the state (e.g., chain replay)
+// before calling Build(). The returned state is the same instance used by the backend.
+func (b backendBuilder) StateDB() state.StateDB {
+	return b.be.state
+}
+
 // defaultBlockHistory returns a default block history with a single block (number 1, hash "0x1").
 func defaultBlockHistory() []Block {
 	return []Block{

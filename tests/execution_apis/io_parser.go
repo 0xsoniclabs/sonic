@@ -1,4 +1,4 @@
-package execution_api
+package execution_apis
 
 import (
 	"bufio"
