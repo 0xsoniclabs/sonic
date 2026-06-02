@@ -118,9 +118,8 @@ func TestBlockProcessing_EthereumExecutionSpecTests(t *testing.T) {
 // The path can be modified to point to any test case in the fixtures directory,
 // and the test will be run only if the name contains the targetName substring.
 func TestState_RunSingleCase(t *testing.T) {
-
-	path := "test_data/test_call_types.json"
-	targetName := "tests/prague/eip2537_bls_12_381_precompiles/test_bls12_g1add.py::test_call_types[fork_Osaka-state_test-inf_plus_generator-call_opcode_CALLCODE-]"
+	path := "test_data/example_input.json"
+	targetName := "fork_Osaka-state_test-inf_plus_generator-call_opcode_CALLCODE-"
 
 	vmConfig := newEthSpecVmConfig()
 	useCarmen := true
