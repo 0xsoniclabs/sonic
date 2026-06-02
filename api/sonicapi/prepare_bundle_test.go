@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
-	rpctest "github.com/0xsoniclabs/sonic/api/rpc_test"
+	"github.com/0xsoniclabs/sonic/api/rpctest"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
