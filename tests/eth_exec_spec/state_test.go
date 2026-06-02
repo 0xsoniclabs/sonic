@@ -18,6 +18,7 @@ package execspec
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -37,17 +38,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// In order to run these tests, the test data has to be downloaded from the ethereum
-// github page. The execution spec tests can be found as release assets at
+// In order to run these tests, provide the path to the fixtures directory via the
+// -test-data flag:
+//
+//	go test ./tests/eth_exec_spec/ -test-data /path/to/fixtures
+//
+// Fixtures can be downloaded from the Ethereum execution-spec-tests releases page:
 // https://github.com/ethereum/execution-spec-tests/releases
-// after downloading, unpack them in this folder. Run either all permutations of supported
-// VMs and stateDBs or a specific combination by calling a sub-test. In case of an error,
-// the DisTestState_DebugTestCase can be enabled and used to run a single test case.
+// Run either all permutations of supported VMs and stateDBs or a specific combination
+// by calling a sub-test. In case of an error, TestState_RunSingleCase can be used
+// to run a single test case.
 
 var (
-	testPaths = []string{
-		filepath.Join(".", "fixtures", "state_tests"),
-	}
+	fixturesDir string
 
 	unsupportedForks = map[string]struct{}{
 		"ConstantinopleFix": {},
@@ -61,6 +64,16 @@ var (
 // TestBlockProcessing_EthereumExecutionSpecTests runs the Ethereum execution spec tests
 // using different VM and StateDB implementations.
 func TestBlockProcessing_EthereumExecutionSpecTests(t *testing.T) {
+	if fixturesDir == "" {
+		t.Skip("fixtures directory not provided; re-run with -test-data /path/to/fixtures")
+	}
+	if _, err := os.Stat(fixturesDir); os.IsNotExist(err) {
+		t.Fatalf("directory %s not does not exist", fixturesDir)
+	}
+	if _, err := os.Stat(fixturesDir + "/state_tests"); os.IsNotExist(err) {
+		t.Fatalf("state_tests directory not found in %s", fixturesDir)
+	}
+
 	defaultConfig := newEthSpecVmConfig()
 
 	gethConfig := defaultConfig
@@ -98,20 +111,26 @@ func TestBlockProcessing_EthereumExecutionSpecTests(t *testing.T) {
 	})
 }
 
-// TestState_DebugTestCase is a helper function to debug a single test case.
-func DisTestState_DebugTestCase(t *testing.T) {
-	path := "/path/to/input.json"
-	targetName := "TestCaseName"
+// TestState_RunSingleCase runs a single test case from the execution
+// spec tests, useful for debugging specific cases.
+//
+// It defaults to an example test case committed in the repository,
+// The path can be modified to point to any test case in the fixtures directory,
+// and the test will be run only if the name contains the targetName substring.
+func TestState_RunSingleCase(t *testing.T) {
+	path := "test_data/example_input.json"
+	targetName := "fork_Osaka-state_test-inf_plus_generator-call_opcode_CALLCODE-"
 
 	vmConfig := newEthSpecVmConfig()
 	useCarmen := true
 
 	testMatcher := &tests.TestMatcher{}
-	testMatcher.RunTestFile(t, path, "", func(t *testing.T, name string, test *tests.StateTest) {
-		if strings.Contains(name, targetName) {
-			runSubtests(t, testMatcher, test, vmConfig, useCarmen)
-		}
-	})
+	testMatcher.RunTestFile(t, path, "",
+		func(t *testing.T, name string, test *tests.StateTest) {
+			if strings.Contains(name, targetName) {
+				runSubtests(t, testMatcher, test, vmConfig, useCarmen)
+			}
+		})
 }
 
 // runTestCases iterates over all test directories and runs each discovered StateTest using the provided vm.Config.
@@ -146,18 +165,17 @@ func runSubtests(t *testing.T, matcher *tests.TestMatcher, test *tests.StateTest
 	}
 }
 
-// walkTestDirs walks all configured test directories and calls fn for each discovered test.
-// Directories that do not exist are skipped with a log message.
+// walkTestDirs walks the state_tests sub-directory inside fixturesDir and calls fn
+// for each discovered test. The directory is skipped with a log message if absent.
 func walkTestDirs(t *testing.T, matcher *tests.TestMatcher, fn func(t *testing.T, name string, test *tests.StateTest)) {
 	t.Helper()
-	for _, dir := range testPaths {
-		dirinfo, err := os.Stat(dir)
-		if errors.Is(err, os.ErrNotExist) || !dirinfo.IsDir() {
-			t.Logf("Skipping %s as it does not exist, did you clone/fill the tests?", dir)
-			continue
-		}
-		matcher.Walk(t, dir, fn)
+	dir := filepath.Join(fixturesDir, "state_tests")
+	dirinfo, err := os.Stat(dir)
+	if errors.Is(err, os.ErrNotExist) || (err == nil && !dirinfo.IsDir()) {
+		t.Logf("Skipping %s: directory does not exist", dir)
+		return
 	}
+	matcher.Walk(t, dir, fn)
 }
 
 // newEthSpecVmConfig returns the base vm.Config used across Ethereum spec tests.
@@ -207,12 +225,16 @@ func createCarmenFactory(t *testing.T) carmenFactory {
 	return carmenFactory{st: st}
 }
 
-// TestMain is the entry point for the test suite. It silences the go-ethereum
-// global logger before running any tests, preventing verbose internal log output
-// (e.g. from the geth state DB) from polluting test results. All Test*
-// functions are executed via m.Run(), whose exit code is forwarded to the shell
-// so that CI and other tooling can correctly detect pass/fail.
+// TestMain is the entry point for the test suite. It registers test flags,
+// silences the go-ethereum global logger by default, and forwards the exit code
+// of m.Run() to the shell so CI can detect pass/fail.
 func TestMain(m *testing.M) {
-	log.SetDefault(log.NewLogger(log.NewTerminalHandler(io.Discard, false)))
+	var verbose bool
+	flag.StringVar(&fixturesDir, "test-data", "", "path to the fixtures directory (required)")
+	flag.BoolVar(&verbose, "verbose", false, "enable go-ethereum global logger output")
+	flag.Parse()
+	if !verbose {
+		log.SetDefault(log.NewLogger(log.NewTerminalHandler(io.Discard, false)))
+	}
 	os.Exit(m.Run())
 }
