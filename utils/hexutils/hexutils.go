@@ -19,20 +19,30 @@ package hexutils
 import (
 	"encoding/hex"
 	"fmt"
-	"log"
 	"strings"
 )
 
+// MustHexToBytes converts a hex string to a byte sequence.
+// The hex string can have spaces between bytes.
+// MustHexToBytes is a helper that panics if the hex string is invalid.
+func MustHexToBytes(s string) []byte {
+	b, err := HexToBytes(s)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
 // HexToBytes converts a hex string to a byte sequence.
 // The hex string can have spaces between bytes.
-func HexToBytes(s string) []byte {
+func HexToBytes(s string) ([]byte, error) {
 	s = strings.ReplaceAll(s, " ", "")
 	b := make([]byte, hex.DecodedLen(len(s)))
 	_, err := hex.Decode(b, []byte(s))
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("cannot convert invalid hex string '%s' to bytes: %w", s, err)
 	}
-	return b[:]
+	return b[:], nil
 }
 
 // BytesToHex returns a hex string of b.

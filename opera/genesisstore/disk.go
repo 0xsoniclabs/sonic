@@ -39,8 +39,8 @@ import (
 )
 
 var (
-	FileHeader  = hexutils.HexToBytes("641b00ac")
-	FileVersion = hexutils.HexToBytes("00020001")
+	FileHeader  = hexutils.MustHexToBytes("641b00ac")
+	FileVersion = hexutils.MustHexToBytes("00020001")
 )
 
 const (

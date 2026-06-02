@@ -45,7 +45,7 @@ func TestIsInternal(t *testing.T) {
 	require.True(t, IsInternal(types.NewTx(&types.LegacyTx{
 		V: new(big.Int),
 		R: new(big.Int),
-		S: new(big.Int).SetBytes(hexutils.HexToBytes("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")),
+		S: new(big.Int).SetBytes(hexutils.MustHexToBytes("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")),
 	})))
 	require.False(t, IsInternal(types.NewTx(&types.LegacyTx{
 		V: big.NewInt(1),

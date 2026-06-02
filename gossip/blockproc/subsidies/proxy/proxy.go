@@ -44,4 +44,4 @@ func GetCode() []byte {
 
 //go:embed proxy_contract.bin
 var proxyCodeInHex string
-var proxyCode []byte = hexutils.HexToBytes(proxyCodeInHex)
+var proxyCode []byte = hexutils.MustHexToBytes(proxyCodeInHex)

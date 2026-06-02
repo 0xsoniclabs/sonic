@@ -36,7 +36,7 @@ import (
 )
 
 var (
-	MetadataPrefix = hexutils.HexToBytes("0068c2927bf842c3e9e2f1364494a33a752db334b9a819534bc9f17d2c3b4e5970008ff519d35a86f29fcaa5aae706b75dee871f65f174fcea1747f2915fc92158f6bfbf5eb79f65d16225738594bffb")
+	MetadataPrefix = hexutils.MustHexToBytes("0068c2927bf842c3e9e2f1364494a33a752db334b9a819534bc9f17d2c3b4e5970008ff519d35a86f29fcaa5aae706b75dee871f65f174fcea1747f2915fc92158f6bfbf5eb79f65d16225738594bffb")
 	FlushIDKey     = append(common.CopyBytes(MetadataPrefix), 0x0c)
 	TablesKey      = append(common.CopyBytes(MetadataPrefix), 0x0d)
 )

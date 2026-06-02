@@ -17,8 +17,6 @@
 package hexutils
 
 import (
-	"os"
-	"os/exec"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -89,24 +87,90 @@ func TestHexToBytes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := HexToBytes(tt.input)
+			result := MustHexToBytes(tt.input)
 			require.Equal(t, tt.expected, result)
 		})
 	}
 }
 
 func TestHexToBytes_InvalidInput(t *testing.T) {
-	if os.Getenv("TEST_FATAL") == "1" {
-		HexToBytes("zz")
-		return
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{name: "non-hex characters", input: "zz"},
+		{name: "odd length", input: "abc"},
+		{name: "special characters", input: "!@#$"},
+		{name: "0x prefix", input: "0xdeadbeef"},
+		{name: "newline in string", input: "de\nad"},
+		{name: "tab in string", input: "de\tad"},
+		{name: "single non-hex char", input: "g"},
+		{name: "valid prefix invalid suffix", input: "deadbegf"},
+		{name: "unicode characters", input: "café"},
+		{name: "trailing garbage", input: "deadbeef!!"},
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=TestHexToBytes_InvalidInput")
-	cmd.Env = append(os.Environ(), "TEST_FATAL=1")
-	err := cmd.Run()
-	require.Error(t, err)
-	exitErr, ok := err.(*exec.ExitError)
-	require.True(t, ok)
-	require.False(t, exitErr.Success())
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := HexToBytes(tt.input)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestMustHexToBytes_Panics(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{name: "non-hex characters", input: "zz"},
+		{name: "odd length", input: "abc"},
+		{name: "special characters", input: "!@#$"},
+		{name: "0x prefix", input: "0xdeadbeef"},
+		{name: "newline in string", input: "de\nad"},
+		{name: "tab in string", input: "de\tad"},
+		{name: "single non-hex char", input: "g"},
+		{name: "valid prefix invalid suffix", input: "deadbegf"},
+		{name: "unicode characters", input: "café"},
+		{name: "trailing garbage", input: "deadbeef!!"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Panics(t, func() {
+				MustHexToBytes(tt.input)
+			})
+		})
+	}
+}
+
+func TestMustHexToBytes_DoesNotPanic(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []byte
+	}{
+		{name: "spaces only", input: "   ", expected: []byte{}},
+		{name: "space-separated single byte", input: " ff ", expected: []byte{0xff}},
+		{name: "space inside byte pair", input: "d e a d", expected: []byte{0xde, 0xad}},
+		{name: "lowercase a-f", input: "abcdef", expected: []byte{0xab, 0xcd, 0xef}},
+		{name: "digits only", input: "0123456789", expected: []byte{0x01, 0x23, 0x45, 0x67, 0x89}},
+		{name: "32 bytes (address-like)", input: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", expected: []byte{
+			0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+			0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+			0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+			0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.NotPanics(t, func() {
+				result := MustHexToBytes(tt.input)
+				require.Equal(t, tt.expected, result)
+			})
+		})
+	}
 }
 
 func TestBytesToHex(t *testing.T) {
@@ -180,7 +244,7 @@ func TestRoundTrip(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := HexToBytes(tt.hex)
+			b := MustHexToBytes(tt.hex)
 			result := BytesToHex(b)
 			require.Equal(t, tt.hex, result)
 		})
@@ -202,7 +266,7 @@ func TestRoundTripBytesToHexToBytes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			hexStr := BytesToHex(tt.input)
-			result := HexToBytes(hexStr)
+			result := MustHexToBytes(hexStr)
 			require.Equal(t, tt.input, result)
 		})
 	}
