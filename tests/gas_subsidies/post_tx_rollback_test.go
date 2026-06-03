@@ -80,7 +80,7 @@ func TestGasSubsidies_Brio_FailedPostTx_RollsBackSponsoredTransaction(t *testing
 
 	// No receipt should ever be produced for the sponsored transaction.
 	_, err = net.TryGetReceipt(3*time.Second, sponsoredTx.Hash())
-	require.Error(t, err,
+	require.ErrorIs(t, err, context.DeadlineExceeded,
 		"sponsored tx must not have a receipt: it was rolled back")
 }
 
