@@ -696,7 +696,7 @@ func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 				SkipTransactionChecks: internal,
 				GasPrice:              big.NewInt(0),
 				Value:                 big.NewInt(0),
-			}, gp, state, nil, nil, nil, evm, nil)
+			}, gp, state, nil, nil, nil, evm)
 			if err == nil {
 				t.Errorf("expected transaction to fail")
 			}
@@ -716,7 +716,7 @@ func TestApplyTransaction_FailsForTransactionWithInvalidGasPrice(t *testing.T) {
 	msg := &core.Message{
 		GasPrice: big.NewInt(-1),
 	}
-	_, _, err := applyTransaction(msg, nil, stateDb, nil, nil, nil, nil, nil)
+	_, _, err := applyTransaction(msg, nil, stateDb, nil, nil, nil, nil)
 	require.ErrorContains(t, err, "failed to create EVM transaction context")
 }
 
@@ -774,7 +774,7 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 			)
 
 			receipt, gasUsed, err :=
-				applyTransaction(msg, gp, state, blockNumber, nil, new(uint64), evm, nil)
+				applyTransaction(msg, gp, state, blockNumber, nil, new(uint64), evm)
 			require.ErrorContains(t, err, "max initcode size exceeded")
 			require.Nil(t, receipt)
 			require.Equal(t, uint64(0), gasUsed)
@@ -855,7 +855,7 @@ func TestApplyTransaction_SetsEffectiveGasPriceInReceipt(t *testing.T) {
 				GasLimit:  21_000,
 			}
 
-			receipt, _, err := applyTransaction(msg, gp, state, blockNum, tx, &usedGas, evm, nil)
+			receipt, _, err := applyTransaction(msg, gp, state, blockNum, tx, &usedGas, evm)
 			require.NoError(err)
 
 			require.Equal(price, receipt.EffectiveGasPrice)
@@ -990,7 +990,7 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactions(t *
 
 	// run the transactions; as a side-effect, check that the
 	// transaction offset is correctly initialized and updated.
-	summary := runTransactions(context, txs, 4, math.MaxUint64)
+	summary := runTransactions(context, txs, nil, 4, math.MaxUint64)
 	got := summary.ProcessedTransactions
 	require.Len(t, got, 6)
 
@@ -1098,7 +1098,7 @@ func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyP
 		),
 	)
 
-	summary := runTransactions(context, txs, trueStartIndex, math.MaxUint64)
+	summary := runTransactions(context, txs, nil, trueStartIndex, math.MaxUint64)
 	got := summary.ProcessedTransactions
 
 	want := []ProcessedTransaction{}
@@ -1195,7 +1195,7 @@ func TestRunTransactions_GasSubsidiesDisabled_BundlesDisabled_ProcessesAsRegular
 		},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, 123, sizeLimit)
+	summary := runTransactions(context, []*types.Transaction{tx}, nil, 123, sizeLimit)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1221,7 +1221,7 @@ func TestRunTransactions_GasSubsidiesEnabled_BundlesDisabled_ProcessesAsSponsors
 		}},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, 123, sizeLimit)
+	summary := runTransactions(context, []*types.Transaction{tx}, nil, 123, sizeLimit)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1246,7 +1246,7 @@ func TestRunTransactions_BundlesEnabled_RunsRegularTransactionOnItsOwn(t *testin
 		},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, 123, sizeLimit)
+	summary := runTransactions(context, []*types.Transaction{tx}, nil, 123, sizeLimit)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1271,7 +1271,7 @@ func TestRunTransactions_BundlesEnabled_RunsSponsorshipRequestWithSponsorship(t 
 		}},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, 123, sizeLimit)
+	summary := runTransactions(context, []*types.Transaction{tx}, nil, 123, sizeLimit)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1366,7 +1366,7 @@ func TestRunTransactions_EnvelopeAndBundleOnly_SemanticsEnabledByBrio_ExecutionE
 					Return([]ProcessedTransaction{{Transaction: tc.tx, Receipt: &types.Receipt{}}}, core_types.TransactionResultSuccessful, core_types.ExecutionCost(0))
 			}
 
-			summary := runTransactions(context, []*types.Transaction{tc.tx}, 0, sizeLimit)
+			summary := runTransactions(context, []*types.Transaction{tc.tx}, nil, 0, sizeLimit)
 			processed := summary.ProcessedTransactions
 			require.Len(t, processed, 1)
 			if tc.expectInvalid {
@@ -1424,7 +1424,7 @@ func TestRunTransactions_BundleOnlyTxsAreNotFilteredDuringReplay(t *testing.T) {
 			runner.EXPECT().runRegularTransaction(context, bundleOnlyTx, 0, sizeLimit).
 				Return(ProcessedTransaction{Transaction: bundleOnlyTx, Receipt: &types.Receipt{}}, core_types.TransactionResultSuccessful)
 
-			summary := runTransactions(context, []*types.Transaction{bundleOnlyTx}, 0, sizeLimit)
+			summary := runTransactions(context, []*types.Transaction{bundleOnlyTx}, nil, 0, sizeLimit)
 			processed := summary.ProcessedTransactions
 			require.Len(t, processed, 1)
 			require.Equal(t, ProcessedTransaction{bundleOnlyTx, &types.Receipt{}}, processed[0])
@@ -4112,7 +4112,7 @@ func TestRunTransactions_AccumulatesExecutionCostFromAllTransactions(t *testing.
 		),
 	)
 
-	summary := runTransactions(context, txs, 0, math.MaxUint64)
+	summary := runTransactions(context, txs, nil, 0, math.MaxUint64)
 	require.EqualValues(t, 100+200+300+500, summary.ExecutionCost)
 }
 
@@ -4562,7 +4562,7 @@ func TestRunTransactions_ProcessesAllTransactionsWithinBlockSizeLimit(t *testing
 			}
 			tc.setupMock(context, runner)
 
-			summary := runTransactions(context, tc.txs, 0, tc.remainingSize)
+			summary := runTransactions(context, tc.txs, nil, 0, tc.remainingSize)
 
 			require.Len(t, summary.ProcessedTransactions, tc.wantProcessed)
 			included := 0
@@ -4651,7 +4651,7 @@ func TestRunTransaction_CollectsCausedByInformationForAllTransactionTypes(t *tes
 			}
 			tc.setupMock(context, runner)
 
-			summary := runTransactions(context, []*types.Transaction{tc.tx}, 0, math.MaxUint64)
+			summary := runTransactions(context, []*types.Transaction{tc.tx}, nil, 0, math.MaxUint64)
 			require.Equal(t, tc.wantCausedBy, summary.CausedBy)
 		})
 	}
@@ -4691,7 +4691,7 @@ func TestRunTransactions_SmallerTransactionsAreProcessedAfterLargeTransactionExc
 		core_types.TransactionResultInvalid,
 	)
 
-	summary := runTransactions(context, transactions, 0, sizeLimit)
+	summary := runTransactions(context, transactions, nil, 0, sizeLimit)
 	require.Equal(t, []ProcessedTransaction{
 		{Transaction: largeTx, Receipt: nil},
 		{Transaction: tx0, Receipt: &types.Receipt{}},
@@ -4731,7 +4731,7 @@ func TestRunTransactions_RemainingSizeIsSetToZeroWhenProcessedTxExceedsIt(t *tes
 		),
 	)
 
-	summary := runTransactions(context, []*types.Transaction{tx0, tx1}, 0, remainingSize)
+	summary := runTransactions(context, []*types.Transaction{tx0, tx1}, nil, 0, remainingSize)
 	require.Len(t, summary.ProcessedTransactions, 2)
 	require.NotNil(t, summary.ProcessedTransactions[0].Receipt)
 	require.Nil(t, summary.ProcessedTransactions[1].Receipt)
@@ -4767,7 +4767,7 @@ func TestRunTransactions_AccumulatesMetricsForBundles(t *testing.T) {
 		mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(100), uint64(100))
 		mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(200), uint64(200))
 
-		runTransactions(context, txs, 0, math.MaxUint64)
+		runTransactions(context, txs, nil, 0, math.MaxUint64)
 	})
 
 	t.Run("rolled back bundles are counted when result is TransactionResultFailed", func(t *testing.T) {
@@ -4792,7 +4792,7 @@ func TestRunTransactions_AccumulatesMetricsForBundles(t *testing.T) {
 		mockMetrics.EXPECT().IncRolledBackBundle()
 		mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(0), uint64(50))
 
-		runTransactions(context, txs, 0, math.MaxUint64)
+		runTransactions(context, txs, nil, 0, math.MaxUint64)
 	})
 
 	t.Run("invalid bundles are counted when result is TransactionResultInvalid", func(t *testing.T) {
@@ -4817,7 +4817,7 @@ func TestRunTransactions_AccumulatesMetricsForBundles(t *testing.T) {
 		mockMetrics.EXPECT().IncInvalidBundle()
 		mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(0), uint64(50))
 
-		runTransactions(context, txs, 0, math.MaxUint64)
+		runTransactions(context, txs, nil, 0, math.MaxUint64)
 	})
 
 	t.Run("efficiency is reported for executed bundles", func(t *testing.T) {
@@ -4843,7 +4843,7 @@ func TestRunTransactions_AccumulatesMetricsForBundles(t *testing.T) {
 		mockMetrics.EXPECT().IncExecutedBundle()
 		mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(300), uint64(1000))
 
-		runTransactions(context, txs, 0, math.MaxUint64)
+		runTransactions(context, txs, nil, 0, math.MaxUint64)
 	})
 }
 
@@ -4872,7 +4872,7 @@ func TestRunTransactions_AccumulatesMetricsForSponsoredTx(t *testing.T) {
 		)
 		mockMetrics.EXPECT().IncSponsoredTx()
 
-		runTransactions(context, txs, 0, math.MaxUint64)
+		runTransactions(context, txs, nil, 0, math.MaxUint64)
 	})
 
 	t.Run("skipped sponsorships are counted", func(t *testing.T) {
@@ -4898,7 +4898,7 @@ func TestRunTransactions_AccumulatesMetricsForSponsoredTx(t *testing.T) {
 		)
 		mockMetrics.EXPECT().IncSkippedSponsoredTx()
 
-		runTransactions(context, txs, 0, math.MaxUint64)
+		runTransactions(context, txs, nil, 0, math.MaxUint64)
 	})
 
 	t.Run("executed and skipped are exclusive", func(t *testing.T) {
@@ -4933,7 +4933,7 @@ func TestRunTransactions_AccumulatesMetricsForSponsoredTx(t *testing.T) {
 		mockMetrics.EXPECT().IncSponsoredTx().Times(1)
 		mockMetrics.EXPECT().IncSkippedSponsoredTx().Times(1)
 
-		runTransactions(context, txs, 0, math.MaxUint64)
+		runTransactions(context, txs, nil, 0, math.MaxUint64)
 	})
 }
 
@@ -4997,7 +4997,7 @@ func TestRunTransactions_AccumulatesMetricsForBundlesAndSponsoredTx(t *testing.T
 	mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(500), uint64(800))
 	mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(0), uint64(300))
 
-	runTransactions(context, txs, 0, math.MaxUint64)
+	runTransactions(context, txs, nil, 0, math.MaxUint64)
 }
 
 func TestRunTransactions_SkipsMetricsWithoutUpgrades(t *testing.T) {
@@ -5022,7 +5022,7 @@ func TestRunTransactions_SkipsMetricsWithoutUpgrades(t *testing.T) {
 			core_types.TransactionResultInvalid,
 		)
 
-		runTransactions(context, txs, 0, math.MaxUint64)
+		runTransactions(context, txs, nil, 0, math.MaxUint64)
 	})
 
 	t.Run("bundle transaction before upgrade", func(t *testing.T) {
@@ -5045,7 +5045,7 @@ func TestRunTransactions_SkipsMetricsWithoutUpgrades(t *testing.T) {
 			core_types.TransactionResultSuccessful,
 		)
 
-		runTransactions(context, txs, 0, math.MaxUint64)
+		runTransactions(context, txs, nil, 0, math.MaxUint64)
 	})
 }
 
