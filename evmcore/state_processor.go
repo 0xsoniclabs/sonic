@@ -326,7 +326,7 @@ func runTransaction(
 			return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid, 0
 		}
 	}
-	if !context.forReplay && context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
+	if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
 		res, result := context.runner.runSponsoredTransaction(context, tx, trueTxIndexOffset, sizeLimit)
 		execCost := core_types.ExecutionCost(0)
 		for _, r := range res {
@@ -471,6 +471,11 @@ func (r *transactionRunner) runSponsoredTransactionInternal(
 	}
 
 	gasUsed := processed.Receipt.GasUsed
+
+	// Skip post-execution transactions when replaying.
+	if ctxt.forReplay {
+		return []ProcessedTransaction{processed}, status
+	}
 
 	postTxs, err := getPostTransactions(sponsorship, ctxt.statedb, gasUsed, ctxt.baseFee)
 	if err != nil {

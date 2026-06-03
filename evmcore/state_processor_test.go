@@ -1177,28 +1177,6 @@ func TestRunTransaction_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorshi
 	require.EqualValues(t, 1, execCost)
 }
 
-func TestRunTransaction_GasSubsidiesEnabled_ForReplay_RunsSponsorshipRequestAsRegularTransaction(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	runner := NewMock_transactionRunner(ctrl)
-
-	tx := getSponsorshipRequest(t)
-	processed := ProcessedTransaction{
-		Transaction: tx,
-		Receipt:     &types.Receipt{GasUsed: 1},
-	}
-
-	context := &runContext{
-		runner:    runner,
-		upgrades:  opera.Upgrades{GasSubsidies: true},
-		forReplay: true,
-	}
-	runner.EXPECT().runRegularTransaction(context, tx, 123, uint64(456)).Return(processed, core_types.TransactionResultSuccessful)
-	got, status, execCost := runTransaction(context, tx, 123, 456)
-	require.Equal(t, []ProcessedTransaction{processed}, got)
-	require.Equal(t, core_types.TransactionResultSuccessful, status)
-	require.Equal(t, core_types.ExecutionCost(1), execCost)
-}
-
 func TestRunTransactions_GasSubsidiesDisabled_BundlesDisabled_ProcessesAsRegularTransaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMock_transactionRunner(ctrl)
@@ -2032,6 +2010,49 @@ func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testin
 	require.NotNil(t, got[0].Receipt)
 	require.NotNil(t, got[1].Transaction)
 	require.NotNil(t, got[1].Receipt)
+}
+
+func TestRunSponsoredTransaction_ForReplay_SkipsPostTransactions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	evm := NewMock_evm(ctrl)
+
+	tx := getSponsorshipRequest(t)
+
+	// Snapshot for the IsCovered call
+	state.EXPECT().Snapshot().Return(1)
+	state.EXPECT().RevertToSnapshot(1)
+
+	any := gomock.Any()
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+
+	txIndex := 7
+	evm.EXPECT().runWithoutBaseFeeCheck(any, tx, txIndex).
+		Return(ProcessedTransaction{
+			Transaction: tx,
+			Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful},
+		})
+
+	gasPool := core.NewGasPool(1_000_000)
+	context := &runContext{
+		statedb:   state,
+		signer:    types.LatestSignerForChainID(nil),
+		baseFee:   big.NewInt(1),
+		gasPool:   gasPool,
+		upgrades:  opera.Upgrades{GasSubsidies: true},
+		forReplay: true,
+	}
+
+	runner := &transactionRunner{evm: evm}
+	sizeLimit := uint64(math.MaxUint64)
+	got, status := runner.runSponsoredTransaction(context, tx, txIndex, sizeLimit)
+	require.Equal(t, core_types.TransactionResultSuccessful, status)
+	require.Len(t, got, 1)
+	require.Equal(t, tx, got[0].Transaction)
+	require.NotNil(t, got[0].Receipt)
 }
 
 func TestRunSponsoredTransaction_ProcessesAllPostTransactionsInOrder(t *testing.T) {
