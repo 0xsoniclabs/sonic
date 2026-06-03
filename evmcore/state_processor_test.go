@@ -2622,6 +2622,272 @@ func TestRunSponsoredTransaction_ProcessesAllPostTransactionsInOrder(t *testing.
 	}
 }
 
+func TestRunSponsoredTransaction_Brio_FailedPostTx_RollsBackAll(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	mockEvm := NewMock_evm(ctrl)
+
+	tx := getSponsorshipRequest(t)
+	postTx := &types.Transaction{}
+
+	any := gomock.Any()
+
+	// IsCovered query runs in a regular snapshot.
+	stateDb.EXPECT().Snapshot().Return(1)
+	stateDb.EXPECT().RevertToSnapshot(1)
+	mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{95: 0}, uint64(0), nil) // getGasConfig
+	mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{31: 1}, uint64(0), nil) // chooseFund → mode 1
+
+	// Brio: inter-tx snapshot is taken before the sponsored tx executes.
+	const snapshotId = 42
+	stateDb.EXPECT().InterTxSnapshot().Return(snapshotId)
+
+	// Track initial gas state to verify it is fully restored after rollback.
+	const initialGasInPool = uint64(1_000_000)
+	gasPool := core.NewGasPool(initialGasInPool)
+	usedGas := uint64(50_000)
+
+	mockEvm.EXPECT().runWithoutBaseFeeCheck(any, tx, any).
+		DoAndReturn(func(ctxt *runContext, _ *types.Transaction, _ int) ProcessedTransaction {
+			_ = ctxt.gasPool.SubGas(21_000)
+			*ctxt.usedGas += 21_000
+			return ProcessedTransaction{
+				Transaction: tx,
+				Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful, GasUsed: 21_000},
+			}
+		})
+
+	mockEvm.EXPECT().runWithoutBaseFeeCheck(any, postTx, any).
+		DoAndReturn(func(ctxt *runContext, _ *types.Transaction, _ int) ProcessedTransaction {
+			_ = ctxt.gasPool.SubGas(1_000)
+			*ctxt.usedGas += 1_000
+			return ProcessedTransaction{
+				Transaction: postTx,
+				Receipt:     &types.Receipt{Status: types.ReceiptStatusFailed, GasUsed: 1_000},
+			}
+		})
+
+	// Brio: state, gas pool, and usedGas are all rolled back via inter-tx snapshot.
+	stateDb.EXPECT().RevertToInterTxSnapshot(snapshotId)
+
+	ctxt := &runContext{
+		statedb:  stateDb,
+		signer:   types.LatestSignerForChainID(nil),
+		baseFee:  big.NewInt(1),
+		gasPool:  gasPool,
+		usedGas:  &usedGas,
+		upgrades: opera.Upgrades{GasSubsidies: true, Brio: true},
+	}
+
+	getPostTxs := func(subsidies.Sponsorship, subsidies.NonceSource, uint64, *big.Int) ([]*types.Transaction, error) {
+		return []*types.Transaction{postTx}, nil
+	}
+
+	runner := &transactionRunner{evm: mockEvm}
+	got, status := runner.runSponsoredTransactionInternal(ctxt, tx, 0, math.MaxUint64, getPostTxs)
+
+	require.Equal(t, core_types.TransactionResultInvalid, status)
+	require.Equal(t, []ProcessedTransaction{{Transaction: tx}}, got)
+	require.Equal(t, initialGasInPool, gasPool.Gas(), "gas pool must be restored to pre-execution state")
+	require.Equal(t, uint64(50_000), usedGas, "usedGas must be restored to pre-execution state")
+}
+
+func TestRunSponsoredTransaction_Brio_SkippedPostTx_RollsBackAll(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	mockEvm := NewMock_evm(ctrl)
+
+	tx := getSponsorshipRequest(t)
+	postTx := &types.Transaction{}
+
+	any := gomock.Any()
+
+	stateDb.EXPECT().Snapshot().Return(1)
+	stateDb.EXPECT().RevertToSnapshot(1)
+	mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{95: 0}, uint64(0), nil)
+	mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{31: 1}, uint64(0), nil)
+
+	const snapshotId = 7
+	stateDb.EXPECT().InterTxSnapshot().Return(snapshotId)
+
+	mockEvm.EXPECT().runWithoutBaseFeeCheck(any, tx, any).Return(ProcessedTransaction{
+		Transaction: tx,
+		Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful, GasUsed: 21_000},
+	})
+
+	// Post-tx is skipped (nil receipt).
+	mockEvm.EXPECT().runWithoutBaseFeeCheck(any, postTx, any).Return(ProcessedTransaction{
+		Transaction: postTx,
+		Receipt:     nil,
+	})
+
+	stateDb.EXPECT().RevertToInterTxSnapshot(snapshotId)
+
+	ctxt := &runContext{
+		statedb:  stateDb,
+		signer:   types.LatestSignerForChainID(nil),
+		baseFee:  big.NewInt(1),
+		gasPool:  core.NewGasPool(1_000_000),
+		usedGas:  new(uint64),
+		upgrades: opera.Upgrades{GasSubsidies: true, Brio: true},
+	}
+
+	getPostTxs := func(subsidies.Sponsorship, subsidies.NonceSource, uint64, *big.Int) ([]*types.Transaction, error) {
+		return []*types.Transaction{postTx}, nil
+	}
+
+	runner := &transactionRunner{evm: mockEvm}
+	got, status := runner.runSponsoredTransactionInternal(ctxt, tx, 0, math.MaxUint64, getPostTxs)
+
+	require.Equal(t, core_types.TransactionResultInvalid, status)
+	require.Equal(t, []ProcessedTransaction{{Transaction: tx}}, got)
+}
+
+func TestRunSponsoredTransaction_Brio_BuildErrorForPostTx_RollsBackAll(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	mockEvm := NewMock_evm(ctrl)
+
+	tx := getSponsorshipRequest(t)
+
+	any := gomock.Any()
+
+	stateDb.EXPECT().Snapshot().Return(1)
+	stateDb.EXPECT().RevertToSnapshot(1)
+	mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{95: 0}, uint64(0), nil)
+	mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{31: 1}, uint64(0), nil)
+
+	const snapshotId = 5
+	stateDb.EXPECT().InterTxSnapshot().Return(snapshotId)
+
+	mockEvm.EXPECT().runWithoutBaseFeeCheck(any, tx, any).Return(ProcessedTransaction{
+		Transaction: tx,
+		Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful, GasUsed: 21_000},
+	})
+
+	stateDb.EXPECT().RevertToInterTxSnapshot(snapshotId)
+
+	ctxt := &runContext{
+		statedb:  stateDb,
+		signer:   types.LatestSignerForChainID(nil),
+		baseFee:  big.NewInt(1),
+		gasPool:  core.NewGasPool(1_000_000),
+		usedGas:  new(uint64),
+		upgrades: opera.Upgrades{GasSubsidies: true, Brio: true},
+	}
+
+	buildErr := fmt.Errorf("cannot build post-tx")
+	getPostTxs := func(subsidies.Sponsorship, subsidies.NonceSource, uint64, *big.Int) ([]*types.Transaction, error) {
+		return nil, buildErr
+	}
+
+	runner := &transactionRunner{evm: mockEvm}
+	got, status := runner.runSponsoredTransactionInternal(ctxt, tx, 0, math.MaxUint64, getPostTxs)
+
+	require.Equal(t, core_types.TransactionResultInvalid, status)
+	require.Equal(t, []ProcessedTransaction{{Transaction: tx}}, got)
+}
+
+func TestRunSponsoredTransaction_Brio_SuccessfulPostTxs_NoRollback(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	mockEvm := NewMock_evm(ctrl)
+
+	tx := getSponsorshipRequest(t)
+	postTx := &types.Transaction{}
+
+	any := gomock.Any()
+
+	stateDb.EXPECT().Snapshot().Return(1)
+	stateDb.EXPECT().RevertToSnapshot(1)
+	mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{95: 0}, uint64(0), nil)
+	mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{31: 1}, uint64(0), nil)
+
+	// Snapshot is taken but never reverted (all post-txs succeed).
+	stateDb.EXPECT().InterTxSnapshot().Return(99)
+
+	processedSponsored := ProcessedTransaction{
+		Transaction: tx,
+		Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful, GasUsed: 21_000},
+	}
+	mockEvm.EXPECT().runWithoutBaseFeeCheck(any, tx, any).Return(processedSponsored)
+
+	processedPost := ProcessedTransaction{
+		Transaction: postTx,
+		Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful, GasUsed: 1_000},
+	}
+	mockEvm.EXPECT().runWithoutBaseFeeCheck(any, postTx, any).Return(processedPost)
+
+	ctxt := &runContext{
+		statedb:  stateDb,
+		signer:   types.LatestSignerForChainID(nil),
+		baseFee:  big.NewInt(1),
+		gasPool:  core.NewGasPool(1_000_000),
+		usedGas:  new(uint64),
+		upgrades: opera.Upgrades{GasSubsidies: true, Brio: true},
+	}
+
+	getPostTxs := func(subsidies.Sponsorship, subsidies.NonceSource, uint64, *big.Int) ([]*types.Transaction, error) {
+		return []*types.Transaction{postTx}, nil
+	}
+
+	runner := &transactionRunner{evm: mockEvm}
+	got, status := runner.runSponsoredTransactionInternal(ctxt, tx, 0, math.MaxUint64, getPostTxs)
+
+	require.Equal(t, core_types.TransactionResultSuccessful, status)
+	require.Equal(t, []ProcessedTransaction{processedSponsored, processedPost}, got)
+}
+
+func TestRunSponsoredTransaction_PreBrio_FailedPostTx_NeverRollsBack(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	mockEvm := NewMock_evm(ctrl)
+
+	tx := getSponsorshipRequest(t)
+	postTx := &types.Transaction{}
+
+	any := gomock.Any()
+
+	stateDb.EXPECT().Snapshot().Return(1)
+	stateDb.EXPECT().RevertToSnapshot(1)
+	mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{95: 0}, uint64(0), nil)
+	mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{31: 1}, uint64(0), nil)
+
+	// No InterTxSnapshot or RevertToInterTxSnapshot calls expected for pre-Brio.
+
+	processedSponsored := ProcessedTransaction{
+		Transaction: tx,
+		Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful, GasUsed: 21_000},
+	}
+	mockEvm.EXPECT().runWithoutBaseFeeCheck(any, tx, any).Return(processedSponsored)
+
+	processedPost := ProcessedTransaction{
+		Transaction: postTx,
+		Receipt:     &types.Receipt{Status: types.ReceiptStatusFailed, GasUsed: 1_000},
+	}
+	mockEvm.EXPECT().runWithoutBaseFeeCheck(any, postTx, any).Return(processedPost)
+
+	ctxt := &runContext{
+		statedb:  stateDb,
+		signer:   types.LatestSignerForChainID(nil),
+		baseFee:  big.NewInt(1),
+		gasPool:  core.NewGasPool(1_000_000),
+		usedGas:  new(uint64),
+		upgrades: opera.Upgrades{GasSubsidies: true, Brio: false},
+	}
+
+	getPostTxs := func(subsidies.Sponsorship, subsidies.NonceSource, uint64, *big.Int) ([]*types.Transaction, error) {
+		return []*types.Transaction{postTx}, nil
+	}
+
+	runner := &transactionRunner{evm: mockEvm}
+	got, status := runner.runSponsoredTransactionInternal(ctxt, tx, 0, math.MaxUint64, getPostTxs)
+
+	// Pre-Brio: sponsored tx is included despite failing post-tx.
+	require.Equal(t, core_types.TransactionResultSuccessful, status)
+	require.Equal(t, []ProcessedTransaction{processedSponsored, processedPost}, got)
+}
+
 func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSuccessfully(t *testing.T) {
 	// This test is an integration test covering the combination of the state
 	// processor's runTransaction function, the subsidies package's utility

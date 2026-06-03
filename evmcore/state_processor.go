@@ -468,6 +468,26 @@ func (r *transactionRunner) runSponsoredTransactionInternal(
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
 
+	// Starting with Brio, the sponsored transaction and all its post-transactions
+	// are treated as an atomic unit. If any post-transaction fails or is skipped,
+	// everything is rolled back via an inter-tx snapshot.
+	var (
+		interTxSnapshotId int
+		savedGasPool      *core.GasPool
+		savedUsedGas      uint64
+	)
+	if ctxt.upgrades.Brio {
+		interTxSnapshotId = ctxt.statedb.InterTxSnapshot()
+		savedGasPool = ctxt.gasPool.Snapshot()
+		savedUsedGas = *ctxt.usedGas
+	}
+	rollback := func() ([]ProcessedTransaction, core_types.TransactionResult) {
+		ctxt.statedb.RevertToInterTxSnapshot(interTxSnapshotId)
+		ctxt.gasPool.Set(savedGasPool)
+		*ctxt.usedGas = savedUsedGas
+		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
+	}
+
 	// Run the sponsored transaction.
 	processed := r.evm.runWithoutBaseFeeCheck(ctxt, tx, txIndex)
 	if processed.Receipt == nil {
@@ -490,10 +510,13 @@ func (r *transactionRunner) runSponsoredTransactionInternal(
 
 	postTxs, err := getPostTransactions(sponsorship, ctxt.statedb, gasUsed, ctxt.baseFee)
 	if err != nil {
-		// Note: at this point the sponsored transaction has been executed, but we
-		// are not able to build the post-execution transaction. We can not undo
-		// the sponsored transaction, and we can not abort the block formation.
 		log.Warn("Failed to create post-execution transaction", "sponsored-tx", tx.Hash().Hex(), "err", err)
+		if ctxt.upgrades.Brio {
+			return rollback()
+		}
+		// Pre-Brio: at this point the sponsored transaction has been executed, but
+		// we are not able to build the post-execution transaction. The fee was not
+		// properly settled, but we cannot abort the block formation.
 		return []ProcessedTransaction{processed}, status
 	}
 
@@ -501,10 +524,17 @@ func (r *transactionRunner) runSponsoredTransactionInternal(
 	out := []ProcessedTransaction{processed}
 	for _, postTx := range postTxs {
 		processedPost := r.evm.runWithoutBaseFeeCheck(ctxt, postTx, txIndex)
-		if processedPost.Receipt == nil {
-			log.Warn("Post-execution transaction was skipped", "sponsored-tx", tx.Hash().Hex())
-		} else if processedPost.Receipt.Status == types.ReceiptStatusFailed {
-			log.Warn("Post-execution transaction failed", "sponsored-tx", tx.Hash().Hex())
+		if processedPost.Receipt == nil || processedPost.Receipt.Status == types.ReceiptStatusFailed {
+			if ctxt.upgrades.Brio {
+				log.Warn("Post-execution transaction failed or was skipped, rolling back sponsored transaction",
+					"sponsored-tx", tx.Hash().Hex())
+				return rollback()
+			}
+			if processedPost.Receipt == nil {
+				log.Warn("Post-execution transaction was skipped", "sponsored-tx", tx.Hash().Hex())
+			} else {
+				log.Warn("Post-execution transaction failed", "sponsored-tx", tx.Hash().Hex())
+			}
 		}
 		out = append(out, processedPost)
 		if processedPost.Receipt != nil {
