@@ -729,6 +729,8 @@ func (e evm) _runTransaction(
 		logs,
 		ctxt.blockNumber,
 		uint(ctxt.statedb.TxIndex()),
+		msg.GasPrice, // Conversion to msg with non-nil base fee ensures that the gas price the effective gas price
+		e.Context.BlobBaseFee,
 	)
 	return ProcessedTransaction{
 		Transaction: tx,
@@ -932,6 +934,8 @@ func ApplyTransactionWithEVM(
 		logs,
 		blockNumber,
 		uint(statedb.TxIndex()),
+		msg.GasPrice, // Conversion to msg with non-nil base fee ensures that the gas price the effective gas price
+		evm.Context.BlobBaseFee,
 	)
 	return receipt, err
 }
@@ -1005,6 +1009,8 @@ func CreateReceiptForTx(
 	logs []*types.Log,
 	blockNumber *big.Int,
 	txIndex uint,
+	effectiveGasPrice *big.Int,
+	blobGasPrice *big.Int,
 ) *types.Receipt {
 
 	receipt := &types.Receipt{
@@ -1014,6 +1020,10 @@ func CreateReceiptForTx(
 		TxHash:            tx.Hash(),
 		TransactionIndex:  txIndex,
 		GasUsed:           result.UsedGas,
+		EffectiveGasPrice: new(big.Int).Set(effectiveGasPrice),
+		BlobGasUsed:       uint64(len(tx.BlobHashes()) * params.BlobTxBlobGasPerBlob),
+		BlobGasPrice:      new(big.Int).Set(blobGasPrice),
+		Logs:              logs,
 	}
 	if result.Failed() {
 		receipt.Status = types.ReceiptStatusFailed
@@ -1027,13 +1037,7 @@ func CreateReceiptForTx(
 	}
 
 	// Set the receipt logs.
-	receipt.Logs = logs
 	receipt.Bloom = types.CreateBloom(receipt)
-
-	// Set the effective gas price in the receipt. By registering it here, at
-	// the source, down-stream consumers of the receipts do not have to
-	// replicate the code for computing effective gas prices.
-	receipt.EffectiveGasPrice = tx.GasFeeCap()
 
 	return receipt
 }

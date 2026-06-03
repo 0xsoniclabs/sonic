@@ -5376,6 +5376,9 @@ func TestCreateReceiptForTx_ConstructsReceiptsFromExecutedTransactions(t *testin
 		},
 	}
 
+	gasPrice := big.NewInt(123)
+	blobGasPrice := big.NewInt(321)
+
 	for txProperty, newTx := range txTypeCases {
 		for statusProperty, statusCase := range statusCases {
 			for targetProperty, to := range targetCases {
@@ -5406,6 +5409,8 @@ func TestCreateReceiptForTx_ConstructsReceiptsFromExecutedTransactions(t *testin
 								logs,
 								blockNumber,
 								txIndex,
+								gasPrice,
+								blobGasPrice,
 							)
 
 							require.NotNil(t, receipt)
@@ -5429,7 +5434,10 @@ func TestCreateReceiptForTx_ConstructsReceiptsFromExecutedTransactions(t *testin
 							}
 							require.Equal(t, expectedContractAddress, receipt.ContractAddress)
 
-							require.Equal(t, tx.GasFeeCap(), receipt.EffectiveGasPrice)
+							require.Equal(t, gasPrice, receipt.EffectiveGasPrice)
+							require.NotSame(t, gasPrice, receipt.EffectiveGasPrice)
+							require.Equal(t, blobGasPrice, receipt.BlobGasPrice)
+							require.NotSame(t, blobGasPrice, receipt.BlobGasPrice)
 						})
 					}
 				}
