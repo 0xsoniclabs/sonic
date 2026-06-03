@@ -1050,6 +1050,49 @@ func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (
 	return msg, nil
 }
 
+// CreateReceiptForTx creates a receipt for the given transaction based
+// on the execution result and logs.
+func CreateReceiptForTx(
+	from common.Address,
+	tx *types.Transaction,
+	cumulativeGas uint64,
+	result *core.ExecutionResult,
+	logs []*types.Log,
+	blockNumber *big.Int,
+	txIndex uint,
+) *types.Receipt {
+
+	receipt := &types.Receipt{
+		Type:              tx.Type(),
+		CumulativeGasUsed: cumulativeGas,
+		BlockNumber:       blockNumber,
+		TxHash:            tx.Hash(),
+		TransactionIndex:  txIndex,
+		GasUsed:           result.UsedGas,
+	}
+	if result.Failed() {
+		receipt.Status = types.ReceiptStatusFailed
+	} else {
+		receipt.Status = types.ReceiptStatusSuccessful
+	}
+
+	// If the transaction created a contract, store the creation address in the receipt.
+	if tx.To() == nil {
+		receipt.ContractAddress = crypto.CreateAddress(from, tx.Nonce())
+	}
+
+	// Set the receipt logs.
+	receipt.Logs = logs
+	receipt.Bloom = types.CreateBloom(receipt)
+
+	// Set the effective gas price in the receipt. By registering it here, at
+	// the source, down-stream consumers of the receipts do not have to
+	// replicate the code for computing effective gas prices.
+	receipt.EffectiveGasPrice = tx.GasFeeCap()
+
+	return receipt
+}
+
 // logger is an internal interface to enable the mocking of logging in tests.
 // This is in particular useful to make sure tests that trigger failing
 // conditions are actually triggering the correct condition.

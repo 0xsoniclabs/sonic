@@ -5251,3 +5251,128 @@ func TestTxAsMessage_ConvertsUserTransactionsToMessage(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateReceiptForTx_ConstructsReceiptsFromExecutedTransactions(t *testing.T) {
+	from := common.Address{0xaa}
+	cumulativeGas := uint64(99_999)
+	txIndex := uint(42)
+
+	statusCases := map[string]struct {
+		failed         bool
+		expectedStatus uint64
+	}{
+		"status=successful": {
+			failed:         false,
+			expectedStatus: types.ReceiptStatusSuccessful,
+		},
+		"status=failed": {
+			failed:         true,
+			expectedStatus: types.ReceiptStatusFailed,
+		},
+	}
+
+	targetCases := map[string]*common.Address{
+		"target=contract-call":     {0x01},
+		"target=contract-creation": nil,
+	}
+
+	logCases := map[string][]*types.Log{
+		"logs=empty": nil,
+		"logs=single": {
+			{
+				Address: common.Address{0x10},
+				Topics:  []common.Hash{{0x11}},
+				Data:    []byte{0xde, 0xad},
+			},
+		},
+	}
+
+	blockNumberCases := map[string]*big.Int{
+		"block-number=nil": nil,
+		"block-number=set": big.NewInt(777),
+	}
+
+	txTypeCases := map[string]func(to *common.Address) *types.Transaction{
+		"tx-type=legacy": func(to *common.Address) *types.Transaction {
+			return types.NewTx(&types.LegacyTx{
+				Nonce:    7,
+				To:       to,
+				Gas:      21_000,
+				GasPrice: big.NewInt(123),
+				Value:    big.NewInt(1),
+			})
+		},
+		"tx-type=dynamic-fee": func(to *common.Address) *types.Transaction {
+			return types.NewTx(&types.DynamicFeeTx{
+				ChainID:   big.NewInt(1),
+				Nonce:     7,
+				To:        to,
+				Gas:       21_000,
+				GasFeeCap: big.NewInt(456),
+				GasTipCap: big.NewInt(12),
+				Value:     big.NewInt(1),
+			})
+		},
+	}
+
+	for txProperty, newTx := range txTypeCases {
+		for statusProperty, statusCase := range statusCases {
+			for targetProperty, to := range targetCases {
+				for logsProperty, logs := range logCases {
+					for blockNumberProperty, blockNumber := range blockNumberCases {
+						name := fmt.Sprintf(
+							"%s,%s,%s,%s,%s",
+							txProperty,
+							statusProperty,
+							targetProperty,
+							logsProperty,
+							blockNumberProperty,
+						)
+
+						t.Run(name, func(t *testing.T) {
+							tx := newTx(to)
+
+							result := &core.ExecutionResult{UsedGas: 21_123}
+							if statusCase.failed {
+								result.Err = vm.ErrOutOfGas
+							}
+
+							receipt := CreateReceiptForTx(
+								from,
+								tx,
+								cumulativeGas,
+								result,
+								logs,
+								blockNumber,
+								txIndex,
+							)
+
+							require.NotNil(t, receipt)
+							require.Equal(t, tx.Type(), receipt.Type)
+							require.Equal(t, cumulativeGas, receipt.CumulativeGasUsed)
+							require.Equal(t, blockNumber, receipt.BlockNumber)
+							require.Equal(t, tx.Hash(), receipt.TxHash)
+							require.Equal(t, txIndex, receipt.TransactionIndex)
+							require.Equal(t, result.UsedGas, receipt.GasUsed)
+							require.Equal(t, statusCase.expectedStatus, receipt.Status)
+							require.Equal(t, logs, receipt.Logs)
+
+							expectedBloom := types.CreateBloom(&types.Receipt{
+								Logs: logs,
+							})
+							require.Equal(t, expectedBloom, receipt.Bloom)
+
+							var expectedContractAddress common.Address
+							if to == nil {
+								expectedContractAddress = crypto.CreateAddress(from, tx.Nonce())
+							}
+							require.Equal(t, expectedContractAddress, receipt.ContractAddress)
+
+							require.Equal(t, tx.GasFeeCap(), receipt.EffectiveGasPrice)
+						})
+					}
+				}
+			}
+		}
+	}
+}
