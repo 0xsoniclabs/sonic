@@ -489,12 +489,10 @@ func (s *PublicTxTraceAPI) traceTx(
 	defer cancel()
 
 	statedb.SetTxContext(tx.Hash(), int(index))
+	defer statedb.EndTransaction()
+
 	chainConfig := s.b.ChainConfig(idx.Block(block.Number.Uint64()))
 	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, core.NewGasPool(msg.GasLimit), statedb, block.Number, block.Hash, tx, &index, tracedEVM.vmenv)
-
-	traceActions := tracedEVM.txTracer.GetResult()
-	statedb.EndTransaction()
-
 	if err != nil {
 		errTrace := txtrace.GetErrorTraceFromMsg(msg, block.Hash, *block.Number, tx.Hash(), index, err)
 		at := []txtrace.ActionTrace{*errTrace}
@@ -503,6 +501,8 @@ func (s *PublicTxTraceAPI) traceTx(
 		}
 		return &at, nil
 	}
+
+	traceActions := tracedEVM.txTracer.GetResult()
 
 	if tracedEVM.vmenv.Cancelled() {
 		return nil, fmt.Errorf("EVM was cancelled when replaying tx")
