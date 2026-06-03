@@ -670,197 +670,258 @@ func TestProcess_ForwardsCorrectIndexToTransactionProcessor(t *testing.T) {
 	}
 }
 
-func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
-	for _, internal := range []bool{true, false} {
-		t.Run("internal="+fmt.Sprint(internal), func(t *testing.T) {
-			ctxt := gomock.NewController(t)
-			state := state.NewMockStateDB(ctxt)
+func TestRunTransaction_CanBypassBaseFeeChecks(t *testing.T) {
+	ctrl := gomock.NewController(t)
 
-			any := gomock.Any()
-			state.EXPECT().GetBalance(any).Return(uint256.NewInt(0))
-			state.EXPECT().SubBalance(any, any, any)
-			state.EXPECT().EndTransaction()
-			if !internal {
-				state.EXPECT().GetNonce(any)
-				state.EXPECT().GetCode(any)
-			}
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.FrontierSigner{}
 
-			evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{}, vm.Config{})
-			gp := core.NewGasPool(1000000)
+	regularTx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+		Nonce:    0,
+		To:       &common.Address{0x01},
+		Gas:      21_000,
+		GasPrice: big.NewInt(3),
+	})
+	require.False(t, internaltx.IsInternal(regularTx))
+	internalTx := types.NewTx(&types.LegacyTx{
+		Nonce: 0,
+		To:    &common.Address{0x01},
+		Gas:   21_000,
+		// no gas price
+	})
+	require.True(t, internaltx.IsInternal(internalTx))
 
-			// The transaction will fail for various reasons, but for this test
-			// this is not relevant. We just want to check if the base fee
-			// configuration flag is updated to match the SkipAccountChecks flag.
-			_, _, err := applyTransaction(&core.Message{
-				SkipNonceChecks:       internal,
-				SkipTransactionChecks: internal,
-				GasPrice:              big.NewInt(0),
-				Value:                 big.NewInt(0),
-			}, gp, state, nil, nil, nil, evm, nil)
-			if err == nil {
-				t.Errorf("expected transaction to fail")
-			}
+	state := getStateDbMockForTransactions(ctrl, []*types.Transaction{regularTx, internalTx})
+	vmEvm := vm.NewEVM(vm.BlockContext{
+		BlockNumber: big.NewInt(100),
+		Time:        100,
+		BaseFee:     big.NewInt(2),
+		Random:      &common.Hash{0x01},
+		CanTransfer: CanTransfer,
+		Transfer:    Transfer,
+	}, state, &params.ChainConfig{}, vm.Config{})
+	runner := evm{vmEvm}
 
-			if want, got := internal, evm.Config.NoBaseFee; want != got {
-				t.Fatalf("want %v, got %v", want, got)
-			}
+	context := &runContext{
+		signer:      signer,
+		baseFee:     big.NewInt(2),
+		statedb:     state,
+		gasPool:     core.NewGasPool(1_000_000),
+		blockNumber: big.NewInt(100),
+		usedGas:     new(uint64),
+	}
+
+	tests := map[string]struct {
+		tx              *types.Transaction
+		run             func(*runContext, *types.Transaction, int) ProcessedTransaction
+		expectNoBaseFee bool
+	}{
+		"regular tx with base-fee check": {
+			tx:              regularTx,
+			run:             runner.runWithBaseFeeCheck,
+			expectNoBaseFee: false,
+		},
+		"regular tx without base-fee check": {
+			tx:              regularTx,
+			run:             runner.runWithoutBaseFeeCheck,
+			expectNoBaseFee: true,
+		},
+		"internal tx with base-fee check": {
+			tx:              internalTx,
+			run:             runner.runWithBaseFeeCheck,
+			expectNoBaseFee: true,
+		},
+		"internal tx without base-fee check": {
+			tx:              internalTx,
+			run:             runner.runWithoutBaseFeeCheck,
+			expectNoBaseFee: true,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			runner.Config.NoBaseFee = false
+			result := test.run(context, test.tx, 0)
+			require.Equal(t, test.tx, result.Transaction)
+			require.Equal(t, test.expectNoBaseFee, runner.Config.NoBaseFee,
+				"configuration used for running the transaction should disable base-fee checks")
+			require.NotNil(t, result.Receipt, "transactions in test are expected to not be skipped")
 		})
 	}
 }
 
-func TestApplyTransaction_FailsForTransactionWithInvalidGasPrice(t *testing.T) {
+func TestApplyMessage_FailsForTransactionWithInvalidGasPrice(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	stateDb := state.NewMockStateDB(ctrl)
-	stateDb.EXPECT().EndTransaction()
 
-	msg := &core.Message{
-		GasPrice: big.NewInt(-1),
-	}
-	_, _, err := applyTransaction(msg, nil, stateDb, nil, nil, nil, nil, nil)
+	evm := vm.NewEVM(vm.BlockContext{}, stateDb, &params.ChainConfig{}, vm.Config{})
+	msg := &core.Message{GasPrice: big.NewInt(-1)}
+
+	_, err := applyMessage(msg, evm, stateDb, core.NewGasPool(1), big.NewInt(0))
 	require.ErrorContains(t, err, "failed to create EVM transaction context")
 }
 
-func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T) {
-	versions := map[string]bool{
-		"pre prague": false,
-		"prague":     true,
+func TestApplyMessage_PragueFailure_CreatesAndRevertsSnapshot(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	any := gomock.Any()
+	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
+	state.EXPECT().SubBalance(any, any, any).AnyTimes()
+
+	pragueTime := uint64(0)
+	chainCfg := &params.ChainConfig{
+		LondonBlock:        new(big.Int).SetUint64(0),
+		MergeNetsplitBlock: new(big.Int).SetUint64(0),
+		ShanghaiTime:       new(uint64),
+		CancunTime:         new(uint64),
+		PragueTime:         &pragueTime,
 	}
 
-	for name, isPrague := range versions {
-		t.Run(name, func(t *testing.T) {
-			pragueTime := uint64(1000)
-			callToSnapshot := 0
-			if isPrague {
-				pragueTime = 0
-				callToSnapshot = 1
-			}
-			any := gomock.Any()
-			ctrl := gomock.NewController(t)
-			state := state.NewMockStateDB(ctrl)
-			evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{
-				LondonBlock:        new(big.Int).SetUint64(0),
-				MergeNetsplitBlock: new(big.Int).SetUint64(0),
-				ShanghaiTime:       new(uint64),
-				CancunTime:         new(uint64),
-				PragueTime:         &pragueTime,
-			}, vm.Config{})
-			gp := core.NewGasPool(1000000)
+	evm := vm.NewEVM(vm.BlockContext{
+		BlockNumber: big.NewInt(100),
+		Time:        100,
+		BaseFee:     big.NewInt(0),
+		Random:      &common.Hash{0x01},
+		CanTransfer: CanTransfer,
+		Transfer:    Transfer,
+	}, state, chainCfg, vm.Config{})
 
-			blockNumber := big.NewInt(100)
-			evm.Context.Random = &common.Hash{0x01} // triggers isMerge
-			evm.Context.BlockNumber = blockNumber   // triggers isMerge
-			evm.Context.Time = 100                  // triggers IsPrague
-
-			initCode := make([]byte, 50000) // large init code to trigger error
-			msg := &core.Message{
-				From:                  common.Address{1},
-				To:                    nil, // contract creation
-				GasLimit:              1000000,
-				GasPrice:              big.NewInt(1),
-				GasFeeCap:             big.NewInt(0),
-				GasTipCap:             big.NewInt(0),
-				Value:                 big.NewInt(0),
-				Data:                  initCode,
-				SkipNonceChecks:       true,
-				SkipTransactionChecks: true,
-			}
-
-			gomock.InOrder(
-				state.EXPECT().Snapshot().Return(42).Times(callToSnapshot),
-				state.EXPECT().GetBalance(msg.From).Return(uint256.NewInt(1000000)),
-				state.EXPECT().SubBalance(any, any, any),
-				state.EXPECT().RevertToSnapshot(42).Times(callToSnapshot),
-				state.EXPECT().EndTransaction(),
-			)
-
-			receipt, gasUsed, err :=
-				applyTransaction(msg, gp, state, blockNumber, nil, new(uint64), evm, nil)
-			require.ErrorContains(t, err, "max initcode size exceeded")
-			require.Nil(t, receipt)
-			require.Equal(t, uint64(0), gasUsed)
-		})
+	to := common.Address{0x02}
+	msg := &core.Message{
+		From:                  common.Address{0x01},
+		To:                    &to,
+		GasLimit:              21_000,
+		GasPrice:              big.NewInt(1),
+		GasFeeCap:             big.NewInt(1),
+		GasTipCap:             big.NewInt(0),
+		Value:                 big.NewInt(0),
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
 	}
+
+	gomock.InOrder(
+		state.EXPECT().Snapshot().Return(42),
+		state.EXPECT().RevertToSnapshot(42),
+	)
+
+	gasPool := core.NewGasPool(1)
+	_, err := applyMessage(msg, evm, state, gasPool, big.NewInt(100))
+	require.Error(t, err)
 }
 
-func TestApplyTransaction_SetsEffectiveGasPriceInReceipt(t *testing.T) {
-	gasPrices := []*big.Int{
-		big.NewInt(0),
-		big.NewInt(100),
-		big.NewInt(math.MaxInt64),
-		new(big.Int).Lsh(big.NewInt(1), 200),
+func TestApplyMessage_PragueSuccess_CreatesSnapshotWithoutRevertingIt(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	any := gomock.Any()
+
+	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
+	state.EXPECT().SubBalance(any, any, any).AnyTimes()
+	state.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+	state.EXPECT().GetNonce(any).Return(uint64(0)).AnyTimes()
+	state.EXPECT().SetNonce(any, any, any).AnyTimes()
+	state.EXPECT().GetCode(any).Return(nil).AnyTimes()
+	state.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
+	state.EXPECT().GetStorageRoot(any).Return(types.EmptyRootHash).AnyTimes()
+	state.EXPECT().Exist(any).Return(true).AnyTimes()
+	state.EXPECT().AddBalance(any, any, any).AnyTimes()
+	state.EXPECT().GetRefund().Return(uint64(0)).AnyTimes()
+	state.EXPECT().AddRefund(any).AnyTimes()
+	state.EXPECT().SubRefund(any).AnyTimes()
+
+	snapshotCalls := 0
+	state.EXPECT().Snapshot().DoAndReturn(func() int {
+		snapshotCalls++
+		if snapshotCalls == 1 {
+			return 42
+		}
+		return 42 + snapshotCalls
+	}).AnyTimes()
+	state.EXPECT().RevertToSnapshot(42).Times(0)
+	state.EXPECT().RevertToSnapshot(gomock.Not(42)).AnyTimes()
+
+	pragueTime := uint64(0)
+	chainCfg := &params.ChainConfig{
+		LondonBlock:        new(big.Int).SetUint64(0),
+		MergeNetsplitBlock: new(big.Int).SetUint64(0),
+		ShanghaiTime:       new(uint64),
+		CancunTime:         new(uint64),
+		PragueTime:         &pragueTime,
 	}
 
-	for _, price := range gasPrices {
-		t.Run(fmt.Sprintf("%v", price), func(t *testing.T) {
-			require := require.New(t)
-			ctrl := gomock.NewController(t)
-			state := state.NewMockStateDB(ctrl)
+	evm := vm.NewEVM(vm.BlockContext{
+		BlockNumber: big.NewInt(100),
+		Time:        100,
+		BaseFee:     big.NewInt(0),
+		Random:      &common.Hash{0x01},
+		CanTransfer: CanTransfer,
+		Transfer:    Transfer,
+	}, state, chainCfg, vm.Config{})
 
-			// -- setup to get a simple transaction to pass --
-
-			blockContext := vm.BlockContext{
-				BlockNumber: big.NewInt(123),
-				BaseFee:     big.NewInt(0),
-				Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, _ *uint256.Int, _ *params.Rules) {
-					// do nothing
-				},
-				CanTransfer: func(_ vm.StateDB, _ common.Address, _ *uint256.Int) bool {
-					return true
-				},
-				Random: &common.Hash{}, // < signals Revision >= Merge
-			}
-
-			evm := vm.NewEVM(blockContext, state, &params.ChainConfig{
-				LondonBlock:        new(big.Int).SetUint64(0),
-				MergeNetsplitBlock: new(big.Int).SetUint64(0),
-				ShanghaiTime:       new(uint64),
-				CancunTime:         new(uint64),
-			}, vm.Config{})
-
-			// accept everything else that is needed to get the transaction to run
-			any := gomock.Any()
-			balance := new(uint256.Int).Lsh(uint256.NewInt(1), 240)
-			state.EXPECT().GetBalance(any).Return(balance).AnyTimes()
-			state.EXPECT().SubBalance(any, any, any).AnyTimes()
-			state.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
-			state.EXPECT().GetNonce(any).AnyTimes()
-			state.EXPECT().SetNonce(any, any, any).AnyTimes()
-			state.EXPECT().GetCode(any).AnyTimes()
-			state.EXPECT().Snapshot().AnyTimes()
-			state.EXPECT().Exist(any).Return(true).AnyTimes()
-			state.EXPECT().AddBalance(any, any, any).AnyTimes()
-			state.EXPECT().GetRefund().AnyTimes()
-			state.EXPECT().AddRefund(any).AnyTimes()
-			state.EXPECT().GetLogs(any, any).AnyTimes()
-			state.EXPECT().EndTransaction().AnyTimes()
-			state.EXPECT().TxIndex().AnyTimes()
-
-			gp := core.NewGasPool(1000000)
-			var usedGas uint64
-
-			blockNum := big.NewInt(12)
-
-			tx := types.NewTx(&types.LegacyTx{})
-
-			// -- end of setup --
-
-			// The only thing we really care of is that the GasPrice of the
-			// message is stored in the receipt.
-			msg := &core.Message{
-				GasPrice:  price,
-				GasFeeCap: new(big.Int).Add(price, big.NewInt(1000)),
-				GasTipCap: big.NewInt(100),
-				To:        &common.Address{},
-				Value:     big.NewInt(0),
-				GasLimit:  21_000,
-			}
-
-			receipt, _, err := applyTransaction(msg, gp, state, blockNum, tx, &usedGas, evm, nil)
-			require.NoError(err)
-
-			require.Equal(price, receipt.EffectiveGasPrice)
-		})
+	to := common.Address{0x02}
+	msg := &core.Message{
+		From:                  common.Address{0x01},
+		To:                    &to,
+		GasLimit:              21_000,
+		GasPrice:              big.NewInt(1),
+		GasFeeCap:             big.NewInt(1),
+		GasTipCap:             big.NewInt(0),
+		Value:                 big.NewInt(0),
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
 	}
+
+	gasPool := core.NewGasPool(1_000_000)
+	result, err := applyMessage(msg, evm, state, gasPool, big.NewInt(100))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.GreaterOrEqual(t, snapshotCalls, 1)
+}
+
+func TestApplyMessage_PrePrague_DoesNotCreateSnapshot(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	any := gomock.Any()
+	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
+	state.EXPECT().SubBalance(any, any, any).AnyTimes()
+
+	pragueTime := uint64(1000)
+	chainCfg := &params.ChainConfig{
+		LondonBlock:        new(big.Int).SetUint64(0),
+		MergeNetsplitBlock: new(big.Int).SetUint64(0),
+		ShanghaiTime:       new(uint64),
+		CancunTime:         new(uint64),
+		PragueTime:         &pragueTime,
+	}
+
+	evm := vm.NewEVM(vm.BlockContext{
+		BlockNumber: big.NewInt(100),
+		Time:        100,
+		BaseFee:     big.NewInt(0),
+		Random:      &common.Hash{0x01},
+		CanTransfer: CanTransfer,
+		Transfer:    Transfer,
+	}, state, chainCfg, vm.Config{})
+
+	to := common.Address{0x02}
+	msg := &core.Message{
+		From:                  common.Address{0x01},
+		To:                    &to,
+		GasLimit:              21_000,
+		GasPrice:              big.NewInt(1),
+		GasFeeCap:             big.NewInt(1),
+		GasTipCap:             big.NewInt(0),
+		Value:                 big.NewInt(0),
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
+	}
+
+	state.EXPECT().Snapshot().Times(0)
+	state.EXPECT().RevertToSnapshot(gomock.Any()).Times(0)
+
+	gasPool := core.NewGasPool(1)
+	_, err := applyMessage(msg, evm, state, gasPool, big.NewInt(100))
+	require.Error(t, err)
 }
 
 // processFunction is a function type alias for the StateProcessor's Process
@@ -2242,8 +2303,8 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 		state.EXPECT().SetTxContext(tx.Hash(), txIndex),
 		state.EXPECT().SetNonce(sender, uint64(1), tracing.NonceChangeEoACall),
 		state.EXPECT().Snapshot().Return(4), // < for the transaction processing
-		state.EXPECT().EndTransaction(),
 		state.EXPECT().TxIndex().Return(txIndex),
+		state.EXPECT().EndTransaction(),
 
 		// --- Preparation of the fee deduction transaction ---
 		state.EXPECT().GetNonce(zeroAddress).Return(uint64(123)),
@@ -2256,8 +2317,8 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 		state.EXPECT().SetState(sfcAddress, any, any).AnyTimes(),      // < update of the total token supply
 		state.EXPECT().Snapshot().Return(7),                           // < transfer to account 0
 		state.EXPECT().SetState(registryAddress, any, any).AnyTimes(), // < update of the fund
-		state.EXPECT().EndTransaction(),
 		state.EXPECT().TxIndex().Return(txIndex+1),
+		state.EXPECT().EndTransaction(),
 	)
 
 	// StateDB interactions that are occurring, and need to be accounted for,

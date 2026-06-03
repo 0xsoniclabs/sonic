@@ -274,10 +274,7 @@ func FuzzValidateTransaction(f *testing.F) {
 		require.NoError(t, err)
 
 		gp := core.NewGasPool(maxGas)
-		var usedGas uint64
-		_, _, processorError := applyTransaction(msg, gp, state, big.NewInt(blockNum),
-			signedTx, &usedGas, evm, nil)
-
+		_, processorError := applyMessage(msg, evm, state, gp, big.NewInt(blockNum))
 		// validateTx should not reject transactions that the processor would accept
 		if processorError != nil && validateErr == nil {
 			// if the nonce is too high this is also acceptable for the validateTx
