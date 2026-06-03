@@ -524,17 +524,17 @@ func (r *transactionRunner) runSponsoredTransactionInternal(
 	out := []ProcessedTransaction{processed}
 	for _, postTx := range postTxs {
 		processedPost := r.evm.runWithoutBaseFeeCheck(ctxt, postTx, txIndex)
-		if processedPost.Receipt == nil || processedPost.Receipt.Status == types.ReceiptStatusFailed {
-			if ctxt.upgrades.Brio {
+		if ctxt.upgrades.Brio {
+			if processedPost.Receipt == nil || processedPost.Receipt.Status != types.ReceiptStatusSuccessful {
 				log.Warn("Post-execution transaction failed or was skipped, rolling back sponsored transaction",
 					"sponsored-tx", tx.Hash().Hex())
 				return rollback()
 			}
-			if processedPost.Receipt == nil {
-				log.Warn("Post-execution transaction was skipped", "sponsored-tx", tx.Hash().Hex())
-			} else {
-				log.Warn("Post-execution transaction failed", "sponsored-tx", tx.Hash().Hex())
-			}
+		}
+		if processedPost.Receipt == nil {
+			log.Warn("Post-execution transaction was skipped", "sponsored-tx", tx.Hash().Hex())
+		} else if processedPost.Receipt.Status == types.ReceiptStatusFailed {
+			log.Warn("Post-execution transaction failed", "sponsored-tx", tx.Hash().Hex())
 		}
 		out = append(out, processedPost)
 		if processedPost.Receipt != nil {
