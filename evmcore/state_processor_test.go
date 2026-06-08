@@ -863,6 +863,63 @@ func TestApplyTransaction_SetsEffectiveGasPriceInReceipt(t *testing.T) {
 	}
 }
 
+func TestApplyTransaction_CollectsLogsFromStateDbIntoReceipt(t *testing.T) {
+	// Verify that logs returned by statedb.GetLogs are placed in the receipt.
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+
+	blockContext := vm.BlockContext{
+		BlockNumber: big.NewInt(1),
+		BaseFee:     big.NewInt(0),
+		Transfer:    func(_ vm.StateDB, _, _ common.Address, _ *uint256.Int, _ *params.Rules) {},
+		CanTransfer: func(_ vm.StateDB, _ common.Address, _ *uint256.Int) bool { return true },
+		Random:      &common.Hash{},
+	}
+	evmInstance := vm.NewEVM(blockContext, stateDb, &params.ChainConfig{
+		LondonBlock:        new(big.Int),
+		MergeNetsplitBlock: new(big.Int),
+		ShanghaiTime:       new(uint64),
+		CancunTime:         new(uint64),
+	}, vm.Config{})
+
+	any := gomock.Any()
+	balance := new(uint256.Int).Lsh(uint256.NewInt(1), 200)
+	stateDb.EXPECT().GetBalance(any).Return(balance).AnyTimes()
+	stateDb.EXPECT().SubBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+	stateDb.EXPECT().GetNonce(any).AnyTimes()
+	stateDb.EXPECT().SetNonce(any, any, any).AnyTimes()
+	stateDb.EXPECT().GetCode(any).AnyTimes()
+	stateDb.EXPECT().Snapshot().AnyTimes()
+	stateDb.EXPECT().Exist(any).Return(true).AnyTimes()
+	stateDb.EXPECT().AddBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().GetRefund().AnyTimes()
+	stateDb.EXPECT().AddRefund(any).AnyTimes()
+	stateDb.EXPECT().EndTransaction().AnyTimes()
+	stateDb.EXPECT().TxIndex().AnyTimes()
+
+	tx := types.NewTx(&types.LegacyTx{To: &common.Address{2}, Gas: 21_000})
+	expectedLogs := []*types.Log{{Address: common.Address{1}}}
+	stateDb.EXPECT().GetLogs(tx.Hash(), common.Hash{}).Return(expectedLogs)
+
+	gp := core.NewGasPool(1_000_000)
+	var usedGas uint64
+	msg := &core.Message{
+		To:                    &common.Address{2},
+		GasLimit:              21_000,
+		GasPrice:              big.NewInt(0),
+		GasFeeCap:             big.NewInt(0),
+		GasTipCap:             big.NewInt(0),
+		Value:                 big.NewInt(0),
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
+	}
+
+	receipt, _, err := applyTransaction(msg, gp, stateDb, big.NewInt(1), tx, &usedGas, evmInstance)
+	require.NoError(t, err)
+	require.Equal(t, expectedLogs, receipt.Logs)
+}
+
 // processFunction is a function type alias for the StateProcessor's Process
 // function to allow side-by-side testing of different implementations.
 type processFunction = func(
@@ -1430,6 +1487,107 @@ func TestRunTransactions_BundleOnlyTxsAreNotFilteredDuringReplay(t *testing.T) {
 			require.Equal(t, ProcessedTransaction{bundleOnlyTx, &types.Receipt{}}, processed[0])
 		})
 	}
+}
+
+func TestRunTransactions_WithNilOnNewLog_AcceptedTransactionWithLogsDoesNotPanic(t *testing.T) {
+	// When onNewLog is nil, processing a transaction that produced logs in its receipt
+	// must not panic. This guards the nil check added to runTransactions.
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+	tx := getRegularTransaction(t)
+	context := &runContext{runner: runner, upgrades: opera.Upgrades{}}
+	runner.EXPECT().runRegularTransaction(context, tx, 0, gomock.Any()).Return(
+		ProcessedTransaction{
+			Transaction: tx,
+			Receipt:     &types.Receipt{Logs: []*types.Log{{Address: common.Address{1}}}},
+		},
+		core_types.TransactionResultSuccessful,
+	)
+	require.NotPanics(t, func() {
+		runTransactions(context, []*types.Transaction{tx}, nil, 0, math.MaxUint64)
+	})
+}
+
+func TestRunTransactions_OnNewLog_ReportsLogsOnlyForConfirmedTransactions(t *testing.T) {
+	// Logs must be forwarded only when a transaction was accepted (Receipt != nil).
+	// Transactions that are skipped (nil receipt) must not trigger the callback.
+	log1 := &types.Log{Address: common.Address{1}}
+
+	tests := map[string]struct {
+		receipt  *types.Receipt
+		wantLogs []*core_types.Log
+	}{
+		"accepted transaction emits logs": {
+			receipt:  &types.Receipt{Logs: []*types.Log{log1}},
+			wantLogs: []*core_types.Log{core_types.CoreLogFromGethLog(log1)},
+		},
+		"skipped transaction emits no logs": {
+			receipt:  nil,
+			wantLogs: nil,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMock_transactionRunner(ctrl)
+			tx := getRegularTransaction(t)
+			context := &runContext{runner: runner, upgrades: opera.Upgrades{}}
+			runner.EXPECT().runRegularTransaction(context, tx, 0, gomock.Any()).Return(
+				ProcessedTransaction{Transaction: tx, Receipt: tc.receipt},
+				core_types.TransactionResultSuccessful,
+			)
+
+			var collectedLogs []*core_types.Log
+			runTransactions(context, []*types.Transaction{tx}, func(l *core_types.Log) {
+				collectedLogs = append(collectedLogs, l)
+			}, 0, math.MaxUint64)
+
+			require.Equal(t, tc.wantLogs, collectedLogs)
+		})
+	}
+}
+
+func TestRunTransactions_OnNewLog_ReportsLogsFromAcceptedTransactionsInOrder(t *testing.T) {
+	// Logs from accepted transactions must be forwarded in processing order.
+	// Skipped transactions (nil receipt) must not contribute any logs.
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+
+	tx1 := getRegularTransaction(t)
+	tx2 := getRegularTransaction(t)
+	tx3 := getRegularTransaction(t)
+
+	log1 := &types.Log{Address: common.Address{1}}
+	log3a := &types.Log{Address: common.Address{2}}
+	log3b := &types.Log{Address: common.Address{3}}
+
+	context := &runContext{runner: runner, upgrades: opera.Upgrades{}}
+	gomock.InOrder(
+		runner.EXPECT().runRegularTransaction(context, tx1, 0, gomock.Any()).Return(
+			ProcessedTransaction{Transaction: tx1, Receipt: &types.Receipt{Logs: []*types.Log{log1}}},
+			core_types.TransactionResultSuccessful,
+		),
+		runner.EXPECT().runRegularTransaction(context, tx2, 1, gomock.Any()).Return(
+			ProcessedTransaction{Transaction: tx2, Receipt: nil}, // skipped, no logs
+			core_types.TransactionResultInvalid,
+		),
+		runner.EXPECT().runRegularTransaction(context, tx3, 1, gomock.Any()).Return(
+			ProcessedTransaction{Transaction: tx3, Receipt: &types.Receipt{Logs: []*types.Log{log3a, log3b}}},
+			core_types.TransactionResultSuccessful,
+		),
+	)
+
+	var collectedLogs []*core_types.Log
+	runTransactions(context, []*types.Transaction{tx1, tx2, tx3}, func(l *core_types.Log) {
+		collectedLogs = append(collectedLogs, l)
+	}, 0, math.MaxUint64)
+
+	require.Equal(t, []*core_types.Log{
+		core_types.CoreLogFromGethLog(log1),
+		core_types.CoreLogFromGethLog(log3a),
+		core_types.CoreLogFromGethLog(log3b),
+	}, collectedLogs)
 }
 
 func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) {
