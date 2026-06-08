@@ -708,15 +708,77 @@ func (e evm) _runTransaction(
 
 	e.Config.NoBaseFee = !checkBaseFee
 	ctxt.statedb.SetTxContext(tx.Hash(), txIndex)
-	receipt, _, err := applyTransaction(
-		msg, ctxt.gasPool, ctxt.statedb, ctxt.blockNumber, tx,
-		ctxt.usedGas, e.EVM, ctxt.onNewLog,
-	)
+	defer ctxt.statedb.EndTransaction()
+
+	result, err := applyMessage(msg, e.EVM, ctxt.statedb, ctxt.gasPool, ctxt.blockNumber)
 	if err != nil {
-		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
+		log.Debug("Failed to apply message", "tx", tx.Hash().Hex(), "err", err)
 		return ProcessedTransaction{Transaction: tx}
 	}
-	return ProcessedTransaction{Transaction: tx, Receipt: receipt}
+
+	logs := ctxt.statedb.GetLogs(tx.Hash(), common.Hash{})
+
+	// TODO: removed in https://github.com/0xsoniclabs/sonic/pull/1032
+	if ctxt.onNewLog != nil {
+		for _, l := range logs {
+			ctxt.onNewLog(core_types.CoreLogFromGethLog(l))
+		}
+	}
+
+	*ctxt.usedGas += result.UsedGas
+	receipt := CreateReceiptForTx(
+		msg.From,
+		tx,
+		*ctxt.usedGas,
+		result,
+		logs,
+		ctxt.blockNumber,
+		uint(ctxt.statedb.TxIndex()),
+		msg.GasPrice, // Conversion to msg with non-nil base fee ensures that the gas price the effective gas price
+		e.Context.BlobBaseFee,
+	)
+	return ProcessedTransaction{
+		Transaction: tx,
+		Receipt:     receipt,
+	}
+}
+
+// applyMessage  wraps core.ApplyMessage with sonic specific logic:
+// - it creates the EVM transaction context from the message and sets it in the StateDB,
+// - if the Allegro upgrade is active, it takes a snapshot of the StateDB before
+// executing the message and reverts to it if the execution fails.
+func applyMessage(
+	msg *core.Message,
+	evm *vm.EVM,
+	statedb state.StateDB,
+	gasPool *core.GasPool,
+	blockNumber *big.Int,
+) (*core.ExecutionResult, error) {
+	txContext, err := NewEVMTxContext(msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EVM transaction context: %w", err)
+	}
+
+	evm.SetTxContext(txContext)
+
+	// Internal transactions bypass base-fee validation.
+	// This executes transactions used by genesis and driver internal txs.
+	evm.Config.NoBaseFee = evm.Config.NoBaseFee || msg.SkipNonceChecks
+
+	var snapshot int
+	isAllegro := evm.ChainConfig().IsPrague(blockNumber, evm.Context.Time)
+	if isAllegro {
+		snapshot = statedb.Snapshot()
+	}
+
+	result, err := core.ApplyMessage(evm, msg, gasPool)
+	if err != nil {
+		if isAllegro {
+			statedb.RevertToSnapshot(snapshot)
+		}
+		return nil, fmt.Errorf("failed to apply message: %w", err)
+	}
+	return result, nil
 }
 
 // ---
@@ -844,7 +906,7 @@ func ApplyTransactionWithEVM(
 	blockNumber *big.Int,
 	blockHash common.Hash,
 	tx *types.Transaction,
-	usedGas *uint64,
+	cumulatedGas *uint64,
 	evm *vm.EVM,
 ) (receipt *types.Receipt, err error) {
 	if evm.Config.Tracer != nil && evm.Config.Tracer.OnTxStart != nil {
@@ -855,55 +917,31 @@ func ApplyTransactionWithEVM(
 			}()
 		}
 	}
-	// Create a new context to be used in the EVM environment.
-	txContext, err := NewEVMTxContext(msg)
+
+	result, err := applyMessage(msg, evm, statedb, gp, blockNumber)
 	if err != nil {
-		statedb.EndTransaction()
-		return nil, fmt.Errorf("failed to create EVM transaction context: %w", err)
-	}
-	evm.SetTxContext(txContext)
-
-	// Apply the transaction to the current state (included in the env).
-	result, err := core.ApplyMessage(evm, msg, gp)
-	if err != nil {
-		statedb.EndTransaction()
-		return nil, err
+		return nil, fmt.Errorf("failed to apply message: %w", err)
 	}
 
-	// Update the state with pending changes.
-	statedb.EndTransaction()
-	*usedGas += result.UsedGas
+	*cumulatedGas += result.UsedGas
 
-	// Create a new receipt for the transaction, storing the intermediate root and gas used
-	// by the tx.
-	receipt = &types.Receipt{Type: tx.Type(), CumulativeGasUsed: *usedGas}
-	if result.Failed() {
-		receipt.Status = types.ReceiptStatusFailed
-	} else {
-		receipt.Status = types.ReceiptStatusSuccessful
-	}
-	receipt.TxHash = tx.Hash()
-	receipt.GasUsed = result.UsedGas
-
-	if tx.Type() == types.BlobTxType {
-		receipt.BlobGasUsed = uint64(len(tx.BlobHashes()) * params.BlobTxBlobGasPerBlob)
-		receipt.BlobGasPrice = evm.Context.BlobBaseFee // TODO issue #147
-	}
-
-	// If the transaction created a contract, store the creation address in the receipt.
-	if msg.To == nil {
-		receipt.ContractAddress = crypto.CreateAddress(evm.Origin, tx.Nonce())
-	}
-
-	// Tracing doesn't need logs and bloom.
+	// with tracing enabled, logs are not reported
+	var logs []*types.Log
 	if evm.Config.Tracer == nil {
-		// Set the receipt logs and create the bloom filter.
-		receipt.Logs = statedb.GetLogs(tx.Hash(), blockHash) // don't store logs when tracing
-		receipt.Bloom = types.CreateBloom(receipt)
+		logs = statedb.GetLogs(tx.Hash(), blockHash)
 	}
-	receipt.BlockHash = blockHash
-	receipt.BlockNumber = blockNumber
-	receipt.TransactionIndex = uint(statedb.TxIndex())
+
+	receipt = CreateReceiptForTx(
+		msg.From,
+		tx,
+		*cumulatedGas,
+		result,
+		logs,
+		blockNumber,
+		uint(statedb.TxIndex()),
+		msg.GasPrice, // Conversion to msg with non-nil base fee ensures that the gas price the effective gas price
+		evm.Context.BlobBaseFee,
+	)
 	return receipt, err
 }
 
@@ -927,95 +965,6 @@ func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM, stateDb state.Sta
 	_, _, _ = evm.Call(msg.From, *msg.To, msg.Data, 30_000_000, common.U2560)
 	stateDb.Finalise(true)
 	stateDb.EndTransaction()
-}
-
-// applyTransaction attempts to apply a transaction defined by the given message
-// to the provided EVM environment. If successful, a non-nil receipt and the
-// used gas is returned. If it fails, an error is returned and the receipt is
-// guaranteed to be nil.
-func applyTransaction(
-	msg *core.Message,
-	gp *core.GasPool,
-	statedb state.StateDB,
-	blockNumber *big.Int,
-	tx *types.Transaction,
-	usedGas *uint64,
-	evm *vm.EVM,
-	onNewLog func(*core_types.Log),
-) (
-	*types.Receipt,
-	uint64,
-	error,
-) {
-	// Create a new context to be used in the EVM environment.
-	txContext, err := NewEVMTxContext(msg)
-	if err != nil {
-		statedb.EndTransaction()
-		return nil, 0, fmt.Errorf("failed to create EVM transaction context: %w", err)
-	}
-	evm.SetTxContext(txContext)
-
-	// Skip checking of base fee limits for internal transactions.
-	evm.Config.NoBaseFee = evm.Config.NoBaseFee || msg.SkipNonceChecks
-
-	isAllegro := evm.ChainConfig().IsPrague(blockNumber, evm.Context.Time)
-	var snapshot int
-	if isAllegro {
-		snapshot = statedb.Snapshot()
-	}
-	// Apply the transaction to the current state (included in the env).
-	result, err := core.ApplyMessage(evm, msg, gp)
-	if err != nil {
-		if isAllegro {
-			statedb.RevertToSnapshot(snapshot)
-		}
-		statedb.EndTransaction()
-		return nil, 0, err
-	}
-	// Notify about logs with potential state changes.
-	// At this point the final block hash is not yet known, so we pass an empty
-	// hash. For the consumers of the log messages, as for instance the driver
-	// contract listener, only the sender, topics, and the data are relevant.
-	// The block hash is not used.
-	logs := statedb.GetLogs(tx.Hash(), common.Hash{})
-	if onNewLog != nil {
-		for _, l := range logs {
-			onNewLog(core_types.CoreLogFromGethLog(l))
-		}
-	}
-
-	// Update the state with pending changes.
-	statedb.EndTransaction()
-	*usedGas += result.UsedGas
-
-	// Create a new receipt for the transaction, storing the intermediate root and gas used
-	// by the tx.
-	receipt := &types.Receipt{Type: tx.Type(), CumulativeGasUsed: *usedGas}
-	if result.Failed() {
-		receipt.Status = types.ReceiptStatusFailed
-	} else {
-		receipt.Status = types.ReceiptStatusSuccessful
-	}
-	receipt.TxHash = tx.Hash()
-	receipt.GasUsed = result.UsedGas
-
-	// If the transaction created a contract, store the creation address in the receipt.
-	if msg.To == nil {
-		receipt.ContractAddress = crypto.CreateAddress(evm.Origin, tx.Nonce())
-	}
-
-	// Set the receipt logs.
-	receipt.Logs = logs
-	receipt.Bloom = types.CreateBloom(receipt)
-	receipt.BlockNumber = blockNumber
-	receipt.TransactionIndex = uint(statedb.TxIndex())
-
-	// Set the effective gas price in the receipt. By registering it here, at
-	// the source, down-stream consumers of the receipts do not have to
-	// replicate the code for computing effective gas prices.
-	receipt.EffectiveGasPrice = msg.GasPrice
-
-	return receipt, result.UsedGas, nil
 }
 
 func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (*core.Message, error) {
@@ -1053,6 +1002,49 @@ func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (
 	}
 
 	return msg, nil
+}
+
+// CreateReceiptForTx creates a receipt for the given transaction based
+// on the execution result and logs.
+func CreateReceiptForTx(
+	from common.Address,
+	tx *types.Transaction,
+	cumulativeGas uint64,
+	result *core.ExecutionResult,
+	logs []*types.Log,
+	blockNumber *big.Int,
+	txIndex uint,
+	effectiveGasPrice *big.Int,
+	blobGasPrice *big.Int,
+) *types.Receipt {
+
+	receipt := &types.Receipt{
+		Type:              tx.Type(),
+		CumulativeGasUsed: cumulativeGas,
+		BlockNumber:       blockNumber,
+		TxHash:            tx.Hash(),
+		TransactionIndex:  txIndex,
+		GasUsed:           result.UsedGas,
+		EffectiveGasPrice: new(big.Int).Set(effectiveGasPrice),
+		BlobGasUsed:       uint64(len(tx.BlobHashes()) * params.BlobTxBlobGasPerBlob),
+		BlobGasPrice:      new(big.Int).Set(blobGasPrice),
+		Logs:              logs,
+	}
+	if result.Failed() {
+		receipt.Status = types.ReceiptStatusFailed
+	} else {
+		receipt.Status = types.ReceiptStatusSuccessful
+	}
+
+	// If the transaction created a contract, store the creation address in the receipt.
+	if tx.To() == nil {
+		receipt.ContractAddress = crypto.CreateAddress(from, tx.Nonce())
+	}
+
+	// Set the receipt logs.
+	receipt.Bloom = types.CreateBloom(receipt)
+
+	return receipt
 }
 
 // logger is an internal interface to enable the mocking of logging in tests.

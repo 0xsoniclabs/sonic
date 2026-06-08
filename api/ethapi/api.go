@@ -2548,6 +2548,7 @@ func (api *PublicDebugAPI) traceTx(
 
 	// Call SetTxContext to clear out the statedb access list
 	loggingStateDB.SetTxContext(txctx.TxHash, txctx.TxIndex)
+	defer loggingStateDB.EndTransaction()
 
 	// Run the transaction with tracing enabled.
 	_, err = evmcore.ApplyTransactionWithEVM(

@@ -975,7 +975,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 	expectedCallsFromTxCall := func(mockState *state.MockStateDB) {
 		mockState.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
 		mockState.EXPECT().Release().AnyTimes()
-		mockState.EXPECT().Snapshot()
+		mockState.EXPECT().Snapshot().AnyTimes()
 		mockState.EXPECT().GetBalance(sender).Return(uint256.NewInt(1e18))
 		mockState.EXPECT().GetNonce(sender).Return(uint64(0))
 		mockState.EXPECT().SetNonce(sender, uint64(1), gomock.Any())
@@ -987,7 +987,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 	}
 
 	expectedCallsFromHistoryStorageContract := func(mockState *state.MockStateDB) {
-		mockState.EXPECT().Snapshot()
+		mockState.EXPECT().Snapshot().AnyTimes()
 		mockState.EXPECT().AddAddressToAccessList(params.HistoryStorageAddress)
 		mockState.EXPECT().GetCode(params.HistoryStorageAddress).Return(params.HistoryStorageCode).Times(2)
 		mockState.EXPECT().GetCodeHash(params.HistoryStorageAddress).Return(common.Hash{})
@@ -1017,10 +1017,10 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		mockState.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
 		mockState.EXPECT().SetNonce(sender, uint64(2), gomock.Any())
 		mockState.EXPECT().GetCode(recipient).Return([]byte{})
-		mockState.EXPECT().Snapshot()
+		mockState.EXPECT().Snapshot().AnyTimes()
 		mockState.EXPECT().Exist(recipient)
 		mockState.EXPECT().GetRefund().Times(2)
-		mockState.EXPECT().EndTransaction().Times(2)
+		mockState.EXPECT().EndTransaction().Times(1)
 		mockState.EXPECT().TxIndex()
 	}
 
