@@ -517,43 +517,48 @@ func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 func TestProcessWithDifficulty_onNewLog_CollectsLogsAccordingToLogsProduced(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
+	key2, err := crypto.GenerateKey()
+	require.NoError(t, err)
 	signer := types.FrontierSigner{}
-	signed := func(tx *types.Transaction) *types.Transaction {
-		signedTx, err := types.SignTx(tx, signer, key)
-		require.NoError(t, err)
-		return signedTx
-	}
+
+	invalidTx := types.NewTx(&types.LegacyTx{
+		Nonce: 0, To: &common.Address{}, Gas: 21_000,
+		R: big.NewInt(1), S: big.NewInt(2), V: big.NewInt(3),
+	})
+	tx1 := types.MustSignNewTx(key, signer, &types.LegacyTx{
+		Nonce: 0, To: &common.Address{}, Gas: 21_000,
+	})
+	tx2 := types.MustSignNewTx(key2, signer, &types.LegacyTx{
+		Nonce: 0, To: &common.Address{}, Gas: 21_000,
+	})
 
 	tests := map[string]struct {
 		transactions      []*types.Transaction
-		logsByTxIndex     map[int][]*types.Log
+		logsByTxIndex     map[common.Hash][]*types.Log
 		expectedCallbacks []*core_types.Log
 	}{
 		"transaction without receipt does not emit": {
 			transactions: []*types.Transaction{
-				types.NewTx(&types.LegacyTx{
-					Nonce: 0, To: &common.Address{}, Gas: 21_000,
-					R: big.NewInt(1), S: big.NewInt(2), V: big.NewInt(3),
-				}),
+				invalidTx,
 			},
-			logsByTxIndex:     map[int][]*types.Log{},
+			logsByTxIndex:     map[common.Hash][]*types.Log{},
 			expectedCallbacks: nil,
 		},
 		"transaction without logs does not emit": {
 			transactions: []*types.Transaction{
-				signed(types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000})),
+				tx1,
 			},
-			logsByTxIndex: map[int][]*types.Log{
-				0: {},
+			logsByTxIndex: map[common.Hash][]*types.Log{
+				tx1.Hash(): {},
 			},
 			expectedCallbacks: nil,
 		},
 		"transaction with one log emits one callback": {
 			transactions: []*types.Transaction{
-				signed(types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000})),
+				tx1,
 			},
-			logsByTxIndex: map[int][]*types.Log{
-				0: {
+			logsByTxIndex: map[common.Hash][]*types.Log{
+				tx1.Hash(): {
 					{Address: common.Address{1}, TxIndex: 1},
 				},
 			},
@@ -563,16 +568,13 @@ func TestProcessWithDifficulty_onNewLog_CollectsLogsAccordingToLogsProduced(t *t
 		},
 		"transaction with multiple logs emits all callbacks": {
 			transactions: []*types.Transaction{
-				signed(types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000})),
+				tx1,
 			},
-			logsByTxIndex: map[int][]*types.Log{
-				0: {
+			logsByTxIndex: map[common.Hash][]*types.Log{
+				tx1.Hash(): {
 					{Address: common.Address{2}, TxIndex: 2},
 					{Address: common.Address{3}, TxIndex: 2},
 					{Address: common.Address{4}, TxIndex: 2},
-				},
-				1: {
-					{Address: common.Address{99}, TxIndex: 99},
 				},
 			},
 			expectedCallbacks: []*core_types.Log{
@@ -581,28 +583,46 @@ func TestProcessWithDifficulty_onNewLog_CollectsLogsAccordingToLogsProduced(t *t
 				core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{4}, TxIndex: 2}),
 			},
 		},
+		"multiple transactions with logs emit all callbacks": {
+			transactions: []*types.Transaction{
+				tx1,
+				tx2,
+			},
+			logsByTxIndex: map[common.Hash][]*types.Log{
+				tx1.Hash(): {
+					{Address: common.Address{2}, TxIndex: 2},
+					{Address: common.Address{3}, TxIndex: 2},
+				},
+				tx2.Hash(): {
+					{Address: common.Address{4}, TxIndex: 3},
+				},
+			},
+			expectedCallbacks: []*core_types.Log{
+				core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{2}, TxIndex: 2}),
+				core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{3}, TxIndex: 2}),
+				core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{4}, TxIndex: 3}),
+			},
+		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 
-			currentTxIndex := 0
 			stateDb := state.NewMockStateDB(ctrl)
-			stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).Do(
-				func(_ common.Hash, index int) {
-					currentTxIndex = index
-				},
-			).AnyTimes()
-			stateDb.EXPECT().TxIndex().DoAndReturn(func() int { return currentTxIndex }).AnyTimes()
-			stateDb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).DoAndReturn(
-				func(_, _ common.Hash) []*types.Log {
-					logs := test.logsByTxIndex[currentTxIndex]
-					copied := make([]*types.Log, len(logs))
-					copy(copied, logs)
-					return copied
-				},
-			).AnyTimes()
+			stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+			stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
+
+			for _, tx := range test.transactions {
+				stateDb.EXPECT().GetLogs(tx.Hash(), gomock.Any()).DoAndReturn(
+					func(txHash, _ common.Hash) []*types.Log {
+						logs := test.logsByTxIndex[txHash]
+						copied := make([]*types.Log, len(logs))
+						copy(copied, logs)
+						return copied
+					},
+				).AnyTimes()
+			}
 
 			mockStateDbTransactionExecution(stateDb)
 
