@@ -227,7 +227,7 @@ func newRunContext(
 	}
 }
 
-// runTransaction is a helper function to process a list of transactions. It
+// runTransactions is a helper function to process a list of transactions. It
 // returns a list of ProcessedTransaction, containing the transaction and its
 // receipt (or nil if the transaction was skipped).
 //
@@ -271,8 +271,8 @@ func runTransactions(
 				gasUsed += processedTx.Receipt.GasUsed
 
 				if onNewLog != nil {
-					for _, log := range processedTx.Receipt.Logs {
-						onNewLog(core_types.CoreLogFromGethLog(log))
+					for _, cur := range processedTx.Receipt.Logs {
+						onNewLog(core_types.CoreLogFromGethLog(cur))
 					}
 				}
 			}
