@@ -496,6 +496,11 @@ func (h *handler) Stop() {
 	// After this send has completed, no new peers will be accepted.
 	close(h.quitSync)
 
+	// Disconnect existing sessions.
+	// This also closes the gate for any new registrations on the peer set.
+	// sessions which are already established but not added to h.peers yet
+	// will exit when they try to register.
+	h.peers.Close()
 	// Signal that we are stopping and wait for all peer Run goroutines.
 	h.peerCond.L.Lock()
 	h.stopping = true
@@ -503,12 +508,6 @@ func (h *handler) Stop() {
 		h.peerCond.Wait()
 	}
 	h.peerCond.L.Unlock()
-
-	// Disconnect existing sessions.
-	// This also closes the gate for any new registrations on the peer set.
-	// sessions which are already established but not added to h.peers yet
-	// will exit when they try to register.
-	h.peers.Close()
 
 	// Wait for all peer handler goroutines to come down.
 	h.peerWG.Wait()
