@@ -541,7 +541,12 @@ func TestProcessWithDifficulty_onNewLog_CollectsLogsAccordingToLogsProduced(t *t
 			transactions: []*types.Transaction{
 				invalidTx,
 			},
-			logsByTxIndex:     map[common.Hash][]*types.Log{},
+			logsByTxIndex: map[common.Hash][]*types.Log{
+				// invalid tx shall not have logs, but if it would, they should not be emitted.
+				invalidTx.Hash(): {
+					{Address: common.Address{1}, TxIndex: 1},
+				},
+			},
 			expectedCallbacks: nil,
 		},
 		"transaction without logs does not emit": {
