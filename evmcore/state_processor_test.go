@@ -532,6 +532,10 @@ func TestProcessWithDifficulty_onNewLog_CollectsLogsAccordingToLogsProduced(t *t
 		Nonce: 0, To: &common.Address{}, Gas: 21_000,
 	})
 
+	log1 := &types.Log{Address: common.Address{1}, Topics: []common.Hash{{1}}, Data: []byte{1}}
+	log2 := &types.Log{Address: common.Address{2}, Topics: []common.Hash{{2}}, Data: []byte{2}}
+	log3 := &types.Log{Address: common.Address{3}, Topics: []common.Hash{{3}}, Data: []byte{3}}
+
 	tests := map[string]struct {
 		transactions      []*types.Transaction
 		logsByTxIndex     map[common.Hash][]*types.Log
@@ -544,7 +548,7 @@ func TestProcessWithDifficulty_onNewLog_CollectsLogsAccordingToLogsProduced(t *t
 			logsByTxIndex: map[common.Hash][]*types.Log{
 				// invalid tx shall not have logs, but if it would, they should not be emitted.
 				invalidTx.Hash(): {
-					{Address: common.Address{1}, TxIndex: 1},
+					log1,
 				},
 			},
 			expectedCallbacks: nil,
@@ -564,11 +568,11 @@ func TestProcessWithDifficulty_onNewLog_CollectsLogsAccordingToLogsProduced(t *t
 			},
 			logsByTxIndex: map[common.Hash][]*types.Log{
 				tx1.Hash(): {
-					{Address: common.Address{1}, TxIndex: 1},
+					log1,
 				},
 			},
 			expectedCallbacks: []*core_types.Log{
-				core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{1}, TxIndex: 1}),
+				core_types.CoreLogFromGethLog(log1),
 			},
 		},
 		"transaction with multiple logs emits all callbacks": {
@@ -577,15 +581,15 @@ func TestProcessWithDifficulty_onNewLog_CollectsLogsAccordingToLogsProduced(t *t
 			},
 			logsByTxIndex: map[common.Hash][]*types.Log{
 				tx1.Hash(): {
-					{Address: common.Address{2}, TxIndex: 2},
-					{Address: common.Address{3}, TxIndex: 2},
-					{Address: common.Address{4}, TxIndex: 2},
+					log1,
+					log2,
+					log3,
 				},
 			},
 			expectedCallbacks: []*core_types.Log{
-				core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{2}, TxIndex: 2}),
-				core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{3}, TxIndex: 2}),
-				core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{4}, TxIndex: 2}),
+				core_types.CoreLogFromGethLog(log1),
+				core_types.CoreLogFromGethLog(log2),
+				core_types.CoreLogFromGethLog(log3),
 			},
 		},
 		"multiple transactions with logs emit all callbacks": {
@@ -595,17 +599,17 @@ func TestProcessWithDifficulty_onNewLog_CollectsLogsAccordingToLogsProduced(t *t
 			},
 			logsByTxIndex: map[common.Hash][]*types.Log{
 				tx1.Hash(): {
-					{Address: common.Address{2}, TxIndex: 2},
-					{Address: common.Address{3}, TxIndex: 2},
+					log1,
+					log2,
 				},
 				tx2.Hash(): {
-					{Address: common.Address{4}, TxIndex: 3},
+					log3,
 				},
 			},
 			expectedCallbacks: []*core_types.Log{
-				core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{2}, TxIndex: 2}),
-				core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{3}, TxIndex: 2}),
-				core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{4}, TxIndex: 3}),
+				core_types.CoreLogFromGethLog(log1),
+				core_types.CoreLogFromGethLog(log2),
+				core_types.CoreLogFromGethLog(log3),
 			},
 		},
 	}
@@ -669,36 +673,38 @@ func TestProcessWithDifficulty_onNewLog_ReportsLogsInOrder(t *testing.T) {
 	signer := types.FrontierSigner{}
 
 	transactions := []*types.Transaction{
-		types.MustSignNewTx(key, signer, &types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000}),
+		types.MustSignNewTx(key, signer, &types.LegacyTx{Nonce: 0, To: &common.Address{1}, Gas: 21_000}),
 		// Invalid signature -> skipped transaction -> no receipt/log callbacks.
 		types.NewTx(&types.LegacyTx{
 			Nonce: 0, To: &common.Address{}, Gas: 21_000,
 		}),
-		types.MustSignNewTx(key, signer, &types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000}),
+		types.MustSignNewTx(key, signer, &types.LegacyTx{Nonce: 0, To: &common.Address{2}, Gas: 21_000}),
 	}
 
 	logsByTxIndex := map[common.Hash][]*types.Log{
 		transactions[0].Hash(): {
-			{Address: common.Address{10}, TxIndex: 0},
+			{Address: common.Address{10}},
 		},
 		transactions[1].Hash(): {},
 		transactions[2].Hash(): {
-			{Address: common.Address{20}, TxIndex: 1},
-			{Address: common.Address{30}, TxIndex: 1},
+			{Address: common.Address{20}},
+			{Address: common.Address{30}},
 		},
 	}
 
 	stateDb := state.NewMockStateDB(ctrl)
 	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
 	stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
-	stateDb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(txHash, _ common.Hash) []*types.Log {
-			logs := logsByTxIndex[txHash]
-			copied := make([]*types.Log, len(logs))
-			copy(copied, logs)
-			return copied
-		},
-	).MinTimes(3)
+
+	getLogs := func(txHash, _ common.Hash) []*types.Log {
+		logs := logsByTxIndex[txHash]
+		copied := make([]*types.Log, len(logs))
+		copy(copied, logs)
+		return copied
+	}
+	stateDb.EXPECT().GetLogs(transactions[0].Hash(), gomock.Any()).DoAndReturn(getLogs)
+	stateDb.EXPECT().GetLogs(transactions[1].Hash(), gomock.Any()).DoAndReturn(getLogs)
+	stateDb.EXPECT().GetLogs(transactions[2].Hash(), gomock.Any()).DoAndReturn(getLogs)
 
 	mockStateDbTransactionExecution(stateDb)
 
@@ -711,7 +717,7 @@ func TestProcessWithDifficulty_onNewLog_ReportsLogsInOrder(t *testing.T) {
 		Transactions: transactions,
 	}
 
-	var emitted []*core_types.Log
+	var emitted []core_types.Log
 	summary := processor.ProcessWithDifficulty(
 		block,
 		stateDb,
@@ -720,17 +726,17 @@ func TestProcessWithDifficulty_onNewLog_ReportsLogsInOrder(t *testing.T) {
 		new(uint64),
 		0,
 		func(log *core_types.Log) {
-			emitted = append(emitted, log)
+			emitted = append(emitted, *log)
 		},
 		big.NewInt(1),
 		math.MaxUint64,
 	)
 
 	require.Len(t, summary.ProcessedTransactions, len(transactions))
-	require.Equal(t, []*core_types.Log{
-		core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{10}, TxIndex: 0}),
-		core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{20}, TxIndex: 1}),
-		core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{30}, TxIndex: 1}),
+	require.Equal(t, []core_types.Log{
+		*core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{10}}),
+		*core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{20}}),
+		*core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{30}}),
 	}, emitted)
 }
 
