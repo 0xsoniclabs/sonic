@@ -1220,6 +1220,63 @@ func TestApplyTransaction_SetsEffectiveGasPriceInReceipt(t *testing.T) {
 	}
 }
 
+func TestApplyTransaction_CollectsLogsFromStateDbIntoReceipt(t *testing.T) {
+	// Verify that logs returned by statedb.GetLogs are placed in the receipt.
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+
+	blockContext := vm.BlockContext{
+		BlockNumber: big.NewInt(1),
+		BaseFee:     big.NewInt(0),
+		Transfer:    func(_ vm.StateDB, _, _ common.Address, _ *uint256.Int, _ *params.Rules) {},
+		CanTransfer: func(_ vm.StateDB, _ common.Address, _ *uint256.Int) bool { return true },
+		Random:      &common.Hash{},
+	}
+	evmInstance := vm.NewEVM(blockContext, stateDb, &params.ChainConfig{
+		LondonBlock:        new(big.Int),
+		MergeNetsplitBlock: new(big.Int),
+		ShanghaiTime:       new(uint64),
+		CancunTime:         new(uint64),
+	}, vm.Config{})
+
+	any := gomock.Any()
+	balance := new(uint256.Int).Lsh(uint256.NewInt(1), 200)
+	stateDb.EXPECT().GetBalance(any).Return(balance).AnyTimes()
+	stateDb.EXPECT().SubBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+	stateDb.EXPECT().GetNonce(any).AnyTimes()
+	stateDb.EXPECT().SetNonce(any, any, any).AnyTimes()
+	stateDb.EXPECT().GetCode(any).AnyTimes()
+	stateDb.EXPECT().Snapshot().AnyTimes()
+	stateDb.EXPECT().Exist(any).Return(true).AnyTimes()
+	stateDb.EXPECT().AddBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().GetRefund().AnyTimes()
+	stateDb.EXPECT().AddRefund(any).AnyTimes()
+	stateDb.EXPECT().EndTransaction().AnyTimes()
+	stateDb.EXPECT().TxIndex().AnyTimes()
+
+	tx := types.NewTx(&types.LegacyTx{To: &common.Address{2}, Gas: 21_000})
+	expectedLogs := []*types.Log{{Address: common.Address{1}}}
+	stateDb.EXPECT().GetLogs(tx.Hash(), common.Hash{}).Return(expectedLogs)
+
+	gp := core.NewGasPool(1_000_000)
+	var usedGas uint64
+	msg := &core.Message{
+		To:                    &common.Address{2},
+		GasLimit:              21_000,
+		GasPrice:              big.NewInt(0),
+		GasFeeCap:             big.NewInt(0),
+		GasTipCap:             big.NewInt(0),
+		Value:                 big.NewInt(0),
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
+	}
+
+	receipt, _, err := applyTransaction(msg, gp, stateDb, big.NewInt(1), tx, &usedGas, evmInstance)
+	require.NoError(t, err)
+	require.Equal(t, expectedLogs, receipt.Logs)
+}
+
 // processFunction is a function type alias for the StateProcessor's Process
 // function to allow side-by-side testing of different implementations.
 type processFunction = func(
