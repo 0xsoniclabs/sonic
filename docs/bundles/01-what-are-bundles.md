@@ -105,6 +105,8 @@ Because the entire bundle executes atomically:
 
 And, as we will see in [Article 4](./04-one-signature.md), there is a pattern that goes further: by combining bundles with a temporary signing key managed by a web service, the user can authorize an entire multi-step workflow with a **single wallet confirmation**.
 
+Bundled transactions appear in blocks as ordinary transactions. Block explorers, indexers, wallets, and any other tooling that reads block data require no modification -- the only place bundles touch the existing workflow is at creation time.
+
 ---
 
 ## What Comes Next

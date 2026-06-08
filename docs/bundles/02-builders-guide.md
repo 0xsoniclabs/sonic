@@ -52,6 +52,12 @@ When a bundle is submitted, it does not enter the mempool as individual transact
 
 The envelope's data field contains an RLP-encoded payload with all bundled transactions and the execution plan. The network unpacks this envelope during block execution and runs the steps according to the plan.
 
+### Compatibility
+
+Once executed, bundled transactions appear in the block as ordinary transactions. Block explorers, indexers, wallets, and any other tooling that consumes block data need no modification -- they see regular transaction receipts with no bundle-specific fields. The only part of the stack that needs to be bundle-aware is the creation side: building the proposal and calling `sonic_prepareBundle` and `sonic_submitBundle`.
+
+Bundles support all current Ethereum transaction types except legacy (type 0) transactions. Legacy transactions cannot carry an access list and therefore cannot hold the BundleOnly marker. The prepare step automatically promotes a legacy transaction to a type 1 (access list) transaction if one is submitted, so in practice this limitation is handled transparently.
+
 ---
 
 ## The API Workflow
@@ -296,8 +302,6 @@ After a bundle is executed in block N, the network stores its plan hash with a r
 ## Tips and Gotchas
 
 **Do not modify prepared transactions.** The node signs references by hash. Any modification changes the hash and invalidates the plan binding.
-
-**Legacy transactions are not supported.** The BundleOnly marker requires an access list, which legacy (type 0) transactions do not support. The prepare step automatically promotes legacy transactions to type 1, but be aware of this if you are building the proposal programmatically.
 
 **Automatic gas estimation requires strict AllOf semantics.** The node can only estimate gas for transactions in strict sequential order where every prior step is assumed to have succeeded. Using `oneOf`, `tolerateFailed`, or `tolerateInvalid` at any level disables auto gas estimation. In those cases you must supply gas limits manually.
 
