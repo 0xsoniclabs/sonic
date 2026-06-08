@@ -161,10 +161,15 @@ type handler struct {
 	txsyncCh chan *txsync
 	quitSync chan struct{}
 
+	// peerCond protects the stopping flag and running peer count.
+	// Stop() sets stopping=true and waits for runningPeers to reach 0.
+	peerCond     *sync.Cond
+	stopping     bool
+	runningPeers int
+
 	// wait group is used for graceful shutdowns during downloading
 	// and processing
 	loopsWg sync.WaitGroup
-	wg      sync.WaitGroup
 	peerWG  sync.WaitGroup
 	started sync.WaitGroup
 
@@ -210,6 +215,7 @@ func newHandler(
 
 		Instance: logger.New("PM"),
 	}
+	h.peerCond = sync.NewCond(&sync.Mutex{})
 	h.started.Add(1)
 
 	h.dagFetcher = itemsfetcher.New(h.config.Protocol.DagFetcher, itemsfetcher.Callback{
@@ -490,6 +496,14 @@ func (h *handler) Stop() {
 	// After this send has completed, no new peers will be accepted.
 	close(h.quitSync)
 
+	// Signal that we are stopping and wait for all peer Run goroutines.
+	h.peerCond.L.Lock()
+	h.stopping = true
+	for h.runningPeers > 0 {
+		h.peerCond.Wait()
+	}
+	h.peerCond.L.Unlock()
+
 	// Disconnect existing sessions.
 	// This also closes the gate for any new registrations on the peer set.
 	// sessions which are already established but not added to h.peers yet
@@ -497,10 +511,29 @@ func (h *handler) Stop() {
 	h.peers.Close()
 
 	// Wait for all peer handler goroutines to come down.
-	h.wg.Wait()
 	h.peerWG.Wait()
 
 	log.Info("Sonic protocol stopped")
+}
+
+// acquireRunSlot atomically checks whether the handler is shutting down and,
+// if not, increments the running peer count so Stop will wait for this goroutine.
+func (h *handler) acquireRunSlot() bool {
+	h.peerCond.L.Lock()
+	defer h.peerCond.L.Unlock()
+	if h.stopping {
+		return false
+	}
+	h.runningPeers++
+	return true
+}
+
+// releaseRunSlot decrements the running peer count and signals Stop if waiting.
+func (h *handler) releaseRunSlot() {
+	h.peerCond.L.Lock()
+	h.runningPeers--
+	h.peerCond.L.Unlock()
+	h.peerCond.Signal()
 }
 
 func (h *handler) myProgress() PeerProgress {
