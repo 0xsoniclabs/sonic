@@ -10,8 +10,8 @@ This article covers everything you need to integrate transaction bundles into yo
 
 A bundle has two parts:
 
-1. **The transactions** — the actual signed Ethereum transactions to be executed.
-2. **The execution plan** — a tree structure that tells the network in what order to run them, how to group them, and what to do if something fails.
+1. **The transactions** -- the actual signed Ethereum transactions to be executed.
+2. **The execution plan** -- a tree structure that tells the network in what order to run them, how to group them, and what to do if something fails.
 
 These two parts are tightly coupled by a **plan hash** that is embedded in every transaction's access list before signing. This binding is what makes the pattern secure: a user's signature over a transaction implicitly authorizes the entire plan, because any change to the plan would change the hash, invalidating the signatures.
 
@@ -19,8 +19,8 @@ These two parts are tightly coupled by a **plan hash** that is embedded in every
 
 The execution plan is a tree of **steps**. Each step is either:
 
-- A **transaction step** — a leaf node that references one transaction (by sender address and hash).
-- A **group step** — an internal node containing child steps, with `AllOf` or `OneOf` semantics.
+- A **transaction step** -- a leaf node that references one transaction (by sender address and hash).
+- A **group step** -- an internal node containing child steps, with `AllOf` or `OneOf` semantics.
 
 ```
 AllOf
@@ -40,7 +40,7 @@ Before any signing takes place, each transaction in the bundle has an entry inje
 - **Address:** `0x00000000000000000000000000000000000B0D1E`
 - **Storage key:** the plan hash
 
-This marker does two things. First, it signals to the network that this transaction must not be included in a block on its own — only as part of a bundle. Second, it binds the transaction to its execution plan. Because the access list is covered by the transaction signature, signing a bundled transaction is signing a commitment to the specific plan.
+This marker does two things. First, it signals to the network that this transaction must not be included in a block on its own -- only as part of a bundle. Second, it binds the transaction to its execution plan. Because the access list is covered by the transaction signature, signing a bundled transaction is signing a commitment to the specific plan.
 
 ### The Envelope
 
@@ -58,7 +58,7 @@ The envelope's data field contains an RLP-encoded payload with all bundled trans
 
 Integrating bundles involves three RPC calls: **prepare**, **submit**, and optionally **query**.
 
-### Step 1 — Prepare: `sonic_prepareBundle`
+### Step 1 -- Prepare: `sonic_prepareBundle`
 
 Call `sonic_prepareBundle` with your unsigned transactions and the structure you want. The node estimates gas limits, suggests gas prices, computes the plan hash, and injects the BundleOnly marker into each transaction's access list. It returns the transactions ready to sign.
 
@@ -89,7 +89,7 @@ Call `sonic_prepareBundle` with your unsigned transactions and the structure you
 }
 ```
 
-Each leaf step is a transaction argument object — the same fields accepted by `eth_call` — plus two optional flags:
+Each leaf step is a transaction argument object -- the same fields accepted by `eth_call` -- plus two optional flags:
 
 | Field             | Type    | Default | Meaning |
 |-------------------|---------|---------|---------|
@@ -110,7 +110,7 @@ Group steps use a different shape:
 |---------------------|---------|---------|---------|
 | `oneOf`             | boolean | `false` | `true` = OneOf semantics; `false` = AllOf semantics. |
 | `tolerateFailures`  | boolean | `false` | Treat failure of the whole group as successful. |
-| `steps`             | array   | —       | Child steps, which can be transactions or nested groups. |
+| `steps`             | array   | --       | Child steps, which can be transactions or nested groups. |
 
 **Response:**
 
@@ -147,15 +147,15 @@ Group steps use a different shape:
 
 If you omit `gas`, the node estimates it for each transaction accounting for the state changes produced by earlier transactions in depth-first order. If you omit gas price fields, the node fills in a suggested value based on the current base fee. Both auto-filling features require an all-AllOf plan with no tolerance flags (because gas estimation assumes all prior steps succeeded and left state that later steps can depend on).
 
-### Step 2 — Sign
+### Step 2 -- Sign
 
 Each returned transaction must be signed by the address in its `from` field, in the order they appear in the `transactions` array. The order is the depth-first traversal of the execution plan tree.
 
-If multiple addresses appear in the bundle — which is common in the [single-signature pattern](./04-one-signature.md) — each address signs its own subset of transactions. Collect all signed transactions and preserve their order.
+If multiple addresses appear in the bundle -- which is common in the [single-signature pattern](./04-one-signature.md) -- each address signs its own subset of transactions. Collect all signed transactions and preserve their order.
 
 Encode each signed transaction as its binary representation (RLP-encoded, the same encoding used in `eth_sendRawTransaction`).
 
-### Step 3 — Submit: `sonic_submitBundle`
+### Step 3 -- Submit: `sonic_submitBundle`
 
 Call `sonic_submitBundle` with the signed transactions and the execution plan returned by `prepareBundle`.
 
@@ -185,11 +185,11 @@ The `executionPlan` value should be passed through exactly as returned by `prepa
 "0xplanHash..."
 ```
 
-The response is the execution plan hash — a unique identifier for the bundle. Keep this hash if you want to track execution.
+The response is the execution plan hash -- a unique identifier for the bundle. Keep this hash if you want to track execution.
 
 Internally, the node wraps everything into a single envelope transaction, signs it with an ephemeral one-time key, and submits it to the transaction pool. From that point on, validators treat it as an ordinary pending transaction.
 
-### Step 4 — Query: `sonic_getBundleInfo`
+### Step 4 -- Query: `sonic_getBundleInfo`
 
 Once you have submitted a bundle, you can poll for its execution status using the plan hash.
 
@@ -215,7 +215,7 @@ The node keeps this record for up to 1024 blocks after execution. After that win
 
 | Flag              | When to use |
 |-------------------|-------------|
-| `tolerateFailed`  | The transaction may revert on the EVM, but that outcome is acceptable — you do not want the entire group to fail because of it. The transaction's state changes are still rolled back; only the failure status is absorbed. |
+| `tolerateFailed`  | The transaction may revert on the EVM, but that outcome is acceptable -- you do not want the entire group to fail because of it. The transaction's state changes are still rolled back; only the failure status is absorbed. |
 | `tolerateInvalid` | The transaction may be structurally invalid at execution time (wrong nonce, insufficient funds). Use this for optional steps that might be redundant depending on prior state. The transaction is skipped entirely; no state changes. |
 
 ### Group-Level Flag
@@ -237,8 +237,8 @@ Every bundle has a **block range** that controls which blocks it is eligible to 
 }
 ```
 
-- `first` — The first block in which the bundle can be included.
-- `length` — The number of consecutive blocks (maximum: **1024**).
+- `first` -- The first block in which the bundle can be included.
+- `length` -- The number of consecutive blocks (maximum: **1024**).
 
 A bundle with `first = 0x1234` and `length = 0x0a` is eligible for blocks 0x1234 through 0x123d inclusive.
 
@@ -258,13 +258,13 @@ Understanding the validation and execution pipeline helps you write bundles that
 
 When an envelope arrives in the transaction pool, the node runs a series of checks to classify it:
 
-1. **Feature flag** — transaction bundles must be enabled on the network.
-2. **Structure validation** — the execution plan must be well-formed, nesting depths must be within limits, and every transaction must carry the BundleOnly marker with the correct plan hash.
-3. **Block range check** — if the range has expired, the bundle is rejected permanently; if it targets future blocks, it waits.
-4. **Deduplication** — if the same plan hash has been processed within the last 1024 blocks, the bundle is rejected.
-5. **Nonce check** — a lightweight dry run verifies that nonces are consistent. If they are inconsistent in a way that could resolve later (e.g. a gap that another transaction could fill), the bundle is marked temporarily blocked rather than rejected.
-6. **Trial run** — the bundle is executed against a simulated next block to confirm it would succeed. If the trial run fails, the bundle is permanently rejected.
-7. **Efficiency check** — the ratio of gas used by transactions accepted in blocks to the total execution cost must be at least **20%**. The total execution cost includes gas spent running transactions that were subsequently rolled back (e.g. failed OneOf branches), not just the billed gas limits. This prevents bundles that trigger many expensive failing branches from consuming disproportionate network resources.
+1. **Feature flag** -- transaction bundles must be enabled on the network.
+2. **Structure validation** -- the execution plan must be well-formed, nesting depths must be within limits, and every transaction must carry the BundleOnly marker with the correct plan hash.
+3. **Block range check** -- if the range has expired, the bundle is rejected permanently; if it targets future blocks, it waits.
+4. **Deduplication** -- if the same plan hash has been processed within the last 1024 blocks, the bundle is rejected.
+5. **Nonce check** -- a lightweight dry run verifies that nonces are consistent. If they are inconsistent in a way that could resolve later (e.g. a gap that another transaction could fill), the bundle is marked temporarily blocked rather than rejected.
+6. **Trial run** -- the bundle is executed against a simulated next block to confirm it would succeed. If the trial run fails, the bundle is permanently rejected.
+7. **Efficiency check** -- the ratio of gas used by transactions accepted in blocks to the total execution cost must be at least **20%**. The total execution cost includes gas spent running transactions that were subsequently rolled back (e.g. failed OneOf branches), not just the billed gas limits. This prevents bundles that trigger many expensive failing branches from consuming disproportionate network resources.
 
 If all checks pass, the bundle (in its envelope) enters the mempool like any other transaction.
 
@@ -307,5 +307,5 @@ After a bundle is executed in block N, the network stores its plan hash with a r
 
 ## Next Steps
 
-- [Article 3: Bundles in Action](./03-bundles-in-action.md) — Three worked examples showing how to structure bundles for real-world use cases.
-- [Article 4: One Signature, Many Transactions](./04-one-signature.md) — How to build multi-step workflows that require only a single wallet confirmation from the end user.
+- [Article 3: Bundles in Action](./03-bundles-in-action.md) -- Three worked examples showing how to structure bundles for real-world use cases.
+- [Article 4: One Signature, Many Transactions](./04-one-signature.md) -- How to build multi-step workflows that require only a single wallet confirmation from the end user.

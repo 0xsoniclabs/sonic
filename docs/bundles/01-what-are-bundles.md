@@ -1,8 +1,8 @@
 # What Are Bundles and Why Do They Matter?
 
-Decentralized applications carry a hidden tax: every on-chain interaction demands a wallet confirmation. Approve tokens — click. Confirm the swap — click. Stake the result — click. For multi-step workflows the ritual can run through five confirmations, and each pause is an invitation for the world to change underneath you.
+Decentralized applications carry a hidden tax: every on-chain interaction demands a wallet confirmation. Approve tokens -- click. Confirm the swap -- click. Stake the result -- click. For multi-step workflows the ritual can run through five confirmations, and each pause is an invitation for the world to change underneath you.
 
-Sonic **transaction bundles** address both problems — the friction of repeated signing, and the fragility of operations that span multiple blocks — through a single mechanism: a group of transactions that the network treats as one.
+Sonic **transaction bundles** address both problems -- the friction of repeated signing, and the fragility of operations that span multiple blocks -- through a single mechanism: a group of transactions that the network treats as one.
 
 ---
 
@@ -18,11 +18,11 @@ Even when nothing goes wrong, the signing ceremony is exhausting. For protocols 
 
 The multi-signature problem is partly about UX. The deeper problem is about correctness.
 
-Imagine you are refinancing a loan: you close your position on Protocol A, and then open a new one on Protocol B. Between those two on-chain steps — even if they are in the same block — other transactions can execute. A price oracle can update. Liquidity can shift. The conditions that made the refinancing worthwhile may no longer hold at the moment you try to open the new position.
+Imagine you are refinancing a loan: you close your position on Protocol A, and then open a new one on Protocol B. Between those two on-chain steps -- even if they are in the same block -- other transactions can execute. A price oracle can update. Liquidity can shift. The conditions that made the refinancing worthwhile may no longer hold at the moment you try to open the new position.
 
-With ordinary transactions, you cannot prevent this. Your sequence of actions has gaps, and those gaps are exploitable — by MEV bots, by market movement, or simply by bad timing.
+With ordinary transactions, you cannot prevent this. Your sequence of actions has gaps, and those gaps are exploitable -- by MEV bots, by market movement, or simply by bad timing.
 
-**Atomicity** closes those gaps. If all steps execute as an uninterrupted unit — or not at all — the mid-sequence exposure disappears.
+**Atomicity** closes those gaps. If all steps execute as an uninterrupted unit -- or not at all -- the mid-sequence exposure disappears.
 
 ---
 
@@ -40,7 +40,7 @@ No interleaving. No partial execution. No mid-sequence exposure.
 
 Bundles support two grouping semantics, which can be combined and nested freely.
 
-### AllOf — Everything or Nothing
+### AllOf -- Everything or Nothing
 
 An **AllOf** group succeeds only if every step inside it succeeds. If any step fails or reverts, the entire group is rolled back as though it never happened.
 
@@ -56,7 +56,7 @@ AllOf(
 
 If `buy_nft_3` reverts because the item sold out, the purchases of NFTs 1 and 2 are also undone. You either get the complete set or nothing.
 
-### OneOf — First Success Wins
+### OneOf -- First Success Wins
 
 A **OneOf** group tries its steps in order and succeeds as soon as one of them succeeds. Subsequent steps are skipped.
 
@@ -68,7 +68,7 @@ OneOf(
 )
 ```
 
-If Exchange A has enough liquidity, the trade executes there and Exchange B and C are never touched. If A fails, its state changes are reverted and B is tried next. Failed branches that were attempted still consume their nonce and gas, and they appear in the block with a revert status — only their state changes are undone. Branches that were never reached leave no trace at all.
+If Exchange A has enough liquidity, the trade executes there and Exchange B and C are never touched. If A fails, its state changes are reverted and B is tried next. Failed branches that were attempted still consume their nonce and gas, and they appear in the block with a revert status -- only their state changes are undone. Branches that were never reached leave no trace at all.
 
 The one exception: if **all** branches fail, none of the transactions land in the block and no nonces are consumed.
 
@@ -89,13 +89,13 @@ AllOf(
 )
 ```
 
-This reads as: "Do all of these steps, in order — but for step four, try Protocol B first, then fall back to Protocol C."
+This reads as: "Do all of these steps, in order -- but for step four, try Protocol B first, then fall back to Protocol C."
 
 ---
 
 ## Bundles in Practice
 
-Both motivation stories — the UX friction and the interleaving risk — are resolved by the same underlying property: **atomic execution within a single block**.
+Both motivation stories -- the UX friction and the interleaving risk -- are resolved by the same underlying property: **atomic execution within a single block**.
 
 Because the entire bundle executes atomically:
 
@@ -109,8 +109,8 @@ And, as we will see in [Article 4](./04-one-signature.md), there is a pattern th
 
 ## What Comes Next
 
-- **[Article 2: The Builder's Guide](./02-builders-guide.md)** — The full technical picture: how to construct and submit a bundle via the `sonic_prepareBundle` and `sonic_submitBundle` APIs, how the network validates and executes bundles, and a complete reference for all configuration options.
+- **[Article 2: The Builder's Guide](./02-builders-guide.md)** -- The full technical picture: how to construct and submit a bundle via the `sonic_prepareBundle` and `sonic_submitBundle` APIs, how the network validates and executes bundles, and a complete reference for all configuration options.
 
-- **[Article 3: Bundles in Action](./03-bundles-in-action.md)** — Three concrete use cases, with bundle structures for each: Perfect Set Acquisition, Trustless Debt Refinancing, and Prioritized Fallback Trading.
+- **[Article 3: Bundles in Action](./03-bundles-in-action.md)** -- Three concrete use cases, with bundle structures for each: Perfect Set Acquisition, Trustless Debt Refinancing, and Prioritized Fallback Trading.
 
-- **[Article 4: One Signature, Many Transactions](./04-one-signature.md)** — How to build workflows that require only a single user signature, using a temporary account managed by your web service.
+- **[Article 4: One Signature, Many Transactions](./04-one-signature.md)** -- How to build workflows that require only a single user signature, using a temporary account managed by your web service.

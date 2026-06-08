@@ -1,6 +1,6 @@
 # Bundles in Action
 
-The two guarantees that bundles provide — **atomic execution** and **no interleaving** — solve a surprisingly wide range of problems. This article walks through three real-world use cases that illustrate different aspects of what bundles make possible.
+The two guarantees that bundles provide -- **atomic execution** and **no interleaving** -- solve a surprisingly wide range of problems. This article walks through three real-world use cases that illustrate different aspects of what bundles make possible.
 
 > **New to bundles?** Start with [Article 1](./01-what-are-bundles.md) for the conceptual introduction, or [Article 2](./02-builders-guide.md) for the full API reference.
 
@@ -14,7 +14,7 @@ A collector wants to buy a team of five player NFTs as a complete set. They find
 
 With individual transactions, each purchase settles independently. By the time the third or fourth confirmation lands, the fifth item might have sold to another buyer, or the seller might have raised the price. The collector is now stuck with an incomplete set that cost them most of the budget.
 
-The natural response — "I'll be fast" — is not a solution. Even if the collector submits all five transactions in the same block, there is no guarantee all five succeed. One reverting transaction does not undo the others.
+The natural response -- "I'll be fast" -- is not a solution. Even if the collector submits all five transactions in the same block, there is no guarantee all five succeed. One reverting transaction does not undo the others.
 
 ### The Bundle Solution
 
@@ -33,7 +33,7 @@ Wrap all five purchases in an **AllOf** group:
 }
 ```
 
-The top-level `steps` array is implicitly an **AllOf** group. If any single purchase fails — because the item sold out or the price changed — the entire bundle reverts. None of the purchases land. The collector's funds are untouched.
+The top-level `steps` array is implicitly an **AllOf** group. If any single purchase fails -- because the item sold out or the price changed -- the entire bundle reverts. None of the purchases land. The collector's funds are untouched.
 
 ### What This Demonstrates
 
@@ -57,7 +57,7 @@ A borrower has a collateralized loan on Protocol A (similar to Aave) and wants t
 4. Deposit the collateral into Protocol B.
 5. Borrow from Protocol B to repay the flash loan.
 
-In practice, this sequence is dangerous without atomicity. If step 4 succeeds but step 5 fails — because Protocol B's rates have spiked or its liquidity is insufficient — the borrower has withdrawn collateral from Protocol A but cannot open the new position. They must scramble to cover the situation manually, possibly at a loss, and under time pressure since they are holding a flash loan.
+In practice, this sequence is dangerous without atomicity. If step 4 succeeds but step 5 fails -- because Protocol B's rates have spiked or its liquidity is insufficient -- the borrower has withdrawn collateral from Protocol A but cannot open the new position. They must scramble to cover the situation manually, possibly at a loss, and under time pressure since they are holding a flash loan.
 
 The problem is not that individual steps are risky. The problem is that the sequence has no rollback mechanism if it cannot be completed.
 
@@ -119,7 +119,7 @@ Crucially, the **no-interleaving** guarantee also matters here. Even if another 
 
 ### The Problem
 
-A trader wants to convert a token and has identified three possible execution venues — three decentralised exchanges or cross-chain bridges — ranked by preference. Exchange A offers the best rate; Exchange B is acceptable; Exchange C is the last resort with the least favorable terms.
+A trader wants to convert a token and has identified three possible execution venues -- three decentralised exchanges or cross-chain bridges -- ranked by preference. Exchange A offers the best rate; Exchange B is acceptable; Exchange C is the last resort with the least favorable terms.
 
 Without bundles, the trader must attempt each one sequentially: submit a transaction to A, wait for the receipt, check if it succeeded, then try B if not, and so on. In a fast-moving market, this iterative approach can take ten or more blocks. Prices change. Liquidity shifts. The rate on B may no longer be acceptable by the time the trader gets there.
 
@@ -160,9 +160,9 @@ Wrap the three trade attempts in a **OneOf** group:
 }
 ```
 
-The network tries Exchange A first. If that transaction succeeds, the group stops — Exchange B and C are never attempted and leave no trace. If A fails (insufficient liquidity, slippage too high), A's state changes are reverted but A still appears in the block with a revert status and its nonce (`0x15`) is consumed. Exchange B is then tried with nonce `0x16`. If B also fails the same way, C is tried with nonce `0x17`.
+The network tries Exchange A first. If that transaction succeeds, the group stops -- Exchange B and C are never attempted and leave no trace. If A fails (insufficient liquidity, slippage too high), A's state changes are reverted but A still appears in the block with a revert status and its nonce (`0x15`) is consumed. Exchange B is then tried with nonce `0x16`. If B also fails the same way, C is tried with nonce `0x17`.
 
-If **all three fail**, none of the transactions are included in the block and no nonces are consumed — the trader can simply resubmit or let the bundle expire.
+If **all three fail**, none of the transactions are included in the block and no nonces are consumed -- the trader can simply resubmit or let the bundle expire.
 
 All of this happens in a **single block**. The trader does not wait through multiple block confirmations to learn the outcome. They either get the best available rate (possibly after one or two failed attempts on earlier venues) or nothing at all, and the result is known as soon as the bundle's block is confirmed.
 
@@ -171,7 +171,7 @@ All of this happens in a **single block**. The trader does not wait through mult
 - **OneOf semantics**: at most one branch succeeds; branches that were never reached leave no trace.
 - **Nonce ordering across branches**: failed branches that execute consume their nonce; each subsequent branch needs the next nonce in sequence.
 - **Single-block settlement**: the entire decision tree resolves in one block, not one per confirmation.
-- **All-or-nothing fallback**: if all venues fail simultaneously, the trader's position is unchanged — no partial execution, no consumed nonces.
+- **All-or-nothing fallback**: if all venues fail simultaneously, the trader's position is unchanged -- no partial execution, no consumed nonces.
 
 ---
 
@@ -185,7 +185,7 @@ All of this happens in a **single block**. The trader does not wait through mult
 | A step may not exist at execution time | `tolerateInvalid` on the step |
 | Complex workflow with both mandatory and optional branches | Nest `AllOf` and `OneOf` |
 
-These patterns can be composed freely. A bundle for a sophisticated DeFi protocol might include a mandatory setup step in AllOf, followed by a OneOf for the core operation with several fallback venues, followed by a mandatory cleanup step — all in a single atomic unit.
+These patterns can be composed freely. A bundle for a sophisticated DeFi protocol might include a mandatory setup step in AllOf, followed by a OneOf for the core operation with several fallback venues, followed by a mandatory cleanup step -- all in a single atomic unit.
 
 ---
 
