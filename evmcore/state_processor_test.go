@@ -688,22 +688,17 @@ func TestProcessWithDifficulty_onNewLog_ReportsLogsInOrder(t *testing.T) {
 		},
 	}
 
-	currentTxIndex := 0
 	stateDb := state.NewMockStateDB(ctrl)
-	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).Do(
-		func(_ common.Hash, index int) {
-			currentTxIndex = index
-		},
-	).AnyTimes()
-	stateDb.EXPECT().TxIndex().DoAndReturn(func() int { return currentTxIndex }).AnyTimes()
+	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+	stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
 	stateDb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_, _ common.Hash) []*types.Log {
-			logs := logsByTxIndex[currentTxIndex]
+		func(txHash, _ common.Hash) []*types.Log {
+			logs := logsByTxIndex[txHash]
 			copied := make([]*types.Log, len(logs))
 			copy(copied, logs)
 			return copied
 		},
-	).AnyTimes()
+	).MinTimes(3)
 
 	mockStateDbTransactionExecution(stateDb)
 
@@ -751,15 +746,11 @@ func TestProcessWithDifficulty_onNewLog_SkipsCallbackWhenNil(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	currentTxIndex := 0
 	stateDb := state.NewMockStateDB(ctrl)
-	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).Do(
-		func(_ common.Hash, index int) {
-			currentTxIndex = index
-		},
-	).AnyTimes()
-	stateDb.EXPECT().TxIndex().DoAndReturn(func() int { return currentTxIndex }).AnyTimes()
-	stateDb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).Return([]*types.Log{{Address: common.Address{1}, TxIndex: 0}}).AnyTimes()
+	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+	stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
+	stateDb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).
+		Return([]*types.Log{{Address: common.Address{1}}}).MinTimes(1)
 
 	mockStateDbTransactionExecution(stateDb)
 
