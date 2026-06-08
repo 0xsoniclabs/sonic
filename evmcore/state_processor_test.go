@@ -667,27 +667,22 @@ func TestProcessWithDifficulty_onNewLog_ReportsLogsInOrder(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 	signer := types.FrontierSigner{}
-	signed := func(tx *types.Transaction) *types.Transaction {
-		signedTx, err := types.SignTx(tx, signer, key)
-		require.NoError(t, err)
-		return signedTx
-	}
 
 	transactions := []*types.Transaction{
-		signed(types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000})),
+		types.MustSignNewTx(key, signer, &types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000}),
 		// Invalid signature -> skipped transaction -> no receipt/log callbacks.
 		types.NewTx(&types.LegacyTx{
 			Nonce: 0, To: &common.Address{}, Gas: 21_000,
 		}),
-		signed(types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000})),
+		types.MustSignNewTx(key, signer, &types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000}),
 	}
 
-	logsByTxIndex := map[int][]*types.Log{
-		0: {
+	logsByTxIndex := map[common.Hash][]*types.Log{
+		transactions[0].Hash(): {
 			{Address: common.Address{10}, TxIndex: 0},
 		},
-		1: {},
-		2: {
+		transactions[1].Hash(): {},
+		transactions[2].Hash(): {
 			{Address: common.Address{20}, TxIndex: 1},
 			{Address: common.Address{30}, TxIndex: 1},
 		},
