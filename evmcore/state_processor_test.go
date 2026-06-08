@@ -55,7 +55,7 @@ func (p *StateProcessor) process_iteratively(
 ) ProcessSummary {
 	// This implementation is a wrapper around the BeginBlock function, which
 	// handles the actual transaction processing.
-	txProcessor := p.BeginBlock(block, stateDb, cfg, gasLimit, onNewLog)
+	txProcessor := p.BeginBlock(block, stateDb, cfg, gasLimit)
 	summary := ProcessSummary{}
 	for _, tx := range block.Transactions {
 		cur := txProcessor.Run(trueTxOffset, tx)
@@ -71,6 +71,11 @@ func (p *StateProcessor) process_iteratively(
 	for _, tx := range summary.ProcessedTransactions {
 		if tx.Receipt != nil {
 			*usedGas = tx.Receipt.CumulativeGasUsed
+			if onNewLog != nil {
+				for _, log := range tx.Receipt.Logs {
+					onNewLog(core_types.CoreLogFromGethLog(log))
+				}
+			}
 		}
 	}
 
@@ -509,6 +514,355 @@ func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 	}
 }
 
+func TestProcessWithDifficulty_onNewLog_CollectsLogsAccordingToLogsProduced(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	key2, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.FrontierSigner{}
+
+	invalidTx := types.NewTx(&types.LegacyTx{
+		Nonce: 0, To: &common.Address{}, Gas: 21_000,
+		R: big.NewInt(1), S: big.NewInt(2), V: big.NewInt(3),
+	})
+	tx1 := types.MustSignNewTx(key, signer, &types.LegacyTx{
+		Nonce: 0, To: &common.Address{}, Gas: 21_000,
+	})
+	tx2 := types.MustSignNewTx(key2, signer, &types.LegacyTx{
+		Nonce: 0, To: &common.Address{}, Gas: 21_000,
+	})
+
+	log1 := &types.Log{Address: common.Address{1}, Topics: []common.Hash{{1}}, Data: []byte{1}}
+	log2 := &types.Log{Address: common.Address{2}, Topics: []common.Hash{{2}}, Data: []byte{2}}
+	log3 := &types.Log{Address: common.Address{3}, Topics: []common.Hash{{3}}, Data: []byte{3}}
+
+	tests := map[string]struct {
+		transactions      []*types.Transaction
+		logsByTxIndex     map[common.Hash][]*types.Log
+		expectedCallbacks []*core_types.Log
+	}{
+		"transaction without receipt does not emit": {
+			transactions: []*types.Transaction{
+				invalidTx,
+			},
+			logsByTxIndex: map[common.Hash][]*types.Log{
+				// invalid tx shall not have logs, but if it would, they should not be emitted.
+				invalidTx.Hash(): {
+					log1,
+				},
+			},
+			expectedCallbacks: nil,
+		},
+		"transaction without logs does not emit": {
+			transactions: []*types.Transaction{
+				tx1,
+			},
+			logsByTxIndex: map[common.Hash][]*types.Log{
+				tx1.Hash(): {},
+			},
+			expectedCallbacks: nil,
+		},
+		"transaction with one log emits one callback": {
+			transactions: []*types.Transaction{
+				tx1,
+			},
+			logsByTxIndex: map[common.Hash][]*types.Log{
+				tx1.Hash(): {
+					log1,
+				},
+			},
+			expectedCallbacks: []*core_types.Log{
+				core_types.CoreLogFromGethLog(log1),
+			},
+		},
+		"transaction with multiple logs emits all callbacks": {
+			transactions: []*types.Transaction{
+				tx1,
+			},
+			logsByTxIndex: map[common.Hash][]*types.Log{
+				tx1.Hash(): {
+					log1,
+					log2,
+					log3,
+				},
+			},
+			expectedCallbacks: []*core_types.Log{
+				core_types.CoreLogFromGethLog(log1),
+				core_types.CoreLogFromGethLog(log2),
+				core_types.CoreLogFromGethLog(log3),
+			},
+		},
+		"multiple transactions with logs emit all callbacks": {
+			transactions: []*types.Transaction{
+				tx1,
+				tx2,
+			},
+			logsByTxIndex: map[common.Hash][]*types.Log{
+				tx1.Hash(): {
+					log1,
+					log2,
+				},
+				tx2.Hash(): {
+					log3,
+				},
+			},
+			expectedCallbacks: []*core_types.Log{
+				core_types.CoreLogFromGethLog(log1),
+				core_types.CoreLogFromGethLog(log2),
+				core_types.CoreLogFromGethLog(log3),
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			stateDb := state.NewMockStateDB(ctrl)
+			stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+			stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
+
+			for _, tx := range test.transactions {
+				stateDb.EXPECT().GetLogs(tx.Hash(), gomock.Any()).DoAndReturn(
+					func(txHash, _ common.Hash) []*types.Log {
+						logs := test.logsByTxIndex[txHash]
+						copied := make([]*types.Log, len(logs))
+						copy(copied, logs)
+						return copied
+					},
+				).AnyTimes()
+			}
+
+			mockStateDbTransactionExecution(stateDb)
+
+			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{}, nil)
+			block := &EvmBlock{
+				EvmHeader: EvmHeader{
+					Number:   big.NewInt(1),
+					GasLimit: math.MaxUint64,
+				},
+				Transactions: test.transactions,
+			}
+
+			var emitted []*core_types.Log
+			summary := processor.ProcessWithDifficulty(
+				block,
+				stateDb,
+				vm.Config{},
+				math.MaxUint64,
+				new(uint64),
+				0,
+				func(log *core_types.Log) {
+					emitted = append(emitted, log)
+				},
+				big.NewInt(1),
+				math.MaxUint64,
+			)
+
+			require.Len(t, summary.ProcessedTransactions, len(test.transactions))
+			require.Equal(t, test.expectedCallbacks, emitted)
+		})
+	}
+}
+
+func TestProcessWithDifficulty_onNewLog_ReportsLogsInOrder(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.FrontierSigner{}
+
+	transactions := []*types.Transaction{
+		types.MustSignNewTx(key, signer, &types.LegacyTx{Nonce: 0, To: &common.Address{1}, Gas: 21_000}),
+		// Invalid signature -> skipped transaction -> no receipt/log callbacks.
+		types.NewTx(&types.LegacyTx{
+			Nonce: 0, To: &common.Address{}, Gas: 21_000,
+		}),
+		types.MustSignNewTx(key, signer, &types.LegacyTx{Nonce: 0, To: &common.Address{2}, Gas: 21_000}),
+	}
+
+	logsByTxIndex := map[common.Hash][]*types.Log{
+		transactions[0].Hash(): {
+			{Address: common.Address{10}},
+		},
+		transactions[1].Hash(): {},
+		transactions[2].Hash(): {
+			{Address: common.Address{20}},
+			{Address: common.Address{30}},
+		},
+	}
+
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+	stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
+
+	getLogs := func(txHash, _ common.Hash) []*types.Log {
+		logs := logsByTxIndex[txHash]
+		copied := make([]*types.Log, len(logs))
+		copy(copied, logs)
+		return copied
+	}
+	stateDb.EXPECT().GetLogs(transactions[0].Hash(), gomock.Any()).DoAndReturn(getLogs)
+	stateDb.EXPECT().GetLogs(transactions[1].Hash(), gomock.Any()).DoAndReturn(getLogs)
+	stateDb.EXPECT().GetLogs(transactions[2].Hash(), gomock.Any()).DoAndReturn(getLogs)
+
+	mockStateDbTransactionExecution(stateDb)
+
+	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{}, nil)
+	block := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number:   big.NewInt(1),
+			GasLimit: math.MaxUint64,
+		},
+		Transactions: transactions,
+	}
+
+	var emitted []core_types.Log
+	summary := processor.ProcessWithDifficulty(
+		block,
+		stateDb,
+		vm.Config{},
+		math.MaxUint64,
+		new(uint64),
+		0,
+		func(log *core_types.Log) {
+			emitted = append(emitted, *log)
+		},
+		big.NewInt(1),
+		math.MaxUint64,
+	)
+
+	require.Len(t, summary.ProcessedTransactions, len(transactions))
+	require.Equal(t, []core_types.Log{
+		*core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{10}}),
+		*core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{20}}),
+		*core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{30}}),
+	}, emitted)
+}
+
+func TestProcessWithDifficulty_onNewLog_SkipsCallbackWhenNil(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	tx, err := types.SignTx(
+		types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000}),
+		types.FrontierSigner{},
+		key,
+	)
+	require.NoError(t, err)
+
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+	stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
+	stateDb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).
+		Return([]*types.Log{{Address: common.Address{1}}}).MinTimes(1)
+
+	mockStateDbTransactionExecution(stateDb)
+
+	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{}, nil)
+	block := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number:   big.NewInt(1),
+			GasLimit: math.MaxUint64,
+		},
+		Transactions: []*types.Transaction{tx},
+	}
+
+	require.NotPanics(t, func() {
+		summary := processor.ProcessWithDifficulty(
+			block,
+			stateDb,
+			vm.Config{},
+			math.MaxUint64,
+			new(uint64),
+			0,
+			nil,
+			big.NewInt(1),
+			math.MaxUint64,
+		)
+		require.Len(t, summary.ProcessedTransactions, 1)
+		require.NotNil(t, summary.ProcessedTransactions[0].Receipt)
+	})
+}
+
+func TestProcessWithDifficulty_onNewLog_DoesNotLogRolledBackTransactions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	chainId := big.NewInt(1)
+	signer := types.LatestSignerForChainID(chainId)
+
+	sender := crypto.PubkeyToAddress(key.PublicKey)
+
+	tx, bundle, _ := bundle.NewBuilder().
+		WithSigner(signer).
+		AllOf(
+			bundle.Step(key, types.AccessListTx{
+				Gas:   21_000,
+				Nonce: 0, // Correct nonce, will be processed.
+			}),
+			bundle.Step(key, types.AccessListTx{
+				Gas:   21_000,
+				Nonce: 2, // gapped nonce to cause a rollback.
+			}),
+		).BuildEnvelopeBundleAndPlan()
+	successfulTxHash := bundle.GetTransactionsInReferencedOrder()[0].Hash()
+
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+	stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
+
+	// Transaction is expected to produce logs,
+	stateDb.EXPECT().GetLogs(successfulTxHash, gomock.Any()).
+		Return([]*types.Log{
+			{Address: common.Address{1}, TxIndex: 0},
+		}).MinTimes(1)
+
+	stateDb.EXPECT().GetNonce(sender).Return(uint64(0))
+
+	mockStateDbTransactionExecution(stateDb)
+
+	any := gomock.Any()
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(false)
+	stateDb.EXPECT().InterTxSnapshot().AnyTimes()
+	stateDb.EXPECT().RevertToInterTxSnapshot(0).MinTimes(1)
+	stateDb.EXPECT().CreateContract(any)
+	stateDb.EXPECT().AddProcessedBundle(any, any)
+
+	upgrades := opera.Upgrades{
+		Brio:               true,
+		TransactionBundles: true,
+	}
+
+	processor := NewStateProcessorForHeadState(&params.ChainConfig{ChainID: chainId}, nil, upgrades, nil)
+	block := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number:   big.NewInt(1),
+			GasLimit: math.MaxUint64,
+		},
+		Transactions: []*types.Transaction{tx},
+	}
+
+	expectNoLogs := func(log *core_types.Log) {
+		t.Fatal("logs shall not be collected")
+	}
+
+	summary := processor.ProcessWithDifficulty(
+		block,
+		stateDb,
+		vm.Config{},
+		math.MaxUint64,
+		new(uint64),
+		0,
+		expectNoLogs,
+		big.NewInt(1),
+		math.MaxUint64,
+	)
+
+	require.Len(t, summary.ProcessedTransactions, 0)
+}
+
 // createScenarioWithTxCheckingDifficulty creates a test scenario where a single
 // transaction checks that the block difficulty matches the expected value.
 func createScenarioWithTxCheckingDifficulty(
@@ -696,7 +1050,7 @@ func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 				SkipTransactionChecks: internal,
 				GasPrice:              big.NewInt(0),
 				Value:                 big.NewInt(0),
-			}, gp, state, nil, nil, nil, evm, nil)
+			}, gp, state, nil, nil, nil, evm)
 			if err == nil {
 				t.Errorf("expected transaction to fail")
 			}
@@ -716,7 +1070,7 @@ func TestApplyTransaction_FailsForTransactionWithInvalidGasPrice(t *testing.T) {
 	msg := &core.Message{
 		GasPrice: big.NewInt(-1),
 	}
-	_, _, err := applyTransaction(msg, nil, stateDb, nil, nil, nil, nil, nil)
+	_, _, err := applyTransaction(msg, nil, stateDb, nil, nil, nil, nil)
 	require.ErrorContains(t, err, "failed to create EVM transaction context")
 }
 
@@ -774,7 +1128,7 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 			)
 
 			receipt, gasUsed, err :=
-				applyTransaction(msg, gp, state, blockNumber, nil, new(uint64), evm, nil)
+				applyTransaction(msg, gp, state, blockNumber, nil, new(uint64), evm)
 			require.ErrorContains(t, err, "max initcode size exceeded")
 			require.Nil(t, receipt)
 			require.Equal(t, uint64(0), gasUsed)
@@ -855,12 +1209,69 @@ func TestApplyTransaction_SetsEffectiveGasPriceInReceipt(t *testing.T) {
 				GasLimit:  21_000,
 			}
 
-			receipt, _, err := applyTransaction(msg, gp, state, blockNum, tx, &usedGas, evm, nil)
+			receipt, _, err := applyTransaction(msg, gp, state, blockNum, tx, &usedGas, evm)
 			require.NoError(err)
 
 			require.Equal(price, receipt.EffectiveGasPrice)
 		})
 	}
+}
+
+func TestApplyTransaction_CollectsLogsFromStateDbIntoReceipt(t *testing.T) {
+	// Verify that logs returned by statedb.GetLogs are placed in the receipt.
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+
+	blockContext := vm.BlockContext{
+		BlockNumber: big.NewInt(1),
+		BaseFee:     big.NewInt(0),
+		Transfer:    func(_ vm.StateDB, _, _ common.Address, _ *uint256.Int, _ *params.Rules) {},
+		CanTransfer: func(_ vm.StateDB, _ common.Address, _ *uint256.Int) bool { return true },
+		Random:      &common.Hash{},
+	}
+	evmInstance := vm.NewEVM(blockContext, stateDb, &params.ChainConfig{
+		LondonBlock:        new(big.Int),
+		MergeNetsplitBlock: new(big.Int),
+		ShanghaiTime:       new(uint64),
+		CancunTime:         new(uint64),
+	}, vm.Config{})
+
+	any := gomock.Any()
+	balance := new(uint256.Int).Lsh(uint256.NewInt(1), 200)
+	stateDb.EXPECT().GetBalance(any).Return(balance).AnyTimes()
+	stateDb.EXPECT().SubBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+	stateDb.EXPECT().GetNonce(any).AnyTimes()
+	stateDb.EXPECT().SetNonce(any, any, any).AnyTimes()
+	stateDb.EXPECT().GetCode(any).AnyTimes()
+	stateDb.EXPECT().Snapshot().AnyTimes()
+	stateDb.EXPECT().Exist(any).Return(true).AnyTimes()
+	stateDb.EXPECT().AddBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().GetRefund().AnyTimes()
+	stateDb.EXPECT().AddRefund(any).AnyTimes()
+	stateDb.EXPECT().EndTransaction().AnyTimes()
+	stateDb.EXPECT().TxIndex().AnyTimes()
+
+	tx := types.NewTx(&types.LegacyTx{To: &common.Address{2}, Gas: 21_000})
+	expectedLogs := []*types.Log{{Address: common.Address{1}}}
+	stateDb.EXPECT().GetLogs(tx.Hash(), common.Hash{}).Return(expectedLogs)
+
+	gp := core.NewGasPool(1_000_000)
+	var usedGas uint64
+	msg := &core.Message{
+		To:                    &common.Address{2},
+		GasLimit:              21_000,
+		GasPrice:              big.NewInt(0),
+		GasFeeCap:             big.NewInt(0),
+		GasTipCap:             big.NewInt(0),
+		Value:                 big.NewInt(0),
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
+	}
+
+	receipt, _, err := applyTransaction(msg, gp, stateDb, big.NewInt(1), tx, &usedGas, evmInstance)
+	require.NoError(t, err)
+	require.Equal(t, expectedLogs, receipt.Logs)
 }
 
 // processFunction is a function type alias for the StateProcessor's Process
@@ -4022,7 +4433,6 @@ func TestNewTransactionProcessorForBlock_ConfiguresTransactionProcessorWithValue
 	require.NotNil(processor.gp)
 	require.Equal(uint64(math.MaxUint64), processor.gp.Gas())
 	require.Equal(block.Header(), processor.header)
-	require.Nil(processor.onNewLog)
 	require.Equal(types.LatestSignerForChainID(chainCfg.ChainID), processor.signer)
 	require.Equal(state, processor.stateDb)
 	require.EqualValues(0, processor.usedGas)
@@ -5064,7 +5474,7 @@ func TestStateProcessor_MetricsAreEnabledInSingleBlockProposerMode(t *testing.T)
 	)
 
 	block := &EvmBlock{EvmHeader: EvmHeader{Number: big.NewInt(1)}}
-	tp := processor.BeginBlock(block, stateDb, vm.Config{}, math.MaxUint64, nil)
+	tp := processor.BeginBlock(block, stateDb, vm.Config{}, math.MaxUint64)
 
 	require.Equal(t, mockMetrics, tp.metrics,
 		"metrics must be forwarded from StateProcessor to TransactionProcessor via BeginBlock")
@@ -5271,4 +5681,21 @@ func TestTxAsMessage_ConvertsUserTransactionsToMessage(t *testing.T) {
 			}
 		})
 	}
+}
+
+func mockStateDbTransactionExecution(stateDb *state.MockStateDB) {
+	any := gomock.Any()
+	stateDb.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
+	stateDb.EXPECT().AddBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().SubBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+	stateDb.EXPECT().GetNonce(any).AnyTimes()
+	stateDb.EXPECT().SetNonce(any, any, any).AnyTimes()
+	stateDb.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
+	stateDb.EXPECT().GetCode(any).AnyTimes()
+	stateDb.EXPECT().GetStorageRoot(any).Return(types.EmptyRootHash).AnyTimes()
+	stateDb.EXPECT().Snapshot().AnyTimes()
+	stateDb.EXPECT().Exist(any).Return(true).AnyTimes()
+	stateDb.EXPECT().GetRefund().AnyTimes()
+	stateDb.EXPECT().EndTransaction().AnyTimes()
 }

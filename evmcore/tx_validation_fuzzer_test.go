@@ -276,7 +276,7 @@ func FuzzValidateTransaction(f *testing.F) {
 		gp := core.NewGasPool(maxGas)
 		var usedGas uint64
 		_, _, processorError := applyTransaction(msg, gp, state, big.NewInt(blockNum),
-			signedTx, &usedGas, evm, nil)
+			signedTx, &usedGas, evm)
 
 		// validateTx should not reject transactions that the processor would accept
 		if processorError != nil && validateErr == nil {
