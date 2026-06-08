@@ -58,7 +58,7 @@ If `buy_nft_3` reverts because the item sold out, the purchases of NFTs 1 and 2 
 
 ### OneOf — First Success Wins
 
-A **OneOf** group tries its steps in order and succeeds as soon as one of them succeeds. Subsequent steps are skipped; the failed attempts leave no trace on chain.
+A **OneOf** group tries its steps in order and succeeds as soon as one of them succeeds. Subsequent steps are skipped.
 
 ```
 OneOf(
@@ -68,7 +68,9 @@ OneOf(
 )
 ```
 
-If Exchange A has enough liquidity, the trade executes there and Exchange B and C are never touched. If A fails, B is tried. Only the first successful trade takes effect.
+If Exchange A has enough liquidity, the trade executes there and Exchange B and C are never touched. If A fails, its state changes are reverted and B is tried next. Failed branches that were attempted still consume their nonce and gas, and they appear in the block with a revert status — only their state changes are undone. Branches that were never reached leave no trace at all.
+
+The one exception: if **all** branches fail, none of the transactions land in the block and no nonces are consumed.
 
 ### Nesting
 

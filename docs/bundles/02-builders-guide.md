@@ -264,7 +264,7 @@ When an envelope arrives in the transaction pool, the node runs a series of chec
 4. **Deduplication** — if the same plan hash has been processed within the last 1024 blocks, the bundle is rejected.
 5. **Nonce check** — a lightweight dry run verifies that nonces are consistent. If they are inconsistent in a way that could resolve later (e.g. a gap that another transaction could fill), the bundle is marked temporarily blocked rather than rejected.
 6. **Trial run** — the bundle is executed against a simulated next block to confirm it would succeed. If the trial run fails, the bundle is permanently rejected.
-7. **Efficiency check** — the ratio of gas actually consumed by bundle transactions to the total gas billed for the envelope must be at least **20%**. This prevents bundles that bill for a lot of gas but do very little work.
+7. **Efficiency check** — the ratio of gas used by transactions accepted in blocks to the total execution cost must be at least **20%**. The total execution cost includes gas spent running transactions that were subsequently rolled back (e.g. failed OneOf branches), not just the billed gas limits. This prevents bundles that trigger many expensive failing branches from consuming disproportionate network resources.
 
 If all checks pass, the bundle (in its envelope) enters the mempool like any other transaction.
 
@@ -273,7 +273,7 @@ If all checks pass, the bundle (in its envelope) enters the mempool like any oth
 When a validator includes the envelope in a block, the EVM encounters it during transaction processing. The execution engine unpacks the bundle and runs the steps according to the execution plan:
 
 - For **AllOf** groups: a snapshot is taken before the group runs. If any step fails, the snapshot is restored and all state changes from the group are discarded.
-- For **OneOf** groups: steps are tried in order. When one succeeds, the group stops. Earlier failed attempts are rolled back; their state changes do not persist.
+- For **OneOf** groups: steps are tried in order. When one succeeds, the group stops and later branches are skipped entirely. Earlier failed attempts have their state changes rolled back, but they still appear in the block and consume their sender's nonce and gas. If **all** branches fail, none of the transactions are included in the block and no nonces are consumed.
 - Tolerance flags (`tolerateFailed`, `tolerateInvalid`) cause the execution engine to accept failure outcomes at the step or group level without propagating failure to the parent.
 
 ### Deduplication
@@ -289,17 +289,17 @@ After a bundle is executed in block N, the network stores its plan hash with a r
 | Block range length       | 1024 blocks | Hard limit; cannot be changed without a hard fork. |
 | Bundle nesting depth     | 2 levels | A bundle can contain a bundle, but not a bundle inside a bundle inside a bundle. |
 | Group nesting depth      | 8 levels | Maximum depth of AllOf/OneOf tree within one bundle. |
-| Minimum gas efficiency   | 20% | Ratio of gas used by transactions to total billed gas of the envelope. |
+| Minimum gas efficiency   | 20% | Ratio of gas used by transactions accepted in blocks to total execution cost (gas spent on accepted and rolled-back transactions). |
 
 ---
 
 ## Tips and Gotchas
 
-**Do not modify prepared transactions.** The node signs references by hash. Any modification — even whitespace in the JSON — changes the hash and invalidates the plan binding.
+**Do not modify prepared transactions.** The node signs references by hash. Any modification changes the hash and invalidates the plan binding.
 
 **Legacy transactions are not supported.** The BundleOnly marker requires an access list, which legacy (type 0) transactions do not support. The prepare step automatically promotes legacy transactions to type 1, but be aware of this if you are building the proposal programmatically.
 
-**Gas estimation requires strict AllOf semantics.** The node can only estimate gas for transactions in strict sequential order where every prior step is assumed to have succeeded. Using `oneOf`, `tolerateFailed`, or `tolerateInvalid` at any level disables auto gas estimation. In those cases you must supply gas limits manually.
+**Automatic gas estimation requires strict AllOf semantics.** The node can only estimate gas for transactions in strict sequential order where every prior step is assumed to have succeeded. Using `oneOf`, `tolerateFailed`, or `tolerateInvalid` at any level disables auto gas estimation. In those cases you must supply gas limits manually.
 
 **The block range starts now.** If you call `prepareBundle` and then wait several blocks before calling `submitBundle`, the block range that was set during preparation may have already advanced or expired. Build in enough slack, or re-prepare if the submission is delayed.
 

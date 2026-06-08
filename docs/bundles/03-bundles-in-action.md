@@ -145,13 +145,13 @@ Wrap the three trade attempts in a **OneOf** group:
         {
           "from": "0xTrader",
           "to": "0xExchangeB",
-          "nonce": "0x15",
+          "nonce": "0x16",
           "data": "0x<swap(tokenIn, tokenOut, acceptableRate)>"
         },
         {
           "from": "0xTrader",
           "to": "0xExchangeC",
-          "nonce": "0x15",
+          "nonce": "0x17",
           "data": "0x<swap(tokenIn, tokenOut, fallbackRate)>"
         }
       ]
@@ -160,17 +160,18 @@ Wrap the three trade attempts in a **OneOf** group:
 }
 ```
 
-> Note that all three transactions share the same nonce `0x15`. This is intentional: only one of them can execute; the others are discarded. The OneOf group ensures exactly this.
+The network tries Exchange A first. If that transaction succeeds, the group stops — Exchange B and C are never attempted and leave no trace. If A fails (insufficient liquidity, slippage too high), A's state changes are reverted but A still appears in the block with a revert status and its nonce (`0x15`) is consumed. Exchange B is then tried with nonce `0x16`. If B also fails the same way, C is tried with nonce `0x17`.
 
-The network tries Exchange A first. If that transaction succeeds, the group stops — Exchange B and C are never attempted. If A fails (insufficient liquidity, slippage too high), Exchange B is tried. If B also fails, C is tried. The failed attempts are rolled back and leave no trace.
+If **all three fail**, none of the transactions are included in the block and no nonces are consumed — the trader can simply resubmit or let the bundle expire.
 
-All of this happens in a **single block**. The trader does not wait through multiple block confirmations to learn the outcome. They either get the best available rate or nothing at all, and the result is known as soon as the bundle's block is confirmed.
+All of this happens in a **single block**. The trader does not wait through multiple block confirmations to learn the outcome. They either get the best available rate (possibly after one or two failed attempts on earlier venues) or nothing at all, and the result is known as soon as the bundle's block is confirmed.
 
 ### What This Demonstrates
 
-- **OneOf semantics**: at most one branch executes; the rest are abandoned cleanly.
+- **OneOf semantics**: at most one branch succeeds; branches that were never reached leave no trace.
+- **Nonce ordering across branches**: failed branches that execute consume their nonce; each subsequent branch needs the next nonce in sequence.
 - **Single-block settlement**: the entire decision tree resolves in one block, not one per confirmation.
-- **Shared nonce across branches**: since only one branch can execute, it is valid and intentional for competing transactions to share a nonce.
+- **All-or-nothing fallback**: if all venues fail simultaneously, the trader's position is unchanged — no partial execution, no consumed nonces.
 
 ---
 
