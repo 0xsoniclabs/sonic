@@ -171,11 +171,25 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	}
 
 	// Iterate over and process the individual transactions
-	return runTransactions(newRunContext(
+	summary := runTransactions(newRunContext(
 		signer, header.BaseFee, statedb, gp, blockNumber, block.Time, usedGas,
 		p.upgrades, &transactionRunner{evm{vmenv}}, p.forReplay, p.metrics,
 	),
-		block.Transactions, onNewLog, trueTxOffset, remainingSize)
+		block.Transactions, trueTxOffset, remainingSize)
+
+	// After transactions have been executed, logs can be collected to interact
+	// with the driver contract, at this location rolled back transactions have
+	// already been discarded.
+	if onNewLog != nil {
+		for _, processedTx := range summary.ProcessedTransactions {
+			if processedTx.Receipt != nil {
+				for _, log := range processedTx.Receipt.Logs {
+					onNewLog(core_types.CoreLogFromGethLog(log))
+				}
+			}
+		}
+	}
+	return summary
 }
 
 // runContext bundles the parameters required for processing transactions in a
@@ -236,7 +250,6 @@ func newRunContext(
 func runTransactions(
 	context *runContext,
 	transactions types.Transactions,
-	onNewLog func(*core_types.Log),
 	trueTxIndexOffset int,
 	remainingSize uint64,
 ) ProcessSummary {
@@ -269,12 +282,6 @@ func runTransactions(
 				}
 
 				gasUsed += processedTx.Receipt.GasUsed
-
-				if onNewLog != nil {
-					for _, cur := range processedTx.Receipt.Logs {
-						onNewLog(core_types.CoreLogFromGethLog(cur))
-					}
-				}
 			}
 
 			if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(processedTx.Transaction) && context.metrics != nil {
@@ -765,7 +772,7 @@ func NewTransactionProcessorForBlock(
 		rules.Upgrades,
 		nil,
 	)
-	return stateProcessor.BeginBlock(block, state, vmConfig, gasLimit, nil)
+	return stateProcessor.BeginBlock(block, state, vmConfig, gasLimit)
 }
 
 // BeginBlock starts the processing of a new block and returns a function to
@@ -775,7 +782,6 @@ func NewTransactionProcessorForBlock(
 // probe individual transactions to determine their applicability and gas usage.
 func (p *StateProcessor) BeginBlock(
 	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, gasLimit uint64,
-	onNewLog func(*core_types.Log),
 ) *TransactionProcessor {
 	var (
 		gp            = core.NewGasPool(gasLimit)
@@ -797,7 +803,6 @@ func (p *StateProcessor) BeginBlock(
 		blockTime:     block.Time,
 		gp:            gp,
 		header:        header,
-		onNewLog:      onNewLog,
 		signer:        signer,
 		stateDb:       stateDb,
 		vmEnvironment: vmEnvironment,
@@ -813,7 +818,6 @@ type TransactionProcessor struct {
 	blockTime     inter.Timestamp
 	gp            *core.GasPool
 	header        *EvmHeader
-	onNewLog      func(*core_types.Log)
 	signer        types.Signer
 	stateDb       state.StateDB
 	usedGas       uint64
@@ -831,7 +835,7 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber, tp.blockTime,
 		&tp.usedGas, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
 		false, tp.metrics,
-	), []*types.Transaction{tx}, tp.onNewLog, i, math.MaxUint64)
+	), []*types.Transaction{tx}, i, math.MaxUint64)
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database

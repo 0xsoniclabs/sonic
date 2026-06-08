@@ -55,7 +55,7 @@ func (p *StateProcessor) process_iteratively(
 ) ProcessSummary {
 	// This implementation is a wrapper around the BeginBlock function, which
 	// handles the actual transaction processing.
-	txProcessor := p.BeginBlock(block, stateDb, cfg, gasLimit, onNewLog)
+	txProcessor := p.BeginBlock(block, stateDb, cfg, gasLimit)
 	summary := ProcessSummary{}
 	for _, tx := range block.Transactions {
 		cur := txProcessor.Run(trueTxOffset, tx)
@@ -71,6 +71,11 @@ func (p *StateProcessor) process_iteratively(
 	for _, tx := range summary.ProcessedTransactions {
 		if tx.Receipt != nil {
 			*usedGas = tx.Receipt.CumulativeGasUsed
+			if onNewLog != nil {
+				for _, log := range tx.Receipt.Logs {
+					onNewLog(core_types.CoreLogFromGethLog(log))
+				}
+			}
 		}
 	}
 
@@ -509,6 +514,338 @@ func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 	}
 }
 
+func TestProcessWithDifficulty_onNewLog_CollectsLogsAccordingToLogsProduced(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.FrontierSigner{}
+	signed := func(tx *types.Transaction) *types.Transaction {
+		signedTx, err := types.SignTx(tx, signer, key)
+		require.NoError(t, err)
+		return signedTx
+	}
+
+	tests := map[string]struct {
+		transactions      []*types.Transaction
+		logsByTxIndex     map[int][]*types.Log
+		expectedCallbacks []*core_types.Log
+	}{
+		"transaction without receipt does not emit": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{
+					Nonce: 0, To: &common.Address{}, Gas: 21_000,
+					R: big.NewInt(1), S: big.NewInt(2), V: big.NewInt(3),
+				}),
+			},
+			logsByTxIndex:     map[int][]*types.Log{},
+			expectedCallbacks: nil,
+		},
+		"transaction without logs does not emit": {
+			transactions: []*types.Transaction{
+				signed(types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000})),
+			},
+			logsByTxIndex: map[int][]*types.Log{
+				0: {},
+			},
+			expectedCallbacks: nil,
+		},
+		"transaction with one log emits one callback": {
+			transactions: []*types.Transaction{
+				signed(types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000})),
+			},
+			logsByTxIndex: map[int][]*types.Log{
+				0: {
+					{Address: common.Address{1}, TxIndex: 1},
+				},
+			},
+			expectedCallbacks: []*core_types.Log{
+				core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{1}, TxIndex: 1}),
+			},
+		},
+		"transaction with multiple logs emits all callbacks": {
+			transactions: []*types.Transaction{
+				signed(types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000})),
+			},
+			logsByTxIndex: map[int][]*types.Log{
+				0: {
+					{Address: common.Address{2}, TxIndex: 2},
+					{Address: common.Address{3}, TxIndex: 2},
+					{Address: common.Address{4}, TxIndex: 2},
+				},
+				1: {
+					{Address: common.Address{99}, TxIndex: 99},
+				},
+			},
+			expectedCallbacks: []*core_types.Log{
+				core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{2}, TxIndex: 2}),
+				core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{3}, TxIndex: 2}),
+				core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{4}, TxIndex: 2}),
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			currentTxIndex := 0
+			stateDb := state.NewMockStateDB(ctrl)
+			stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).Do(
+				func(_ common.Hash, index int) {
+					currentTxIndex = index
+				},
+			).AnyTimes()
+			stateDb.EXPECT().TxIndex().DoAndReturn(func() int { return currentTxIndex }).AnyTimes()
+			stateDb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_, _ common.Hash) []*types.Log {
+					logs := test.logsByTxIndex[currentTxIndex]
+					copied := make([]*types.Log, len(logs))
+					copy(copied, logs)
+					return copied
+				},
+			).AnyTimes()
+
+			mockStateDbTransactionExecution(stateDb)
+
+			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{}, nil)
+			block := &EvmBlock{
+				EvmHeader: EvmHeader{
+					Number:   big.NewInt(1),
+					GasLimit: math.MaxUint64,
+				},
+				Transactions: test.transactions,
+			}
+
+			var emitted []*core_types.Log
+			summary := processor.ProcessWithDifficulty(
+				block,
+				stateDb,
+				vm.Config{},
+				math.MaxUint64,
+				new(uint64),
+				0,
+				func(log *core_types.Log) {
+					emitted = append(emitted, log)
+				},
+				big.NewInt(1),
+				math.MaxUint64,
+			)
+
+			require.Len(t, summary.ProcessedTransactions, len(test.transactions))
+			require.Equal(t, test.expectedCallbacks, emitted)
+		})
+	}
+}
+
+func TestProcessWithDifficulty_onNewLog_ReportsLogsInOrder(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.FrontierSigner{}
+	signed := func(tx *types.Transaction) *types.Transaction {
+		signedTx, err := types.SignTx(tx, signer, key)
+		require.NoError(t, err)
+		return signedTx
+	}
+
+	transactions := []*types.Transaction{
+		signed(types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000})),
+		// Invalid signature -> skipped transaction -> no receipt/log callbacks.
+		types.NewTx(&types.LegacyTx{
+			Nonce: 0, To: &common.Address{}, Gas: 21_000,
+		}),
+		signed(types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000})),
+	}
+
+	logsByTxIndex := map[int][]*types.Log{
+		0: {
+			{Address: common.Address{10}, TxIndex: 0},
+		},
+		1: {},
+		2: {
+			{Address: common.Address{20}, TxIndex: 1},
+			{Address: common.Address{30}, TxIndex: 1},
+		},
+	}
+
+	currentTxIndex := 0
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).Do(
+		func(_ common.Hash, index int) {
+			currentTxIndex = index
+		},
+	).AnyTimes()
+	stateDb.EXPECT().TxIndex().DoAndReturn(func() int { return currentTxIndex }).AnyTimes()
+	stateDb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_, _ common.Hash) []*types.Log {
+			logs := logsByTxIndex[currentTxIndex]
+			copied := make([]*types.Log, len(logs))
+			copy(copied, logs)
+			return copied
+		},
+	).AnyTimes()
+
+	mockStateDbTransactionExecution(stateDb)
+
+	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{}, nil)
+	block := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number:   big.NewInt(1),
+			GasLimit: math.MaxUint64,
+		},
+		Transactions: transactions,
+	}
+
+	var emitted []*core_types.Log
+	summary := processor.ProcessWithDifficulty(
+		block,
+		stateDb,
+		vm.Config{},
+		math.MaxUint64,
+		new(uint64),
+		0,
+		func(log *core_types.Log) {
+			emitted = append(emitted, log)
+		},
+		big.NewInt(1),
+		math.MaxUint64,
+	)
+
+	require.Len(t, summary.ProcessedTransactions, len(transactions))
+	require.Equal(t, []*core_types.Log{
+		core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{10}, TxIndex: 0}),
+		core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{20}, TxIndex: 1}),
+		core_types.CoreLogFromGethLog(&types.Log{Address: common.Address{30}, TxIndex: 1}),
+	}, emitted)
+}
+
+func TestProcessWithDifficulty_onNewLog_SkipsCallbackWhenNil(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	tx, err := types.SignTx(
+		types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000}),
+		types.FrontierSigner{},
+		key,
+	)
+	require.NoError(t, err)
+
+	currentTxIndex := 0
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).Do(
+		func(_ common.Hash, index int) {
+			currentTxIndex = index
+		},
+	).AnyTimes()
+	stateDb.EXPECT().TxIndex().DoAndReturn(func() int { return currentTxIndex }).AnyTimes()
+	stateDb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).Return([]*types.Log{{Address: common.Address{1}, TxIndex: 0}}).AnyTimes()
+
+	mockStateDbTransactionExecution(stateDb)
+
+	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{}, nil)
+	block := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number:   big.NewInt(1),
+			GasLimit: math.MaxUint64,
+		},
+		Transactions: []*types.Transaction{tx},
+	}
+
+	require.NotPanics(t, func() {
+		summary := processor.ProcessWithDifficulty(
+			block,
+			stateDb,
+			vm.Config{},
+			math.MaxUint64,
+			new(uint64),
+			0,
+			nil,
+			big.NewInt(1),
+			math.MaxUint64,
+		)
+		require.Len(t, summary.ProcessedTransactions, 1)
+		require.NotNil(t, summary.ProcessedTransactions[0].Receipt)
+	})
+}
+
+func TestProcessWithDifficulty_onNewLog_DoesNotLogRolledBackTransactions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	chainId := big.NewInt(1)
+	signer := types.LatestSignerForChainID(chainId)
+
+	sender := crypto.PubkeyToAddress(key.PublicKey)
+
+	tx, bundle, _ := bundle.NewBuilder().
+		WithSigner(signer).
+		AllOf(
+			bundle.Step(key, types.AccessListTx{
+				Gas:   21_000,
+				Nonce: 0, // Correct nonce, will be processed.
+			}),
+			bundle.Step(key, types.AccessListTx{
+				Gas:   21_000,
+				Nonce: 2, // gapped nonce to cause a rollback.
+			}),
+		).BuildEnvelopeBundleAndPlan()
+	successfulTxHash := bundle.GetTransactionsInReferencedOrder()[0].Hash()
+
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+	stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
+
+	// Transaction is expected to produce logs,
+	stateDb.EXPECT().GetLogs(successfulTxHash, gomock.Any()).
+		Return([]*types.Log{
+			{Address: common.Address{1}, TxIndex: 0},
+		}).MinTimes(1)
+
+	stateDb.EXPECT().GetNonce(sender).Return(uint64(0))
+
+	mockStateDbTransactionExecution(stateDb)
+
+	any := gomock.Any()
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(false)
+	stateDb.EXPECT().InterTxSnapshot().AnyTimes()
+	stateDb.EXPECT().RevertToInterTxSnapshot(0).MinTimes(1)
+	stateDb.EXPECT().CreateContract(any)
+	stateDb.EXPECT().AddProcessedBundle(any, any)
+
+	upgrades := opera.Upgrades{
+		Brio:               true,
+		TransactionBundles: true,
+	}
+
+	processor := NewStateProcessorForHeadState(&params.ChainConfig{ChainID: chainId}, nil, upgrades, nil)
+	block := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number:   big.NewInt(1),
+			GasLimit: math.MaxUint64,
+		},
+		Transactions: []*types.Transaction{tx},
+	}
+
+	expectNoLogs := func(log *core_types.Log) {
+		t.Fatal("logs shall not be collected")
+	}
+
+	summary := processor.ProcessWithDifficulty(
+		block,
+		stateDb,
+		vm.Config{},
+		math.MaxUint64,
+		new(uint64),
+		0,
+		expectNoLogs,
+		big.NewInt(1),
+		math.MaxUint64,
+	)
+
+	require.Len(t, summary.ProcessedTransactions, 0)
+}
+
 // createScenarioWithTxCheckingDifficulty creates a test scenario where a single
 // transaction checks that the block difficulty matches the expected value.
 func createScenarioWithTxCheckingDifficulty(
@@ -863,63 +1200,6 @@ func TestApplyTransaction_SetsEffectiveGasPriceInReceipt(t *testing.T) {
 	}
 }
 
-func TestApplyTransaction_CollectsLogsFromStateDbIntoReceipt(t *testing.T) {
-	// Verify that logs returned by statedb.GetLogs are placed in the receipt.
-	ctrl := gomock.NewController(t)
-	stateDb := state.NewMockStateDB(ctrl)
-
-	blockContext := vm.BlockContext{
-		BlockNumber: big.NewInt(1),
-		BaseFee:     big.NewInt(0),
-		Transfer:    func(_ vm.StateDB, _, _ common.Address, _ *uint256.Int, _ *params.Rules) {},
-		CanTransfer: func(_ vm.StateDB, _ common.Address, _ *uint256.Int) bool { return true },
-		Random:      &common.Hash{},
-	}
-	evmInstance := vm.NewEVM(blockContext, stateDb, &params.ChainConfig{
-		LondonBlock:        new(big.Int),
-		MergeNetsplitBlock: new(big.Int),
-		ShanghaiTime:       new(uint64),
-		CancunTime:         new(uint64),
-	}, vm.Config{})
-
-	any := gomock.Any()
-	balance := new(uint256.Int).Lsh(uint256.NewInt(1), 200)
-	stateDb.EXPECT().GetBalance(any).Return(balance).AnyTimes()
-	stateDb.EXPECT().SubBalance(any, any, any).AnyTimes()
-	stateDb.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
-	stateDb.EXPECT().GetNonce(any).AnyTimes()
-	stateDb.EXPECT().SetNonce(any, any, any).AnyTimes()
-	stateDb.EXPECT().GetCode(any).AnyTimes()
-	stateDb.EXPECT().Snapshot().AnyTimes()
-	stateDb.EXPECT().Exist(any).Return(true).AnyTimes()
-	stateDb.EXPECT().AddBalance(any, any, any).AnyTimes()
-	stateDb.EXPECT().GetRefund().AnyTimes()
-	stateDb.EXPECT().AddRefund(any).AnyTimes()
-	stateDb.EXPECT().EndTransaction().AnyTimes()
-	stateDb.EXPECT().TxIndex().AnyTimes()
-
-	tx := types.NewTx(&types.LegacyTx{To: &common.Address{2}, Gas: 21_000})
-	expectedLogs := []*types.Log{{Address: common.Address{1}}}
-	stateDb.EXPECT().GetLogs(tx.Hash(), common.Hash{}).Return(expectedLogs)
-
-	gp := core.NewGasPool(1_000_000)
-	var usedGas uint64
-	msg := &core.Message{
-		To:                    &common.Address{2},
-		GasLimit:              21_000,
-		GasPrice:              big.NewInt(0),
-		GasFeeCap:             big.NewInt(0),
-		GasTipCap:             big.NewInt(0),
-		Value:                 big.NewInt(0),
-		SkipNonceChecks:       true,
-		SkipTransactionChecks: true,
-	}
-
-	receipt, _, err := applyTransaction(msg, gp, stateDb, big.NewInt(1), tx, &usedGas, evmInstance)
-	require.NoError(t, err)
-	require.Equal(t, expectedLogs, receipt.Logs)
-}
-
 // processFunction is a function type alias for the StateProcessor's Process
 // function to allow side-by-side testing of different implementations.
 type processFunction = func(
@@ -1047,7 +1327,7 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactions(t *
 
 	// run the transactions; as a side-effect, check that the
 	// transaction offset is correctly initialized and updated.
-	summary := runTransactions(context, txs, nil, 4, math.MaxUint64)
+	summary := runTransactions(context, txs, 4, math.MaxUint64)
 	got := summary.ProcessedTransactions
 	require.Len(t, got, 6)
 
@@ -1155,7 +1435,7 @@ func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyP
 		),
 	)
 
-	summary := runTransactions(context, txs, nil, trueStartIndex, math.MaxUint64)
+	summary := runTransactions(context, txs, trueStartIndex, math.MaxUint64)
 	got := summary.ProcessedTransactions
 
 	want := []ProcessedTransaction{}
@@ -1252,7 +1532,7 @@ func TestRunTransactions_GasSubsidiesDisabled_BundlesDisabled_ProcessesAsRegular
 		},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, nil, 123, sizeLimit)
+	summary := runTransactions(context, []*types.Transaction{tx}, 123, sizeLimit)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1278,7 +1558,7 @@ func TestRunTransactions_GasSubsidiesEnabled_BundlesDisabled_ProcessesAsSponsors
 		}},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, nil, 123, sizeLimit)
+	summary := runTransactions(context, []*types.Transaction{tx}, 123, sizeLimit)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1303,7 +1583,7 @@ func TestRunTransactions_BundlesEnabled_RunsRegularTransactionOnItsOwn(t *testin
 		},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, nil, 123, sizeLimit)
+	summary := runTransactions(context, []*types.Transaction{tx}, 123, sizeLimit)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1328,7 +1608,7 @@ func TestRunTransactions_BundlesEnabled_RunsSponsorshipRequestWithSponsorship(t 
 		}},
 		core_types.TransactionResultSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, nil, 123, sizeLimit)
+	summary := runTransactions(context, []*types.Transaction{tx}, 123, sizeLimit)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -1423,7 +1703,7 @@ func TestRunTransactions_EnvelopeAndBundleOnly_SemanticsEnabledByBrio_ExecutionE
 					Return([]ProcessedTransaction{{Transaction: tc.tx, Receipt: &types.Receipt{}}}, core_types.TransactionResultSuccessful, core_types.ExecutionCost(0))
 			}
 
-			summary := runTransactions(context, []*types.Transaction{tc.tx}, nil, 0, sizeLimit)
+			summary := runTransactions(context, []*types.Transaction{tc.tx}, 0, sizeLimit)
 			processed := summary.ProcessedTransactions
 			require.Len(t, processed, 1)
 			if tc.expectInvalid {
@@ -1481,113 +1761,12 @@ func TestRunTransactions_BundleOnlyTxsAreNotFilteredDuringReplay(t *testing.T) {
 			runner.EXPECT().runRegularTransaction(context, bundleOnlyTx, 0, sizeLimit).
 				Return(ProcessedTransaction{Transaction: bundleOnlyTx, Receipt: &types.Receipt{}}, core_types.TransactionResultSuccessful)
 
-			summary := runTransactions(context, []*types.Transaction{bundleOnlyTx}, nil, 0, sizeLimit)
+			summary := runTransactions(context, []*types.Transaction{bundleOnlyTx}, 0, sizeLimit)
 			processed := summary.ProcessedTransactions
 			require.Len(t, processed, 1)
 			require.Equal(t, ProcessedTransaction{bundleOnlyTx, &types.Receipt{}}, processed[0])
 		})
 	}
-}
-
-func TestRunTransactions_WithNilOnNewLog_AcceptedTransactionWithLogsDoesNotPanic(t *testing.T) {
-	// When onNewLog is nil, processing a transaction that produced logs in its receipt
-	// must not panic. This guards the nil check added to runTransactions.
-	ctrl := gomock.NewController(t)
-	runner := NewMock_transactionRunner(ctrl)
-	tx := getRegularTransaction(t)
-	context := &runContext{runner: runner, upgrades: opera.Upgrades{}}
-	runner.EXPECT().runRegularTransaction(context, tx, 0, gomock.Any()).Return(
-		ProcessedTransaction{
-			Transaction: tx,
-			Receipt:     &types.Receipt{Logs: []*types.Log{{Address: common.Address{1}}}},
-		},
-		core_types.TransactionResultSuccessful,
-	)
-	require.NotPanics(t, func() {
-		runTransactions(context, []*types.Transaction{tx}, nil, 0, math.MaxUint64)
-	})
-}
-
-func TestRunTransactions_OnNewLog_ReportsLogsOnlyForConfirmedTransactions(t *testing.T) {
-	// Logs must be forwarded only when a transaction was accepted (Receipt != nil).
-	// Transactions that are skipped (nil receipt) must not trigger the callback.
-	log1 := &types.Log{Address: common.Address{1}}
-
-	tests := map[string]struct {
-		receipt  *types.Receipt
-		wantLogs []*core_types.Log
-	}{
-		"accepted transaction emits logs": {
-			receipt:  &types.Receipt{Logs: []*types.Log{log1}},
-			wantLogs: []*core_types.Log{core_types.CoreLogFromGethLog(log1)},
-		},
-		"skipped transaction emits no logs": {
-			receipt:  nil,
-			wantLogs: nil,
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			runner := NewMock_transactionRunner(ctrl)
-			tx := getRegularTransaction(t)
-			context := &runContext{runner: runner, upgrades: opera.Upgrades{}}
-			runner.EXPECT().runRegularTransaction(context, tx, 0, gomock.Any()).Return(
-				ProcessedTransaction{Transaction: tx, Receipt: tc.receipt},
-				core_types.TransactionResultSuccessful,
-			)
-
-			var collectedLogs []*core_types.Log
-			runTransactions(context, []*types.Transaction{tx}, func(l *core_types.Log) {
-				collectedLogs = append(collectedLogs, l)
-			}, 0, math.MaxUint64)
-
-			require.Equal(t, tc.wantLogs, collectedLogs)
-		})
-	}
-}
-
-func TestRunTransactions_OnNewLog_ReportsLogsFromAcceptedTransactionsInOrder(t *testing.T) {
-	// Logs from accepted transactions must be forwarded in processing order.
-	// Skipped transactions (nil receipt) must not contribute any logs.
-	ctrl := gomock.NewController(t)
-	runner := NewMock_transactionRunner(ctrl)
-
-	tx1 := getRegularTransaction(t)
-	tx2 := getRegularTransaction(t)
-	tx3 := getRegularTransaction(t)
-
-	log1 := &types.Log{Address: common.Address{1}}
-	log3a := &types.Log{Address: common.Address{2}}
-	log3b := &types.Log{Address: common.Address{3}}
-
-	context := &runContext{runner: runner, upgrades: opera.Upgrades{}}
-	gomock.InOrder(
-		runner.EXPECT().runRegularTransaction(context, tx1, 0, gomock.Any()).Return(
-			ProcessedTransaction{Transaction: tx1, Receipt: &types.Receipt{Logs: []*types.Log{log1}}},
-			core_types.TransactionResultSuccessful,
-		),
-		runner.EXPECT().runRegularTransaction(context, tx2, 1, gomock.Any()).Return(
-			ProcessedTransaction{Transaction: tx2, Receipt: nil}, // skipped, no logs
-			core_types.TransactionResultInvalid,
-		),
-		runner.EXPECT().runRegularTransaction(context, tx3, 1, gomock.Any()).Return(
-			ProcessedTransaction{Transaction: tx3, Receipt: &types.Receipt{Logs: []*types.Log{log3a, log3b}}},
-			core_types.TransactionResultSuccessful,
-		),
-	)
-
-	var collectedLogs []*core_types.Log
-	runTransactions(context, []*types.Transaction{tx1, tx2, tx3}, func(l *core_types.Log) {
-		collectedLogs = append(collectedLogs, l)
-	}, 0, math.MaxUint64)
-
-	require.Equal(t, []*core_types.Log{
-		core_types.CoreLogFromGethLog(log1),
-		core_types.CoreLogFromGethLog(log3a),
-		core_types.CoreLogFromGethLog(log3b),
-	}, collectedLogs)
 }
 
 func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) {
@@ -4180,7 +4359,6 @@ func TestNewTransactionProcessorForBlock_ConfiguresTransactionProcessorWithValue
 	require.NotNil(processor.gp)
 	require.Equal(uint64(math.MaxUint64), processor.gp.Gas())
 	require.Equal(block.Header(), processor.header)
-	require.Nil(processor.onNewLog)
 	require.Equal(types.LatestSignerForChainID(chainCfg.ChainID), processor.signer)
 	require.Equal(state, processor.stateDb)
 	require.EqualValues(0, processor.usedGas)
@@ -4270,7 +4448,7 @@ func TestRunTransactions_AccumulatesExecutionCostFromAllTransactions(t *testing.
 		),
 	)
 
-	summary := runTransactions(context, txs, nil, 0, math.MaxUint64)
+	summary := runTransactions(context, txs, 0, math.MaxUint64)
 	require.EqualValues(t, 100+200+300+500, summary.ExecutionCost)
 }
 
@@ -4720,7 +4898,7 @@ func TestRunTransactions_ProcessesAllTransactionsWithinBlockSizeLimit(t *testing
 			}
 			tc.setupMock(context, runner)
 
-			summary := runTransactions(context, tc.txs, nil, 0, tc.remainingSize)
+			summary := runTransactions(context, tc.txs, 0, tc.remainingSize)
 
 			require.Len(t, summary.ProcessedTransactions, tc.wantProcessed)
 			included := 0
@@ -4809,7 +4987,7 @@ func TestRunTransaction_CollectsCausedByInformationForAllTransactionTypes(t *tes
 			}
 			tc.setupMock(context, runner)
 
-			summary := runTransactions(context, []*types.Transaction{tc.tx}, nil, 0, math.MaxUint64)
+			summary := runTransactions(context, []*types.Transaction{tc.tx}, 0, math.MaxUint64)
 			require.Equal(t, tc.wantCausedBy, summary.CausedBy)
 		})
 	}
@@ -4849,7 +5027,7 @@ func TestRunTransactions_SmallerTransactionsAreProcessedAfterLargeTransactionExc
 		core_types.TransactionResultInvalid,
 	)
 
-	summary := runTransactions(context, transactions, nil, 0, sizeLimit)
+	summary := runTransactions(context, transactions, 0, sizeLimit)
 	require.Equal(t, []ProcessedTransaction{
 		{Transaction: largeTx, Receipt: nil},
 		{Transaction: tx0, Receipt: &types.Receipt{}},
@@ -4889,7 +5067,7 @@ func TestRunTransactions_RemainingSizeIsSetToZeroWhenProcessedTxExceedsIt(t *tes
 		),
 	)
 
-	summary := runTransactions(context, []*types.Transaction{tx0, tx1}, nil, 0, remainingSize)
+	summary := runTransactions(context, []*types.Transaction{tx0, tx1}, 0, remainingSize)
 	require.Len(t, summary.ProcessedTransactions, 2)
 	require.NotNil(t, summary.ProcessedTransactions[0].Receipt)
 	require.Nil(t, summary.ProcessedTransactions[1].Receipt)
@@ -4925,7 +5103,7 @@ func TestRunTransactions_AccumulatesMetricsForBundles(t *testing.T) {
 		mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(100), uint64(100))
 		mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(200), uint64(200))
 
-		runTransactions(context, txs, nil, 0, math.MaxUint64)
+		runTransactions(context, txs, 0, math.MaxUint64)
 	})
 
 	t.Run("rolled back bundles are counted when result is TransactionResultFailed", func(t *testing.T) {
@@ -4950,7 +5128,7 @@ func TestRunTransactions_AccumulatesMetricsForBundles(t *testing.T) {
 		mockMetrics.EXPECT().IncRolledBackBundle()
 		mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(0), uint64(50))
 
-		runTransactions(context, txs, nil, 0, math.MaxUint64)
+		runTransactions(context, txs, 0, math.MaxUint64)
 	})
 
 	t.Run("invalid bundles are counted when result is TransactionResultInvalid", func(t *testing.T) {
@@ -4975,7 +5153,7 @@ func TestRunTransactions_AccumulatesMetricsForBundles(t *testing.T) {
 		mockMetrics.EXPECT().IncInvalidBundle()
 		mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(0), uint64(50))
 
-		runTransactions(context, txs, nil, 0, math.MaxUint64)
+		runTransactions(context, txs, 0, math.MaxUint64)
 	})
 
 	t.Run("efficiency is reported for executed bundles", func(t *testing.T) {
@@ -5001,7 +5179,7 @@ func TestRunTransactions_AccumulatesMetricsForBundles(t *testing.T) {
 		mockMetrics.EXPECT().IncExecutedBundle()
 		mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(300), uint64(1000))
 
-		runTransactions(context, txs, nil, 0, math.MaxUint64)
+		runTransactions(context, txs, 0, math.MaxUint64)
 	})
 }
 
@@ -5030,7 +5208,7 @@ func TestRunTransactions_AccumulatesMetricsForSponsoredTx(t *testing.T) {
 		)
 		mockMetrics.EXPECT().IncSponsoredTx()
 
-		runTransactions(context, txs, nil, 0, math.MaxUint64)
+		runTransactions(context, txs, 0, math.MaxUint64)
 	})
 
 	t.Run("skipped sponsorships are counted", func(t *testing.T) {
@@ -5056,7 +5234,7 @@ func TestRunTransactions_AccumulatesMetricsForSponsoredTx(t *testing.T) {
 		)
 		mockMetrics.EXPECT().IncSkippedSponsoredTx()
 
-		runTransactions(context, txs, nil, 0, math.MaxUint64)
+		runTransactions(context, txs, 0, math.MaxUint64)
 	})
 
 	t.Run("executed and skipped are exclusive", func(t *testing.T) {
@@ -5091,7 +5269,7 @@ func TestRunTransactions_AccumulatesMetricsForSponsoredTx(t *testing.T) {
 		mockMetrics.EXPECT().IncSponsoredTx().Times(1)
 		mockMetrics.EXPECT().IncSkippedSponsoredTx().Times(1)
 
-		runTransactions(context, txs, nil, 0, math.MaxUint64)
+		runTransactions(context, txs, 0, math.MaxUint64)
 	})
 }
 
@@ -5155,7 +5333,7 @@ func TestRunTransactions_AccumulatesMetricsForBundlesAndSponsoredTx(t *testing.T
 	mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(500), uint64(800))
 	mockMetrics.EXPECT().ObserveBundleEfficiency(uint64(0), uint64(300))
 
-	runTransactions(context, txs, nil, 0, math.MaxUint64)
+	runTransactions(context, txs, 0, math.MaxUint64)
 }
 
 func TestRunTransactions_SkipsMetricsWithoutUpgrades(t *testing.T) {
@@ -5180,7 +5358,7 @@ func TestRunTransactions_SkipsMetricsWithoutUpgrades(t *testing.T) {
 			core_types.TransactionResultInvalid,
 		)
 
-		runTransactions(context, txs, nil, 0, math.MaxUint64)
+		runTransactions(context, txs, 0, math.MaxUint64)
 	})
 
 	t.Run("bundle transaction before upgrade", func(t *testing.T) {
@@ -5203,7 +5381,7 @@ func TestRunTransactions_SkipsMetricsWithoutUpgrades(t *testing.T) {
 			core_types.TransactionResultSuccessful,
 		)
 
-		runTransactions(context, txs, nil, 0, math.MaxUint64)
+		runTransactions(context, txs, 0, math.MaxUint64)
 	})
 }
 
@@ -5222,7 +5400,7 @@ func TestStateProcessor_MetricsAreEnabledInSingleBlockProposerMode(t *testing.T)
 	)
 
 	block := &EvmBlock{EvmHeader: EvmHeader{Number: big.NewInt(1)}}
-	tp := processor.BeginBlock(block, stateDb, vm.Config{}, math.MaxUint64, nil)
+	tp := processor.BeginBlock(block, stateDb, vm.Config{}, math.MaxUint64)
 
 	require.Equal(t, mockMetrics, tp.metrics,
 		"metrics must be forwarded from StateProcessor to TransactionProcessor via BeginBlock")
@@ -5429,4 +5607,21 @@ func TestTxAsMessage_ConvertsUserTransactionsToMessage(t *testing.T) {
 			}
 		})
 	}
+}
+
+func mockStateDbTransactionExecution(stateDb *state.MockStateDB) {
+	any := gomock.Any()
+	stateDb.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
+	stateDb.EXPECT().AddBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().SubBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+	stateDb.EXPECT().GetNonce(any).AnyTimes()
+	stateDb.EXPECT().SetNonce(any, any, any).AnyTimes()
+	stateDb.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
+	stateDb.EXPECT().GetCode(any).AnyTimes()
+	stateDb.EXPECT().GetStorageRoot(any).Return(types.EmptyRootHash).AnyTimes()
+	stateDb.EXPECT().Snapshot().AnyTimes()
+	stateDb.EXPECT().Exist(any).Return(true).AnyTimes()
+	stateDb.EXPECT().GetRefund().AnyTimes()
+	stateDb.EXPECT().EndTransaction().AnyTimes()
 }
