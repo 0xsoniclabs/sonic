@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-// NetworkSponsorRegistry is a test registry that sponsors all transactions
-// using mode 2 (network sponsored, no on-chain tracking).
-contract NetworkSponsorRegistry {
+// NetworkSponsorRegistry is a test registry that can be configured to sponsor
+// transactions from specific accounts using:
+// - mode 1 (fund-backed)
+// - mode 2 (network sponsored, no on-chain tracking)
+// - mode 3 (network sponsored with on-chain tracking)
 
     // --- Sponsorship mode constants ---
 
