@@ -10,9 +10,9 @@ The two guarantees that bundles provide -- **atomic execution** and **no interle
 
 ### The Problem
 
-A collector wants to buy a team of five player NFTs as a complete set. They find all five listed on a marketplace, check the total price, and start purchasing.
+A collector wants to buy a complete five-card set of onchain collectible cards, such as a team of five player cards. They find all five listed on a marketplace, check the total price, and start purchasing.
 
-With individual transactions, each purchase settles independently. By the time the third or fourth confirmation lands, the fifth item might have sold to another buyer, or the seller might have raised the price. The collector is now stuck with an incomplete set that cost them most of the budget.
+With individual transactions, each purchase settles independently. By the time the third or fourth confirmation lands, the fifth item might have sold to another buyer, or the seller might have raised the price. The collector is now stuck with an incomplete set that cost them most of the budget but is worth a fraction of a complete one.
 
 The natural response -- "I'll be fast" -- is not a solution. Even if the collector submits all five transactions in the same block, there is no guarantee all five succeed. One reverting transaction does not undo the others.
 
@@ -24,11 +24,11 @@ Wrap all five purchases in an **AllOf** group:
 {
   "blockRange": { "first": "0x1234", "length": "0x0a" },
   "steps": [
-    { "from": "0xCollector", "to": "0xMarket", "nonce": "0x10", "data": "0x<buyNFT_1>" },
-    { "from": "0xCollector", "to": "0xMarket", "nonce": "0x11", "data": "0x<buyNFT_2>" },
-    { "from": "0xCollector", "to": "0xMarket", "nonce": "0x12", "data": "0x<buyNFT_3>" },
-    { "from": "0xCollector", "to": "0xMarket", "nonce": "0x13", "data": "0x<buyNFT_4>" },
-    { "from": "0xCollector", "to": "0xMarket", "nonce": "0x14", "data": "0x<buyNFT_5>" }
+    { "from": "0xCollector", "to": "0xMarket", "nonce": "0x10", "data": "0x<buyCard_1>" },
+    { "from": "0xCollector", "to": "0xMarket", "nonce": "0x11", "data": "0x<buyCard_2>" },
+    { "from": "0xCollector", "to": "0xMarket", "nonce": "0x12", "data": "0x<buyCard_3>" },
+    { "from": "0xCollector", "to": "0xMarket", "nonce": "0x13", "data": "0x<buyCard_4>" },
+    { "from": "0xCollector", "to": "0xMarket", "nonce": "0x14", "data": "0x<buyCard_5>" }
   ]
 }
 ```

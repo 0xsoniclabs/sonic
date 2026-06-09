@@ -8,7 +8,7 @@ Sonic **transaction bundles** address both problems -- the friction of repeated 
 
 ## Problem One: The Multi-Signature Tax
 
-Consider buying a matched set of five NFTs. Each purchase is its own transaction. By the time you confirm the fourth, the fifth item may have sold out or the seller may have changed the price. You are now the proud owner of four-fifths of a set you no longer want, with no clean way to undo the preceding purchases.
+Consider buying a complete five-card set of onchain collectible cards. Each purchase is its own transaction. By the time you confirm the fourth, the fifth item may have sold out or the seller may have changed the price. You are now the proud owner of four-fifths of a set you no longer want (an incomplete set is worth far less than the cards in it cost), with no clean way to undo the preceding purchases.
 
 The same pattern appears throughout DeFi. Moving a loan from one protocol to another typically requires at least five steps. Each step is a separate transaction. Each transaction is a separate confirmation. Each confirmation is a moment where the market can move, a price can spike, or liquidity can disappear.
 
@@ -46,15 +46,15 @@ An **AllOf** group succeeds only if every step inside it succeeds. If any step f
 
 ```
 AllOf(
-  buy_nft_1,
-  buy_nft_2,
-  buy_nft_3,
-  buy_nft_4,
-  buy_nft_5
+  buy_card_1,
+  buy_card_2,
+  buy_card_3,
+  buy_card_4,
+  buy_card_5
 )
 ```
 
-If `buy_nft_3` reverts because the item sold out, the purchases of NFTs 1 and 2 are also undone. You either get the complete set or nothing.
+If `buy_card_3` reverts because the item sold out, the purchases of cards 1 and 2 are also undone. You either get the complete set or nothing.
 
 ### OneOf -- First Success Wins
 
@@ -99,7 +99,7 @@ Both motivation stories -- the UX friction and the interleaving risk -- are reso
 
 Because the entire bundle executes atomically:
 
-- A collector can buy a full set of NFTs with a single on-chain commitment, knowing they either get everything or spend nothing.
+- A collector can buy a full set of cards with a single on-chain commitment, knowing they either get everything or spend nothing.
 - A borrower can refinance across protocols without any moment of unsafe exposure in between.
 - A trader can express a ranked list of preferred execution venues and be guaranteed that at most one trade fires, regardless of how the market moves in the same block.
 
