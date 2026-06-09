@@ -26,8 +26,8 @@ import (
 )
 
 const (
-	SonicPostAllegroMaxCodeSize     = 1<<15 + 1<<14                   // 48 KiB
-	SonicPostAllegroMaxInitCodeSize = SonicPostAllegroMaxCodeSize * 2 // 96 KiB
+	SonicPostAllegroMaxCodeSize     = 1 << 16                         // 64 KiB
+	SonicPostAllegroMaxInitCodeSize = SonicPostAllegroMaxCodeSize * 2 // 128 KiB
 )
 
 // sonicVmConfig is the initial Ethereum VM configuration used for processing
