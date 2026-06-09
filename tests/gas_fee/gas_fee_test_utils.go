@@ -23,9 +23,11 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/proxy"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
+	"github.com/0xsoniclabs/sonic/tests/contracts/network_sponsor_configurable"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -131,25 +133,42 @@ func createSponsoredTransactions(
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	// Fund all calls to the counter contract.
-	registry, err := registry.NewRegistry(registry.GetAddress(), client)
+	// Install the replacement contract for the default registry.
+	_, receipt, err = tests.DeployContract(session, network_sponsor_configurable.DeployNetworkSponsorConfigurable)
 	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	ok, fundId, err := registry.ContractSponsorshipFundId(nil, receipt.ContractAddress)
+	// Update the registry to point to the new contract.
+	proxy, err := proxy.NewProxy(registry.GetAddress(), client)
 	require.NoError(t, err)
-	require.True(t, ok, "counter contract is not eligible for sponsorship")
-
-	donation := big.NewInt(1e18)
 	receipt, err = session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-		opts.Value = donation
-		require.NoError(t, err)
-		return registry.Sponsor(opts, fundId)
+		return proxy.Update(opts, receipt.ContractAddress)
 	})
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	// Create sponsored transactions calling the counter contract.
+	// Create accounts and configure different sponsorship modes for them.
 	accounts := tests.NewAccounts(numTransactions) // no need for endowment
+	sponsorshipRegistry, err := network_sponsor_configurable.NewNetworkSponsorConfigurable(registry.GetAddress(), client)
+	require.NoError(t, err)
+	for i, a := range accounts {
+		sponsor := sponsorshipRegistry.SetFundSponsored
+		switch i % 3 {
+		case 0:
+			sponsor = sponsorshipRegistry.SetFundSponsored
+		case 1:
+			sponsor = sponsorshipRegistry.SetNetworkSponsored
+		case 2:
+			sponsor = sponsorshipRegistry.SetNetworkSponsoredWithTrackingSponsored
+		}
+		receipt, err := session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+			return sponsor(opts, a.Address(), true)
+		})
+		require.NoError(t, err)
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	}
+
+	// Create sponsored transactions calling the counter contract.
 	signer := types.LatestSignerForChainID(session.GetChainId())
 	res := make([]*types.Transaction, 0, numTransactions)
 	for _, a := range accounts {
