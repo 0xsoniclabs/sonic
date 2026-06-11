@@ -64,7 +64,9 @@ func TestConnectP2PNetwork_TrustedPeersBypassBan(t *testing.T) {
 	select {
 	case err := <-errCh:
 		require.NoError(err, "network restart should succeed")
-	case <-time.After(30 * time.Second):
+
+	// use same timeout as RPC timeout defined in test net start
+	case <-time.After(60 * time.Second):
 		t.Fatal("network restart timed out, likely due to discfilter bans")
 	}
 
