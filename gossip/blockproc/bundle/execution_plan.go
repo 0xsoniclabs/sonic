@@ -17,6 +17,7 @@
 package bundle
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -205,12 +206,75 @@ func (s *ExecutionStep) encode(writer io.Writer) error {
 }
 
 func (s *ExecutionStep) decode(reader io.Reader) error {
+	// The encoded step is read as raw RLP first, so that its nesting depth can be
+	// bounded before it is decoded into the recursive stepEncodingV1 structure.
+	// The plan's nesting depth is limited to MaxGroupNestingDepth, but that limit
+	// is only enforced by validateStep, after decoding. Since both rlp.Decode and
+	// fromEncodingV1 recurse once per nesting level, a maliciously deep plan could
+	// exhaust the goroutine stack during decoding, before validation ever runs
+	// (a single deeply nested envelope decoded by every node would crash the
+	// network). checkStepEncodingDepth guards against this by rejecting overly
+	// deep encodings up front, using a walker whose own recursion is bounded by
+	// the same limit.
+	raw, err := rlp.NewStream(reader, 0).Raw()
+	if err != nil {
+		return err
+	}
+	if err := checkStepEncodingDepth(raw); err != nil {
+		return err
+	}
+
 	var encoding stepEncodingV1
-	if err := rlp.Decode(reader, &encoding); err != nil {
+	if err := rlp.DecodeBytes(raw, &encoding); err != nil {
 		return err
 	}
 	s.fromEncodingV1(encoding)
 	return nil
+}
+
+// maxStepEncodingRlpDepth is the maximum RLP nesting depth permitted for an
+// encoded execution step. It is a loose, consensus-neutral anti-DoS bound used
+// during decoding, distinct from the precise MaxGroupNestingDepth rule enforced
+// later by validateStep. A valid step has at most MaxGroupNestingDepth levels of
+// nested groups; each group level contributes a small constant number of RLP
+// list levels (the step list, its sub-steps list, and a leaf's TxReference
+// list). The factor of 4 leaves ample headroom so that no plan satisfying the
+// MaxGroupNestingDepth rule is ever rejected here, while still bounding the
+// decode recursion far below any level that could exhaust the goroutine stack.
+const maxStepEncodingRlpDepth = 4 * (MaxGroupNestingDepth + 1)
+
+// checkStepEncodingDepth verifies that the RLP nesting depth of an encoded
+// execution step does not exceed maxStepEncodingRlpDepth. It walks the raw RLP
+// structure, descending into every nested list, but stops as soon as the depth
+// limit is exceeded. Its own recursion (and therefore stack usage) is thus
+// bounded by the limit, making it safe to run on untrusted input. It must be
+// called before decoding the raw bytes into the recursive stepEncodingV1
+// structure to prevent stack exhaustion from maliciously deep encodings.
+func checkStepEncodingDepth(raw []byte) error {
+	return checkRlpNestingDepth(rlp.NewStream(bytes.NewReader(raw), 0), 0)
+}
+
+func checkRlpNestingDepth(stream *rlp.Stream, depth int) error {
+	if depth > maxStepEncodingRlpDepth {
+		return fmt.Errorf(
+			"encoded execution step exceeds maximum nesting depth of %d",
+			maxStepEncodingRlpDepth,
+		)
+	}
+	if _, err := stream.List(); err != nil {
+		if err == rlp.ErrExpectedList {
+			// A non-list value (string/byte) can not nest; consume and return.
+			_, err := stream.Raw()
+			return err
+		}
+		return err
+	}
+	for stream.MoreDataInList() {
+		if err := checkRlpNestingDepth(stream, depth+1); err != nil {
+			return err
+		}
+	}
+	return stream.ListEnd()
 }
 
 func (s *ExecutionStep) toEncodingV1() stepEncodingV1 {

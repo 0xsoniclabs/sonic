@@ -18,11 +18,13 @@ package bundle
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -460,6 +462,130 @@ func TestExecutionStep_decode_FailsOnInvalidInput(t *testing.T) {
 	require.Error(t, s.decode(bytes.NewReader(data)))
 }
 
+// TestExecutionStep_decode_RejectsDeeplyNestedEncoding ensures that decoding a
+// maliciously deep execution step is rejected up front by the nesting-depth
+// guard, rather than recursing through the whole structure (in rlp.Decode and
+// fromEncodingV1) and exhausting the goroutine stack. The test reaching this
+// assertion without a stack-overflow crash is itself part of what is verified.
+func TestExecutionStep_decode_RejectsDeeplyNestedEncoding(t *testing.T) {
+	require := require.New(t)
+
+	// Encode a valid leaf step to use as the innermost element.
+	leafStep := NewTxStep(TxReference{From: common.Address{1}, Hash: common.Hash{2}})
+	var leafBuf bytes.Buffer
+	require.NoError(leafStep.encode(&leafBuf))
+	leaf := leafBuf.Bytes()
+
+	// Sanity-check that the manual group wrapper produces exactly the same bytes
+	// as the real encoder, so the deeply nested blob below is a structurally
+	// valid chain of group steps (which is what would drive the recursive decode
+	// before the guard rejects it).
+	for _, levels := range []int{1, 10, 100} {
+		nested := leafStep
+		for range levels {
+			nested = NewAllOfStep(nested)
+		}
+		var nestedBuf bytes.Buffer
+		require.NoError(nested.encode(&nestedBuf))
+		require.Equal(nestedBuf.Bytes(), wrapStepInAllOfGroups(leaf, levels))
+	}
+
+	// Build a chain of nested group steps far deeper than the permitted limit.
+	// A few thousand levels is orders of magnitude beyond maxStepEncodingRlpDepth.
+	// Build the blob in one pass to avoid repeated full-slice copies.
+	deep := wrapStepInAllOfGroups(leaf, 1_000)
+
+	var s ExecutionStep
+	require.ErrorContains(s.decode(bytes.NewReader(deep)), "nesting depth")
+
+	// Build a chain of nested group steps that would cause a stack overflow if
+	// the depth guard were not in place, and verify that it is rejected with an
+	// error.
+	deep = wrapStepInAllOfGroups(leaf, 1_000_000)
+	require.ErrorContains(s.decode(bytes.NewReader(deep)), "nesting depth")
+}
+
+// wrapStepInAllOfGroups returns the encoding of `levels` nested all-of
+// group steps around the already-encoded sub-step `sub` in O(len(result)) time.
+func wrapStepInAllOfGroups(sub []byte, levels int) []byte {
+	if levels <= 0 {
+		return append([]byte(nil), sub...)
+	}
+
+	type groupHeaders struct {
+		outer []byte
+		steps []byte
+	}
+
+	headers := make([]groupHeaders, 0, levels)
+	innerLen := len(sub)
+	for range levels {
+		stepsHeader := rlpListHeader(innerLen)
+		contentLen := 4 + len(stepsHeader) + innerLen
+		outerHeader := rlpListHeader(contentLen)
+
+		headers = append(headers, groupHeaders{outer: outerHeader, steps: stepsHeader})
+		innerLen = len(outerHeader) + contentLen
+	}
+
+	out := make([]byte, innerLen)
+	offset := 0
+	for i := len(headers) - 1; i >= 0; i-- {
+		h := headers[i]
+
+		offset += copy(out[offset:], h.outer)
+		out[offset+0] = 0x80 // Flags=0
+		out[offset+1] = 0xc0 // nil TxRef pointer (rlp:"nil")
+		out[offset+2] = 0x80 // OneOf=false
+		out[offset+3] = 0x80 // TolerateFailed=false
+		offset += 4
+		offset += copy(out[offset:], h.steps)
+	}
+
+	copy(out[offset:], sub)
+	return out
+}
+
+// rlpListHeader returns the RLP list header for a list payload of the given size.
+func rlpListHeader(payloadLen int) []byte {
+	if payloadLen < 56 {
+		return []byte{0xc0 + byte(payloadLen)}
+	}
+	var be [8]byte
+	binary.BigEndian.PutUint64(be[:], uint64(payloadLen))
+	i := 0
+	for i < 7 && be[i] == 0 {
+		i++
+	}
+	lenBytes := be[i:]
+	header := append([]byte{0xf7 + byte(len(lenBytes))}, lenBytes...)
+	return header
+}
+
+// TestExecutionStep_decode_AcceptsEncodingAtNestingLimit ensures the decode-time
+// depth guard never rejects a plan that satisfies the consensus nesting rule
+// (MaxGroupNestingDepth). A step nested exactly to that limit must still decode,
+// validate, and round-trip unchanged.
+func TestExecutionStep_decode_AcceptsEncodingAtNestingLimit(t *testing.T) {
+	require := require.New(t)
+
+	step := NewTxStep(TxReference{From: common.Address{1}, Hash: common.Hash{2}})
+	for range MaxGroupNestingDepth {
+		step = NewAllOfStep(step)
+	}
+
+	// The plan is valid under the precise consensus rule.
+	require.NoError(validateStep(step))
+
+	var buf bytes.Buffer
+	require.NoError(step.encode(&buf))
+	encoded := buf.Bytes()
+
+	var decoded ExecutionStep
+	require.NoError(decoded.decode(bytes.NewReader(encoded)))
+	require.Equal(step, decoded)
+}
+
 func TestExecutionStep_String_PrintsReadableRepresentation(t *testing.T) {
 	ref1 := TxReference{From: common.Address{1}}
 	ref2 := TxReference{From: common.Address{2}}
@@ -525,4 +651,19 @@ func TestExecutionStep_String_PrintsReadableRepresentation(t *testing.T) {
 			require.Equal(tc.want, tc.input.String())
 		})
 	}
+}
+
+func TestCheckRlpNestingDepth_ReachingMaxDepth_ReturnsError(t *testing.T) {
+	require.ErrorContains(t,
+		checkRlpNestingDepth(nil, maxStepEncodingRlpDepth+1),
+		"encoded execution step exceeds maximum nesting depth",
+	)
+}
+
+func TestCheckRlpNestingDepth_EmptyInput_ReturnsAnError(t *testing.T) {
+	stream := rlp.NewStream(bytes.NewReader([]byte("")), 0)
+	require.ErrorContains(t,
+		checkRlpNestingDepth(stream, maxStepEncodingRlpDepth),
+		"EOF",
+	)
 }
