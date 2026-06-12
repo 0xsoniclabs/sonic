@@ -18,7 +18,6 @@ package bundle
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"testing"
 
@@ -471,95 +470,23 @@ func TestExecutionStep_decode_RejectsDeeplyNestedEncoding(t *testing.T) {
 	require := require.New(t)
 
 	// Encode a valid leaf step to use as the innermost element.
-	leafStep := NewTxStep(TxReference{From: common.Address{1}, Hash: common.Hash{2}})
-	var leafBuf bytes.Buffer
-	require.NoError(leafStep.encode(&leafBuf))
-	leaf := leafBuf.Bytes()
+	leaf := NewTxStep(TxReference{From: common.Address{1}, Hash: common.Hash{2}})
 
-	// Sanity-check that the manual group wrapper produces exactly the same bytes
-	// as the real encoder, so the deeply nested blob below is a structurally
-	// valid chain of group steps (which is what would drive the recursive decode
-	// before the guard rejects it).
-	for _, levels := range []int{1, 10, 100} {
-		nested := leafStep
-		for range levels {
+	// Check 1000 and 1 million nested steps, both of which exceed the
+	// MaxGroupNestingDepth limit and should be rejected by the depth guard.
+	// The 1 million case lead to a stack overflow before the guard was
+	// implemented, so is included to ensure the guard is effective.
+	for _, size := range []int{1000, 1_000_000} {
+		nested := leaf
+		for range size {
 			nested = NewAllOfStep(nested)
 		}
-		var nestedBuf bytes.Buffer
-		require.NoError(nested.encode(&nestedBuf))
-		require.Equal(nestedBuf.Bytes(), wrapStepInAllOfGroups(leaf, levels))
+		var buf bytes.Buffer
+		require.NoError(nested.encode(&buf))
+
+		var s ExecutionStep
+		require.ErrorContains(s.decode(bytes.NewReader(buf.Bytes())), "nesting depth")
 	}
-
-	// Build a chain of nested group steps far deeper than the permitted limit.
-	// A few thousand levels is orders of magnitude beyond maxStepEncodingRlpDepth.
-	// Build the blob in one pass to avoid repeated full-slice copies.
-	deep := wrapStepInAllOfGroups(leaf, 1_000)
-
-	var s ExecutionStep
-	require.ErrorContains(s.decode(bytes.NewReader(deep)), "nesting depth")
-
-	// Build a chain of nested group steps that would cause a stack overflow if
-	// the depth guard were not in place, and verify that it is rejected with an
-	// error.
-	deep = wrapStepInAllOfGroups(leaf, 1_000_000)
-	require.ErrorContains(s.decode(bytes.NewReader(deep)), "nesting depth")
-}
-
-// wrapStepInAllOfGroups returns the encoding of `levels` nested all-of
-// group steps around the already-encoded sub-step `sub` in O(len(result)) time.
-func wrapStepInAllOfGroups(sub []byte, levels int) []byte {
-	if levels <= 0 {
-		return append([]byte(nil), sub...)
-	}
-
-	type groupHeaders struct {
-		outer []byte
-		steps []byte
-	}
-
-	headers := make([]groupHeaders, 0, levels)
-	innerLen := len(sub)
-	for range levels {
-		stepsHeader := rlpListHeader(innerLen)
-		contentLen := 4 + len(stepsHeader) + innerLen
-		outerHeader := rlpListHeader(contentLen)
-
-		headers = append(headers, groupHeaders{outer: outerHeader, steps: stepsHeader})
-		innerLen = len(outerHeader) + contentLen
-	}
-
-	out := make([]byte, innerLen)
-	offset := 0
-	for i := len(headers) - 1; i >= 0; i-- {
-		h := headers[i]
-
-		offset += copy(out[offset:], h.outer)
-		out[offset+0] = 0x80 // Flags=0
-		out[offset+1] = 0xc0 // nil TxRef pointer (rlp:"nil")
-		out[offset+2] = 0x80 // OneOf=false
-		out[offset+3] = 0x80 // TolerateFailed=false
-		offset += 4
-		offset += copy(out[offset:], h.steps)
-	}
-
-	copy(out[offset:], sub)
-	return out
-}
-
-// rlpListHeader returns the RLP list header for a list payload of the given size.
-func rlpListHeader(payloadLen int) []byte {
-	if payloadLen < 56 {
-		return []byte{0xc0 + byte(payloadLen)}
-	}
-	var be [8]byte
-	binary.BigEndian.PutUint64(be[:], uint64(payloadLen))
-	i := 0
-	for i < 7 && be[i] == 0 {
-		i++
-	}
-	lenBytes := be[i:]
-	header := append([]byte{0xf7 + byte(len(lenBytes))}, lenBytes...)
-	return header
 }
 
 // TestExecutionStep_decode_AcceptsEncodingAtNestingLimit ensures the decode-time
