@@ -20,8 +20,8 @@ import (
 	"bytes"
 	_ "embed"
 
+	"github.com/0xsoniclabs/sonic/utils/hexutils"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/status-im/keycard-go/hexutils"
 )
 
 //go:generate solc --optimize --optimize-runs 200 --bin --bin-runtime proxy.sol --abi proxy.sol -o build --overwrite
@@ -44,4 +44,4 @@ func GetCode() []byte {
 
 //go:embed proxy_contract.bin
 var proxyCodeInHex string
-var proxyCode []byte = hexutils.HexToBytes(proxyCodeInHex)
+var proxyCode []byte = hexutils.MustHexToBytes(proxyCodeInHex)
