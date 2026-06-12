@@ -1,0 +1,27 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/go
+{
+	"name": "Sonic Dev Go",
+	// Workaround: devcontainers CLI 0.86.x does not reliably create its own temp dir
+	// before calling docker buildx, causing "lstat /tmp/devcontainercli-<user>: no such file or directory".
+	"initializeCommand": "mkdir -p /tmp/devcontainercli-$(id -un)",
+	"build": {
+		// Sets the run context to one level up instead of the .devcontainer folder.
+		"context": "..",
+		"dockerfile": "../Dockerfile",
+		"target": "devcontainer"
+	},
+	"remoteUser": "vscode",
+	"updateRemoteUserUID": true,
+
+	// Configure tool-specific properties.
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"golang.go",
+				"streetsidesoftware.code-spell-checker",
+				"ms-vscode-remote.remote-ssh"
+			]
+		}
+	}
+}
