@@ -257,6 +257,15 @@ type integrationTestNode struct {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Metrics server guard.
+// exp.Setup starts a goroutine that never shuts down, so we must ensure only
+// one metrics server is started per process regardless of how many test
+// networks are created.
+////////////////////////////////////////////////////////////////////////////////
+
+var metricsOnce sync.Once
+
+////////////////////////////////////////////////////////////////////////////////
 // Memory profiler.
 // if enabled with the `SONIC_TEST_HEAP_PROFILE` env var, it will write a heap dump to
 // the `../build/profile/` directory at the end of the test run.
@@ -590,6 +599,15 @@ func (n *IntegrationTestNet) start() error {
 			if err := sonicd.RunWithArgs(append(args, "--dump-config", configFile), &sonicd.AppControl{}); err != nil {
 				panic(fmt.Sprint("Failed to dump config file:", err))
 			}
+			// Add metrics flags after dump-config to avoid starting the
+			// metrics HTTP server twice (once during dump-config and once
+			// during the real node start) which causes a port conflict.
+			// Use sync.Once because exp.Setup starts a server goroutine that
+			// never shuts down, so only the first node in the process should
+			// start it. All nodes share the same metrics.DefaultRegistry.
+			metricsOnce.Do(func() {
+				args = append(args, "--metrics", "--metrics.addr", "0.0.0.0", "--metrics.port", "6060")
+			})
 			var loadedConfig config.Config
 			if err := config.LoadAllConfigs(configFile, &loadedConfig); err != nil {
 				panic(fmt.Sprint("Failed to load default config file:", err))
