@@ -484,12 +484,14 @@ func DefaultGasPowerRules() GasPowerRules {
 
 func (r Rules) Copy() Rules {
 	cp := r
-	cp.Economy.MinGasPrice = new(big.Int).Set(r.Economy.MinGasPrice)
+	if r.Economy.MinGasPrice != nil {
+		cp.Economy.MinGasPrice = new(big.Int).Set(r.Economy.MinGasPrice)
+	}
 
 	// there is a bug in pre-Allegro versions that MinBaseFee is not deep copied.
 	// Since switching to deep-copy is not possible in a network running combination
 	// of Allegro and pre-Allegro versions, we need to enable this fix only when Allegro is applied.
-	if cp.Upgrades.Allegro {
+	if cp.Upgrades.Allegro && r.Economy.MinBaseFee != nil {
 		cp.Economy.MinBaseFee = new(big.Int).Set(r.Economy.MinBaseFee)
 	}
 
