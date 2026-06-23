@@ -337,6 +337,342 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 	}
 }
 
+// TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing verifies that a
+// block which seals an epoch is processed using the network rules that were in
+// effect at the start of the block, even though sealing the epoch installs a
+// different set of rules into the epoch state.
+//
+// This is a regression test for the fix that captures a copy of the rules at
+// the beginning of EndBlock (thisBlocksRules) instead of reading es.Rules
+// directly: after SealEpoch reassigns es, the body of the block (the blockFn
+// closure) must still observe the block's original rules.
+//
+// The observable signal is the size limit passed to EVMProcessor.Execute for
+// the user transactions: with the Brio upgrade enabled the limit is the finite
+// block-size budget, while without Brio it is math.MaxUint64. The block starts
+// with Brio enabled and the sealed epoch disables it; therefore observing the
+// finite, Brio-derived limit proves the start rules were used.
+func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	const maxEmptyBlockSkipPeriod = inter.Timestamp(10_000)
+	const lastBlockTime = inter.Timestamp(1000)
+	// Beyond the skip period so the block is produced rather than skipped.
+	const blockTime = lastBlockTime + maxEmptyBlockSkipPeriod + 1
+
+	// Start the block with the Brio rules enabled, using single-proposer mode.
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.SingleProposerBlockFormation = true
+	store := newInMemoryStoreWithGenesisData(t, upgrades, 1, 2)
+
+	// Create an event carrying a (valid, empty) proposal for the next block,
+	// plus the atropos event of the block.
+	proposalBuilder := inter.MutableEventPayload{}
+	proposalBuilder.SetVersion(3)
+	proposalBuilder.SetEpoch(2)
+	proposalBuilder.SetMedianTime(blockTime)
+	proposalBuilder.SetPayload(inter.Payload{
+		Proposal: &inter.Proposal{
+			Number:     1,
+			ParentHash: store.GetBlock(0).Hash(),
+		},
+	})
+	proposalEvent := proposalBuilder.Build()
+
+	atroposBuilder := inter.MutableEventPayload{}
+	atroposBuilder.SetVersion(3)
+	atroposBuilder.SetEpoch(2)
+	atroposBuilder.SetMedianTime(blockTime)
+	atropos := atroposBuilder.Build()
+
+	events := []*inter.EventPayload{proposalEvent, atropos}
+	for _, event := range events {
+		store.SetEvent(event)
+	}
+
+	// Update block and epoch state to match the test conditions.
+	bs := store.GetBlockState()
+	bs.LastBlock = iblockproc.BlockCtx{Time: lastBlockTime}
+	es := store.GetEpochState()
+	es.Rules.Blocks.MaxEmptyBlockSkipPeriod = maxEmptyBlockSkipPeriod
+	store.SetBlockEpochState(bs, es)
+
+	// The epoch state installed by sealing the epoch deliberately uses a
+	// different set of rules than the block started with: Brio is disabled.
+	sealedEpochState := store.GetEpochState().Copy()
+	sealedEpochState.Rules.Upgrades.Brio = false
+
+	ctrl := gomock.NewController(t)
+	_any := gomock.Any()
+
+	confirmedEventProcessor := blockproc.NewMockConfirmedEventsProcessor(ctrl)
+	confirmedEventProcessor.EXPECT().Finalize(_any, _any).Return(iblockproc.BlockState{})
+	confirmedEventProcessor.EXPECT().ProcessConfirmedEvent(_any).AnyTimes()
+	eventsModule := blockproc.NewMockConfirmedEventsModule(ctrl)
+	eventsModule.EXPECT().Start(_any, _any).Return(confirmedEventProcessor)
+
+	// Record the size limit of every EVMProcessor.Execute call.
+	var mu sync.Mutex
+	var executeSizeLimits []uint64
+	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+	evmProcessor.EXPECT().Execute(_any, _any, _any).
+		DoAndReturn(func(_ types.Transactions, _ uint64, sizeLimit uint64) evmcore.ProcessSummary {
+			mu.Lock()
+			defer mu.Unlock()
+			executeSizeLimits = append(executeSizeLimits, sizeLimit)
+			return evmcore.ProcessSummary{}
+		}).MinTimes(1)
+	evmProcessor.EXPECT().Finalize().Return(&evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			BaseFee: big.NewInt(0),
+			TxHash:  common.Hash{1, 2, 3},
+		},
+	}, 0, nil)
+	evmModule := blockproc.NewMockEVM(ctrl)
+	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+
+	// Sealer reports that this block seals the epoch and returns the sealed
+	// epoch state carrying the changed rules.
+	sealer := blockproc.NewMockSealerProcessor(ctrl)
+	sealer.EXPECT().EpochSealing().Return(true)
+	sealer.EXPECT().Update(_any, _any)
+	sealer.EXPECT().SealEpoch(_any, _any, _any).
+		Return(iblockproc.BlockState{}, sealedEpochState)
+	sealerModule := blockproc.NewMockSealerModule(ctrl)
+	sealerModule.EXPECT().Start(_any, _any, _any).Return(sealer)
+
+	txListener := blockproc.NewMockTxListener(ctrl)
+	txListener.EXPECT().Finalize().Return(iblockproc.BlockState{}).AnyTimes()
+	txListener.EXPECT().Update(_any, _any).AnyTimes()
+	txListener.EXPECT().OnNewReceipt(_any, _any, _any, _any, _any).AnyTimes()
+	txListenerModule := blockproc.NewMockTxListenerModule(ctrl)
+	txListenerModule.EXPECT().Start(_any, _any, _any, _any).Return(txListener)
+
+	txTransactor := blockproc.NewMockTxTransactor(ctrl)
+	txTransactor.EXPECT().PopInternalTxs(_any, _any, _any, _any, _any).
+		Return(types.Transactions{}).AnyTimes()
+
+	proc := BlockProc{
+		EventsModule:     eventsModule,
+		SealerModule:     sealerModule,
+		TxListenerModule: txListenerModule,
+		EVMModule:        evmModule,
+		PreTxTransactor:  txTransactor,
+		PostTxTransactor: txTransactor,
+	}
+
+	// Worker group running the (possibly asynchronous) block processing.
+	stop := make(chan struct{})
+	var workerWaitGroup sync.WaitGroup
+	workers := workers.New(&workerWaitGroup, stop, 1)
+	workers.Start(1)
+	defer func() {
+		close(stop)
+		workerWaitGroup.Wait()
+	}()
+
+	var callbackWaitGroup sync.WaitGroup
+	bootstrapping := false
+	blockBusyFlag := uint32(0)
+	emitters := []*emitter.Emitter{}
+	beginBlock := consensusCallbackBeginBlockFn(
+		workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping, nil,
+	)
+
+	callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
+	for _, event := range events {
+		callbacks.ApplyEvent(event)
+	}
+	callbacks.EndBlock()
+	callbackWaitGroup.Wait()
+
+	// The user-transaction execution must use the Brio block-size limit derived
+	// from the block's start rules. With the buggy (post-seal) rules Brio would
+	// be disabled and every Execute call would use math.MaxUint64 instead.
+	mu.Lock()
+	defer mu.Unlock()
+	wantBrioSizeLimit := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
+	require.Contains(executeSizeLimits, wantBrioSizeLimit,
+		"user transactions must be executed with the block's start rules (Brio enabled), got size limits %v", executeSizeLimits)
+}
+
+// TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking verifies
+// that the receipt origin tracking performed at the end of block processing
+// uses the network rules in effect at the start of the block, even though
+// sealing the epoch installs a different set of rules.
+//
+// This is a regression test for the same fix as
+// TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing, targeting the
+// other rule-dependent site inside the blockFn closure: origin tracking is only
+// performed when the Brio upgrade is enabled. With Brio, a receipt's transaction
+// is resolved to the transaction that caused it (via the CausedBy map), and the
+// originator reported to the TxListener is the creator of the event containing
+// that origin transaction. Without Brio, the receipt's own transaction is used.
+//
+// The block starts with Brio enabled and the sealed epoch disables it. The
+// origin transaction is carried by an event created by validator 1, while the
+// receipt's own transaction is not part of any event. Therefore observing
+// validator 1 as the reported originator proves the start rules were used; the
+// buggy (post-seal) behavior would report validator 0.
+func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	const maxEmptyBlockSkipPeriod = inter.Timestamp(10_000)
+	const lastBlockTime = inter.Timestamp(1000)
+	const blockTime = lastBlockTime + maxEmptyBlockSkipPeriod + 1
+
+	const originCreator = idx.ValidatorID(1)
+
+	// Start the block with the Brio rules enabled, using single-proposer mode.
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.SingleProposerBlockFormation = true
+	store := newInMemoryStoreWithGenesisData(t, upgrades, 1, 2)
+
+	// The origin transaction is carried (via the block proposal) by a confirmed
+	// event created by validator 1; the receipt's own transaction is not part of
+	// any event.
+	originTx := types.NewTx(&types.LegacyTx{Nonce: 1})
+	receiptTx := types.NewTx(&types.LegacyTx{Nonce: 2})
+
+	// An event carrying a proposal with the origin transaction, created by
+	// validator 1.
+	originBuilder := inter.MutableEventPayload{}
+	originBuilder.SetVersion(3)
+	originBuilder.SetEpoch(2)
+	originBuilder.SetMedianTime(blockTime)
+	originBuilder.SetCreator(originCreator)
+	originBuilder.SetPayload(inter.Payload{
+		Proposal: &inter.Proposal{
+			Number:       1,
+			ParentHash:   store.GetBlock(0).Hash(),
+			Transactions: types.Transactions{originTx},
+		},
+	})
+	originEvent := originBuilder.Build()
+
+	// The atropos event of the block.
+	atroposBuilder := inter.MutableEventPayload{}
+	atroposBuilder.SetVersion(3)
+	atroposBuilder.SetEpoch(2)
+	atroposBuilder.SetMedianTime(blockTime)
+	atropos := atroposBuilder.Build()
+
+	events := []*inter.EventPayload{originEvent, atropos}
+	for _, event := range events {
+		store.SetEvent(event)
+	}
+
+	bs := store.GetBlockState()
+	bs.LastBlock = iblockproc.BlockCtx{Time: lastBlockTime}
+	es := store.GetEpochState()
+	es.Rules.Blocks.MaxEmptyBlockSkipPeriod = maxEmptyBlockSkipPeriod
+	store.SetBlockEpochState(bs, es)
+
+	// Sealing the epoch installs rules with Brio disabled.
+	sealedEpochState := store.GetEpochState().Copy()
+	sealedEpochState.Rules.Upgrades.Brio = false
+
+	ctrl := gomock.NewController(t)
+	_any := gomock.Any()
+
+	confirmedEventProcessor := blockproc.NewMockConfirmedEventsProcessor(ctrl)
+	confirmedEventProcessor.EXPECT().Finalize(_any, _any).Return(iblockproc.BlockState{})
+	confirmedEventProcessor.EXPECT().ProcessConfirmedEvent(_any).AnyTimes()
+	eventsModule := blockproc.NewMockConfirmedEventsModule(ctrl)
+	eventsModule.EXPECT().Start(_any, _any).Return(confirmedEventProcessor)
+
+	// The user-transaction execution reports that receiptTx was caused by
+	// originTx. This mapping is only consulted when Brio is enabled.
+	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+	evmProcessor.EXPECT().Execute(_any, _any, _any).
+		Return(evmcore.ProcessSummary{
+			CausedBy: map[common.Hash]common.Hash{
+				receiptTx.Hash(): originTx.Hash(),
+			},
+		}).AnyTimes()
+	evmProcessor.EXPECT().Finalize().Return(&evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			BaseFee: big.NewInt(0),
+			TxHash:  common.Hash{1, 2, 3},
+		},
+		Transactions: types.Transactions{receiptTx},
+	}, 0, types.Receipts{
+		&types.Receipt{TxHash: receiptTx.Hash(), Status: 1},
+	})
+	evmModule := blockproc.NewMockEVM(ctrl)
+	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+
+	sealer := blockproc.NewMockSealerProcessor(ctrl)
+	sealer.EXPECT().EpochSealing().Return(true)
+	sealer.EXPECT().Update(_any, _any)
+	sealer.EXPECT().SealEpoch(_any, _any, _any).
+		Return(iblockproc.BlockState{}, sealedEpochState)
+	sealerModule := blockproc.NewMockSealerModule(ctrl)
+	sealerModule.EXPECT().Start(_any, _any, _any).Return(sealer)
+
+	// Capture the originator reported to the TxListener for the single receipt.
+	var mu sync.Mutex
+	var reportedOriginators []idx.ValidatorID
+	txListener := blockproc.NewMockTxListener(ctrl)
+	txListener.EXPECT().Finalize().Return(iblockproc.BlockState{}).AnyTimes()
+	txListener.EXPECT().Update(_any, _any).AnyTimes()
+	txListener.EXPECT().OnNewReceipt(_any, _any, _any, _any, _any).
+		Do(func(_ *types.Transaction, _ *types.Receipt, originator idx.ValidatorID, _, _ *big.Int) {
+			mu.Lock()
+			defer mu.Unlock()
+			reportedOriginators = append(reportedOriginators, originator)
+		}).AnyTimes()
+	txListenerModule := blockproc.NewMockTxListenerModule(ctrl)
+	txListenerModule.EXPECT().Start(_any, _any, _any, _any).Return(txListener)
+
+	txTransactor := blockproc.NewMockTxTransactor(ctrl)
+	txTransactor.EXPECT().PopInternalTxs(_any, _any, _any, _any, _any).
+		Return(types.Transactions{}).AnyTimes()
+
+	proc := BlockProc{
+		EventsModule:     eventsModule,
+		SealerModule:     sealerModule,
+		TxListenerModule: txListenerModule,
+		EVMModule:        evmModule,
+		PreTxTransactor:  txTransactor,
+		PostTxTransactor: txTransactor,
+	}
+
+	stop := make(chan struct{})
+	var workerWaitGroup sync.WaitGroup
+	workers := workers.New(&workerWaitGroup, stop, 1)
+	workers.Start(1)
+	defer func() {
+		close(stop)
+		workerWaitGroup.Wait()
+	}()
+
+	var callbackWaitGroup sync.WaitGroup
+	bootstrapping := false
+	blockBusyFlag := uint32(0)
+	emitters := []*emitter.Emitter{}
+	beginBlock := consensusCallbackBeginBlockFn(
+		workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping, nil,
+	)
+
+	callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
+	for _, event := range events {
+		callbacks.ApplyEvent(event)
+	}
+	callbacks.EndBlock()
+	callbackWaitGroup.Wait()
+
+	// With the block's start rules (Brio enabled), the receipt is attributed to
+	// the origin transaction's event creator. With the buggy (post-seal) rules,
+	// Brio would be disabled, origin tracking skipped, and validator 0 reported.
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal([]idx.ValidatorID{originCreator}, reportedOriginators,
+		"receipt origin must be tracked using the block's start rules (Brio enabled)")
+}
+
 func TestExtractProposalForNextBlock_NoEvents_ReturnsNoProposal(t *testing.T) {
 	last := &evmcore.EvmHeader{
 		Number: big.NewInt(100),
