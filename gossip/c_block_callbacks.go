@@ -189,9 +189,12 @@ func consensusCallbackBeginBlockFn(
 			},
 			EndBlock: func() (newValidators *pos.Validators) {
 
+				// Fix the rules to be used by this block.
+				thisBlocksRules := es.Rules.Copy()
+
 				// sort events by Lamport time
 				sort.Sort(confirmedEvents)
-				maxBlockGas := es.Rules.Blocks.MaxBlockGas
+				maxBlockGas := thisBlocksRules.Blocks.MaxBlockGas
 				blockEvents := spillBlockEvents(confirmedEvents, maxBlockGas,
 					func(id hash.Event) inter.EventPayloadI {
 						// Note: currently, GetEventPayload returns a pointer to struct,
@@ -212,7 +215,7 @@ func consensusCallbackBeginBlockFn(
 
 				randao := computePrevRandao(confirmedEvents)
 				chainCfg := opera.CreateTransientEvmChainConfig(
-					es.Rules.NetworkID,
+					thisBlocksRules.NetworkID,
 					store.GetUpgradeHeights(),
 					idx.Block(number),
 				)
@@ -238,7 +241,7 @@ func consensusCallbackBeginBlockFn(
 					ParentHash: lastBlockHeader.Hash,
 				}
 				blockTime := atroposTime
-				if es.Rules.Upgrades.SingleProposerBlockFormation {
+				if thisBlocksRules.Upgrades.SingleProposerBlockFormation {
 					if proposed, proposer, time := extractProposalForNextBlock(lastBlockHeader, blockEvents, log.Root()); proposed != nil {
 						proposal = *proposed
 						blockTime = time
@@ -252,7 +255,7 @@ func consensusCallbackBeginBlockFn(
 
 						userTransactionGasLimit = inter.GetEffectiveGasLimit(
 							blockTime.Time().Sub(lastBlockHeader.Time.Time()),
-							es.Rules.Economy.ShortGasPower.AllocPerSec,
+							thisBlocksRules.Economy.ShortGasPower.AllocPerSec,
 							maxBlockGas,
 						)
 					}
@@ -267,12 +270,12 @@ func consensusCallbackBeginBlockFn(
 						unorderedTxs = append(unorderedTxs, e.Transactions()...)
 					}
 
-					proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
+					proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, thisBlocksRules.Upgrades.Sonic)
 				}
 
 				// Filter invalid transactions from the proposal.
 				proposal.Transactions = filterNonPermissibleTransactions(
-					proposal.Transactions, &es.Rules, signer, log.Root(), invalidTxsMeter,
+					proposal.Transactions, &thisBlocksRules, signer, log.Root(), invalidTxsMeter,
 				)
 
 				// Make sure the new block time is after the last block time.
@@ -297,7 +300,7 @@ func consensusCallbackBeginBlockFn(
 				skipBlock := atroposDegenerate
 				// Check if empty block should be pruned
 				emptyBlock := confirmedEvents.Len() == 0 && cBlock.Cheaters.Len() == 0
-				if es.Rules.Upgrades.SingleProposerBlockFormation {
+				if thisBlocksRules.Upgrades.SingleProposerBlockFormation {
 					// Just checking for the number of confirmed events is not
 					// enough in the SingleProposer mode, because proposals may
 					// be empty or may have been found invalid (wrong block
@@ -310,7 +313,7 @@ func consensusCallbackBeginBlockFn(
 					// in general be skipped.
 					emptyBlock = cBlock.Cheaters.Len() == 0 && len(proposal.Transactions) == 0
 				}
-				skipBlock = skipBlock || (emptyBlock && blockCtx.Time < bs.LastBlock.Time+es.Rules.Blocks.MaxEmptyBlockSkipPeriod)
+				skipBlock = skipBlock || (emptyBlock && blockCtx.Time < bs.LastBlock.Time+thisBlocksRules.Blocks.MaxEmptyBlockSkipPeriod)
 				// Finalize the progress of eventProcessor
 				bs = eventProcessor.Finalize(blockCtx, skipBlock) // TODO: refactor to not mutate the bs, it is unclear
 				if skipBlock {
@@ -344,7 +347,7 @@ func consensusCallbackBeginBlockFn(
 					statedb,
 					evmStateReader,
 					onNewLogAll,
-					es.Rules,
+					thisBlocksRules,
 					chainCfg,
 					randao,
 					sonicFeaturesMetrics,
@@ -412,7 +415,7 @@ func consensusCallbackBeginBlockFn(
 					// (8054923) in which the gas limit was adapted. To support
 					// this one-time exception, we add a special case for
 					// this block here to ensure backward compatibility.
-					if es.Rules.NetworkID == 146 && number == 8054923 {
+					if thisBlocksRules.NetworkID == 146 && number == 8054923 {
 						blockBuilder.WithGasLimit(es.Rules.Blocks.MaxBlockGas)
 					}
 
@@ -448,7 +451,7 @@ func consensusCallbackBeginBlockFn(
 						blockBuilder,
 						proposal.Transactions,
 						userTransactionGasLimit,
-						es.Rules.Upgrades,
+						thisBlocksRules.Upgrades,
 					)
 
 					evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
@@ -502,7 +505,7 @@ func consensusCallbackBeginBlockFn(
 					// call OnNewReceipt
 					for i, r := range allReceipts {
 						originTx := r.TxHash
-						if es.Rules.Upgrades.Brio {
+						if thisBlocksRules.Upgrades.Brio {
 							if origin, found := txCausedBy[r.TxHash]; found {
 								originTx = origin
 							}
