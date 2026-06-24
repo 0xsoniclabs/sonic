@@ -34,13 +34,13 @@ import (
 	emitter_config "github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/utils/caution"
+	"github.com/0xsoniclabs/sonic/utils/hexutils"
 	"github.com/0xsoniclabs/sonic/utils/ioread"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/status-im/keycard-go/hexutils"
 	"gopkg.in/urfave/cli.v1"
 )
 

@@ -20,9 +20,9 @@ import (
 	"bytes"
 	_ "embed"
 
+	"github.com/0xsoniclabs/sonic/utils/hexutils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/status-im/keycard-go/hexutils"
 )
 
 //go:generate solc --optimize --optimize-runs 200 --bin --bin-runtime subsidies_registry.sol --abi subsidies_registry.sol -o build --overwrite
@@ -68,4 +68,4 @@ var contractAddress = hexutil.MustDecode("0x7d0E23398b6CA0eC7Cdb5b5Aad7F1b112150
 
 //go:embed subsidies_contract.bin
 var registryCodeInHex string
-var registryCode []byte = hexutils.HexToBytes(registryCodeInHex)
+var registryCode []byte = hexutils.MustHexToBytes(registryCodeInHex)

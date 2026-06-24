@@ -19,9 +19,9 @@ package autocompact
 import (
 	"sync"
 
+	"github.com/0xsoniclabs/sonic/utils/hexutils"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/status-im/keycard-go/hexutils"
 )
 
 // Store implements automatic compacting of recently inserted/erased data according to provided strategy

@@ -21,9 +21,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/utils/hexutils"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/status-im/keycard-go/hexutils"
 )
 
 type loggedCompacter struct {
