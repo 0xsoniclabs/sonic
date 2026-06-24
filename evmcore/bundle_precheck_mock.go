@@ -138,6 +138,44 @@ func (mr *MockNonceSourceMockRecorder) GetNonce(addr any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNonce", reflect.TypeOf((*MockNonceSource)(nil).GetNonce), addr)
 }
 
+// MockProcessedBundleSource is a mock of ProcessedBundleSource interface.
+type MockProcessedBundleSource struct {
+	ctrl     *gomock.Controller
+	recorder *MockProcessedBundleSourceMockRecorder
+	isgomock struct{}
+}
+
+// MockProcessedBundleSourceMockRecorder is the mock recorder for MockProcessedBundleSource.
+type MockProcessedBundleSourceMockRecorder struct {
+	mock *MockProcessedBundleSource
+}
+
+// NewMockProcessedBundleSource creates a new mock instance.
+func NewMockProcessedBundleSource(ctrl *gomock.Controller) *MockProcessedBundleSource {
+	mock := &MockProcessedBundleSource{ctrl: ctrl}
+	mock.recorder = &MockProcessedBundleSourceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockProcessedBundleSource) EXPECT() *MockProcessedBundleSourceMockRecorder {
+	return m.recorder
+}
+
+// HasBundleRecentlyBeenProcessed mocks base method.
+func (m *MockProcessedBundleSource) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasBundleRecentlyBeenProcessed", execPlanHash)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasBundleRecentlyBeenProcessed indicates an expected call of HasBundleRecentlyBeenProcessed.
+func (mr *MockProcessedBundleSourceMockRecorder) HasBundleRecentlyBeenProcessed(execPlanHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasBundleRecentlyBeenProcessed", reflect.TypeOf((*MockProcessedBundleSource)(nil).HasBundleRecentlyBeenProcessed), execPlanHash)
+}
+
 // MocktransactionProcessorFactory is a mock of transactionProcessorFactory interface.
 type MocktransactionProcessorFactory struct {
 	ctrl     *gomock.Controller
