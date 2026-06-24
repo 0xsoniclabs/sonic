@@ -43,7 +43,7 @@ sonicd-debug:
 TAG ?= "latest"
 .PHONY: sonic-image
 sonic-image:
-	docker build \
+	DOCKER_BUILDKIT=1 docker build \
 		--network=host \
 		-f ./Dockerfile -t "sonic:$(TAG)" .
 

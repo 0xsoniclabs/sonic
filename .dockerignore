@@ -1,1 +1,21 @@
-vendor
+# Build artifacts
+build/
+
+# Dependencies
+vendor/
+
+# Version control
+.git/
+# Dev container config
+.devcontainer/
+
+# Profiling data
+*.prof
+
+# Patch and diff files
+*.diff
+*.patch
+
+# Demo runtime data
+demo/sonic*.datadir/
+demo/tool.datadir/
