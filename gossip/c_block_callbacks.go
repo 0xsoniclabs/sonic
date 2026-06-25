@@ -172,6 +172,9 @@ func consensusCallbackBeginBlockFn(
 		if err != nil {
 			log.Crit("Failed to open StateDB", "err", err)
 		}
+		// The internal-transaction builders only read the zero-address nonce; pass
+		// them a narrow NonceSource over the live state rather than the full statedb.
+		nonceSource := blockproc.NewNonceSource(statedb)
 		evmStateReader := &EvmStateReader{
 			ServiceFeed: feed,
 			store:       store,
@@ -386,7 +389,7 @@ func consensusCallbackBeginBlockFn(
 				executionStart := time.Now()
 
 				// Execute pre-internal transactions
-				preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
+				preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
 				preInternalProcessedTxs := evmProcessor.Execute(preInternalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
 				bs = txListener.Finalize()
 				for _, tx := range preInternalProcessedTxs {
@@ -460,7 +463,7 @@ func consensusCallbackBeginBlockFn(
 					}
 
 					// Execute post-internal transactions
-					internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
+					internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
 					internalProcessedTxs := evmProcessor.Execute(internalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
 					for _, tx := range internalProcessedTxs {
 						if tx.Receipt == nil || tx.Receipt.Status == 0 {

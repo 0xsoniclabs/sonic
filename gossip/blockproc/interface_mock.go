@@ -27,6 +27,44 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
+// MockNonceSource is a mock of NonceSource interface.
+type MockNonceSource struct {
+	ctrl     *gomock.Controller
+	recorder *MockNonceSourceMockRecorder
+	isgomock struct{}
+}
+
+// MockNonceSourceMockRecorder is the mock recorder for MockNonceSource.
+type MockNonceSourceMockRecorder struct {
+	mock *MockNonceSource
+}
+
+// NewMockNonceSource creates a new mock instance.
+func NewMockNonceSource(ctrl *gomock.Controller) *MockNonceSource {
+	mock := &MockNonceSource{ctrl: ctrl}
+	mock.recorder = &MockNonceSourceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockNonceSource) EXPECT() *MockNonceSourceMockRecorder {
+	return m.recorder
+}
+
+// ZeroAddressNonce mocks base method.
+func (m *MockNonceSource) ZeroAddressNonce() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ZeroAddressNonce")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// ZeroAddressNonce indicates an expected call of ZeroAddressNonce.
+func (mr *MockNonceSourceMockRecorder) ZeroAddressNonce() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ZeroAddressNonce", reflect.TypeOf((*MockNonceSource)(nil).ZeroAddressNonce))
+}
+
 // MockTxListener is a mock of TxListener interface.
 type MockTxListener struct {
 	ctrl     *gomock.Controller
@@ -164,17 +202,17 @@ func (m *MockTxTransactor) EXPECT() *MockTxTransactorMockRecorder {
 }
 
 // PopInternalTxs mocks base method.
-func (m *MockTxTransactor) PopInternalTxs(block iblockproc.BlockCtx, bs iblockproc.BlockState, es iblockproc.EpochState, sealing bool, statedb state.StateDB) types.Transactions {
+func (m *MockTxTransactor) PopInternalTxs(block iblockproc.BlockCtx, bs iblockproc.BlockState, es iblockproc.EpochState, sealing bool, nonces NonceSource) types.Transactions {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PopInternalTxs", block, bs, es, sealing, statedb)
+	ret := m.ctrl.Call(m, "PopInternalTxs", block, bs, es, sealing, nonces)
 	ret0, _ := ret[0].(types.Transactions)
 	return ret0
 }
 
 // PopInternalTxs indicates an expected call of PopInternalTxs.
-func (mr *MockTxTransactorMockRecorder) PopInternalTxs(block, bs, es, sealing, statedb any) *gomock.Call {
+func (mr *MockTxTransactorMockRecorder) PopInternalTxs(block, bs, es, sealing, nonces any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PopInternalTxs", reflect.TypeOf((*MockTxTransactor)(nil).PopInternalTxs), block, bs, es, sealing, statedb)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PopInternalTxs", reflect.TypeOf((*MockTxTransactor)(nil).PopInternalTxs), block, bs, es, sealing, nonces)
 }
 
 // MockSealerProcessor is a mock of SealerProcessor interface.
