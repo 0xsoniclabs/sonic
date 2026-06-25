@@ -375,7 +375,9 @@ func consensusCallbackBeginBlockFn(
 
 				// prepare block processing
 				evmProcessor := blockProc.EVMModule.Start(
-					blockCtx,
+					blockCtx.Idx,
+					blockCtx.Time,
+					blockCtx.Atropos.Epoch(),
 					statedb,
 					evmStateReader,
 					onNewLogAll,

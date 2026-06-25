@@ -87,7 +87,9 @@ type EVMProcessor interface {
 
 type EVM interface {
 	Start(
-		block iblockproc.BlockCtx,
+		blockNumber idx.Block,
+		blockTime inter.Timestamp,
+		epoch idx.Epoch,
 		statedb state.StateDB,
 		reader evmcore.DummyChain,
 		onNewLog func(*core_types.Log),
