@@ -164,17 +164,17 @@ func (m *MockTxListenerModule) EXPECT() *MockTxListenerModuleMockRecorder {
 }
 
 // Start mocks base method.
-func (m *MockTxListenerModule) Start(block iblockproc.BlockCtx, bs iblockproc.BlockState, es iblockproc.EpochState, statedb state.StateDB) TxListener {
+func (m *MockTxListenerModule) Start(block iblockproc.BlockCtx, bs iblockproc.BlockState, es iblockproc.EpochState) TxListener {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Start", block, bs, es, statedb)
+	ret := m.ctrl.Call(m, "Start", block, bs, es)
 	ret0, _ := ret[0].(TxListener)
 	return ret0
 }
 
 // Start indicates an expected call of Start.
-func (mr *MockTxListenerModuleMockRecorder) Start(block, bs, es, statedb any) *gomock.Call {
+func (mr *MockTxListenerModuleMockRecorder) Start(block, bs, es any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockTxListenerModule)(nil).Start), block, bs, es, statedb)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockTxListenerModule)(nil).Start), block, bs, es)
 }
 
 // MockTxTransactor is a mock of TxTransactor interface.

@@ -34,7 +34,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
-	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
@@ -54,20 +53,18 @@ func NewDriverTxListenerModule() *DriverTxListenerModule {
 	return &DriverTxListenerModule{}
 }
 
-func (m *DriverTxListenerModule) Start(block iblockproc.BlockCtx, bs iblockproc.BlockState, es iblockproc.EpochState, statedb state.StateDB) blockproc.TxListener {
+func (m *DriverTxListenerModule) Start(block iblockproc.BlockCtx, bs iblockproc.BlockState, es iblockproc.EpochState) blockproc.TxListener {
 	return &DriverTxListener{
-		block:   block,
-		es:      es,
-		bs:      bs,
-		statedb: statedb,
+		block: block,
+		es:    es,
+		bs:    bs,
 	}
 }
 
 type DriverTxListener struct {
-	block   iblockproc.BlockCtx
-	es      iblockproc.EpochState
-	bs      iblockproc.BlockState
-	statedb state.StateDB
+	block iblockproc.BlockCtx
+	es    iblockproc.EpochState
+	bs    iblockproc.BlockState
 }
 
 type DriverTxTransactor struct{}

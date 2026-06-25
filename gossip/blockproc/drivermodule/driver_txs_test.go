@@ -25,7 +25,6 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
-	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -69,8 +68,7 @@ func TestReceiptRewardWithoutFixEnabled(t *testing.T) {
 		Validators: valsBuilder.Build(),
 		Rules:      rules,
 	}
-	stateDb := state.NewMockStateDB(ctrl)
-	listener := module.Start(blockCtx, bs, es, stateDb)
+	listener := module.Start(blockCtx, bs, es)
 
 	tx := types.NewTx(&types.DynamicFeeTx{
 		GasTipCap: big.NewInt(GasTip),
@@ -110,8 +108,7 @@ func TestReceiptRewardWithFixEnabled(t *testing.T) {
 		Validators: valsBuilder.Build(),
 		Rules:      rules,
 	}
-	stateDb := state.NewMockStateDB(ctrl)
-	listener := module.Start(blockCtx, bs, es, stateDb)
+	listener := module.Start(blockCtx, bs, es)
 
 	tx := types.NewTx(&types.DynamicFeeTx{
 		GasTipCap: big.NewInt(GasTip),
@@ -151,8 +148,7 @@ func TestReceiptRewardWithBlobsAndFixEnabled(t *testing.T) {
 		Validators: valsBuilder.Build(),
 		Rules:      rules,
 	}
-	stateDb := state.NewMockStateDB(ctrl)
-	listener := module.Start(blockCtx, bs, es, stateDb)
+	listener := module.Start(blockCtx, bs, es)
 
 	tx := types.NewTx(&types.BlobTx{
 		GasTipCap:  uint256.NewInt(GasTip),
