@@ -40,14 +40,14 @@ The user's single signature is not a blank cheque. It is a precise commitment to
 
 ## Walkthrough: Perfect Set Acquisition
 
-Let us trace through the full workflow for the NFT set purchase from [Article 3](./03-bundles-in-action.md), using the temporary account pattern.
+Let us trace through the full workflow for the card set purchase (onchain collectible cards) from [Article 3](./03-bundles-in-action.md), using the temporary account pattern.
 
 ### Setup
 
 The web service maintains a pool of temporary signing keys, or generates a fresh one per request. Call this address `0xTemp`.
 
 The web service also knows:
-- Which NFTs the user wants (IDs 1–5 on `0xNFTMarket`)
+- Which cards the user wants (IDs 1–5 on `0xCardMarket`)
 - The total price for all five (e.g. $5)
 - The user's address (`0xUser`)
 
@@ -68,74 +68,74 @@ The web service calls `sonic_prepareBundle` with a proposal that describes the f
       "chainId": "0xfa"
     },
 
-    // Phase 2: temporary account buys all five NFTs
+    // Phase 2: temporary account buys all five cards
     {
       "from": "0xTemp",
-      "to": "0xNFTMarket",
+      "to": "0xCardMarket",
       "nonce": "0x00",
-      "data": "0x<buyNFT(1)>"
+      "data": "0x<buyCard(1)>"
     },
     {
       "from": "0xTemp",
-      "to": "0xNFTMarket",
+      "to": "0xCardMarket",
       "nonce": "0x01",
-      "data": "0x<buyNFT(2)>"
+      "data": "0x<buyCard(2)>"
     },
     {
       "from": "0xTemp",
-      "to": "0xNFTMarket",
+      "to": "0xCardMarket",
       "nonce": "0x02",
-      "data": "0x<buyNFT(3)>"
+      "data": "0x<buyCard(3)>"
     },
     {
       "from": "0xTemp",
-      "to": "0xNFTMarket",
+      "to": "0xCardMarket",
       "nonce": "0x03",
-      "data": "0x<buyNFT(4)>"
+      "data": "0x<buyCard(4)>"
     },
     {
       "from": "0xTemp",
-      "to": "0xNFTMarket",
+      "to": "0xCardMarket",
       "nonce": "0x04",
-      "data": "0x<buyNFT(5)>"
+      "data": "0x<buyCard(5)>"
     },
 
-    // Phase 3: temporary account transfers all five NFTs to the user
+    // Phase 3: temporary account transfers all five cards to the user
     {
       "from": "0xTemp",
-      "to": "0xNFTMarket",
+      "to": "0xCardMarket",
       "nonce": "0x05",
-      "data": "0x<transferNFT(1, 0xUser)>"
+      "data": "0x<transferCard(1, 0xUser)>"
     },
     {
       "from": "0xTemp",
-      "to": "0xNFTMarket",
+      "to": "0xCardMarket",
       "nonce": "0x06",
-      "data": "0x<transferNFT(2, 0xUser)>"
+      "data": "0x<transferCard(2, 0xUser)>"
     },
     {
       "from": "0xTemp",
-      "to": "0xNFTMarket",
+      "to": "0xCardMarket",
       "nonce": "0x07",
-      "data": "0x<transferNFT(3, 0xUser)>"
+      "data": "0x<transferCard(3, 0xUser)>"
     },
     {
       "from": "0xTemp",
-      "to": "0xNFTMarket",
+      "to": "0xCardMarket",
       "nonce": "0x08",
-      "data": "0x<transferNFT(4, 0xUser)>"
+      "data": "0x<transferCard(4, 0xUser)>"
     },
     {
       "from": "0xTemp",
-      "to": "0xNFTMarket",
+      "to": "0xCardMarket",
       "nonce": "0x09",
-      "data": "0x<transferNFT(5, 0xUser)>"
+      "data": "0x<transferCard(5, 0xUser)>"
     }
   ]
 }
 ```
 
-The structure is simple: first the user funds the temporary account, then the temporary account buys each NFT, then it transfers each NFT to the user. All of this is one flat AllOf sequence -- if any step fails, nothing happens.
+The structure is simple: first the user funds the temporary account, then the temporary account buys each card, then it transfers each card to the user. All of this is one flat AllOf sequence. If any step fails, nothing happens.
 
 ### Presenting the Plan to the User
 
@@ -143,7 +143,7 @@ The structure is simple: first the user funds the temporary account, then the te
 - A flat list of 11 prepared transactions, each with the plan hash in its access list.
 - The execution plan (a structured description of what will happen).
 
-The web service presents the plan to the user -- ideally rendered in a human-readable form by the wallet UI. The user can see exactly what they are authorizing: the amounts, the recipients, the NFT IDs.
+The web service presents the plan to the user, ideally rendered in a human-readable form by the wallet UI. The user can see exactly what they are authorizing: the amounts, the recipients, the card IDs.
 
 The user signs **one transaction**: the first one, which sends $5 to `0xTemp`. They approve this in their wallet, and the web service receives the signed transaction.
 
@@ -174,7 +174,7 @@ The node wraps everything in an envelope, submits it to the mempool, and returns
 From the user's perspective:
 1. They see a single confirmation request in their wallet showing the payment of $5.
 2. They confirm it.
-3. After the bundle executes, all five NFTs appear in their wallet.
+3. After the bundle executes, all five cards appear in their wallet.
 
 One click. One signature. Complete set.
 
@@ -185,7 +185,7 @@ One click. One signature. Complete set.
 The temporary account pattern is trustless in a precise sense:
 
 - The user's signed transaction commits them to the **exact plan hash** that was shown to them.
-- The web service cannot change any step -- including the transfer destinations, the NFT IDs, or the amounts -- without producing a different plan hash, which would render the user's signature invalid.
+- The web service cannot change any step (including the transfer destinations, the card IDs, or the amounts) without producing a different plan hash, which would render the user's signature invalid.
 - The bundle's AllOf semantics mean the web service cannot run only the fund-transfer step without also completing the purchases and transfers. All steps succeed together or none of them do.
 - The web service cannot take the user's signed transaction and submit it outside a bundle, or inside a different bundle, to collect the funds without fulfilling its obligations. The BundleOnly marker in the user's transaction tells the network to reject it in any context other than the specific bundle it was prepared for.
 
@@ -193,7 +193,7 @@ The web service can fail to submit the bundle, or submit it and have it expire w
 
 ---
 
-## Beyond NFTs: Where This Pattern Applies
+## Beyond Cards: Where This Pattern Applies
 
 The temporary account pattern is general. Anywhere a workflow requires:
 - **Actions on behalf of the user** -- buying, swapping, bridging, staking

@@ -66,7 +66,7 @@ Integrating bundles involves three RPC calls: **prepare**, **submit**, and optio
 
 ### Step 1 -- Prepare: `sonic_prepareBundle`
 
-Call `sonic_prepareBundle` with your unsigned transactions and the structure you want. The node estimates gas limits, suggests gas prices, computes the plan hash, and injects the BundleOnly marker into each transaction's access list. It returns the transactions ready to sign.
+Call `sonic_prepareBundle` with your unsigned transactions and the structure you want. The node estimates gas limits, suggests gas prices, computes the plan hash, and injects the BundleOnly marker into each transaction's access list. It returns the transactions ready to sign. (The example below buys onchain collectible cards.)
 
 **Request:**
 
@@ -79,16 +79,16 @@ Call `sonic_prepareBundle` with your unsigned transactions and the structure you
   "steps": [
     {
       "from": "0xAlice",
-      "to": "0xNFTMarket",
+      "to": "0xCardMarket",
       "nonce": "0x5",
-      "data": "0xbuyNFT42...",
+      "data": "0xbuyCard42...",
       "chainId": "0xfa"
     },
     {
       "from": "0xAlice",
-      "to": "0xNFTMarket",
+      "to": "0xCardMarket",
       "nonce": "0x6",
-      "data": "0xbuyNFT43...",
+      "data": "0xbuyCard43...",
       "chainId": "0xfa"
     }
   ]
@@ -125,9 +125,9 @@ Group steps use a different shape:
   "transactions": [
     {
       "from": "0xAlice",
-      "to": "0xNFTMarket",
+      "to": "0xCardMarket",
       "nonce": "0x5",
-      "data": "0xbuyNFT42...",
+      "data": "0xbuyCard42...",
       "gas": "0x8d20",
       "maxFeePerGas": "0x...",
       "accessList": [
