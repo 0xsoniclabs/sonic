@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -30,7 +31,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
-	"github.com/0xsoniclabs/sonic/inter/iblockproc"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 )
@@ -44,7 +45,9 @@ func New() *EVMModule {
 }
 
 func (p *EVMModule) Start(
-	block iblockproc.BlockCtx,
+	blockNumber idx.Block,
+	blockTime inter.Timestamp,
+	epoch idx.Epoch,
 	statedb state.StateDB,
 	reader evmcore.DummyChain,
 	onNewLog func(*core_types.Log),
@@ -55,10 +58,10 @@ func (p *EVMModule) Start(
 ) blockproc.EVMProcessor {
 	var prevBlockHash common.Hash
 	var baseFee *big.Int
-	if block.Idx == 0 {
+	if blockNumber == 0 {
 		baseFee = gasprice.GetInitialBaseFee(rules.Economy)
 	} else {
-		header := reader.Header(common.Hash{}, uint64(block.Idx-1))
+		header := reader.Header(common.Hash{}, uint64(blockNumber-1))
 		prevBlockHash = header.Hash
 		baseFee = gasprice.GetBaseFeeForNextBlock(gasprice.ParentBlockInfo{
 			BaseFee:  header.BaseFee,
@@ -68,16 +71,17 @@ func (p *EVMModule) Start(
 	}
 
 	// Start block
-	statedb.BeginBlock(uint64(block.Idx))
+	statedb.BeginBlock(uint64(blockNumber))
 
 	return &OperaEVMProcessor{
-		block:            block,
+		blockTime:        blockTime,
+		epoch:            epoch,
 		reader:           reader,
 		statedb:          statedb,
 		onNewLog:         onNewLog,
 		rules:            rules,
 		evmCfg:           evmCfg,
-		blockIdx:         uint64(block.Idx),
+		blockIdx:         uint64(blockNumber),
 		prevBlockHash:    prevBlockHash,
 		prevRandao:       prevrandao,
 		gasBaseFee:       baseFee,
@@ -87,12 +91,13 @@ func (p *EVMModule) Start(
 }
 
 type OperaEVMProcessor struct {
-	block    iblockproc.BlockCtx
-	reader   evmcore.DummyChain
-	statedb  state.StateDB
-	onNewLog func(*core_types.Log)
-	rules    opera.Rules
-	evmCfg   *params.ChainConfig
+	blockTime inter.Timestamp
+	epoch     idx.Epoch
+	reader    evmcore.DummyChain
+	statedb   state.StateDB
+	onNewLog  func(*core_types.Log)
+	rules     opera.Rules
+	evmCfg    *params.ChainConfig
 
 	blockIdx      uint64
 	prevBlockHash common.Hash
@@ -132,7 +137,7 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 		Number:          new(big.Int).SetUint64(p.blockIdx),
 		ParentHash:      p.prevBlockHash,
 		Root:            common.Hash{}, // state root is added later
-		Time:            p.block.Time,
+		Time:            p.blockTime,
 		Coinbase:        evmcore.GetCoinbase(),
 		GasLimit:        p.rules.Blocks.MaxBlockGas,
 		GasUsed:         p.gasUsed,
@@ -140,7 +145,7 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 		BlobBaseFee:     blobBaseFee.ToBig(),
 		PrevRandao:      prevRandao,
 		WithdrawalsHash: withdrawalsHash,
-		Epoch:           p.block.Atropos.Epoch(),
+		Epoch:           p.epoch,
 	}
 
 	return evmcore.NewEvmBlock(h, txs)

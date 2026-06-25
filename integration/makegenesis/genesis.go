@@ -256,7 +256,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 		blockCtx.Idx,
 	)
 	evmProcessor := blockProc.EVMModule.Start(
-		blockCtx, b.tmpStateDB, dummyHeaderReturner{b.blocks},
+		blockCtx.Idx, blockCtx.Time, blockCtx.Atropos.Epoch(), b.tmpStateDB, dummyHeaderReturner{b.blocks},
 		func(l *core_types.Log) { txListener.OnNewLog(l) },
 		es.Rules,
 		chainConfig,
