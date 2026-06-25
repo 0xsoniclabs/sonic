@@ -511,16 +511,12 @@ func consensusCallbackBeginBlockFn(
 					// memorize event position of each tx
 					txPositions := make(map[common.Hash]ExtendedTxPosition)
 					for _, e := range blockEvents {
-						for i, tx := range e.Transactions() {
+						for _, tx := range e.Transactions() {
 							// If tx was met in multiple events, then assign to first ordered event
 							if _, ok := txPositions[tx.Hash()]; ok {
 								continue
 							}
 							txPositions[tx.Hash()] = ExtendedTxPosition{
-								TxPosition: evmstore.TxPosition{
-									Event:       e.ID(),
-									EventOffset: uint32(i),
-								},
 								EventCreator: e.Creator(),
 							}
 						}
