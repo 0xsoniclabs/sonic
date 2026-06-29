@@ -289,5 +289,7 @@ func validateUpgrades(old, new Upgrades) error {
 
 	// The GasSubsidies feature can be freely modified.
 
+	// The TransactionPriorities feature can be freely modified.
+
 	return errors.Join(issues...)
 }

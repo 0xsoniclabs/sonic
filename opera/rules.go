@@ -49,6 +49,7 @@ const (
 	singleProposerBlockFormationBit = 1 << 63
 	gasSubsidiesBit                 = 1 << 62
 	transactionBundlesBit           = 1 << 61
+	transactionPrioritiesBit        = 1 << 60
 
 	MinimumMaxBlockGas          = 5_000_000_000 // < must be large enough to allow internal transactions to seal blocks
 	MaximumMaxBlockGas          = math.MaxInt64 // < should fit into 64-bit signed integers to avoid parsing errors in third-party libraries
@@ -264,6 +265,22 @@ type Upgrades struct {
 	// It can be enabled or disabled at any time. Changes in the feature state
 	// become effective at the start of the next epoch.
 	TransactionBundles bool
+
+	// TransactionPriorities enables the transaction priorities feature, allowing
+	// an on-chain registry contract to designate a subset of transactions to be
+	// scheduled ahead of others within a block.
+	// This feature is introduced by V2.3 of the Sonic client. It thus
+	//
+	//    MUST ONLY BE ENABLED WHEN ALL NODES ARE RUNNING V2.3 OR LATER
+	//
+	// Any node not running V2.3 or later will ignore this flag, will not apply
+	// the priority ordering, and eventually drop off the network due to the
+	// inability to reproduce the resulting blocks.
+	//
+	// Given the conditions stated above, the feature is considered optional.
+	// It can be enabled or disabled at any time. Changes in the feature state
+	// become effective at the start of the next epoch.
+	TransactionPriorities bool
 }
 
 // UpgradeHeight contains the information about the block height at which
