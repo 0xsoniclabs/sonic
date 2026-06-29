@@ -57,9 +57,13 @@ Block order when enabled:
    stand-in contract, hand-rolled ABI query, `Prioritize` transform, genesis +
    RPC wiring, and unit tests (incl. validation against the real compiled
    bytecode and a determinism test).
-4. [todo] **Benchmark gate** — pick per-tx-call vs. native-filter. The per-tx-call
-   classifier is in use and the e2e test shows no perf issue at small scale;
-   formal large-scale numbers still to be recorded in the design doc.
+4. [done] **Benchmark gate** — `ordering_bench_test.go` (`BenchmarkPrioritize`)
+   measures the full `Prioritize` pass over a real in-memory Carmen state (10k
+   dummy accounts, registry behind the proxy). Default per-tx classifier ≈ 25 µs/tx
+   (≈ 250 ms for a full 10k-tx block); native-filter fallback ≈ 0.5 µs/tx (≈ 50×).
+   Decision: keep per-tx-call as default; native fallback is ready behind the
+   `Classifier` seam if blocks routinely approach the 10k ceiling. Numbers recorded
+   in design doc §1.
 5. [done] **Authoritative ordering** in `c_block_callbacks.go` via
    `applyTransactionPriorities` (gated, snapshot-isolated, consensus-only context;
    no-op + header unit tests).

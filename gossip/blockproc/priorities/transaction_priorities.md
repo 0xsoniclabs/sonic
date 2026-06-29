@@ -209,8 +209,37 @@ fallback (one call per block + Go classification) behind the `Classifier` seam.
 
 *Residual / accepted.* Restricting classification to a subset is explicitly
 rejected (it would void high-load guarantees), so we accept an O(numTxs) classifier
-whose cost is held down by the chosen strategy. Final numbers recorded here once
-benchmarked: _TBD_.
+whose cost is held down by the chosen strategy.
+
+*Measured.* `BenchmarkPrioritize` (in `ordering_bench_test.go`) runs the whole
+`Prioritize` pass against a real in-memory Carmen state pre-populated with 10,000
+dummy accounts (so the account trie has a representative depth) and a registry
+deployed behind the production EIP-1967 proxy. Realistic blocks are bounded at
+10,000 transactions; larger scenarios are not exercised. On an Intel i7-6600U
+(2.60 GHz, single-threaded):
+
+| transactions | per-tx EVM call (default) | native-filter (fallback) |
+|---|---|---|
+| 10     | 0.22 ms      | 0.008 ms |
+| 100    | 1.36 ms      | 0.047 ms |
+| 1,000  | 23.6 ms      | 0.35 ms  |
+| 10,000 | 247 ms       | 4.9 ms   |
+
+So the default classifier costs ≈ **25 µs per transaction** (≈ 250 ms for a
+maximally full 10,000-tx block); the native fallback is ≈ 0.5 µs per transaction
+(≈ 50× cheaper). Result mix barely moves the total (all-normal 311 ms, 10 % mix
+278 ms, all-prioritized 242 ms at 10,000 txs) — the EVM query is paid for every
+transaction regardless of outcome, confirming that the ordering passes are
+negligible next to the query. 1 KiB of calldata per transaction adds ≈ 12 %
+(236 ms → 265 ms at 10,000 txs).
+
+*Decision.* Keep the **per-tx-call classifier as the default**: typical blocks are
+far below the ceiling, where the cost is single-digit milliseconds, and it needs no
+additional registry ABI. The ≈ 250 ms worst case only materializes for a block
+saturated with 10,000 transactions; if blocks routinely approach that ceiling, the
+native-filter fallback (≈ 5 ms) should be adopted. The `Classifier` seam is already
+in place to switch without touching the ordering logic, and the benchmark's
+`Native/*` arm tracks the fallback's lower bound.
 
 ### 2. Non-deterministic failure handling (chain split)
 
