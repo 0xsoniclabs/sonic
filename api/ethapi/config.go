@@ -23,6 +23,7 @@ import (
 	"hash/crc32"
 	"math/big"
 
+	priorityregistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
@@ -86,6 +87,9 @@ func activeSystemContracts(upgrade opera.Upgrades) contractRegistry {
 	}
 	if upgrade.GasSubsidies {
 		sysContracts["GAS_SUBSIDY_REGISTRY_ADDRESS"] = registry.GetAddress()
+	}
+	if upgrade.TransactionPriorities {
+		sysContracts["TRANSACTION_PRIORITY_REGISTRY_ADDRESS"] = priorityregistry.GetAddress()
 	}
 	return sysContracts
 }
