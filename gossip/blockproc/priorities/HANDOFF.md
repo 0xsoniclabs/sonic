@@ -49,14 +49,34 @@ Block order when enabled:
 
 ## Implementation order (with status)
 
-1. [in progress] **Docs** — this file + `transaction_priorities.md` (with the
-   Security & risk analysis section).
-2. [todo] **Upgrade flag** `Upgrades.TransactionPriorities`.
-3. [todo] **Registry package + query** (+ representative test contract).
-4. [todo] **Benchmark gate** — pick per-tx-call vs. native-filter.
-5. [todo] **Authoritative ordering** in `c_block_callbacks.go`.
-6. [todo] **Emitter hints** (piggyback).
-7. [todo] **Tests**, ending with the `tests/priority/` end-to-end demo.
+1. [done] **Docs** — this file + `transaction_priorities.md` (with the
+   Security & risk analysis section). Committed on `docs/transaction-priorities-design`.
+2. [done] **Upgrade flag** `Upgrades.TransactionPriorities` — `opera/rules.go`,
+   `legacy_serialization.go`, `validate.go` (+ tests).
+3. [done] **Registry package + query** — `gossip/blockproc/priorities/` with the
+   stand-in contract, hand-rolled ABI query, `Prioritize` transform, genesis +
+   RPC wiring, and unit tests (incl. validation against the real compiled
+   bytecode and a determinism test).
+4. [todo] **Benchmark gate** — pick per-tx-call vs. native-filter. The per-tx-call
+   classifier is in use and the e2e test shows no perf issue at small scale;
+   formal large-scale numbers still to be recorded in the design doc.
+5. [done] **Authoritative ordering** in `c_block_callbacks.go` via
+   `applyTransactionPriorities` (gated, snapshot-isolated, consensus-only context;
+   no-op + header unit tests).
+6. [todo] **Emitter hints** (piggyback) — NOT yet started. Most review-sensitive
+   part; see the design doc's emitter section. Needs: cached priority checker
+   (`evmcore/priorities_integration.go`, mirror `subsidies_integration.go`),
+   txpool wiring, `addTxs` piggyback with per-entity-per-event cap, and
+   single-proposer scheduler biasing.
+7. [partial] **Tests** — `tests/priority/` end-to-end ordering test passes in both
+   legacy and single-proposer modes. Still todo: emitter cap/piggyback tests,
+   determinism-residue test, feature-OFF byte-identity integration check.
+
+### Branches
+
+- `docs/transaction-priorities-design` — docs only (for review).
+- `feat/transaction-priorities` — branched from the docs branch; all
+  implementation commits land here.
 
 ## Files
 
