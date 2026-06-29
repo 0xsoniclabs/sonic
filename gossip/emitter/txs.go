@@ -178,6 +178,14 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 
 	totalTxSizeInBytes := uint64(0)
 
+	// Best-effort priority hinter: lets prioritized transactions be eagerly
+	// included regardless of the per-transaction turn. Nil while the feature is
+	// disabled, keeping behavior unchanged.
+	hinter := em.newPriorityHinter()
+	if hinter != nil {
+		defer hinter.release()
+	}
+
 	// sort transactions by price and nonce
 	rules := em.world.GetRules()
 	for tx, _ := sorted.Peek(); tx != nil; tx, _ = sorted.Peek() {
@@ -214,8 +222,13 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 			sorted.Pop()
 			continue
 		}
-		// my turn, i.e. try to not include the same tx simultaneously by different validators
-		if !em.isMyTxTurn(tx.Hash, sender, resolvedTx.Nonce(), time.Now(), em.validators.Load(), e.Creator(), idx.Epoch(em.epoch.Load())) {
+		// Prioritized transactions are emitted eagerly by any validator
+		// (bypassing the turn) to speed up their inclusion. Non-prioritized
+		// transactions keep the per-transaction turn to avoid all validators
+		// emitting the same transaction simultaneously.
+		eagerPriority, priorityId := hinter.eligible(len(e.Transactions()) > 0, resolvedTx)
+		if !eagerPriority &&
+			!em.isMyTxTurn(tx.Hash, sender, resolvedTx.Nonce(), time.Now(), em.validators.Load(), e.Creator(), idx.Epoch(em.epoch.Load())) {
 			txsSkippedNotMyTurn.Inc(1)
 			sorted.Pop()
 			continue
@@ -237,6 +250,9 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 		e.SetGasPowerLeft(e.GasPowerLeft().Sub(tx.Gas))
 		e.SetTxs(append(e.Transactions(), resolvedTx))
 		totalTxSizeInBytes += txSize
+		if eagerPriority {
+			hinter.record(priorityId)
+		}
 		sorted.Shift()
 	}
 }
