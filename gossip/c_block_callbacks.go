@@ -330,6 +330,26 @@ func consensusCallbackBeginBlockFn(
 					)
 				}
 
+				// Apply transaction priorities. This is the single authoritative
+				// ordering step: it reorders the (already filtered) transactions
+				// according to the on-chain priority registry, identically in both
+				// legacy and single-proposer modes, overriding any proposer order.
+				// It is a no-op while the feature is disabled, keeping block
+				// formation byte-identical to before. Queries run against the
+				// block-start state (statedb) before any execution begins.
+				proposal.Transactions = applyTransactionPriorities(
+					proposal.Transactions,
+					thisBlocksRules,
+					chainCfg,
+					statedb,
+					evmStateReader,
+					signer,
+					blockCtx.Idx,
+					blockCtx.Time,
+					randao,
+					lastBlockHeader,
+				)
+
 				sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
 				sealing := sealer.EpochSealing()
 				txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es, statedb)
