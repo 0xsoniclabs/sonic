@@ -2241,7 +2241,7 @@ func (s *PublicTransactionPoolAPI) SendRawTransactionSync(
 		if *timeoutMs > hexutil.Uint64(defautlMaxTimeout.Milliseconds()) {
 			timeout = defautlMaxTimeout
 		} else {
-		timeout = time.Duration(*timeoutMs) * time.Millisecond
+			timeout = time.Duration(*timeoutMs) * time.Millisecond
 		}
 	}
 
@@ -2261,7 +2261,7 @@ func (s *PublicTransactionPoolAPI) SendRawTransactionSync(
 
 	// 4. Submit transaction (validates fee, EIP-155, adds to pool).
 	if _, err := SubmitTransaction(ctx, s.b, tx); err != nil {
-		return nil, err
+		return nil, errSendRawSyncRejected(txHash, err)
 	}
 
 	// 5. Poll for confirmation with deadline context.
@@ -2292,10 +2292,6 @@ func (s *PublicTransactionPoolAPI) SendRawTransactionSync(
 		// Wait for next poll tick or deadline.
 		select {
 		case <-deadlineCtx.Done():
-			// Distinguish Code 5 vs Code 4 by checking if tx is still in pool.
-			if s.b.GetPoolTransaction(txHash) != nil {
-				return nil, errSendRawSyncQueued(txHash)
-			}
 			return nil, errSendRawSyncTimeout(txHash)
 		case <-ticker.C:
 			// Poll again.

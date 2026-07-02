@@ -126,10 +126,10 @@ func errSendRawSyncTimeout(hash common.Hash) error {
 	}
 }
 
-func errSendRawSyncQueued(hash common.Hash) error {
+func errSendRawSyncRejected(hash common.Hash, err error) error {
 	return &sendRawSyncError{
 		code:    errCodeSendRawSyncQueued,
-		message: "transaction unknown or still queued after timeout",
+		message: fmt.Sprintf("transaction was rejected: %v", err),
 		data:    hash,
 	}
 }
