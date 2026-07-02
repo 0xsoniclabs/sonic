@@ -46,13 +46,14 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Changed
 
-- Changed minimum required Go version to 1.26.0.
-- Changed the output format of the `trace_call` RPC from a list of traces to a structure that includes both traces and `stateDiff`.
-- Reduce log indexer resource utilization in the context of `eth_getlogs`.
+- Increase maximum contract and init-code size to 48 KiB and 96 KiB respectively when the Brio upgrade is enabled.
 - Increase gas cost for the ModExp precompiled contract in accordance with [EIP-7883](https://eips.ethereum.org/EIPS/eip-7883) when the Brio upgrade is enabled.
 - Restrict maximum input length for ModExp precompiled contract [EIP-7823](https://eips.ethereum.org/EIPS/eip-7823) when Brio upgrade is enabled.
 - Introduce protocol-level upper bound gas usage per transaction (à la [EIP-7825](https://eips.ethereum.org/EIPS/eip-7825)) when Brio upgrade is enabled.
 - Introduce protocol level maximum RLP encoded block size of 10 MiB [EIP-7934](https://eips.ethereum.org/EIPS/eip-7934) when the Brio upgrade is enabled.
+- Changed the output format of the `trace_call` RPC from a list of traces to a structure that includes both traces and `stateDiff`.
+- Reduce log indexer resource utilization in the context of `eth_getlogs`.
+- Changed minimum required Go version to 1.26.0.
 
 ### Removed
 
