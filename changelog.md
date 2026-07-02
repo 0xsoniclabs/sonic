@@ -38,7 +38,7 @@ For optimal compatibility and stability, it is recommended to use the most recen
 - Implement CLZ VM instruction [EIP-7939](https://eips.ethereum.org/EIPS/eip-7939), enabled with the Brio hard-fork.
 - Add precompiled contract for secp256r1 Curve Support [EIP-7951](https://eips.ethereum.org/EIPS/eip-7951), enabled with the Brio hard-fork.
 - Introduce `eth_Config` RPC method tailored for the Sonic network.
-- Add `analyze` command to `sonictool` provide database usage insights.
+- Add `analyze` command to `sonictool` providing database usage insights.
 - Add restrictions for rpc log queries `rpc.log-query-parameter-limit` and `rpc.log-query-result-limit`.
 - Introduced the `eth_simulateV1` RPC method.
 - Introduced the `trace_callMany` RPC method.
