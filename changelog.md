@@ -31,6 +31,7 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Added
 
+- Add support the Brio hard-fork.
 - Add support for Transaction Bundles feature, enabled with the Brio hard-fork.
 - Add RPC methods to create, submit, and monitor transaction bundles: `sonic_prepareBundle`, `sonic_submitBundle`, `sonic_getBundleInfo`.
 - Add RPC method `sonic_estimateGasForTransactions`, allowing to estimate gas for as sequence of dependent transactions.
