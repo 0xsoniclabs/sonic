@@ -101,6 +101,10 @@ type (
 		// RPCTimeout is a global time limit for RPC methods execution.
 		RPCTimeout time.Duration
 
+		// EIP-7966: eth_sendRawTransactionSync timeouts
+		TxSyncDefaultTimeout time.Duration `toml:",omitempty"`
+		TxSyncMaxTimeout     time.Duration `toml:",omitempty"`
+
 		// allows only for EIP155 transactions.
 		AllowUnprotectedTxs bool
 
@@ -224,6 +228,8 @@ func DefaultConfig(scale cachescale.Func) Config {
 		RPCGasCap:   50000000,
 		RPCTxFeeCap: 100, // 100 FTM
 		RPCTimeout:  5 * time.Second,
+
+		TxSyncDefaultTimeout: 5 * time.Second,
 
 		MaxResponseSize: 25 * 1024 * 1024,
 		StructLogLimit:  2000,

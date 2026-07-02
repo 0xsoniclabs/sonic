@@ -247,6 +247,12 @@ func gossipConfigWithFlags(ctx *cli.Context, src gossip.Config) gossip.Config {
 	if ctx.GlobalIsSet(flags.RPCGlobalTimeoutFlag.Name) {
 		cfg.RPCTimeout = ctx.GlobalDuration(flags.RPCGlobalTimeoutFlag.Name)
 	}
+	if ctx.GlobalIsSet(flags.RPCTxSyncDefaultTimeoutFlag.Name) {
+		cfg.TxSyncDefaultTimeout = ctx.GlobalDuration(flags.RPCTxSyncDefaultTimeoutFlag.Name)
+	}
+	if ctx.GlobalIsSet(flags.RPCTxSyncMaxTimeoutFlag.Name) {
+		cfg.TxSyncMaxTimeout = ctx.GlobalDuration(flags.RPCTxSyncMaxTimeoutFlag.Name)
+	}
 	if ctx.GlobalIsSet(flags.MaxResponseSizeFlag.Name) {
 		cfg.MaxResponseSize = ctx.GlobalInt(flags.MaxResponseSizeFlag.Name)
 	}
