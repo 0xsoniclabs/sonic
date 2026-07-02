@@ -25,7 +25,7 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Removed
 
-### Fixed  
+### Fixed
 
 ## [2.2.0] - 2 July 2026
 
@@ -34,11 +34,11 @@ For optimal compatibility and stability, it is recommended to use the most recen
 - Add support the Brio hard-fork.
 - Add support for Transaction Bundles feature, enabled with the Brio hard-fork.
 - Add RPC methods to create, submit, and monitor transaction bundles: `sonic_prepareBundle`, `sonic_submitBundle`, `sonic_getBundleInfo`.
-- Add RPC method `sonic_estimateGasForTransactions`, allowing to estimate gas for as sequence of dependent transactions.
+- Add RPC method `sonic_estimateGasForTransactions`, allowing to estimate gas for a sequence of dependent transactions.
 - Implement CLZ VM instruction [EIP-7939](https://eips.ethereum.org/EIPS/eip-7939), enabled with the Brio hard-fork.
 - Add precompiled contract for secp256r1 Curve Support [EIP-7951](https://eips.ethereum.org/EIPS/eip-7951), enabled with the Brio hard-fork.
 - Introduce `eth_Config` RPC method tailored for the Sonic network.
-- Add analyze command to sonictool provide database usage insights.
+- Add `analyze` command to `sonictool` provide database usage insights.
 - Add restrictions for rpc log queries `rpc.log-query-parameter-limit` and `rpc.log-query-result-limit`.
 - Introduced the `eth_simulateV1` RPC method.
 - Introduced the `trace_callMany` RPC method.
@@ -46,19 +46,19 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Changed
 
-- Changed minimum required golang version to 1.26.0
+- Changed minimum required Go version to 1.26.0.
 - Changed the output format of the `trace_call` RPC from a list of traces to a structure that includes both traces and `stateDiff`.
-- Reduce log indexer resources utilization in context of eth_getlogs.
+- Reduce log indexer resource utilization in the context of `eth_getlogs`.
 - Increase gas cost for the ModExp precompiled contract in accordance with [EIP-7883](https://eips.ethereum.org/EIPS/eip-7883) when the Brio upgrade is enabled.
 - Restrict maximum input length for ModExp precompiled contract [EIP-7823](https://eips.ethereum.org/EIPS/eip-7823) when Brio upgrade is enabled.
 - Introduce protocol-level upper bound gas usage per transaction (à la [EIP-7825](https://eips.ethereum.org/EIPS/eip-7825)) when Brio upgrade is enabled.
-- Introduce protocol level maximum RLP encoded block size of 10 MiB [EIP-7934](https://eips.ethereum.org/EIPS/eip-7934) when Brio upgrade us enabled.
+- Introduce protocol level maximum RLP encoded block size of 10 MiB [EIP-7934](https://eips.ethereum.org/EIPS/eip-7934) when the Brio upgrade is enabled.
 
 ### Removed
 
 - Disable RPC debug namespace methods: `debug_verbosity`, `debug_vmodule`, `debug_memStats`, `debug_gcStats`, `debug_cpuProfile`, `debug_startCPUProfile`, `debug_stopCPUProfile`, `debug_goTrace`, `debug_startGoTrace`, `debug_stopGoTrace`, `debug_blockProfile`, `debug_setBlockProfileRate`, `debug_writeBlockProfile`, `debug_mutexProfile`, `debug_setMutexProfileFraction`, `debug_writeMutexProfile`, `debug_writeMemProfile`, `debug_stacks`, `debug_freeOSMemory`, `debug_setGCPercent`, `debug_setMemoryLimit`
 
-### Fixed  
+### Fixed
 
 - Fixed inconsistent RPC answers near the block head (live-db and archive-db asynchronicity issue).
 - Fixed an issue where partial results were returned without an error when calling `debug_traceBlockByNumber` and `debug_traceBlockByHash` under certain erroneous scenarios.
