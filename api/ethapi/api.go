@@ -2207,8 +2207,7 @@ func (s *PublicTransactionPoolAPI) SendRawTransaction(ctx context.Context, encod
 }
 
 const (
-	defaultSendRawSyncTimeout = 2 * time.Second
-	sendRawSyncPollInterval   = 100 * time.Millisecond
+	sendRawSyncPollInterval = 100 * time.Millisecond
 )
 
 // SendRawTransactionSync submits a signed transaction and waits synchronously
@@ -2235,9 +2234,15 @@ func (s *PublicTransactionPoolAPI) SendRawTransactionSync(
 	txHash := tx.Hash()
 
 	// 2. Determine timeout.
-	timeout := defaultSendRawSyncTimeout
+	timeout := s.b.RPCTxSyncDefaultTimeout()
 	if timeoutMs != nil {
+		defautlMaxTimeout := s.b.RPCTxSyncMaxTimeout()
+
+		if *timeoutMs > hexutil.Uint64(defautlMaxTimeout.Milliseconds()) {
+			timeout = defautlMaxTimeout
+		} else {
 		timeout = time.Duration(*timeoutMs) * time.Millisecond
+		}
 	}
 
 	// 3. Nonce gap check (EIP-7966 Code 6): reject before pool submission.
