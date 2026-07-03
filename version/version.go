@@ -33,7 +33,7 @@ const (
 	// for each release. The main branch is always the next minor version
 	// compared to the latest release branch.
 	Major = 2
-	Minor = 2
+	Minor = 3
 
 	// The patch version, which must only be non-zero for release candidates
 	// and official releases. All development versions must have a patch
@@ -44,7 +44,7 @@ const (
 	// on the main branch and should be updated to "rc.X" for release candidates
 	// on release branches only. For a final release, this must be set to an
 	// empty string. All other values are invalid.
-	PreRelease = ""
+	PreRelease = "dev"
 )
 
 // Get returns the complete version information.
