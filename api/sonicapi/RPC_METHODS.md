@@ -54,36 +54,24 @@ Used by:
 | `first` | hex quantity | No in prepare request, Yes in execution plans | First block where execution is allowed. |
 | `length` | hex quantity | No in prepare request, Yes in execution plans | Number of blocks in the allowed window. |
 
-### Proposal/Plan Group Fields (Recursive)
+### Flat Bundle Steps (Recommended)
 
-Groups are used to nest steps.
+This guide uses flat bundles only to keep behavior easy to understand and avoid gas-estimation surprises.
 
-| Field | Type | Required | Short description |
-| --- | --- | --- | --- |
-| `steps` | array | Yes | Child steps or child groups. |
-| `oneOf` | boolean | No | Try alternatives; one successful branch is enough. |
-| `tolerateFailures` | boolean | No | Continue even if a child branch fails. |
-
-### Proposal Leaf Step Fields (Prepare Request)
-
-A proposal leaf is a transaction step inside `sonic_prepareBundle`.
+For `sonic_prepareBundle`, use a simple `steps` array of transaction objects in execution order.
 
 | Field | Type | Required | Short description |
 | --- | --- | --- | --- |
-| `tolerateFailed` | boolean | No | Keep bundle flow even if this transaction fails. |
-| `tolerateInvalid` | boolean | No | Keep bundle flow even if this transaction is invalid. |
-| transaction object fields | object | See Transaction Object Fields | The transaction details for this step. |
+| `steps` | array | Yes | Transactions in the exact order they should run. |
 
-### Composable Plan Leaf Fields (Prepare Response / Submit Request)
+### Execution Plan Step Fields (Prepare Response / Submit Request)
 
-A composable plan leaf references a transaction by sender and hash.
+For flat bundles, each execution plan step references one transaction.
 
 | Field | Type | Required | Short description |
 | --- | --- | --- | --- |
 | `from` | address | Yes | Sender account for the referenced transaction. |
 | `hash` | hash | Yes | Transaction reference hash used by the plan. |
-| `tolerateFailed` | boolean | No | Keep flow even if this step fails. |
-| `tolerateInvalid` | boolean | No | Keep flow even if this step is invalid. |
 
 ## sonic_estimateGasForTransactions
 
@@ -257,7 +245,9 @@ Result is either `null` or an object with:
 
 ## sonic_prepareBundle
 
-This method takes a proposed execution tree of unsigned transactions, fills missing defaults such as gas and fees when possible, builds the final execution plan, and returns both the prepared transactions and plan. Sign and submit exactly what this method returns.
+This method takes a flat list of unsigned transactions, fills missing defaults such as gas and fees when possible, builds the final execution plan, and returns both the prepared transactions and plan. Sign and submit exactly what this method returns.
+
+For reliable gas behavior, use a flat list of steps without branching or tolerance flags.
 
 ### Parameters
 
@@ -268,13 +258,9 @@ Position 1: `proposal` (object, required)
 | Field | Type | Required | Short description |
 | --- | --- | --- | --- |
 | `blockRange` | object | No | Allowed block window. If omitted, server chooses a default future range. |
-| `steps` | array | Yes | Root execution steps or groups. |
-| `oneOf` | boolean | No | Root-level alternative-branch behavior. |
-| `tolerateFailures` | boolean | No | Root-level continue-on-failure behavior. |
+| `steps` | array | Yes | Flat list of transaction steps in execution order. |
 
-For nested groups, use Proposal/Plan Group Fields.
-
-For transaction leaf steps, use Proposal Leaf Step Fields plus full Transaction Object Fields.
+Each item in `steps` is a transaction object (see Transaction Object Fields).
 
 ### Returns
 
@@ -288,8 +274,8 @@ Object with:
 `executionPlan` fields:
 
 - `blockRange` object (see Block Range Object)
-- recursive `steps`, `oneOf`, `tolerateFailures` (see Proposal/Plan Group Fields)
-- leaf nodes with Composable Plan Leaf Fields
+- flat `steps` array
+- each step includes `from` and `hash` (see Execution Plan Step Fields)
 
 ### Example Request
 
@@ -315,19 +301,13 @@ Object with:
           "maxPriorityFeePerGas": "0x3b9aca00"
         },
         {
-          "oneOf": true,
-          "steps": [
-            {
-              "tolerateFailed": true,
-              "from": "0x1111111111111111111111111111111111111111",
-              "to": "0x3333333333333333333333333333333333333333",
-              "nonce": "0x11",
-              "value": "0x0",
-              "input": "0x",
-              "maxFeePerGas": "0x3b9aca00",
-              "maxPriorityFeePerGas": "0x3b9aca00"
-            }
-          ]
+          "from": "0x1111111111111111111111111111111111111111",
+          "to": "0x3333333333333333333333333333333333333333",
+          "nonce": "0x11",
+          "value": "0x0",
+          "input": "0x",
+          "maxFeePerGas": "0x3b9aca00",
+          "maxPriorityFeePerGas": "0x3b9aca00"
         }
       ]
     }
@@ -359,6 +339,23 @@ Object with:
             ]
           }
         ]
+      },
+      {
+        "from": "0x1111111111111111111111111111111111111111",
+        "to": "0x3333333333333333333333333333333333333333",
+        "nonce": "0x11",
+        "gas": "0x7a12",
+        "maxFeePerGas": "0x3b9aca00",
+        "maxPriorityFeePerGas": "0x3b9aca00",
+        "input": "0x",
+        "accessList": [
+          {
+            "address": "0x0000000000000000000000000000000000000000",
+            "storageKeys": [
+              "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ]
+          }
+        ]
       }
     ],
     "executionPlan": {
@@ -370,6 +367,10 @@ Object with:
         {
           "from": "0x1111111111111111111111111111111111111111",
           "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "from": "0x1111111111111111111111111111111111111111",
+          "hash": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
         }
       ]
     }
@@ -393,8 +394,8 @@ Position 1: `bundle` (object, required)
 `executionPlan` full structure:
 
 - `blockRange` object (see Block Range Object)
-- recursive group fields: `steps`, `oneOf`, `tolerateFailures` (see Proposal/Plan Group Fields)
-- leaf fields: `from`, `hash`, `tolerateFailed`, `tolerateInvalid` (see Composable Plan Leaf Fields)
+- flat `steps` array
+- each step has `from` and `hash` (see Execution Plan Step Fields)
 
 ### Returns
 
@@ -423,6 +424,10 @@ A single hash value:
           {
             "from": "0x1111111111111111111111111111111111111111",
             "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "from": "0x1111111111111111111111111111111111111111",
+            "hash": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
           }
         ]
       }
