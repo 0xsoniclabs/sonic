@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package sonic.p2p.proto;
+
+option go_package = ".;pb";
+
+// NodeRole enumerates the roles a node can play on the network.
+enum NodeRole {
+    NODE_ROLE_UNSPECIFIED = 0;
+    NODE_ROLE_VALIDATOR = 1;
+    NODE_ROLE_ARCHIVE = 2;
+    NODE_ROLE_OBSERVER = 3;
+}
+
+// ScanStatusRequest asks a peer to report its role and sync status.
+message ScanStatusRequest {}
+
+// ScanStatusResponse reports a peer's role, client version, and synced height.
+message ScanStatusResponse {
+    NodeRole role = 1;
+    string client_version = 2;
+    uint64 block_height = 3;
+}
+
+// ScanPeersRequest asks a peer for the peers it is aware of, to continue a crawl.
+message ScanPeersRequest {}
+
+// ScanPeersResponse returns known peer addresses (multiaddrs including peer ID).
+message ScanPeersResponse {
+    repeated string peer_addresses = 1;
+}

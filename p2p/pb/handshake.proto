@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package sonic.p2p.proto;
+
+option go_package = ".;pb";
+
+// ValidatorHandshake is exchanged on the validator-mesh protocol to prove that
+// the libp2p peer on the other end is operated by a specific consensus
+// validator, without ever using the consensus key as the transport key.
+message ValidatorHandshake {
+
+    // The secp256k1 consensus public key of the validator, encoded as the
+    // validator public-key bytes used by the consensus layer.
+    bytes validator_public_key = 1;
+
+    // The consensus identifier of the validator.
+    uint32 validator_id = 2;
+
+    // The epoch the proof is valid for, binding the proof to a validator set.
+    uint64 epoch = 3;
+
+    // The libp2p peer ID (raw bytes) this proof binds the validator identity to.
+    bytes peer_id = 4;
+
+    // A random nonce chosen by the prover to prevent replay of the proof.
+    bytes nonce = 5;
+
+    // The signature by the consensus key over the concatenation of peer_id,
+    // epoch, and nonce.
+    bytes signature = 6;
+}

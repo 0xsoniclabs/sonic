@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package sonic.p2p.proto;
+
+option go_package = ".;pb";
+
+// ArchiveAdvertisement is published by archive nodes on the archive-directory
+// rendezvous topic so that other nodes can discover a source of historic block
+// data. Advertisements are TTL-bounded and may be signed.
+message ArchiveAdvertisement {
+
+    // The libp2p peer ID (raw bytes) of the advertising archive.
+    bytes peer_id = 1;
+
+    // The dialable multiaddrs of the archive (including the peer ID component).
+    repeated string addresses = 2;
+
+    // The lowest block number the archive can serve.
+    uint64 history_start = 3;
+
+    // The highest block number the archive can serve.
+    uint64 history_end = 4;
+
+    // The Unix timestamp (seconds) after which this advertisement is stale and
+    // must be ignored.
+    int64 expires_at_unix = 5;
+
+    // An optional signature by the archive's host key over the advertisement
+    // fields, allowing recipients to authenticate the origin.
+    bytes signature = 6;
+}
