@@ -16,7 +16,11 @@
 
 package p2p
 
-import "github.com/0xsoniclabs/sonic/p2p/guard"
+import (
+	"time"
+
+	"github.com/0xsoniclabs/sonic/p2p/guard"
+)
 
 // Config holds the tunables for the P2P layer. It is a plain, TOML-friendly
 // struct; wiring it into the node-wide configuration is a follow-up task (see
@@ -65,10 +69,13 @@ func DefaultConfig() Config {
 		BootstrapPeers: nil,
 		HostKeyPath:    "",
 		RateLimit: guard.RateLimitConfig{
-			BytesPerSecond:    5 << 20, // 5 MiB/s
-			ByteBurst:         10 << 20,
-			MessagesPerSecond: 1000,
-			MessageBurst:      2000,
+			BytesPerSecond:      5 << 20, // 5 MiB/s
+			ByteBurst:           10 << 20,
+			MessagesPerSecond:   1000,
+			MessageBurst:        2000,
+			ViolationsPerSecond: 1,
+			ViolationBurst:      10,
+			BanDuration:         5 * time.Minute,
 		},
 		Resources: guard.ResourceLimitConfig{
 			MaxConnections:        400,

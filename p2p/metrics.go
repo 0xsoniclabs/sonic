@@ -25,12 +25,13 @@ import (
 // cardinality is deliberately bounded: metrics are labelled by
 // protocol/topic/direction/result/reason and never by peer ID.
 type Metrics struct {
-	streamBytes  *prometheus.CounterVec
-	messages     *prometheus.CounterVec
-	rateDropped  *prometheus.CounterVec
-	connections  *prometheus.GaugeVec
-	gossip       *prometheus.CounterVec
-	scanDuration prometheus.Histogram
+	streamBytes     *prometheus.CounterVec
+	messages        *prometheus.CounterVec
+	rateDropped     *prometheus.CounterVec
+	peerDisconnects *prometheus.CounterVec
+	connections     *prometheus.GaugeVec
+	gossip          *prometheus.CounterVec
+	scanDuration    prometheus.Histogram
 }
 
 // NewMetrics registers and returns the P2P metric collectors on the given
@@ -54,6 +55,10 @@ func NewMetrics(registerer prometheus.Registerer) *Metrics {
 			Name: "sonic_p2p_ratelimit_dropped_total",
 			Help: "Messages dropped because a per-peer rate limit was exceeded.",
 		}, []string{"protocol", "reason"}),
+		peerDisconnects: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "sonic_p2p_peer_disconnects_total",
+			Help: "Peers disconnected by the node, by reason.",
+		}, []string{"reason"}),
 		connections: factory.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "sonic_p2p_connections",
 			Help: "Current number of connections.",

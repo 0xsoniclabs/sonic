@@ -29,6 +29,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/p2p/guard"
@@ -61,6 +62,9 @@ type Node struct {
 	streamProtocols []StreamProtocol
 	gossipTopics    []GossipTopic
 	topics          map[string]*pubsub.Topic
+
+	// now is the time source used for ban cooldowns, injectable for tests.
+	now func() time.Time
 
 	mutex   sync.Mutex
 	started bool
@@ -124,6 +128,7 @@ func New(config Config, log logger.Logger, registerer prometheus.Registerer) (*N
 		limiter: guard.NewRateLimiter(config.RateLimit),
 		metrics: NewMetrics(registerer),
 		topics:  make(map[string]*pubsub.Topic),
+		now:     time.Now,
 		quit:    make(chan struct{}),
 	}, nil
 }
@@ -226,7 +231,7 @@ func (n *Node) OpenStream(ctx context.Context, target PeerID, id protocol.ID) (S
 	if err != nil {
 		return nil, err
 	}
-	return newStream(raw, n.limiter, n.metrics), nil
+	return newStream(raw, n.limiter, n.metrics, n.penalizePeer), nil
 }
 
 // ClosePeer closes all connections to a peer, logging the reason.
@@ -248,8 +253,23 @@ func (n *Node) Publish(ctx context.Context, topic string, message []byte) error 
 
 func (n *Node) installStreamHandler(streamProtocol StreamProtocol) {
 	n.host.SetStreamHandler(streamProtocol.ProtocolID(), func(raw network.Stream) {
-		streamProtocol.Handle(newStream(raw, n.limiter, n.metrics))
+		streamProtocol.Handle(newStream(raw, n.limiter, n.metrics, n.penalizePeer))
 	})
+}
+
+// penalizePeer disconnects and temporarily bans a peer that has committed
+// sustained rate-limit abuse. The ban keeps the connection gater rejecting the
+// peer's reconnection attempts until the cooldown elapses. scope is the
+// protocol ID or topic the abuse occurred on, for logging.
+func (n *Node) penalizePeer(peer PeerID, scope string) {
+	n.metrics.peerDisconnects.WithLabelValues("rate-abuse").Inc()
+	n.logger.Info("disconnecting abusive peer",
+		"peer", peer, "scope", scope, "reason", "rate-limit-abuse")
+	if duration := n.config.RateLimit.BanDuration; duration > 0 {
+		n.gater.BanUntil(peer, n.now().Add(duration))
+	}
+	_ = n.host.Network().ClosePeer(peer)
+	n.limiter.Forget(peer.String())
 }
 
 func (n *Node) joinTopic(topic GossipTopic) error {
@@ -275,9 +295,13 @@ func (n *Node) joinTopic(topic GossipTopic) error {
 func (n *Node) topicValidator(topic GossipTopic) pubsub.ValidatorEx {
 	name := topic.Topic()
 	return func(_ context.Context, from peer.ID, message *pubsub.Message) pubsub.ValidationResult {
-		if !n.limiter.AllowMessage(from.String(), len(message.Data)) {
+		if decision := n.limiter.Check(from.String(), len(message.Data)); !decision.Allowed {
 			n.metrics.rateDropped.WithLabelValues(name, "traffic").Inc()
 			n.metrics.gossip.WithLabelValues(name, "rate_limited").Inc()
+			if decision.Abusive {
+				n.penalizePeer(from, name)
+				return pubsub.ValidationReject
+			}
 			return pubsub.ValidationIgnore
 		}
 		switch topic.Validate(from, message.Data) {

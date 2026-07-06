@@ -30,7 +30,8 @@ import (
 // so tests can advance time deterministically.
 var nowFunc = time.Now
 
-// RateLimitConfig configures the per-peer token-bucket limits.
+// RateLimitConfig configures the per-peer token-bucket limits and the
+// sustained-abuse policy.
 type RateLimitConfig struct {
 	// BytesPerSecond is the sustained inbound byte rate allowed per peer.
 	BytesPerSecond int64
@@ -40,6 +41,25 @@ type RateLimitConfig struct {
 	MessagesPerSecond float64
 	// MessageBurst is the maximum burst of messages allowed per peer.
 	MessageBurst int
+	// ViolationsPerSecond is the sustained rate of rate-limit violations
+	// tolerated per peer before it is considered abusive.
+	ViolationsPerSecond float64
+	// ViolationBurst is the number of violations tolerated in a burst before a
+	// peer is considered abusive. A short burst of violations is tolerated; a
+	// sustained stream of them exhausts the allowance and flags abuse.
+	ViolationBurst int
+	// BanDuration is how long an abusive peer is banned after being
+	// disconnected, before it may reconnect.
+	BanDuration time.Duration
+}
+
+// Decision is the outcome of checking a message against the per-peer limits.
+type Decision struct {
+	// Allowed reports whether the message is within the traffic budget.
+	Allowed bool
+	// Abusive reports whether the peer has sustained enough violations to be
+	// disconnected and temporarily banned.
+	Abusive bool
 }
 
 // RateLimiter enforces per-peer inbound traffic limits on both bytes and
@@ -59,16 +79,28 @@ func NewRateLimiter(config RateLimitConfig) *RateLimiter {
 	}
 }
 
-// AllowMessage reports whether a message of the given size from the identified
-// peer is within both the byte and message rate limits. A false result means
-// the peer has exceeded a limit and the caller should reject the message and,
-// on sustained abuse, disconnect the peer.
-func (r *RateLimiter) AllowMessage(peer string, size int) bool {
+// Check evaluates a message of the given size from the identified peer against
+// the per-peer limits. Decision.Allowed reports whether the message is within
+// the traffic budget; Decision.Abusive reports whether the peer has committed
+// enough violations in a short window to warrant disconnection. Each violation
+// consumes a token from the peer's violation bucket, so isolated breaches are
+// tolerated while a sustained flood exhausts the allowance.
+func (r *RateLimiter) Check(peer string, size int) Decision {
 	buckets := r.bucketsFor(peer)
-	if !buckets.messages.Allow() {
-		return false
+	if buckets.messages.Allow() && buckets.bytes.AllowN(nowFunc(), size) {
+		return Decision{Allowed: true}
 	}
-	return buckets.bytes.AllowN(nowFunc(), size)
+	if !buckets.violations.Allow() {
+		return Decision{Allowed: false, Abusive: true}
+	}
+	return Decision{Allowed: false}
+}
+
+// AllowMessage reports whether a message of the given size from the identified
+// peer is within the traffic budget. It is a convenience wrapper over Check for
+// callers that do not act on sustained abuse.
+func (r *RateLimiter) AllowMessage(peer string, size int) bool {
+	return r.Check(peer, size).Allowed
 }
 
 // Forget drops any accounting kept for the peer. It should be called when a
@@ -86,15 +118,18 @@ func (r *RateLimiter) bucketsFor(peer string) *peerBuckets {
 		return b
 	}
 	b := &peerBuckets{
-		bytes:    rate.NewLimiter(rate.Limit(r.config.BytesPerSecond), int(r.config.ByteBurst)),
-		messages: rate.NewLimiter(rate.Limit(r.config.MessagesPerSecond), r.config.MessageBurst),
+		bytes:      rate.NewLimiter(rate.Limit(r.config.BytesPerSecond), int(r.config.ByteBurst)),
+		messages:   rate.NewLimiter(rate.Limit(r.config.MessagesPerSecond), r.config.MessageBurst),
+		violations: rate.NewLimiter(rate.Limit(r.config.ViolationsPerSecond), r.config.ViolationBurst),
 	}
 	r.buckets[peer] = b
 	return b
 }
 
-// peerBuckets holds the two token buckets tracked for a single peer.
+// peerBuckets holds the token buckets tracked for a single peer: inbound bytes,
+// inbound messages, and rate-limit violations (for sustained-abuse detection).
 type peerBuckets struct {
-	bytes    *rate.Limiter
-	messages *rate.Limiter
+	bytes      *rate.Limiter
+	messages   *rate.Limiter
+	violations *rate.Limiter
 }

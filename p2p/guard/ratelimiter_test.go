@@ -68,6 +68,64 @@ func TestRateLimiter_ExceedsByteRate_Rejects(t *testing.T) {
 	}
 }
 
+func TestRateLimiter_TransientViolations_NotFlaggedAbusive(t *testing.T) {
+	limiter := NewRateLimiter(RateLimitConfig{
+		BytesPerSecond:      1 << 30,
+		ByteBurst:           1 << 30,
+		MessagesPerSecond:   1,
+		MessageBurst:        1,
+		ViolationsPerSecond: 0, // no refill, so ViolationBurst is the exact tolerance
+		ViolationBurst:      5,
+	})
+	// Use up the single-message burst, then commit exactly ViolationBurst
+	// violations - all should be tolerated.
+	limiter.Check("peer-a", 1)
+	for i := 0; i < 5; i++ {
+		if decision := limiter.Check("peer-a", 1); decision.Abusive {
+			t.Fatalf("violation %d within the burst was flagged abusive", i)
+		}
+	}
+}
+
+func TestRateLimiter_SustainedViolations_FlaggedAbusive(t *testing.T) {
+	limiter := NewRateLimiter(RateLimitConfig{
+		BytesPerSecond:      1 << 30,
+		ByteBurst:           1 << 30,
+		MessagesPerSecond:   1,
+		MessageBurst:        1,
+		ViolationsPerSecond: 0,
+		ViolationBurst:      3,
+	})
+	limiter.Check("peer-a", 1) // consume the message burst
+	abusive := false
+	for i := 0; i < 20 && !abusive; i++ {
+		abusive = limiter.Check("peer-a", 1).Abusive
+	}
+	if !abusive {
+		t.Fatal("expected sustained violations to be flagged abusive")
+	}
+}
+
+func TestRateLimiter_Abuse_TrackedPerPeer(t *testing.T) {
+	limiter := NewRateLimiter(RateLimitConfig{
+		BytesPerSecond:      1 << 30,
+		ByteBurst:           1 << 30,
+		MessagesPerSecond:   1,
+		MessageBurst:        1,
+		ViolationsPerSecond: 0,
+		ViolationBurst:      2,
+	})
+	// Drive peer-a into abuse.
+	limiter.Check("peer-a", 1)
+	for i := 0; i < 10; i++ {
+		limiter.Check("peer-a", 1)
+	}
+	// peer-b is fresh and must not inherit peer-a's abuse.
+	if limiter.Check("peer-b", 1).Abusive {
+		t.Fatal("peer-b should not be flagged abusive from peer-a's violations")
+	}
+}
+
 func TestRateLimiter_SeparatePeers_TrackedIndependently(t *testing.T) {
 	limiter := NewRateLimiter(RateLimitConfig{
 		BytesPerSecond:    1 << 30,

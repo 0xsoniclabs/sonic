@@ -35,10 +35,14 @@ type streamWrapper struct {
 	stream  network.Stream
 	limiter *guard.RateLimiter
 	metrics *Metrics
+	// onAbuse, if set, is invoked when the remote peer commits sustained
+	// rate-limit abuse, so the node can disconnect and ban it. The scope is the
+	// protocol ID, for logging.
+	onAbuse func(peer PeerID, scope string)
 }
 
-func newStream(stream network.Stream, limiter *guard.RateLimiter, metrics *Metrics) *streamWrapper {
-	return &streamWrapper{stream: stream, limiter: limiter, metrics: metrics}
+func newStream(stream network.Stream, limiter *guard.RateLimiter, metrics *Metrics, onAbuse func(PeerID, string)) *streamWrapper {
+	return &streamWrapper{stream: stream, limiter: limiter, metrics: metrics, onAbuse: onAbuse}
 }
 
 func (s *streamWrapper) Peer() PeerID {
@@ -53,9 +57,12 @@ func (s *streamWrapper) ReadMessage(message proto.Message, maxSize int) error {
 		return err
 	}
 	s.metrics.streamBytes.WithLabelValues("in", protocolID).Add(float64(read))
-	if !s.limiter.AllowMessage(s.Peer().String(), read) {
+	if decision := s.limiter.Check(s.Peer().String(), read); !decision.Allowed {
 		s.metrics.rateDropped.WithLabelValues(protocolID, "traffic").Inc()
 		s.metrics.messages.WithLabelValues("in", protocolID, "rate_limited").Inc()
+		if decision.Abusive && s.onAbuse != nil {
+			s.onAbuse(s.Peer(), protocolID)
+		}
 		return ErrRateLimited
 	}
 	s.metrics.messages.WithLabelValues("in", protocolID, "ok").Inc()

@@ -18,6 +18,7 @@ package guard
 
 import (
 	"sync"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/control"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -26,25 +27,34 @@ import (
 )
 
 // Gater is a libp2p connmgr.ConnectionGater that maintains a ban list of peers.
-// Banned peers are rejected as early as possible in the connection lifecycle,
-// both for outbound dials and inbound connections. It is safe for concurrent
-// use.
+// Bans may be permanent or expire after a cooldown. Banned peers are rejected
+// as early as possible in the connection lifecycle, both for outbound dials and
+// inbound connections. It is safe for concurrent use.
 type Gater struct {
-	mutex  sync.RWMutex
-	banned map[peer.ID]struct{}
+	// now is the time source, injectable for deterministic tests.
+	now    func() time.Time
+	mutex  sync.Mutex
+	banned map[peer.ID]time.Time // value is the unban time; zero means permanent
 }
 
 // NewGater creates an empty Gater that permits all peers until they are banned.
 func NewGater() *Gater {
-	return &Gater{banned: make(map[peer.ID]struct{})}
+	return &Gater{now: time.Now, banned: make(map[peer.ID]time.Time)}
 }
 
-// Ban adds a peer to the ban list. Existing connections are not closed by the
-// gater itself; the caller closes them.
+// Ban permanently adds a peer to the ban list. Existing connections are not
+// closed by the gater itself; the caller closes them.
 func (g *Gater) Ban(p peer.ID) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
-	g.banned[p] = struct{}{}
+	g.banned[p] = time.Time{}
+}
+
+// BanUntil bans a peer until the given time, after which it is permitted again.
+func (g *Gater) BanUntil(p peer.ID, until time.Time) {
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+	g.banned[p] = until
 }
 
 // Unban removes a peer from the ban list.
@@ -54,12 +64,20 @@ func (g *Gater) Unban(p peer.ID) {
 	delete(g.banned, p)
 }
 
-// IsBanned reports whether the peer is currently banned.
+// IsBanned reports whether the peer is currently banned, pruning the entry if
+// its ban has expired.
 func (g *Gater) IsBanned(p peer.ID) bool {
-	g.mutex.RLock()
-	defer g.mutex.RUnlock()
-	_, ok := g.banned[p]
-	return ok
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+	until, ok := g.banned[p]
+	if !ok {
+		return false
+	}
+	if until.IsZero() || g.now().Before(until) {
+		return true
+	}
+	delete(g.banned, p)
+	return false
 }
 
 // InterceptPeerDial rejects outbound dials to banned peers.
