@@ -23,7 +23,6 @@ package priorities
 import (
 	"encoding/binary"
 	"fmt"
-	"math/big"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -42,14 +41,14 @@ import (
 // is used for per-entity rate limiting. The semantics of Id are opaque to this
 // code and only interpreted by the registry.
 type Priority struct {
-	Level  *big.Int
-	Weight *big.Int
+	Level  uint256.Int
+	Weight uint256.Int
 	Id     [32]byte
 }
 
 // IsPrioritized reports whether the transaction has a non-zero priority level.
 func (p Priority) IsPrioritized() bool {
-	return p.Level != nil && p.Level.Sign() > 0
+	return p.Level.Sign() > 0
 }
 
 // Config holds the per-entity rate limits returned by the registry's
@@ -218,10 +217,11 @@ func parseGetPriorityResult(data []byte) (Priority, error) {
 	if len(data) != 3*32 {
 		return zeroPriority(), fmt.Errorf("invalid result length from getPriority call: %d", len(data))
 	}
-	level := new(big.Int).SetBytes(data[0:32])
-	weight := new(big.Int).SetBytes(data[32:64])
-	id := [32]byte(data[64:96])
-	return Priority{Level: level, Weight: weight, Id: id}, nil
+	var p Priority
+	p.Level.SetBytes(data[0:32])
+	p.Weight.SetBytes(data[32:64])
+	p.Id = [32]byte(data[64:96])
+	return p, nil
 }
 
 // parseGetPriorityConfigResult decodes the
@@ -245,5 +245,5 @@ func parseGetPriorityConfigResult(data []byte) (Config, error) {
 
 // zeroPriority returns a normalized non-prioritized Priority.
 func zeroPriority() Priority {
-	return Priority{Level: big.NewInt(0), Weight: big.NewInt(0)}
+	return Priority{}
 }

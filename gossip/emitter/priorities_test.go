@@ -23,6 +23,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,7 +35,7 @@ func (c fakePriorityClassifier) Priority(tx *types.Transaction) (priorities.Prio
 	if p, ok := c.byHash[tx.Hash()]; ok {
 		return p, nil
 	}
-	return priorities.Priority{Level: big.NewInt(0), Weight: big.NewInt(0)}, nil
+	return priorities.Priority{}, nil
 }
 
 func tx(nonce uint64) *types.Transaction {
@@ -42,7 +43,10 @@ func tx(nonce uint64) *types.Transaction {
 }
 
 func prioritized(id byte) priorities.Priority {
-	return priorities.Priority{Level: big.NewInt(1), Weight: big.NewInt(1), Id: [32]byte{id}}
+	var level, weight uint256.Int
+	level.SetUint64(1)
+	weight.SetUint64(1)
+	return priorities.Priority{Level: level, Weight: weight, Id: [32]byte{id}}
 }
 
 func TestPriorityHinter_Nil_IsNeverEligible(t *testing.T) {

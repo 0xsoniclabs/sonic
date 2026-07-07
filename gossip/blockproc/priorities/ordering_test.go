@@ -50,7 +50,11 @@ func makeTxN(nonce uint64) *types.Transaction {
 }
 
 func prio(level, weight int64, id byte) Priority {
-	return Priority{Level: big.NewInt(level), Weight: big.NewInt(weight), Id: [32]byte{id}}
+	p := Priority{}
+	p.Level.SetUint64(uint64(level))
+	p.Weight.SetUint64(uint64(weight))
+	p.Id[31] = id
+	return p
 }
 
 func hashes(txs types.Transactions) []common.Hash {

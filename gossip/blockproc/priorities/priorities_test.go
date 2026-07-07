@@ -128,8 +128,8 @@ func TestGetPriority_DecodesResult(t *testing.T) {
 	p, err := GetPriority(enabledUpgrades(), vm, signer, tx)
 	require.NoError(t, err)
 	require.True(t, p.IsPrioritized())
-	require.Equal(t, int64(2), p.Level.Int64())
-	require.Equal(t, int64(100), p.Weight.Int64())
+	require.Equal(t, uint64(2), p.Level.Uint64())
+	require.Equal(t, uint64(100), p.Weight.Uint64())
 	require.Equal(t, id, p.Id)
 }
 

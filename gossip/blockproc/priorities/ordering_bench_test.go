@@ -268,14 +268,14 @@ func setupBenchEnv(b *testing.B, numAccounts, numPrioritized int) *benchEnv {
 	prioByAddr := make(map[common.Address]Priority, numPrioritized)
 	for i := 0; i < numPrioritized; i++ {
 		addr := crypto.PubkeyToAddress(keys[i].PublicKey)
-		level := big.NewInt(int64(1 + i%4))    // a few distinct levels
-		weight := big.NewInt(int64(1 + i%100)) // spread of weights
+		level := uint64(1 + i%4)    // a few distinct levels
+		weight := uint64(1 + i%100) // spread of weights
 		var id common.Hash
 		binary.BigEndian.PutUint64(id[24:], uint64(i)) // distinct entity per sender
-		callRegistry("setSenderPriority", addr, level, weight, id)
+		callRegistry("setSenderPriority", addr, new(big.Int).SetUint64(level), new(big.Int).SetUint64(weight), id)
 
 		prioritized[i] = addr
-		prioByAddr[addr] = Priority{Level: level, Weight: weight, Id: id}
+		prioByAddr[addr] = Priority{Level: *uint256.NewInt(level), Weight: *uint256.NewInt(weight), Id: id}
 	}
 
 	if ch := statedb.EndBlock(1); ch != nil {

@@ -18,12 +18,12 @@ package priorities
 
 import (
 	"bytes"
-	"math/big"
 	"slices"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 )
 
 // Classifier determines the Priority of a transaction. Implementations may query
@@ -97,8 +97,8 @@ func Prioritize(
 
 	type entry struct {
 		tx     *types.Transaction
-		level  *big.Int
-		weight *big.Int
+		level  uint256.Int
+		weight uint256.Int
 		id     [32]byte
 		hash   common.Hash
 	}
@@ -109,14 +109,7 @@ func Prioritize(
 		if err != nil {
 			p = zeroPriority() // deterministic failure rule: errors => not prioritized
 		}
-		level, weight := p.Level, p.Weight
-		if level == nil {
-			level = big.NewInt(0)
-		}
-		if weight == nil {
-			weight = big.NewInt(0)
-		}
-		entries[i] = entry{tx: tx, level: level, weight: weight, id: p.Id, hash: tx.Hash()}
+		entries[i] = entry{tx: tx, level: p.Level, weight: p.Weight, id: p.Id, hash: tx.Hash()}
 	}
 
 	// Group prioritized transactions by entity id (map used only for grouping;
@@ -133,7 +126,7 @@ func Prioritize(
 	kept := make([]bool, len(entries))
 	for _, idxs := range byID {
 		slices.SortFunc(idxs, func(a, b int) int {
-			if c := entries[b].weight.Cmp(entries[a].weight); c != 0 {
+			if c := entries[b].weight.Cmp(&entries[a].weight); c != 0 {
 				return c
 			}
 			return bytes.Compare(entries[a].hash[:], entries[b].hash[:])
@@ -155,10 +148,10 @@ func Prioritize(
 		}
 	}
 	slices.SortFunc(keptIdx, func(a, b int) int {
-		if c := entries[b].level.Cmp(entries[a].level); c != 0 {
+		if c := entries[b].level.Cmp(&entries[a].level); c != 0 {
 			return c
 		}
-		if c := entries[b].weight.Cmp(entries[a].weight); c != 0 {
+		if c := entries[b].weight.Cmp(&entries[a].weight); c != 0 {
 			return c
 		}
 		return bytes.Compare(entries[a].hash[:], entries[b].hash[:])
