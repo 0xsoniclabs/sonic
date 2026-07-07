@@ -1507,7 +1507,7 @@ func RPCMarshalBlock(block *evmcore.EvmBlock, receipts types.Receipts, inclTx bo
 		}
 		if fullTx {
 			formatTx = func(tx *types.Transaction) (interface{}, error) {
-				return newRPCTransactionFromBlockHash(block, tx.Hash(), chainId), nil
+				return NewRPCTransactionFromBlockHash(block, tx.Hash(), chainId), nil
 			}
 		}
 		txs := block.Transactions
@@ -1553,9 +1553,9 @@ type RPCTransaction struct {
 	YParity             *hexutil.Uint64              `json:"yParity,omitempty"`
 }
 
-// newRPCTransaction returns a transaction that will serialize to the RPC
+// NewRPCTransaction returns a transaction that will serialize to the RPC
 // representation, with the given location metadata set (if available).
-func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber uint64, blockTime uint64, index uint64, baseFee *big.Int, chainId *big.Int) *RPCTransaction {
+func NewRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber uint64, blockTime uint64, index uint64, baseFee *big.Int, chainId *big.Int) *RPCTransaction {
 	// Determine the signer. For replay-protected transactions, use the most permissive
 	// signer, because we assume that signers are backwards-compatible with old
 	// transactions. For non-protected transactions, the homestead signer signer is used
@@ -1664,7 +1664,7 @@ func NewRPCPendingTransaction(tx *types.Transaction, baseFee *big.Int, chainId *
 
 // newRPCPendingTransaction returns a pending transaction that will serialize to the RPC representation
 func newRPCPendingTransaction(tx *types.Transaction, baseFee *big.Int, chainId *big.Int) *RPCTransaction {
-	return newRPCTransaction(tx, common.Hash{}, 0, 0, 0, baseFee, chainId)
+	return NewRPCTransaction(tx, common.Hash{}, 0, 0, 0, baseFee, chainId)
 }
 
 // newRPCTransactionFromBlockIndex returns a transaction that will serialize to the RPC representation.
@@ -1673,7 +1673,7 @@ func newRPCTransactionFromBlockIndex(b *evmcore.EvmBlock, index uint64, chainId 
 	if index >= uint64(len(txs)) {
 		return nil
 	}
-	return newRPCTransaction(txs[index], b.Hash, b.NumberU64(), uint64(b.Time.Unix()), index, b.BaseFee, chainId)
+	return NewRPCTransaction(txs[index], b.Hash, b.NumberU64(), uint64(b.Time.Unix()), index, b.BaseFee, chainId)
 }
 
 // newRPCRawTransactionFromBlockIndex returns the bytes of a transaction given a block and a transaction index.
@@ -1686,8 +1686,8 @@ func newRPCRawTransactionFromBlockIndex(b *evmcore.EvmBlock, index uint64) hexut
 	return blob
 }
 
-// newRPCTransactionFromBlockHash returns a transaction that will serialize to the RPC representation.
-func newRPCTransactionFromBlockHash(b *evmcore.EvmBlock, hash common.Hash, chainId *big.Int) *RPCTransaction {
+// NewRPCTransactionFromBlockHash returns a transaction that will serialize to the RPC representation.
+func NewRPCTransactionFromBlockHash(b *evmcore.EvmBlock, hash common.Hash, chainId *big.Int) *RPCTransaction {
 	for idx, tx := range b.Transactions {
 		if tx.Hash() == hash {
 			return newRPCTransactionFromBlockIndex(b, uint64(idx), chainId)
@@ -1953,14 +1953,14 @@ func (s *PublicTransactionPoolAPI) GetTransactionByHash(ctx context.Context, has
 	}
 	if tx != nil {
 		if block, err := s.b.BlockByNumber(ctx, rpc.BlockNumber(blockNumber)); block != nil && err == nil {
-			return newRPCTransaction(tx, block.Hash, blockNumber, uint64(block.Time.Unix()), index, block.BaseFee, s.b.ChainID()), nil
+			return NewRPCTransaction(tx, block.Hash, blockNumber, uint64(block.Time.Unix()), index, block.BaseFee, s.b.ChainID()), nil
 		}
 
 		header, err := s.b.HeaderByNumber(ctx, rpc.BlockNumber(blockNumber))
 		if header == nil || err != nil {
 			return nil, err
 		}
-		return newRPCTransaction(tx, header.Hash, blockNumber, uint64(header.Time.Unix()), index, header.BaseFee, s.b.ChainID()), nil
+		return NewRPCTransaction(tx, header.Hash, blockNumber, uint64(header.Time.Unix()), index, header.BaseFee, s.b.ChainID()), nil
 	}
 	// No finalized transaction, try to retrieve it from the pool
 	if tx := s.b.GetPoolTransaction(hash); tx != nil {

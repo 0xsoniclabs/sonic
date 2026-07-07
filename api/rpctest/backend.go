@@ -29,6 +29,7 @@ package rpctest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"sort"
 	"testing"
@@ -41,6 +42,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
@@ -78,6 +80,17 @@ type Transaction struct {
 	blockNumber uint64
 	txIndex     uint64
 	receipt     *types.Receipt
+}
+
+// NewTransaction creates a Transaction with the given parameters.
+// receipt may be nil for tests that don't require receipt data.
+func NewTransaction(tx *types.Transaction, blockNumber uint64, txIndex uint64, receipt *types.Receipt) *Transaction {
+	return &Transaction{
+		tx:          tx,
+		blockNumber: blockNumber,
+		txIndex:     txIndex,
+		receipt:     receipt,
+	}
 }
 
 type backendBuilder struct {
@@ -173,6 +186,86 @@ func (b backendBuilder) WithUpgrade(blockHeight idx.Block, upgrades opera.Upgrad
 	return b
 }
 
+func (b backendBuilder) BuildFromReplay(genesis *core.Genesis, rawBlocks []*types.Block) (ethapi.Backend, error) {
+
+	b.be.chainID = genesis.Config.ChainID.Uint64()
+	accounts := extractGenesisAccounts(genesis)
+	for addr, account := range accounts {
+		b.be.state.setAccount(addr, account)
+	}
+
+	upgrades, err := UpgradesFromChainConfigAndHistory(genesis.Config, rawBlocks)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive network rules from chain config: %w", err)
+	}
+	b.be.upgrades = upgrades
+
+	// convert genesis to block 0 and prepend to block history (if not already present)
+	genesisBlock := convertGenesisToBlock(genesis)
+	result, err := ReplayChain(b.be.state, genesis.Config, append([]*types.Block{genesisBlock}, rawBlocks...))
+	if err != nil {
+		return nil, fmt.Errorf("failed to replay chain: %w", err)
+	}
+	b.be.blockHistory = result
+
+	return b.Build(), nil
+}
+
+func convertGenesisToBlock(genesis *core.Genesis) *types.Block {
+	header := &types.Header{
+		Number:     big.NewInt(0),
+		ParentHash: common.Hash{},
+		BaseFee:    genesis.BaseFee,
+	}
+	return types.NewBlockWithHeader(header)
+}
+
+func UpgradesFromChainConfigAndHistory(cfg *params.ChainConfig, rawBlocks []*types.Block) (map[idx.Block]opera.Upgrades, error) {
+	if cfg == nil {
+		return nil, errors.New("chain config is nil")
+	}
+	if cfg.ChainID == nil {
+		return nil, errors.New("chain config chain ID is nil")
+	}
+
+	upgrades := make(map[idx.Block]opera.Upgrades)
+
+	for _, block := range rawBlocks {
+		upgrade := opera.Upgrades{
+			Berlin: cfg.BerlinBlock != nil,
+			London: cfg.LondonBlock != nil,
+			Llr:    false,
+			Sonic:  cfg.CancunTime != nil,
+		}
+
+		upgraded := false
+		if cfg.PragueTime != nil && block.Time() >= *cfg.PragueTime {
+			upgrade.Allegro = true
+			upgraded = true
+		}
+		if cfg.OsakaTime != nil && block.Time() >= *cfg.OsakaTime {
+			upgrade.Brio = true
+			upgraded = true
+		}
+
+		if upgraded {
+			upgrades[idx.Block(block.NumberU64())] = upgrade
+		}
+	}
+
+	if len(upgrades) == 0 {
+		// If no upgrades were triggered by the block history, at least set the initial rules based on the chain config
+		upgrades[0] = opera.Upgrades{
+			Berlin: cfg.BerlinBlock != nil,
+			London: cfg.LondonBlock != nil,
+			Llr:    false,
+			Sonic:  cfg.CancunTime != nil,
+		}
+	}
+
+	return upgrades, nil
+}
+
 // Build constructs the fakeBackend instance with the configured parameters.
 func (b backendBuilder) Build() *fakeBackend {
 	if b.be.upgrades == nil {
@@ -180,6 +273,13 @@ func (b backendBuilder) Build() *fakeBackend {
 		b.be.upgrades[0] = opera.GetBrioUpgrades()
 	}
 	return &b.be
+}
+
+// StateDB returns the underlying state database used by the builder.
+// This allows external packages to perform operations on the state (e.g., chain replay)
+// before calling Build(). The returned state is the same instance used by the backend.
+func (b backendBuilder) StateDB() state.StateDB {
+	return b.be.state
 }
 
 // defaultBlockHistory returns a default block history with a single block (number 1, hash "0x1").
@@ -418,6 +518,25 @@ func (b *fakeBackend) GetReceiptsByNumber(ctx context.Context, number rpc.BlockN
 		receipts = append(receipts, tx.receipt)
 	}
 	return receipts, nil
+}
+
+// FetchReceiptsForBlock returns receipts for the given block.
+func (b *fakeBackend) FetchReceiptsForBlock(block *evmcore.EvmBlock) types.Receipts {
+	if block == nil {
+		return nil
+	}
+	for _, blk := range b.blockHistory {
+		if blk.Number == block.Number.Uint64() {
+			receipts := make(types.Receipts, 0, len(blk.Transactions))
+			for _, tx := range blk.Transactions {
+				if tx.receipt != nil {
+					receipts = append(receipts, tx.receipt)
+				}
+			}
+			return receipts
+		}
+	}
+	return nil
 }
 
 // blockByNumber is a helper function that looks up a block by its number in the fake backend's block history.

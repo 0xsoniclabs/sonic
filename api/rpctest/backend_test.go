@@ -23,8 +23,10 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -454,4 +456,61 @@ func Test_ToEvmHeader_BaseFee_included(t *testing.T) {
 			require.Equal(t, tt.expectedBaseFee, evmHeader.BaseFee)
 		})
 	}
+}
+
+func Test_RulesFromChainConfig_RejectsNilConfig(t *testing.T) {
+	_, err := UpgradesFromChainConfigAndHistory(nil, nil)
+	require.ErrorContains(t, err, "chain config is nil")
+}
+
+func Test_RulesFromChainConfig_RejectsNilChainID(t *testing.T) {
+	_, err := UpgradesFromChainConfigAndHistory(&params.ChainConfig{}, nil)
+	require.ErrorContains(t, err, "chain config chain ID is nil")
+}
+
+func Test_RulesFromChainConfig_MapsHardForksToUpgrades(t *testing.T) {
+	timestampInThePast := uint64(0)
+	cfg := &params.ChainConfig{
+		ChainID:     big.NewInt(1337),
+		BerlinBlock: big.NewInt(0),
+		LondonBlock: big.NewInt(0),
+		CancunTime:  &timestampInThePast,
+		PragueTime:  &timestampInThePast,
+		OsakaTime:   &timestampInThePast,
+	}
+
+	rules, err := UpgradesFromChainConfigAndHistory(cfg, nil)
+	require.NoError(t, err)
+
+	up, ok := rules[0]
+	require.True(t, ok)
+	require.True(t, up.Berlin)
+	require.True(t, up.London)
+	require.True(t, up.Sonic)
+	require.False(t, up.Allegro)
+	require.False(t, up.Brio)
+	require.False(t, up.Llr)
+}
+
+func Test_NewBackendBuilder_BuildFromReplay_UsesChainConfigUpgrades(t *testing.T) {
+	timestampInThePast := uint64(0)
+	genesis := &core.Genesis{
+		Config: &params.ChainConfig{
+			ChainID:     big.NewInt(10),
+			BerlinBlock: big.NewInt(0),
+			LondonBlock: big.NewInt(0),
+			CancunTime:  &timestampInThePast,
+			PragueTime:  &timestampInThePast,
+			OsakaTime:   nil,
+		},
+	}
+
+	backend, err := NewBackendBuilder(t).BuildFromReplay(genesis, nil)
+	require.NoError(t, err)
+
+	rules, err := backend.GetNetworkRules(t.Context(), 0)
+	require.NoError(t, err)
+	require.True(t, rules.Upgrades.Sonic)
+	require.False(t, rules.Upgrades.Allegro)
+	require.False(t, rules.Upgrades.Brio)
 }
