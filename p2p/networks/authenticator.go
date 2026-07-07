@@ -100,10 +100,16 @@ func VerifyBindingProof(
 	return nil
 }
 
+// handshakeDomain domain-separates the mesh handshake signature from every other
+// use of the consensus key (e.g. validator-directory advertisements), so a
+// signature produced in one context can never be valid in another.
+const handshakeDomain = "sonic/p2p/validator-handshake/v1\x00"
+
 // bindingDigest computes the 32-byte digest signed by a binding proof over the
-// peer ID, epoch, and nonce.
+// domain tag, peer ID, epoch, and nonce.
 func bindingDigest(self peer.ID, epoch uint64, nonce []byte) [32]byte {
 	hasher := sha256.New()
+	hasher.Write([]byte(handshakeDomain))
 	hasher.Write([]byte(self))
 	var epochBytes [8]byte
 	binary.BigEndian.PutUint64(epochBytes[:], epoch)

@@ -38,29 +38,29 @@ const (
 	RoleObserver
 )
 
-// Validator describes a consensus validator as far as the P2P layer needs it:
-// its consensus identity and where to reach it on the network.
-type Validator struct {
+// Member describes a consensus validator as far as callers of this package need
+// to: its consensus identity only. Network location is discovered internally by
+// the validator directory and never supplied by callers.
+type Member struct {
 	// ID is the consensus identifier of the validator.
 	ID uint32
-	// PublicKey is the validator's consensus public key bytes (secp256k1),
-	// used to authenticate its binding proof.
+	// PublicKey is the validator's consensus public key bytes (secp256k1), used
+	// to authenticate its advertisements and binding proof.
 	PublicKey []byte
-	// Peer is the network location (peer ID and addresses) of the validator.
-	Peer peer.AddrInfo
 }
 
-// ValidatorSet is the source of the current validator set. Because the set
-// changes over time (e.g. at epoch boundaries), it also exposes updates so the
-// validator mesh can reconcile its connections.
-type ValidatorSet interface {
-	// Current returns the current set of validators.
-	Current() []Validator
+// Membership is the consensus-provided set of current validators and the sole
+// external input to the validator network: callers supply who the validators
+// are; addresses, discovery, and authentication are handled inside the package.
+// The set changes over time (e.g. at epoch boundaries), so updates are exposed.
+type Membership interface {
+	// Members returns the current set of validators.
+	Members() []Member
 	// Epoch returns the epoch the current set belongs to.
 	Epoch() uint64
-	// OnUpdate registers a callback invoked with the new set whenever it
-	// changes. The returned function cancels the subscription.
-	OnUpdate(callback func([]Validator)) (cancel func())
+	// OnChange registers a callback invoked whenever the set changes. The
+	// returned function cancels the subscription.
+	OnChange(callback func()) (cancel func())
 }
 
 // NodeStatus is the self-reported status of a node, returned to a network scan.

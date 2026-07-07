@@ -16,46 +16,32 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockValidatorSet is a mock of ValidatorSet interface.
-type MockValidatorSet struct {
+// MockMembership is a mock of Membership interface.
+type MockMembership struct {
 	ctrl     *gomock.Controller
-	recorder *MockValidatorSetMockRecorder
+	recorder *MockMembershipMockRecorder
 	isgomock struct{}
 }
 
-// MockValidatorSetMockRecorder is the mock recorder for MockValidatorSet.
-type MockValidatorSetMockRecorder struct {
-	mock *MockValidatorSet
+// MockMembershipMockRecorder is the mock recorder for MockMembership.
+type MockMembershipMockRecorder struct {
+	mock *MockMembership
 }
 
-// NewMockValidatorSet creates a new mock instance.
-func NewMockValidatorSet(ctrl *gomock.Controller) *MockValidatorSet {
-	mock := &MockValidatorSet{ctrl: ctrl}
-	mock.recorder = &MockValidatorSetMockRecorder{mock}
+// NewMockMembership creates a new mock instance.
+func NewMockMembership(ctrl *gomock.Controller) *MockMembership {
+	mock := &MockMembership{ctrl: ctrl}
+	mock.recorder = &MockMembershipMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockValidatorSet) EXPECT() *MockValidatorSetMockRecorder {
+func (m *MockMembership) EXPECT() *MockMembershipMockRecorder {
 	return m.recorder
 }
 
-// Current mocks base method.
-func (m *MockValidatorSet) Current() []Validator {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Current")
-	ret0, _ := ret[0].([]Validator)
-	return ret0
-}
-
-// Current indicates an expected call of Current.
-func (mr *MockValidatorSetMockRecorder) Current() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Current", reflect.TypeOf((*MockValidatorSet)(nil).Current))
-}
-
 // Epoch mocks base method.
-func (m *MockValidatorSet) Epoch() uint64 {
+func (m *MockMembership) Epoch() uint64 {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Epoch")
 	ret0, _ := ret[0].(uint64)
@@ -63,23 +49,37 @@ func (m *MockValidatorSet) Epoch() uint64 {
 }
 
 // Epoch indicates an expected call of Epoch.
-func (mr *MockValidatorSetMockRecorder) Epoch() *gomock.Call {
+func (mr *MockMembershipMockRecorder) Epoch() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Epoch", reflect.TypeOf((*MockValidatorSet)(nil).Epoch))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Epoch", reflect.TypeOf((*MockMembership)(nil).Epoch))
 }
 
-// OnUpdate mocks base method.
-func (m *MockValidatorSet) OnUpdate(callback func([]Validator)) func() {
+// Members mocks base method.
+func (m *MockMembership) Members() []Member {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "OnUpdate", callback)
+	ret := m.ctrl.Call(m, "Members")
+	ret0, _ := ret[0].([]Member)
+	return ret0
+}
+
+// Members indicates an expected call of Members.
+func (mr *MockMembershipMockRecorder) Members() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Members", reflect.TypeOf((*MockMembership)(nil).Members))
+}
+
+// OnChange mocks base method.
+func (m *MockMembership) OnChange(callback func()) func() {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OnChange", callback)
 	ret0, _ := ret[0].(func())
 	return ret0
 }
 
-// OnUpdate indicates an expected call of OnUpdate.
-func (mr *MockValidatorSetMockRecorder) OnUpdate(callback any) *gomock.Call {
+// OnChange indicates an expected call of OnChange.
+func (mr *MockMembershipMockRecorder) OnChange(callback any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnUpdate", reflect.TypeOf((*MockValidatorSet)(nil).OnUpdate), callback)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnChange", reflect.TypeOf((*MockMembership)(nil).OnChange), callback)
 }
 
 // MockNodeStatusSource is a mock of NodeStatusSource interface.

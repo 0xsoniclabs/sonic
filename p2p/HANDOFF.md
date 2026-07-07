@@ -48,14 +48,36 @@ The networks and the scan protocol depend only on interfaces
 (`p2p/networks/sources.go`, `p2p/protocols/scanner.go`). Provide real
 implementations:
 
-- **`networks.ValidatorSet`** — from epoch state. The current validators and
-  their public keys are read today in `readEpochPubKeys`
-  (`gossip/checker_helpers.go:122`); expose the set plus an update feed on epoch
-  transitions to drive `ValidatorMesh` reconciliation.
-- **`networks.Signer`** (validator binding proof) — back it with
+- **`networks.Membership`** — from epoch state. The current validators and their
+  public keys are read today in `readEpochPubKeys`
+  (`gossip/checker_helpers.go:122`); expose them as `[]Member{ID, PublicKey}` plus
+  an `OnChange` feed on epoch transitions. This is the **only** external input to
+  the validator network — addresses are discovered internally by the
+  `ValidatorDirectory` gossip topic; callers never supply peer IDs or multiaddrs.
+- **`networks.Signer`** (advertisement + binding proof) — back it with
   `valkeystore.SignerAuthority` (`valkeystore/signer.go`), which is already
   unlocked during node start (`config/make_node.go:117-146`). Its `Sign` returns
   the 64-byte R||S the authenticator expects.
+
+### Validator network wiring
+
+The directory, mesh, and handshake are composed by `networks.NewValidatorNetwork`
+into one unit. `*p2p.Node` satisfies its `ValidatorNode` interface. Because it
+registers a gossip topic and a stream protocol, **construct it before
+`node.Start()`, then call `network.Start(ctx)` after**:
+
+```go
+vn := networks.NewValidatorNetwork(node, membership, signer,
+        networks.NewSecp256k1Verifier(), validatorID, networks.ValidatorDirectoryConfig{})
+// ... register other protocols ...
+node.Start()          // node starts serving; gossip topic + handshake are live
+vn.Start(ctx)         // begins advertising this node and maintaining the mesh
+// on shutdown: vn.Stop() then node.Stop()
+```
+
+Only validators run a `ValidatorNetwork`; observers/archives do not. Leave
+`Config.HostKeyPath` empty for validators (ephemeral key; identity comes from the
+signed advertisement + binding proof, not the peer ID).
 - **`networks.NodeStatusSource`** — role from the node's configured role, client
   version from the `version` package, block height from the gossip store head.
 - **`networks.PeerSource`** — from the P2P host's peerstore / current

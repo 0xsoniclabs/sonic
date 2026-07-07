@@ -50,94 +50,117 @@ type MeshHost interface {
 }
 
 // ValidatorMesh maintains a full mesh of connections to the current validator
-// set, reconciling as the set changes over time. It does not itself perform the
-// authentication handshake; that is the HandshakeProtocol, registered
-// separately on the node.
+// set. Members are supplied by consensus (identity only); their network
+// addresses are resolved internally via the AddressResolver, so the mesh dials a
+// validator as soon as its address is discovered and re-dials as the set or the
+// known addresses change. Authentication is performed by the HandshakeProtocol.
 type ValidatorMesh struct {
-	host          MeshHost
-	logger        logger.Logger
-	mutex         sync.Mutex
-	connected     map[peer.ID]Validator
-	cancelUpdates func()
+	host      MeshHost
+	resolver  AddressResolver
+	logger    logger.Logger
+	afterDial func(ctx context.Context, peerID peer.ID)
+
+	mutex          sync.Mutex
+	connected      map[peer.ID]peer.AddrInfo
+	cancelMembers  func()
+	cancelDiscover func()
 }
 
-// NewValidatorMesh creates a validator mesh over the given host.
-func NewValidatorMesh(host MeshHost) *ValidatorMesh {
+// NewValidatorMesh creates a validator mesh over the given host, resolving
+// validator addresses via resolver. afterDial, if non-nil, is invoked (in its
+// own goroutine) after a validator is successfully dialed, so the caller can
+// drive the outbound authentication handshake.
+func NewValidatorMesh(host MeshHost, resolver AddressResolver, afterDial func(context.Context, peer.ID)) *ValidatorMesh {
 	return &ValidatorMesh{
 		host:      host,
+		resolver:  resolver,
 		logger:    host.Logger(),
-		connected: make(map[peer.ID]Validator),
+		afterDial: afterDial,
+		connected: make(map[peer.ID]peer.AddrInfo),
 	}
 }
 
-// Track performs an initial reconciliation against the set and subscribes to
-// its updates so the mesh follows the validator set over time. Call Stop to
+// Track reconciles against the current membership now and re-reconciles whenever
+// the membership changes or a new address is discovered. Call Stop to
 // unsubscribe.
-func (m *ValidatorMesh) Track(ctx context.Context, set ValidatorSet) {
-	m.Reconcile(ctx, set.Current())
-	m.cancelUpdates = set.OnUpdate(func(validators []Validator) {
-		m.Reconcile(ctx, validators)
+func (m *ValidatorMesh) Track(ctx context.Context, membership Membership) {
+	m.Reconcile(ctx, membership.Members())
+	m.cancelMembers = membership.OnChange(func() {
+		m.Reconcile(ctx, membership.Members())
+	})
+	m.cancelDiscover = m.resolver.OnDiscovery(func() {
+		m.Reconcile(ctx, membership.Members())
 	})
 }
 
-// Stop unsubscribes from validator-set updates.
+// Stop unsubscribes from membership and discovery updates.
 func (m *ValidatorMesh) Stop() {
-	if m.cancelUpdates != nil {
-		m.cancelUpdates()
-		m.cancelUpdates = nil
+	if m.cancelMembers != nil {
+		m.cancelMembers()
+		m.cancelMembers = nil
+	}
+	if m.cancelDiscover != nil {
+		m.cancelDiscover()
+		m.cancelDiscover = nil
 	}
 }
 
-// Reconcile brings the mesh in line with the desired validator set: it dials
-// validators that are not yet connected and disconnects validators that have
-// been removed from the set. Failed dials are retried on the next reconcile.
-func (m *ValidatorMesh) Reconcile(ctx context.Context, validators []Validator) {
+// Reconcile brings the mesh in line with the desired members whose addresses are
+// known: it dials validators not yet connected and disconnects validators no
+// longer in the set. Members without a discovered address are skipped and picked
+// up on a later reconcile (e.g. when their address arrives). Failed dials are
+// retried on the next reconcile.
+func (m *ValidatorMesh) Reconcile(ctx context.Context, members []Member) {
 	self := m.host.ID()
-	desired := make(map[peer.ID]Validator, len(validators))
-	for _, validator := range validators {
-		if validator.Peer.ID == self {
+	desired := make(map[peer.ID]peer.AddrInfo, len(members))
+	for _, member := range members {
+		info, ok := m.resolver.Resolve(member.PublicKey)
+		if !ok || info.ID == self {
 			continue
 		}
-		desired[validator.Peer.ID] = validator
+		desired[info.ID] = info
 	}
 
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
 	added, removed := 0, 0
-	next := make(map[peer.ID]Validator, len(desired))
-	for id, validator := range m.connected {
+	next := make(map[peer.ID]peer.AddrInfo, len(desired))
+	for id, info := range m.connected {
 		if _, ok := desired[id]; ok {
-			next[id] = validator
+			next[id] = info
 		} else {
 			_ = m.host.ClosePeer(id, "removed-from-set")
 			removed++
 		}
 	}
-	for id, validator := range desired {
+	for id, info := range desired {
 		if _, ok := next[id]; ok {
 			continue
 		}
-		if err := m.host.Connect(ctx, validator.Peer); err != nil {
+		if err := m.host.Connect(ctx, info); err != nil {
 			m.logger.Debug("validator dial failed", "peer", id, "err", err)
 			continue
 		}
-		next[id] = validator
+		next[id] = info
 		added++
+		if m.afterDial != nil {
+			go m.afterDial(ctx, id)
+		}
 	}
 	m.connected = next
 	m.logger.Info("validator mesh reconciled",
-		"validators", len(desired), "added", added, "removed", removed)
+		"reachable", len(desired), "added", added, "removed", removed)
 }
 
 // HandshakeProtocol authenticates validators on the mesh. On an inbound stream
-// it verifies the peer's binding proof against the current validator set; it
-// also drives the outbound proof via Authenticate.
+// it verifies the peer's binding proof against the current membership; it also
+// drives the outbound proof via Authenticate.
 type HandshakeProtocol struct {
 	self            peer.ID
 	signer          Signer
 	verifier        Verifier
-	set             ValidatorSet
+	membership      Membership
 	validatorID     uint32
 	logger          logger.Logger
 	onAuthenticated func(peer.ID, uint32)
@@ -150,7 +173,7 @@ func NewHandshakeProtocol(
 	self peer.ID,
 	signer Signer,
 	verifier Verifier,
-	set ValidatorSet,
+	membership Membership,
 	validatorID uint32,
 	log logger.Logger,
 	onAuthenticated func(peer.ID, uint32),
@@ -159,7 +182,7 @@ func NewHandshakeProtocol(
 		self:            self,
 		signer:          signer,
 		verifier:        verifier,
-		set:             set,
+		membership:      membership,
 		validatorID:     validatorID,
 		logger:          log,
 		onAuthenticated: onAuthenticated,
@@ -179,7 +202,7 @@ func (h *HandshakeProtocol) Handle(stream p2p.Stream) {
 		_ = stream.Reset()
 		return
 	}
-	if err := VerifyBindingProof(h.verifier, &proof, stream.Peer(), h.set.Epoch(), h.isValidator); err != nil {
+	if err := VerifyBindingProof(h.verifier, &proof, stream.Peer(), h.membership.Epoch(), h.isValidator); err != nil {
 		h.logger.Info("validator handshake rejected", "peer", stream.Peer(), "err", err)
 		_ = stream.Reset()
 		return
@@ -200,7 +223,7 @@ func (h *HandshakeProtocol) Authenticate(ctx context.Context, opener StreamOpene
 	}
 	// The proof binds to our own peer identity, which the receiver checks
 	// against the connection's remote peer.
-	proof, err := CreateBindingProof(h.signer, h.self, h.validatorID, h.set.Epoch(), nonce)
+	proof, err := CreateBindingProof(h.signer, h.self, h.validatorID, h.membership.Epoch(), nonce)
 	if err != nil {
 		return err
 	}
@@ -213,8 +236,8 @@ func (h *HandshakeProtocol) Authenticate(ctx context.Context, opener StreamOpene
 }
 
 func (h *HandshakeProtocol) isValidator(publicKey []byte) bool {
-	for _, validator := range h.set.Current() {
-		if string(validator.PublicKey) == string(publicKey) {
+	for _, member := range h.membership.Members() {
+		if string(member.PublicKey) == string(publicKey) {
 			return true
 		}
 	}

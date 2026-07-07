@@ -28,62 +28,105 @@ import (
 	"github.com/0xsoniclabs/sonic/p2p"
 )
 
-func TestValidatorMesh_InitialSet_DialsAllValidators(t *testing.T) {
+func TestValidatorMesh_ResolvableMembers_AllDialed(t *testing.T) {
 	host := newFakeMeshHost(t)
-	mesh := NewValidatorMesh(host)
+	resolver := newFakeResolver()
+	mesh := NewValidatorMesh(host, resolver, nil)
 
-	a := validatorAt(t, host, 1)
-	b := validatorAt(t, host, 2)
-	mesh.Reconcile(context.Background(), []Validator{a, b})
+	a, infoA := memberAt(t, 1)
+	b, infoB := memberAt(t, 2)
+	resolver.add(a.PublicKey, infoA)
+	resolver.add(b.PublicKey, infoB)
 
-	host.assertConnected(t, a.Peer.ID, b.Peer.ID)
+	mesh.Reconcile(context.Background(), []Member{a, b})
+	host.assertConnected(t, infoA.ID, infoB.ID)
 }
 
-func TestValidatorMesh_ValidatorRemoved_DisconnectsRemovedWithReason(t *testing.T) {
+func TestValidatorMesh_UnresolvedMember_Skipped(t *testing.T) {
 	host := newFakeMeshHost(t)
-	mesh := NewValidatorMesh(host)
+	resolver := newFakeResolver()
+	mesh := NewValidatorMesh(host, resolver, nil)
 
-	a := validatorAt(t, host, 1)
-	b := validatorAt(t, host, 2)
-	c := validatorAt(t, host, 3)
-	mesh.Reconcile(context.Background(), []Validator{a, b})
+	a, infoA := memberAt(t, 1)
+	b, _ := memberAt(t, 2) // address not yet known
+	resolver.add(a.PublicKey, infoA)
 
-	// b leaves, c joins.
-	mesh.Reconcile(context.Background(), []Validator{a, c})
+	mesh.Reconcile(context.Background(), []Member{a, b})
+	host.assertConnected(t, infoA.ID)
+}
 
-	host.assertConnected(t, a.Peer.ID, c.Peer.ID)
-	if reason, ok := host.closedReason(b.Peer.ID); !ok || reason != "removed-from-set" {
+func TestValidatorMesh_MemberRemoved_DisconnectsWithReason(t *testing.T) {
+	host := newFakeMeshHost(t)
+	resolver := newFakeResolver()
+	mesh := NewValidatorMesh(host, resolver, nil)
+
+	a, infoA := memberAt(t, 1)
+	b, infoB := memberAt(t, 2)
+	c, infoC := memberAt(t, 3)
+	resolver.add(a.PublicKey, infoA)
+	resolver.add(b.PublicKey, infoB)
+	resolver.add(c.PublicKey, infoC)
+
+	mesh.Reconcile(context.Background(), []Member{a, b})
+	mesh.Reconcile(context.Background(), []Member{a, c})
+
+	host.assertConnected(t, infoA.ID, infoC.ID)
+	if reason, ok := host.closedReason(infoB.ID); !ok || reason != "removed-from-set" {
 		t.Fatalf("expected b closed with reason removed-from-set, got %q ok=%v", reason, ok)
 	}
-	if _, dialedAgain := host.dialCount(a.Peer.ID); dialedAgain != 1 {
-		t.Fatalf("expected a dialed exactly once across reconciles, got %d", dialedAgain)
+	if dialed := host.dialCount(infoA.ID); dialed != 1 {
+		t.Fatalf("expected a dialed exactly once across reconciles, got %d", dialed)
 	}
 }
 
 func TestValidatorMesh_SkipsSelf(t *testing.T) {
 	host := newFakeMeshHost(t)
-	mesh := NewValidatorMesh(host)
+	resolver := newFakeResolver()
+	mesh := NewValidatorMesh(host, resolver, nil)
 
-	self := Validator{ID: 9, Peer: peer.AddrInfo{ID: host.id}}
-	other := validatorAt(t, host, 2)
-	mesh.Reconcile(context.Background(), []Validator{self, other})
+	self, _ := memberAt(t, 9)
+	resolver.add(self.PublicKey, peer.AddrInfo{ID: host.id})
+	other, infoOther := memberAt(t, 2)
+	resolver.add(other.PublicKey, infoOther)
 
-	host.assertConnected(t, other.Peer.ID)
+	mesh.Reconcile(context.Background(), []Member{self, other})
+	host.assertConnected(t, infoOther.ID)
 }
 
-func TestValidatorMesh_SetUpdate_TriggersReconcile(t *testing.T) {
+func TestValidatorMesh_MembershipChange_TriggersReconcile(t *testing.T) {
 	host := newFakeMeshHost(t)
-	mesh := NewValidatorMesh(host)
+	resolver := newFakeResolver()
+	mesh := NewValidatorMesh(host, resolver, nil)
 
-	a := validatorAt(t, host, 1)
-	b := validatorAt(t, host, 2)
-	set := &fakeValidatorSet{current: []Validator{a}}
+	a, infoA := memberAt(t, 1)
+	b, infoB := memberAt(t, 2)
+	resolver.add(a.PublicKey, infoA)
+	resolver.add(b.PublicKey, infoB)
+	membership := &fakeMembership{members: []Member{a}}
 
-	mesh.Track(context.Background(), set)
-	host.assertConnected(t, a.Peer.ID)
+	mesh.Track(context.Background(), membership)
+	host.assertConnected(t, infoA.ID)
 
-	set.pushUpdate([]Validator{a, b})
-	host.assertConnected(t, a.Peer.ID, b.Peer.ID)
+	membership.set([]Member{a, b})
+	host.assertConnected(t, infoA.ID, infoB.ID)
+	mesh.Stop()
+}
+
+func TestValidatorMesh_AddressDiscovered_TriggersDial(t *testing.T) {
+	host := newFakeMeshHost(t)
+	resolver := newFakeResolver()
+	mesh := NewValidatorMesh(host, resolver, nil)
+
+	a, infoA := memberAt(t, 1)
+	b, infoB := memberAt(t, 2)
+	resolver.add(a.PublicKey, infoA) // b's address not yet known
+	membership := &fakeMembership{members: []Member{a, b}}
+
+	mesh.Track(context.Background(), membership)
+	host.assertConnected(t, infoA.ID)
+
+	resolver.add(b.PublicKey, infoB) // fires OnDiscovery -> reconcile
+	host.assertConnected(t, infoA.ID, infoB.ID)
 	mesh.Stop()
 }
 
@@ -154,48 +197,80 @@ func (h *fakeMeshHost) closedReason(id peer.ID) (string, bool) {
 	return reason, ok
 }
 
-func (h *fakeMeshHost) dialCount(id peer.ID) (peer.ID, int) {
+func (h *fakeMeshHost) dialCount(id peer.ID) int {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
-	return id, h.dialed[id]
+	return h.dialed[id]
 }
 
-func validatorAt(t *testing.T, _ *fakeMeshHost, id uint32) Validator {
+func memberAt(t *testing.T, id uint32) (Member, peer.AddrInfo) {
 	t.Helper()
-	return Validator{
-		ID:        id,
-		PublicKey: []byte{byte(id)},
-		Peer:      peer.AddrInfo{ID: newTestPeerID(t)},
-	}
+	return Member{ID: id, PublicKey: []byte{byte(id), 0xaa, 0xbb}}, peer.AddrInfo{ID: newTestPeerID(t)}
 }
 
-type fakeValidatorSet struct {
-	mutex    sync.Mutex
-	current  []Validator
-	callback func([]Validator)
+// fakeResolver is a hand-rolled AddressResolver recording discovery callbacks.
+type fakeResolver struct {
+	mutex       sync.Mutex
+	entries     map[string]peer.AddrInfo
+	subscribers []func()
 }
 
-func (s *fakeValidatorSet) Current() []Validator {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return s.current
+func newFakeResolver() *fakeResolver {
+	return &fakeResolver{entries: make(map[string]peer.AddrInfo)}
 }
 
-func (s *fakeValidatorSet) Epoch() uint64 { return 1 }
+func (r *fakeResolver) Resolve(publicKey []byte) (peer.AddrInfo, bool) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	info, ok := r.entries[string(publicKey)]
+	return info, ok
+}
 
-func (s *fakeValidatorSet) OnUpdate(callback func([]Validator)) func() {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.callback = callback
+func (r *fakeResolver) OnDiscovery(callback func()) func() {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	r.subscribers = append(r.subscribers, callback)
 	return func() {}
 }
 
-func (s *fakeValidatorSet) pushUpdate(validators []Validator) {
-	s.mutex.Lock()
-	s.current = validators
-	callback := s.callback
-	s.mutex.Unlock()
+func (r *fakeResolver) add(publicKey []byte, info peer.AddrInfo) {
+	r.mutex.Lock()
+	r.entries[string(publicKey)] = info
+	callbacks := append([]func(){}, r.subscribers...)
+	r.mutex.Unlock()
+	for _, callback := range callbacks {
+		callback()
+	}
+}
+
+// fakeMembership is a hand-rolled Membership with a single change subscriber.
+type fakeMembership struct {
+	mutex    sync.Mutex
+	members  []Member
+	callback func()
+}
+
+func (m *fakeMembership) Members() []Member {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	return m.members
+}
+
+func (m *fakeMembership) Epoch() uint64 { return 1 }
+
+func (m *fakeMembership) OnChange(callback func()) func() {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	m.callback = callback
+	return func() {}
+}
+
+func (m *fakeMembership) set(members []Member) {
+	m.mutex.Lock()
+	m.members = members
+	callback := m.callback
+	m.mutex.Unlock()
 	if callback != nil {
-		callback(validators)
+		callback()
 	}
 }

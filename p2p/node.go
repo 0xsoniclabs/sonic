@@ -43,6 +43,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	tcp "github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	ma "github.com/multiformats/go-multiaddr"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -206,6 +207,9 @@ func (n *Node) ID() PeerID { return n.host.ID() }
 
 // Host exposes the underlying libp2p host for advanced integrations.
 func (n *Node) Host() host.Host { return n.host }
+
+// Addresses returns the multiaddrs the node is currently listening on.
+func (n *Node) Addresses() []ma.Multiaddr { return n.host.Addrs() }
 
 // Logger returns the injected logger, so components built on the node share it.
 func (n *Node) Logger() logger.Logger { return n.logger }

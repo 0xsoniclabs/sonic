@@ -61,8 +61,18 @@ node.RegisterGossipTopic(myTopic)       // joins + validates + delivers on a top
 
 Every higher-level network is just an implementation of these:
 
-- **ValidatorMesh** (`networks/validatormesh.go`) maintains the full mesh and
-  reconciles as the validator set changes; the `HandshakeProtocol` is a
+- **ValidatorNetwork** (`networks/validatornetwork.go`) composes the three parts
+  below into one unit and is the sole entry point. Its only external input is
+  `Membership` (`{ID, PublicKey}` from consensus); addresses, discovery, and
+  authentication are internal.
+- **ValidatorDirectory** (`networks/validatordirectory.go`) is a `GossipTopic` on
+  which validators publish signed `pubkey → PeerID + addresses` advertisements
+  (domain-separated, length-prefixed digest; membership/signature/freshness
+  gated). It exposes discovered addresses to the mesh as an `AddressResolver`,
+  and publishes on join / on new-member discovery / periodically.
+- **ValidatorMesh** (`networks/validatormesh.go`) maintains the full mesh,
+  dialing each member whose address the directory has resolved and re-dialing as
+  membership or known addresses change; the `HandshakeProtocol` is a
   `StreamProtocol` that authenticates peers.
 - **GossipNetwork** (`networks/gossipnetwork.go`) turns a validate/deliver pair
   into a registrable `GossipTopic` — the substrate for finalized-block

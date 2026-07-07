@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package sonic.p2p.proto;
+
+option go_package = ".;pb";
+
+// ValidatorAdvertisement is published by a validator on the validator-directory
+// gossip topic, binding its consensus identity to its network location so other
+// validators can discover where to dial it for the full mesh.
+message ValidatorAdvertisement {
+
+    // The secp256k1 consensus public key of the advertising validator.
+    bytes validator_public_key = 1;
+
+    // The libp2p peer ID (raw bytes) of the advertising validator.
+    bytes peer_id = 2;
+
+    // The dialable multiaddrs of the validator (without the peer ID component).
+    repeated string addresses = 3;
+
+    // A strictly-increasing freshness counter. It is seeded from the wall clock
+    // at start so it remains monotonic across restarts; receivers accept an
+    // advertisement only if its sequence exceeds the last one stored.
+    uint64 sequence = 4;
+
+    // The consensus-key signature over the domain-separated, length-prefixed
+    // digest of the peer ID, addresses, and sequence.
+    bytes signature = 5;
+}
