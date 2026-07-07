@@ -61,6 +61,7 @@ type AccountState struct {
 // Block represents a block in the fake backend's block history.
 type Block struct {
 	Number     uint64
+	Time       uint64
 	Hash       common.Hash
 	ParentHash common.Hash
 	// PrevRandao is the previous block's RANDAO value.

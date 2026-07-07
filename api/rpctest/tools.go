@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -86,6 +87,7 @@ func ToEvmHeader(block Block) *evmcore.EvmHeader {
 		Number:     big.NewInt(int64(block.Number)),
 		Hash:       block.Hash,
 		ParentHash: block.ParentHash,
+		Time:       inter.FromUnix(int64(block.Time)),
 		PrevRandao: block.PrevRandao,
 		BaseFee:    block.BaseFee,
 	}
