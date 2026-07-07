@@ -22,23 +22,25 @@ var executionAPIsDir = flag.String(
 // skipMethods lists methods that Sonic does not implement or whose behavior
 // is intentionally different from the Ethereum spec. These are skipped entirely.
 var skipMethods = map[string]string{
-	"eth_getProof":                            "not implemented in Sonic",
-	"eth_simulateV1":                          "not implemented in Sonic",
-	"eth_getStorageValues":                    "not implemented in Sonic",
+	"eth_getProof":                            "not implemented",
+	"eth_simulateV1":                          "not implemented",
+	"eth_getStorageValues":                    "not implemented",
 	"testing_buildBlockV1":                    "test-only method, not part of Sonic",
 	"txpool_content":                          "different pool semantics",
 	"txpool_contentFrom":                      "different pool semantics",
 	"txpool_status":                           "different pool semantics",
-	"eth_getTransactionCount":                 "not implemented in Sonic",
-	"eth_getTransactionByBlockNumberAndIndex": "not implemented in Sonic",
+	"eth_getTransactionCount":                 "not implemented",
+	"eth_getTransactionByBlockNumberAndIndex": "not implemented",
 
-	"debug_getRawBlock":    "not implemented in Sonic",
-	"debug_getRawReceipts": "not implemented in Sonic",
+	"debug_getRawBlock":    "not implemented",
+	"debug_getRawReceipts": "not implemented",
 
-	"eth_getStorageAt": "not implemented in Sonic",
+	"eth_getStorageAt": "not implemented",
 
 	"eth_sendRawTransaction": "requires live transaction pool",
 	"eth_feeHistory":         "requires full block history with gas data",
+
+	"debug_getRawHeader": "not implemented",
 }
 
 func TestConformance(t *testing.T) {
@@ -102,12 +104,6 @@ func TestConformance(t *testing.T) {
 				}
 
 				t.Run(testName, func(t *testing.T) {
-					// Check individual test skip
-					// relPath := filepath.Join(method, filepath.Base(tv.File))
-					// if reason, ok := skipTests[relPath]; ok {
-					// 	t.Skipf("Skipping test: %s", reason)
-					// }
-
 					// Execute
 					actual, err := dispatcher.Call(t.Context(), tv.Request)
 					if err != nil {
