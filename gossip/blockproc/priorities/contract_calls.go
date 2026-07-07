@@ -33,36 +33,6 @@ import (
 
 //go:generate mockgen -source=priorities.go -destination=priorities_mock.go -package=priorities
 
-// Priority is the result of a getPriority query for a single transaction.
-//
-// Level zero means the transaction is not prioritized. A higher level forms an
-// earlier partition (scheduled before lower levels). Weight breaks ties within a
-// level (higher first). Id identifies the entity the transaction belongs to and
-// is used for per-entity rate limiting. The semantics of Id are opaque to this
-// code and only interpreted by the registry.
-type Priority struct {
-	Level  uint256.Int
-	Weight uint256.Int
-	Id     [32]byte
-}
-
-// IsPrioritized reports whether the transaction has a non-zero priority level.
-func (p Priority) IsPrioritized() bool {
-	return p.Level.Sign() > 0
-}
-
-// Config holds the per-entity rate limits returned by the registry's
-// getPriorityConfig function.
-type Config struct {
-	// MaxTxsPerEntityPerBlock bounds how many transactions of one entity may be
-	// prioritized within a single block (authoritative, enforced at block
-	// formation).
-	MaxTxsPerEntityPerBlock uint64
-	// MaxTxsPerEntityPerEvent bounds how many transactions of one entity a
-	// validator eagerly includes in a single emitted event (best-effort hint).
-	MaxTxsPerEntityPerEvent uint64
-}
-
 // VirtualMachine is a minimal interface for an EVM instance that can be used to
 // query the priority registry contract. It is satisfied directly by *vm.EVM.
 type VirtualMachine interface {
@@ -241,9 +211,4 @@ func parseGetPriorityConfigResult(data []byte) (Config, error) {
 		MaxTxsPerEntityPerBlock: binary.BigEndian.Uint64(data[24:32]),
 		MaxTxsPerEntityPerEvent: binary.BigEndian.Uint64(data[56:64]),
 	}, nil
-}
-
-// zeroPriority returns a normalized non-prioritized Priority.
-func zeroPriority() Priority {
-	return Priority{}
 }
