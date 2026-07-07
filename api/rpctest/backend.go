@@ -45,6 +45,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	notify "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -307,6 +308,7 @@ type fakeBackend struct {
 	chainID      uint64
 	state        *testState
 	pool         TxPool
+	txFeed       notify.Feed
 	blockHistory []Block
 	upgrades     map[idx.Block]opera.Upgrades
 }
@@ -417,6 +419,34 @@ func (b *fakeBackend) SendTx(ctx context.Context, signedTx *types.Transaction) e
 		panic("transaction pool not set in fake backend; use WithPool to set it")
 	}
 	return b.pool.AddLocal(signedTx)
+}
+
+func (b *fakeBackend) GetPoolTransactions() (types.Transactions, error) {
+	return types.Transactions{}, nil
+}
+
+func (b *fakeBackend) GetPoolTransaction(txHash common.Hash) *types.Transaction {
+	return nil
+}
+
+func (b *fakeBackend) GetPoolNonce(ctx context.Context, addr common.Address) (uint64, error) {
+	return b.state.GetNonce(addr), nil
+}
+
+func (b *fakeBackend) Stats() (pending int, queued int) {
+	return 0, 0
+}
+
+func (b *fakeBackend) TxPoolContent() (map[common.Address]types.Transactions, map[common.Address]types.Transactions) {
+	return map[common.Address]types.Transactions{}, map[common.Address]types.Transactions{}
+}
+
+func (b *fakeBackend) TxPoolContentFrom(addr common.Address) (types.Transactions, types.Transactions) {
+	return types.Transactions{}, types.Transactions{}
+}
+
+func (b *fakeBackend) SubscribeNewTxsNotify(ch chan<- evmcore.NewTxsNotify) notify.Subscription {
+	return b.txFeed.Subscribe(ch)
 }
 
 func (b *fakeBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmBlock, error) {
