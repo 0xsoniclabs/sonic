@@ -81,11 +81,39 @@ func TestGetPriority_FeatureDisabled_ReturnsZeroWithoutCall(t *testing.T) {
 	require.Nil(t, vm.gotIn, "EVM must not be called when feature is off")
 }
 
+func TestGetPriority_NilTx_ReportsError(t *testing.T) {
+	_, err := GetPriority(enabledUpgrades(), &fakeVM{}, types.LatestSigner(opera.CreateTransientEvmChainConfig(1, nil, 1)), nil)
+	require.ErrorContains(t, err, "nil transaction")
+}
+
+func TestGetPriority_SenderError_ReportsError(t *testing.T) {
+	tx := types.NewTx(&types.LegacyTx{})
+	signer := types.LatestSigner(opera.CreateTransientEvmChainConfig(1, nil, 1))
+	_, err := GetPriority(enabledUpgrades(), &fakeVM{}, signer, tx)
+	require.ErrorContains(t, err, "failed to derive sender")
+}
+
+func TestGetPriority_CallError_ReportsError(t *testing.T) {
+	tx, signer := makeTx(t)
+	vm := &fakeVM{err: fmt.Errorf("call failed")}
+	_, err := GetPriority(enabledUpgrades(), vm, signer, tx)
+	require.ErrorContains(t, err, "EVM call failed")
+}
+
 func TestGetPriority_EmptyResult_ReportsMissingContract(t *testing.T) {
 	tx, signer := makeTx(t)
 	vm := &fakeVM{result: nil}
 	_, err := GetPriority(enabledUpgrades(), vm, signer, tx)
 	require.ErrorContains(t, err, "registry contract not found")
+}
+
+func TestGetPriority_ValidatesResult(t *testing.T) {
+	for _, n := range []int{0, 32, 64, 95, 97, 128} {
+		tx, signer := makeTx(t)
+		vm := &fakeVM{result: make([]byte, n)}
+		_, err := GetPriority(enabledUpgrades(), vm, signer, tx)
+		require.Error(t, err, "length %d must be rejected", n)
+	}
 }
 
 func TestGetPriority_DecodesResult(t *testing.T) {
@@ -111,44 +139,35 @@ func TestGetPriority_EncodesExpectedCalldata(t *testing.T) {
 	_, err := GetPriority(enabledUpgrades(), vm, signer, tx)
 	require.NoError(t, err)
 
+	zero12 := make([]byte, 12)
+	zero24 := make([]byte, 24)
+
 	in := vm.gotIn
 	// selector + 6 head words + (len word + padded data)
 	require.Equal(t, 4+6*32+32+32, len(in))
 	require.Equal(t, uint32(registry.GetPriorityFunctionSelector), binary.BigEndian.Uint32(in[0:4]))
-	// nonce is the 4th head word
+	// from address: 12-byte high padding (address itself is the low 20 bytes)
+	require.Equal(t, zero12, in[4:4+12])
+	from, err := signer.Sender(tx)
+	require.NoError(t, err)
+	require.Equal(t, from.Bytes(), in[4+12:4+32])
+	// to address: 12-byte high padding
+	require.Equal(t, zero12, in[4+32:4+32+12])
+	require.Equal(t, tx.To().Bytes(), in[4+32+12:4+64])
+	// nonce is the 4th head word: 24-byte high padding + 8-byte value
+	require.Equal(t, zero24, in[4+3*32:4+3*32+24])
 	require.Equal(t, uint64(7), binary.BigEndian.Uint64(in[4+3*32+24:4+4*32]))
 	// data offset (5th head word) = 6*32
+	require.Equal(t, zero24, in[4+4*32:4+4*32+24])
 	require.Equal(t, uint64(6*32), binary.BigEndian.Uint64(in[4+4*32+24:4+5*32]))
 	// gas (6th head word)
+	require.Equal(t, zero24, in[4+5*32:4+5*32+24])
 	require.Equal(t, uint64(21000), binary.BigEndian.Uint64(in[4+5*32+24:4+6*32]))
 	// dynamic data length
+	require.Equal(t, zero24, in[4+6*32:4+6*32+24])
 	require.Equal(t, uint64(3), binary.BigEndian.Uint64(in[4+6*32+24:4+7*32]))
-}
-
-func TestParseGetPriorityResult_RejectsWrongLength(t *testing.T) {
-	for _, n := range []int{0, 32, 64, 95, 97, 128} {
-		_, err := parseGetPriorityResult(make([]byte, n))
-		require.Error(t, err, "length %d must be rejected", n)
-	}
-}
-
-func TestParseGetPriorityConfigResult_DecodesAndValidates(t *testing.T) {
-	data := make([]byte, 64)
-	binary.BigEndian.PutUint64(data[24:32], 16)
-	binary.BigEndian.PutUint64(data[56:64], 4)
-	cfg, err := parseGetPriorityConfigResult(data)
-	require.NoError(t, err)
-	require.Equal(t, uint64(16), cfg.MaxTxsPerEntityPerBlock)
-	require.Equal(t, uint64(4), cfg.MaxTxsPerEntityPerEvent)
-
-	// overflow: a non-zero high byte must be rejected.
-	data[0] = 1
-	_, err = parseGetPriorityConfigResult(data)
-	require.ErrorContains(t, err, "do not fit into uint64")
-
-	// wrong length
-	_, err = parseGetPriorityConfigResult(make([]byte, 96))
-	require.Error(t, err)
+	// dynamic data (3 bytes) padded to 32 bytes: 29-byte trailing padding
+	require.Equal(t, make([]byte, 29), in[4+7*32+3:4+8*32])
 }
 
 func TestGetConfig_FeatureDisabled_ReturnsZero(t *testing.T) {
@@ -159,11 +178,72 @@ func TestGetConfig_FeatureDisabled_ReturnsZero(t *testing.T) {
 	require.Nil(t, vm.gotIn)
 }
 
+func TestGetConfig_CallError_ReportsError(t *testing.T) {
+	vm := &fakeVM{err: fmt.Errorf("call failed")}
+	_, err := GetConfig(enabledUpgrades(), vm)
+	require.ErrorContains(t, err, "EVM call failed")
+}
+
+func TestGetConfig_EmptyResult_ReportsMissingContract(t *testing.T) {
+	vm := &fakeVM{result: nil}
+	_, err := GetConfig(enabledUpgrades(), vm)
+	require.ErrorContains(t, err, "registry contract not found")
+}
+
+func TestGetConfig_ValidatesResult(t *testing.T) {
+	data := make([]byte, 64)
+	binary.BigEndian.PutUint64(data[24:32], 16)
+	binary.BigEndian.PutUint64(data[56:64], 4)
+	vm := &fakeVM{result: data}
+	cfg, err := GetConfig(enabledUpgrades(), vm)
+	require.NoError(t, err)
+	require.Equal(t, uint64(16), cfg.MaxTxsPerEntityPerBlock)
+	require.Equal(t, uint64(4), cfg.MaxTxsPerEntityPerEvent)
+
+	// overflow: a non-zero high byte must be rejected.
+	data[0] = 1
+	vm.result = data
+	_, err = GetConfig(enabledUpgrades(), vm)
+	require.ErrorContains(t, err, "do not fit into uint64")
+
+	// wrong length
+	vm.result = make([]byte, 96)
+	_, err = GetConfig(enabledUpgrades(), vm)
+	require.Error(t, err)
+}
+func TestGetConfig_DecodesResult(t *testing.T) {
+	vm := &fakeVM{}
+
+	// a non-zero high byte
+	data := make([]byte, 64)
+	data[0] = 1
+	vm.result = data
+	_, err := GetConfig(enabledUpgrades(), vm)
+	require.ErrorContains(t, err, "do not fit into uint64")
+
+	// wrong length
+	for _, n := range []int{0, 32, 63, 65, 96} {
+		vm := &fakeVM{result: make([]byte, n)}
+		_, err = GetConfig(enabledUpgrades(), vm)
+		require.Error(t, err)
+	}
+}
+
+func TestGetConfig_EncodesExpectedCalldata(t *testing.T) {
+	vm := &fakeVM{result: make([]byte, 64)}
+	_, err := GetConfig(enabledUpgrades(), vm)
+	require.NoError(t, err)
+
+	in := vm.gotIn
+	require.Equal(t, 4, len(in))
+	require.Equal(t, uint32(registry.GetPriorityConfigFunctionSelector), binary.BigEndian.Uint32(in[0:4]))
+}
+
 // TestGetPriority_AgainstRealBytecode validates the hand-rolled ABI encoding and
 // the function selectors against the actually-compiled registry bytecode, run on
 // a real EVM over a mocked state. With empty storage the contract returns a
 // non-prioritized result and the default config (16, 4).
-func TestGetPriority_AgainstRealBytecode(t *testing.T) {
+func TestGetPriorityAndGetConfig_AgainstRealBytecode(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	st := state.NewMockStateDB(ctrl)
