@@ -28,10 +28,12 @@ Block order when enabled:
    front (canonical order); non-prioritized txs keep the proposer's order. Override
    reorders but cannot force-*include* omitted txs.
 3. **Rate limit via registry config call** `getPriorityConfig()` returning
-   `maxTxsPerEntityPerBlock` (block formation) and `maxTxsPerEntityPerEvent`
-   (emitter).
-4. **Overflow = demote to normal pool.** Beyond the per-entity per-block limit, the
-   lowest-weight excess txs lose priority and stay in base order.
+   `maxGasPerEntityPerBlock` (block formation, total gas budget per entity per
+   block) and `maxTxsPerEntityPerEvent` (emitter).
+4. **Overflow = demote to normal pool.** Once an entity's running gas total for
+   prioritized txs would exceed the budget, the offending tx and all further
+   ones (in `(level desc, weight desc, hash asc)` order) lose priority and stay
+   in base order.
 5. **Query input** mirrors subsidies `chooseFund` (`from, to, value, nonce,
    calldata`) **plus `gas`** (tx gas limit). Priority is **orthogonal** to
    subsidies/bundles.
@@ -92,7 +94,7 @@ Block order when enabled:
   blocks. Mirror `gossip/blockproc/subsidies/subsidies.go`:
   - `type VirtualMachine interface { Call(from, to common.Address, input []byte, gas uint64, value *uint256.Int) ([]byte, uint64, error) }` (satisfied by `*vm.EVM`).
   - `type Priority struct { Level, Weight *big.Int; Id [32]byte }`; `IsPrioritized()`.
-  - `type Config struct { MaxTxsPerEntityPerBlock, MaxTxsPerEntityPerEvent uint64 }`.
+  - `type Config struct { MaxGasPerEntityPerBlock, MaxTxsPerEntityPerEvent uint64 }`.
   - `GetPriority(upgrades, vm, signer, tx) (Priority, error)`,
     `GetConfig(upgrades, vm) (Config, error)` — hand-rolled ABI, strict length
     checks, fixed gas caps.
@@ -148,8 +150,16 @@ prioritize(base []*types.Transaction, classifier, signer, cfg) []*types.Transact
      (level, weight, id) := classifier.Priority(tx)   // errors => level 0
      meta.append({tx, level, weight, id})
   prioritized := [m in meta if m.level > 0]
-  // rate limit per id: keep top cfg.MaxTxsPerEntityPerBlock by weight (tie: txhash)
-  group prioritized by id; per group sort by (weight desc, txhash asc); keep first N
+  // rate limit per id: greedy gas-budget fill in (level desc, weight desc,
+  // txhash asc) order; break at the first tx that would exceed the budget
+  group prioritized by id
+  for each group:
+    sort by (level desc, weight desc, txhash asc)
+    usedGas := 0
+    for tx in group:
+      if tx.gas > cfg.MaxGasPerEntityPerBlock - usedGas: break
+      usedGas += tx.gas
+      mark kept
   kept := union of kept-per-group
   sort kept by (level desc, weight desc, txhash asc)
   rest := [m.tx in base order if m.tx not in kept]    // demoted overflow + non-prio

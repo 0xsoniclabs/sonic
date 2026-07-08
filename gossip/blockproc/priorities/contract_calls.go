@@ -123,7 +123,7 @@ func GetConfig(upgrades opera.Upgrades, vm VirtualMachine) (Config, error) {
 // no transaction is prioritized, the safest degradation: every validator that
 // fails to read the config produces the same (un-prioritized) ordering.
 var FallbackConfig = Config{
-	MaxTxsPerEntityPerBlock: 0,
+	MaxGasPerEntityPerBlock: 0,
 	MaxTxsPerEntityPerEvent: 0,
 }
 
@@ -195,7 +195,7 @@ func parseGetPriorityResult(data []byte) (Priority, error) {
 }
 
 // parseGetPriorityConfigResult decodes the
-// (uint256 maxTxsPerEntityPerBlock, uint256 maxTxsPerEntityPerEvent) response of
+// (uint256 maxGasPerEntityPerBlock, uint256 maxTxsPerEntityPerEvent) response of
 // the getPriorityConfig call. The result must be exactly two 32-byte words, each
 // fitting into a uint64.
 func parseGetPriorityConfigResult(data []byte) (Config, error) {
@@ -208,7 +208,7 @@ func parseGetPriorityConfigResult(data []byte) (Config, error) {
 		return Config{}, fmt.Errorf("invalid result from getPriorityConfig call, values do not fit into uint64")
 	}
 	return Config{
-		MaxTxsPerEntityPerBlock: binary.BigEndian.Uint64(data[24:32]),
+		MaxGasPerEntityPerBlock: binary.BigEndian.Uint64(data[24:32]),
 		MaxTxsPerEntityPerEvent: binary.BigEndian.Uint64(data[56:64]),
 	}, nil
 }

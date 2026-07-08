@@ -75,9 +75,12 @@ func (c *EvmClassifier) Priority(tx *types.Transaction) (Priority, error) {
 
 // Prioritize reorders the given base-ordered transactions so that prioritized
 // transactions appear first, sorted by (level desc, weight desc, hash asc), with
-// at most cfg.MaxTxsPerEntityPerBlock transactions kept per entity id. Demoted
-// (rate-limited) and non-prioritized transactions keep their original base-order
-// position.
+// per-entity gas usage bounded by cfg.MaxGasPerEntityPerBlock: transactions of
+// one entity are considered in (level desc, weight desc, hash asc) order and
+// kept as prioritized while the running gas total stays within the budget; the
+// first transaction that would exceed the budget and all following ones are
+// demoted. Demoted (rate-limited) and non-prioritized transactions keep their
+// original base-order position.
 //
 // The base order must already be the mode-specific order (scrambler output in
 // legacy mode, proposal order in single-proposer mode) and must already be
@@ -121,8 +124,9 @@ func Prioritize(
 		}
 	}
 
-	// For each entity prioritize at most MaxTxsPerEntityPerBlock by (level desc,
-	// weight desc, hash asc); the rest are demoted.
+	// For each entity, greedily fill the per-entity gas budget in (level desc,
+	// weight desc, hash asc) order; the first transaction that would exceed the
+	// budget and all following ones stay demoted.
 	prioritize := make([]bool, len(entries))
 	for _, idxs := range idToIdxs {
 		slices.SortFunc(idxs, func(a, b int) int {
@@ -134,10 +138,15 @@ func Prioritize(
 			}
 			return bytes.Compare(entries[a].hash[:], entries[b].hash[:])
 		})
-		for k, idx := range idxs {
-			if uint64(k) >= cfg.MaxTxsPerEntityPerBlock {
+		var usedGas uint64
+		for _, idx := range idxs {
+			txGas := entries[idx].tx.Gas()
+			// usedGas <= budget is an invariant (we only add txGas below when
+			// it fits), so budget - usedGas never underflows.
+			if txGas > cfg.MaxGasPerEntityPerBlock-usedGas {
 				break
 			}
+			usedGas += txGas
 			prioritize[idx] = true
 		}
 	}

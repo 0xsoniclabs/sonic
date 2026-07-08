@@ -197,7 +197,7 @@ func TestGetConfig_ValidatesResult(t *testing.T) {
 	vm := &fakeVM{result: data}
 	cfg, err := GetConfig(enabledUpgrades(), vm)
 	require.NoError(t, err)
-	require.Equal(t, uint64(16), cfg.MaxTxsPerEntityPerBlock)
+	require.Equal(t, uint64(16), cfg.MaxGasPerEntityPerBlock)
 	require.Equal(t, uint64(4), cfg.MaxTxsPerEntityPerEvent)
 
 	// overflow: a non-zero high byte must be rejected.
@@ -242,7 +242,7 @@ func TestGetConfig_EncodesExpectedCalldata(t *testing.T) {
 // TestGetPriority_AgainstRealBytecode validates the hand-rolled ABI encoding and
 // the function selectors against the actually-compiled registry bytecode, run on
 // a real EVM over a mocked state. With empty storage the contract returns a
-// non-prioritized result and the default config (16, 4).
+// non-prioritized result and the default config (10_000_000, 4).
 func TestGetPriorityAndGetConfig_AgainstRealBytecode(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
@@ -290,6 +290,6 @@ func TestGetPriorityAndGetConfig_AgainstRealBytecode(t *testing.T) {
 
 	cfg, err := GetConfig(upgrades, evm)
 	require.NoError(err)
-	require.Equal(uint64(16), cfg.MaxTxsPerEntityPerBlock)
+	require.Equal(uint64(10_000_000), cfg.MaxGasPerEntityPerBlock)
 	require.Equal(uint64(4), cfg.MaxTxsPerEntityPerEvent)
 }

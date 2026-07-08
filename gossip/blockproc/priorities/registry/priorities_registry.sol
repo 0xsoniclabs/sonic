@@ -17,7 +17,6 @@ pragma solidity ^0.8.24;
 // limits. Production registries are governed and upgradeable behind a proxy;
 // the node depends only on the ABI shape, not on this implementation.
 contract PriorityRegistry {
-
     struct Priority {
         uint256 level;
         uint256 weight;
@@ -32,15 +31,20 @@ contract PriorityRegistry {
     uint256 public maxGas;
 
     // Per-entity rate limits. Zero selects the built-in defaults below.
-    uint256 private maxTxsPerEntityPerBlockValue;
+    uint256 private maxGasPerEntityPerBlockValue;
     uint256 private maxTxsPerEntityPerEventValue;
 
-    uint256 constant DEFAULT_MAX_PER_BLOCK = 16;
+    uint256 constant DEFAULT_MAX_GAS_PER_BLOCK = 10_000_000;
     uint256 constant DEFAULT_MAX_PER_EVENT = 4;
 
     // --- configuration (test/development helpers) ---
 
-    function setSenderPriority(address from, uint256 level, uint256 weight, bytes32 id) external {
+    function setSenderPriority(
+        address from,
+        uint256 level,
+        uint256 weight,
+        bytes32 id
+    ) external {
         senderPriority[from] = Priority(level, weight, id);
     }
 
@@ -48,8 +52,8 @@ contract PriorityRegistry {
         maxGas = g;
     }
 
-    function setConfig(uint256 perBlock, uint256 perEvent) external {
-        maxTxsPerEntityPerBlockValue = perBlock;
+    function setConfig(uint256 perBlockGas, uint256 perEvent) external {
+        maxGasPerEntityPerBlockValue = perBlockGas;
         maxTxsPerEntityPerEventValue = perEvent;
     }
 
@@ -70,13 +74,19 @@ contract PriorityRegistry {
         return (p.level, p.weight, p.id);
     }
 
-    function getPriorityConfig() external view returns (
-        uint256 maxTxsPerEntityPerBlock,
-        uint256 maxTxsPerEntityPerEvent
-    ) {
-        maxTxsPerEntityPerBlock = maxTxsPerEntityPerBlockValue == 0
-            ? DEFAULT_MAX_PER_BLOCK : maxTxsPerEntityPerBlockValue;
+    function getPriorityConfig()
+        external
+        view
+        returns (
+            uint256 maxGasPerEntityPerBlock,
+            uint256 maxTxsPerEntityPerEvent
+        )
+    {
+        maxGasPerEntityPerBlock = maxGasPerEntityPerBlockValue == 0
+            ? DEFAULT_MAX_GAS_PER_BLOCK
+            : maxGasPerEntityPerBlockValue;
         maxTxsPerEntityPerEvent = maxTxsPerEntityPerEventValue == 0
-            ? DEFAULT_MAX_PER_EVENT : maxTxsPerEntityPerEventValue;
+            ? DEFAULT_MAX_PER_EVENT
+            : maxTxsPerEntityPerEventValue;
     }
 }

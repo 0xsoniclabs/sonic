@@ -74,7 +74,7 @@ func testPrioritiesScheduledFirst(t *testing.T, singleProposer bool) {
 
 	// Configure generous per-entity limits so rate limiting does not interfere.
 	receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-		return reg.SetConfig(opts, big.NewInt(100), big.NewInt(100))
+		return reg.SetConfig(opts, big.NewInt(1_000_000), big.NewInt(100))
 	})
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)

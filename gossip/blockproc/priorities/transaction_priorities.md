@@ -82,12 +82,20 @@ Priority is **orthogonal** to subsidies and bundles: a transaction may be sponso
 
 ```solidity
 function getPriorityConfig() external view
-    returns (uint256 maxTxsPerEntityPerBlock, uint256 maxTxsPerEntityPerEvent /*, ... */);
+    returns (uint256 maxGasPerEntityPerBlock, uint256 maxTxsPerEntityPerEvent /*, ... */);
 ```
 
 Queried once per block (block formation) and opportunistically by the emitter. As
 with subsidies' `getGasConfig`, the response is decoded by length so additional
 fields can be appended in a backward-compatible way later.
+
+`maxGasPerEntityPerBlock` is the **total gas budget** of prioritized transactions
+of one entity in a single block: block formation packs an entity's transactions
+in `(level desc, weight desc, hash asc)` order and keeps them as prioritized
+while the running gas total stays within the budget; the first transaction that
+would exceed the budget and all following ones are demoted. This lets an entity
+trade *many cheap* transactions against *few expensive* ones with the same
+per-block cost.
 
 ### Versioning & failure handling
 
@@ -123,8 +131,10 @@ In `c_block_callbacks.go`, after the base order is produced (scrambler for legac
 ```
 prioritize(baseOrdered, vm@blockStartState, signer, config):
   1. classify every tx -> (level, weight, id)          // queries the registry
-  2. among prioritized txs (level>0), within each id keep the top
-     config.MaxTxsPerEntityPerBlock by weight (tie: txhash); demote the rest
+  2. among prioritized txs (level>0), for each id greedily fill
+     config.MaxGasPerEntityPerBlock in (level desc, weight desc, txhash asc)
+     order; the first tx that would exceed the budget and all following ones
+     are demoted
   3. sort kept prioritized txs by (level desc, weight desc, txhash asc)
   4. result = [sorted prioritized] ++ [base order minus the kept prioritized txs]
 ```

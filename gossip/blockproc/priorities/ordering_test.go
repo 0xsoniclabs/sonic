@@ -45,8 +45,12 @@ func (c fakeClassifier) Priority(tx *types.Transaction) (Priority, error) {
 }
 
 func makeTxN(nonce uint64) *types.Transaction {
+	return makeTxG(nonce, 21000)
+}
+
+func makeTxG(nonce, gas uint64) *types.Transaction {
 	to := common.Address{0xbb}
-	return types.NewTransaction(nonce, to, big.NewInt(0), 21000, big.NewInt(1), nil)
+	return types.NewTransaction(nonce, to, big.NewInt(0), gas, big.NewInt(1), nil)
 }
 
 func prio(level, weight int64, id byte) Priority {
@@ -77,7 +81,7 @@ func requirePermutation(t *testing.T, got, base types.Transactions) {
 
 func TestPrioritize_NoPriorities_IsIdentity(t *testing.T) {
 	base := types.Transactions{makeTxN(0), makeTxN(1), makeTxN(2)}
-	got := Prioritize(base, fakeClassifier{}, Config{MaxTxsPerEntityPerBlock: 10})
+	got := Prioritize(base, fakeClassifier{}, Config{MaxGasPerEntityPerBlock: 1_000_000})
 	require.Equal(t, hashes(base), hashes(got))
 }
 
@@ -90,7 +94,7 @@ func TestPrioritize_PartitionsByLevelThenWeight(t *testing.T) {
 		c.Hash(): prio(2, 5, 2),  // level 2 (highest -> first)
 		d.Hash(): prio(1, 20, 3), // level 1, higher weight than a
 	}}
-	got := Prioritize(base, cls, Config{MaxTxsPerEntityPerBlock: 10})
+	got := Prioritize(base, cls, Config{MaxGasPerEntityPerBlock: 1_000_000})
 	// level 2 first, then level 1 by weight desc (d before a), then non-prio b
 	require.Equal(t, hashes(types.Transactions{c, d, a, b}), hashes(got))
 	requirePermutation(t, got, base)
@@ -104,7 +108,7 @@ func TestPrioritize_TieBrokenByHash(t *testing.T) {
 		a.Hash(): prio(1, 10, 1),
 		b.Hash(): prio(1, 10, 2), // same level+weight, different id
 	}}
-	got := Prioritize(base, cls, Config{MaxTxsPerEntityPerBlock: 10})
+	got := Prioritize(base, cls, Config{MaxGasPerEntityPerBlock: 1_000_000})
 
 	// Expected order is the two txs sorted by ascending hash.
 	want := types.Transactions{a, b}
@@ -125,10 +129,50 @@ func TestPrioritize_RateLimitDemotesExcessToBaseOrder(t *testing.T) {
 		a3.Hash(): prio(2, 20, 1),
 		a4.Hash(): prio(2, 0, 1),
 	}}
-	got := Prioritize(base, cls, Config{MaxTxsPerEntityPerBlock: 3})
+	// Budget for exactly 3 txs of the entity; the 4th would exceed and is demoted.
+	got := Prioritize(base, cls, Config{MaxGasPerEntityPerBlock: 3 * 21000})
 	// Keep top 3 by level and weight at the front; a1 (demoted) and x keep
 	// their base-order positions.
 	require.Equal(t, hashes(types.Transactions{a3, a4, a2, a1, x}), hashes(got))
+	requirePermutation(t, got, base)
+}
+
+func TestPrioritize_GasBudget_PacksManyCheapOrFewExpensive(t *testing.T) {
+	// Two entities, each with the same 200_000 gas budget:
+	//   - cheap entity (id 1): 3 cheap txs of 50_000 -> all three fit (150_000).
+	//   - expensive entity (id 2): 3 txs of 80_000 -> only 2 fit (160_000);
+	//     the third would push to 240_000 > 200_000 and is demoted.
+	c1, c2, c3 := makeTxG(0, 50_000), makeTxG(1, 50_000), makeTxG(2, 50_000)
+	e1, e2, e3 := makeTxG(3, 80_000), makeTxG(4, 80_000), makeTxG(5, 80_000)
+	base := types.Transactions{c1, e1, c2, e2, c3, e3}
+	cls := fakeClassifier{prio: map[common.Hash]Priority{
+		c1.Hash(): prio(1, 30, 1),
+		c2.Hash(): prio(1, 20, 1),
+		c3.Hash(): prio(1, 10, 1),
+		e1.Hash(): prio(1, 30, 2),
+		e2.Hash(): prio(1, 20, 2),
+		e3.Hash(): prio(1, 10, 2), // this one gets demoted
+	}}
+	got := Prioritize(base, cls, Config{MaxGasPerEntityPerBlock: 200_000})
+
+	// Prioritized set contains all cheap txs and the top two expensive txs,
+	// globally sorted by (level desc, weight desc, hash asc). Within each
+	// weight the two entities' txs (cheap vs expensive) tie-break by hash.
+	prioritizedIn := func(txs ...*types.Transaction) map[common.Hash]bool {
+		m := make(map[common.Hash]bool, len(txs))
+		for _, tx := range txs {
+			m[tx.Hash()] = true
+		}
+		return m
+	}
+	prioritized := prioritizedIn(c1, c2, c3, e1, e2)
+	require.Len(t, got, len(base))
+	// The first 5 txs must be exactly the prioritized set.
+	for i := 0; i < 5; i++ {
+		require.True(t, prioritized[got[i].Hash()], "tx at %d must be prioritized", i)
+	}
+	// e3 is demoted and keeps its base-order position (last).
+	require.Equal(t, e3.Hash(), got[5].Hash())
 	requirePermutation(t, got, base)
 }
 
@@ -138,8 +182,8 @@ func TestPrioritize_ZeroLimit_PrioritizesNothing(t *testing.T) {
 	cls := fakeClassifier{prio: map[common.Hash]Priority{
 		a.Hash(): prio(5, 99, 1),
 	}}
-	got := Prioritize(base, cls, Config{MaxTxsPerEntityPerBlock: 0})
-	require.Equal(t, hashes(base), hashes(got), "with limit 0 nothing is prioritized")
+	got := Prioritize(base, cls, Config{MaxGasPerEntityPerBlock: 0})
+	require.Equal(t, hashes(base), hashes(got), "with budget 0 nothing is prioritized")
 }
 
 func TestPrioritize_ClassifierError_TreatedAsNotPrioritized(t *testing.T) {
@@ -150,7 +194,7 @@ func TestPrioritize_ClassifierError_TreatedAsNotPrioritized(t *testing.T) {
 		prio:  map[common.Hash]Priority{b.Hash(): prio(1, 10, 1)},
 		errOn: map[common.Hash]bool{b.Hash(): true}, // error overrides priority
 	}
-	got := Prioritize(base, cls, Config{MaxTxsPerEntityPerBlock: 10})
+	got := Prioritize(base, cls, Config{MaxGasPerEntityPerBlock: 1_000_000})
 	require.Equal(t, hashes(base), hashes(got), "error => not prioritized => identity")
 }
 
@@ -193,7 +237,7 @@ func TestPrioritize_IsDeterministic(t *testing.T) {
 			cls.prio[tx.Hash()] = prio(int64(1+i%3), int64(i), byte(i%4))
 		}
 	}
-	cfg := Config{MaxTxsPerEntityPerBlock: 3}
+	cfg := Config{MaxGasPerEntityPerBlock: 3 * 21000}
 	first := Prioritize(slices.Clone(txs), cls, cfg)
 	for i := 0; i < 5; i++ {
 		again := Prioritize(slices.Clone(txs), cls, cfg)

@@ -48,10 +48,12 @@ func zeroPriority() Priority {
 // Config holds the per-entity rate limits returned by the registry's
 // getPriorityConfig function.
 type Config struct {
-	// MaxTxsPerEntityPerBlock bounds how many transactions of one entity may be
-	// prioritized within a single block (authoritative, enforced at block
-	// formation).
-	MaxTxsPerEntityPerBlock uint64
+	// MaxGasPerEntityPerBlock bounds the total gas of prioritized transactions
+	// of one entity in a single block (authoritative, enforced at block
+	// formation). Transactions are packed in (level desc, weight desc, hash asc)
+	// order until the next transaction would exceed the budget; the remainder
+	// is demoted.
+	MaxGasPerEntityPerBlock uint64
 	// MaxTxsPerEntityPerEvent bounds how many transactions of one entity a
 	// validator eagerly includes in a single emitted event (best-effort hint).
 	MaxTxsPerEntityPerEvent uint64
