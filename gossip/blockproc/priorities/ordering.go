@@ -114,18 +114,21 @@ func Prioritize(
 
 	// Group prioritized transactions by entity id (map used only for grouping;
 	// it never determines output order).
-	byID := make(map[[32]byte][]int)
+	idToIdxs := make(map[[32]byte][]int)
 	for i := range entries {
 		if entries[i].level.Sign() > 0 {
-			byID[entries[i].id] = append(byID[entries[i].id], i)
+			idToIdxs[entries[i].id] = append(idToIdxs[entries[i].id], i)
 		}
 	}
 
-	// Within each entity keep at most MaxTxsPerEntityPerBlock by (weight desc,
-	// hash asc); the rest are demoted.
-	kept := make([]bool, len(entries))
-	for _, idxs := range byID {
+	// For each entity prioritize at most MaxTxsPerEntityPerBlock by (level desc,
+	// weight desc, hash asc); the rest are demoted.
+	prioritize := make([]bool, len(entries))
+	for _, idxs := range idToIdxs {
 		slices.SortFunc(idxs, func(a, b int) int {
+			if c := entries[b].level.Cmp(&entries[a].level); c != 0 {
+				return c
+			}
 			if c := entries[b].weight.Cmp(&entries[a].weight); c != 0 {
 				return c
 			}
@@ -135,19 +138,18 @@ func Prioritize(
 			if uint64(k) >= cfg.MaxTxsPerEntityPerBlock {
 				break
 			}
-			kept[idx] = true
+			prioritize[idx] = true
 		}
 	}
 
-	// Collect kept (prioritized) entries and sort by (level desc, weight desc,
-	// hash asc).
-	keptIdx := make([]int, 0, len(entries))
+	// Collect prioritized entries and sort by (level desc, weight desc, hash asc).
+	prioritizedIndices := make([]int, 0, len(entries))
 	for i := range entries {
-		if kept[i] {
-			keptIdx = append(keptIdx, i)
+		if prioritize[i] {
+			prioritizedIndices = append(prioritizedIndices, i)
 		}
 	}
-	slices.SortFunc(keptIdx, func(a, b int) int {
+	slices.SortFunc(prioritizedIndices, func(a, b int) int {
 		if c := entries[b].level.Cmp(&entries[a].level); c != 0 {
 			return c
 		}
@@ -158,12 +160,12 @@ func Prioritize(
 	})
 
 	result := make(types.Transactions, 0, len(entries))
-	for _, i := range keptIdx {
+	for _, i := range prioritizedIndices {
 		result = append(result, entries[i].tx)
 	}
 	// Append the remainder in original base order (demoted + non-prioritized).
 	for i := range entries {
-		if !kept[i] {
+		if !prioritize[i] {
 			result = append(result, entries[i].tx)
 		}
 	}

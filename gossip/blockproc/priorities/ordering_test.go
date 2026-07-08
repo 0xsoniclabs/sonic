@@ -86,9 +86,9 @@ func TestPrioritize_PartitionsByLevelThenWeight(t *testing.T) {
 	base := types.Transactions{a, b, c, d}
 	cls := fakeClassifier{prio: map[common.Hash]Priority{
 		a.Hash(): prio(1, 10, 1), // level 1
+		// b is non-prioritized
 		c.Hash(): prio(2, 5, 2),  // level 2 (highest -> first)
 		d.Hash(): prio(1, 20, 3), // level 1, higher weight than a
-		// b is non-prioritized
 	}}
 	got := Prioritize(base, cls, Config{MaxTxsPerEntityPerBlock: 10})
 	// level 2 first, then level 1 by weight desc (d before a), then non-prio b
@@ -97,8 +97,9 @@ func TestPrioritize_PartitionsByLevelThenWeight(t *testing.T) {
 }
 
 func TestPrioritize_TieBrokenByHash(t *testing.T) {
-	a, b := makeTxN(0), makeTxN(1)
+	a, b := makeTxN(0), makeTxN(3)
 	base := types.Transactions{a, b}
+	require.True(t, bytes.Compare(a.Hash().Bytes(), b.Hash().Bytes()) > 0) // initially they are in the wrong order
 	cls := fakeClassifier{prio: map[common.Hash]Priority{
 		a.Hash(): prio(1, 10, 1),
 		b.Hash(): prio(1, 10, 2), // same level+weight, different id
@@ -114,18 +115,20 @@ func TestPrioritize_TieBrokenByHash(t *testing.T) {
 }
 
 func TestPrioritize_RateLimitDemotesExcessToBaseOrder(t *testing.T) {
-	a1, x, a2, a3 := makeTxN(0), makeTxN(1), makeTxN(2), makeTxN(3)
-	base := types.Transactions{a1, x, a2, a3}
-	// a1, a2, a3 share entity id 1 with weights 10, 30, 20; x is non-prioritized.
+	a1, x, a2, a3, a4 := makeTxN(0), makeTxN(1), makeTxN(2), makeTxN(3), makeTxN(4)
+	base := types.Transactions{a1, x, a2, a3, a4}
+	// a1, a2, a3, a4 are all from the same entity (id=1)
 	cls := fakeClassifier{prio: map[common.Hash]Priority{
 		a1.Hash(): prio(1, 10, 1),
+		// x is non-prioritized
 		a2.Hash(): prio(1, 30, 1),
-		a3.Hash(): prio(1, 20, 1),
+		a3.Hash(): prio(2, 20, 1),
+		a4.Hash(): prio(2, 0, 1),
 	}}
-	got := Prioritize(base, cls, Config{MaxTxsPerEntityPerBlock: 2})
-	// Keep top 2 by weight (a2=30, a3=20) at the front; a1 (demoted) and x keep
+	got := Prioritize(base, cls, Config{MaxTxsPerEntityPerBlock: 3})
+	// Keep top 3 by level and weight at the front; a1 (demoted) and x keep
 	// their base-order positions.
-	require.Equal(t, hashes(types.Transactions{a2, a3, a1, x}), hashes(got))
+	require.Equal(t, hashes(types.Transactions{a3, a4, a2, a1, x}), hashes(got))
 	requirePermutation(t, got, base)
 }
 
@@ -142,9 +145,10 @@ func TestPrioritize_ZeroLimit_PrioritizesNothing(t *testing.T) {
 func TestPrioritize_ClassifierError_TreatedAsNotPrioritized(t *testing.T) {
 	a, b := makeTxN(0), makeTxN(1)
 	base := types.Transactions{a, b}
+	// without the error, b would be prioritized and come first
 	cls := fakeClassifier{
-		prio:  map[common.Hash]Priority{a.Hash(): prio(1, 10, 1)},
-		errOn: map[common.Hash]bool{a.Hash(): true}, // error overrides priority
+		prio:  map[common.Hash]Priority{b.Hash(): prio(1, 10, 1)},
+		errOn: map[common.Hash]bool{b.Hash(): true}, // error overrides priority
 	}
 	got := Prioritize(base, cls, Config{MaxTxsPerEntityPerBlock: 10})
 	require.Equal(t, hashes(base), hashes(got), "error => not prioritized => identity")
