@@ -33,11 +33,6 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-var (
-	now   = time.Now
-	since = time.Since
-)
-
 // newTestTx creates a signed EIP-155 transaction for use in tests.
 // chainID defaults to 1 if nil.
 func newTestTx(t *testing.T, nonce uint64, chainID *big.Int) (*types.Transaction, hexutil.Bytes) {
@@ -64,18 +59,30 @@ func newTestTx(t *testing.T, nonce uint64, chainID *big.Int) (*types.Transaction
 	return tx, hexutil.Bytes(encoded)
 }
 
-// setupSendRawSyncAPI creates a mock backend and PublicTransactionPoolAPI for unit tests.
-func setupSendRawSyncAPI(t *testing.T) (*MockBackend, *PublicTransactionPoolAPI) {
+// setupSendRawSyncAPI creates a mock backend and PublicTransactionPoolAPI for
+// unit tests, with the given default and maximum sync-wait timeouts.
+func setupSendRawSyncAPI(t *testing.T, defaultTimeout, maxTimeout time.Duration) (*MockBackend, *PublicTransactionPoolAPI) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	mockBackend := NewMockBackend(ctrl)
 	mockBackend.EXPECT().ChainID().Return(big.NewInt(1)).AnyTimes()
+	mockBackend.EXPECT().RPCTxSyncDefaultTimeout().Return(defaultTimeout).AnyTimes()
+	mockBackend.EXPECT().RPCTxSyncMaxTimeout().Return(maxTimeout).AnyTimes()
 	api := NewPublicTransactionPoolAPI(mockBackend, &AddrLocker{})
 	return mockBackend, api
 }
 
+// expectSuccessfulSubmission registers the backend expectations for a
+// transaction that passes the nonce check and is accepted by the pool.
+func expectSuccessfulSubmission(mockBackend *MockBackend) {
+	mockBackend.EXPECT().GetPoolNonce(gomock.Any(), gomock.Any()).Return(uint64(0), nil)
+	mockBackend.EXPECT().RPCTxFeeCap().Return(float64(0))
+	mockBackend.EXPECT().UnprotectedAllowed().Return(false)
+	mockBackend.EXPECT().SendTx(gomock.Any(), gomock.Any()).Return(nil)
+}
+
 func TestSendRawTransactionSync_ReturnsReceipt(t *testing.T) {
-	mockBackend, api := setupSendRawSyncAPI(t)
+	mockBackend, api := setupSendRawSyncAPI(t, 1*time.Second, 2*time.Second)
 
 	tx, encoded := newTestTx(t, 0, nil)
 	txHash := tx.Hash()
@@ -89,10 +96,7 @@ func TestSendRawTransactionSync_ReturnsReceipt(t *testing.T) {
 		GasUsed: 21000,
 	}
 
-	mockBackend.EXPECT().GetPoolNonce(gomock.Any(), gomock.Any()).Return(uint64(0), nil)
-	mockBackend.EXPECT().RPCTxFeeCap().Return(float64(0))
-	mockBackend.EXPECT().UnprotectedAllowed().Return(false)
-	mockBackend.EXPECT().SendTx(gomock.Any(), gomock.Any()).Return(nil)
+	expectSuccessfulSubmission(mockBackend)
 	mockBackend.EXPECT().GetTransaction(gomock.Any(), txHash).Return(tx, uint64(1), uint64(0), nil)
 	mockBackend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(block, nil)
 	mockBackend.EXPECT().FetchReceiptsForBlock(block).Return(types.Receipts{receipt})
@@ -106,7 +110,7 @@ func TestSendRawTransactionSync_ReturnsReceipt(t *testing.T) {
 }
 
 func TestSendRawTransactionSync_NonceGap_ReturnsCode6(t *testing.T) {
-	mockBackend, api := setupSendRawSyncAPI(t)
+	mockBackend, api := setupSendRawSyncAPI(t, 1*time.Second, 2*time.Second)
 
 	// tx has nonce=5 but pool expects nonce=0 → gap
 	_, encoded := newTestTx(t, 5, nil)
@@ -124,60 +128,88 @@ func TestSendRawTransactionSync_NonceGap_ReturnsCode6(t *testing.T) {
 	require.Equal(t, hexutil.Uint64(0), syncErr.ErrorData())
 }
 
-func TestSendRawTransactionSync_Timeout_TxInPool_ReturnsCode5(t *testing.T) {
-	mockBackend, api := setupSendRawSyncAPI(t)
+func TestSendRawTransactionSync_TimeoutHandling(t *testing.T) {
+	uint64Ptr := func(v uint64) *hexutil.Uint64 {
+		u := hexutil.Uint64(v)
+		return &u
+	}
 
-	tx, encoded := newTestTx(t, 0, nil)
-	txHash := tx.Hash()
-	timeoutMs := hexutil.Uint64(10) // very short, 10ms
+	tests := map[string]struct {
+		defaultTimeout time.Duration
+		maxTimeout     time.Duration
+		timeoutMs      *hexutil.Uint64
+		// effective timeout the implementation is expected to apply
+		wantTimeout time.Duration
+	}{
+		"nil timeout uses default": {
+			defaultTimeout: 200 * time.Millisecond,
+			maxTimeout:     10 * time.Second,
+			timeoutMs:      nil,
+			wantTimeout:    200 * time.Millisecond,
+		},
+		"custom timeout below max is honored": {
+			defaultTimeout: 10 * time.Second,
+			maxTimeout:     10 * time.Second,
+			timeoutMs:      uint64Ptr(100),
+			wantTimeout:    100 * time.Millisecond,
+		},
+		"custom timeout equal to max is honored": {
+			defaultTimeout: 10 * time.Second,
+			maxTimeout:     300 * time.Millisecond,
+			timeoutMs:      uint64Ptr(300),
+			wantTimeout:    300 * time.Millisecond,
+		},
+		"custom timeout above max is clamped to max": {
+			defaultTimeout: 10 * time.Second,
+			maxTimeout:     200 * time.Millisecond,
+			timeoutMs:      uint64Ptr(60_000),
+			wantTimeout:    200 * time.Millisecond,
+		},
+		"zero timeout expires immediately": {
+			defaultTimeout: 10 * time.Second,
+			maxTimeout:     10 * time.Second,
+			timeoutMs:      uint64Ptr(0),
+			wantTimeout:    0,
+		},
+	}
 
-	mockBackend.EXPECT().GetPoolNonce(gomock.Any(), gomock.Any()).Return(uint64(0), nil)
-	mockBackend.EXPECT().RPCTxFeeCap().Return(float64(0))
-	mockBackend.EXPECT().UnprotectedAllowed().Return(false)
-	mockBackend.EXPECT().SendTx(gomock.Any(), gomock.Any()).Return(nil)
-	// GetTransaction always returns nil (not confirmed)
-	mockBackend.EXPECT().GetTransaction(gomock.Any(), txHash).Return(nil, uint64(0), uint64(0), nil).AnyTimes()
-	// tx still in pool after timeout
-	mockBackend.EXPECT().GetPoolTransaction(txHash).Return(tx)
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockBackend, api := setupSendRawSyncAPI(t, test.defaultTimeout, test.maxTimeout)
 
-	result, err := api.SendRawTransactionSync(context.Background(), encoded, &timeoutMs)
+			tx, encoded := newTestTx(t, 0, nil)
+			txHash := tx.Hash()
 
-	require.Nil(t, result)
-	require.Error(t, err)
-	var syncErr *sendRawSyncError
-	require.True(t, errors.As(err, &syncErr))
-	require.Equal(t, errCodeSendRawSyncQueued, syncErr.ErrorCode())
+			expectSuccessfulSubmission(mockBackend)
+			// GetTransaction always reports not-yet-confirmed, so the call
+			// can only end by hitting the effective timeout.
+			mockBackend.EXPECT().GetTransaction(gomock.Any(), txHash).Return(nil, uint64(0), uint64(0), nil).AnyTimes()
+
+			start := time.Now()
+			result, err := api.SendRawTransactionSync(context.Background(), encoded, test.timeoutMs)
+			elapsed := time.Since(start)
+
+			require.Nil(t, result)
+			require.Error(t, err)
+			var syncErr *sendRawSyncError
+			require.True(t, errors.As(err, &syncErr), "expected sendRawSyncError, got %T: %v", err, err)
+			require.Equal(t, errCodeSendRawSyncTimeout, syncErr.ErrorCode())
+			require.Equal(t, txHash, syncErr.ErrorData())
+
+			require.GreaterOrEqual(t, elapsed, test.wantTimeout,
+				"returned before the effective timeout elapsed")
+			// Generous upper bound: well below the not-chosen timeouts
+			// (default/max of 10s) while tolerating scheduling jitter.
+			require.Less(t, elapsed, test.wantTimeout+2*time.Second,
+				"did not return close to the effective timeout")
+		})
+	}
 }
 
-func TestSendRawTransactionSync_Timeout_TxNotInPool_ReturnsCode4(t *testing.T) {
-	mockBackend, api := setupSendRawSyncAPI(t)
+func TestSendRawTransactionSync_SendTxError_ReturnsCode5(t *testing.T) {
+	mockBackend, api := setupSendRawSyncAPI(t, 1*time.Second, 2*time.Second)
 
 	tx, encoded := newTestTx(t, 0, nil)
-	txHash := tx.Hash()
-	timeoutMs := hexutil.Uint64(10) // very short, 10ms
-
-	mockBackend.EXPECT().GetPoolNonce(gomock.Any(), gomock.Any()).Return(uint64(0), nil)
-	mockBackend.EXPECT().RPCTxFeeCap().Return(float64(0))
-	mockBackend.EXPECT().UnprotectedAllowed().Return(false)
-	mockBackend.EXPECT().SendTx(gomock.Any(), gomock.Any()).Return(nil)
-	// GetTransaction always returns nil
-	mockBackend.EXPECT().GetTransaction(gomock.Any(), txHash).Return(nil, uint64(0), uint64(0), nil).AnyTimes()
-	// tx not in pool after timeout
-	mockBackend.EXPECT().GetPoolTransaction(txHash).Return(nil)
-
-	result, err := api.SendRawTransactionSync(context.Background(), encoded, &timeoutMs)
-
-	require.Nil(t, result)
-	require.Error(t, err)
-	var syncErr *sendRawSyncError
-	require.True(t, errors.As(err, &syncErr))
-	require.Equal(t, errCodeSendRawSyncTimeout, syncErr.ErrorCode())
-}
-
-func TestSendRawTransactionSync_SendTxError_PropagatesError(t *testing.T) {
-	mockBackend, api := setupSendRawSyncAPI(t)
-
-	_, encoded := newTestTx(t, 0, nil)
 	poolErr := errors.New("insufficient funds")
 
 	mockBackend.EXPECT().GetPoolNonce(gomock.Any(), gomock.Any()).Return(uint64(0), nil)
@@ -188,11 +220,16 @@ func TestSendRawTransactionSync_SendTxError_PropagatesError(t *testing.T) {
 	result, err := api.SendRawTransactionSync(context.Background(), encoded, nil)
 
 	require.Nil(t, result)
-	require.ErrorIs(t, err, poolErr)
+	require.Error(t, err)
+	var syncErr *sendRawSyncError
+	require.True(t, errors.As(err, &syncErr), "expected sendRawSyncError, got %T: %v", err, err)
+	require.Equal(t, errCodeSendRawSyncQueued, syncErr.ErrorCode())
+	require.Equal(t, tx.Hash(), syncErr.ErrorData())
+	require.Contains(t, syncErr.Error(), poolErr.Error())
 }
 
 func TestSendRawTransactionSync_InvalidRLP_ReturnsDecodeError(t *testing.T) {
-	_, api := setupSendRawSyncAPI(t)
+	_, api := setupSendRawSyncAPI(t, 1*time.Second, 2*time.Second)
 
 	invalidEncoded := hexutil.Bytes([]byte{0xde, 0xad, 0xbe, 0xef})
 
@@ -203,50 +240,31 @@ func TestSendRawTransactionSync_InvalidRLP_ReturnsDecodeError(t *testing.T) {
 	// No backend calls expected — gomock will fail the test if any are made
 }
 
-func TestSendRawTransactionSync_CustomTimeout_IsHonored(t *testing.T) {
-	mockBackend, api := setupSendRawSyncAPI(t)
-
-	tx, encoded := newTestTx(t, 0, nil)
-	txHash := tx.Hash()
-	timeoutMs := hexutil.Uint64(50) // 50ms, well under the 2s default
-
-	mockBackend.EXPECT().GetPoolNonce(gomock.Any(), gomock.Any()).Return(uint64(0), nil)
-	mockBackend.EXPECT().RPCTxFeeCap().Return(float64(0))
-	mockBackend.EXPECT().UnprotectedAllowed().Return(false)
-	mockBackend.EXPECT().SendTx(gomock.Any(), gomock.Any()).Return(nil)
-	mockBackend.EXPECT().GetTransaction(gomock.Any(), txHash).Return(nil, uint64(0), uint64(0), nil).AnyTimes()
-	mockBackend.EXPECT().GetPoolTransaction(txHash).Return(nil)
-
-	start := now()
-	_, err := api.SendRawTransactionSync(context.Background(), encoded, &timeoutMs)
-	elapsed := since(start)
-
-	require.Error(t, err)
-	// Should return well before the 2s default timeout
-	require.Less(t, elapsed.Milliseconds(), int64(1500), "should have returned before default 2s timeout")
-}
-
-func TestSendRawTransactionSync_ContextCanceled_ReturnsError(t *testing.T) {
-	mockBackend, api := setupSendRawSyncAPI(t)
+func TestSendRawTransactionSync_ContextCanceled_ReturnsTimeoutError(t *testing.T) {
+	mockBackend, api := setupSendRawSyncAPI(t, 10*time.Second, 10*time.Second)
 
 	tx, encoded := newTestTx(t, 0, nil)
 	txHash := tx.Hash()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	mockBackend.EXPECT().GetPoolNonce(gomock.Any(), gomock.Any()).Return(uint64(0), nil)
-	mockBackend.EXPECT().RPCTxFeeCap().Return(float64(0))
-	mockBackend.EXPECT().UnprotectedAllowed().Return(false)
-	mockBackend.EXPECT().SendTx(gomock.Any(), gomock.Any()).Return(nil)
+	expectSuccessfulSubmission(mockBackend)
 	mockBackend.EXPECT().GetTransaction(gomock.Any(), txHash).DoAndReturn(
 		func(ctx context.Context, _ common.Hash) (*types.Transaction, uint64, uint64, error) {
 			cancel() // cancel the parent context on first poll
 			return nil, 0, 0, nil
 		},
 	).AnyTimes()
-	mockBackend.EXPECT().GetPoolTransaction(txHash).Return(nil).AnyTimes()
 
-	_, err := api.SendRawTransactionSync(ctx, encoded, nil)
+	start := time.Now()
+	result, err := api.SendRawTransactionSync(ctx, encoded, nil)
+	elapsed := time.Since(start)
 
+	require.Nil(t, result)
 	require.Error(t, err)
+	var syncErr *sendRawSyncError
+	require.True(t, errors.As(err, &syncErr), "expected sendRawSyncError, got %T: %v", err, err)
+	require.Equal(t, errCodeSendRawSyncTimeout, syncErr.ErrorCode())
+	// Cancellation must interrupt the wait long before the 10s timeout.
+	require.Less(t, elapsed, 5*time.Second)
 }
