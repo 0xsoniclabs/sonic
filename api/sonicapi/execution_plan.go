@@ -178,7 +178,7 @@ func (t *RPCExecutionPlanComposable) UnmarshalJSON(data []byte) error {
 	t.TolerateFailures = raw.TolerateFailures
 	t.Steps = make([]any, len(raw.Steps))
 	for i, rawStep := range raw.Steps {
-		step, empty, err := unmarshalBundleGroup[RPCExecutionStepComposable](rawStep)
+		step, empty, err := unmarshalBundleGroup[RPCExecutionStepComposable](rawStep, 0)
 		if err != nil {
 			return err
 		}
