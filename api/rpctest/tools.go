@@ -90,6 +90,10 @@ func ToEvmHeader(block Block) *evmcore.EvmHeader {
 		Time:       inter.FromUnix(int64(block.Time)),
 		PrevRandao: block.PrevRandao,
 		BaseFee:    block.BaseFee,
+		GasLimit:   block.GasLimit,
+		GasUsed:    block.GasUsed,
+		Root:       block.Root,
+		TxHash:     block.TxHash,
 	}
 }
 

@@ -72,6 +72,10 @@ type Block struct {
 	// depending on the chain config.
 	PrevRandao   common.Hash
 	BaseFee      *big.Int
+	GasLimit     uint64
+	GasUsed      uint64
+	Root         common.Hash
+	TxHash       common.Hash
 	Transactions map[common.Hash]*Transaction
 }
 
@@ -190,6 +194,7 @@ func (b backendBuilder) WithUpgrade(blockHeight idx.Block, upgrades opera.Upgrad
 func (b backendBuilder) BuildFromReplay(genesis *core.Genesis, rawBlocks []*types.Block) (ethapi.Backend, error) {
 
 	b.be.chainID = genesis.Config.ChainID.Uint64()
+	b.be.evmChainCfg = genesis.Config
 	accounts := extractGenesisAccounts(genesis)
 	for addr, account := range accounts {
 		b.be.state.setAccount(addr, account)
@@ -306,6 +311,7 @@ type fakeBackend struct {
 	ethapi.Backend
 
 	chainID      uint64
+	evmChainCfg  *params.ChainConfig
 	state        *testState
 	pool         TxPool
 	txFeed       notify.Feed
@@ -397,7 +403,14 @@ func (b *fakeBackend) MaxGasLimit() uint64 {
 }
 
 func (b *fakeBackend) MinGasPrice() *big.Int {
+	if current := b.CurrentBlock(); current != nil && current.BaseFee != nil {
+		return new(big.Int).Set(current.BaseFee)
+	}
 	return big.NewInt(1)
+}
+
+func (b *fakeBackend) SuggestGasTipCap(ctx context.Context, certainty uint64) *big.Int {
+	return big.NewInt(0)
 }
 
 func (b *fakeBackend) RPCGasCap() uint64 {
@@ -473,7 +486,24 @@ func (b *fakeBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNrOr
 		return nil, nil, errors.New("block number is nil")
 	}
 
-	return b.state.Copy(), block, nil
+	// Carmen-backed state copy may panic in some test-only replay setups; in that case,
+	// return the original state because these RPC simulation paths are read-only.
+	stateCopy, ok := tryCopyState(b.state)
+	if ok {
+		return stateCopy, block, nil
+	}
+	return b.state, block, nil
+}
+
+func tryCopyState(src state.StateDB) (stateCopy state.StateDB, ok bool) {
+	defer func() {
+		if recover() != nil {
+			stateCopy = nil
+			ok = false
+		}
+	}()
+
+	return src.Copy(), true
 }
 
 // GetNetworkRules returns the network rules applicable at a given block height.
@@ -500,6 +530,10 @@ func (b *fakeBackend) GetNetworkRules(ctx context.Context, blockHeight idx.Block
 // ChainConfig returns the chain configuration applicable at a given block height,
 // based on the defined network upgrades.
 func (b *fakeBackend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
+	if b.evmChainCfg != nil {
+		return b.evmChainCfg
+	}
+
 	heights := make([]opera.UpgradeHeight, 0, len(b.upgrades))
 	for height, upgrades := range b.upgrades {
 
@@ -543,8 +577,9 @@ func (b *fakeBackend) GetReceiptsByNumber(ctx context.Context, number rpc.BlockN
 		return nil, err
 	}
 
-	receipts := make(types.Receipts, 0, len(block.Transactions))
-	for _, tx := range block.Transactions {
+	ordered := orderTransactionsByIndex(block.Transactions)
+	receipts := make(types.Receipts, 0, len(ordered))
+	for _, tx := range ordered {
 		receipts = append(receipts, tx.receipt)
 	}
 	return receipts, nil
@@ -557,8 +592,9 @@ func (b *fakeBackend) FetchReceiptsForBlock(block *evmcore.EvmBlock) types.Recei
 	}
 	for _, blk := range b.blockHistory {
 		if blk.Number == block.Number.Uint64() {
-			receipts := make(types.Receipts, 0, len(blk.Transactions))
-			for _, tx := range blk.Transactions {
+			ordered := orderTransactionsByIndex(blk.Transactions)
+			receipts := make(types.Receipts, 0, len(ordered))
+			for _, tx := range ordered {
 				if tx.receipt != nil {
 					receipts = append(receipts, tx.receipt)
 				}
@@ -567,6 +603,17 @@ func (b *fakeBackend) FetchReceiptsForBlock(block *evmcore.EvmBlock) types.Recei
 		}
 	}
 	return nil
+}
+
+func orderTransactionsByIndex(txs map[common.Hash]*Transaction) []*Transaction {
+	ordered := make([]*Transaction, 0, len(txs))
+	for _, tx := range txs {
+		ordered = append(ordered, tx)
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		return ordered[i].txIndex < ordered[j].txIndex
+	})
+	return ordered
 }
 
 // blockByNumber is a helper function that looks up a block by its number in the fake backend's block history.

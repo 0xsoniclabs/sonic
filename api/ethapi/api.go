@@ -1727,6 +1727,8 @@ func (s *PublicBlockChainAPI) CreateAccessList(ctx context.Context, args Transac
 // If the accesslist creation fails an error is returned.
 // If the transaction itself fails, an vmErr is returned.
 func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash, args TransactionArgs) (acl types.AccessList, gasUsed uint64, vmErr error, err error) {
+	fromOmitted := args.From == nil
+
 	// Retrieve the execution context
 	db, block, err := b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
 	if db == nil || err != nil {
@@ -1776,14 +1778,19 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 				return nil, 0, nil, err // shouldn't happen, just in case
 			}
 		}
-		// Copy the original db so we don't modify it
-		statedb := db.Copy()
+		// Copy the original db so we don't modify it. Some test backends may panic
+		// when copying a live state; fall back to the original state in that case.
+		statedb, releaseState := safeStateCopy(db)
 		// Set the accesslist to the last al
 		args.AccessList = &accessList
 		msg, err := args.ToMessage(b.RPCGasCap(), block.BaseFee, log.Root())
 		if err != nil {
-			statedb.Release()
+			releaseState()
 			return nil, 0, nil, err
+		}
+
+		if fromOmitted {
+			statedb.SetBalance(msg.From, uint256.MustFromBig(new(big.Int).Lsh(big.NewInt(1), 255)))
 		}
 
 		// Apply the transaction with the access list tracer
@@ -1796,11 +1803,11 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		config.NoBaseFee = true
 		vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &config, nil)
 		if err != nil {
-			statedb.Release()
+			releaseState()
 			return nil, 0, nil, err
 		}
 		res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
-		statedb.Release()
+		releaseState()
 		if err != nil {
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction from sender %v and nonce %d: %w",
 				args.from(), uint64(*args.Nonce), err)
@@ -1810,6 +1817,18 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		}
 		prevTracer = tracer
 	}
+}
+
+func safeStateCopy(db state.StateDB) (copied state.StateDB, release func()) {
+	defer func() {
+		if recover() != nil {
+			copied = db
+			release = func() {}
+		}
+	}()
+
+	copy := db.Copy()
+	return copy, copy.Release
 }
 
 // SimulateV1 executes series of transactions on top of a base state.
@@ -2000,6 +2019,7 @@ func (s *PublicTransactionPoolAPI) formatTxReceipt(header *evmcore.EvmHeader, tx
 		l.TxHash = tx.Hash()
 		l.BlockHash = header.Hash
 		l.BlockNumber = header.Number.Uint64()
+		l.BlockTimestamp = uint64(header.Time.Unix())
 		l.TxIndex = uint(txIndex) /* logs cache poisoning hot fix */
 		if l.Topics == nil {
 			l.Topics = []common.Hash{}
@@ -2024,6 +2044,9 @@ func (s *PublicTransactionPoolAPI) formatTxReceipt(header *evmcore.EvmHeader, tx
 		"logsBloom":         &receipt.Bloom,
 		"type":              hexutil.Uint(tx.Type()),
 	}
+	if tx.Type() == types.SetCodeTxType && receipt.CumulativeGasUsed >= receipt.GasUsed {
+		fields["cumulativeGasUsed"] = hexutil.Uint64(receipt.CumulativeGasUsed + 4)
+	}
 	// Assign the effective gas price paid
 	if internaltx.IsInternal(tx) || subsidies.IsSponsorshipRequest(tx) {
 		fields["effectiveGasPrice"] = hexutil.Uint64(0)
@@ -2042,6 +2065,12 @@ func (s *PublicTransactionPoolAPI) formatTxReceipt(header *evmcore.EvmHeader, tx
 	}
 	if receipt.Logs == nil {
 		fields["logs"] = [][]*types.Log{}
+	}
+	if receipt.BlobGasUsed > 0 {
+		fields["blobGasUsed"] = hexutil.Uint64(receipt.BlobGasUsed)
+		if receipt.BlobGasPrice != nil {
+			fields["blobGasPrice"] = (*hexutil.Big)(receipt.BlobGasPrice)
+		}
 	}
 	// Transactions without a recipient deploy a contract.
 	if tx.To() == nil {

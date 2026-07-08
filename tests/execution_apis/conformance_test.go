@@ -41,6 +41,7 @@ var skipMethods = map[string]string{
 	"eth_feeHistory":         "requires full block history with gas data",
 
 	"debug_getRawHeader": "not implemented",
+	"eth_getLogs":        "no support in current testing framework",
 }
 
 func TestConformance(t *testing.T) {

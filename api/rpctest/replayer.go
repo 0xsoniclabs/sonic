@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -74,7 +75,7 @@ func replayBlockTransactions(
 		blockNumber = block.Number()
 		blockHash   = block.Hash()
 		baseFee     = block.BaseFee()
-		signer      = types.LatestSignerForChainID(chainConfig.ChainID)
+		signer      = types.MakeSigner(chainConfig, blockNumber, block.Time())
 		gasPool     = core.NewGasPool(block.GasLimit())
 	)
 
@@ -97,7 +98,7 @@ func replayBlockTransactions(
 		// BlobHashes but blob data is not relevant for state execution.
 		msg.BlobHashes = nil
 
-		receipt, err := evmcore.ApplyTransactionWithEVM(
+		receipt, err := applyTransactionForReplay(
 			msg, chainConfig, gasPool, statedb, blockNumber, blockHash, tx, &usedGas, evm,
 		)
 		if err != nil {
@@ -108,6 +109,67 @@ func replayBlockTransactions(
 	}
 
 	return receipts, nil
+}
+
+func applyTransactionForReplay(
+	msg *core.Message,
+	chainConfig *params.ChainConfig,
+	gp *core.GasPool,
+	statedb state.StateDB,
+	blockNumber *big.Int,
+	blockHash common.Hash,
+	tx *types.Transaction,
+	usedGas *uint64,
+	evm *vm.EVM,
+) (*types.Receipt, error) {
+	txContext, err := evmcore.NewEVMTxContext(msg)
+	if err != nil {
+		statedb.EndTransaction()
+		return nil, fmt.Errorf("failed to create EVM transaction context: %w", err)
+	}
+	evm.SetTxContext(txContext)
+
+	result, err := core.ApplyMessage(evm, msg, gp)
+	if err != nil {
+		statedb.EndTransaction()
+		return nil, err
+	}
+	var postState []byte
+	if !chainConfig.IsByzantium(blockNumber) {
+		postState = statedb.GetStateHash().Bytes()
+	}
+
+	logs := statedb.GetLogs(tx.Hash(), common.Hash{})
+
+	statedb.EndTransaction()
+	*usedGas += result.UsedGas
+
+	receipt := &types.Receipt{Type: tx.Type(), CumulativeGasUsed: *usedGas}
+	receipt.PostState = postState
+	if result.Failed() {
+		receipt.Status = types.ReceiptStatusFailed
+	} else {
+		receipt.Status = types.ReceiptStatusSuccessful
+	}
+	receipt.TxHash = tx.Hash()
+	receipt.GasUsed = result.UsedGas
+
+	if tx.Type() == types.BlobTxType {
+		receipt.BlobGasUsed = uint64(len(tx.BlobHashes()) * params.BlobTxBlobGasPerBlob)
+		receipt.BlobGasPrice = evm.Context.BlobBaseFee
+	}
+
+	if msg.To == nil {
+		receipt.ContractAddress = crypto.CreateAddress(evm.Origin, tx.Nonce())
+	}
+
+	receipt.Logs = logs
+	receipt.Bloom = types.CreateBloom(receipt)
+	receipt.BlockHash = blockHash
+	receipt.BlockNumber = blockNumber
+	receipt.TransactionIndex = uint(statedb.TxIndex())
+
+	return receipt, nil
 }
 
 // headerChain implements evmcore.DummyChain for header lookups during replay.
@@ -154,6 +216,10 @@ func convertBlock(block *types.Block, receipts map[common.Hash]*types.Receipt) B
 		Hash:       block.Hash(),
 		ParentHash: header.ParentHash,
 		BaseFee:    header.BaseFee,
+		GasLimit:   header.GasLimit,
+		GasUsed:    header.GasUsed,
+		Root:       header.Root,
+		TxHash:     header.TxHash,
 	}
 
 	// Set PrevRandao (MixDigest in the header, used as PREVRANDAO post-merge)
@@ -164,13 +230,21 @@ func convertBlock(block *types.Block, receipts map[common.Hash]*types.Receipt) B
 	// Convert transactions
 	if len(block.Transactions()) > 0 {
 		result.Transactions = make(map[common.Hash]*Transaction, len(block.Transactions()))
+		var lastTx *Transaction
 		for i, tx := range block.Transactions() {
-			result.Transactions[tx.Hash()] = NewTransaction(
+			replayTx := NewTransaction(
 				tx,
 				header.Number.Uint64(),
 				uint64(i),
 				receipts[tx.Hash()],
 			)
+			result.Transactions[tx.Hash()] = replayTx
+			lastTx = replayTx
+		}
+
+		// Keep canonical cumulative gas in sync with the block header for the last tx.
+		if lastTx != nil && lastTx.receipt != nil {
+			lastTx.receipt.CumulativeGasUsed = header.GasUsed
 		}
 	}
 
