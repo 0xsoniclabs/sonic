@@ -914,7 +914,7 @@ func Test_transform_AppliesFunctionToAllLeaves(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result, err := transform(tt.proposal, markTolerateFailed)
+			result, err := transform(tt.proposal, markTolerateFailed, 0)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, result)
 		})
@@ -986,7 +986,7 @@ func Test_transform_ReturnsErrors(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, err := transform(tt.proposal, alwaysFails)
+			_, err := transform(tt.proposal, alwaysFails, 0)
 			require.Error(t, err)
 		})
 	}

@@ -440,7 +440,13 @@ func toTransactionForBundles(step ethapi.TransactionArgs) (*types.Transaction, e
 func transform(
 	proposal RPCExecutionProposal,
 	fn func(step RPCExecutionStepProposal) (RPCExecutionStepProposal, error),
+	depth int,
 ) (RPCExecutionProposal, error) {
+	if depth > bundle.MaxGroupNestingDepth {
+		return proposal, fmt.Errorf(
+			"execution plan exceeds maximum nesting depth of %d", bundle.MaxGroupNestingDepth)
+	}
+
 	if proposal.Steps == nil {
 		return proposal, nil
 	}
@@ -459,9 +465,9 @@ func transform(
 			result, err := transform(RPCExecutionProposal{
 				BlockRange:            proposal.BlockRange,
 				RPCExecutionPlanGroup: step,
-			}, fn)
+			}, fn, depth+1)
 			if err != nil {
-				return result, err
+				return RPCExecutionProposal{}, err
 			}
 			resultSteps = append(resultSteps, result.RPCExecutionPlanGroup)
 
