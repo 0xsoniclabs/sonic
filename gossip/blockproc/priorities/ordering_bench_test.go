@@ -26,7 +26,7 @@ import (
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/carmen/go/state/gostate"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/proxy"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/proxy"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"

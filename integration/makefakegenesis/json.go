@@ -26,7 +26,7 @@ import (
 	"time"
 
 	priorityregistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/proxy"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/proxy"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/integration/makegenesis"
 	"github.com/0xsoniclabs/sonic/inter"

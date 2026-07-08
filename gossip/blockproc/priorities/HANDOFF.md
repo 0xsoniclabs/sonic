@@ -101,7 +101,7 @@ Block order when enabled:
   priorities_registry_abigen.go, priorities_contract.bin}` — mirror
   `gossip/blockproc/subsidies/registry/`. New fixed `GetAddress()`, selectors,
   per-call gas-limit constants, embedded `bin-runtime`, `//go:generate` directives.
-  Reuse `gossip/blockproc/subsidies/proxy/` for deployment.
+  Reuse `gossip/blockproc/proxy/` for deployment.
 - `evmcore/priorities_integration.go` — cached priority checker, mirror
   `evmcore/subsidies_integration.go` (`newPriorityChecker(rules, chain, state,
   signer)` → cached `(prioritized, id)` lookup).
