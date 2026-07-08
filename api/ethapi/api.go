@@ -2408,30 +2408,6 @@ func (api *PublicDebugAPI) PrintBlock(ctx context.Context, number uint64) (strin
 	return spew.Sdump(block), nil
 }
 
-// BlocksTransactionTimes returns the map time => number of transactions
-// This data may be used to draw a histogram to calculate a peak TPS of a range of blocks
-func (api *PublicDebugAPI) BlocksTransactionTimes(ctx context.Context, untilBlock rpc.BlockNumber, maxBlocks hexutil.Uint64) (map[hexutil.Uint64]hexutil.Uint, error) {
-
-	until, err := api.b.HeaderByNumber(ctx, untilBlock)
-	if until == nil || err != nil {
-		return nil, err
-	}
-	untilN := until.Number.Uint64()
-	times := map[hexutil.Uint64]hexutil.Uint{}
-	for i := untilN; i >= 1 && i+uint64(maxBlocks) > untilN; i-- {
-		b, err := api.b.BlockByNumber(ctx, rpc.BlockNumber(i))
-		if b == nil || err != nil {
-			return nil, err
-		}
-		if b.Transactions.Len() == 0 {
-			continue
-		}
-		times[hexutil.Uint64(b.Time)] += hexutil.Uint(b.Transactions.Len())
-	}
-
-	return times, nil
-}
-
 // TraceTransaction returns the structured logs created during the execution of EVM
 // and returns them as a JSON object.
 func (api *PublicDebugAPI) TraceTransaction(ctx context.Context, hash common.Hash, config *tracers.TraceConfig) (interface{}, error) {
