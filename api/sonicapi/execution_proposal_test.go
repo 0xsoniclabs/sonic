@@ -1531,39 +1531,37 @@ func Test_RPCExecutionProposal_UnmarshalJSON_FailsOnInvalidFirstLevelStep(t *tes
 	}
 }
 
-// Test_RPCExecutionProposal_UnmarshalJSON_RejectsExcessivelyDeepNesting ensures
-// that a maliciously deep proposal is rejected by the depth guard in
-// unmarshalBundleGroup instead of being decoded at a cost quadratic in its
-// nesting depth (see unmarshalBundleGroup's depth parameter). Depth 4999 is
-// roughly the deepest input encoding/json's own 10000-token nesting limit lets
-// through. nestedStepsProposalJSON(D) puts its leaf at recursion depth D-1,
-// so D = bundle.MaxGroupNestingDepth+2 is the smallest rejected depth.
 func Test_RPCExecutionProposal_UnmarshalJSON_RejectsExcessivelyDeepNesting(t *testing.T) {
-	for _, depth := range []int{bundle.MaxGroupNestingDepth + 2, 1000, 4999} {
-		var proposal RPCExecutionProposal
-		err := json.Unmarshal(nestedStepsProposalJSON(depth), &proposal)
-		require.ErrorContains(t, err, "nesting depth")
+	for _, depth := range []int{
+		bundle.MaxGroupNestingDepth + 1,
+		bundle.MaxGroupNestingDepth + 2,
+		1000,
+		4998, // maximum depth that encoding/json will accept
+	} {
+		t.Run(fmt.Sprintf("depth=%d", depth), func(t *testing.T) {
+			var proposal RPCExecutionProposal
+			rawJSON := nestedStepsProposalJSON(depth)
+			err := json.Unmarshal(rawJSON, &proposal)
+			require.ErrorContains(t, err, "nesting depth")
+		})
 	}
 }
 
-// Test_RPCExecutionProposal_UnmarshalJSON_AcceptsNestingAtLimit ensures the
-// decode-time depth guard does not reject a proposal nested exactly to the
-// permitted limit (D = bundle.MaxGroupNestingDepth+1, see
-// Test_RPCExecutionProposal_UnmarshalJSON_RejectsExcessivelyDeepNesting).
 func Test_RPCExecutionProposal_UnmarshalJSON_AcceptsNestingAtLimit(t *testing.T) {
 	var proposal RPCExecutionProposal
-	require.NoError(t, json.Unmarshal(nestedStepsProposalJSON(bundle.MaxGroupNestingDepth+1), &proposal))
+	require.NoError(t, json.Unmarshal(nestedStepsProposalJSON(bundle.MaxGroupNestingDepth), &proposal))
 }
 
 // nestedStepsProposalJSON builds a JSON execution-proposal document with
 // `depth` levels of nested "steps" groups wrapping a single leaf transaction step.
 func nestedStepsProposalJSON(depth int) []byte {
+	// depth +1 levels are created because the empty proposal is already a group.
 	var b strings.Builder
-	for range depth {
+	for range depth + 1 {
 		b.WriteString(`{"steps":[`)
 	}
 	b.WriteString(`{"from":"0x0000000000000000000000000000000000000001"}`)
-	for range depth {
+	for range depth + 1 {
 		b.WriteString(`]}`)
 	}
 	return []byte(b.String())
