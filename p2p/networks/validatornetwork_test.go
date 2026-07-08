@@ -26,6 +26,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/p2p"
 )
@@ -54,9 +55,7 @@ func TestValidatorNetwork_TwoValidators_FormMesh(t *testing.T) {
 	}
 	bootstrap(t, ctx, nodes[1], nodes[0])
 
-	if !waitForFullMesh(nodes, 20*time.Second) {
-		t.Fatal("expected the two validators to form a mesh")
-	}
+	require.True(t, waitForFullMesh(nodes, 20*time.Second), "expected the two validators to form a mesh")
 }
 
 func TestValidatorNetwork_FiveValidatorsJoiningSequentially_FormFullMesh(t *testing.T) {
@@ -75,9 +74,7 @@ func TestValidatorNetwork_FiveValidatorsJoiningSequentially_FormFullMesh(t *test
 		time.Sleep(200 * time.Millisecond) // stagger the joins
 	}
 
-	if !waitForFullMesh(nodes, 40*time.Second) {
-		t.Fatalf("expected all %d validators to converge to a full mesh", count)
-	}
+	require.True(t, waitForFullMesh(nodes, 40*time.Second), "expected all %d validators to converge to a full mesh", count)
 }
 
 func TestValidatorNetwork_NonValidatorJoins_NotPulledIntoMesh(t *testing.T) {
@@ -93,28 +90,20 @@ func TestValidatorNetwork_NonValidatorJoins_NotPulledIntoMesh(t *testing.T) {
 	bootstrap(t, ctx, validators[1], validators[0])
 	bootstrap(t, ctx, validators[2], validators[0])
 
-	if !waitForFullMesh(validators, 30*time.Second) {
-		t.Fatal("expected the three validators to form a full mesh")
-	}
+	require.True(t, waitForFullMesh(validators, 30*time.Second), "expected the three validators to form a full mesh")
 
 	// A non-validator node joins the network by bootstrapping to a validator. It
 	// is on the gossip network but not in the validators' membership.
 	outsider := newTestNode(t)
-	if err := outsider.Start(); err != nil {
-		t.Fatalf("failed to start outsider: %v", err)
-	}
+	require.NoError(t, outsider.Start(), "failed to start outsider")
 	t.Cleanup(func() { _ = outsider.Stop() })
 	bootstrap(t, ctx, outsider, validators[0])
 
 	// Give the network ample time; it must NOT pull the outsider into the mesh.
 	time.Sleep(3 * time.Second)
 
-	if connected := connectedCount(outsider, validators); connected >= len(validators) {
-		t.Fatalf("outsider must not be fully meshed with validators, connected to %d/%d", connected, len(validators))
-	}
-	if !fullyMeshed(validators) {
-		t.Fatal("the three validators must remain fully meshed")
-	}
+	require.Less(t, connectedCount(outsider, validators), len(validators), "outsider must not be fully meshed with validators")
+	require.True(t, fullyMeshed(validators), "the three validators must remain fully meshed")
 }
 
 // --- helpers ---
@@ -137,9 +126,7 @@ func membershipOf(t *testing.T, count int) *staticMembership {
 	signers := make([]Signer, count)
 	for i := 0; i < count; i++ {
 		key, err := crypto.GenerateKey()
-		if err != nil {
-			t.Fatalf("failed to generate consensus key: %v", err)
-		}
+		require.NoError(t, err, "failed to generate consensus key")
 		signer := NewSecp256k1Signer(key)
 		signers[i] = signer
 		membership.members = append(membership.members, Member{ID: uint32(i + 1), PublicKey: signer.PublicKey()})
@@ -158,9 +145,7 @@ func startValidatorWithConfig(t *testing.T, ctx context.Context, membership *sta
 	node := newTestNode(t)
 	signer := memberKeys[membership][index]
 	validatorNetwork := NewValidatorNetwork(node, membership, signer, NewSecp256k1Verifier(), uint32(index+1), config)
-	if err := node.Start(); err != nil {
-		t.Fatalf("failed to start node: %v", err)
-	}
+	require.NoError(t, node.Start(), "failed to start node")
 	validatorNetwork.Start(ctx)
 	t.Cleanup(func() {
 		validatorNetwork.Stop()
@@ -177,18 +162,14 @@ func newTestNode(t *testing.T) *p2p.Node {
 		"/ip4/127.0.0.1/tcp/0",
 	}
 	node, err := p2p.New(config, log.Root(), prometheus.NewRegistry())
-	if err != nil {
-		t.Fatalf("failed to create node: %v", err)
-	}
+	require.NoError(t, err, "failed to create node")
 	return node
 }
 
 func bootstrap(t *testing.T, ctx context.Context, from, to *p2p.Node) {
 	t.Helper()
 	info := peer.AddrInfo{ID: to.ID(), Addrs: to.Host().Addrs()}
-	if err := from.Connect(ctx, info); err != nil {
-		t.Fatalf("bootstrap connect failed: %v", err)
-	}
+	require.NoError(t, from.Connect(ctx, info), "bootstrap connect failed")
 }
 
 func waitForFullMesh(nodes []*p2p.Node, timeout time.Duration) bool {

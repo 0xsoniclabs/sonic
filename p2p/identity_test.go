@@ -22,51 +22,37 @@ import (
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadOrCreateHostKey_NoPath_GeneratesInMemory(t *testing.T) {
 	key, err := loadOrCreateHostKey("")
-	if err != nil {
-		t.Fatalf("loadOrCreateHostKey failed: %v", err)
-	}
-	if _, err := peer.IDFromPrivateKey(key); err != nil {
-		t.Fatalf("generated key does not yield a peer ID: %v", err)
-	}
+	require.NoError(t, err, "loadOrCreateHostKey failed")
+	_, err = peer.IDFromPrivateKey(key)
+	require.NoError(t, err, "generated key does not yield a peer ID")
 }
 
 func TestLoadOrCreateHostKey_WithPath_PersistsAndReloadsSameIdentity(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nodekey")
 
 	first, err := loadOrCreateHostKey(path)
-	if err != nil {
-		t.Fatalf("first load failed: %v", err)
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("expected key to be persisted at %s: %v", path, err)
-	}
+	require.NoError(t, err, "first load failed")
+	_, err = os.Stat(path)
+	require.NoError(t, err, "expected key to be persisted at %s", path)
 
 	second, err := loadOrCreateHostKey(path)
-	if err != nil {
-		t.Fatalf("second load failed: %v", err)
-	}
+	require.NoError(t, err, "second load failed")
 
 	firstID, _ := peer.IDFromPrivateKey(first)
 	secondID, _ := peer.IDFromPrivateKey(second)
-	if firstID != secondID {
-		t.Fatalf("expected stable peer ID across reloads, got %s then %s", firstID, secondID)
-	}
+	require.Equal(t, firstID, secondID, "expected stable peer ID across reloads")
 }
 
 func TestLoadOrCreateHostKey_NoPath_DoesNotWriteFile(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := loadOrCreateHostKey(""); err != nil {
-		t.Fatalf("loadOrCreateHostKey failed: %v", err)
-	}
+	_, err := loadOrCreateHostKey("")
+	require.NoError(t, err, "loadOrCreateHostKey failed")
 	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("failed to read temp dir: %v", err)
-	}
-	if len(entries) != 0 {
-		t.Fatalf("expected no files written for in-memory key, found %d", len(entries))
-	}
+	require.NoError(t, err, "failed to read temp dir")
+	require.Empty(t, entries, "expected no files written for in-memory key")
 }

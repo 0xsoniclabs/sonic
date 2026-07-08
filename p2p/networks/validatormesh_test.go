@@ -24,6 +24,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
 
@@ -36,9 +37,7 @@ func TestHandshakeProtocol_ValidProof_Authenticates(t *testing.T) {
 	membership := &fakeMembership{members: []Member{{ID: 2, PublicKey: publicKey}}}
 	peerID := newTestPeerID(t)
 	proof, err := CreateBindingProof(signer, peerID, 2, membership.Epoch(), newNonce(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	var authenticated bool
 	var failure error
@@ -49,12 +48,10 @@ func TestHandshakeProtocol_ValidProof_Authenticates(t *testing.T) {
 	stream := &fakeStream{peer: peerID, payload: proof}
 	handshake.Handle(stream)
 
-	if !authenticated || failure != nil {
-		t.Fatalf("expected authentication, got authenticated=%v failure=%v", authenticated, failure)
-	}
-	if !stream.closed || stream.reset {
-		t.Fatalf("expected a clean close, got closed=%v reset=%v", stream.closed, stream.reset)
-	}
+	require.True(t, authenticated, "expected authentication")
+	require.NoError(t, failure, "expected authentication")
+	require.True(t, stream.closed, "expected a clean close")
+	require.False(t, stream.reset, "expected a clean close")
 }
 
 func TestHandshakeProtocol_NonMemberProof_ReportsFailure(t *testing.T) {
@@ -63,9 +60,7 @@ func TestHandshakeProtocol_NonMemberProof_ReportsFailure(t *testing.T) {
 	outsider, _ := newTestSigner(t) // not in the membership
 	peerID := newTestPeerID(t)
 	proof, err := CreateBindingProof(outsider, peerID, 999, membership.Epoch(), newNonce(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	var authenticated bool
 	var failure error
@@ -76,15 +71,9 @@ func TestHandshakeProtocol_NonMemberProof_ReportsFailure(t *testing.T) {
 	stream := &fakeStream{peer: peerID, payload: proof}
 	handshake.Handle(stream)
 
-	if authenticated {
-		t.Fatal("a non-member proof must not authenticate")
-	}
-	if !errors.Is(failure, ErrHandshakeNotValidator) {
-		t.Fatalf("expected ErrHandshakeNotValidator, got %v", failure)
-	}
-	if !stream.reset {
-		t.Fatal("expected the stream to be reset on failure")
-	}
+	require.False(t, authenticated, "a non-member proof must not authenticate")
+	require.ErrorIs(t, failure, ErrHandshakeNotValidator)
+	require.True(t, stream.reset, "expected the stream to be reset on failure")
 }
 
 func TestHandshakeProtocol_ReadError_ReportsFailure(t *testing.T) {
@@ -98,9 +87,7 @@ func TestHandshakeProtocol_ReadError_ReportsFailure(t *testing.T) {
 	stream := &fakeStream{peer: newTestPeerID(t), readErr: errors.New("boom")}
 	handshake.Handle(stream)
 
-	if failure == nil {
-		t.Fatal("expected a read error to be reported via onFailure")
-	}
+	require.Error(t, failure, "expected a read error to be reported via onFailure")
 }
 
 // fakeStream is a minimal p2p.Stream returning a preset message.
@@ -170,12 +157,10 @@ func TestValidatorMesh_MemberRemoved_DisconnectsWithReason(t *testing.T) {
 	mesh.Reconcile(context.Background(), []Member{a, c})
 
 	host.assertConnected(t, infoA.ID, infoC.ID)
-	if reason, ok := host.closedReason(infoB.ID); !ok || reason != "removed-from-set" {
-		t.Fatalf("expected b closed with reason removed-from-set, got %q ok=%v", reason, ok)
-	}
-	if dialed := host.dialCount(infoA.ID); dialed != 1 {
-		t.Fatalf("expected a dialed exactly once across reconciles, got %d", dialed)
-	}
+	reason, ok := host.closedReason(infoB.ID)
+	require.True(t, ok, "expected b to be closed")
+	require.Equal(t, "removed-from-set", reason, "expected b closed with reason removed-from-set")
+	require.Equal(t, 1, host.dialCount(infoA.ID), "expected a dialed exactly once across reconciles")
 }
 
 func TestValidatorMesh_SkipsSelf(t *testing.T) {
@@ -279,13 +264,9 @@ func (h *fakeMeshHost) assertConnected(t *testing.T, expected ...peer.ID) {
 	t.Helper()
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
-	if len(h.present) != len(expected) {
-		t.Fatalf("expected %d connections, have %d", len(expected), len(h.present))
-	}
+	require.Len(t, h.present, len(expected))
 	for _, id := range expected {
-		if _, ok := h.present[id]; !ok {
-			t.Fatalf("expected connection to %s", id)
-		}
+		require.Contains(t, h.present, id, "expected connection to %s", id)
 	}
 }
 

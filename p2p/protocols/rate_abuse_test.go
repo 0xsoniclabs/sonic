@@ -27,6 +27,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/p2p"
 	"github.com/0xsoniclabs/sonic/p2p/pb"
@@ -46,27 +47,19 @@ func TestRateAbuse_SustainedFlood_DisconnectsPeer(t *testing.T) {
 	// 1 msg/sec, burst 1: a flood is nearly all violations.
 	server, registry := buildNode(t, 1, 1, p2p.DefaultConfig().RateLimit.BanDuration)
 	server.RegisterStreamProtocol(drainProtocol{})
-	if err := server.Start(); err != nil {
-		t.Fatalf("failed to start server: %v", err)
-	}
+	require.NoError(t, server.Start(), "failed to start server")
 	t.Cleanup(func() { _ = server.Stop() })
 
 	client := newLimitedNode(t, 1000, 1000)
-	if err := client.Start(); err != nil {
-		t.Fatalf("failed to start client: %v", err)
-	}
+	require.NoError(t, client.Start(), "failed to start client")
 	t.Cleanup(func() { _ = client.Stop() })
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := client.Connect(ctx, addrInfoOf(server)); err != nil {
-		t.Fatalf("client failed to connect: %v", err)
-	}
+	require.NoError(t, client.Connect(ctx, addrInfoOf(server)), "client failed to connect")
 	stream, err := client.OpenStream(ctx, server.ID(), drainProtocolID)
-	if err != nil {
-		t.Fatalf("client failed to open stream: %v", err)
-	}
+	require.NoError(t, err, "client failed to open stream")
 
 	// Flood the server until the connection is torn down.
 	go func() {
@@ -77,13 +70,9 @@ func TestRateAbuse_SustainedFlood_DisconnectsPeer(t *testing.T) {
 		}
 	}()
 
-	if !waitForConnectedness(server, client.ID(), network.NotConnected, 15*time.Second) {
-		t.Fatal("expected server to disconnect the flooding client, but it stayed connected")
-	}
+	require.True(t, waitForConnectedness(server, client.ID(), network.NotConnected, 15*time.Second), "expected server to disconnect the flooding client, but it stayed connected")
 
-	if got := counterValue(t, registry, "sonic_p2p_peer_disconnects_total", "reason", "rate-abuse"); got < 1 {
-		t.Fatalf("expected the rate-abuse disconnect metric to be recorded, got %v", got)
-	}
+	require.GreaterOrEqual(t, counterValue(t, registry, "sonic_p2p_peer_disconnects_total", "reason", "rate-abuse"), float64(1), "expected the rate-abuse disconnect metric to be recorded")
 }
 
 // TestRateAbuse_BannedPeer_UnbansAfterCooldown verifies that a peer
@@ -95,27 +84,19 @@ func TestRateAbuse_BannedPeer_UnbansAfterCooldown(t *testing.T) {
 
 	server := newLimitedNodeWithBan(t, 1, 1, cooldown)
 	server.RegisterStreamProtocol(drainProtocol{})
-	if err := server.Start(); err != nil {
-		t.Fatalf("failed to start server: %v", err)
-	}
+	require.NoError(t, server.Start(), "failed to start server")
 	t.Cleanup(func() { _ = server.Stop() })
 
 	client := newLimitedNode(t, 1000, 1000)
-	if err := client.Start(); err != nil {
-		t.Fatalf("failed to start client: %v", err)
-	}
+	require.NoError(t, client.Start(), "failed to start client")
 	t.Cleanup(func() { _ = client.Stop() })
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := client.Connect(ctx, addrInfoOf(server)); err != nil {
-		t.Fatalf("client failed to connect: %v", err)
-	}
+	require.NoError(t, client.Connect(ctx, addrInfoOf(server)), "client failed to connect")
 	stream, err := client.OpenStream(ctx, server.ID(), drainProtocolID)
-	if err != nil {
-		t.Fatalf("client failed to open stream: %v", err)
-	}
+	require.NoError(t, err, "client failed to open stream")
 	go func() {
 		for ctx.Err() == nil {
 			if err := stream.WriteMessage(&pb.ScanStatusRequest{}, 1024); err != nil {
@@ -124,20 +105,14 @@ func TestRateAbuse_BannedPeer_UnbansAfterCooldown(t *testing.T) {
 		}
 	}()
 
-	if !waitForConnectedness(server, client.ID(), network.NotConnected, 15*time.Second) {
-		t.Fatal("expected server to disconnect the flooding client")
-	}
+	require.True(t, waitForConnectedness(server, client.ID(), network.NotConnected, 15*time.Second), "expected server to disconnect the flooding client")
 
 	// During the cooldown the client is banned, so the gater refuses its dials.
-	if !server.Gater().IsBanned(client.ID()) {
-		t.Fatal("expected client to be banned during cooldown")
-	}
+	require.True(t, server.Gater().IsBanned(client.ID()), "expected client to be banned during cooldown")
 
 	// After the cooldown the ban lapses automatically.
 	time.Sleep(cooldown)
-	if server.Gater().IsBanned(client.ID()) {
-		t.Fatal("expected client to be unbanned after cooldown elapsed")
-	}
+	require.False(t, server.Gater().IsBanned(client.ID()), "expected client to be unbanned after cooldown elapsed")
 }
 
 // drainProtocol reads messages from a stream in a loop, continuing past
@@ -182,9 +157,7 @@ func buildNode(t *testing.T, messagesPerSecond float64, messageBurst int, banDur
 	config.RateLimit.BanDuration = banDuration
 	registry := prometheus.NewRegistry()
 	node, err := p2p.New(config, log.Root(), registry)
-	if err != nil {
-		t.Fatalf("failed to create node: %v", err)
-	}
+	require.NoError(t, err, "failed to create node")
 	return node, registry
 }
 
@@ -193,9 +166,7 @@ func buildNode(t *testing.T, messagesPerSecond float64, messageBurst int, banDur
 func counterValue(t *testing.T, registry *prometheus.Registry, metric, labelName, labelValue string) float64 {
 	t.Helper()
 	families, err := registry.Gather()
-	if err != nil {
-		t.Fatalf("failed to gather metrics: %v", err)
-	}
+	require.NoError(t, err, "failed to gather metrics")
 	for _, family := range families {
 		if family.GetName() != metric {
 			continue

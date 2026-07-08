@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/p2p"
 	"github.com/0xsoniclabs/sonic/p2p/networks"
@@ -49,18 +50,11 @@ func TestScanner_CrawlsNetwork_AggregatesReport(t *testing.T) {
 
 	report := scanner.Scan(ctx, []peer.AddrInfo{addrInfoOf(validator)})
 
-	if report.NodeCount != 2 {
-		t.Fatalf("expected to reach 2 nodes, reached %d", report.NodeCount)
-	}
-	if report.RoleCounts[networks.RoleValidator] != 1 || report.RoleCounts[networks.RoleArchive] != 1 {
-		t.Fatalf("unexpected role breakdown: %+v", report.RoleCounts)
-	}
-	if report.ClientVersions["sonic/v2.2.0"] != 2 {
-		t.Fatalf("unexpected client-version breakdown: %+v", report.ClientVersions)
-	}
-	if report.HeightHistogram[500] != 2 {
-		t.Fatalf("unexpected height histogram: %+v", report.HeightHistogram)
-	}
+	require.Equal(t, 2, report.NodeCount, "expected to reach 2 nodes")
+	require.Equal(t, 1, report.RoleCounts[networks.RoleValidator], "unexpected role breakdown: %+v", report.RoleCounts)
+	require.Equal(t, 1, report.RoleCounts[networks.RoleArchive], "unexpected role breakdown: %+v", report.RoleCounts)
+	require.Equal(t, 2, report.ClientVersions["sonic/v2.2.0"], "unexpected client-version breakdown: %+v", report.ClientVersions)
+	require.Equal(t, 2, report.HeightHistogram[500], "unexpected height histogram: %+v", report.HeightHistogram)
 }
 
 // --- helpers ---
@@ -72,9 +66,7 @@ func startScanNode(t *testing.T, status networks.NodeStatus, peers []peer.AddrIn
 		fakeStatusSource{status: status},
 		fakePeerSource{peers: peers},
 	))
-	if err := node.Start(); err != nil {
-		t.Fatalf("failed to start scan node: %v", err)
-	}
+	require.NoError(t, node.Start(), "failed to start scan node")
 	t.Cleanup(func() { _ = node.Stop() })
 	return node
 }
@@ -87,9 +79,7 @@ func startPlainNode(t *testing.T) *p2p.Node {
 		"/ip4/127.0.0.1/tcp/0",
 	}
 	node, err := p2p.New(config, log.Root(), prometheus.NewRegistry())
-	if err != nil {
-		t.Fatalf("failed to create node: %v", err)
-	}
+	require.NoError(t, err, "failed to create node")
 	// Plain nodes that are only dialed still need to be started to serve; nodes
 	// with protocols are started by the caller. Start here is idempotent.
 	return node

@@ -19,8 +19,9 @@ package p2p
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/p2p/pb"
 )
@@ -33,30 +34,24 @@ func TestWriteMessage_RoundTrip_PreservesMessage(t *testing.T) {
 	}
 
 	var buffer bytes.Buffer
-	if _, err := WriteMessage(&buffer, original, 1024); err != nil {
-		t.Fatalf("WriteMessage failed: %v", err)
-	}
+	_, err := WriteMessage(&buffer, original, 1024)
+	require.NoError(t, err, "WriteMessage failed")
 
 	var decoded pb.ScanStatusResponse
-	if _, err := ReadMessage(&buffer, &decoded, 1024); err != nil {
-		t.Fatalf("ReadMessage failed: %v", err)
-	}
-	if decoded.ClientVersion != original.ClientVersion ||
-		decoded.BlockHeight != original.BlockHeight ||
-		decoded.Role != original.Role {
-		t.Fatalf("round trip mismatch: got %+v want %+v", &decoded, original)
-	}
+	_, err = ReadMessage(&buffer, &decoded, 1024)
+	require.NoError(t, err, "ReadMessage failed")
+
+	require.Equal(t, original.ClientVersion, decoded.ClientVersion)
+	require.Equal(t, original.BlockHeight, decoded.BlockHeight)
+	require.Equal(t, original.Role, decoded.Role)
 }
 
 func TestWriteMessage_ExceedsCap_Rejected(t *testing.T) {
 	message := &pb.ScanStatusResponse{ClientVersion: "a-client-version-string"}
 	var buffer bytes.Buffer
-	if _, err := WriteMessage(&buffer, message, 4); !errors.Is(err, ErrMessageTooLarge) {
-		t.Fatalf("expected ErrMessageTooLarge, got %v", err)
-	}
-	if buffer.Len() != 0 {
-		t.Fatalf("expected nothing written on rejection, wrote %d bytes", buffer.Len())
-	}
+	_, err := WriteMessage(&buffer, message, 4)
+	require.ErrorIs(t, err, ErrMessageTooLarge)
+	require.Zero(t, buffer.Len(), "expected nothing written on rejection")
 }
 
 func TestReadMessage_OversizedFrame_RejectedBeforeBody(t *testing.T) {
@@ -67,9 +62,8 @@ func TestReadMessage_OversizedFrame_RejectedBeforeBody(t *testing.T) {
 	reader := bytes.NewReader(header[:n])
 
 	var decoded pb.ScanStatusResponse
-	if _, err := ReadMessage(reader, &decoded, 1024); !errors.Is(err, ErrMessageTooLarge) {
-		t.Fatalf("expected ErrMessageTooLarge, got %v", err)
-	}
+	_, err := ReadMessage(reader, &decoded, 1024)
+	require.ErrorIs(t, err, ErrMessageTooLarge)
 }
 
 func TestReadMessage_DifferentCapsPerType_Honored(t *testing.T) {
@@ -77,20 +71,17 @@ func TestReadMessage_DifferentCapsPerType_Honored(t *testing.T) {
 		"/ip4/127.0.0.1/tcp/4002/p2p/12D3KooWExample",
 	}}
 	var buffer bytes.Buffer
-	if _, err := WriteMessage(&buffer, message, maxScanPeersLikeCap); err != nil {
-		t.Fatalf("WriteMessage failed: %v", err)
-	}
+	_, err := WriteMessage(&buffer, message, maxScanPeersLikeCap)
+	require.NoError(t, err, "WriteMessage failed")
 	encoded := buffer.Bytes()
 
 	// A small cap rejects it; a large cap accepts it - same bytes, different
 	// per-call limit.
 	var decoded pb.ScanPeersResponse
-	if _, err := ReadMessage(bytes.NewReader(encoded), &decoded, 4); !errors.Is(err, ErrMessageTooLarge) {
-		t.Fatalf("expected small cap to reject, got %v", err)
-	}
-	if _, err := ReadMessage(bytes.NewReader(encoded), &decoded, maxScanPeersLikeCap); err != nil {
-		t.Fatalf("expected large cap to accept, got %v", err)
-	}
+	_, err = ReadMessage(bytes.NewReader(encoded), &decoded, 4)
+	require.ErrorIs(t, err, ErrMessageTooLarge, "expected small cap to reject")
+	_, err = ReadMessage(bytes.NewReader(encoded), &decoded, maxScanPeersLikeCap)
+	require.NoError(t, err, "expected large cap to accept")
 }
 
 const maxScanPeersLikeCap = 1 << 20

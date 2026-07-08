@@ -16,7 +16,11 @@
 
 package guard
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestRateLimiter_WithinBudget_Allows(t *testing.T) {
 	limiter := NewRateLimiter(RateLimitConfig{
@@ -26,9 +30,7 @@ func TestRateLimiter_WithinBudget_Allows(t *testing.T) {
 		MessageBurst:      100,
 	})
 	for i := 0; i < 100; i++ {
-		if !limiter.AllowMessage("peer-a", 64) {
-			t.Fatalf("compliant message %d was rejected", i)
-		}
+		require.True(t, limiter.AllowMessage("peer-a", 64), "compliant message %d was rejected", i)
 	}
 }
 
@@ -45,9 +47,7 @@ func TestRateLimiter_ExceedsMessageRate_Rejects(t *testing.T) {
 			allowed++
 		}
 	}
-	if allowed > 6 {
-		t.Fatalf("expected message burst to cap allowance near 5, allowed %d", allowed)
-	}
+	require.LessOrEqual(t, allowed, 6, "expected message burst to cap allowance near 5")
 }
 
 func TestRateLimiter_ExceedsByteRate_Rejects(t *testing.T) {
@@ -63,9 +63,7 @@ func TestRateLimiter_ExceedsByteRate_Rejects(t *testing.T) {
 			allowed++
 		}
 	}
-	if allowed > 11 {
-		t.Fatalf("expected byte burst to cap allowance near 10, allowed %d", allowed)
-	}
+	require.LessOrEqual(t, allowed, 11, "expected byte burst to cap allowance near 10")
 }
 
 func TestRateLimiter_TransientViolations_NotFlaggedAbusive(t *testing.T) {
@@ -81,9 +79,7 @@ func TestRateLimiter_TransientViolations_NotFlaggedAbusive(t *testing.T) {
 	// violations - all should be tolerated.
 	limiter.Check("peer-a", 1)
 	for i := 0; i < 5; i++ {
-		if decision := limiter.Check("peer-a", 1); decision.Abusive {
-			t.Fatalf("violation %d within the burst was flagged abusive", i)
-		}
+		require.False(t, limiter.Check("peer-a", 1).Abusive, "violation %d within the burst was flagged abusive", i)
 	}
 }
 
@@ -101,9 +97,7 @@ func TestRateLimiter_SustainedViolations_FlaggedAbusive(t *testing.T) {
 	for i := 0; i < 20 && !abusive; i++ {
 		abusive = limiter.Check("peer-a", 1).Abusive
 	}
-	if !abusive {
-		t.Fatal("expected sustained violations to be flagged abusive")
-	}
+	require.True(t, abusive, "expected sustained violations to be flagged abusive")
 }
 
 func TestRateLimiter_Abuse_TrackedPerPeer(t *testing.T) {
@@ -121,9 +115,7 @@ func TestRateLimiter_Abuse_TrackedPerPeer(t *testing.T) {
 		limiter.Check("peer-a", 1)
 	}
 	// peer-b is fresh and must not inherit peer-a's abuse.
-	if limiter.Check("peer-b", 1).Abusive {
-		t.Fatal("peer-b should not be flagged abusive from peer-a's violations")
-	}
+	require.False(t, limiter.Check("peer-b", 1).Abusive, "peer-b should not be flagged abusive from peer-a's violations")
 }
 
 func TestRateLimiter_SeparatePeers_TrackedIndependently(t *testing.T) {
@@ -133,10 +125,6 @@ func TestRateLimiter_SeparatePeers_TrackedIndependently(t *testing.T) {
 		MessagesPerSecond: 1,
 		MessageBurst:      1,
 	})
-	if !limiter.AllowMessage("peer-a", 1) {
-		t.Fatal("first message from peer-a should be allowed")
-	}
-	if !limiter.AllowMessage("peer-b", 1) {
-		t.Fatal("first message from peer-b should be allowed independently of peer-a")
-	}
+	require.True(t, limiter.AllowMessage("peer-a", 1), "first message from peer-a should be allowed")
+	require.True(t, limiter.AllowMessage("peer-b", 1), "first message from peer-b should be allowed independently of peer-a")
 }

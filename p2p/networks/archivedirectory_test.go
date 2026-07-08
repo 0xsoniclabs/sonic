@@ -22,6 +22,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/0xsoniclabs/sonic/p2p"
@@ -33,40 +34,31 @@ func TestArchiveDirectory_ValidAdvertisement_AcceptedAndStored(t *testing.T) {
 	archive := newTestPeerID(t)
 	message := advertisement(t, archive, 1000, 100, 200)
 
-	if result := directory.Validate("sender", message); result != p2p.ValidationAccept {
-		t.Fatalf("expected accept, got %v", result)
-	}
+	require.Equal(t, p2p.ValidationAccept, directory.Validate("sender", message), "expected accept")
 	directory.Deliver("sender", message)
 
 	archives := directory.Archives()
-	if len(archives) != 1 || archives[0].Peer != archive {
-		t.Fatalf("expected one stored archive for %s, got %+v", archive, archives)
-	}
+	require.Len(t, archives, 1, "expected one stored archive for %s", archive)
+	require.Equal(t, archive, archives[0].Peer)
 }
 
 func TestArchiveDirectory_ExpiredAdvertisement_Ignored(t *testing.T) {
 	directory := newTestDirectory()
 	message := advertisement(t, newTestPeerID(t), -10, 100, 200) // already expired
 
-	if result := directory.Validate("sender", message); result != p2p.ValidationIgnore {
-		t.Fatalf("expected ignore for expired advertisement, got %v", result)
-	}
+	require.Equal(t, p2p.ValidationIgnore, directory.Validate("sender", message), "expected ignore for expired advertisement")
 }
 
 func TestArchiveDirectory_InvalidRange_Rejected(t *testing.T) {
 	directory := newTestDirectory()
 	message := advertisement(t, newTestPeerID(t), 1000, 500, 200) // start > end
 
-	if result := directory.Validate("sender", message); result != p2p.ValidationReject {
-		t.Fatalf("expected reject for start>end, got %v", result)
-	}
+	require.Equal(t, p2p.ValidationReject, directory.Validate("sender", message), "expected reject for start>end")
 }
 
 func TestArchiveDirectory_MalformedMessage_Rejected(t *testing.T) {
 	directory := newTestDirectory()
-	if result := directory.Validate("sender", []byte("not a protobuf")); result != p2p.ValidationReject {
-		t.Fatalf("expected reject for malformed message, got %v", result)
-	}
+	require.Equal(t, p2p.ValidationReject, directory.Validate("sender", []byte("not a protobuf")), "expected reject for malformed message")
 }
 
 func TestArchiveDirectory_ExpiredEntry_PrunedFromResults(t *testing.T) {
@@ -76,14 +68,10 @@ func TestArchiveDirectory_ExpiredEntry_PrunedFromResults(t *testing.T) {
 
 	message := advertisement(t, newTestPeerID(t), 60, 100, 200) // expires 60s later
 	directory.Deliver("sender", message)
-	if len(directory.Archives()) != 1 {
-		t.Fatal("expected the archive to be live initially")
-	}
+	require.Len(t, directory.Archives(), 1, "expected the archive to be live initially")
 
 	current = current.Add(120 * time.Second)
-	if archives := directory.Archives(); len(archives) != 0 {
-		t.Fatalf("expected expired archive to be pruned, got %+v", archives)
-	}
+	require.Empty(t, directory.Archives(), "expected expired archive to be pruned")
 }
 
 func newTestDirectory() *ArchiveDirectory {
@@ -103,8 +91,6 @@ func advertisement(t *testing.T, archive peer.ID, ttlSeconds int64, start, end u
 		HistoryEnd:    end,
 		ExpiresAtUnix: time.Unix(1_000_000, 0).Add(time.Duration(ttlSeconds) * time.Second).Unix(),
 	})
-	if err != nil {
-		t.Fatalf("failed to marshal advertisement: %v", err)
-	}
+	require.NoError(t, err, "failed to marshal advertisement")
 	return message
 }

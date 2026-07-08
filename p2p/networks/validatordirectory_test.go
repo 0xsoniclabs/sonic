@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/libp2p/go-libp2p/core/peer"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/0xsoniclabs/sonic/p2p"
@@ -33,22 +34,12 @@ import (
 
 func TestDirectoryDigest_DifferentInputs_DifferentHash(t *testing.T) {
 	base := directoryDigest([]byte("peer"), []string{"ab", "c"}, 1)
-	if base != directoryDigest([]byte("peer"), []string{"ab", "c"}, 1) {
-		t.Fatal("identical inputs must hash equally")
-	}
+	require.Equal(t, base, directoryDigest([]byte("peer"), []string{"ab", "c"}, 1), "identical inputs must hash equally")
 	// Length-prefixing must distinguish a re-split address list.
-	if base == directoryDigest([]byte("peer"), []string{"a", "bc"}, 1) {
-		t.Fatal("re-split address list must change the digest")
-	}
-	if base == directoryDigest([]byte("peer"), []string{"c", "ab"}, 1) {
-		t.Fatal("reordered address list must change the digest")
-	}
-	if base == directoryDigest([]byte("peer"), []string{"ab", "c"}, 2) {
-		t.Fatal("changed sequence must change the digest")
-	}
-	if base == directoryDigest([]byte("PEER"), []string{"ab", "c"}, 1) {
-		t.Fatal("changed peer ID must change the digest")
-	}
+	require.NotEqual(t, base, directoryDigest([]byte("peer"), []string{"a", "bc"}, 1), "re-split address list must change the digest")
+	require.NotEqual(t, base, directoryDigest([]byte("peer"), []string{"c", "ab"}, 1), "reordered address list must change the digest")
+	require.NotEqual(t, base, directoryDigest([]byte("peer"), []string{"ab", "c"}, 2), "changed sequence must change the digest")
+	require.NotEqual(t, base, directoryDigest([]byte("PEER"), []string{"ab", "c"}, 1), "changed peer ID must change the digest")
 }
 
 func TestValidatorDirectory_ValidAdvertisement_Accepted(t *testing.T) {
@@ -57,18 +48,14 @@ func TestValidatorDirectory_ValidAdvertisement_Accepted(t *testing.T) {
 	fixture.membership.set([]Member{{ID: 2, PublicKey: publicKey}})
 
 	message := buildAdvertisement(t, signer, newTestPeerID(t), []string{"/ip4/127.0.0.1/tcp/4002"}, 1)
-	if got := fixture.directory.Validate("from", message); got != p2p.ValidationAccept {
-		t.Fatalf("expected accept, got %v", got)
-	}
+	require.Equal(t, p2p.ValidationAccept, fixture.directory.Validate("from", message), "expected accept")
 }
 
 func TestValidatorDirectory_NonMember_Rejected(t *testing.T) {
 	fixture := newDirectoryFixture(t)
 	signer, _ := newTestSigner(t) // signer's key is not in the membership
 	message := buildAdvertisement(t, signer, newTestPeerID(t), []string{"/ip4/127.0.0.1/tcp/4002"}, 1)
-	if got := fixture.directory.Validate("from", message); got != p2p.ValidationReject {
-		t.Fatalf("expected reject for non-member, got %v", got)
-	}
+	require.Equal(t, p2p.ValidationReject, fixture.directory.Validate("from", message), "expected reject for non-member")
 }
 
 func TestValidatorDirectory_BadSignature_Rejected(t *testing.T) {
@@ -78,14 +65,10 @@ func TestValidatorDirectory_BadSignature_Rejected(t *testing.T) {
 
 	message := buildAdvertisement(t, signer, newTestPeerID(t), []string{"/ip4/127.0.0.1/tcp/4002"}, 1)
 	var advertisement pb.ValidatorAdvertisement
-	if err := proto.Unmarshal(message, &advertisement); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, proto.Unmarshal(message, &advertisement))
 	advertisement.Signature[0] ^= 0xff
 	tampered, _ := proto.Marshal(&advertisement)
-	if got := fixture.directory.Validate("from", tampered); got != p2p.ValidationReject {
-		t.Fatalf("expected reject for bad signature, got %v", got)
-	}
+	require.Equal(t, p2p.ValidationReject, fixture.directory.Validate("from", tampered), "expected reject for bad signature")
 }
 
 func TestValidatorDirectory_StaleSequence_Ignored(t *testing.T) {
@@ -97,16 +80,12 @@ func TestValidatorDirectory_StaleSequence_Ignored(t *testing.T) {
 	fixture.directory.Deliver("from", buildAdvertisement(t, signer, peerID, []string{"/ip4/127.0.0.1/tcp/4002"}, 5))
 
 	stale := buildAdvertisement(t, signer, peerID, []string{"/ip4/127.0.0.1/tcp/4002"}, 3)
-	if got := fixture.directory.Validate("from", stale); got != p2p.ValidationIgnore {
-		t.Fatalf("expected ignore for stale sequence, got %v", got)
-	}
+	require.Equal(t, p2p.ValidationIgnore, fixture.directory.Validate("from", stale), "expected ignore for stale sequence")
 }
 
 func TestValidatorDirectory_MalformedMessage_Rejected(t *testing.T) {
 	fixture := newDirectoryFixture(t)
-	if got := fixture.directory.Validate("from", []byte("not a protobuf")); got != p2p.ValidationReject {
-		t.Fatalf("expected reject for malformed message, got %v", got)
-	}
+	require.Equal(t, p2p.ValidationReject, fixture.directory.Validate("from", []byte("not a protobuf")), "expected reject for malformed message")
 }
 
 func TestValidatorDirectory_Deliver_ResolvableAndNotifiesDiscovery(t *testing.T) {
@@ -126,9 +105,8 @@ func TestValidatorDirectory_Deliver_ResolvableAndNotifiesDiscovery(t *testing.T)
 	fixture.directory.Deliver("from", buildAdvertisement(t, signer, peerID, []string{"/ip4/127.0.0.1/tcp/4002"}, 1))
 
 	info, ok := fixture.directory.Resolve(publicKey)
-	if !ok || info.ID != peerID {
-		t.Fatalf("expected to resolve %s, got %+v ok=%v", peerID, info, ok)
-	}
+	require.True(t, ok, "expected to resolve %s", peerID)
+	require.Equal(t, peerID, info.ID, "expected to resolve %s", peerID)
 	select {
 	case <-discovered:
 	default:
@@ -141,9 +119,8 @@ func TestValidatorDirectory_Deliver_SkipsSelf(t *testing.T) {
 	// An advertisement signed by our own key must never be stored.
 	message := buildAdvertisement(t, fixture.signer, fixture.local.id, []string{"/ip4/127.0.0.1/tcp/4002"}, 1)
 	fixture.directory.Deliver("from", message)
-	if _, ok := fixture.directory.Resolve(fixture.signer.PublicKey()); ok {
-		t.Fatal("expected own advertisement to be skipped")
-	}
+	_, ok := fixture.directory.Resolve(fixture.signer.PublicKey())
+	require.False(t, ok, "expected own advertisement to be skipped")
 }
 
 func TestValidatorDirectory_PruneNonMembers_RemovesEntry(t *testing.T) {
@@ -152,15 +129,13 @@ func TestValidatorDirectory_PruneNonMembers_RemovesEntry(t *testing.T) {
 	fixture.membership.set([]Member{{ID: 2, PublicKey: publicKey}})
 	peerID := newTestPeerID(t)
 	fixture.directory.Deliver("from", buildAdvertisement(t, signer, peerID, []string{"/ip4/127.0.0.1/tcp/4002"}, 1))
-	if _, ok := fixture.directory.Resolve(publicKey); !ok {
-		t.Fatal("expected entry present before prune")
-	}
+	_, ok := fixture.directory.Resolve(publicKey)
+	require.True(t, ok, "expected entry present before prune")
 
 	fixture.membership.set(nil) // validator removed from the set
 	fixture.directory.pruneNonMembers()
-	if _, ok := fixture.directory.Resolve(publicKey); ok {
-		t.Fatal("expected entry pruned after member removal")
-	}
+	_, ok = fixture.directory.Resolve(publicKey)
+	require.False(t, ok, "expected entry pruned after member removal")
 }
 
 func TestValidatorDirectory_Start_PublishesOnJoin(t *testing.T) {
@@ -168,18 +143,12 @@ func TestValidatorDirectory_Start_PublishesOnJoin(t *testing.T) {
 	fixture.directory.Start(context.Background())
 	defer fixture.directory.Stop()
 
-	if !waitFor(func() bool { return fixture.publisher.count() >= 1 }, 2*time.Second) {
-		t.Fatal("expected an advertisement to be published on join")
-	}
+	require.True(t, waitFor(func() bool { return fixture.publisher.count() >= 1 }, 2*time.Second), "expected an advertisement to be published on join")
 	// The published advertisement is self-consistent and verifiable.
 	var advertisement pb.ValidatorAdvertisement
-	if err := proto.Unmarshal(fixture.publisher.last(), &advertisement); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, proto.Unmarshal(fixture.publisher.last(), &advertisement))
 	digest := directoryDigest(advertisement.PeerId, advertisement.Addresses, advertisement.Sequence)
-	if !NewSecp256k1Verifier().Verify(advertisement.ValidatorPublicKey, digest[:], advertisement.Signature) {
-		t.Fatal("published advertisement failed verification")
-	}
+	require.True(t, NewSecp256k1Verifier().Verify(advertisement.ValidatorPublicKey, digest[:], advertisement.Signature), "published advertisement failed verification")
 }
 
 func TestValidatorDirectory_NewMemberDiscovery_TriggersRepublish(t *testing.T) {
@@ -187,18 +156,14 @@ func TestValidatorDirectory_NewMemberDiscovery_TriggersRepublish(t *testing.T) {
 	fixture.directory.Start(context.Background())
 	defer fixture.directory.Stop()
 
-	if !waitFor(func() bool { return fixture.publisher.count() >= 1 }, 2*time.Second) {
-		t.Fatal("expected the initial publish-on-join")
-	}
+	require.True(t, waitFor(func() bool { return fixture.publisher.count() >= 1 }, 2*time.Second), "expected the initial publish-on-join")
 	initial := fixture.publisher.count()
 
 	signer, publicKey := newTestSigner(t)
 	fixture.membership.set([]Member{{ID: 2, PublicKey: publicKey}})
 	fixture.directory.Deliver("from", buildAdvertisement(t, signer, newTestPeerID(t), []string{"/ip4/127.0.0.1/tcp/4002"}, 1))
 
-	if !waitFor(func() bool { return fixture.publisher.count() > initial }, 2*time.Second) {
-		t.Fatal("expected discovering a new member to trigger a re-publish")
-	}
+	require.True(t, waitFor(func() bool { return fixture.publisher.count() > initial }, 2*time.Second), "expected discovering a new member to trigger a re-publish")
 }
 
 // --- fixtures & fakes ---
@@ -229,9 +194,7 @@ func buildAdvertisement(t *testing.T, signer Signer, peerID peer.ID, addresses [
 	t.Helper()
 	digest := directoryDigest([]byte(peerID), addresses, sequence)
 	signature, err := signer.Sign(digest[:])
-	if err != nil {
-		t.Fatalf("failed to sign advertisement: %v", err)
-	}
+	require.NoError(t, err, "failed to sign advertisement")
 	message, err := proto.Marshal(&pb.ValidatorAdvertisement{
 		ValidatorPublicKey: signer.PublicKey(),
 		PeerId:             []byte(peerID),
@@ -239,18 +202,14 @@ func buildAdvertisement(t *testing.T, signer Signer, peerID peer.ID, addresses [
 		Sequence:           sequence,
 		Signature:          signature,
 	})
-	if err != nil {
-		t.Fatalf("failed to marshal advertisement: %v", err)
-	}
+	require.NoError(t, err, "failed to marshal advertisement")
 	return message
 }
 
 func mustAddr(t *testing.T, s string) ma.Multiaddr {
 	t.Helper()
 	address, err := ma.NewMultiaddr(s)
-	if err != nil {
-		t.Fatalf("bad multiaddr %q: %v", s, err)
-	}
+	require.NoError(t, err, "bad multiaddr %q", s)
 	return address
 }
 

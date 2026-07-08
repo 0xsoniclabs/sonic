@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/p2p"
 	"github.com/0xsoniclabs/sonic/p2p/guard"
@@ -42,17 +43,13 @@ func TestValidatorHandshake_FailedHandshake_DisconnectsPeer(t *testing.T) {
 	validator := startValidator(t, ctx, membership, 0)
 
 	attacker := newTestNode(t)
-	if err := attacker.Start(); err != nil {
-		t.Fatalf("failed to start attacker: %v", err)
-	}
+	require.NoError(t, attacker.Start(), "failed to start attacker")
 	t.Cleanup(func() { _ = attacker.Stop() })
 	bootstrap(t, ctx, attacker, validator)
 
 	_ = attemptBadHandshake(ctx, attacker, validator)
 
-	if !waitForConnectedness(validator, attacker.ID(), network.NotConnected, 10*time.Second) {
-		t.Fatal("expected the validator to disconnect a peer that failed the handshake")
-	}
+	require.True(t, waitForConnectedness(validator, attacker.ID(), network.NotConnected, 10*time.Second), "expected the validator to disconnect a peer that failed the handshake")
 }
 
 // TestValidatorHandshake_SustainedFailures_BansPeer floods a validator with
@@ -67,25 +64,19 @@ func TestValidatorHandshake_SustainedFailures_BansPeer(t *testing.T) {
 	config := p2p.DefaultConfig()
 	config.ListenAddresses = []string{"/ip4/127.0.0.1/udp/0/quic-v1", "/ip4/127.0.0.1/tcp/0"}
 	validator, err := p2p.New(config, log.Root(), registry)
-	if err != nil {
-		t.Fatalf("failed to create validator: %v", err)
-	}
+	require.NoError(t, err, "failed to create validator")
 	validatorNetwork := NewValidatorNetwork(validator, membership, memberKeys[membership][0], NewSecp256k1Verifier(), 1,
 		ValidatorNetworkConfig{
 			Directory:            fastNetworkConfig.Directory,
 			HandshakeFailures:    guard.FailureLimitConfig{FailureBurst: 2},
 			HandshakeBanDuration: 3 * time.Second,
 		})
-	if err := validator.Start(); err != nil {
-		t.Fatalf("failed to start validator: %v", err)
-	}
+	require.NoError(t, validator.Start(), "failed to start validator")
 	validatorNetwork.Start(ctx)
 	t.Cleanup(func() { validatorNetwork.Stop(); _ = validator.Stop() })
 
 	attacker := newTestNode(t)
-	if err := attacker.Start(); err != nil {
-		t.Fatalf("failed to start attacker: %v", err)
-	}
+	require.NoError(t, attacker.Start(), "failed to start attacker")
 	t.Cleanup(func() { _ = attacker.Stop() })
 	bootstrap(t, ctx, attacker, validator)
 
@@ -94,12 +85,8 @@ func TestValidatorHandshake_SustainedFailures_BansPeer(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	if !validator.Gater().IsBanned(attacker.ID()) {
-		t.Fatal("expected the attacker to be banned after sustained handshake failures")
-	}
-	if got := counterValue(t, registry, "sonic_p2p_peer_disconnects_total", "reason", "handshake-failure"); got < 1 {
-		t.Fatalf("expected the handshake-failure disconnect metric to be recorded, got %v", got)
-	}
+	require.True(t, validator.Gater().IsBanned(attacker.ID()), "expected the attacker to be banned after sustained handshake failures")
+	require.GreaterOrEqual(t, counterValue(t, registry, "sonic_p2p_peer_disconnects_total", "reason", "handshake-failure"), float64(1), "expected the handshake-failure disconnect metric to be recorded")
 }
 
 // TestValidatorHandshake_NonAttemptingPeer_StaysConnected proves the change is
@@ -114,21 +101,15 @@ func TestValidatorHandshake_NonAttemptingPeer_StaysConnected(t *testing.T) {
 	validator := startValidator(t, ctx, membership, 0)
 
 	archive := newTestNode(t) // non-validator; never opens the handshake stream
-	if err := archive.Start(); err != nil {
-		t.Fatalf("failed to start archive: %v", err)
-	}
+	require.NoError(t, archive.Start(), "failed to start archive")
 	t.Cleanup(func() { _ = archive.Stop() })
 	bootstrap(t, ctx, archive, validator)
 
 	// Wait out a window comparable to the handshake-abuse handling.
 	time.Sleep(3 * time.Second)
 
-	if validator.Host().Network().Connectedness(archive.ID()) != network.Connected {
-		t.Fatal("expected a peer that never attempts the handshake to remain connected")
-	}
-	if validator.Gater().IsBanned(archive.ID()) {
-		t.Fatal("a peer that never attempts the handshake must not be banned")
-	}
+	require.Equal(t, network.Connected, validator.Host().Network().Connectedness(archive.ID()), "expected a peer that never attempts the handshake to remain connected")
+	require.False(t, validator.Gater().IsBanned(archive.ID()), "a peer that never attempts the handshake must not be banned")
 }
 
 // attemptBadHandshake opens the validator-handshake stream from `from` to `to`
@@ -171,9 +152,7 @@ func waitForConnectedness(node *p2p.Node, target p2p.PeerID, want network.Connec
 func counterValue(t *testing.T, registry *prometheus.Registry, metric, labelName, labelValue string) float64 {
 	t.Helper()
 	families, err := registry.Gather()
-	if err != nil {
-		t.Fatalf("failed to gather metrics: %v", err)
-	}
+	require.NoError(t, err, "failed to gather metrics")
 	for _, family := range families {
 		if family.GetName() != metric {
 			continue

@@ -19,12 +19,12 @@ package networks
 import (
 	"bytes"
 	"crypto/rand"
-	"errors"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	libp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/stretchr/testify/require"
 )
 
 func TestVerifyBindingProof_ValidProof_Accepts(t *testing.T) {
@@ -34,12 +34,8 @@ func TestVerifyBindingProof_ValidProof_Accepts(t *testing.T) {
 	nonce := newNonce(t)
 
 	proof, err := CreateBindingProof(signer, self, 7, 42, nonce)
-	if err != nil {
-		t.Fatalf("CreateBindingProof failed: %v", err)
-	}
-	if err := VerifyBindingProof(verifier, proof, self, 42, memberOf(publicKey)); err != nil {
-		t.Fatalf("expected valid proof to verify, got %v", err)
-	}
+	require.NoError(t, err, "CreateBindingProof failed")
+	require.NoError(t, VerifyBindingProof(verifier, proof, self, 42, memberOf(publicKey)), "expected valid proof to verify")
 }
 
 func TestVerifyBindingProof_ReplayedOntoOtherPeer_Rejected(t *testing.T) {
@@ -49,14 +45,10 @@ func TestVerifyBindingProof_ReplayedOntoOtherPeer_Rejected(t *testing.T) {
 	verifier := NewSecp256k1Verifier()
 
 	proof, err := CreateBindingProof(signer, self, 7, 42, newNonce(t))
-	if err != nil {
-		t.Fatalf("CreateBindingProof failed: %v", err)
-	}
+	require.NoError(t, err, "CreateBindingProof failed")
 	// The attacker presents the victim's proof on its own connection.
 	err = VerifyBindingProof(verifier, proof, attacker, 42, memberOf(publicKey))
-	if !errors.Is(err, ErrHandshakePeerMismatch) {
-		t.Fatalf("expected ErrHandshakePeerMismatch, got %v", err)
-	}
+	require.ErrorIs(t, err, ErrHandshakePeerMismatch)
 }
 
 func TestVerifyBindingProof_WrongEpoch_Rejected(t *testing.T) {
@@ -65,12 +57,8 @@ func TestVerifyBindingProof_WrongEpoch_Rejected(t *testing.T) {
 	verifier := NewSecp256k1Verifier()
 
 	proof, err := CreateBindingProof(signer, self, 7, 42, newNonce(t))
-	if err != nil {
-		t.Fatalf("CreateBindingProof failed: %v", err)
-	}
-	if err := VerifyBindingProof(verifier, proof, self, 43, memberOf(publicKey)); !errors.Is(err, ErrHandshakeWrongEpoch) {
-		t.Fatalf("expected ErrHandshakeWrongEpoch, got %v", err)
-	}
+	require.NoError(t, err, "CreateBindingProof failed")
+	require.ErrorIs(t, VerifyBindingProof(verifier, proof, self, 43, memberOf(publicKey)), ErrHandshakeWrongEpoch)
 }
 
 func TestVerifyBindingProof_NotInValidatorSet_Rejected(t *testing.T) {
@@ -79,13 +67,9 @@ func TestVerifyBindingProof_NotInValidatorSet_Rejected(t *testing.T) {
 	verifier := NewSecp256k1Verifier()
 
 	proof, err := CreateBindingProof(signer, self, 7, 42, newNonce(t))
-	if err != nil {
-		t.Fatalf("CreateBindingProof failed: %v", err)
-	}
+	require.NoError(t, err, "CreateBindingProof failed")
 	rejectAll := func([]byte) bool { return false }
-	if err := VerifyBindingProof(verifier, proof, self, 42, rejectAll); !errors.Is(err, ErrHandshakeNotValidator) {
-		t.Fatalf("expected ErrHandshakeNotValidator, got %v", err)
-	}
+	require.ErrorIs(t, VerifyBindingProof(verifier, proof, self, 42, rejectAll), ErrHandshakeNotValidator)
 }
 
 func TestVerifyBindingProof_TamperedSignature_Rejected(t *testing.T) {
@@ -94,13 +78,9 @@ func TestVerifyBindingProof_TamperedSignature_Rejected(t *testing.T) {
 	verifier := NewSecp256k1Verifier()
 
 	proof, err := CreateBindingProof(signer, self, 7, 42, newNonce(t))
-	if err != nil {
-		t.Fatalf("CreateBindingProof failed: %v", err)
-	}
+	require.NoError(t, err, "CreateBindingProof failed")
 	proof.Signature[0] ^= 0xff
-	if err := VerifyBindingProof(verifier, proof, self, 42, memberOf(publicKey)); !errors.Is(err, ErrHandshakeBadSignature) {
-		t.Fatalf("expected ErrHandshakeBadSignature, got %v", err)
-	}
+	require.ErrorIs(t, VerifyBindingProof(verifier, proof, self, 42, memberOf(publicKey)), ErrHandshakeBadSignature)
 }
 
 // --- test helpers ---
@@ -108,9 +88,7 @@ func TestVerifyBindingProof_TamperedSignature_Rejected(t *testing.T) {
 func newTestSigner(t *testing.T) (Signer, []byte) {
 	t.Helper()
 	key, err := crypto.GenerateKey()
-	if err != nil {
-		t.Fatalf("failed to generate key: %v", err)
-	}
+	require.NoError(t, err, "failed to generate key")
 	signer := NewSecp256k1Signer(key)
 	return signer, signer.PublicKey()
 }
@@ -118,22 +96,17 @@ func newTestSigner(t *testing.T) (Signer, []byte) {
 func newTestPeerID(t *testing.T) peer.ID {
 	t.Helper()
 	_, public, err := libp2pcrypto.GenerateEd25519Key(rand.Reader)
-	if err != nil {
-		t.Fatalf("failed to generate peer key: %v", err)
-	}
+	require.NoError(t, err, "failed to generate peer key")
 	id, err := peer.IDFromPublicKey(public)
-	if err != nil {
-		t.Fatalf("failed to derive peer ID: %v", err)
-	}
+	require.NoError(t, err, "failed to derive peer ID")
 	return id
 }
 
 func newNonce(t *testing.T) []byte {
 	t.Helper()
 	nonce := make([]byte, 16)
-	if _, err := rand.Read(nonce); err != nil {
-		t.Fatalf("failed to read nonce: %v", err)
-	}
+	_, err := rand.Read(nonce)
+	require.NoError(t, err, "failed to read nonce")
 	return nonce
 }
 
