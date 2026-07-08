@@ -18,15 +18,114 @@ package networks
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/p2p"
 )
+
+func TestHandshakeProtocol_ValidProof_Authenticates(t *testing.T) {
+	signer, publicKey := newTestSigner(t)
+	membership := &fakeMembership{members: []Member{{ID: 2, PublicKey: publicKey}}}
+	peerID := newTestPeerID(t)
+	proof, err := CreateBindingProof(signer, peerID, 2, membership.Epoch(), newNonce(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var authenticated bool
+	var failure error
+	handshake := NewHandshakeProtocol(newTestPeerID(t), signer, NewSecp256k1Verifier(), membership, 2, log.Root(),
+		func(peer.ID, uint32) { authenticated = true },
+		func(_ peer.ID, err error) { failure = err })
+
+	stream := &fakeStream{peer: peerID, payload: proof}
+	handshake.Handle(stream)
+
+	if !authenticated || failure != nil {
+		t.Fatalf("expected authentication, got authenticated=%v failure=%v", authenticated, failure)
+	}
+	if !stream.closed || stream.reset {
+		t.Fatalf("expected a clean close, got closed=%v reset=%v", stream.closed, stream.reset)
+	}
+}
+
+func TestHandshakeProtocol_NonMemberProof_ReportsFailure(t *testing.T) {
+	member, publicKey := newTestSigner(t)
+	membership := &fakeMembership{members: []Member{{ID: 2, PublicKey: publicKey}}}
+	outsider, _ := newTestSigner(t) // not in the membership
+	peerID := newTestPeerID(t)
+	proof, err := CreateBindingProof(outsider, peerID, 999, membership.Epoch(), newNonce(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var authenticated bool
+	var failure error
+	handshake := NewHandshakeProtocol(newTestPeerID(t), member, NewSecp256k1Verifier(), membership, 2, log.Root(),
+		func(peer.ID, uint32) { authenticated = true },
+		func(_ peer.ID, err error) { failure = err })
+
+	stream := &fakeStream{peer: peerID, payload: proof}
+	handshake.Handle(stream)
+
+	if authenticated {
+		t.Fatal("a non-member proof must not authenticate")
+	}
+	if !errors.Is(failure, ErrHandshakeNotValidator) {
+		t.Fatalf("expected ErrHandshakeNotValidator, got %v", failure)
+	}
+	if !stream.reset {
+		t.Fatal("expected the stream to be reset on failure")
+	}
+}
+
+func TestHandshakeProtocol_ReadError_ReportsFailure(t *testing.T) {
+	signer, publicKey := newTestSigner(t)
+	membership := &fakeMembership{members: []Member{{ID: 2, PublicKey: publicKey}}}
+
+	var failure error
+	handshake := NewHandshakeProtocol(newTestPeerID(t), signer, NewSecp256k1Verifier(), membership, 2, log.Root(),
+		nil, func(_ peer.ID, err error) { failure = err })
+
+	stream := &fakeStream{peer: newTestPeerID(t), readErr: errors.New("boom")}
+	handshake.Handle(stream)
+
+	if failure == nil {
+		t.Fatal("expected a read error to be reported via onFailure")
+	}
+}
+
+// fakeStream is a minimal p2p.Stream returning a preset message.
+type fakeStream struct {
+	peer    peer.ID
+	payload proto.Message
+	readErr error
+	reset   bool
+	closed  bool
+}
+
+func (s *fakeStream) Peer() p2p.PeerID { return s.peer }
+
+func (s *fakeStream) ReadMessage(message proto.Message, _ int) error {
+	if s.readErr != nil {
+		return s.readErr
+	}
+	proto.Reset(message)
+	proto.Merge(message, s.payload)
+	return nil
+}
+
+func (s *fakeStream) WriteMessage(proto.Message, int) error { return nil }
+func (s *fakeStream) Close() error                          { s.closed = true; return nil }
+func (s *fakeStream) Reset() error                          { s.reset = true; return nil }
 
 func TestValidatorMesh_ResolvableMembers_AllDialed(t *testing.T) {
 	host := newFakeMeshHost(t)

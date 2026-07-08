@@ -68,12 +68,19 @@ registers a gossip topic and a stream protocol, **construct it before
 
 ```go
 vn := networks.NewValidatorNetwork(node, membership, signer,
-        networks.NewSecp256k1Verifier(), validatorID, networks.ValidatorDirectoryConfig{})
+        networks.NewSecp256k1Verifier(), validatorID, networks.ValidatorNetworkConfig{})
 // ... register other protocols ...
 node.Start()          // node starts serving; gossip topic + handshake are live
 vn.Start(ctx)         // begins advertising this node and maintaining the mesh
 // on shutdown: vn.Stop() then node.Stop()
 ```
+
+`ValidatorNetworkConfig` carries the directory tuning (`Directory`) plus the
+handshake-abuse policy (`HandshakeFailures` burst/rate and `HandshakeBanDuration`);
+zero values get sensible defaults. A peer that fails the validator handshake is
+disconnected, and a sustained flood of failures is banned for the cooldown — this
+is scoped to peers that open the handshake stream, so archives/observers that only
+gossip are unaffected.
 
 Only validators run a `ValidatorNetwork`; observers/archives do not. Leave
 `Config.HostKeyPath` empty for validators (ephemeral key; identity comes from the
@@ -116,4 +123,8 @@ touching the core:
    (node count, client-version breakdown, sync heights, role counts).
 5. **Retire devp2p `opera`** — once the new stack carries production traffic,
    remove the old gossip transport.
+6. **`InterceptAccept` per-IP connection-rate limiting** — a deeper defense
+   against spoofed-identity connection floods (a fresh peer ID per attempt),
+   applied before the peer ID is known. Today such floods are bounded only by the
+   resource-manager inbound caps. See `guard/PROTECTIONS.md`.
 ```

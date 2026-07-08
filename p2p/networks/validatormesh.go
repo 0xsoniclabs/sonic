@@ -164,11 +164,14 @@ type HandshakeProtocol struct {
 	validatorID     uint32
 	logger          logger.Logger
 	onAuthenticated func(peer.ID, uint32)
+	onFailure       func(peer.ID, error)
 }
 
 // NewHandshakeProtocol creates the handshake protocol. self is the local peer
 // identity the outbound proof binds to. onAuthenticated, if set, is called with
-// the peer ID and validator ID once a peer is authenticated.
+// the peer ID and validator ID once a peer is authenticated; onFailure, if set,
+// is called with the peer ID and error when an inbound handshake fails, so the
+// caller can disconnect (and, on floods, ban) the peer.
 func NewHandshakeProtocol(
 	self peer.ID,
 	signer Signer,
@@ -177,6 +180,7 @@ func NewHandshakeProtocol(
 	validatorID uint32,
 	log logger.Logger,
 	onAuthenticated func(peer.ID, uint32),
+	onFailure func(peer.ID, error),
 ) *HandshakeProtocol {
 	return &HandshakeProtocol{
 		self:            self,
@@ -186,6 +190,7 @@ func NewHandshakeProtocol(
 		validatorID:     validatorID,
 		logger:          log,
 		onAuthenticated: onAuthenticated,
+		onFailure:       onFailure,
 	}
 }
 
@@ -194,17 +199,19 @@ func (h *HandshakeProtocol) ProtocolID() protocol.ID {
 	return HandshakeProtocolID
 }
 
-// Handle verifies an inbound validator binding proof.
+// Handle verifies an inbound validator binding proof. On any failure it resets
+// the stream and reports it via onFailure, so the caller can disconnect the peer
+// (and ban it if failures become sustained).
 func (h *HandshakeProtocol) Handle(stream p2p.Stream) {
 	var proof pb.ValidatorHandshake
 	if err := stream.ReadMessage(&proof, maxHandshakeSize); err != nil {
 		h.logger.Debug("handshake read failed", "peer", stream.Peer(), "err", err)
-		_ = stream.Reset()
+		h.fail(stream, err)
 		return
 	}
 	if err := VerifyBindingProof(h.verifier, &proof, stream.Peer(), h.membership.Epoch(), h.isValidator); err != nil {
 		h.logger.Info("validator handshake rejected", "peer", stream.Peer(), "err", err)
-		_ = stream.Reset()
+		h.fail(stream, err)
 		return
 	}
 	if h.onAuthenticated != nil {
@@ -212,6 +219,13 @@ func (h *HandshakeProtocol) Handle(stream p2p.Stream) {
 	}
 	h.logger.Debug("validator authenticated", "peer", stream.Peer(), "validator", proof.ValidatorId)
 	_ = stream.Close()
+}
+
+func (h *HandshakeProtocol) fail(stream p2p.Stream, err error) {
+	_ = stream.Reset()
+	if h.onFailure != nil {
+		h.onFailure(stream.Peer(), err)
+	}
 }
 
 // Authenticate opens a handshake stream to target and sends this node's binding

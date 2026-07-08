@@ -26,6 +26,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/p2p"
+	"github.com/0xsoniclabs/sonic/p2p/guard"
 )
 
 // ValidatorNode is the subset of *p2p.Node the validator network needs. Keeping
@@ -36,11 +37,37 @@ type ValidatorNode interface {
 	Addresses() []ma.Multiaddr
 	Connect(ctx context.Context, info peer.AddrInfo) error
 	ClosePeer(target p2p.PeerID, reason string) error
+	DisconnectAndBan(target p2p.PeerID, reason string, banDuration time.Duration)
 	OpenStream(ctx context.Context, target p2p.PeerID, id protocol.ID) (p2p.Stream, error)
 	Publish(ctx context.Context, topic string, message []byte) error
 	RegisterGossipTopic(topic p2p.GossipTopic)
 	RegisterStreamProtocol(streamProtocol p2p.StreamProtocol)
 	Logger() logger.Logger
+}
+
+// ValidatorNetworkConfig tunes the validator network: address advertisement and
+// the tolerance for failed authentication handshakes before a peer is banned.
+type ValidatorNetworkConfig struct {
+	// Directory tunes address advertisement/discovery.
+	Directory ValidatorDirectoryConfig
+	// HandshakeFailures bounds how many handshake failures a peer may cause
+	// before it is banned (a short burst is tolerated for epoch-boundary skew).
+	HandshakeFailures guard.FailureLimitConfig
+	// HandshakeBanDuration is how long a sustained handshake-flooder is banned.
+	HandshakeBanDuration time.Duration
+}
+
+func (c ValidatorNetworkConfig) withDefaults() ValidatorNetworkConfig {
+	if c.HandshakeFailures.FailureBurst <= 0 {
+		c.HandshakeFailures.FailureBurst = 3
+	}
+	if c.HandshakeFailures.FailuresPerSecond <= 0 {
+		c.HandshakeFailures.FailuresPerSecond = 0.2
+	}
+	if c.HandshakeBanDuration <= 0 {
+		c.HandshakeBanDuration = 60 * time.Second
+	}
+	return c
 }
 
 // ValidatorNetwork composes the validator address directory, the full mesh, and
@@ -65,14 +92,31 @@ func NewValidatorNetwork(
 	signer Signer,
 	verifier Verifier,
 	validatorID uint32,
-	config ValidatorDirectoryConfig,
+	config ValidatorNetworkConfig,
 ) *ValidatorNetwork {
+	config = config.withDefaults()
 	log := node.Logger()
 
 	directory := NewValidatorDirectory(
-		membership, signer, verifier, node, node, log, config, uint64(time.Now().UnixNano()),
+		membership, signer, verifier, node, node, log, config.Directory, uint64(time.Now().UnixNano()),
 	)
-	handshake := NewHandshakeProtocol(node.ID(), signer, verifier, membership, validatorID, log, nil)
+
+	// A peer that fails the handshake is disconnected; a peer whose failures
+	// become sustained is also banned for a cooldown. A successful handshake
+	// clears the peer's failure history.
+	failures := guard.NewFailureLimiter(config.HandshakeFailures)
+	onAuthenticated := func(peerID peer.ID, _ uint32) {
+		failures.Forget(peerID.String())
+	}
+	onFailure := func(peerID peer.ID, _ error) {
+		banFor := time.Duration(0)
+		if failures.Record(peerID.String()) {
+			banFor = config.HandshakeBanDuration
+		}
+		node.DisconnectAndBan(peerID, "handshake-failure", banFor)
+	}
+
+	handshake := NewHandshakeProtocol(node.ID(), signer, verifier, membership, validatorID, log, onAuthenticated, onFailure)
 	mesh := NewValidatorMesh(node, directory, func(ctx context.Context, peerID peer.ID) {
 		if err := handshake.Authenticate(ctx, node, peerID); err != nil {
 			log.Debug("validator authentication failed", "peer", peerID, "err", err)

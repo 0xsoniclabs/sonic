@@ -33,12 +33,14 @@ import (
 // *p2p.Node must satisfy the ValidatorNode interface the composition needs.
 var _ ValidatorNode = (*p2p.Node)(nil)
 
-// fastDirectoryConfig makes convergence driven by publish-on-join and
+// fastNetworkConfig makes convergence driven by publish-on-join and
 // new-member-discovery re-publish rather than the periodic backstop.
-var fastDirectoryConfig = ValidatorDirectoryConfig{
-	RePublishInterval: 500 * time.Millisecond,
-	MaxJitter:         20 * time.Millisecond,
-	Debounce:          20 * time.Millisecond,
+var fastNetworkConfig = ValidatorNetworkConfig{
+	Directory: ValidatorDirectoryConfig{
+		RePublishInterval: 500 * time.Millisecond,
+		MaxJitter:         20 * time.Millisecond,
+		Debounce:          20 * time.Millisecond,
+	},
 }
 
 func TestValidatorNetwork_TwoValidators_FormMesh(t *testing.T) {
@@ -148,9 +150,14 @@ func membershipOf(t *testing.T, count int) *staticMembership {
 
 func startValidator(t *testing.T, ctx context.Context, membership *staticMembership, index int) *p2p.Node {
 	t.Helper()
+	return startValidatorWithConfig(t, ctx, membership, index, fastNetworkConfig)
+}
+
+func startValidatorWithConfig(t *testing.T, ctx context.Context, membership *staticMembership, index int, config ValidatorNetworkConfig) *p2p.Node {
+	t.Helper()
 	node := newTestNode(t)
 	signer := memberKeys[membership][index]
-	validatorNetwork := NewValidatorNetwork(node, membership, signer, NewSecp256k1Verifier(), uint32(index+1), fastDirectoryConfig)
+	validatorNetwork := NewValidatorNetwork(node, membership, signer, NewSecp256k1Verifier(), uint32(index+1), config)
 	if err := node.Start(); err != nil {
 		t.Fatalf("failed to start node: %v", err)
 	}

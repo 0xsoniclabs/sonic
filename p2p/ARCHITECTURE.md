@@ -92,10 +92,16 @@ allocation.
 
 | Guard | Enforces |
 |---|---|
-| `RateLimiter` | Per-peer **bytes/sec and messages/sec** token buckets, checked on every framed read and every gossip validation. |
-| `Gater` | libp2p `ConnectionGater`: allow/deny + ban list, rejected at dial/accept. |
+| `RateLimiter` | Per-peer **bytes/sec and messages/sec** token buckets, checked on every framed read and every gossip validation; sustained abuse → disconnect + temporary ban. |
+| `FailureLimiter` | Per-peer tolerance for repeated failures (e.g. failed validator handshakes); sustained failures → ban. |
+| `Gater` | libp2p `ConnectionGater`: allow/deny + timed (cooldown) ban list, rejected at dial/accept. |
 | `ResourceManager` | Aggregate & per-peer connection/stream/memory caps. |
 | `GossipScoreParams` | gossipsub peer scoring: penalises spam/invalid publishes. |
+
+See **[guard/PROTECTIONS.md](./guard/PROTECTIONS.md)** for the authoritative,
+end-to-end catalogue of network-layer protections (threat → mechanism → where
+implemented), including the framing size caps, gossip anti-spam gate, signature
+domain separation, and identity decoupling that live outside `guard/`.
 
 ### Adding a new protocol — worked example (network scan)
 

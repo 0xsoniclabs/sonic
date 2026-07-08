@@ -266,11 +266,21 @@ func (n *Node) installStreamHandler(streamProtocol StreamProtocol) {
 // peer's reconnection attempts until the cooldown elapses. scope is the
 // protocol ID or topic the abuse occurred on, for logging.
 func (n *Node) penalizePeer(peer PeerID, scope string) {
-	n.metrics.peerDisconnects.WithLabelValues("rate-abuse").Inc()
-	n.logger.Info("disconnecting abusive peer",
-		"peer", peer, "scope", scope, "reason", "rate-limit-abuse")
-	if duration := n.config.RateLimit.BanDuration; duration > 0 {
-		n.gater.BanUntil(peer, n.now().Add(duration))
+	n.logger.Debug("penalizing abusive peer", "peer", peer, "scope", scope)
+	n.DisconnectAndBan(peer, "rate-abuse", n.config.RateLimit.BanDuration)
+}
+
+// DisconnectAndBan closes all connections to a peer and, when banDuration > 0,
+// bans it for that long so the connection gater refuses its reconnection
+// attempts until the cooldown elapses (banDuration <= 0 disconnects without
+// banning). reason labels the sonic_p2p_peer_disconnects_total metric. It is the
+// shared entry point for every policy that ejects a peer (rate abuse, handshake
+// failure, ...).
+func (n *Node) DisconnectAndBan(peer PeerID, reason string, banDuration time.Duration) {
+	n.metrics.peerDisconnects.WithLabelValues(reason).Inc()
+	n.logger.Info("disconnecting peer", "peer", peer, "reason", reason, "banned", banDuration > 0)
+	if banDuration > 0 {
+		n.gater.BanUntil(peer, n.now().Add(banDuration))
 	}
 	_ = n.host.Network().ClosePeer(peer)
 	n.limiter.Forget(peer.String())
