@@ -110,6 +110,7 @@ func (a *PublicBundleAPI) PrepareBundle(
 				TransactionArgs: step.TransactionArgs,
 			}, nil
 		},
+		0,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set proposed transactions defaults: %w", err)
@@ -166,6 +167,7 @@ func flattenTransactions(args RPCExecutionProposal) ([]ethapi.TransactionArgs, m
 			}
 			return tx, nil
 		},
+		0,
 	)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to flatten transactions: %w", err)
