@@ -20,3 +20,4 @@ package pb
 //go:generate protoc -I=./ --go_out=./ ./scan.proto
 //go:generate protoc -I=./ --go_out=./ ./directory.proto
 //go:generate protoc -I=./ --go_out=./ ./validator_directory.proto
+//go:generate protoc -I=./ --go_out=./ ./ping.proto

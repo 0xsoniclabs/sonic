@@ -120,6 +120,32 @@ own protocol:
 
 Nothing in the core changes.
 
+### A second worked example — peer-health monitoring
+
+The peer-health monitor (`protocols/healthmonitor.go`) is a second, optional
+diagnostic protocol built the same way, and shows the pattern of a **responder
+plus an active prober**:
+
+- `PingProtocol` is a one-shot `StreamProtocol` on `/sonic/ping/1`: it answers a
+  `Ping{nonce}` with a `Pong{nonce, role, client_version, block_height}`,
+  echoing the nonce and reporting this node's status (sourced from the same
+  injected `NodeStatusSource` the scan uses). Being one-shot keeps its
+  amplification factor at one, and it reads/writes through the framed,
+  rate-limited stream, so it inherits the size caps and per-peer traffic limits.
+- `HealthMonitor` is the active side: an operator activates it on a node to
+  periodically probe each *connected* peer, measuring round-trip time locally
+  (send→receive) and collecting the peer's reported status. It exposes results
+  two ways so it can pinpoint a specific bad link without breaking the
+  metric-cardinality rule: an **aggregate** histogram
+  (`sonic_p2p_ping_rtt_seconds`) and probe-outcome counter
+  (`sonic_p2p_ping_probes_total{result}`), plus a **per-peer** in-memory
+  `Snapshot()` (latest / EWMA / jitter / loss rate / reported height) for logs or
+  a future admin API. It owns its own Prometheus collectors rather than editing
+  the core `metrics.go`.
+
+It couples to the node only through the small `MonitorHost` interface
+(`ConnectedPeers`, `OpenStream`, `Logger`), which `*p2p.Node` satisfies.
+
 ## Observability
 
 - **Metrics** use the Prometheus `client_golang` API directly (`metrics.go`),

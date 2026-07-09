@@ -121,6 +121,17 @@ touching the core:
 4. **Standalone network-scan CLI tool** — a small command that stands up an
    observer node, runs `protocols.Scanner`, and prints a network-state report
    (node count, client-version breakdown, sync heights, role counts).
+4b. **Activate peer-health monitoring** — the protocol already exists
+   (`protocols.PingProtocol` + `protocols.HealthMonitor`). To turn it on behind an
+   opt-in config flag: register the responder before start
+   (`node.RegisterStreamProtocol(protocols.NewPingProtocol(statusSource))`) so the
+   node answers probes, and on the diagnosing node construct and run the prober
+   (`m := protocols.NewHealthMonitor(node, protocols.HealthMonitorConfig{}, registry); m.Start(ctx)`;
+   `m.Stop()` on shutdown). Surface `HealthMonitor.Snapshot()` (per-peer RTT/EWMA/
+   jitter/loss + reported role/version/height) through an admin RPC/CLI for
+   operator diagnosis; the aggregate `sonic_p2p_ping_*` metrics need no wiring
+   beyond the shared registry. Additional reported-status fields extend the `Pong`
+   message and `HealthSample` without touching the core.
 5. **Retire devp2p `opera`** — once the new stack carries production traffic,
    remove the old gossip transport.
 6. **`InterceptAccept` per-IP connection-rate limiting** — a deeper defense

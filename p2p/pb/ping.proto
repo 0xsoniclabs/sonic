@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package sonic.p2p.proto;
+
+option go_package = ".;pb";
+
+import "scan.proto";
+
+// Ping is a health-probe request. It carries an opaque nonce that the responder
+// echoes, so the prober can match the response to its request and measure the
+// round-trip time locally.
+message Ping {
+    bytes nonce = 1;
+}
+
+// Pong answers a Ping: it echoes the nonce and reports the responder's current
+// self-described status. Additional status fields are added here as further
+// numbered fields (backward compatible).
+message Pong {
+    bytes nonce = 1;
+    NodeRole role = 2;
+    string client_version = 3;
+    uint64 block_height = 4;
+}

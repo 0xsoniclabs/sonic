@@ -217,6 +217,11 @@ func (n *Node) Logger() logger.Logger { return n.logger }
 // Gater exposes the connection gater so higher layers can ban misbehaving peers.
 func (n *Node) Gater() *guard.Gater { return n.gater }
 
+// ConnectedPeers returns the peers this node currently has an active connection
+// to. It lets diagnostic protocols enumerate live peers without reaching into
+// the underlying host.
+func (n *Node) ConnectedPeers() []PeerID { return n.host.Network().Peers() }
+
 // Connect dials a peer, logging the attempt. It is used by the validator mesh
 // to establish direct connections.
 func (n *Node) Connect(ctx context.Context, info peer.AddrInfo) error {
