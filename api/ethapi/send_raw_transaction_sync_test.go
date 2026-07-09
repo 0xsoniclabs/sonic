@@ -19,6 +19,7 @@ package ethapi
 import (
 	"context"
 	"errors"
+	"math"
 	"math/big"
 	"testing"
 	"time"
@@ -165,11 +166,11 @@ func TestSendRawTransactionSync_TimeoutHandling(t *testing.T) {
 			timeoutMs:      uint64Ptr(60_000),
 			wantTimeout:    200 * time.Millisecond,
 		},
-		"zero timeout expires immediately": {
+		"huge timeout does not overflow and is clamped to max": {
 			defaultTimeout: 10 * time.Second,
-			maxTimeout:     10 * time.Second,
-			timeoutMs:      uint64Ptr(0),
-			wantTimeout:    0,
+			maxTimeout:     200 * time.Millisecond,
+			timeoutMs:      uint64Ptr(math.MaxUint64),
+			wantTimeout:    200 * time.Millisecond,
 		},
 	}
 
@@ -204,6 +205,20 @@ func TestSendRawTransactionSync_TimeoutHandling(t *testing.T) {
 				"did not return close to the effective timeout")
 		})
 	}
+}
+
+func TestSendRawTransactionSync_ZeroTimeout_IsRejected(t *testing.T) {
+	_, api := setupSendRawSyncAPI(t, 1*time.Second, 2*time.Second)
+
+	_, encoded := newTestTx(t, 0, nil)
+	zero := hexutil.Uint64(0)
+
+	// No submission-related backend calls expected — the request must be
+	// rejected before the transaction reaches the pool.
+	result, err := api.SendRawTransactionSync(context.Background(), encoded, &zero)
+
+	require.Nil(t, result)
+	require.ErrorContains(t, err, "timeout must be greater than zero")
 }
 
 func TestSendRawTransactionSync_SendTxError_ReturnsCode5(t *testing.T) {

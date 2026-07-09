@@ -2236,12 +2236,17 @@ func (s *PublicTransactionPoolAPI) SendRawTransactionSync(
 	// 2. Determine timeout.
 	timeout := s.b.RPCTxSyncDefaultTimeout()
 	if timeoutMs != nil {
-		defautlMaxTimeout := s.b.RPCTxSyncMaxTimeout()
-
-		if *timeoutMs > hexutil.Uint64(defautlMaxTimeout.Milliseconds()) {
-			timeout = defautlMaxTimeout
-		} else {
-			timeout = time.Duration(*timeoutMs) * time.Millisecond
+		if *timeoutMs == 0 {
+			return nil, errors.New("timeout must be greater than zero")
+		}
+		// Convert without overflowing time.Duration (int64 nanoseconds).
+		requested := time.Duration(math.MaxInt64)
+		if *timeoutMs < hexutil.Uint64(requested/time.Millisecond) {
+			requested = time.Duration(*timeoutMs) * time.Millisecond
+		}
+		timeout = requested
+		if maxTimeout := s.b.RPCTxSyncMaxTimeout(); maxTimeout > 0 && timeout > maxTimeout {
+			timeout = maxTimeout
 		}
 	}
 
