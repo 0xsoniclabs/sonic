@@ -2215,7 +2215,7 @@ const (
 //
 // Parameters:
 //   - encodedTx: hex-encoded RLP signed transaction
-//   - timeoutMs: optional max wait time in milliseconds (default: 2000ms)
+//   - timeoutMs: optional max wait time for tx processing in milliseconds
 //
 // Returns receipt on success. On failure, returns a typed JSON-RPC error:
 //   - Code 4: timeout, tx was submitted but not confirmed in time and is no longer in the pool (status unknown)
