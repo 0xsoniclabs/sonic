@@ -120,7 +120,12 @@ touching the core:
    the transfer protocol is new).
 4. **Standalone network-scan CLI tool** — a small command that stands up an
    observer node, runs `protocols.Scanner`, and prints a network-state report
-   (node count, client-version breakdown, sync heights, role counts).
+   (node count, client-version breakdown, sync heights, role counts). A working
+   version of this (plus runnable validator/archive nodes on a faked chain, with
+   mDNS auto-discovery and periodic peer-health logging) already exists as the
+   demo utility `p2p/demo` (`go run ./p2p/demo scan` / `validator` / `archive`;
+   see `p2p/demo/README.md`). Fold its scan into a production `sonictool`
+   subcommand backed by real node state when wiring this in.
 4b. **Activate peer-health monitoring** — the protocol already exists
    (`protocols.PingProtocol` + `protocols.HealthMonitor`). To turn it on behind an
    opt-in config flag: register the responder before start
