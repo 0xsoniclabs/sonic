@@ -230,6 +230,7 @@ func DefaultConfig(scale cachescale.Func) Config {
 		RPCTimeout:  5 * time.Second,
 
 		TxSyncDefaultTimeout: 5 * time.Second,
+		TxSyncMaxTimeout:     30 * time.Second,
 
 		MaxResponseSize: 25 * 1024 * 1024,
 		StructLogLimit:  2000,
