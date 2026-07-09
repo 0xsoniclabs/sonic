@@ -51,7 +51,7 @@ func TestBlsVerificationOnChain(t *testing.T) {
 	for _, testVariant := range testVariants {
 		t.Run(testVariant.name, func(t *testing.T) {
 
-			pubKeys, signature, msg := getBlsData(testVariant.signersCount)
+			pubKeys, signature, msg := getBlsData(t, testVariant.signersCount)
 			tests := []struct {
 				name      string
 				pubkeys   []blsPublicKey
@@ -61,8 +61,8 @@ func TestBlsVerificationOnChain(t *testing.T) {
 			}{
 				{"ok", pubKeys, signature, msg, true},
 				{"message not ok", pubKeys, signature, []byte("message not ok"), false},
-				{"public key not ok", []blsPublicKey{blsNewPrivateKey().PublicKey()}, signature, msg, false},
-				{"signature not ok", pubKeys, blsNewPrivateKey().Sign([]byte("some message")), msg, false},
+				{"public key not ok", []blsPublicKey{blsNewPrivateKey(t).PublicKey()}, signature, msg, false},
+				{"signature not ok", pubKeys, blsNewPrivateKey(t).Sign([]byte("some message")), msg, false},
 			}
 			for _, test := range tests {
 				t.Run(test.name, func(t *testing.T) {
@@ -134,13 +134,13 @@ func encodePointG2(p *gnark.G2Affine) []byte {
 	return out
 }
 
-func getBlsData(signersCount int) ([]blsPublicKey, blsSignature, []byte) {
+func getBlsData(t *testing.T, signersCount int) ([]blsPublicKey, blsSignature, []byte) {
 	msg := []byte("Test message")
 	pubKeys := make([]blsPublicKey, signersCount)
 	signatures := make([]blsSignature, signersCount)
 
 	for i := 0; i < signersCount; i++ {
-		pk := blsNewPrivateKey()
+		pk := blsNewPrivateKey(t)
 		pubKeys[i] = pk.PublicKey()
 		signatures[i] = pk.Sign(msg)
 	}
@@ -181,10 +181,10 @@ type blsPrivateKey struct {
 
 // blsNewPrivateKey creates a new BLS12-381 private key. The resulting keys are
 // cryptographically secure and can be used for production purposes.
-func blsNewPrivateKey() blsPrivateKey {
+func blsNewPrivateKey(t *testing.T) blsPrivateKey {
 	var inputKeyMaterial [32]byte
-	// crypto/rand.Read is cryptographically secure, guaranteed to never fail
-	_, _ = rand.Read(inputKeyMaterial[:])
+	_, err := rand.Read(inputKeyMaterial[:])
+	require.NoError(t, err, "failed to generate random key material")
 	res := blsPrivateKey{}
 	res.secretKey = *blst.KeyGen(inputKeyMaterial[:])
 	return res
