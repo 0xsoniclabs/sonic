@@ -17,8 +17,10 @@
 package sonicapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
+	"os"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
@@ -1200,5 +1202,66 @@ func Test_PrepareBundle_GasEstimationCompatibility(t *testing.T) {
 				require.NotNil(t, result)
 			}
 		})
+	}
+}
+
+func TestPrepareBundle_ReturnsError_WhenProposalDepthExceedsMaximum(t *testing.T) {
+	for _, depth := range []int{
+		1,
+		2,
+		bundle.MaxGroupNestingDepth - 1,
+		bundle.MaxGroupNestingDepth,
+		bundle.MaxGroupNestingDepth + 1,
+		1024,
+		4998, // maximum json encodable nesting, with 10k nested json groups
+	} {
+		t.Run(fmt.Sprintf("depth=%d", depth), func(t *testing.T) {
+
+			addr1 := common.Address{1}
+			addr2 := common.Address{2}
+			gas := hexutil.Uint64(21000)
+
+			be := rpctest.NewBackendBuilder(t).
+				WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+				Build()
+			api := NewPublicBundleAPI(be)
+
+			proposal := makeNestedBundleProposal(
+				depth,
+				ethapi.TransactionArgs{
+					From:  &addr1,
+					To:    &addr2,
+					Nonce: rpctest.ToHexUint64(0),
+					Gas:   &gas,
+				})
+
+			rawJSON, err := json.MarshalIndent(proposal, "", "  ")
+			require.NoError(t, err)
+			err = os.WriteFile(fmt.Sprintf("/tmp/prepare_bundle_depth_%d.json", depth), rawJSON, 0o644)
+			require.NoError(t, err)
+
+			_, err = api.PrepareBundle(t.Context(), proposal)
+			if depth <= bundle.MaxGroupNestingDepth {
+				require.NoError(t, err, "expected no error for depth %d", depth)
+			} else {
+				require.ErrorContains(t, err, fmt.Sprintf("execution plan exceeds maximum nesting depth of %d", bundle.MaxGroupNestingDepth))
+			}
+		})
+	}
+}
+
+func makeNestedBundleProposal(
+	depth int,
+	tx ethapi.TransactionArgs,
+) RPCExecutionProposal {
+	step := any(txEntry(tx))
+	for range depth {
+		step = groupEntry(step)
+	}
+
+	return RPCExecutionProposal{
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{step},
+		},
 	}
 }

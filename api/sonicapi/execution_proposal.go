@@ -104,7 +104,7 @@ func (p *RPCExecutionProposal) UnmarshalJSON(data []byte) error {
 	p.TolerateFailures = raw.TolerateFailures
 	p.Steps = make([]any, len(raw.Steps))
 	for i, rawStep := range raw.Steps {
-		step, empty, err := unmarshalBundleGroup[RPCExecutionStepProposal](rawStep)
+		step, empty, err := unmarshalBundleGroup[RPCExecutionStepProposal](rawStep, 0)
 		if err != nil {
 			return err
 		}
@@ -136,8 +136,24 @@ func (s *RPCExecutionStepProposal) UnmarshalJSON(data []byte) error {
 // no "steps" key) and a group (RPCExecutionPlanGroup, has "steps" key).
 // This function returns the unmarshaled element, a boolean indicating whenever the
 // element can be optimized away and an error if the JSON is invalid. The optimization
-// boolean is used to indicate to the caller that the resulting group is empty
-func unmarshalBundleGroup[LeafType any](data []byte) (any, bool, error) {
+// boolean is used to indicate to the caller that the resulting group is empty.
+//
+// depth is the "steps" nesting depth of data, with 0 for the root proposal's
+// direct children (matching the root-is-depth-0 convention of validateStep,
+// gossip/blockproc/bundle/validate.go). It is checked against
+// bundle.MaxGroupNestingDepth before any parsing of data is attempted, so
+// maliciously deep input is rejected cheaply instead of costing quadratic
+// decode time (every recursion level re-parses the still fully nested
+// remainder of the input). Reusing MaxGroupNestingDepth directly, rather than
+// a separate decode-time constant, still leaves one level of slack versus the
+// precise rule validateStep enforces later: a transparent single-child
+// wrapper group collapses away in convertProposalToPlanInternal and so does
+// not count against MaxGroupNestingDepth in the final validated plan.
+func unmarshalBundleGroup[LeafType any](data []byte, depth int) (any, bool, error) {
+	if depth > bundle.MaxGroupNestingDepth {
+		return nil, false, fmt.Errorf(
+			"execution plan exceeds maximum nesting depth of %d", bundle.MaxGroupNestingDepth)
+	}
 	var probe struct {
 		Steps *json.RawMessage `json:"steps"`
 	}
@@ -155,7 +171,7 @@ func unmarshalBundleGroup[LeafType any](data []byte) (any, bool, error) {
 		}
 		children := make([]any, len(rawGroup.Steps))
 		for i, raw := range rawGroup.Steps {
-			child, empty, err := unmarshalBundleGroup[LeafType](raw)
+			child, empty, err := unmarshalBundleGroup[LeafType](raw, depth+1)
 			if err != nil {
 				return nil, false, err
 			}
@@ -424,7 +440,13 @@ func toTransactionForBundles(step ethapi.TransactionArgs) (*types.Transaction, e
 func transform(
 	proposal RPCExecutionProposal,
 	fn func(step RPCExecutionStepProposal) (RPCExecutionStepProposal, error),
+	depth int,
 ) (RPCExecutionProposal, error) {
+	if depth > bundle.MaxGroupNestingDepth {
+		return proposal, fmt.Errorf(
+			"execution plan exceeds maximum nesting depth of %d", bundle.MaxGroupNestingDepth)
+	}
+
 	if proposal.Steps == nil {
 		return proposal, nil
 	}
@@ -443,9 +465,9 @@ func transform(
 			result, err := transform(RPCExecutionProposal{
 				BlockRange:            proposal.BlockRange,
 				RPCExecutionPlanGroup: step,
-			}, fn)
+			}, fn, depth+1)
 			if err != nil {
-				return result, err
+				return RPCExecutionProposal{}, err
 			}
 			resultSteps = append(resultSteps, result.RPCExecutionPlanGroup)
 
