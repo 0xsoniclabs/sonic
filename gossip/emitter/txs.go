@@ -171,13 +171,6 @@ func (em *Emitter) isMyTxTurn(txHash common.Hash, sender common.Address, account
 }
 
 func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPriceAndNonce) {
-	maxGasUsed := em.maxGasPowerToUse(e)
-	if maxGasUsed <= e.GasPowerUsed() {
-		return
-	}
-
-	totalTxSizeInBytes := uint64(0)
-
 	// Best-effort priority hinter: lets prioritized transactions be eagerly
 	// included regardless of the per-transaction turn. Nil while the feature is
 	// disabled, keeping behavior unchanged.
@@ -185,6 +178,16 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 	if hinter != nil {
 		defer hinter.release()
 	}
+	em.addTxsWithHinter(e, sorted, hinter)
+}
+
+func (em *Emitter) addTxsWithHinter(e *inter.MutableEventPayload, sorted *transactionsByPriceAndNonce, hinter *priorityHinter) {
+	maxGasUsed := em.maxGasPowerToUse(e)
+	if maxGasUsed <= e.GasPowerUsed() {
+		return
+	}
+
+	totalTxSizeInBytes := uint64(0)
 
 	// sort transactions by price and nonce
 	rules := em.world.GetRules()

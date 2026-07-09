@@ -17,20 +17,27 @@
 package emitter
 
 import (
+	"crypto/ecdsa"
 	"fmt"
 	"math/big"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
+	"github.com/0xsoniclabs/sonic/gossip/emitter/originatedtxs"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -320,4 +327,214 @@ func Test_Emitter_evaluateBundleTx_ReturnsGasEfficiencyFromEvaluator(t *testing.
 			require.Equal(t, tc.executable, valid)
 		})
 	}
+}
+
+func TestEmitter_addTxsWithHinter_InclusionDeterminedByHinter(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	f := newAddTxsFixture(t, ctrl)
+
+	tx := f.makeTx(t, 0)
+	seedTx := f.makeTx(t, 42)
+
+	nonEmptyEvent := func() *inter.MutableEventPayload {
+		e := f.makeEvent()
+		e.SetTxs(types.Transactions{seedTx})
+		return e
+	}
+	emptyEvent := f.makeEvent
+
+	var nilHinter *priorityHinter
+	noPrioHinter := &priorityHinter{
+		classifier: fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{}},
+		config:     priorities.Config{MaxTxsPerEntityPerEvent: 10},
+		counts:     map[[32]byte]uint64{},
+	}
+	prioTx1Hinter := &priorityHinter{
+		classifier: fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+			tx.Hash(): prioritized(1),
+		}},
+		config: priorities.Config{MaxTxsPerEntityPerEvent: 10},
+		counts: map[[32]byte]uint64{},
+	}
+
+	cases := map[string]struct {
+		event  func() *inter.MutableEventPayload
+		hinter *priorityHinter
+		checks func(t *testing.T, event *inter.MutableEventPayload)
+	}{
+		"non prio tx uses turn logic": {
+			event:  nonEmptyEvent,
+			hinter: noPrioHinter,
+			checks: func(t *testing.T, event *inter.MutableEventPayload) {
+				// Only the seed tx remains.
+				require.Len(t, event.Transactions(), 1)
+				require.Equal(t, seedTx.Hash(), event.Transactions()[0].Hash())
+			},
+		},
+		"prio tx with nil hinter uses turn logic": {
+			event:  nonEmptyEvent,
+			hinter: nilHinter,
+			checks: func(t *testing.T, event *inter.MutableEventPayload) {
+				// Only the seed tx remains.
+				require.Len(t, event.Transactions(), 1)
+				require.Equal(t, seedTx.Hash(), event.Transactions()[0].Hash())
+			},
+		},
+		"prio tx bypasses turn when event not empty": {
+			event:  nonEmptyEvent,
+			hinter: prioTx1Hinter,
+			checks: func(t *testing.T, event *inter.MutableEventPayload) {
+				// The seed tx plus our prioritized tx.
+				require.Len(t, event.Transactions(), 2)
+				require.Equal(t, seedTx.Hash(), event.Transactions()[0].Hash())
+				require.Equal(t, tx.Hash(), event.Transactions()[1].Hash())
+			},
+		},
+		"prio tx does not bypass turn when event empty": {
+			event:  emptyEvent,
+			hinter: prioTx1Hinter,
+			checks: func(t *testing.T, event *inter.MutableEventPayload) {
+				require.Empty(t, event.Transactions())
+			},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			event := tc.event()
+			f.em.addTxsWithHinter(event, f.makeSorted(tx), tc.hinter)
+			tc.checks(t, event)
+		})
+	}
+}
+
+func TestEmitter_addTxsWithHinter_PerEntityCapEnforced(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	f := newAddTxsFixture(t, ctrl)
+
+	seedTx := f.makeTx(t, 42)
+	tx1 := f.makeTx(t, 0)
+	tx2 := f.makeTx(t, 1)
+	tx3 := f.makeTx(t, 2)
+
+	event := f.makeEvent()
+	event.SetTxs(types.Transactions{seedTx})
+
+	// All three txs belong to the same priority entity; cap is 2.
+	hinter := &priorityHinter{
+		classifier: fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+			tx1.Hash(): prioritized(7),
+			tx2.Hash(): prioritized(7),
+			tx3.Hash(): prioritized(7),
+		}},
+		config: priorities.Config{MaxTxsPerEntityPerEvent: 2},
+		counts: map[[32]byte]uint64{},
+	}
+
+	f.em.addTxsWithHinter(event, f.makeSorted(tx1, tx2, tx3), hinter)
+
+	// Seed + first two prioritized txs; the third exceeds the cap and, since
+	// isMyTxTurn returns false, it is skipped.
+	require.Len(t, event.Transactions(), 3)
+	require.Equal(t, seedTx.Hash(), event.Transactions()[0].Hash())
+	require.Equal(t, tx1.Hash(), event.Transactions()[1].Hash())
+	require.Equal(t, tx2.Hash(), event.Transactions()[2].Hash())
+	// Cap accounting was recorded for both included prioritized txs.
+	require.Equal(t, uint64(2), hinter.counts[[32]byte{7}])
+}
+
+// addTxsFixture builds a minimal Emitter ready to exercise addTxsWithHinter.
+// The validator set is chosen so that isMyTxTurn always returns false for the
+// event's creator (the two validators are distinct from `me` and are online),
+// which lets tests distinguish the priority-bypass path from the turn path.
+type addTxsFixture struct {
+	em     *Emitter
+	signer types.Signer
+	key    *ecdsa.PrivateKey
+	sender common.Address
+	me     idx.ValidatorID
+}
+
+func newAddTxsFixture(t *testing.T, ctrl *gomock.Controller) *addTxsFixture {
+	t.Helper()
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	sender := crypto.PubkeyToAddress(key.PublicKey)
+
+	me := idx.ValidatorID(999)
+	b := pos.NewBuilder()
+	b.Set(idx.ValidatorID(1), pos.Weight(1))
+	b.Set(idx.ValidatorID(2), pos.Weight(1))
+	validators := b.Build()
+
+	rules := opera.Rules{
+		NetworkID: 1,
+		Economy: opera.EconomyRules{
+			Gas: opera.GasRules{MaxEventGas: 100_000_000},
+		},
+		Blocks: opera.BlocksRules{MaxBlockGas: 100_000_000},
+	}
+
+	external := NewMockExternal(ctrl)
+	external.EXPECT().GetRules().Return(rules).AnyTimes()
+
+	txPool := NewMockTxPool(ctrl)
+	txPool.EXPECT().Has(gomock.Any()).Return(true).AnyTimes()
+
+	em := &Emitter{
+		world: World{
+			External:          external,
+			TxPool:            txPool,
+			TransactionSigner: signer,
+		},
+		originatedTxs:     originatedtxs.New(SenderCountBufferSize),
+		offlineValidators: map[idx.ValidatorID]bool{},
+	}
+	em.validators.Store(validators)
+	em.epoch.Store(1)
+
+	return &addTxsFixture{em: em, signer: signer, key: key, sender: sender, me: me}
+}
+
+// makeTx returns a signed legacy transaction from the fixture's sender.
+func (f *addTxsFixture) makeTx(t *testing.T, nonce uint64) *types.Transaction {
+	t.Helper()
+	tx, err := types.SignTx(
+		types.NewTransaction(nonce, common.Address{0xaa}, big.NewInt(0), 21000, big.NewInt(1), nil),
+		f.signer, f.key,
+	)
+	require.NoError(t, err)
+	return tx
+}
+
+// makeEvent returns a mutable event payload with plenty of gas power, created
+// by the fixture's `me` validator.
+func (f *addTxsFixture) makeEvent() *inter.MutableEventPayload {
+	e := &inter.MutableEventPayload{}
+	e.SetCreator(f.me)
+	e.SetGasPowerLeft(inter.GasPowerLeft{Gas: [2]uint64{100_000_000, 100_000_000}})
+	return e
+}
+
+// makeSorted wraps the given txs (from the fixture's sender) as a
+// transactionsByPriceAndNonce set.
+func (f *addTxsFixture) makeSorted(txs ...*types.Transaction) *transactionsByPriceAndNonce {
+	lazy := make([]*txpool.LazyTransaction, len(txs))
+	for i, tx := range txs {
+		lazy[i] = &txpool.LazyTransaction{
+			Hash:      tx.Hash(),
+			Tx:        tx,
+			Time:      tx.Time(),
+			GasFeeCap: uint256.MustFromBig(tx.GasFeeCap()),
+			GasTipCap: uint256.MustFromBig(tx.GasTipCap()),
+			Gas:       tx.Gas(),
+		}
+	}
+	return newTransactionsByPriceAndNonce(
+		f.signer,
+		map[common.Address][]*txpool.LazyTransaction{f.sender: lazy},
+		nil,
+	)
 }
