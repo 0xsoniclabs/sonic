@@ -58,6 +58,7 @@ type Verifier interface {
 // peer self, for the given epoch. The signature covers the peer ID, epoch, and
 // nonce, so the proof cannot be replayed onto a different peer or epoch.
 func CreateBindingProof(signer Signer, self peer.ID, validatorID uint32, epoch uint64, nonce []byte) (*pb.ValidatorHandshake, error) {
+	// TODO: include the validator ID in the digest;
 	digest := bindingDigest(self, epoch, nonce)
 	signature, err := signer.Sign(digest[:])
 	if err != nil {
