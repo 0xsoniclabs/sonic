@@ -2217,7 +2217,9 @@ const (
 //   - encodedTx: hex-encoded RLP signed transaction
 //   - timeoutMs: optional max wait time for tx processing in milliseconds
 //
-// Returns receipt on success. On failure, returns a typed JSON-RPC error:
+// Returns the transaction receipt on success, in the same format as
+// eth_getTransactionReceipt (see formatTxReceipt).
+// On failure, returns a typed JSON-RPC error:
 //   - Code 4: timeout, tx was submitted but not confirmed in time and is no longer in the pool (status unknown)
 //   - Code 5: timeout, tx was submitted and is still in the pool
 //   - Code 6: nonce gap detected, tx was NOT submitted to the pool

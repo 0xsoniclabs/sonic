@@ -36,6 +36,7 @@ import (
 
 // newTestTx creates a signed EIP-155 transaction for use in tests.
 // chainID defaults to 1 if nil.
+// it returns a transaction and its marshalling.
 func newTestTx(t *testing.T, nonce uint64, chainID *big.Int) (*types.Transaction, hexutil.Bytes) {
 	t.Helper()
 	if chainID == nil {
@@ -107,7 +108,9 @@ func TestSendRawTransactionSync_ReturnsReceipt(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, hexutil.Uint(types.ReceiptStatusSuccessful), result["status"])
+	require.Equal(t, hexutil.Uint(receipt.Status), result["status"])
+	require.Equal(t, receipt.TxHash, result["transactionHash"])
+	require.Equal(t, hexutil.Uint64(receipt.GasUsed), result["gasUsed"])
 }
 
 func TestSendRawTransactionSync_NonceGap_ReturnsCode6(t *testing.T) {
