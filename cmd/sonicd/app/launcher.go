@@ -275,9 +275,6 @@ func lachesisMainInternal(
 			if strings.ToLower(module) == "ftm" {
 				log.Warn(fmt.Sprintf("The 'ftm' API is deprecated, use 'eth' instead (--%s).", flag))
 			}
-			if strings.ToLower(module) == "scc" {
-				log.Warn(fmt.Sprintf("The 'scc' API is experimental and should not be used in production environments (--%s).", flag))
-			}
 		}
 	}
 

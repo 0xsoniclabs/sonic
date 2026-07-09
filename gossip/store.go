@@ -61,10 +61,6 @@ type Store struct {
 		// Tables tracking processed bundles
 		ProcessedBundles kvdb.Store `table:"p"`
 
-		// Sonic Certification Chain tables
-		CommitteeCertificates kvdb.Store `table:"C"`
-		BlockCertificates     kvdb.Store `table:"c"`
-
 		// P2P-only
 		HighestLamport kvdb.Store `table:"l"`
 

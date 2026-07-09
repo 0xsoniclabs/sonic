@@ -49,9 +49,6 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesis/gpos"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
-	"github.com/0xsoniclabs/sonic/scc"
-	"github.com/0xsoniclabs/sonic/scc/bls"
-	"github.com/0xsoniclabs/sonic/scc/cert"
 )
 
 var (
@@ -174,25 +171,6 @@ func FakeGenesisStoreWithRulesAndStart(
 	if err != nil {
 		panic(err)
 	}
-
-	// Create the genesis committee for the first period using test keys for the
-	// fake network. All validators have the same voting power.
-	members := make([]scc.Member, 0, len(validators))
-	for i := range validators {
-		key := bls.NewPrivateKeyForTests(byte(i))
-		members = append(members, scc.Member{
-			PublicKey:         key.PublicKey(),
-			ProofOfPossession: key.GetProofOfPossession(),
-			VotingPower:       1,
-		})
-	}
-	builder.SetGenesisCommitteeCertificate(
-		cert.NewCertificate(cert.NewCommitteeStatement(
-			rules.NetworkID,
-			scc.Period(0),
-			scc.NewCommittee(members...),
-		)),
-	)
 
 	return builder.Build(genesis.Header{
 		GenesisID:   builder.CurrentHash(),
