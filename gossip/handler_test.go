@@ -18,6 +18,7 @@ package gossip
 
 import (
 	"bytes"
+	"sync"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/eventcheck"
@@ -30,6 +31,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/discover/discfilter"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -172,6 +174,68 @@ func TestHandleMsgEventsStreamResponse(t *testing.T) {
 		err := sendChunk(dagChunk{SessionID: 1, Done: true, IDs: hash.Events{hash.Event{}}})
 		require.NoError(t, err)
 	})
+}
+
+// TestHandlePanicRecovery verifies that a panic anywhere inside handle()'s
+// message loop is caught by its defer/recover and returned as an error,
+// disconnecting only the offending peer rather than crashing the node.
+func TestHandlePanicRecovery(t *testing.T) {
+	h, err := makeFuzzedHandler(t)
+	require.NoError(t, err)
+
+	peerCfg := DefaultPeerCacheConfig(cachescale.Identity)
+	rw := &handshakeThenPanicReadWriter{
+		networkID: h.NetworkID,
+		genesis:   common.Hash(h.store.GetGenesisID()),
+		version:   1,
+	}
+	// Peer name must contain "sonic" or "opera" to not be rejected as useless
+	// by isUseless() before the message loop is even reached.
+	p := newPeer(1, p2p.NewPeer(randomID(), "Sonic/v1.0.0-test/linux-amd64/go1.25", []p2p.Cap{}), rw, peerCfg)
+
+	err = h.handle(p)
+	require.ErrorContains(t, err, "panic while handling peer")
+}
+
+// handshakeThenPanicReadWriter satisfies p2p.MsgReadWriter. It returns a valid
+// HandshakeMsg on the first ReadMsg call so that peer.Handshake() succeeds,
+// then panics on subsequent calls to simulate a bug triggered by peer input.
+type handshakeThenPanicReadWriter struct {
+	networkID uint64
+	genesis   common.Hash
+	version   uint
+
+	mu        sync.Mutex
+	readCount int
+}
+
+func (rw *handshakeThenPanicReadWriter) ReadMsg() (p2p.Msg, error) {
+	rw.mu.Lock()
+	n := rw.readCount
+	rw.readCount++
+	rw.mu.Unlock()
+
+	if n == 0 {
+		encoded, err := rlp.EncodeToBytes(&handshakeData{
+			ProtocolVersion: uint32(rw.version),
+			NetworkID:       rw.networkID,
+			Genesis:         rw.genesis,
+		})
+		if err != nil {
+			panic(err)
+		}
+		return p2p.Msg{
+			Code:    HandshakeMsg,
+			Size:    uint32(len(encoded)),
+			Payload: bytes.NewReader(encoded),
+		}, nil
+	}
+
+	panic("simulated peer-input panic")
+}
+
+func (rw *handshakeThenPanicReadWriter) WriteMsg(p2p.Msg) error {
+	return nil
 }
 
 func TestIsUseless(t *testing.T) {
