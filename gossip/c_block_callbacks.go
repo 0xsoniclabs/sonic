@@ -29,8 +29,6 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
-	"github.com/0xsoniclabs/sonic/scc/cert"
-	scc_node "github.com/0xsoniclabs/sonic/scc/node"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -112,7 +110,6 @@ func (s *Service) GetConsensusCallbacks() lachesis.ConsensusCallbacks {
 			&s.emitters,
 			s.verWatcher,
 			&s.bootstrapping,
-			s.sccNode,
 		),
 	}
 }
@@ -130,7 +127,6 @@ func consensusCallbackBeginBlockFn(
 	emitters *[]*emitter.Emitter,
 	verWatcher *verwatcher.VersionWatcher,
 	bootstrapping *bool,
-	sccNode *scc_node.Node,
 ) lachesis.BeginBlockFn {
 	return func(cBlock *lachesis.Block) lachesis.BlockCallbacks {
 		if *bootstrapping {
@@ -552,19 +548,6 @@ func consensusCallbackBeginBlockFn(
 					store.SetBlockIndex(block.Hash(), blockCtx.Idx)
 					store.SetBlockEpochState(bs, es)
 					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
-
-					// Inform the SCC about the new block
-					if sccNode != nil {
-						err := sccNode.NewBlock(cert.NewBlockStatement(
-							chainCfg.ChainID.Uint64(),
-							blockCtx.Idx,
-							block.Hash(),
-							block.StateRoot,
-						))
-						if err != nil {
-							log.Warn("Failed to inform SCC about new block", "err", err)
-						}
-					}
 
 					// Update the metrics touched during block processing
 					executionTime := time.Since(executionStart)

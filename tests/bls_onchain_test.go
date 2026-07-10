@@ -17,16 +17,17 @@
 package tests
 
 import (
+	"crypto/rand"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/tests/contracts/blsContracts"
 	gnark "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fp"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
+	blst "github.com/supranational/blst/bindings/go"
 )
 
 func TestBlsVerificationOnChain(t *testing.T) {
@@ -50,18 +51,18 @@ func TestBlsVerificationOnChain(t *testing.T) {
 	for _, testVariant := range testVariants {
 		t.Run(testVariant.name, func(t *testing.T) {
 
-			pubKeys, signature, msg := getBlsData(testVariant.signersCount)
+			pubKeys, signature, msg := getBlsData(t, testVariant.signersCount)
 			tests := []struct {
 				name      string
-				pubkeys   []bls.PublicKey
-				signature bls.Signature
+				pubkeys   []blsPublicKey
+				signature blsSignature
 				message   []byte
 				ok        bool
 			}{
 				{"ok", pubKeys, signature, msg, true},
 				{"message not ok", pubKeys, signature, []byte("message not ok"), false},
-				{"public key not ok", []bls.PublicKey{bls.NewPrivateKey().PublicKey()}, signature, msg, false},
-				{"signature not ok", pubKeys, bls.NewPrivateKey().Sign([]byte("some message")), msg, false},
+				{"public key not ok", []blsPublicKey{blsNewPrivateKey(t).PublicKey()}, signature, msg, false},
+				{"signature not ok", pubKeys, blsNewPrivateKey(t).Sign([]byte("some message")), msg, false},
 			}
 			for _, test := range tests {
 				t.Run(test.name, func(t *testing.T) {
@@ -93,7 +94,7 @@ func TestBlsVerificationOnChain(t *testing.T) {
 	}
 }
 
-func publicKeyToGnarkG1Affine(key bls.PublicKey) (gnark.G1Affine, error) {
+func publicKeyToGnarkG1Affine(key blsPublicKey) (gnark.G1Affine, error) {
 	data := key.Serialize()
 	var res gnark.G1Affine
 	_, err := res.SetBytes(data[:])
@@ -103,7 +104,7 @@ func publicKeyToGnarkG1Affine(key bls.PublicKey) (gnark.G1Affine, error) {
 	return res, nil
 }
 
-func signatureToGnarkG2Affine(sig bls.Signature) (gnark.G2Affine, error) {
+func signatureToGnarkG2Affine(sig blsSignature) (gnark.G2Affine, error) {
 	data := sig.Serialize()
 	var res gnark.G2Affine
 	_, err := res.SetBytes(data[:])
@@ -133,28 +134,28 @@ func encodePointG2(p *gnark.G2Affine) []byte {
 	return out
 }
 
-func getBlsData(signersCount int) ([]bls.PublicKey, bls.Signature, []byte) {
+func getBlsData(t *testing.T, signersCount int) ([]blsPublicKey, blsSignature, []byte) {
 	msg := []byte("Test message")
-	pubKeys := make([]bls.PublicKey, signersCount)
-	signatures := make([]bls.Signature, signersCount)
+	pubKeys := make([]blsPublicKey, signersCount)
+	signatures := make([]blsSignature, signersCount)
 
 	for i := 0; i < signersCount; i++ {
-		pk := bls.NewPrivateKey()
+		pk := blsNewPrivateKey(t)
 		pubKeys[i] = pk.PublicKey()
 		signatures[i] = pk.Sign(msg)
 	}
 
-	var signature bls.Signature
+	var signature blsSignature
 	if signersCount == 1 {
 		signature = signatures[0]
 	} else {
-		signature = bls.AggregateSignatures(signatures...)
+		signature = blsAggregateSignatures(signatures...)
 	}
 
 	return pubKeys, signature, msg
 }
 
-func parseInputData(pubKeys []bls.PublicKey, signature bls.Signature, msg []byte) ([]byte, []byte, []byte, error) {
+func parseInputData(pubKeys []blsPublicKey, signature blsSignature, msg []byte) ([]byte, []byte, []byte, error) {
 	pubKeysData := make([]byte, 0, len(pubKeys)*128)
 	for _, pk := range pubKeys {
 		pubG1, err := publicKeyToGnarkG1Affine(pk)
@@ -169,4 +170,69 @@ func parseInputData(pubKeys []bls.PublicKey, signature bls.Signature, msg []byte
 	}
 	signatureData := encodePointG2(&signatureG2)
 	return pubKeysData, signatureData, msg, nil
+}
+
+// --- a blst based reference implementation of the BLS signature scheme, used for testing purposes only ---
+
+// blsPrivateKey represents a BLS12-381 private key.
+type blsPrivateKey struct {
+	secretKey blst.SecretKey
+}
+
+// blsNewPrivateKey creates a new BLS12-381 private key. The resulting keys are
+// cryptographically secure and can be used for production purposes.
+func blsNewPrivateKey(t *testing.T) blsPrivateKey {
+	var inputKeyMaterial [32]byte
+	_, err := rand.Read(inputKeyMaterial[:])
+	require.NoError(t, err, "failed to generate random key material")
+	res := blsPrivateKey{}
+	res.secretKey = *blst.KeyGen(inputKeyMaterial[:])
+	return res
+}
+
+// blsPublicKey returns the public key corresponding to the private key.
+func (k blsPrivateKey) PublicKey() blsPublicKey {
+	res := blsPublicKey{}
+	res.publicKey = *res.publicKey.From(&k.secretKey)
+	return res
+}
+
+// Sign signs the provided message using the private key and returns the
+// resulting signature.
+func (k blsPrivateKey) Sign(message []byte) blsSignature {
+	res := blsSignature{}
+	res.sign.Sign(&k.secretKey, message, nil, false)
+	return res
+}
+
+// blsPublicKey represents a BLS12-381 public key.
+type blsPublicKey struct {
+	publicKey blst.P1Affine
+}
+
+// Serialize exports the public key into a 48-byte array. This format can be
+// used to serialize the key to disk or to transmit it over the network.
+func (k blsPublicKey) Serialize() [48]byte {
+	return [48]byte(k.publicKey.Compress())
+}
+
+// blsSignature represents a BLS12-381 signature.
+type blsSignature struct {
+	sign blst.P2Affine
+}
+
+// Serialize exports the signature into a 96-byte array. This format can be used
+// to serialize the signature to disk or to transmit it over the network.
+func (s blsSignature) Serialize() [96]byte {
+	return [96]byte(s.sign.Compress())
+}
+
+// AggregateSignatures aggregates the provided signatures into a single
+// signature. The provided signatures must be valid.
+func blsAggregateSignatures(signatures ...blsSignature) blsSignature {
+	agg := blst.P2Aggregate{}
+	for _, sigs := range signatures {
+		agg.Add(&sigs.sign, false)
+	}
+	return blsSignature{sign: *agg.ToAffine()}
 }

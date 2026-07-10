@@ -41,9 +41,6 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
-	"github.com/0xsoniclabs/sonic/scc"
-	"github.com/0xsoniclabs/sonic/scc/bls"
-	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -57,11 +54,10 @@ import (
 )
 
 type GenesisJson struct {
-	Rules            opera.Rules
-	BlockZeroTime    time.Time
-	Accounts         []Account      `json:",omitempty"`
-	Txs              []Transaction  `json:",omitempty"`
-	GenesisCommittee *scc.Committee `json:",omitempty"`
+	Rules         opera.Rules
+	BlockZeroTime time.Time
+	Accounts      []Account     `json:",omitempty"`
+	Txs           []Transaction `json:",omitempty"`
 }
 
 type Account struct {
@@ -213,15 +209,6 @@ func GenerateFakeJsonGenesis(
 		})
 	}
 
-	// Create the genesis SCC committee.
-	key := bls.NewPrivateKeyForTests(0)
-	committee := scc.NewCommittee(scc.Member{
-		PublicKey:         key.PublicKey(),
-		ProofOfPossession: key.GetProofOfPossession(),
-		VotingPower:       1,
-	})
-
-	jsonGenesis.GenesisCommittee = &committee
 	return jsonGenesis
 }
 
@@ -307,22 +294,6 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 	err = builder.ExecuteGenesisTxs(blockProc, genesisTxs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute json genesis txs; %v", err)
-	}
-
-	if json.GenesisCommittee != nil {
-		if len(json.GenesisCommittee.Members()) == 0 {
-			return nil, fmt.Errorf("genesis committee must have at least one member")
-		}
-		if err := json.GenesisCommittee.Validate(); err != nil {
-			return nil, fmt.Errorf("genesis committee is invalid")
-		}
-		builder.SetGenesisCommitteeCertificate(cert.NewCertificate(
-			cert.NewCommitteeStatement(
-				json.Rules.NetworkID,
-				scc.Period(0),
-				*json.GenesisCommittee,
-			),
-		))
 	}
 
 	return builder.Build(genesis.Header{

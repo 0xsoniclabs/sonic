@@ -24,7 +24,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
-	"github.com/0xsoniclabs/sonic/scc/cert"
 )
 
 type (
@@ -42,12 +41,6 @@ type (
 	}
 	EvmItems interface {
 		ForEach(fn func(key, value []byte) bool)
-	}
-	SccCommitteeCertificates interface {
-		ForEach(fn func(cert.Certificate[cert.CommitteeStatement]) bool)
-	}
-	SccBlockCertificates interface {
-		ForEach(fn func(cert.Certificate[cert.BlockStatement]) bool)
 	}
 	ProcessedBundles interface {
 		ForEach(fn func(bundle.ExecutionInfo) bool)
@@ -69,12 +62,10 @@ type (
 	Genesis struct {
 		Header
 
-		Blocks                Blocks
-		Epochs                Epochs
-		RawEvmItems           EvmItems
-		CommitteeCertificates SccCommitteeCertificates
-		BlockCertificates     SccBlockCertificates
-		ProcessedBundles      ProcessedBundles
+		Blocks           Blocks
+		Epochs           Epochs
+		RawEvmItems      EvmItems
+		ProcessedBundles ProcessedBundles
 		FwsLiveSection
 		FwsArchiveSection
 		SignatureSection

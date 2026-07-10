@@ -61,9 +61,12 @@ type Store struct {
 		// Tables tracking processed bundles
 		ProcessedBundles kvdb.Store `table:"p"`
 
-		// Sonic Certification Chain tables
-		CommitteeCertificates kvdb.Store `table:"C"`
-		BlockCertificates     kvdb.Store `table:"c"`
+		// DEPRECATED: Sonic Certification Chain tables
+		// These are no longer used, but kept to mark the table prefix C and c
+		// as consumed. Future versions of Sonic should not use these prefixes
+		// for new tables unless they are compatible with the old tables.
+		Unused_01 kvdb.Store `table:"C"` // formerly CommitteeCertificates
+		Unused_02 kvdb.Store `table:"c"` // formerly BlockCertificates
 
 		// P2P-only
 		HighestLamport kvdb.Store `table:"l"`
