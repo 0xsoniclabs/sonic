@@ -113,6 +113,47 @@ func TestSendRawTransactionSync_ReturnsReceipt(t *testing.T) {
 	require.Equal(t, hexutil.Uint64(receipt.GasUsed), result["gasUsed"])
 }
 
+func TestSendRawTransactionSync_ConfirmedOnSecondPoll_ReturnsReceipt(t *testing.T) {
+	mockBackend, api := setupSendRawSyncAPI(t, 5*time.Second, 10*time.Second)
+
+	tx, encoded := newTestTx(t, 0, nil)
+	txHash := tx.Hash()
+
+	block := &evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{Number: big.NewInt(1)},
+	}
+	receipt := &types.Receipt{
+		Status:  types.ReceiptStatusSuccessful,
+		TxHash:  txHash,
+		GasUsed: 21000,
+	}
+
+	expectSuccessfulSubmission(mockBackend)
+	// First poll: not yet confirmed; second poll (one tick later): confirmed.
+	firstPoll := mockBackend.EXPECT().GetTransaction(gomock.Any(), txHash).
+		Return(nil, uint64(0), uint64(0), nil)
+	mockBackend.EXPECT().GetTransaction(gomock.Any(), txHash).
+		Return(tx, uint64(1), uint64(0), nil).
+		After(firstPoll)
+	mockBackend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(block, nil)
+	mockBackend.EXPECT().FetchReceiptsForBlock(block).Return(types.Receipts{receipt})
+	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{ChainID: big.NewInt(1)}).AnyTimes()
+
+	start := time.Now()
+	result, err := api.SendRawTransactionSync(context.Background(), encoded, nil)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, hexutil.Uint(receipt.Status), result["status"])
+	require.Equal(t, receipt.TxHash, result["transactionHash"])
+	// The second poll happens only after one ticker interval, and the result
+	// must arrive well before the 5s timeout — proving the loop polled again
+	// rather than timing out or succeeding on the fast path.
+	require.GreaterOrEqual(t, elapsed, sendRawSyncPollInterval)
+	require.Less(t, elapsed, 5*time.Second)
+}
+
 // TestSendRawTransactionSync_ErrorCases covers all pre-confirmation failure
 // paths: request validation, nonce checks, and pool submission errors.
 func TestSendRawTransactionSync_ErrorCases(t *testing.T) {
