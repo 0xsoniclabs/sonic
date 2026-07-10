@@ -241,7 +241,7 @@ func TestSendRawTransactionSync_SendTxError_ReturnsCode5(t *testing.T) {
 	require.Error(t, err)
 	var syncErr *sendRawSyncError
 	require.True(t, errors.As(err, &syncErr), "expected sendRawSyncError, got %T: %v", err, err)
-	require.Equal(t, errCodeSendRawSyncQueued, syncErr.ErrorCode())
+	require.Equal(t, errCodeSendRawSyncRejected, syncErr.ErrorCode())
 	require.Equal(t, tx.Hash(), syncErr.ErrorData())
 	require.Contains(t, syncErr.Error(), poolErr.Error())
 }

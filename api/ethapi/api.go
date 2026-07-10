@@ -2219,10 +2219,10 @@ const (
 //
 // Returns the transaction receipt on success, in the same format as
 // eth_getTransactionReceipt (see formatTxReceipt).
-// On failure, returns a typed JSON-RPC error:
-//   - Code 4: timeout, tx was submitted but not confirmed in time and is no longer in the pool (status unknown)
-//   - Code 5: timeout, tx was submitted and is still in the pool
-//   - Code 6: nonce gap detected, tx was NOT submitted to the pool
+// On failure, returns a typed JSON-RPC error (EIP-7966):
+//   - Code 4: tx was added to the pool but not processed within the timeout (data: tx hash)
+//   - Code 5: tx was NOT added to the pool, rejected for a reason other than a nonce gap (data: tx hash)
+//   - Code 6: tx was NOT added to the pool, nonce gap detected (data: expected nonce)
 func (s *PublicTransactionPoolAPI) SendRawTransactionSync(
 	ctx context.Context,
 	encodedTx hexutil.Bytes,

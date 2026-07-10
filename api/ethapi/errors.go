@@ -44,7 +44,7 @@ const (
 
 	// EIP-7966 error codes (positive, distinct from standard JSON-RPC negative codes)
 	errCodeSendRawSyncTimeout  = 4
-	errCodeSendRawSyncQueued   = 5
+	errCodeSendRawSyncRejected = 5
 	errCodeSendRawSyncNonceGap = 6
 )
 
@@ -128,7 +128,7 @@ func errSendRawSyncTimeout(hash common.Hash) error {
 
 func errSendRawSyncRejected(hash common.Hash, err error) error {
 	return &sendRawSyncError{
-		code:    errCodeSendRawSyncQueued,
+		code:    errCodeSendRawSyncRejected,
 		message: fmt.Sprintf("transaction was rejected: %v", err),
 		data:    hash,
 	}
