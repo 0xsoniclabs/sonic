@@ -2286,8 +2286,11 @@ func (s *PublicTransactionPoolAPI) SendRawTransactionSync(
 		}
 		if confirmedTx != nil {
 			block, err := s.b.BlockByNumber(deadlineCtx, rpc.BlockNumber(blockNumber))
-			if block == nil || err != nil {
+			if err != nil {
 				return nil, err
+			}
+			if block == nil {
+				return nil, fmt.Errorf("confirmed transaction %s found in block %d but the block is unavailable", txHash, blockNumber)
 			}
 			receipts := s.b.FetchReceiptsForBlock(block)
 			if receipts == nil || receipts.Len() <= int(index) {

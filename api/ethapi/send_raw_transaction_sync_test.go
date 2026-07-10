@@ -246,6 +246,45 @@ func TestSendRawTransactionSync_SendTxError_ReturnsCode5(t *testing.T) {
 	require.Contains(t, syncErr.Error(), poolErr.Error())
 }
 
+func TestSendRawTransactionSync_BlockUnavailable_ReturnsError(t *testing.T) {
+	blockErr := errors.New("block lookup failed")
+
+	tests := map[string]struct {
+		block   *evmcore.EvmBlock
+		err     error
+		wantErr string
+	}{
+		"lookup error is propagated": {
+			block:   nil,
+			err:     blockErr,
+			wantErr: blockErr.Error(),
+		},
+		"missing block yields explicit error": {
+			block:   nil,
+			err:     nil,
+			wantErr: "block is unavailable",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockBackend, api := setupSendRawSyncAPI(t, 1*time.Second, 2*time.Second)
+
+			tx, encoded := newTestTx(t, 0, nil)
+			txHash := tx.Hash()
+
+			expectSuccessfulSubmission(mockBackend)
+			mockBackend.EXPECT().GetTransaction(gomock.Any(), txHash).Return(tx, uint64(1), uint64(0), nil)
+			mockBackend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(test.block, test.err)
+
+			result, err := api.SendRawTransactionSync(context.Background(), encoded, nil)
+
+			require.Nil(t, result)
+			require.ErrorContains(t, err, test.wantErr)
+		})
+	}
+}
+
 func TestSendRawTransactionSync_InvalidRLP_ReturnsDecodeError(t *testing.T) {
 	_, api := setupSendRawSyncAPI(t, 1*time.Second, 2*time.Second)
 
