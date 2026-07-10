@@ -18,6 +18,7 @@ package gossip
 
 import (
 	"bytes"
+	"io"
 	"sync"
 	"testing"
 
@@ -195,6 +196,131 @@ func TestHandlePanicRecovery(t *testing.T) {
 
 	err = h.handle(p)
 	require.ErrorContains(t, err, "panic while handling peer")
+}
+
+func TestHandlePeerInputResilience(t *testing.T) {
+	h, err := makeFuzzedHandler(t)
+	require.NoError(t, err)
+
+	peerCfg := DefaultPeerCacheConfig(cachescale.Identity)
+	newTestPeer := func(rw p2p.MsgReadWriter) *peer {
+		return newPeer(
+			1,
+			p2p.NewPeer(randomID(), "Sonic/resilience-test", []p2p.Cap{}),
+			rw,
+			peerCfg,
+		)
+	}
+
+	makeMsg := func(code uint64, payload interface{}) *p2p.Msg {
+		t.Helper()
+		if payload == nil {
+			return &p2p.Msg{Code: code, Size: 0, Payload: bytes.NewReader(nil)}
+		}
+		encoded, err := rlp.EncodeToBytes(payload)
+		require.NoError(t, err)
+		return &p2p.Msg{Code: code, Size: uint32(len(encoded)), Payload: bytes.NewReader(encoded)}
+	}
+
+	handshake := makeMsg(HandshakeMsg, &handshakeData{
+		ProtocolVersion: 1,
+		NetworkID:       h.NetworkID,
+		Genesis:         common.Hash(h.store.GetGenesisID()),
+	})
+
+	tests := []struct {
+		name            string
+		steps           []readStep
+		wantErrContains string
+	}{
+		{
+			name: "invalid handshake code as first message",
+			steps: []readStep{
+				{msg: makeMsg(ProgressMsg, &PeerProgress{})},
+			},
+			wantErrContains: "No status message",
+		},
+		{
+			name: "invalid handshake payload",
+			steps: []readStep{
+				{msg: &p2p.Msg{Code: HandshakeMsg, Size: 1, Payload: bytes.NewReader([]byte{0xff})}},
+			},
+			wantErrContains: "Invalid message",
+		},
+		{
+			name: "successful handshake then malformed events payload",
+			steps: []readStep{
+				{msg: handshake},
+				{msg: &p2p.Msg{Code: EventsMsg, Size: 1, Payload: bytes.NewReader([]byte{0xff})}},
+			},
+			wantErrContains: "Invalid message",
+		},
+		{
+			name: "successful handshake then events containing nil event pointer",
+			steps: []readStep{
+				{msg: handshake},
+				{msg: makeMsg(EventsMsg, inter.EventPayloads{nil})},
+			},
+			wantErrContains: "Invalid message",
+		},
+		{
+			name: "successful handshake then event stream response with nil event pointer",
+			steps: []readStep{
+				{msg: handshake},
+				{msg: makeMsg(EventsStreamResponse, dagChunk{SessionID: 1, Events: inter.EventPayloads{nil}})},
+			},
+			wantErrContains: "Invalid message",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rw := &scriptedReadWriter{steps: tc.steps}
+			p := newTestPeer(rw)
+
+			var gotErr error
+			require.NotPanics(t, func() {
+				gotErr = h.handle(p)
+			})
+			require.Error(t, gotErr)
+			if tc.wantErrContains != "" {
+				require.ErrorContains(t, gotErr, tc.wantErrContains)
+			}
+		})
+	}
+}
+
+type readStep struct {
+	msg *p2p.Msg
+	err error
+}
+
+type scriptedReadWriter struct {
+	mu    sync.Mutex
+	steps []readStep
+	pos   int
+}
+
+func (rw *scriptedReadWriter) ReadMsg() (p2p.Msg, error) {
+	rw.mu.Lock()
+	defer rw.mu.Unlock()
+
+	if rw.pos >= len(rw.steps) {
+		return p2p.Msg{}, io.EOF
+	}
+	step := rw.steps[rw.pos]
+	rw.pos++
+	if step.err != nil {
+		return p2p.Msg{}, step.err
+	}
+	if step.msg == nil {
+		return p2p.Msg{}, io.EOF
+	}
+	return *step.msg, nil
+}
+
+func (rw *scriptedReadWriter) WriteMsg(p2p.Msg) error {
+	return nil
 }
 
 // handshakeThenPanicReadWriter satisfies p2p.MsgReadWriter. It returns a valid
