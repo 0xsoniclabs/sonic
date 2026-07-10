@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"math"
 	"math/rand/v2"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -538,7 +539,21 @@ func isUseless(node *enode.Node, name string) bool {
 
 // handle is the callback invoked to manage the life cycle of a peer. When
 // this function terminates, the peer is disconnected.
-func (h *handler) handle(p *peer) error {
+//
+// A panic anywhere in the message-handling loop below (e.g. a decode or
+// processing bug triggered by attacker-controlled peer input) is recovered
+// here and turned into a returned error, which disconnects only this peer,
+// instead of crashing the whole node: an unrecovered panic in any goroutine
+// terminates the entire process, regardless of where it originated.
+func (h *handler) handle(p *peer) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			p.Log().Error("Recovered from panic while handling peer, disconnecting",
+				"peer", p.ID(), "name", p.Name(), "panic", r, "stack", string(debug.Stack()))
+			err = fmt.Errorf("panic while handling peer %s: %v", p.ID(), r)
+		}
+	}()
+
 	p.Log().Trace("Connecting peer", "peer", p.ID(), "name", p.Name())
 
 	useless := isUseless(p.Node(), p.Name())
@@ -589,7 +604,7 @@ func (h *handler) handle(p *peer) error {
 	// after this will be sent via broadcasts.
 	h.syncTransactions(p, h.txpool.SampleHashes(h.config.Protocol.MaxInitialTxHashesSend))
 
-	// Handle incoming messages until the connection is torn down
+	// Handle incoming messages until the connection is torn down.
 	for {
 		if err := h.handleMsg(p); err != nil {
 			level := slog.LevelWarn
