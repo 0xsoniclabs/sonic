@@ -29,13 +29,10 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/scc/cert"
-	"github.com/0xsoniclabs/sonic/utils/objstream"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/holiman/uint256"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -70,9 +67,6 @@ type GenesisBuilder struct {
 	blocks       []ibr.LlrIdxFullBlockRecord
 	epochs       []ier.LlrIdxFullEpochRecord
 	currentEpoch ier.LlrIdxFullEpochRecord
-
-	genesisCommitteeCertificate cert.CommitteeCertificate
-	genesisBlockCertificates    []cert.BlockCertificate
 }
 
 type BlockProc struct {
@@ -225,14 +219,6 @@ func (b *GenesisBuilder) FinalizeBlockZero(
 		Idx:                0,
 	})
 
-	// register an empty certificate for block zero
-	b.AddBlockCertificate(cert.NewCertificate(cert.NewBlockStatement(
-		rules.NetworkID,
-		idx.Block(0),
-		block.Hash(),
-		block.StateRoot,
-	)))
-
 	return common.Hash(b.blocks[0].BlockHash), genesisStateRoot, nil
 }
 
@@ -350,30 +336,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	}
 	b.epochs = append(b.epochs, b.currentEpoch)
 
-	// add a block certificate for the created block
-	b.AddBlockCertificate(cert.NewCertificate(cert.NewBlockStatement(
-		es.Rules.NetworkID,
-		idx.Block(block.Number),
-		block.Hash(),
-		block.StateRoot,
-	)))
-
 	return nil
-}
-
-func (b *GenesisBuilder) SetGenesisCommitteeCertificate(
-	committeeCertificate cert.CommitteeCertificate,
-) {
-	b.genesisCommitteeCertificate = committeeCertificate
-}
-
-func (b *GenesisBuilder) AddBlockCertificate(
-	blockCertificate cert.BlockCertificate,
-) {
-	b.genesisBlockCertificates = append(
-		b.genesisBlockCertificates,
-		blockCertificate,
-	)
 }
 
 type memFile struct {
@@ -415,22 +378,6 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 			if err != nil {
 				return nil, err
 			}
-		}
-		if name == genesisstore.SccCommitteeSection(0) {
-			out := objstream.NewWriter[cert.Certificate[cert.CommitteeStatement]](buf)
-			err := out.Write(b.genesisCommitteeCertificate)
-			if err != nil {
-				return nil, err
-			}
-		}
-		if name == genesisstore.SccBlockSection(0) {
-			out := objstream.NewWriter[cert.Certificate[cert.BlockStatement]](buf)
-			for _, bc := range b.genesisBlockCertificates {
-				if err := out.Write(bc); err != nil {
-					return nil, err
-				}
-			}
-			return buf, nil
 		}
 		if buf.Len() == 0 {
 			return nil, errors.New("not found")

@@ -43,14 +43,6 @@ func FwsArchiveSection(i int) string {
 	return getSectionName("fwa", i)
 }
 
-func SccCommitteeSection(i int) string {
-	return getSectionName("scc_cc", i)
-}
-
-func SccBlockSection(i int) string {
-	return getSectionName("scc_bc", i)
-}
-
 func BundleHashSection(i int) string {
 	return getSectionName("bh", i)
 }
