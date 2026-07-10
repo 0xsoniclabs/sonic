@@ -113,23 +113,90 @@ func TestSendRawTransactionSync_ReturnsReceipt(t *testing.T) {
 	require.Equal(t, hexutil.Uint64(receipt.GasUsed), result["gasUsed"])
 }
 
-func TestSendRawTransactionSync_NonceGap_ReturnsCode6(t *testing.T) {
-	mockBackend, api := setupSendRawSyncAPI(t, 1*time.Second, 2*time.Second)
+// TestSendRawTransactionSync_ErrorCases covers all pre-confirmation failure
+// paths: request validation, nonce checks, and pool submission errors.
+func TestSendRawTransactionSync_ErrorCases(t *testing.T) {
+	poolErr := errors.New("insufficient funds")
+	nonceErr := errors.New("pool nonce lookup failed")
+	zero := hexutil.Uint64(0)
 
-	// tx has nonce=5 but pool expects nonce=0 → gap
-	_, encoded := newTestTx(t, 5, nil)
+	tests := map[string]struct {
+		txNonce    uint64
+		invalidRLP bool
+		timeoutMs  *hexutil.Uint64
+		setupMocks func(*MockBackend)
+		// wantCode/wantData checked only when wantCode != 0; wantData
+		// receives the submitted tx to derive expected error data.
+		wantCode    int
+		wantData    func(tx *types.Transaction) interface{}
+		wantErrText string
+	}{
+		"invalid RLP returns decode error before any backend call": {
+			invalidRLP:  true,
+			wantErrText: "rlp: value size exceeds available input length",
+		},
+		"zero timeout is rejected before submission": {
+			timeoutMs:   &zero,
+			wantErrText: "timeout must be greater than zero",
+		},
+		"pool nonce lookup error is propagated": {
+			setupMocks: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().GetPoolNonce(gomock.Any(), gomock.Any()).Return(uint64(0), nonceErr)
+			},
+			wantErrText: nonceErr.Error(),
+		},
+		"nonce gap returns code 6 without pool submission": {
+			// tx has nonce=5 but pool expects nonce=0 → gap;
+			// SendTx must NOT be called.
+			txNonce: 5,
+			setupMocks: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().GetPoolNonce(gomock.Any(), gomock.Any()).Return(uint64(0), nil)
+			},
+			wantCode: errCodeSendRawSyncNonceGap,
+			wantData: func(*types.Transaction) interface{} {
+				return hexutil.Uint64(0)
+			},
+			wantErrText: "nonce gap",
+		},
+		"pool rejection returns code 5": {
+			setupMocks: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().GetPoolNonce(gomock.Any(), gomock.Any()).Return(uint64(0), nil)
+				mockBackend.EXPECT().RPCTxFeeCap().Return(float64(0))
+				mockBackend.EXPECT().UnprotectedAllowed().Return(false)
+				mockBackend.EXPECT().SendTx(gomock.Any(), gomock.Any()).Return(poolErr)
+			},
+			wantCode: errCodeSendRawSyncRejected,
+			wantData: func(tx *types.Transaction) interface{} {
+				return tx.Hash()
+			},
+			wantErrText: poolErr.Error(),
+		},
+	}
 
-	mockBackend.EXPECT().GetPoolNonce(gomock.Any(), gomock.Any()).Return(uint64(0), nil)
-	// SendTx must NOT be called on nonce gap
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockBackend, api := setupSendRawSyncAPI(t, 1*time.Second, 2*time.Second)
+			if test.setupMocks != nil {
+				test.setupMocks(mockBackend)
+			}
 
-	result, err := api.SendRawTransactionSync(context.Background(), encoded, nil)
+			tx, encoded := newTestTx(t, test.txNonce, nil)
+			if test.invalidRLP {
+				encoded = hexutil.Bytes([]byte{0xde, 0xad, 0xbe, 0xef})
+			}
 
-	require.Nil(t, result)
-	require.Error(t, err)
-	var syncErr *sendRawSyncError
-	require.True(t, errors.As(err, &syncErr), "expected sendRawSyncError, got %T: %v", err, err)
-	require.Equal(t, errCodeSendRawSyncNonceGap, syncErr.ErrorCode())
-	require.Equal(t, hexutil.Uint64(0), syncErr.ErrorData())
+			result, err := api.SendRawTransactionSync(context.Background(), encoded, test.timeoutMs)
+
+			require.Nil(t, result)
+			require.ErrorContains(t, err, test.wantErrText)
+			if test.wantCode != 0 {
+				var syncErr *sendRawSyncError
+				require.True(t, errors.As(err, &syncErr), "expected sendRawSyncError, got %T: %v", err, err)
+				require.Equal(t, test.wantCode, syncErr.ErrorCode())
+				require.Equal(t, test.wantData(tx), syncErr.ErrorData())
+			}
+		})
+	}
 }
 
 func TestSendRawTransactionSync_TimeoutHandling(t *testing.T) {
@@ -210,42 +277,6 @@ func TestSendRawTransactionSync_TimeoutHandling(t *testing.T) {
 	}
 }
 
-func TestSendRawTransactionSync_ZeroTimeout_IsRejected(t *testing.T) {
-	_, api := setupSendRawSyncAPI(t, 1*time.Second, 2*time.Second)
-
-	_, encoded := newTestTx(t, 0, nil)
-	zero := hexutil.Uint64(0)
-
-	// No submission-related backend calls expected — the request must be
-	// rejected before the transaction reaches the pool.
-	result, err := api.SendRawTransactionSync(context.Background(), encoded, &zero)
-
-	require.Nil(t, result)
-	require.ErrorContains(t, err, "timeout must be greater than zero")
-}
-
-func TestSendRawTransactionSync_SendTxError_ReturnsCode5(t *testing.T) {
-	mockBackend, api := setupSendRawSyncAPI(t, 1*time.Second, 2*time.Second)
-
-	tx, encoded := newTestTx(t, 0, nil)
-	poolErr := errors.New("insufficient funds")
-
-	mockBackend.EXPECT().GetPoolNonce(gomock.Any(), gomock.Any()).Return(uint64(0), nil)
-	mockBackend.EXPECT().RPCTxFeeCap().Return(float64(0))
-	mockBackend.EXPECT().UnprotectedAllowed().Return(false)
-	mockBackend.EXPECT().SendTx(gomock.Any(), gomock.Any()).Return(poolErr)
-
-	result, err := api.SendRawTransactionSync(context.Background(), encoded, nil)
-
-	require.Nil(t, result)
-	require.Error(t, err)
-	var syncErr *sendRawSyncError
-	require.True(t, errors.As(err, &syncErr), "expected sendRawSyncError, got %T: %v", err, err)
-	require.Equal(t, errCodeSendRawSyncRejected, syncErr.ErrorCode())
-	require.Equal(t, tx.Hash(), syncErr.ErrorData())
-	require.Contains(t, syncErr.Error(), poolErr.Error())
-}
-
 func TestSendRawTransactionSync_BlockUnavailable_ReturnsError(t *testing.T) {
 	blockErr := errors.New("block lookup failed")
 
@@ -283,18 +314,6 @@ func TestSendRawTransactionSync_BlockUnavailable_ReturnsError(t *testing.T) {
 			require.ErrorContains(t, err, test.wantErr)
 		})
 	}
-}
-
-func TestSendRawTransactionSync_InvalidRLP_ReturnsDecodeError(t *testing.T) {
-	_, api := setupSendRawSyncAPI(t, 1*time.Second, 2*time.Second)
-
-	invalidEncoded := hexutil.Bytes([]byte{0xde, 0xad, 0xbe, 0xef})
-
-	result, err := api.SendRawTransactionSync(context.Background(), invalidEncoded, nil)
-
-	require.Nil(t, result)
-	require.Error(t, err)
-	// No backend calls expected — gomock will fail the test if any are made
 }
 
 func TestSendRawTransactionSync_ContextCanceled_ReturnsTimeoutError(t *testing.T) {
