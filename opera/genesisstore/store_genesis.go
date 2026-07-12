@@ -27,9 +27,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
-	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils/iodb"
-	"github.com/0xsoniclabs/sonic/utils/objstream"
 )
 
 type (
@@ -40,12 +38,6 @@ type (
 		fMap FilesMap
 	}
 	RawEvmItems struct {
-		fMap FilesMap
-	}
-	RawCommitteeCertificates struct {
-		fMap FilesMap
-	}
-	RawBlockCertificates struct {
 		fMap FilesMap
 	}
 	RawFwsLiveSection struct {
@@ -64,16 +56,14 @@ type (
 
 func (s *Store) Genesis() genesis.Genesis {
 	return genesis.Genesis{
-		Header:                s.head,
-		Blocks:                s.Blocks(),
-		Epochs:                s.Epochs(),
-		RawEvmItems:           s.RawEvmItems(),
-		CommitteeCertificates: s.CommitteeCertificates(),
-		BlockCertificates:     s.BlockCertificates(),
-		FwsLiveSection:        s.FwsLiveSection(),
-		FwsArchiveSection:     s.FwsArchiveSection(),
-		SignatureSection:      s.SignatureSection(),
-		ProcessedBundles:      s.ProcessedBundles(),
+		Header:            s.head,
+		Blocks:            s.Blocks(),
+		Epochs:            s.Epochs(),
+		RawEvmItems:       s.RawEvmItems(),
+		FwsLiveSection:    s.FwsLiveSection(),
+		FwsArchiveSection: s.FwsArchiveSection(),
+		SignatureSection:  s.SignatureSection(),
+		ProcessedBundles:  s.ProcessedBundles(),
 	}
 }
 
@@ -162,62 +152,6 @@ func (s RawEvmItems) ForEach(fn func(key, value []byte) bool) {
 			log.Crit("Failed to decode RawEvmItems genesis section", "err", it.Error())
 		}
 		it.Release()
-	}
-}
-
-func (s *Store) CommitteeCertificates() genesis.SccCommitteeCertificates {
-	return RawCommitteeCertificates{s.fMap}
-}
-
-func (s RawCommitteeCertificates) ForEach(fn func(cert.Certificate[cert.CommitteeStatement]) bool) {
-	for i := range 1000 {
-		f, err := s.fMap(SccCommitteeSection(i))
-		if err != nil {
-			continue
-		}
-
-		reader := objstream.NewReader[*cert.Certificate[cert.CommitteeStatement]](f)
-		var cur cert.Certificate[cert.CommitteeStatement]
-		for {
-			err = reader.Read(&cur)
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				log.Crit("Failed to decode committee certificate genesis section", "err", err)
-			}
-			if !fn(cur) {
-				break
-			}
-		}
-	}
-}
-
-func (s *Store) BlockCertificates() genesis.SccBlockCertificates {
-	return RawBlockCertificates{s.fMap}
-}
-
-func (s RawBlockCertificates) ForEach(fn func(cert.Certificate[cert.BlockStatement]) bool) {
-	for i := range 1000 {
-		f, err := s.fMap(SccBlockSection(i))
-		if err != nil {
-			continue
-		}
-
-		reader := objstream.NewReader[*cert.Certificate[cert.BlockStatement]](f)
-		var cur cert.Certificate[cert.BlockStatement]
-		for {
-			err = reader.Read(&cur)
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				log.Crit("Failed to decode block certificate genesis section", "err", err)
-			}
-			if !fn(cur) {
-				break
-			}
-		}
 	}
 }
 

@@ -44,7 +44,6 @@ import (
 
 	"github.com/0xsoniclabs/sonic/api"
 	"github.com/0xsoniclabs/sonic/api/ethapi"
-	"github.com/0xsoniclabs/sonic/api/sccapi"
 	"github.com/0xsoniclabs/sonic/eventcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/basiccheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
@@ -66,7 +65,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/proclogger"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
-	scc_node "github.com/0xsoniclabs/sonic/scc/node"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 	"github.com/0xsoniclabs/sonic/utils/wgmutex"
 	"github.com/0xsoniclabs/sonic/valkeystore"
@@ -238,9 +236,6 @@ type Service struct {
 	// version watcher
 	verWatcher *verwatcher.VersionWatcher
 
-	// SCC node
-	sccNode *scc_node.Node
-
 	blockProcWg        sync.WaitGroup
 	blockProcTasks     *workers.Workers
 	blockProcTasksDone chan struct{}
@@ -388,14 +383,6 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 
 	svc.verWatcher = verwatcher.New(netVerStore)
 	svc.tflusher = svc.makePeriodicFlusher()
-
-	// create Sonic Certification Chain node
-	// TODO: track the current committee inside the scc Node instance
-	// (see https://github.com/0xsoniclabs/sonic-admin/issues/22)
-	genesisCommitteeCertificate, err := store.GetCommitteeCertificate(0)
-	if err == nil {
-		svc.sccNode = scc_node.NewNode(store, genesisCommitteeCertificate.Subject().Committee)
-	}
 
 	return svc, nil
 }
@@ -564,11 +551,6 @@ func (s *Service) APIs() []rpc.API {
 			Namespace: "trace",
 			Version:   "1.0",
 			Service:   ethapi.NewPublicTxTraceAPI(s.EthAPI, s.config.MaxResponseSize),
-			Public:    true,
-		}, {
-			Namespace: "scc",
-			Version:   "1.0",
-			Service:   sccapi.NewPublicSccApi(s.EthAPI),
 			Public:    true,
 		},
 	}...)

@@ -320,7 +320,7 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 			blockBusyFlag := uint32(0)
 			emitters := []*emitter.Emitter{}
 			beginBlock := consensusCallbackBeginBlockFn(
-				workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping, nil,
+				workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping,
 			)
 
 			// Run a full consensus callback cycle for this block.
@@ -477,7 +477,7 @@ func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
 	blockBusyFlag := uint32(0)
 	emitters := []*emitter.Emitter{}
 	beginBlock := consensusCallbackBeginBlockFn(
-		workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping, nil,
+		workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping,
 	)
 
 	callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
@@ -654,7 +654,7 @@ func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 	blockBusyFlag := uint32(0)
 	emitters := []*emitter.Emitter{}
 	beginBlock := consensusCallbackBeginBlockFn(
-		workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping, nil,
+		workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping,
 	)
 
 	callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
@@ -2145,7 +2145,7 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupWithBrio(t *te
 			blockBusyFlag := uint32(0)
 			emitters := []*emitter.Emitter{}
 			beginBlock := consensusCallbackBeginBlockFn(
-				workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping, nil,
+				workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping,
 			)
 
 			callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})

@@ -117,8 +117,6 @@ func getTableNames(dbName string) map[string]string {
 		"P": "EpochBlocks",
 		"g": "Genesis",
 		"U": "UpgradeHeights",
-		"C": "CommitteeCertificates",
-		"c": "BlockCertificates",
 		"l": "HighestLamport",
 		"V": "NetworkVersion",
 		"B": "BlockHashes",

@@ -33,7 +33,6 @@ func TestJsonGenesis_CanApplyGeneratedFakeJsonGensis(t *testing.T) {
 
 func TestJsonGenesis_AcceptsGenesisWithoutCommittee(t *testing.T) {
 	genesis := GenerateFakeJsonGenesis(opera.GetSonicUpgrades(), CreateEqualValidatorStake(1))
-	genesis.GenesisCommittee = nil
 	_, err := ApplyGenesisJson(genesis)
 	require.NoError(t, err)
 }
