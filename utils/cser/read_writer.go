@@ -30,8 +30,6 @@ var (
 	ErrTooLargeAlloc        = errors.New("too large allocation")
 )
 
-const MaxAlloc = 100 * 1024
-
 type Writer struct {
 	BitsW  *bits.Writer
 	BytesW *fast.Writer
