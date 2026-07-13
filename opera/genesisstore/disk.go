@@ -167,6 +167,9 @@ func OpenGenesisStore(rawReader ReadAtSeekerCloser) (*Store, genesis.Hashes, err
 // getLoggerName provides a human-readable name of a unit for logging purposes
 func getLoggerName(name string) string {
 	scanfName := strings.ReplaceAll(name, "-", "")
+	if len(scanfName) == 0 {
+		return name
+	}
 	if scanfName[len(scanfName)-1] < '0' || scanfName[len(scanfName)-1] > '9' {
 		scanfName += "0"
 	}
