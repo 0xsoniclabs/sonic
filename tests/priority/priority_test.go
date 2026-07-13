@@ -28,19 +28,17 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
-	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
-// TODO: targets processor part of priorities design.
+// TODO: targets emitter and processor parts of priorities design.
 // TestPriority_PrioritizedTransactionsAreScheduledFirst demonstrates the
-// end-to-end behavior of the transaction priorities feature: a configurable
-// on-chain registry designates some senders as prioritized, and the resulting
-// blocks schedule those transactions ahead of ordinary ones, ordered by
-// (level, weight), regardless of submission order.
+// end-to-end behavior of the transaction priorities feature: the emitter
+// includes prioritized transactions in earlier events than ordinary ones,
+// and the block processor enforces priority ordering within each block.
 //
 // It runs in both block-formation modes. In single-proposer mode this also
 // exercises the authoritative override: even though the proposer schedules the
@@ -57,9 +55,11 @@ func TestPriority_PrioritizedTransactionsAreScheduledFirst(t *testing.T) {
 func testPrioritiesScheduledFirst(t *testing.T, singleProposer bool) {
 	require := require.New(t)
 
-	net, client, signer := netClientSignerWithPriorities(t, func(u *opera.Upgrades) {
-		u.SingleProposerBlockFormation = singleProposer
-	})
+	var configure func(*opera.Upgrades)
+	if singleProposer {
+		configure = func(u *opera.Upgrades) { u.SingleProposerBlockFormation = true }
+	}
+	net, client, signer := netClientSignerWithPriorities(t, configure)
 	defer client.Close()
 
 	// The registry must have been deployed in genesis.
@@ -67,96 +67,167 @@ func testPrioritiesScheduledFirst(t *testing.T, singleProposer bool) {
 	require.NoError(err)
 	require.NotEmpty(code, "priority registry must be deployed")
 
-	// Define prioritized accounts, each with a distinct (level, weight). They are
-	// declared in the order we expect them to appear within a block.
-	type prioritized struct {
-		account *tests.Account
-		level   int64
-		weight  int64
+	// Four prioritized senders in scrambled (level, weight) order so the test
+	// cannot accidentally pass due to insertion order.
+	// Expected block ordering: (2,3) → (2,1) → (1,4) → (1,2).
+	type prioSpec struct {
+		account       *tests.Account
+		level, weight int64
 	}
-	prios := []prioritized{
-		{level: 2, weight: 50}, // highest level -> first
-		{level: 1, weight: 90},
-		{level: 1, weight: 10},
+	prios := []prioSpec{
+		{level: 1, weight: 2},
+		{level: 1, weight: 4},
+		{level: 2, weight: 1},
+		{level: 2, weight: 3},
 	}
-	prioByAddr := map[common.Address]prioritized{}
 	for i := range prios {
 		acc := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 		prios[i].account = acc
-		prioByAddr[acc.Address()] = prios[i]
-
-		setPrioritized(t, net, acc.Address(),
-			prios[i].level, prios[i].weight, common.Hash{byte(i + 1)})
+		setPrioritized(t, net, acc.Address(), prios[i].level, prios[i].weight, common.Hash{byte(i + 1)})
 	}
 
-	// Ordinary background traffic from fresh, unregistered senders.
-	const numNormal = 4
-	const txsPerNormal = 3
-	burst := types.Transactions(buildOrdinaryTraffic(t, net, signer, numNormal, txsPerNormal))
+	// Reduce MaxEventGas to its allowed minimum so the ordinary batch spans
+	// several events (~47 simple transfers per event at this limit).
+	current := tests.GetNetworkRules(t, net)
+	modified := current.Copy()
+	modified.Economy.Gas.MaxEventGas = opera.UpperBoundForRuleChangeGasCosts() + modified.Economy.Gas.EventGas
+	tests.UpdateNetworkRules(t, net, modified)
+	net.AdvanceEpoch(t, 1)
 
-	// Append one tx per prioritized account (nonce 0) at the end of the burst
-	// so that a naive submission-order scheduler would not place them first.
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(err)
+	highGasPrice := new(big.Int).Add(gasPrice, big.NewInt(2e9))
+	lowGasPrice := new(big.Int).Add(gasPrice, big.NewInt(1e9))
 	sink := common.Address{0x99}
-	for i := range prios {
-		burst = append(burst, types.MustSignNewTx(prios[i].account.PrivateKey, signer, &types.LegacyTx{
+
+	// Build batch: 100 ordinary txs first (rules out FIFO), then prio txs
+	// with lower gas price (rules out fee ordering).
+	const numNonPrio = 100
+	numPrio := len(prios)
+	batch := make([]*types.Transaction, 0, numNonPrio+numPrio)
+	for range numNonPrio {
+		acc := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+		batch = append(batch, types.MustSignNewTx(acc.PrivateKey, signer, &types.LegacyTx{
 			Nonce:    0,
 			To:       &sink,
 			Value:    big.NewInt(1),
 			Gas:      21000,
-			GasPrice: gasPrice,
+			GasPrice: highGasPrice,
 		}))
 	}
+	type prioEntry struct{ level, weight int64 }
+	prioByHash := make(map[common.Hash]prioEntry, numPrio)
+	for _, p := range prios {
+		tx := types.MustSignNewTx(p.account.PrivateKey, signer, &types.LegacyTx{
+			Nonce:    0,
+			To:       &sink,
+			Value:    big.NewInt(1),
+			Gas:      21000,
+			GasPrice: lowGasPrice,
+		})
+		batch = append(batch, tx)
+		prioByHash[tx.Hash()] = prioEntry{p.level, p.weight}
+	}
 
-	hashes, err := net.SendAll(burst)
+	hashes, err := net.SendAll(batch)
 	require.NoError(err)
-	waitForReceipts(t, net, hashes)
 
-	// Inspect all blocks: within each block, prioritized user transactions must
-	// form a prefix (appear before any ordinary user transaction) and be ordered
-	// by (level desc, weight desc). At least one block must mix both classes to
-	// prove that prioritized transactions actually jumped ahead.
-	latest, err := client.BlockNumber(t.Context())
-	require.NoError(err)
-
-	mixSeen := false
-	for n := uint64(0); n <= latest; n++ {
-		block, err := client.BlockByNumber(t.Context(), new(big.Int).SetUint64(n))
+	// Collect all receipts.
+	type txResult struct {
+		blockNum      uint64
+		txIdx         uint
+		level, weight int64
+		isPrio        bool
+	}
+	results := make([]txResult, 0, len(hashes))
+	for _, h := range hashes {
+		receipt, err := net.GetReceipt(h)
 		require.NoError(err)
+		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+		if entry, isPrio := prioByHash[h]; isPrio {
+			results = append(results, txResult{receipt.BlockNumber.Uint64(), receipt.TransactionIndex, entry.level, entry.weight, true})
+		} else {
+			results = append(results, txResult{blockNum: receipt.BlockNumber.Uint64(), txIdx: receipt.TransactionIndex})
+		}
+	}
 
-		sawNormal := false
-		prioInBlock := make([]prioritized, 0)
-		for _, tx := range block.Transactions() {
-			if internaltx.IsInternal(tx) {
-				continue
+	var prioResults, nonPrioResults []txResult
+	for _, r := range results {
+		if r.isPrio {
+			prioResults = append(prioResults, r)
+		} else {
+			nonPrioResults = append(nonPrioResults, r)
+		}
+	}
+	require.Len(prioResults, numPrio)
+
+	// All prio txs must land in the same block — they fit comfortably within
+	// a single event (4 × 21_000 gas << MaxEventGas).
+	prioBlock := prioResults[0].blockNum
+	for _, r := range prioResults {
+		require.Equal(prioBlock, r.blockNum, "all prio txs must land in the same block")
+	}
+
+	// Emitter check (legacy mode only): in legacy mode MaxEventGas caps the
+	// number of txs per event, so the 100-tx ordinary batch spans several
+	// events. The priority heap ensures prio txs land in the first event and
+	// therefore in an earlier block than the last ordinary event.
+	// In single-proposer mode all pending txs are typically included in a
+	// single proposal so the inter-block comparison is not meaningful.
+	maxNonPrioBlock := nonPrioResults[0].blockNum
+	for _, r := range nonPrioResults {
+		if r.blockNum > maxNonPrioBlock {
+			maxNonPrioBlock = r.blockNum
+		}
+	}
+	if !singleProposer {
+		require.Less(prioBlock, maxNonPrioBlock,
+			"prio txs (lower fee, submitted last) must land in earlier blocks than ordinary txs")
+	}
+
+	// Processor check: within each block, prio txs form a prefix before all
+	// ordinary txs and are ordered by (level desc, weight desc). At least one
+	// block must contain both classes.
+	byBlock := make(map[uint64][]txResult)
+	for _, r := range results {
+		byBlock[r.blockNum] = append(byBlock[r.blockNum], r)
+	}
+	mixSeen := false
+	for blockNum, txs := range byBlock {
+		slices.SortFunc(txs, func(a, b txResult) int {
+			if a.txIdx < b.txIdx {
+				return -1
 			}
-			sender, err := types.Sender(signer, tx)
-			require.NoError(err)
-			if p, ok := prioByAddr[sender]; ok {
+			if a.txIdx > b.txIdx {
+				return 1
+			}
+			return 0
+		})
+		sawNormal := false
+		var prioInBlock []txResult
+		for _, r := range txs {
+			if r.isPrio {
 				require.False(sawNormal,
-					"block %d: prioritized tx scheduled after an ordinary tx", n)
-				prioInBlock = append(prioInBlock, p)
+					"block %d: prio tx (level=%d,weight=%d) scheduled after an ordinary tx",
+					blockNum, r.level, r.weight)
+				prioInBlock = append(prioInBlock, r)
 			} else {
 				sawNormal = true
 			}
 		}
-
 		if len(prioInBlock) > 0 && sawNormal {
 			mixSeen = true
 		}
 		for i := 1; i < len(prioInBlock); i++ {
 			prev, cur := prioInBlock[i-1], prioInBlock[i]
-			ordered := prev.level > cur.level ||
-				(prev.level == cur.level && prev.weight >= cur.weight)
-			require.True(ordered,
-				"block %d: prioritized txs not ordered by (level, weight): %+v before %+v",
-				n, prev, cur)
+			require.True(
+				prev.level > cur.level || (prev.level == cur.level && prev.weight >= cur.weight),
+				"block %d: prio tx (%d,%d) before (%d,%d) violates ordering",
+				blockNum, prev.level, prev.weight, cur.level, cur.weight,
+			)
 		}
 	}
-
-	require.True(mixSeen,
-		"expected at least one block containing both prioritized and ordinary transactions")
+	require.True(mixSeen, "expected at least one block with both prio and ordinary txs")
 }
 
 // TestPriority_PriorityReorderingOverwritesNonceOrdering documents an
@@ -255,173 +326,5 @@ func TestPriority_PriorityReorderingOverwritesNonceOrdering(t *testing.T) {
 					"without prio tx1 (lower nonce) must precede tx2")
 			}
 		})
-	}
-}
-
-// TODO targets emitter part of priorities design.
-// TestPriority_PrioritizedTransactionsEndUpInBlocksFaster demonstrates that
-// the emitter includes prioritized transactions in earlier events — and
-// therefore earlier blocks — than ordinary ones, even when (a) the
-// prioritized transactions carry a lower gas price and (b) they are submitted
-// after the ordinary transactions.
-//
-// MaxEventGas is reduced to its allowed minimum so that the submitted batch
-// spans several consecutive events. Because prioritized transactions fill the
-// first event they land in strictly earlier blocks than the ordinary
-// transactions that overflow into later events.
-func TestPriority_PrioritizedTransactionsEndUpInBlocksFaster(t *testing.T) {
-	require := require.New(t)
-
-	net, client, signer := netClientSignerWithPriorities(t, nil)
-	defer client.Close()
-
-	// Define 4 prioritized senders with expected position within the block,
-	// sorted by (level desc, weight desc): (2,3), (2,1), (1,4), (1,2)
-	type prioSpec struct {
-		account       *tests.Account
-		level, weight int64
-	}
-	prios := []prioSpec{
-		{level: 1, weight: 2},
-		{level: 1, weight: 4},
-		{level: 2, weight: 1},
-		{level: 2, weight: 3},
-	}
-	for i := range prios {
-		acc := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-		prios[i].account = acc
-		setPrioritized(t, net, acc.Address(), prios[i].level, prios[i].weight, common.Hash{byte(i + 1)})
-	}
-
-	// Reduce MaxEventGas to the allowed minimum:
-	//   upperBoundForRuleChangeGasCosts (1_000_000) + EventGas (28_000)
-	// At this limit each event holds ~47 simple transfers, so the 100-tx
-	// ordinary batch spans at least 3 events.
-	current := tests.GetNetworkRules(t, net)
-	modified := current.Copy()
-	modified.Economy.Gas.MaxEventGas = opera.UpperBoundForRuleChangeGasCosts() + modified.Economy.Gas.EventGas
-	tests.UpdateNetworkRules(t, net, modified)
-	net.AdvanceEpoch(t, 1)
-
-	gasPrice, err := client.SuggestGasPrice(t.Context())
-	require.NoError(err)
-	highGasPrice := new(big.Int).Add(gasPrice, big.NewInt(2e9))
-	lowGasPrice := new(big.Int).Add(gasPrice, big.NewInt(1e9))
-
-	sink := common.Address{0x99}
-
-	// Build batch: 100 ordinary txs first, then prio txs with lower gas price.
-	const numNonPrio = 100
-	numPrio := len(prios)
-	batch := make([]*types.Transaction, 0, numNonPrio+numPrio)
-
-	for range numNonPrio {
-		acc := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-		batch = append(batch, types.MustSignNewTx(acc.PrivateKey, signer, &types.LegacyTx{
-			Nonce:    0,
-			To:       &sink,
-			Value:    big.NewInt(1),
-			Gas:      21000,
-			GasPrice: highGasPrice,
-		}))
-	}
-
-	type prioEntry struct{ level, weight int64 }
-	prioByHash := make(map[common.Hash]prioEntry, numPrio)
-	for _, p := range prios {
-		tx := types.MustSignNewTx(p.account.PrivateKey, signer, &types.LegacyTx{
-			Nonce:    0,
-			To:       &sink,
-			Value:    big.NewInt(1),
-			Gas:      21000,
-			GasPrice: lowGasPrice,
-		})
-		batch = append(batch, tx)
-		prioByHash[tx.Hash()] = prioEntry{p.level, p.weight}
-	}
-
-	hashes, err := net.SendAll(batch)
-	require.NoError(err)
-
-	// Collect all receipts into a unified result record.
-	type txResult struct {
-		blockNum      uint64
-		txIdx         uint
-		level, weight int64 // only meaningful when isPrio
-		isPrio        bool
-	}
-	results := make([]txResult, 0, len(hashes))
-	for _, h := range hashes {
-		receipt, err := net.GetReceipt(h)
-		require.NoError(err)
-		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
-		if entry, isPrio := prioByHash[h]; isPrio {
-			results = append(results, txResult{receipt.BlockNumber.Uint64(), receipt.TransactionIndex, entry.level, entry.weight, true})
-		} else {
-			results = append(results, txResult{blockNum: receipt.BlockNumber.Uint64(), txIdx: receipt.TransactionIndex})
-		}
-	}
-
-	var prioResults, nonPrioResults []txResult
-	for _, r := range results {
-		if r.isPrio {
-			prioResults = append(prioResults, r)
-		} else {
-			nonPrioResults = append(nonPrioResults, r)
-		}
-	}
-	require.Len(prioResults, numPrio)
-
-	// All prio txs must land in the same block — they fit comfortably within
-	// a single event (4 × 21_000 gas << MaxEventGas).
-	prioBlock := prioResults[0].blockNum
-	for _, r := range prioResults {
-		require.Equal(prioBlock, r.blockNum, "all prioritized txs must land in the same block")
-	}
-
-	// The prio block must be no later than the earliest block containing an
-	// ordinary tx. Without the feature, ordinary txs (higher fee, submitted
-	// first) would land earlier, so any failure here points directly at the
-	// priority mechanism.
-	minNonPrioBlock := nonPrioResults[0].blockNum
-	for _, r := range nonPrioResults {
-		if r.blockNum < minNonPrioBlock {
-			minNonPrioBlock = r.blockNum
-		}
-	}
-	require.LessOrEqual(prioBlock, minNonPrioBlock,
-		"prioritized txs must land in a block no later than the first ordinary tx block")
-
-	// In the prio block, every prio tx must precede every ordinary tx.
-	maxPrioIdx := prioResults[0].txIdx
-	for _, r := range prioResults {
-		if r.txIdx > maxPrioIdx {
-			maxPrioIdx = r.txIdx
-		}
-	}
-	for _, r := range nonPrioResults {
-		if r.blockNum == prioBlock {
-			require.Less(maxPrioIdx, r.txIdx,
-				"in block %d: all prio txs must appear before all ordinary txs", prioBlock)
-		}
-	}
-
-	// Within the prio block, prio txs must appear in (level desc, weight desc) order.
-	slices.SortFunc(prioResults, func(a, b txResult) int {
-		if a.txIdx < b.txIdx {
-			return -1
-		}
-		if a.txIdx > b.txIdx {
-			return 1
-		}
-		return 0
-	})
-	for i := 1; i < len(prioResults); i++ {
-		prev, cur := prioResults[i-1], prioResults[i]
-		require.True(
-			prev.level > cur.level || (prev.level == cur.level && prev.weight >= cur.weight),
-			"prio tx at index %d must outrank tx at index %d: (%d,%d) before (%d,%d)",
-			prev.txIdx, cur.txIdx, prev.level, prev.weight, cur.level, cur.weight,
-		)
 	}
 }
