@@ -32,7 +32,11 @@ func OpenFile(path string, isSyncMode bool) *os.File {
 	if isSyncMode {
 		sync = os.O_SYNC
 	}
-	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|sync, 0666)
+
+	// Used for the last-emitted-event file, no legitimate need
+	// to be readable or writable by other local users.
+	const filePerm = 0600
+	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|sync, filePerm)
 	if err != nil {
 		log.Crit("Failed to open file", "file", path, "err", err)
 	}
