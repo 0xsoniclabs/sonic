@@ -40,6 +40,15 @@ func (p Priority) IsPrioritized() bool {
 	return p.Level.Sign() > 0
 }
 
+// Cmp compares two priorities by (level, weight), returning -1, 0, or +1.
+// A higher level takes precedence; weight breaks ties within the same level.
+func (p Priority) Cmp(other Priority) int {
+	if c := p.Level.Cmp(&other.Level); c != 0 {
+		return c
+	}
+	return p.Weight.Cmp(&other.Weight)
+}
+
 // zeroPriority returns a normalized non-prioritized Priority.
 func zeroPriority() Priority {
 	return Priority{}

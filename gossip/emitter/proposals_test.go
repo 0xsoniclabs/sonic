@@ -73,7 +73,7 @@ func TestEmitter_CreatePayload_ProducesValidPayload(t *testing.T) {
 
 	// It is not this emitter's turn to propose a block, so the payload just
 	// contains the proposal sync state but no proposal.
-	payload, err := emitter.createPayload(event, nil)
+	payload, err := emitter.createPayload(event, nil, nil)
 	require.NoError(err)
 	want := inter.Payload{
 		ProposalSyncState: inter.ProposalSyncState{
@@ -105,7 +105,7 @@ func TestEmitter_CreatePayload_FailsOnInvalidValidators(t *testing.T) {
 	}
 	emitter.validators.Store(validators)
 
-	_, err := emitter.createPayload(event, nil)
+	_, err := emitter.createPayload(event, nil, nil)
 	require.ErrorContains(err, "no validators")
 }
 
@@ -170,7 +170,7 @@ func TestCreatePayload_PendingProposal_CreatesPayloadWithoutProposal(t *testing.
 	// This call fails since it tries to propose block 5 while according to the
 	// proposal tracker, a proposal for block 5 has already been made.
 	payload, err := createPayload(
-		world, 0, nil, event, proposalTracker, nil, nil, nil, nil, nil,
+		world, 0, nil, event, proposalTracker, nil, nil, nil, nil, nil, nil,
 	)
 
 	want := inter.Payload{
@@ -228,7 +228,7 @@ func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesPayl
 	// This attempt to create a proposal should result in an empty payload since
 	// no time has passed since the last proposal.
 	payload, err := createPayload(
-		world, validator, validators, event, tracker, nil, nil, nil, nil, nil,
+		world, validator, validators, event, tracker, nil, nil, nil, nil, nil, nil,
 	)
 
 	want := inter.Payload{
@@ -261,7 +261,7 @@ func TestCreatePayload_InvalidValidators_ForwardsError(t *testing.T) {
 	tracker.EXPECT().IsPending(idx.Frame(0), idx.Block(63)).Return(false)
 
 	_, err := createPayload(
-		world, 0, validators, event, tracker, nil, nil, nil, nil, nil,
+		world, 0, validators, event, tracker, nil, nil, nil, nil, nil, nil,
 	)
 	require.ErrorContains(err, "no validators")
 }
@@ -332,7 +332,7 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 
 	payload, err := createPayload(
 		world, validator, validators, event, tracker, nil,
-		scheduler, randaoMixer, durationMetric, timeoutMetric,
+		nil, scheduler, randaoMixer, durationMetric, timeoutMetric,
 	)
 	require.NoError(err)
 
@@ -500,7 +500,7 @@ func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
 		tx := types.NewTx(&types.LegacyTx{Nonce: 1})
 		index.EXPECT().Peek().Return(&txpool.LazyTransaction{Tx: tx}, nil)
 
-		adapter := transactionPriorityAdapter{index}
+		adapter := transactionPriorityAdapter{sorted: index}
 		got := adapter.Current()
 		require.Equal(t, tx, got)
 	})
@@ -509,7 +509,7 @@ func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		index := NewMocktransactionIndex(ctrl)
 		index.EXPECT().Peek().Return(nil, nil)
-		adapter := transactionPriorityAdapter{index}
+		adapter := transactionPriorityAdapter{sorted: index}
 		got := adapter.Current()
 		require.Nil(t, got)
 	})
@@ -517,8 +517,8 @@ func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
 	t.Run("Accept", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		index := NewMocktransactionIndex(ctrl)
-		index.EXPECT().Shift()
-		adapter := transactionPriorityAdapter{index}
+		index.EXPECT().Shift(nil)
+		adapter := transactionPriorityAdapter{sorted: index}
 		adapter.Accept()
 	})
 
@@ -526,7 +526,7 @@ func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		index := NewMocktransactionIndex(ctrl)
 		index.EXPECT().Pop()
-		adapter := transactionPriorityAdapter{index}
+		adapter := transactionPriorityAdapter{sorted: index}
 		adapter.Skip()
 	})
 }
@@ -714,6 +714,6 @@ func TestCreatePayload_ReturnsErrorOnRandaoGenerationFailure(t *testing.T) {
 		randao.RandaoReveal{}, common.Hash{}, errors.New("randao error"),
 	)
 
-	_, err := createPayload(world, validator, validators, event, tracker, nil, nil, randaoMixer, nil, nil)
+	_, err := createPayload(world, validator, validators, event, tracker, nil, nil, nil, randaoMixer, nil, nil)
 	require.ErrorContains(err, "randao reveal generation failed")
 }

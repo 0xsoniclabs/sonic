@@ -32,6 +32,7 @@ import (
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -170,18 +171,15 @@ func (em *Emitter) isMyTxTurn(txHash common.Hash, sender common.Address, account
 	return false
 }
 
-func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPriceAndNonce) {
+func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPriorityAndPriceAndNonce, classifier priorities.Classifier) {
 	// Best-effort priority hinter: lets prioritized transactions be eagerly
 	// included regardless of the per-transaction turn. Nil while the feature is
 	// disabled, keeping behavior unchanged.
 	hinter := em.newPriorityHinter()
-	if hinter != nil {
-		defer hinter.release()
-	}
-	em.addTxsWithHinter(e, sorted, hinter)
+	em.addTxsWithHinter(e, sorted, classifier, hinter)
 }
 
-func (em *Emitter) addTxsWithHinter(e *inter.MutableEventPayload, sorted *transactionsByPriceAndNonce, hinter *priorityHinter) {
+func (em *Emitter) addTxsWithHinter(e *inter.MutableEventPayload, sorted *transactionsByPriorityAndPriceAndNonce, classifier priorities.Classifier, hinter *priorityHinter) {
 	maxGasUsed := em.maxGasPowerToUse(e)
 	if maxGasUsed <= e.GasPowerUsed() {
 		return
@@ -256,7 +254,7 @@ func (em *Emitter) addTxsWithHinter(e *inter.MutableEventPayload, sorted *transa
 		if eagerPriority {
 			hinter.record(priorityId)
 		}
-		sorted.Shift()
+		sorted.Shift(classifier)
 	}
 }
 

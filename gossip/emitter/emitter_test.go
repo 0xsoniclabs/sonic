@@ -685,7 +685,7 @@ func TestEmitter_EmitEvent_skippingTxsAlsoSkipsGappedNoncesTxs(t *testing.T) {
 	require.NotNil(t, tx, "expected the valid tx at nonce=0 to be present")
 	require.Equal(t, validTx0.Hash(), tx.Hash)
 
-	sorted.Shift()
+	sorted.Shift(nil)
 	tx, _ = sorted.Peek()
 	require.Nil(t, tx, "expected no more txs after the nonce gap")
 }

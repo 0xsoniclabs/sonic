@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
@@ -105,12 +106,12 @@ func testTransactionPriceNonceSort(t *testing.T, baseFee *big.Int) {
 		expectedCount += count
 	}
 	// Sort the transactions and cross check the nonce ordering
-	txset := newTransactionsByPriceAndNonce(signer, groups, baseFee)
+	txset := newTransactionsByPriorityAndPriceAndNonce(signer, groups, baseFee, nil)
 
 	txs := types.Transactions{}
 	for tx, _ := txset.Peek(); tx != nil; tx, _ = txset.Peek() {
 		txs = append(txs, tx.Tx)
-		txset.Shift()
+		txset.Shift(nil)
 	}
 	if len(txs) != expectedCount {
 		t.Errorf("expected %d transactions, found %d", expectedCount, len(txs))
@@ -171,12 +172,12 @@ func TestTransactionTimeSort(t *testing.T) {
 		})
 	}
 	// Sort the transactions and cross check the nonce ordering
-	txset := newTransactionsByPriceAndNonce(signer, groups, nil)
+	txset := newTransactionsByPriorityAndPriceAndNonce(signer, groups, nil, nil)
 
 	txs := types.Transactions{}
 	for tx, _ := txset.Peek(); tx != nil; tx, _ = txset.Peek() {
 		txs = append(txs, tx.Tx)
-		txset.Shift()
+		txset.Shift(nil)
 	}
 	if len(txs) != len(keys) {
 		t.Errorf("expected %d transactions, found %d", len(keys), len(txs))
@@ -274,7 +275,7 @@ func TestTransactionsOrdering_MinerFeesCanBeComputedWithAllTransactions(t *testi
 			}
 			from := common.Address{1}
 
-			withFee, err := newTxWithMinerFee(lazy, from, baseFee)
+			withFee, err := newTxWithMinerFee(lazy, from, baseFee, priorities.Priority{})
 			require.ErrorIs(t, err, test.expectedError)
 			if test.expectedError == nil {
 				require.EqualValues(t, withFee.fees.Uint64(), test.expectedMinerFee)

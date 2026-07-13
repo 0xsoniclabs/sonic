@@ -24,26 +24,20 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 )
 
-// priorityHinter provides best-effort transaction-priority classification for
-// the emitter. It is used to eagerly include prioritized transactions in an
-// emitted event regardless of the per-transaction "turn", so that prioritized
-// transactions reach the DAG (and thus a block) as quickly as possible.
-//
-// This is a hint only: it is evaluated against the current head state and never
-// affects consensus. The authoritative priority ordering is re-derived during
-// block formation (see gossip/c_block_callbacks_priorities.go).
-type priorityHinter struct {
+// priorityContext holds the per-head-block state required to classify and
+// rate-limit prioritized transactions. A single instance is shared by both
+// the hinter (eager inclusion) and the transaction-ordering heap, so only one
+// statedb is acquired per head block.
+type priorityContext struct {
 	classifier priorities.Classifier
 	config     priorities.Config
 	release    func()
-	counts     map[[32]byte]uint64
 }
 
-// newPriorityHinter builds a priorityHinter against the current head state, or
-// returns nil if the feature is disabled or the head state is unavailable. The
-// caller must invoke release() when done (only when the returned hinter is
-// non-nil).
-func (em *Emitter) newPriorityHinter() *priorityHinter {
+// newPriorityContext builds the per-block priority state, or returns nil if
+// priorities are disabled or the head state is unavailable. The caller must
+// invoke release() (only when non-nil) when done.
+func (em *Emitter) newPriorityContext() *priorityContext {
 	rules := em.world.GetRules()
 	if !rules.Upgrades.TransactionPriorities {
 		return nil
@@ -56,7 +50,6 @@ func (em *Emitter) newPriorityHinter() *priorityHinter {
 	if header == nil {
 		return nil
 	}
-
 	statedb := em.world.StateDB()
 	chainCfg := opera.CreateTransientEvmChainConfig(
 		rules.NetworkID,
@@ -69,7 +62,6 @@ func (em *Emitter) newPriorityHinter() *priorityHinter {
 		chainCfg,
 		opera.GetVmConfig(rules),
 	)
-
 	config, err := priorities.GetConfig(rules.Upgrades, evm)
 	if err != nil {
 		// Best-effort: fall back to the conservative default (which prioritizes
@@ -77,11 +69,38 @@ func (em *Emitter) newPriorityHinter() *priorityHinter {
 		// authoritative.
 		config = priorities.FallbackConfig
 	}
-
-	return &priorityHinter{
+	return &priorityContext{
 		classifier: priorities.NewEvmClassifier(rules.Upgrades, evm, em.world.TransactionSigner, statedb),
 		config:     config,
 		release:    statedb.Release,
+	}
+}
+
+// priorityHinter provides best-effort transaction-priority classification for
+// the emitter. It is used to eagerly include prioritized transactions in an
+// emitted event regardless of the per-transaction "turn", so that prioritized
+// transactions reach the DAG (and thus a block) as quickly as possible.
+//
+// This is a hint only: it is evaluated against the current head state and never
+// affects consensus. The authoritative priority ordering is re-derived during
+// block formation (see gossip/c_block_callbacks_priorities.go).
+type priorityHinter struct {
+	classifier priorities.Classifier
+	config     priorities.Config
+	counts     map[[32]byte]uint64
+}
+
+// newPriorityHinter builds a per-event hinter from the cached priorityContext,
+// or returns nil if priorities are disabled. Its lifetime is scoped to the
+// event being built; the underlying statedb is owned by the cache.
+func (em *Emitter) newPriorityHinter() *priorityHinter {
+	ctx := em.cache.priorityCtx
+	if ctx == nil {
+		return nil
+	}
+	return &priorityHinter{
+		classifier: ctx.classifier,
+		config:     ctx.config,
 		counts:     map[[32]byte]uint64{},
 	}
 }

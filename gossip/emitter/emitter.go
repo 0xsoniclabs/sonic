@@ -43,6 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/originatedtxs"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/throttler"
@@ -140,10 +141,12 @@ type Emitter struct {
 	maxParents idx.Event
 
 	cache struct {
-		sortedTxs *transactionsByPriceAndNonce
-		poolTime  time.Time
-		poolBlock idx.Block
-		poolCount int
+		sortedTxs     *transactionsByPriorityAndPriceAndNonce
+		poolTime      time.Time
+		poolBlock     idx.Block
+		poolCount     int
+		priorityCtx   *priorityContext // shared classifier+config; refreshed when head block changes
+		priorityBlock idx.Block        // head block the cached priorityCtx was built against
 	}
 
 	emittedEventFile *os.File
@@ -278,6 +281,12 @@ func (em *Emitter) Stop() {
 	close(em.done)
 	em.done = nil
 	em.wg.Wait()
+
+	if em.cache.priorityCtx != nil {
+		em.cache.priorityCtx.release()
+		em.cache.priorityCtx = nil
+		em.cache.sortedTxs = nil
+	}
 }
 
 func (em *Emitter) tick() {
@@ -308,11 +317,27 @@ func (em *Emitter) tick() {
 	}
 }
 
-func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
+func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriorityAndPriceAndNonce {
+	// Refresh the priority context only when the head block changes. The context
+	// must outlive this function because createEvent consumes the returned copy
+	// after we return; it is released by the next refresh or by Stop.
+	currentBlock := em.world.GetLatestBlockIndex()
+	if em.cache.priorityBlock != currentBlock {
+		if em.cache.priorityCtx != nil {
+			em.cache.priorityCtx.release()
+		}
+		em.cache.priorityCtx = em.newPriorityContext()
+		em.cache.priorityBlock = currentBlock
+	}
+	var classifier priorities.Classifier
+	if em.cache.priorityCtx != nil {
+		classifier = em.cache.priorityCtx.classifier
+	}
+
 	// Short circuit if pool wasn't updated since the cache was built
 	poolCount := em.world.TxPool.Count()
 	if em.cache.sortedTxs != nil &&
-		em.cache.poolBlock == em.world.GetLatestBlockIndex() &&
+		em.cache.poolBlock == currentBlock &&
 		em.cache.poolCount == poolCount &&
 		time.Since(em.cache.poolTime) < em.config.TxsCacheInvalidation {
 		return em.cache.sortedTxs.Copy()
@@ -330,6 +355,7 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 
 	for from, txs := range pendingTxs {
 		// Filter the excessive transactions from each sender
+		// According to tx_pool.go:621 the txs for each sender are sorted by nonce
 		if len(txs) > em.config.MaxTxsPerAddress {
 			pendingTxs[from] = txs[:em.config.MaxTxsPerAddress]
 		}
@@ -369,7 +395,7 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 		}
 	}
 
-	sortedTxs := newTransactionsByPriceAndNonce(em.world.TransactionSigner, txs, baseFee)
+	sortedTxs := newTransactionsByPriorityAndPriceAndNonce(em.world.TransactionSigner, txs, baseFee, classifier)
 	em.cache.sortedTxs = sortedTxs
 	em.cache.poolCount = poolCount
 	em.cache.poolBlock = em.world.GetLatestBlockIndex()
@@ -487,7 +513,12 @@ func (em *Emitter) loadPrevEmitTime() time.Time {
 }
 
 // createEvent is not safe for concurrent use.
-func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.EventPayload, error) {
+func (em *Emitter) createEvent(sortedTxs *transactionsByPriorityAndPriceAndNonce) (*inter.EventPayload, error) {
+	var classifier priorities.Classifier
+	if em.cache.priorityCtx != nil {
+		classifier = em.cache.priorityCtx.classifier
+	}
+
 	if synced := em.logSyncStatus(em.isSyncedToEmit()); !synced {
 		// I'm reindexing my old events, so don't create events until connect all the existing self-events
 		return nil, nil
@@ -576,7 +607,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 
 	if version == 3 {
 		// add proposal sync state and an optional proposal
-		payload, err := em.createPayload(mutEvent, sortedTxs)
+		payload, err := em.createPayload(mutEvent, sortedTxs, classifier)
 		if err != nil {
 			em.Log.Error("Failed to create payload", "err", err)
 			return nil, err
@@ -584,7 +615,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 		mutEvent.SetPayload(payload)
 	} else {
 		// Add txs
-		em.addTxs(mutEvent, sortedTxs)
+		em.addTxs(mutEvent, sortedTxs, classifier)
 		// calc Payload hash
 		mutEvent.SetPayloadHash(inter.CalcPayloadHash(mutEvent))
 	}

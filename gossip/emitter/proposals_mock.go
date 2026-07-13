@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 	time "time"
 
+	priorities "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	scheduler "github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	opera "github.com/0xsoniclabs/sonic/opera"
@@ -291,13 +292,13 @@ func (mr *MocktransactionIndexMockRecorder) Pop() *gomock.Call {
 }
 
 // Shift mocks base method.
-func (m *MocktransactionIndex) Shift() {
+func (m *MocktransactionIndex) Shift(classifier priorities.Classifier) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Shift")
+	m.ctrl.Call(m, "Shift", classifier)
 }
 
 // Shift indicates an expected call of Shift.
-func (mr *MocktransactionIndexMockRecorder) Shift() *gomock.Call {
+func (mr *MocktransactionIndexMockRecorder) Shift(classifier any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Shift", reflect.TypeOf((*MocktransactionIndex)(nil).Shift))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Shift", reflect.TypeOf((*MocktransactionIndex)(nil).Shift), classifier)
 }

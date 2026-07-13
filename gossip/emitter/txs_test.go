@@ -402,7 +402,7 @@ func TestEmitter_addTxsWithHinter_InclusionDeterminedByHinter(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			event := tc.event()
-			f.em.addTxsWithHinter(event, f.makeSorted(tx), tc.hinter)
+			f.em.addTxsWithHinter(event, f.makeSorted(tx), nil, tc.hinter)
 			tc.checks(t, event)
 		})
 	}
@@ -431,7 +431,7 @@ func TestEmitter_addTxsWithHinter_PerEntityCapEnforced(t *testing.T) {
 		counts: map[[32]byte]uint64{},
 	}
 
-	f.em.addTxsWithHinter(event, f.makeSorted(tx1, tx2, tx3), hinter)
+	f.em.addTxsWithHinter(event, f.makeSorted(tx1, tx2, tx3), nil, hinter)
 
 	// Seed + first two prioritized txs; the third exceeds the cap and, since
 	// isMyTxTurn returns false, it is skipped.
@@ -520,7 +520,7 @@ func (f *addTxsFixture) makeEvent() *inter.MutableEventPayload {
 
 // makeSorted wraps the given txs (from the fixture's sender) as a
 // transactionsByPriceAndNonce set.
-func (f *addTxsFixture) makeSorted(txs ...*types.Transaction) *transactionsByPriceAndNonce {
+func (f *addTxsFixture) makeSorted(txs ...*types.Transaction) *transactionsByPriorityAndPriceAndNonce {
 	lazy := make([]*txpool.LazyTransaction, len(txs))
 	for i, tx := range txs {
 		lazy[i] = &txpool.LazyTransaction{
@@ -532,9 +532,10 @@ func (f *addTxsFixture) makeSorted(txs ...*types.Transaction) *transactionsByPri
 			Gas:       tx.Gas(),
 		}
 	}
-	return newTransactionsByPriceAndNonce(
+	return newTransactionsByPriorityAndPriceAndNonce(
 		f.signer,
 		map[common.Address][]*txpool.LazyTransaction{f.sender: lazy},
+		nil,
 		nil,
 	)
 }
