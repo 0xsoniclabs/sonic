@@ -498,7 +498,7 @@ func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
 		index := NewMocktransactionIndex(ctrl)
 
 		tx := types.NewTx(&types.LegacyTx{Nonce: 1})
-		index.EXPECT().Peek().Return(&txpool.LazyTransaction{Tx: tx}, nil)
+		index.EXPECT().PeekBest().Return(&txWithMinerFee{tx: &txpool.LazyTransaction{Tx: tx}})
 
 		adapter := transactionPriorityAdapter{sorted: index}
 		got := adapter.Current()
@@ -508,7 +508,7 @@ func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
 	t.Run("Current_Empty", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		index := NewMocktransactionIndex(ctrl)
-		index.EXPECT().Peek().Return(nil, nil)
+		index.EXPECT().PeekBest().Return(nil)
 		adapter := transactionPriorityAdapter{sorted: index}
 		got := adapter.Current()
 		require.Nil(t, got)
@@ -517,7 +517,7 @@ func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
 	t.Run("Accept", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		index := NewMocktransactionIndex(ctrl)
-		index.EXPECT().Shift(nil)
+		index.EXPECT().ShiftBest(nil)
 		adapter := transactionPriorityAdapter{sorted: index}
 		adapter.Accept()
 	})
@@ -525,7 +525,7 @@ func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
 	t.Run("Skip", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		index := NewMocktransactionIndex(ctrl)
-		index.EXPECT().Pop()
+		index.EXPECT().DiscardBest()
 		adapter := transactionPriorityAdapter{sorted: index}
 		adapter.Skip()
 	})

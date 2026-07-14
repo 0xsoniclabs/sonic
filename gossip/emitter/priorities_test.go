@@ -43,31 +43,22 @@ func tx(nonce uint64) *types.Transaction {
 }
 
 func prioritized(id byte) priorities.Priority {
-	var level, weight uint256.Int
-	level.SetUint64(1)
-	weight.SetUint64(1)
-	return priorities.Priority{Level: level, Weight: weight, Id: [32]byte{id}}
+	return priorityWith(id, 1, 1)
+}
+
+// priorityWith builds a prioritized Priority with an explicit level and weight
+// so tests can assert (level, weight) ordering.
+func priorityWith(id byte, level, weight uint64) priorities.Priority {
+	var l, w uint256.Int
+	l.SetUint64(level)
+	w.SetUint64(weight)
+	return priorities.Priority{Level: l, Weight: w, Id: [32]byte{id}}
 }
 
 func TestPriorityHinter_Nil_IsNeverEligible(t *testing.T) {
 	var h *priorityHinter
-	ok, _ := h.eligible(true, tx(0))
+	ok, _ := h.eligible(tx(0))
 	require.False(t, ok)
-}
-
-func TestPriorityHinter_RequiresNonEmptyEvent(t *testing.T) {
-	a := tx(0)
-	h := &priorityHinter{
-		classifier: fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{a.Hash(): prioritized(1)}},
-		config:     priorities.Config{MaxTxsPerEntityPerEvent: 5},
-		counts:     map[[32]byte]uint64{},
-	}
-	// Empty event: not eligible (avoids priority-only events).
-	ok, _ := h.eligible(false, a)
-	require.False(t, ok)
-	// Non-empty event: eligible.
-	ok, _ = h.eligible(true, a)
-	require.True(t, ok)
 }
 
 func TestPriorityHinter_NonPrioritized_IsNotEligible(t *testing.T) {
@@ -77,7 +68,7 @@ func TestPriorityHinter_NonPrioritized_IsNotEligible(t *testing.T) {
 		config:     priorities.Config{MaxTxsPerEntityPerEvent: 5},
 		counts:     map[[32]byte]uint64{},
 	}
-	ok, _ := h.eligible(true, a)
+	ok, _ := h.eligible(a)
 	require.False(t, ok)
 }
 
@@ -93,15 +84,15 @@ func TestPriorityHinter_EnforcesPerEntityPerEventCap(t *testing.T) {
 		counts: map[[32]byte]uint64{},
 	}
 
-	ok, id := h.eligible(true, a)
+	ok, id := h.eligible(a)
 	require.True(t, ok)
 	h.record(id)
 
-	ok, id = h.eligible(true, b)
+	ok, id = h.eligible(b)
 	require.True(t, ok)
 	h.record(id)
 
 	// Third transaction of the same entity exceeds the cap.
-	ok, _ = h.eligible(true, c)
+	ok, _ = h.eligible(c)
 	require.False(t, ok)
 }

@@ -106,13 +106,13 @@ func (em *Emitter) newPriorityHinter() *priorityHinter {
 }
 
 // eligible reports whether the given transaction should be eagerly included in
-// the event despite not being this validator's turn: it must be prioritized, the
-// event must already carry at least one transaction (so events are never emitted
-// solely for non-owned prioritized transactions), and the per-entity per-event
-// cap must not be exhausted. It does not modify any state; call record after the
+// the event despite not being this validator's turn: it must be prioritized
+// and the per-entity per-event cap must not be exhausted. The caller is
+// responsible for enforcing the "do not emit an event solely for foreign
+// priorities" invariant. It does not modify any state; call record after the
 // transaction has actually been added.
-func (h *priorityHinter) eligible(eventHasTxs bool, tx *types.Transaction) (bool, [32]byte) {
-	if h == nil || !eventHasTxs {
+func (h *priorityHinter) eligible(tx *types.Transaction) (bool, [32]byte) {
+	if h == nil {
 		return false, [32]byte{}
 	}
 	p, err := h.classifier.Priority(tx)

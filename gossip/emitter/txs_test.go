@@ -344,55 +344,64 @@ func TestEmitter_addTxsWithHinter_InclusionDeterminedByHinter(t *testing.T) {
 	emptyEvent := f.makeEvent
 
 	var nilHinter *priorityHinter
+	noPrioClassifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{}}
+	prioClassifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+		tx.Hash(): prioritized(1),
+	}}
 	noPrioHinter := &priorityHinter{
-		classifier: fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{}},
+		classifier: noPrioClassifier,
 		config:     priorities.Config{MaxTxsPerEntityPerEvent: 10},
 		counts:     map[[32]byte]uint64{},
 	}
 	prioTx1Hinter := &priorityHinter{
-		classifier: fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
-			tx.Hash(): prioritized(1),
-		}},
-		config: priorities.Config{MaxTxsPerEntityPerEvent: 10},
-		counts: map[[32]byte]uint64{},
+		classifier: prioClassifier,
+		config:     priorities.Config{MaxTxsPerEntityPerEvent: 10},
+		counts:     map[[32]byte]uint64{},
 	}
 
+	// The fixture arranges isMyTxTurn to always return false. Under the new
+	// semantics, phase 2 is skipped entirely when neither phase 1 (my-turn
+	// prio) nor phase 3 (my-turn ordinary) has a candidate. All scenarios
+	// below therefore end with only the pre-existing seed tx (if any) surviving.
 	cases := map[string]struct {
-		event  func() *inter.MutableEventPayload
-		hinter *priorityHinter
-		checks func(t *testing.T, event *inter.MutableEventPayload)
+		event      func() *inter.MutableEventPayload
+		classifier priorities.Classifier
+		hinter     *priorityHinter
+		checks     func(t *testing.T, event *inter.MutableEventPayload)
 	}{
 		"non prio tx uses turn logic": {
-			event:  nonEmptyEvent,
-			hinter: noPrioHinter,
+			event:      nonEmptyEvent,
+			classifier: noPrioClassifier,
+			hinter:     noPrioHinter,
 			checks: func(t *testing.T, event *inter.MutableEventPayload) {
-				// Only the seed tx remains.
 				require.Len(t, event.Transactions(), 1)
 				require.Equal(t, seedTx.Hash(), event.Transactions()[0].Hash())
 			},
 		},
-		"prio tx with nil hinter uses turn logic": {
-			event:  nonEmptyEvent,
-			hinter: nilHinter,
+		"prio tx with nil hinter is dropped": {
+			event:      nonEmptyEvent,
+			classifier: prioClassifier,
+			hinter:     nilHinter,
 			checks: func(t *testing.T, event *inter.MutableEventPayload) {
-				// Only the seed tx remains.
 				require.Len(t, event.Transactions(), 1)
 				require.Equal(t, seedTx.Hash(), event.Transactions()[0].Hash())
 			},
 		},
-		"prio tx bypasses turn when event not empty": {
-			event:  nonEmptyEvent,
-			hinter: prioTx1Hinter,
+		"prio tx not-my-turn is skipped when no my-turn candidate exists": {
+			event:      nonEmptyEvent,
+			classifier: prioClassifier,
+			hinter:     prioTx1Hinter,
 			checks: func(t *testing.T, event *inter.MutableEventPayload) {
-				// The seed tx plus our prioritized tx.
-				require.Len(t, event.Transactions(), 2)
+				// Phase 2 is skipped; the tx is never added and no cap is charged.
+				require.Len(t, event.Transactions(), 1)
 				require.Equal(t, seedTx.Hash(), event.Transactions()[0].Hash())
-				require.Equal(t, tx.Hash(), event.Transactions()[1].Hash())
+				require.Zero(t, prioTx1Hinter.counts[[32]byte{1}])
 			},
 		},
-		"prio tx does not bypass turn when event empty": {
-			event:  emptyEvent,
-			hinter: prioTx1Hinter,
+		"prio tx does not persist when event empty": {
+			event:      emptyEvent,
+			classifier: prioClassifier,
+			hinter:     prioTx1Hinter,
 			checks: func(t *testing.T, event *inter.MutableEventPayload) {
 				require.Empty(t, event.Transactions())
 			},
@@ -402,7 +411,7 @@ func TestEmitter_addTxsWithHinter_InclusionDeterminedByHinter(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			event := tc.event()
-			f.em.addTxsWithHinter(event, f.makeSorted(tx), nil, tc.hinter)
+			f.em.addTxsWithHinter(event, f.makeSorted(tc.classifier, tx), tc.classifier, tc.hinter)
 			tc.checks(t, event)
 		})
 	}
@@ -411,36 +420,71 @@ func TestEmitter_addTxsWithHinter_InclusionDeterminedByHinter(t *testing.T) {
 func TestEmitter_addTxsWithHinter_PerEntityCapEnforced(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	f := newAddTxsFixture(t, ctrl)
+	// Give this validator its own turn so all txs are admitted in phase 1.
+	f.enableMyTurn()
 
-	seedTx := f.makeTx(t, 42)
 	tx1 := f.makeTx(t, 0)
 	tx2 := f.makeTx(t, 1)
 	tx3 := f.makeTx(t, 2)
 
 	event := f.makeEvent()
-	event.SetTxs(types.Transactions{seedTx})
 
 	// All three txs belong to the same priority entity; cap is 2.
+	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+		tx1.Hash(): prioritized(7),
+		tx2.Hash(): prioritized(7),
+		tx3.Hash(): prioritized(7),
+	}}
 	hinter := &priorityHinter{
-		classifier: fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
-			tx1.Hash(): prioritized(7),
-			tx2.Hash(): prioritized(7),
-			tx3.Hash(): prioritized(7),
-		}},
-		config: priorities.Config{MaxTxsPerEntityPerEvent: 2},
-		counts: map[[32]byte]uint64{},
+		classifier: classifier,
+		config:     priorities.Config{MaxTxsPerEntityPerEvent: 2},
+		counts:     map[[32]byte]uint64{},
 	}
 
-	f.em.addTxsWithHinter(event, f.makeSorted(tx1, tx2, tx3), nil, hinter)
+	f.em.addTxsWithHinter(event, f.makeSorted(classifier, tx1, tx2, tx3), classifier, hinter)
 
-	// Seed + first two prioritized txs; the third exceeds the cap and, since
-	// isMyTxTurn returns false, it is skipped.
+	// All three prioritized txs are my-turn adds (phase 1), so the hinter cap
+	// is not consulted for them; all three are included.
 	require.Len(t, event.Transactions(), 3)
+	require.Equal(t, tx1.Hash(), event.Transactions()[0].Hash())
+	require.Equal(t, tx2.Hash(), event.Transactions()[1].Hash())
+	require.Equal(t, tx3.Hash(), event.Transactions()[2].Hash())
+	// No hinter-eager admissions occurred, so no cap accounting was recorded.
+	require.Zero(t, hinter.counts[[32]byte{7}])
+}
+
+// TestEmitter_addTxsWithHinter_Phase2SkippedWhenNoMyTurnCandidate verifies
+// that when a prioritized tx is not this validator's turn and there is no
+// my-turn non-prioritized candidate, phase 2 is skipped entirely: the tx is
+// never added and the hinter cap is not charged.
+func TestEmitter_addTxsWithHinter_Phase2SkippedWhenNoMyTurnCandidate(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	f := newAddTxsFixture(t, ctrl)
+
+	seedTx := f.makeTx(t, 42)
+	tx := f.makeTx(t, 0)
+
+	event := f.makeEvent()
+	event.SetTxs(types.Transactions{seedTx})
+	gasUsedBefore := event.GasPowerUsed()
+
+	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+		tx.Hash(): prioritized(3),
+	}}
+	hinter := &priorityHinter{
+		classifier: classifier,
+		config:     priorities.Config{MaxTxsPerEntityPerEvent: 5},
+		counts:     map[[32]byte]uint64{},
+	}
+
+	f.em.addTxsWithHinter(event, f.makeSorted(classifier, tx), classifier, hinter)
+
+	// Phase 2 was skipped; the tx was never added.
+	require.Len(t, event.Transactions(), 1)
 	require.Equal(t, seedTx.Hash(), event.Transactions()[0].Hash())
-	require.Equal(t, tx1.Hash(), event.Transactions()[1].Hash())
-	require.Equal(t, tx2.Hash(), event.Transactions()[2].Hash())
-	// Cap accounting was recorded for both included prioritized txs.
-	require.Equal(t, uint64(2), hinter.counts[[32]byte{7}])
+	require.Equal(t, gasUsedBefore, event.GasPowerUsed())
+	// No hinter cap was charged.
+	require.Zero(t, hinter.counts[[32]byte{3}])
 }
 
 // addTxsFixture builds a minimal Emitter ready to exercise addTxsWithHinter.
@@ -498,6 +542,15 @@ func newAddTxsFixture(t *testing.T, ctrl *gomock.Controller) *addTxsFixture {
 	return &addTxsFixture{em: em, signer: signer, key: key, sender: sender, me: me}
 }
 
+// enableMyTurn reconfigures the fixture so isMyTxTurn always returns true for
+// the fixture's `me` validator, by installing a sole-validator set consisting
+// of `me` alone.
+func (f *addTxsFixture) enableMyTurn() {
+	b := pos.NewBuilder()
+	b.Set(f.me, pos.Weight(1))
+	f.em.validators.Store(b.Build())
+}
+
 // makeTx returns a signed legacy transaction from the fixture's sender.
 func (f *addTxsFixture) makeTx(t *testing.T, nonce uint64) *types.Transaction {
 	t.Helper()
@@ -519,8 +572,10 @@ func (f *addTxsFixture) makeEvent() *inter.MutableEventPayload {
 }
 
 // makeSorted wraps the given txs (from the fixture's sender) as a
-// transactionsByPriceAndNonce set.
-func (f *addTxsFixture) makeSorted(txs ...*types.Transaction) *transactionsByPriorityAndPriceAndNonce {
+// transactionsByPriceAndNonce set. The optional classifier is used both to
+// place each account's initial head in the prioritized or ordinary heap and to
+// classify subsequent nonces as they are promoted via advanceSender.
+func (f *addTxsFixture) makeSorted(classifier priorities.Classifier, txs ...*types.Transaction) *transactionsByPriorityAndPriceAndNonce {
 	lazy := make([]*txpool.LazyTransaction, len(txs))
 	for i, tx := range txs {
 		lazy[i] = &txpool.LazyTransaction{
@@ -536,6 +591,6 @@ func (f *addTxsFixture) makeSorted(txs ...*types.Transaction) *transactionsByPri
 		f.signer,
 		map[common.Address][]*txpool.LazyTransaction{f.sender: lazy},
 		nil,
-		nil,
+		classifier,
 	)
 }

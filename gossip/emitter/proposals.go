@@ -31,7 +31,6 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
-	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
@@ -328,23 +327,23 @@ type transactionPriorityAdapter struct {
 }
 
 func (a *transactionPriorityAdapter) Current() *types.Transaction {
-	tx, _ := a.sorted.Peek()
-	if tx == nil {
+	entry := a.sorted.PeekBest()
+	if entry == nil {
 		return nil
 	}
-	return tx.Resolve()
+	return entry.tx.Resolve()
 }
 
 func (a *transactionPriorityAdapter) Accept() {
-	a.sorted.Shift(a.classifier)
+	a.sorted.ShiftBest(a.classifier)
 }
 
 func (a *transactionPriorityAdapter) Skip() {
-	a.sorted.Pop()
+	a.sorted.DiscardBest()
 }
 
 type transactionIndex interface {
-	Peek() (*txpool.LazyTransaction, *uint256.Int)
-	Shift(classifier priorities.Classifier)
-	Pop()
+	PeekBest() *txWithMinerFee
+	ShiftBest(classifier priorities.Classifier)
+	DiscardBest()
 }
