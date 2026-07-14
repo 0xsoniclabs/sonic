@@ -33,8 +33,8 @@ func OpenFile(path string, isSyncMode bool) *os.File {
 		sync = os.O_SYNC
 	}
 
-	// Used for the last-emitted-event file, no legitimate need
-	// to be readable or writable by other local users.
+	// Used for the emitter's "last-emitted-*" state files; new files are created
+	// as owner-read/write only (existing files keep their current mode).
 	const filePerm = 0600
 	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|sync, filePerm)
 	if err != nil {
