@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"runtime/debug"
 
 	"github.com/ethereum/go-ethereum/log"
 
@@ -70,15 +71,16 @@ func (l *ErrorLock) Permanent(err error) {
 			"originalErr", err,
 			"writeErr", writeErr,
 		)
-
-		os.Exit(74) // distinct exit code to indicate a write error and avoid silent restart
+	} else {
+		// User facing error message, so we want to provide a clear message.
+		fmt.Fprintf(os.Stderr, "Node is permanently stopping due to an issue. Please"+
+			" fix the issue and then delete file \"%s\". Error message:\n%s",
+			eLockPath, err.Error())
 	}
+	debug.PrintStack()
 
-	// This is a user-facing error, so we want to provide a clear message.
-	//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
-	panic(fmt.Errorf("Node is permanently stopping due to an issue. Please fix"+
-		" the issue and then delete file \"%s\". Error message:\n%s",
-		eLockPath, err.Error()))
+	// distinct exit code to avoid silently restarting into the same unsafe state
+	os.Exit(74)
 }
 
 func readAll(reader io.Reader, max int) ([]byte, error) {
