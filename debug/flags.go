@@ -222,10 +222,13 @@ func StartPProf(address string, withMetrics bool) {
 
 func newPProfServer(address string) *http.Server {
 	return &http.Server{
-		Addr:         address,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Addr:              address,
+		Handler:           http.DefaultServeMux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		// pprof endpoints can legitimately take a long time (e.g. /debug/pprof/profile).
+		// Avoid timing out the handler execution by leaving WriteTimeout unset.
+		IdleTimeout: 120 * time.Second,
 	}
 }
 

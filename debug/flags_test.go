@@ -30,7 +30,6 @@ import (
 func TestNewPProfServer_HasTimeouts(t *testing.T) {
 	server := newPProfServer("127.0.0.1:0")
 	require.NotZero(t, server.ReadTimeout, "ReadTimeout must be set")
-	require.NotZero(t, server.WriteTimeout, "WriteTimeout must be set")
 	require.NotZero(t, server.IdleTimeout, "IdleTimeout must be set")
 }
 
