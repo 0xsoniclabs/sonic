@@ -35,6 +35,37 @@ const (
 	InvalidSnapshotID = int(-1)
 )
 
+// StagedBlock is a block that has been applied to the live state but is not yet
+// part of the archive. It lets a caller execute several blocks ahead of a decision
+// it has not taken yet -- as a consensus certifying blocks before finalizing them
+// must -- and then keep or discard each of them.
+//
+// Exactly one of Commit or Rollback must be called. Both invalidate the block, and
+// a second call on it reports an error rather than acting twice.
+//
+// Ordering is enforced: Commit only accepts the oldest staged block, because the
+// archive is append-only and must receive blocks in order; Rollback only accepts
+// the newest, because taking a block back rests on every later block already being
+// gone.
+type StagedBlock interface {
+	// StateHash returns the root of the live state as of this block. It stays the
+	// root this block produced even once later blocks have been staged on top.
+	StateHash() common.Hash
+
+	// Commit promotes this block into the archive. It returns as soon as the write
+	// is under way; use Wait to await its completion.
+	Commit() error
+
+	// Wait blocks until the archive write triggered by Commit has completed and
+	// reports its outcome. It must be called after Commit, and returns immediately
+	// when no archive is maintained.
+	Wait() error
+
+	// Rollback reverts this block from the live state, restoring the root its
+	// predecessor left behind.
+	Rollback() error
+}
+
 type StateDB interface {
 	vm.StateDB
 
@@ -49,7 +80,13 @@ type StateDB interface {
 	GetStateHash() common.Hash
 
 	BeginBlock(number uint64)
-	EndBlock(number uint64) <-chan error
+
+	// EndBlock collects the changes made since BeginBlock into a block and applies
+	// them to the live state, returning the block as staged: its content is live,
+	// but it is not yet part of the archive. The caller decides its fate through
+	// the returned StagedBlock; until it does, the block can still be taken back.
+	EndBlock(number uint64) (StagedBlock, error)
+
 	EndTransaction()
 	Release()
 	InterTxSnapshot() int

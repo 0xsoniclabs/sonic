@@ -95,6 +95,13 @@ func OpenLedger(dataDir string, config gossip.LedgerConfig) (_ *Ledger, err erro
 	}, nil
 }
 
+// Store returns the store this ledger was opened over, for tools and tests that
+// need to inspect what the ledger produced. The ledger retains ownership: the
+// store is released by Close, and must not be closed through the returned pointer.
+func (l *Ledger) Store() *gossip.Store {
+	return l.store
+}
+
 // Close releases the resources owned by the ledger: the gossip store and then the
 // database producer. Errors from both are reported.
 func (l *Ledger) Close() (err error) {

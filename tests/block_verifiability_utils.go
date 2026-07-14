@@ -47,12 +47,15 @@ import (
 // genesis. It processes each block in sequence, applying all transactions and
 // ensuring that the resulting block hashes match the expected values.
 //
-// Verification runs over two independent paths that must both reproduce the
+// Verification runs over three independent paths that must all reproduce the
 // recorded block hashes:
 //   - verifyBlocksOnState replays the blocks directly on a Carmen state and
-//     re-derives each block hash by hand; and
+//     re-derives each block hash by hand;
 //   - verifyBlocksOnLedger replays them through the production block-processing
-//     pipeline (a real gossip ledger over a real store).
+//     pipeline (a real gossip ledger over a real store); and
+//   - verifyBlocksOnLedgerWithRollback replays them through that same pipeline
+//     while taking a run of blocks back again mid-chain, which must not change
+//     the blocks it then produces.
 func VerifyBlocks(
 	t *testing.T,
 	genesis *makefakegenesis.GenesisJson,
@@ -64,6 +67,7 @@ func VerifyBlocks(
 
 	verifyBlocksOnState(t, genesis, blocks)
 	verifyBlocksOnLedger(t, genesis, blocks)
+	verifyBlocksOnLedgerWithRollback(t, genesis, blocks)
 }
 
 // verifyBlocksOnState verifies the chain of blocks by replaying them directly on
@@ -197,49 +201,184 @@ func verifyBlocksOnLedger(
 	// Replay every block after the genesis head in order, chaining on the live
 	// state root produced by each block.
 	for i := firstReplayed; i < uint64(len(blocks)); i++ {
-		block := blocks[i]
-
-		nanos, duration, err := inter.DecodeExtraData(block.Header().Extra)
-		require.NoError(err, "block %d: failed to decode extra data", block.NumberU64())
-
-		processor, err := ledger.BeginBlock(gossip.BlockParams{
-			Number: block.NumberU64(),
-			Time:   inter.Timestamp(block.Time()*1e9 + uint64(nanos)),
-			// Epoch is left zero: it does not feed the block hash.
-			ParentHash:      block.ParentHash(),
-			PrevRandao:      block.MixDigest(),
-			ParentStateRoot: liveStateRoot,
-			GasLimit:        block.GasLimit(),
-			// Unused by the single system batch below; set for clarity.
-			UserGasLimit: block.GasLimit(),
-			Duration:     duration,
-			Rules:        genesis.Rules,
-		}, func(*core_types.Log) {})
-		require.NoError(err, "block %d: failed to begin block", block.NumberU64())
-
-		// Replay all of the block's transactions in their recorded order as a
-		// single batch. The replaying EVM module executes them faithfully without
-		// re-generating subsidy/bundle post-transactions (which the block already
-		// contains, interleaved with the user transactions), so the order — and
-		// thus the transactions and receipts roots — is reproduced exactly. Only
-		// already-included transactions are fed, with the user gas limit set to the
-		// full block gas limit and the full block size budget, so neither limit
-		// binds and no transaction is skipped.
-		processor.Run(block.Transactions())
-		candidate := processor.Finalize()
-
-		require.Zero(candidate.NumSkipped,
-			"block %d: some transactions were skipped", block.NumberU64())
-		require.Equal(block.Root(), common.Hash(candidate.Block.StateRoot),
-			"block %d: state root mismatch", block.NumberU64())
-		require.Equal(block.GasUsed(), candidate.Block.GasUsed,
-			"block %d: gas used mismatch", block.NumberU64())
-		require.Equal(block.Hash(), candidate.Block.Hash(),
-			"block %d: block hash mismatch", block.NumberU64())
+		processor, candidate := replayBlockOnLedger(t, ledger, genesis, blocks[i], liveStateRoot)
 
 		// Persist the block so the next block can read it as its parent (e.g. for
 		// the base fee), and chain on the state root just produced.
 		processor.Commit()
+		processor.Publish()
+		liveStateRoot = candidate.Block.StateRoot
+	}
+}
+
+// replayBlockOnLedger drives one recorded block through the ledger and asserts
+// that the assembled candidate reproduces it exactly. The block is left finalized:
+// its content is in the live state, but the caller decides whether to commit it or
+// roll it back again.
+func replayBlockOnLedger(
+	t *testing.T,
+	ledger *integration.Ledger,
+	genesis *makefakegenesis.GenesisJson,
+	block *types.Block,
+	parentStateRoot common.Hash,
+) (gossip.BlockProcessor, *gossip.BlockCandidate) {
+	t.Helper()
+	require := require.New(t)
+
+	nanos, duration, err := inter.DecodeExtraData(block.Header().Extra)
+	require.NoError(err, "block %d: failed to decode extra data", block.NumberU64())
+
+	processor, err := ledger.BeginBlock(gossip.BlockParams{
+		Number: block.NumberU64(),
+		Time:   inter.Timestamp(block.Time()*1e9 + uint64(nanos)),
+		// Epoch is left zero: it does not feed the block hash.
+		ParentHash:      block.ParentHash(),
+		PrevRandao:      block.MixDigest(),
+		ParentStateRoot: parentStateRoot,
+		GasLimit:        block.GasLimit(),
+		// Unused by the single system batch below; set for clarity.
+		UserGasLimit: block.GasLimit(),
+		Duration:     duration,
+		Rules:        genesis.Rules,
+	}, func(*core_types.Log) {})
+	require.NoError(err, "block %d: failed to begin block", block.NumberU64())
+
+	// Replay all of the block's transactions in their recorded order as a
+	// single batch. The replaying EVM module executes them faithfully without
+	// re-generating subsidy/bundle post-transactions (which the block already
+	// contains, interleaved with the user transactions), so the order — and
+	// thus the transactions and receipts roots — is reproduced exactly. Only
+	// already-included transactions are fed, with the user gas limit set to the
+	// full block gas limit and the full block size budget, so neither limit
+	// binds and no transaction is skipped.
+	processor.Run(block.Transactions())
+	candidate := processor.Finalize()
+
+	require.Zero(candidate.NumSkipped,
+		"block %d: some transactions were skipped", block.NumberU64())
+	require.Equal(block.Root(), common.Hash(candidate.Block.StateRoot),
+		"block %d: state root mismatch", block.NumberU64())
+	require.Equal(block.GasUsed(), candidate.Block.GasUsed,
+		"block %d: gas used mismatch", block.NumberU64())
+	require.Equal(block.Hash(), candidate.Block.Hash(),
+		"block %d: block hash mismatch", block.NumberU64())
+
+	return processor, candidate
+}
+
+// verifyBlocksOnLedgerWithRollback verifies that the ledger can execute a block,
+// take it back again, and reproduce it exactly on a second attempt.
+//
+// This is what a consensus that certifies a block before finalizing it needs: it
+// must execute a block to obtain the hash a quorum certifies, and discard it again
+// when the round fails to certify. The decisive properties are that a rolled back
+// and re-executed block is byte-identical to the first attempt, and that the
+// archive -- which is append-only and rejects a height it has already seen -- only
+// ever receives the blocks that were committed, so the rolled back height can be
+// produced again.
+//
+// The store this runs over keeps an archive (DefaultStoreConfig), so the archive
+// path is exercised rather than assumed.
+func verifyBlocksOnLedgerWithRollback(
+	t *testing.T,
+	genesis *makefakegenesis.GenesisJson,
+	blocks []*types.Block,
+) {
+	require := require.New(t)
+
+	dataDir := initLedgerDataDirFromGenesis(t, genesis)
+	ledger, err := integration.OpenLedger(dataDir, gossip.LedgerConfig{Replay: true})
+	require.NoError(err, "failed to open ledger")
+	defer func() {
+		require.NoError(ledger.Close())
+	}()
+
+	head, err := ledger.GetHeadBlock()
+	require.NoError(err, "failed to read ledger head")
+	firstReplayed := head.Number + 1
+	liveStateRoot := head.StateRoot
+
+	last := uint64(len(blocks)) - 1
+	require.GreaterOrEqual(last, firstReplayed, "no blocks beyond the genesis head to replay")
+
+	// Only one block is taken back at a time, because that is as deep as this seam
+	// currently reaches. Carmen stages any number of blocks, but BeginBlock derives
+	// the parent hash and the next base fee from a header it reads out of the store
+	// (see EvmStateReader in ledger.go and EVMModule.Start), and only Commit puts a
+	// block there. Beginning block N+1 while N is merely staged therefore finds no
+	// parent. Executing several blocks ahead of the decision to keep them -- which a
+	// consensus certifying blocks before finalizing them does -- needs the parent
+	// header of a staged block to be reachable; that belongs with the speculation
+	// stack rather than here.
+	const window = uint64(1)
+	// Take the block back mid-chain rather than at the tip, so the rollback acts on
+	// a trie that already holds history and the chain visibly continues past it.
+	pivot := (firstReplayed + last) / 2
+	if pivot+window > last {
+		pivot = last - window
+	}
+
+	// Replay and commit the chain up to the pivot.
+	for i := firstReplayed; i <= pivot; i++ {
+		processor, candidate := replayBlockOnLedger(t, ledger, genesis, blocks[i], liveStateRoot)
+		processor.Commit()
+		processor.Publish()
+		liveStateRoot = candidate.Block.StateRoot
+	}
+	pivotStateRoot := liveStateRoot
+
+	// Execute the next blocks without deciding their fate, as a consensus does
+	// while it is still waiting for them to be certified. Each of them must be the
+	// block that was recorded, which replayBlockOnLedger asserts.
+	speculate := func() ([]gossip.BlockProcessor, common.Hash) {
+		processors := []gossip.BlockProcessor{}
+		root := pivotStateRoot
+		for i := pivot + 1; i <= pivot+window; i++ {
+			processor, candidate := replayBlockOnLedger(t, ledger, genesis, blocks[i], root)
+			processors = append(processors, processor)
+			root = candidate.Block.StateRoot
+		}
+		return processors, root
+	}
+
+	processors, speculatedRoot := speculate()
+
+	// Take them all back, newest first, and the live state must return to the
+	// pivot.
+	for i := len(processors) - 1; i >= 0; i-- {
+		require.NoError(processors[i].Rollback(),
+			"block %d: failed to roll back", blocks[pivot+1+uint64(i)].NumberU64())
+	}
+
+	// Nothing of the rolled back blocks may have reached the archive, so the whole
+	// run can be repeated -- and must reproduce exactly the same blocks.
+	processors, reSpeculatedRoot := speculate()
+	require.Equal(speculatedRoot, reSpeculatedRoot,
+		"re-executing the rolled back blocks produced a different state root")
+
+	// Keep them this time, oldest first -- the order the append-only archive
+	// requires.
+	for _, processor := range processors {
+		processor.Commit()
+		processor.Publish()
+	}
+	liveStateRoot = reSpeculatedRoot
+
+	// The archive must hold every committed block and nothing else: had a rolled
+	// back block reached it, re-committing its height would have been rejected as
+	// already present.
+	archiveHeight, empty, err := ledger.Store().EvmStore().GetArchiveBlockHeight()
+	require.NoError(err, "failed to read the archive height")
+	require.False(empty, "the archive is empty after committing blocks")
+	require.Equal(pivot+window, archiveHeight,
+		"the archive does not hold exactly the committed blocks")
+
+	// The chain continues to work after the rollback: the remaining blocks replay
+	// on top of it as usual.
+	for i := pivot + window + 1; i <= last; i++ {
+		processor, candidate := replayBlockOnLedger(t, ledger, genesis, blocks[i], liveStateRoot)
+		processor.Commit()
+		processor.Publish()
 		liveStateRoot = candidate.Block.StateRoot
 	}
 }
@@ -366,7 +505,14 @@ func (s *State) ApplyGenesis(genesis *makefakegenesis.GenesisJson) error {
 		}
 	}
 	s.db.EndTransaction()
-	s.db.EndBlock(0)
+	staged, err := s.db.EndBlock(0)
+	if err != nil {
+		return fmt.Errorf("failed to apply the genesis block: %w", err)
+	}
+	// The genesis state is never taken back.
+	if err := staged.Commit(); err != nil {
+		return fmt.Errorf("failed to commit the genesis block: %w", err)
+	}
 	return s.db.Check()
 }
 
@@ -431,7 +577,14 @@ func (s *State) ApplyBlock(
 		receipts = append(receipts, cur.Receipt)
 	}
 
-	s.db.EndBlock(block.NumberU64())
+	staged, err := s.db.EndBlock(block.NumberU64())
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply block %d: %w", block.NumberU64(), err)
+	}
+	// This replay path only moves forwards, so every block it applies is kept.
+	if err := staged.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit block %d: %w", block.NumberU64(), err)
+	}
 	return receipts, s.db.Check()
 }
 

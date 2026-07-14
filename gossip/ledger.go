@@ -16,6 +16,8 @@
 
 package gossip
 
+//go:generate mockgen -source=ledger.go -destination=ledger_mock.go -package=gossip
+
 import (
 	"fmt"
 	"math"
@@ -64,8 +66,16 @@ type Ledger interface {
 }
 
 // BlockProcessor drives a single block through the state machine
-// Run* -> Finalize -> Commit -> Publish. It is produced by Ledger.BeginBlock and
+// Run* -> Finalize -> Commit -> Publish, or Run* -> Finalize -> Rollback for a
+// block that turns out not to be wanted. It is produced by Ledger.BeginBlock and
 // holds all the per-block state; the long-lived dependencies live on the Ledger.
+//
+// Finalize applies the block to the live state without making it permanent, so
+// several blocks may be in flight at once: a consensus that certifies a block
+// before finalizing it has to execute a block to obtain the hash a quorum
+// certifies, and discard it again when the round fails to certify. Commit makes a
+// block permanent, Rollback takes it back; blocks must be committed oldest first
+// and rolled back newest first.
 type BlockProcessor interface {
 	// StateDB returns the live state opened for this block, used by the consensus
 	// callback to build the internal-transaction nonce source.
@@ -82,15 +92,23 @@ type BlockProcessor interface {
 	// callback injects internal transactions.
 	runInternal(txs types.Transactions) evmcore.ProcessSummary
 
-	// Finalize commits the EVM state, assembles and hashes the block, and returns
-	// the resulting candidate.
+	// Finalize applies the block to the live state, assembles and hashes the block,
+	// and returns the resulting candidate. The block is live but not yet permanent:
+	// it can still be taken back with Rollback.
 	Finalize() *BlockCandidate
 
-	// Commit persists the finalized block without notifying the RPC layer.
+	// Commit makes the finalized block permanent, without waiting for the archive
+	// write it starts and without notifying the RPC layer.
 	Commit()
 
-	// Publish notifies the RPC layer of the committed block.
+	// Publish awaits the archive write started by Commit and notifies the RPC layer
+	// of the committed block.
 	Publish()
+
+	// Rollback takes the finalized block back out of the live state, discarding the
+	// candidate. It reports an error if the block cannot be taken back -- because it
+	// was already committed, or because a newer block is still in flight.
+	Rollback() error
 }
 
 var (
@@ -295,6 +313,10 @@ type BlockCandidate struct {
 	EvmBlock   *evmcore.EvmBlock
 	Receipts   types.Receipts
 	NumSkipped int
+
+	// staged is the candidate's content in the live state. It is applied but not
+	// yet part of the archive: Commit promotes it, Rollback takes it back.
+	staged state.StagedBlock
 }
 
 // net146Block8054923GasLimit is the canonical header gas limit (0x12a05f200) of
@@ -320,7 +342,7 @@ func (bp *blockProcessor) Finalize() *BlockCandidate {
 		bp.blockBuilder.WithGasLimit(net146Block8054923GasLimit)
 	}
 
-	evmBlock, numSkipped, receipts := bp.evmProcessor.Finalize()
+	evmBlock, numSkipped, receipts, staged := bp.evmProcessor.Finalize()
 
 	// Add results of the transaction processing to the block.
 	bp.blockBuilder.
@@ -347,17 +369,27 @@ func (bp *blockProcessor) Finalize() *BlockCandidate {
 		EvmBlock:   evmBlock,
 		Receipts:   receipts,
 		NumSkipped: numSkipped,
+		staged:     staged,
 	}
 	return bp.candidate
 }
 
-// Commit persists the finalized block: the receipt and log indexes (when
+// Commit persists the finalized block: it promotes the block's content from the
+// live state into the archive, and writes the receipt and log indexes (when
 // transaction indexing is enabled), the block's transactions, the block and its
-// hash index, and the cached EVM block. It does not notify the RPC layer; the
-// consensus advances its head pointer between Commit and Publish.
+// hash index, and the cached EVM block. It does not wait for the archive write --
+// Publish does -- so that write proceeds alongside the store writes and the
+// consensus advancing its head pointer. It does not notify the RPC layer either;
+// the consensus advances its head pointer between Commit and Publish.
 func (bp *blockProcessor) Commit() {
 	c := bp.candidate
 	blockIdx := idx.Block(bp.params.Number)
+
+	if c.staged != nil {
+		if err := c.staged.Commit(); err != nil {
+			log.Error("Failed to commit block %d: %v", bp.params.Number, err)
+		}
+	}
 
 	if bp.l.config.IndexTransactions && c.Receipts.Len() != 0 {
 		// Note: it's possible for receipts to get indexed twice by BR and block processing.
@@ -382,18 +414,65 @@ func (bp *blockProcessor) Commit() {
 	bp.l.store.EvmStore().SetCachedEvmBlock(blockIdx, c.EvmBlock)
 }
 
-// Publish notifies the RPC layer of the committed block, feeding the new-block
-// subscriptions. It is called after the consensus has advanced its head pointer.
+// Publish awaits the archive write started by Commit and notifies the RPC layer of
+// the committed block, feeding the new-block subscriptions. It is called after the
+// consensus has advanced its head pointer.
 func (bp *blockProcessor) Publish() {
+	c := bp.candidate
+
+	// Waiting happens before the feed is consulted: a ledger without a feed still
+	// has to observe the outcome of its archive write, or the failure would go
+	// unnoticed.
+	bp.waitForArchive()
+
 	if bp.l.config.Feed == nil {
 		return
 	}
-	c := bp.candidate
 	var logs []*types.Log
 	for _, r := range c.Receipts {
 		logs = append(logs, r.Logs...)
 	}
 	bp.l.config.Feed.notifyAboutNewBlock(c.EvmBlock, logs)
+}
+
+// waitForArchive awaits the archive write of the committed block. Blocks older
+// than an hour are left to complete asynchronously, which keeps a node catching up
+// with history from being paced by its archive; a recent block is waited for, so
+// the latest state is available in both the live and the archive database once the
+// block is published.
+func (bp *blockProcessor) waitForArchive() {
+	c := bp.candidate
+	if c.staged == nil {
+		return
+	}
+	if time.Since(c.Block.Time.Time()) >= 1*time.Hour {
+		return
+	}
+	if err := c.staged.Wait(); err != nil {
+		// the underlying database has collected an error during finalize or a
+		// previous operation. State consistency and its persistence may have been
+		// compromised.
+		log.Error("Failed to finalize block %v: %v", bp.params.Number, err)
+	}
+}
+
+// Rollback takes the finalized block back out of the live state, discarding the
+// candidate. It is the counterpart of Commit for a block that turned out not to be
+// wanted -- a consensus that certifies a block before finalizing it must execute
+// blocks it may still have to discard.
+//
+// Only a block that has not been committed can be rolled back, and blocks must be
+// rolled back newest first.
+func (bp *blockProcessor) Rollback() error {
+	c := bp.candidate
+	if c == nil {
+		return fmt.Errorf("cannot roll back block %d: it has not been finalized", bp.params.Number)
+	}
+	bp.candidate = nil
+	if c.staged == nil {
+		return nil
+	}
+	return c.staged.Rollback()
 }
 
 // executeUserBatch executes user transactions in order, adding them to the block

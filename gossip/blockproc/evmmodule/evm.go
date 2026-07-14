@@ -17,8 +17,8 @@
 package evmmodule
 
 import (
+	"fmt"
 	"math/big"
-	"time"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
@@ -196,7 +196,7 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64, siz
 	return summary
 }
 
-func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts) {
+func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts, staged state.StagedBlock) {
 	transactions := make(types.Transactions, 0, len(p.processedTxs))
 	receipts = make(types.Receipts, 0, len(p.processedTxs))
 	for _, tx := range p.processedTxs {
@@ -210,22 +210,24 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 
 	evmBlock = p.evmBlockWith(transactions)
 
-	// Commit block
-	done := p.statedb.EndBlock(evmBlock.Number.Uint64())
-	// Use asynchronous commit for blocks older than one hour to speed up catching up.
-	// For recent blocks (within the last hour), wait for the commit to complete
-	// to ensure the latest state is available for both live and archive databases.
-	if time.Since(evmBlock.Time.Time()) < 1*time.Hour && done != nil {
-		if err := <-done; err != nil {
-			// the underlying database has collected an error during finalize or
-			// a previous operation. State consistency and its persistence my
-			// have been compromised.
-			log.Error("Failed to finalize block %v: %v", evmBlock.Number, err)
-		}
+	// Apply the block to the live state. It is only staged: the caller decides
+	// whether it is committed or taken back again, which is what lets a consensus
+	// execute ahead of the decision to keep a block. Notably, this does not wait for
+	// the block to reach the archive -- committing it is what starts that.
+	staged, err := p.statedb.EndBlock(evmBlock.Number.Uint64())
+	if err == nil && staged == nil {
+		err = fmt.Errorf("state database applied block %v without returning a staged block", evmBlock.Number)
+	}
+	if err != nil {
+		// the underlying database has collected an error during finalize or
+		// a previous operation. State consistency and its persistence my
+		// have been compromised.
+		log.Error("Failed to finalize block %v: %v", evmBlock.Number, err)
+		return evmBlock, numSkipped, receipts, staged
 	}
 
 	// Get state root
-	evmBlock.Root = p.statedb.GetStateHash()
+	evmBlock.Root = common.Hash(staged.StateHash())
 
 	return
 }

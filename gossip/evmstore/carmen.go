@@ -394,26 +394,86 @@ func (c *CarmenStateDB) BeginBlock(number uint64) {
 	}
 }
 
-func (c *CarmenStateDB) EndBlock(number uint64) <-chan error {
+func (c *CarmenStateDB) EndBlock(number uint64) (state.StagedBlock, error) {
 	// clear snapshot list since the block-sealing invalidates all snapshots
 	c.interTxSnapshots = c.interTxSnapshots[:0]
 
-	// forward processed bundles to the store and clear the internal list of processed bundles
-	if c.committable && c.processedExecPlanStore != nil {
-		execInfos := make(map[common.Hash]bundle.PositionInBlock, len(c.processedExecPlans))
-		for _, plan := range c.processedExecPlans {
-			execInfos[plan.execPlanHash] = plan.position
-		}
-		c.processedExecPlanStore.AddProcessedBundles(number, execInfos)
+	// collect the processed bundles of this block and clear the internal list; they
+	// reach the store only once the block is committed, see stagedBlock.
+	execInfos := make(map[common.Hash]bundle.PositionInBlock, len(c.processedExecPlans))
+	for _, plan := range c.processedExecPlans {
+		execInfos[plan.execPlanHash] = plan.position
 	}
 	c.processedExecPlans = c.processedExecPlans[:0]
 
 	// finish the block in the underlying StateDB
-	if db, ok := c.db.(carmen.StateDB); c.committable && ok {
-		return db.EndBlock(number)
+	db, ok := c.db.(carmen.StateDB)
+	if !c.committable || !ok {
+		return noopStagedBlock{hash: c.GetStateHash}, nil
+	}
+
+	staged, err := db.EndBlock(number)
+	if err != nil {
+		return nil, err
+	}
+	return &stagedBlock{
+		inner:     staged,
+		store:     c.processedExecPlanStore,
+		block:     number,
+		execInfos: execInfos,
+	}, nil
+}
+
+// stagedBlock adapts a Carmen staged block to Sonic's StateDB layer, and defers
+// this block's processed-bundle records until the block is committed.
+//
+// The deferral is load bearing: ProcessedBundleStore only records bundles and
+// offers no way to take a record back, so recording them while the block can still
+// be rolled back would leave the bundles of a discarded block behind.
+type stagedBlock struct {
+	inner     carmen.StagedBlock
+	store     ProcessedBundleStore
+	block     uint64
+	execInfos map[common.Hash]bundle.PositionInBlock
+}
+
+func (b *stagedBlock) StateHash() common.Hash {
+	return common.Hash(b.inner.StateHash())
+}
+
+func (b *stagedBlock) Commit() error {
+	if err := b.inner.Commit(); err != nil {
+		return err
+	}
+	if b.store != nil {
+		b.store.AddProcessedBundles(b.block, b.execInfos)
 	}
 	return nil
 }
+
+func (b *stagedBlock) Wait() error {
+	return b.inner.Wait()
+}
+
+func (b *stagedBlock) Rollback() error {
+	return b.inner.Rollback()
+}
+
+// noopStagedBlock is the staged block of a StateDB that cannot commit -- an archive
+// view, or the state the transaction pool evaluates against. Such a state never
+// applied the block in the first place, so there is nothing to promote and nothing
+// to take back.
+//
+// The state hash is resolved on demand rather than up front: computing it is real
+// work, and a caller that cannot commit a block rarely wants its root.
+type noopStagedBlock struct {
+	hash func() common.Hash
+}
+
+func (b noopStagedBlock) StateHash() common.Hash { return b.hash() }
+func (b noopStagedBlock) Commit() error          { return nil }
+func (b noopStagedBlock) Wait() error            { return nil }
+func (b noopStagedBlock) Rollback() error        { return nil }
 
 func (c *CarmenStateDB) GetStateHash() common.Hash {
 	return common.Hash(c.db.GetHash())

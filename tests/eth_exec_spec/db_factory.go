@@ -44,9 +44,12 @@ func (f carmenFactory) NewTestStateDB(accounts types.GenesisAlloc) tests.StateTe
 			statedb.SetState(addr, k, v)
 		}
 	}
-	// Commit and re-open to start with a clean state.
+	// Commit and re-open to start with a clean state. This state only moves
+	// forwards, so every block it applies is kept.
 	statedb.EndTransaction()
-	statedb.EndBlock(0)
+	if staged, err := statedb.EndBlock(0); err == nil {
+		_ = staged.Commit()
+	}
 	statedb.GetStateHash()
 
 	statedb = evmstore.CreateCarmenStateDb(carmenstatedb, nil)
@@ -83,14 +86,27 @@ func (c *carmenStateDB) SetBalance(addr common.Address, amount *uint256.Int, rea
 // we can just end the transaction and block, and return the resulting state root.
 func (c *carmenStateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	c.EndTransaction()
-	c.EndBlock(0)
-	return c.GetStateHash()
+	staged, err := c.EndBlock(0)
+	if err != nil {
+		return common.Hash{}
+	}
+	// This state only moves forwards, so the block is kept right away.
+	if err := staged.Commit(); err != nil {
+		return common.Hash{}
+	}
+	return staged.StateHash()
 }
 
 // Commit ends transaction, ends block, and returns the state hash.
 func (c *carmenStateDB) Commit(block uint64, deleteEmptyObjects bool, noStorageWiping bool) (common.Hash, error) {
 	c.logs = c.CarmenStateDB.Logs() // backup logs, they are deleted on committing a tx/block
 	c.EndTransaction()
-	c.EndBlock(block)
-	return c.GetStateHash(), nil
+	staged, err := c.EndBlock(block)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	if err := staged.Commit(); err != nil {
+		return common.Hash{}, err
+	}
+	return staged.StateHash(), nil
 }

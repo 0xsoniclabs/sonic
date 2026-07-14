@@ -445,13 +445,14 @@ func (mr *MockEVMProcessorMockRecorder) Execute(txs, gasLimit, sizeLimit any) *g
 }
 
 // Finalize mocks base method.
-func (m *MockEVMProcessor) Finalize() (*evmcore.EvmBlock, int, types.Receipts) {
+func (m *MockEVMProcessor) Finalize() (*evmcore.EvmBlock, int, types.Receipts, state.StagedBlock) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Finalize")
 	ret0, _ := ret[0].(*evmcore.EvmBlock)
 	ret1, _ := ret[1].(int)
 	ret2, _ := ret[2].(types.Receipts)
-	return ret0, ret1, ret2
+	ret3, _ := ret[3].(state.StagedBlock)
+	return ret0, ret1, ret2, ret3
 }
 
 // Finalize indicates an expected call of Finalize.

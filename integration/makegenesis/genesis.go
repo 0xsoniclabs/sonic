@@ -203,9 +203,16 @@ func (b *GenesisBuilder) FinalizeBlockZero(
 		}
 	}
 
-	// construct state root of initial state
-	b.tmpStateDB.EndBlock(0)
-	genesisStateRoot := b.tmpStateDB.GetStateHash()
+	// construct state root of initial state. The genesis state is never taken back,
+	// so it is made permanent right away.
+	staged, err := b.tmpStateDB.EndBlock(0)
+	if err != nil {
+		return common.Hash{}, common.Hash{}, fmt.Errorf("failed to apply the genesis state: %w", err)
+	}
+	if err := staged.Commit(); err != nil {
+		return common.Hash{}, common.Hash{}, fmt.Errorf("failed to commit the genesis state: %w", err)
+	}
+	genesisStateRoot := staged.StateHash()
 
 	// construct the block record for the genesis block
 	blockBuilder := inter.NewBlockBuilder().
@@ -287,7 +294,14 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, true, blockproc.NewNonceSource(b.tmpStateDB))
 	evmProcessor.Execute(internalTxs, es.Rules.Blocks.MaxBlockGas, math.MaxUint64)
 
-	evmBlock, numSkippedTxs, receipts := evmProcessor.Finalize()
+	evmBlock, numSkippedTxs, receipts, staged := evmProcessor.Finalize()
+	// The genesis block is never taken back, so it is made permanent right away.
+	if err := staged.Commit(); err != nil {
+		return fmt.Errorf("failed to commit the genesis block: %w", err)
+	}
+	if err := staged.Wait(); err != nil {
+		return fmt.Errorf("failed to archive the genesis block: %w", err)
+	}
 	for i, r := range receipts {
 		if r.Status == 0 {
 			return fmt.Errorf("genesis transaction %d of %d reverted", i, len(receipts))

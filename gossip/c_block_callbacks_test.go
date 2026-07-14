@@ -284,7 +284,7 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 						BaseFee: big.NewInt(0),
 						TxHash:  common.Hash{1, 2, 3},
 					},
-				}, 0, nil)
+				}, 0, nil, nil)
 
 				evmModule := blockproc.NewMockEVM(ctrl)
 				evmModule.EXPECT().
@@ -431,7 +431,7 @@ func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
 			BaseFee: big.NewInt(0),
 			TxHash:  common.Hash{1, 2, 3},
 		},
-	}, 0, nil)
+	}, 0, nil, nil)
 	evmModule := blockproc.NewMockEVM(ctrl)
 	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
 
@@ -603,7 +603,7 @@ func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 		Transactions: types.Transactions{receiptTx},
 	}, 0, types.Receipts{
 		&types.Receipt{TxHash: receiptTx.Hash(), Status: 1},
-	})
+	}, nil)
 	evmModule := blockproc.NewMockEVM(ctrl)
 	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
 
@@ -2261,7 +2261,7 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupWithBrio(t *te
 					TxHash:  common.Hash{1, 2, 3},
 				},
 				Transactions: types.Transactions{originTx, derivedTx},
-			}, 0, types.Receipts{originReceipt, derivedReceipt})
+			}, 0, types.Receipts{originReceipt, derivedReceipt}, nil)
 
 			evmModule := blockproc.NewMockEVM(ctrl)
 			evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)

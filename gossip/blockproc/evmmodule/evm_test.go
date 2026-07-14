@@ -17,6 +17,7 @@
 package evmmodule
 
 import (
+	"fmt"
 	"math"
 	"math/big"
 	"testing"
@@ -406,8 +407,9 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	stateDb.EXPECT().SetTxContext(any, any).AnyTimes()
 	stateDb.EXPECT().TxIndex().AnyTimes()
 	stateDb.EXPECT().GetLogs(any, any).AnyTimes()
-	stateDb.EXPECT().EndBlock(any).AnyTimes()
-	stateDb.EXPECT().GetStateHash().AnyTimes()
+	staged := state.NewMockStagedBlock(ctrl)
+	staged.EXPECT().StateHash().AnyTimes()
+	stateDb.EXPECT().EndBlock(any).AnyTimes().Return(staged, nil)
 
 	evmModule := New()
 	processor := evmModule.Start(
@@ -438,7 +440,7 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	require.Equal(validTx, processed[0].Transaction)
 	require.NotNil(processed[0].Receipt)
 
-	_, numSkipped, _ := processor.Finalize()
+	_, numSkipped, _, _ := processor.Finalize()
 	require.Equal(0, numSkipped)
 
 	processed = processor.Execute(types.Transactions{skippedTx}, math.MaxUint64, math.MaxUint64).ProcessedTransactions
@@ -446,7 +448,7 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	require.Equal(skippedTx, processed[0].Transaction)
 	require.Nil(processed[0].Receipt)
 
-	_, numSkipped, _ = processor.Finalize()
+	_, numSkipped, _, _ = processor.Finalize()
 	require.Equal(1, numSkipped)
 
 	processed = processor.Execute(types.Transactions{skippedTx, validTx, skippedTx}, math.MaxUint64, math.MaxUint64).ProcessedTransactions
@@ -458,23 +460,32 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	require.Equal(skippedTx, processed[2].Transaction)
 	require.Nil(processed[2].Receipt)
 
-	_, numSkipped, _ = processor.Finalize()
+	_, numSkipped, _, _ = processor.Finalize()
 	require.Equal(3, numSkipped)
 }
 
-func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenBlockIsOlderThanOneHour(t *testing.T) {
+// Note: the decision of whether to wait for a block to reach the archive is no
+// longer taken here. Finalize only stages a block; committing it is what starts the
+// archive write, and the ledger decides when to await it (see blockProcessor.Publish).
+
+func TestOperaEVMProcessor_Finalize_DoesNotWaitForTheArchive(t *testing.T) {
+	// Staging a block must not wait for anything: a consensus that certifies blocks
+	// before finalizing them executes several blocks ahead of the decision to keep
+	// them, and cannot be paced by the archive.
 	synctest.Test(t, func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		stateDb := state.NewMockStateDB(ctrl)
 
+		staged := state.NewMockStagedBlock(ctrl)
+		staged.EXPECT().StateHash().Return(common.Hash{})
+		// Wait would block forever, and must not be called by Finalize.
+		staged.EXPECT().Wait().DoAndReturn(func() error { select {} }).AnyTimes()
+
 		stateDb.EXPECT().BeginBlock(gomock.Any())
-		stateDb.EXPECT().GetStateHash()
-		// EndBlock should return a channel,but this should be ignored for
-		// blocks older than one hour.
-		stateDb.EXPECT().EndBlock(gomock.Any()).Return(make(<-chan error))
+		stateDb.EXPECT().EndBlock(gomock.Any()).Return(staged, nil)
 
 		evmModule := New()
-		blockTime := time.Now().Add(-1*time.Hour - time.Second)
+		blockTime := time.Now().Add(-1*time.Hour + time.Second) // < a recent block
 		processor := evmModule.Start(
 			0, inter.FromUnix(blockTime.Unix()), 0,
 			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
@@ -483,80 +494,54 @@ func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenBlockIsOlderTh
 
 		finalizeDone := false
 		go func() {
-			_, _, _ = processor.Finalize()
+			_, _, _, _ = processor.Finalize()
 			finalizeDone = true
 		}()
 
 		synctest.Wait()
-		require.True(t, finalizeDone, "Finalize did not finish for blocks older than one hour")
+		require.True(t, finalizeDone, "Finalize waited for the archive instead of only staging the block")
 	})
 }
 
-func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenSyncChannelIsNil(t *testing.T) {
-	// Underlying db implementations may not implement the possibility to wait on
-	// an async finalize operation. The client must work correctly in these cases.
+func TestOperaEVMProcessor_Finalize_ReturnsTheStagedBlockAndItsStateRoot(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
 
-	synctest.Test(t, func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		stateDb := state.NewMockStateDB(ctrl)
+	root := common.Hash{0x42}
+	staged := state.NewMockStagedBlock(ctrl)
+	staged.EXPECT().StateHash().Return(root)
 
-		stateDb.EXPECT().BeginBlock(gomock.Any())
-		stateDb.EXPECT().GetStateHash()
-		// If the sync channel is nil, Finalize should not block even for recent blocks.
-		stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil)
-		evmModule := New()
-		blockTime := time.Now().Add(-1*time.Hour + time.Second)
-		processor := evmModule.Start(
-			0, inter.FromUnix(blockTime.Unix()), 0,
-			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
-			nil,
-		)
+	stateDb.EXPECT().BeginBlock(gomock.Any())
+	stateDb.EXPECT().EndBlock(uint64(0)).Return(staged, nil)
 
-		finalizeDone := false
-		go func() {
-			_, _, _ = processor.Finalize()
-			finalizeDone = true
-		}()
+	evmModule := New()
+	processor := evmModule.Start(
+		0, 0, 0, stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{}, nil,
+	)
 
-		synctest.Wait()
-		require.True(t, finalizeDone, "Finalize did not finish when sync channel was nil")
-	})
+	evmBlock, _, _, got := processor.Finalize()
+	require.Same(t, staged, got, "Finalize must hand the staged block to its caller")
+	require.Equal(t, root, common.Hash(evmBlock.Root),
+		"the block root must be the root of the block that was staged")
 }
 
-func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOneHour(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
+func TestOperaEVMProcessor_Finalize_ReportsEndBlockError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
 
-		ctrl := gomock.NewController(t)
-		stateDb := state.NewMockStateDB(ctrl)
+	injected := fmt.Errorf("injected error")
+	stateDb.EXPECT().BeginBlock(gomock.Any())
+	stateDb.EXPECT().EndBlock(uint64(0)).Return(nil, injected)
 
-		stateDb.EXPECT().BeginBlock(gomock.Any())
-		stateDb.EXPECT().GetStateHash()
+	evmModule := New()
+	processor := evmModule.Start(
+		0, 0, 0, stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{}, nil,
+	)
 
-		syncChannel := make(chan error)
-		stateDb.EXPECT().EndBlock(gomock.Any()).Return(syncChannel)
-
-		evmModule := New()
-		blockTime := time.Now().Add(-1*time.Hour + time.Second)
-		processor := evmModule.Start(
-			0, inter.FromUnix(blockTime.Unix()), 0,
-			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
-			nil,
-		)
-
-		finalizeDone := false
-		go func() {
-			_, _, _ = processor.Finalize()
-			finalizeDone = true
-		}()
-
-		synctest.Wait()
-		require.False(t, finalizeDone, "Finalize finished before sync channel was closed")
-
-		close(syncChannel)
-
-		synctest.Wait()
-		require.True(t, finalizeDone, "Finalize did not finish after sync channel was closed")
-	})
+	// A failed EndBlock leaves no staged block behind, and must not be mistaken for
+	// a block whose root happens to be zero.
+	_, _, _, staged := processor.Finalize()
+	require.Nil(t, staged)
 }
 
 // onNewLog is a helper interface to allow mocking the onNewLog function

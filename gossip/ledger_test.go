@@ -17,9 +17,12 @@
 package gossip
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -27,6 +30,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
@@ -74,7 +78,7 @@ func TestBlockLedger_Finalize_AppliesNet146GasLimitException(t *testing.T) {
 			evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
 			evmProcessor.EXPECT().Finalize().Return(&evmcore.EvmBlock{
 				EvmHeader: evmcore.EvmHeader{BaseFee: big.NewInt(0)},
-			}, 0, types.Receipts{})
+			}, 0, types.Receipts{}, nil)
 
 			processor := &blockProcessor{
 				evmProcessor: evmProcessor,
@@ -96,4 +100,123 @@ func TestBlockLedger_Finalize_AppliesNet146GasLimitException(t *testing.T) {
 			require.Equal(test.want, candidate.Block.GasLimit)
 		})
 	}
+}
+
+// finalizedBlockProcessor builds a blockProcessor holding a finalized candidate
+// backed by the given staged block, as Finalize would leave it. The ledger back
+// pointer is supplied so Commit and Publish can reach the store and the feed.
+func finalizedBlockProcessor(ledger *ledger, staged state.StagedBlock, blockTime inter.Timestamp) *blockProcessor {
+	block := inter.NewBlockBuilder().
+		WithNumber(1).
+		WithTime(blockTime).
+		Build()
+	return &blockProcessor{
+		l:            ledger,
+		blockBuilder: inter.NewBlockBuilder().WithNumber(1),
+		params:       BlockParams{Number: 1},
+		candidate: &BlockCandidate{
+			Block: block,
+			// A non-empty TxHash marks the block as complete, which the EVM block
+			// cache insists on.
+			EvmBlock: &evmcore.EvmBlock{
+				EvmHeader: evmcore.EvmHeader{TxHash: types.EmptyTxsHash},
+			},
+			staged: staged,
+		},
+	}
+}
+
+func TestBlockProcessor_Commit_CommitsTheStagedBlockWithoutWaitingForIt(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+
+	// Wait belongs to Publish: committing must not be paced by the archive, or a
+	// consensus executing ahead of finality would be stalled by it.
+	staged := state.NewMockStagedBlock(ctrl)
+	staged.EXPECT().Commit().Return(nil)
+
+	processor := finalizedBlockProcessor(&ledger{store: store}, staged, inter.Timestamp(time.Now().UnixNano()))
+	processor.Commit()
+}
+
+func TestBlockProcessor_Publish_WaitsForTheStagedBlockOfARecentBlock(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	staged := state.NewMockStagedBlock(ctrl)
+	staged.EXPECT().Wait().Return(nil)
+
+	processor := finalizedBlockProcessor(&ledger{}, staged, inter.Timestamp(time.Now().UnixNano()))
+	processor.Publish()
+}
+
+func TestBlockProcessor_Publish_WaitsEvenWithoutAFeed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	// A ledger without a feed -- the replay harness, or a ledger opened by a tool --
+	// still has to observe the outcome of its archive write.
+	staged := state.NewMockStagedBlock(ctrl)
+	staged.EXPECT().Wait().Return(nil)
+
+	processor := finalizedBlockProcessor(&ledger{config: LedgerConfig{Feed: nil}}, staged, inter.Timestamp(time.Now().UnixNano()))
+	processor.Publish()
+}
+
+func TestBlockProcessor_Publish_DoesNotWaitForABlockOlderThanOneHour(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	// Catching up on history must not be paced by the archive, so an old block is
+	// left to reach it asynchronously.
+	staged := state.NewMockStagedBlock(ctrl)
+	// No Wait is expected.
+
+	old := time.Now().Add(-1*time.Hour - time.Second)
+	processor := finalizedBlockProcessor(&ledger{}, staged, inter.Timestamp(old.UnixNano()))
+	processor.Publish()
+}
+
+func TestBlockProcessor_Rollback_RollsBackTheStagedBlockAndDropsTheCandidate(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	staged := state.NewMockStagedBlock(ctrl)
+	staged.EXPECT().Rollback().Return(nil)
+
+	processor := finalizedBlockProcessor(&ledger{}, staged, inter.Timestamp(time.Now().UnixNano()))
+	require.NoError(t, processor.Rollback())
+	require.Nil(t, processor.candidate, "a rolled back block must not be left behind as a candidate")
+
+	// A second rollback has nothing to take back and must say so rather than
+	// silently succeed.
+	require.Error(t, processor.Rollback())
+}
+
+func TestBlockProcessor_Rollback_ReportsTheErrorOfTheStagedBlock(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	injected := fmt.Errorf("injected error")
+	staged := state.NewMockStagedBlock(ctrl)
+	staged.EXPECT().Rollback().Return(injected)
+
+	processor := finalizedBlockProcessor(&ledger{}, staged, inter.Timestamp(time.Now().UnixNano()))
+	require.ErrorIs(t, processor.Rollback(), injected)
+}
+
+func TestBlockProcessor_Rollback_DoesNotWriteTheBlockToTheStore(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+
+	staged := state.NewMockStagedBlock(ctrl)
+	staged.EXPECT().Rollback().Return(nil)
+
+	processor := finalizedBlockProcessor(&ledger{store: store}, staged, inter.Timestamp(time.Now().UnixNano()))
+	blockHash := processor.candidate.Block.Hash()
+	require.NoError(t, processor.Rollback())
+
+	// Commit is what writes a block to the store, and a rolled back block never
+	// reaches it.
+	require.Nil(t, store.GetBlock(1), "a rolled back block must not be in the store")
+	require.Nil(t, store.GetBlockIndex(hash.Event(blockHash)), "a rolled back block must not be indexed")
 }

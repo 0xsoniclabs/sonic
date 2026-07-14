@@ -82,7 +82,11 @@ type ConfirmedEventsModule interface {
 
 type EVMProcessor interface {
 	Execute(txs types.Transactions, gasLimit uint64, sizeLimit uint64) evmcore.ProcessSummary
-	Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts)
+
+	// Finalize applies the executed block to the live state and returns it, together
+	// with the staged block handle deciding its fate: the block's content is live,
+	// but it is not part of the archive until the caller commits it.
+	Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts, staged state.StagedBlock)
 }
 
 type EVM interface {

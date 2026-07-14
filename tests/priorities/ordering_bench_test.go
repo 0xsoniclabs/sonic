@@ -323,16 +323,18 @@ func setupBenchEnv(b *testing.B, numAccounts, numPrioritized int) *benchEnv {
 		prioByAddr[addr] = priorities.Priority{Level: level, Weight: weight, ID: id}
 	}
 
-	if ch := statedb.EndBlock(1); ch != nil {
-		require.NoError(<-ch)
-	}
+	staged1, err := statedb.EndBlock(1)
+	require.NoError(err)
+	require.NoError(staged1.Commit())
+	require.NoError(staged1.Wait())
 
 	// --- Block 2: serve the priority queries. ---
 	statedb.BeginBlock(2)
 	b.Cleanup(func() {
-		if ch := statedb.EndBlock(2); ch != nil {
-			require.NoError(<-ch)
-		}
+		staged2, err := statedb.EndBlock(2)
+		require.NoError(err)
+		require.NoError(staged2.Commit())
+		require.NoError(staged2.Wait())
 	})
 
 	snapshot := statedb.InterTxSnapshot()
