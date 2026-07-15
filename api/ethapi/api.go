@@ -2206,6 +2206,109 @@ func (s *PublicTransactionPoolAPI) SendRawTransaction(ctx context.Context, encod
 	return SubmitTransaction(ctx, s.b, tx)
 }
 
+const (
+	sendRawSyncPollInterval = 100 * time.Millisecond
+)
+
+// SendRawTransactionSync submits a signed transaction and waits synchronously
+// for it to be included in a block, returning the receipt. Implements EIP-7966.
+//
+// Parameters:
+//   - encodedTx: hex-encoded RLP signed transaction
+//   - timeoutMs: optional max wait time for tx processing in milliseconds
+//
+// Returns the transaction receipt on success, in the same format as
+// eth_getTransactionReceipt (see formatTxReceipt).
+// On failure, returns a typed JSON-RPC error (EIP-7966):
+//   - Code 4: tx was added to the pool but not processed within the timeout (data: tx hash)
+//   - Code 5: tx was NOT added to the pool, rejected for a reason other than a nonce gap (data: tx hash)
+//   - Code 6: tx was NOT added to the pool, nonce gap detected (data: expected nonce)
+func (s *PublicTransactionPoolAPI) SendRawTransactionSync(
+	ctx context.Context,
+	encodedTx hexutil.Bytes,
+	timeoutMs *hexutil.Uint64,
+) (map[string]interface{}, error) {
+	// 1. Decode the transaction.
+	tx := new(types.Transaction)
+	if err := tx.UnmarshalBinary(encodedTx); err != nil {
+		return nil, err
+	}
+	txHash := tx.Hash()
+
+	// 2. Determine timeout.
+	timeout := s.b.RPCTxSyncDefaultTimeout()
+	if timeoutMs != nil {
+		if *timeoutMs == 0 {
+			return nil, errors.New("timeout must be greater than zero")
+		}
+		// Convert without overflowing time.Duration (int64 nanoseconds).
+		requested := time.Duration(math.MaxInt64)
+		if *timeoutMs < hexutil.Uint64(requested/time.Millisecond) {
+			requested = time.Duration(*timeoutMs) * time.Millisecond
+		}
+		timeout = requested
+		if maxTimeout := s.b.RPCTxSyncMaxTimeout(); maxTimeout > 0 && timeout > maxTimeout {
+			timeout = maxTimeout
+		}
+	}
+
+	// 3. Nonce gap check (EIP-7966 Code 6): reject before pool submission.
+	signer := types.LatestSignerForChainID(s.b.ChainID())
+	from, err := types.Sender(signer, tx)
+	if err != nil {
+		return nil, err
+	}
+	expectedNonce, err := s.b.GetPoolNonce(ctx, from)
+	if err != nil {
+		return nil, err
+	}
+	if tx.Nonce() > expectedNonce {
+		return nil, errSendRawSyncNonceGap(expectedNonce)
+	}
+
+	// 4. Submit transaction (validates fee, EIP-155, adds to pool).
+	if _, err := SubmitTransaction(ctx, s.b, tx); err != nil {
+		return nil, errSendRawSyncRejected(txHash, err)
+	}
+
+	// 5. Poll for confirmation with deadline context.
+	deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(sendRawSyncPollInterval)
+	defer ticker.Stop()
+
+	for {
+		// Check for immediate confirmation (fast path, also handles already-confirmed).
+		confirmedTx, blockNumber, index, err := s.b.GetTransaction(deadlineCtx, txHash)
+		if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+			return nil, err
+		}
+		if confirmedTx != nil {
+			block, err := s.b.BlockByNumber(deadlineCtx, rpc.BlockNumber(blockNumber))
+			if err != nil {
+				return nil, err
+			}
+			if block == nil {
+				return nil, fmt.Errorf("confirmed transaction %s found in block %d but the block is unavailable", txHash, blockNumber)
+			}
+			receipts := s.b.FetchReceiptsForBlock(block)
+			if receipts == nil || receipts.Len() <= int(index) {
+				return nil, fmt.Errorf("confirmed transaction %s found in block %d but receipt is unavailable or transaction index %d is out of range", txHash, blockNumber, index)
+			}
+			return s.formatTxReceipt(block.Header(), confirmedTx, index, receipts[index]), nil
+		}
+
+		// Wait for next poll tick or deadline.
+		select {
+		case <-deadlineCtx.Done():
+			return nil, errSendRawSyncTimeout(txHash)
+		case <-ticker.C:
+			// Poll again.
+		}
+	}
+}
+
 // Sign calculates an ECDSA signature for:
 // keccack256("\x19Ethereum Signed Message:\n" + len(message) + message).
 //
