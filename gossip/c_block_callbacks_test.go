@@ -205,6 +205,11 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 			upgrades.SingleProposerBlockFormation = true
 			store := newInMemoryStoreWithGenesisData(t, upgrades, 1, 2)
 
+			// The proposal has to target the block that actually follows the head:
+			// the ledger chains a block onto its own head, and a proposal for any
+			// other height is not a proposal for the block being produced.
+			head := store.GetBlockState().LastBlock.Idx
+
 			// Create the event carrying the proposal, if there is one.
 			var events []*inter.EventPayload
 			if test.proposal != nil {
@@ -215,8 +220,8 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 				if test.proposal != nil {
 					proposal := *test.proposal
 					// Fix some required fields in any proposal.
-					proposal.Number = 1
-					proposal.ParentHash = store.GetBlock(0).Hash()
+					proposal.Number = idx.Block(head + 1)
+					proposal.ParentHash = store.GetBlock(head).Hash()
 					builder.SetPayload(inter.Payload{
 						Proposal: &proposal,
 					})
@@ -238,10 +243,10 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 			}
 
 			// Update the block and epoch state to match the test conditions.
+			// Only the time is under test; keep the rest of the head, whose index and
+			// state root the ledger chains the next block onto.
 			bs := store.GetBlockState()
-			bs.LastBlock = iblockproc.BlockCtx{
-				Time: test.lastBlockTime,
-			}
+			bs.LastBlock.Time = test.lastBlockTime
 			es := store.GetEpochState()
 			es.Rules.Blocks.MaxEmptyBlockSkipPeriod = MaxEmptyBlockSkipPeriod
 			store.SetBlockEpochState(bs, es)
@@ -288,8 +293,8 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 
 				evmModule := blockproc.NewMockEVM(ctrl)
 				evmModule.EXPECT().
-					Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).
-					DoAndReturn(func(_ idx.Block, blockTime inter.Timestamp, _ idx.Epoch, _, _, _, _, _, _, _ any) blockproc.EVMProcessor {
+					Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any, _any).
+					DoAndReturn(func(_ idx.Block, blockTime inter.Timestamp, _ idx.Epoch, _, _, _, _, _, _, _, _ any) blockproc.EVMProcessor {
 						require.Equal(t, test.blockTime, blockTime)
 						return evmProcessor
 					})
@@ -396,7 +401,7 @@ func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
 
 	// Update block and epoch state to match the test conditions.
 	bs := store.GetBlockState()
-	bs.LastBlock = iblockproc.BlockCtx{Time: lastBlockTime}
+	bs.LastBlock.Time = lastBlockTime
 	es := store.GetEpochState()
 	es.Rules.Blocks.MaxEmptyBlockSkipPeriod = maxEmptyBlockSkipPeriod
 	store.SetBlockEpochState(bs, es)
@@ -433,7 +438,7 @@ func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
 		},
 	}, 0, nil, nil)
 	evmModule := blockproc.NewMockEVM(ctrl)
-	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
 
 	// Sealer reports that this block seals the epoch and returns the sealed
 	// epoch state carrying the changed rules.
@@ -568,7 +573,7 @@ func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 	}
 
 	bs := store.GetBlockState()
-	bs.LastBlock = iblockproc.BlockCtx{Time: lastBlockTime}
+	bs.LastBlock.Time = lastBlockTime
 	es := store.GetEpochState()
 	es.Rules.Blocks.MaxEmptyBlockSkipPeriod = maxEmptyBlockSkipPeriod
 	store.SetBlockEpochState(bs, es)
@@ -605,7 +610,7 @@ func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 		&types.Receipt{TxHash: receiptTx.Hash(), Status: 1},
 	}, nil)
 	evmModule := blockproc.NewMockEVM(ctrl)
-	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
 
 	sealer := blockproc.NewMockSealerProcessor(ctrl)
 	sealer.EXPECT().EpochSealing().Return(true)
@@ -761,9 +766,9 @@ func TestConsensusCallback_AppliesTransactionPriorities(t *testing.T) {
 			// A non-empty transaction root, as required for caching the block.
 			TxHash: common.Hash{1, 2, 3},
 		},
-	}, 0, nil)
+	}, 0, nil, nil)
 	evmModule := blockproc.NewMockEVM(ctrl)
-	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
 
 	sealer := blockproc.NewMockSealerProcessor(ctrl)
 	sealer.EXPECT().EpochSealing().Return(false)
@@ -1746,6 +1751,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 		0,
 		statedb,
 		&EvmStateReader{},
+		nil, // < block 0 has no parent
 		func(l *core_types.Log) {},
 		opera.Rules{},
 		&params.ChainConfig{},
@@ -1801,6 +1807,7 @@ func TestProcessUserTransactions_MetricsAreForwardedToStateProcessor(t *testing.
 		0,
 		statedb,
 		&EvmStateReader{},
+		nil, // < block 0 has no parent
 		func(l *core_types.Log) {},
 		opera.Rules{Upgrades: opera.Upgrades{Brio: true, GasSubsidies: true}},
 		&params.ChainConfig{},
@@ -2207,9 +2214,10 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupWithBrio(t *te
 			store.SetEvent(txEvent)
 			store.SetEvent(atropos)
 
-			// Update the block state to a known time.
+			// Update the block state to a known time, keeping the rest of the head:
+			// the ledger chains the next block onto it.
 			blockState := store.GetBlockState()
-			blockState.LastBlock = iblockproc.BlockCtx{Time: inter.Timestamp(1000)}
+			blockState.LastBlock.Time = inter.Timestamp(1000)
 			epochState := store.GetEpochState()
 			store.SetBlockEpochState(blockState, epochState)
 
@@ -2264,7 +2272,7 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupWithBrio(t *te
 			}, 0, types.Receipts{originReceipt, derivedReceipt}, nil)
 
 			evmModule := blockproc.NewMockEVM(ctrl)
-			evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+			evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
 
 			txTransactor := blockproc.NewMockTxTransactor(ctrl)
 			txTransactor.EXPECT().PopInternalTxs(_any, _any, _any, _any, _any).Return(types.Transactions{}).AnyTimes()

@@ -90,12 +90,18 @@ type EVMProcessor interface {
 }
 
 type EVM interface {
+	// Start begins executing a block against the given live state. parent is the
+	// header of the block this one chains onto, or nil for the genesis block; it
+	// supplies the parent hash and the base fee. It is a parameter rather than a
+	// read out of reader because the parent may be speculative, and a speculative
+	// block is in no store to read it from.
 	Start(
 		blockNumber idx.Block,
 		blockTime inter.Timestamp,
 		epoch idx.Epoch,
 		statedb state.StateDB,
 		reader evmcore.DummyChain,
+		parent *evmcore.EvmHeader,
 		onNewLog func(*core_types.Log),
 		net opera.Rules,
 		evmCfg *params.ChainConfig,

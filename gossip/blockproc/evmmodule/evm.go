@@ -60,12 +60,19 @@ func NewForReplay() *EVMModule {
 	return &EVMModule{forReplay: true}
 }
 
+// Start begins executing a block against the given live state. The parent is the
+// header of the block this one chains onto, or nil for the genesis block, which has
+// none; it supplies the parent hash the block records and the base fee this block
+// charges. It is passed in rather than read out of reader because the parent may be
+// speculative -- applied to the live state but not yet written to any store, so
+// there is nothing to read it from.
 func (p *EVMModule) Start(
 	blockNumber idx.Block,
 	blockTime inter.Timestamp,
 	epoch idx.Epoch,
 	statedb state.StateDB,
 	reader evmcore.DummyChain,
+	parent *evmcore.EvmHeader,
 	onNewLog func(*core_types.Log),
 	rules opera.Rules,
 	evmCfg *params.ChainConfig,
@@ -74,15 +81,14 @@ func (p *EVMModule) Start(
 ) blockproc.EVMProcessor {
 	var prevBlockHash common.Hash
 	var baseFee *big.Int
-	if blockNumber == 0 {
+	if parent == nil {
 		baseFee = gasprice.GetInitialBaseFee(rules.Economy)
 	} else {
-		header := reader.Header(common.Hash{}, uint64(blockNumber-1))
-		prevBlockHash = header.Hash
+		prevBlockHash = parent.Hash
 		baseFee = gasprice.GetBaseFeeForNextBlock(gasprice.ParentBlockInfo{
-			BaseFee:  header.BaseFee,
-			Duration: header.Duration,
-			GasUsed:  header.GasUsed,
+			BaseFee:  parent.BaseFee,
+			Duration: parent.Duration,
+			GasUsed:  parent.GasUsed,
 		}, rules.Economy)
 	}
 

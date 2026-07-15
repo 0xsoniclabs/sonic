@@ -146,10 +146,6 @@ func consensusCallbackBeginBlockFn(
 		// otherwise cheaters would get punished after a first block where cheaters were observed
 		bs.EpochCheaters = mergeCheaters(bs.EpochCheaters, cBlock.Cheaters)
 
-		// Capture the finalized state root now, before eventProcessor.Finalize may
-		// mutate the block state below; the ledger opens the live state against it
-		// inside BeginBlock.
-		finalizedStateRoot := bs.FinalizedStateRoot
 		evmStateReader := &EvmStateReader{
 			ServiceFeed: feed,
 			store:       store,
@@ -334,25 +330,28 @@ func consensusCallbackBeginBlockFn(
 
 				// prepare block processing
 				blockDuration := time.Duration(blockCtx.Time - bs.LastBlock.Time)
-				processor, err := ledger.BeginBlock(BlockParams{
-					Number:          number,
-					Time:            blockCtx.Time,
-					Epoch:           cBlock.Atropos.Epoch(),
-					ParentHash:      proposal.ParentHash,
-					PrevRandao:      randao,
-					ParentStateRoot: common.Hash(finalizedStateRoot),
-					GasLimit:        maxBlockGas,
-					UserGasLimit:    userTransactionGasLimit,
-					Duration:        blockDuration,
-					Rules:           thisBlocksRules, // block-start rules snapshot
+				// The parent hash and the parent state root are not passed: the ledger
+				// chains the block onto its own head, which is where they are known
+				// even when that head is a block it has executed but not yet
+				// committed. proposal.ParentHash is still what the proposal is
+				// validated against above; it is not a second source for the block.
+				err := ledger.BeginBlock(BlockParams{
+					Number:       number,
+					Time:         blockCtx.Time,
+					Epoch:        cBlock.Atropos.Epoch(),
+					PrevRandao:   randao,
+					GasLimit:     maxBlockGas,
+					UserGasLimit: userTransactionGasLimit,
+					Duration:     blockDuration,
+					Rules:        thisBlocksRules, // block-start rules snapshot
 				}, onNewLogAll)
 				if err != nil {
-					log.Crit("Failed to open StateDB", "err", err)
+					log.Crit("Failed to begin block", "err", err)
 				}
 				// The internal-transaction builders only read the zero-address
 				// nonce; pass them a narrow NonceSource over the live state owned by
-				// the block processor rather than the full statedb.
-				nonceSource := blockproc.NewNonceSource(processor.StateDB())
+				// the ledger rather than the full statedb.
+				nonceSource := blockproc.NewNonceSource(ledger.StateDB())
 
 				// Apply the transaction priorities and reorder the (already
 				// filtered) transactions, identically in both legacy and
@@ -362,7 +361,7 @@ func consensusCallbackBeginBlockFn(
 					proposal.Transactions,
 					thisBlocksRules,
 					chainCfg,
-					processor.StateDB(),
+					ledger.StateDB(),
 					evmStateReader,
 					signer,
 					blockCtx.Idx,
@@ -375,7 +374,7 @@ func consensusCallbackBeginBlockFn(
 
 				// Execute pre-internal transactions
 				preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
-				preInternalProcessedTxs := processor.runInternal(preInternalTxs).ProcessedTransactions
+				preInternalProcessedTxs := ledger.runInternal(preInternalTxs).ProcessedTransactions
 				bs = txListener.Finalize()
 				for _, tx := range preInternalProcessedTxs {
 					if tx.Receipt == nil || tx.Receipt.Status == 0 {
@@ -412,18 +411,18 @@ func consensusCallbackBeginBlockFn(
 
 					// Execute post-internal transactions
 					internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
-					internalProcessedTxs := processor.runInternal(internalTxs).ProcessedTransactions
+					internalProcessedTxs := ledger.runInternal(internalTxs).ProcessedTransactions
 					for _, tx := range internalProcessedTxs {
 						if tx.Receipt == nil || tx.Receipt.Status == 0 {
 							log.Warn("Internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
 						}
 					}
 
-					txCausedBy := processor.Run(proposal.Transactions).CausedBy
+					txCausedBy := ledger.Run(proposal.Transactions).CausedBy
 
 					// Finalize the block: commit state, assemble and hash the block,
 					// and stamp the block hash/time onto the receipts and logs.
-					candidate := processor.Finalize()
+					candidate := ledger.Finalize()
 					block := candidate.Block
 					evmBlock := candidate.EvmBlock
 					allReceipts := candidate.Receipts
@@ -470,7 +469,10 @@ func consensusCallbackBeginBlockFn(
 
 					// Persist the block, its transactions, receipt/log indexes, and
 					// cached EVM block via the ledger (no RPC notification yet).
-					processor.Commit()
+					committed, err := ledger.Commit()
+					if err != nil {
+						log.Crit("Failed to commit block", "err", err)
+					}
 
 					// Advance the consensus head pointer before publishing, so the
 					// RPC head and the new-block notification observe it (matching
@@ -488,7 +490,7 @@ func consensusCallbackBeginBlockFn(
 					headFastBlockGauge.Update(int64(blockCtx.Idx))
 
 					// Publish the new block to the RPC layer.
-					processor.Publish()
+					ledger.Publish(committed)
 
 					now := time.Now()
 					blockAge := now.Sub(block.Time.Time())

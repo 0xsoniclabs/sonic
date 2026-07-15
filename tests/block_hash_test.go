@@ -398,3 +398,61 @@ func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 			"block hash does not match the hash from the receipt")
 	}
 }
+
+// TestBlockHash_BlocksReadingBlockHashesCanBeReplayedAndVerified checks that the
+// BLOCKHASH opcode resolves the same values whether a block's parents are
+// committed or merely staged.
+//
+// The opcode is resolved by walking the chain backwards from the block being
+// executed, asking for each ancestor in turn (evmcore.GetHashFn). Only Commit
+// writes a block to the store, so a walk served by the store alone stops at the
+// newest staged block and reports a zero hash for it and for every block behind
+// it -- silently, and only on a node that happens to have that block in flight.
+// The observed hashes are emitted as logs, so they reach the receipts root and
+// hence the block hash: a block replayed over staged parents that resolved them
+// differently cannot reproduce its recorded hash, which VerifyBlocks asserts.
+//
+// EIP-2935 does not cover this. The history contract is written every Prague
+// block, but the BLOCKHASH opcode never reads it -- it always goes through the
+// chain walk.
+func TestBlockHash_BlocksReadingBlockHashesCanBeReplayedAndVerified(t *testing.T) {
+	require := req.New(t)
+
+	upgrades := opera.GetSonicUpgrades()
+	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	contract, _, err := DeployContract(net, block_hash.DeployBlockHash)
+	require.NoError(err, "failed to deploy contract")
+
+	// Observe the block hashes from a run of consecutive blocks, so that the
+	// replay below has blocks reaching back over their staged predecessors rather
+	// than only over their immediate parent -- the parent hash alone is served
+	// without any walk, and would pass even with the walk broken.
+	const observations = 8
+	for range observations {
+		receipt, err := net.Apply(contract.Observe)
+		require.NoError(err, "failed to observe block hashes")
+		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+		require.NotEmpty(receipt.Logs, "the observed hashes must reach the receipts")
+	}
+
+	lastBlock, err := client.BlockNumber(t.Context())
+	require.NoError(err)
+
+	blocks := make([]*types.Block, 0, lastBlock+1)
+	for number := range lastBlock + 1 {
+		block, err := client.BlockByNumber(t.Context(), new(big.Int).SetUint64(number))
+		require.NoError(err)
+		blocks = append(blocks, block)
+	}
+
+	genesis := net.GetJsonGenesis()
+	require.NotNil(genesis, "network must be started with JSON genesis")
+	VerifyBlocks(t, genesis, blocks)
+}

@@ -184,13 +184,11 @@ func verifyBlocksOnLedger(
 
 	// The genesis bakes one or more blocks into the store (block 0 plus the
 	// chain-initialization block(s)); the ledger only produces blocks after them.
-	// Replay therefore starts at the first block past the genesis head, opening
-	// against its finalized state root (the Carmen world-state root that
-	// GetHeadBlock returns and verifies against the live state).
-	head, err := ledger.GetHeadBlock()
-	require.NoError(err, "failed to read ledger head")
+	// Replay therefore starts at the first block past the ledger's tip -- the block
+	// the next one chains onto, which Tip verifies against the Carmen live state.
+	head, err := ledger.Tip()
+	require.NoError(err, "failed to read ledger tip")
 	firstReplayed := head.Number + 1
-	liveStateRoot := head.StateRoot
 	require.Less(firstReplayed, uint64(len(blocks)),
 		"no blocks beyond the genesis head to replay")
 
@@ -198,44 +196,42 @@ func verifyBlocksOnLedger(
 	require.Equal(blocks[firstReplayed-1].Hash(), head.Hash(),
 		"genesis head block hash mismatch")
 
-	// Replay every block after the genesis head in order, chaining on the live
-	// state root produced by each block.
+	// Replay every block after the genesis head in order. Each is committed right
+	// away, so the ledger's stack never holds more than one -- the rollback variant
+	// below is what exercises a stack.
 	for i := firstReplayed; i < uint64(len(blocks)); i++ {
-		processor, candidate := replayBlockOnLedger(t, ledger, genesis, blocks[i], liveStateRoot)
-
-		// Persist the block so the next block can read it as its parent (e.g. for
-		// the base fee), and chain on the state root just produced.
-		processor.Commit()
-		processor.Publish()
-		liveStateRoot = candidate.Block.StateRoot
+		replayBlockOnLedger(t, ledger, genesis, blocks[i])
+		commitOnLedger(t, ledger)
 	}
 }
 
 // replayBlockOnLedger drives one recorded block through the ledger and asserts
-// that the assembled candidate reproduces it exactly. The block is left finalized:
-// its content is in the live state, but the caller decides whether to commit it or
-// roll it back again.
+// that the assembled candidate reproduces it exactly. The block is left on the
+// speculative stack: its content is in the live state, but the caller decides
+// whether to commit it or roll it back again.
 func replayBlockOnLedger(
 	t *testing.T,
 	ledger *integration.Ledger,
 	genesis *makefakegenesis.GenesisJson,
 	block *types.Block,
-	parentStateRoot common.Hash,
-) (gossip.BlockProcessor, *gossip.BlockCandidate) {
+) *gossip.BlockCandidate {
 	t.Helper()
 	require := require.New(t)
 
 	nanos, duration, err := inter.DecodeExtraData(block.Header().Extra)
 	require.NoError(err, "block %d: failed to decode extra data", block.NumberU64())
 
-	processor, err := ledger.BeginBlock(gossip.BlockParams{
+	// Neither the parent hash nor the parent state root is passed: the ledger
+	// derives both from the block this one chains onto, which is the point of the
+	// speculative stack -- that block may be one the ledger has executed but not
+	// committed, so there is nothing to look it up in. The assertion on the block
+	// hash below is what proves the derived parent is the recorded one.
+	err = ledger.BeginBlock(gossip.BlockParams{
 		Number: block.NumberU64(),
 		Time:   inter.Timestamp(block.Time()*1e9 + uint64(nanos)),
 		// Epoch is left zero: it does not feed the block hash.
-		ParentHash:      block.ParentHash(),
-		PrevRandao:      block.MixDigest(),
-		ParentStateRoot: parentStateRoot,
-		GasLimit:        block.GasLimit(),
+		PrevRandao: block.MixDigest(),
+		GasLimit:   block.GasLimit(),
 		// Unused by the single system batch below; set for clarity.
 		UserGasLimit: block.GasLimit(),
 		Duration:     duration,
@@ -251,8 +247,8 @@ func replayBlockOnLedger(
 	// already-included transactions are fed, with the user gas limit set to the
 	// full block gas limit and the full block size budget, so neither limit
 	// binds and no transaction is skipped.
-	processor.Run(block.Transactions())
-	candidate := processor.Finalize()
+	ledger.Run(block.Transactions())
+	candidate := ledger.Finalize()
 
 	require.Zero(candidate.NumSkipped,
 		"block %d: some transactions were skipped", block.NumberU64())
@@ -260,22 +256,36 @@ func replayBlockOnLedger(
 		"block %d: state root mismatch", block.NumberU64())
 	require.Equal(block.GasUsed(), candidate.Block.GasUsed,
 		"block %d: gas used mismatch", block.NumberU64())
+	require.Equal(block.ParentHash(), candidate.Block.ParentHash,
+		"block %d: parent hash mismatch", block.NumberU64())
 	require.Equal(block.Hash(), candidate.Block.Hash(),
 		"block %d: block hash mismatch", block.NumberU64())
 
-	return processor, candidate
+	return candidate
 }
 
-// verifyBlocksOnLedgerWithRollback verifies that the ledger can execute a block,
-// take it back again, and reproduce it exactly on a second attempt.
+// commitOnLedger makes the ledger's oldest speculative block permanent and
+// publishes it.
+func commitOnLedger(t *testing.T, ledger *integration.Ledger) {
+	t.Helper()
+	committed, err := ledger.Commit()
+	require.NoError(t, err, "failed to commit block")
+	ledger.Publish(committed)
+}
+
+// verifyBlocksOnLedgerWithRollback verifies that the ledger can stack several
+// executed blocks, take them back again in any prefix, and reproduce each exactly
+// on a second attempt.
 //
 // This is what a consensus that certifies a block before finalizing it needs: it
 // must execute a block to obtain the hash a quorum certifies, and discard it again
-// when the round fails to certify. The decisive properties are that a rolled back
-// and re-executed block is byte-identical to the first attempt, and that the
-// archive -- which is append-only and rejects a height it has already seen -- only
-// ever receives the blocks that were committed, so the rolled back height can be
-// produced again.
+// when the round fails to certify -- while already executing the blocks above it,
+// because waiting for certification would serialize the pipeline. The decisive
+// properties are that a rolled back and re-executed block is byte-identical to the
+// first attempt, that the live state returns to exactly the right root at every
+// depth, and that the archive -- which is append-only and rejects a height it has
+// already seen -- only ever receives the blocks that were committed, so a rolled
+// back height can be produced again.
 //
 // The store this runs over keeps an archive (DefaultStoreConfig), so the archive
 // path is exercised rather than assumed.
@@ -293,26 +303,31 @@ func verifyBlocksOnLedgerWithRollback(
 		require.NoError(ledger.Close())
 	}()
 
-	head, err := ledger.GetHeadBlock()
-	require.NoError(err, "failed to read ledger head")
+	head, err := ledger.Tip()
+	require.NoError(err, "failed to read ledger tip")
 	firstReplayed := head.Number + 1
-	liveStateRoot := head.StateRoot
 
 	last := uint64(len(blocks)) - 1
 	require.GreaterOrEqual(last, firstReplayed, "no blocks beyond the genesis head to replay")
 
-	// Only one block is taken back at a time, because that is as deep as this seam
-	// currently reaches. Carmen stages any number of blocks, but BeginBlock derives
-	// the parent hash and the next base fee from a header it reads out of the store
-	// (see EvmStateReader in ledger.go and EVMModule.Start), and only Commit puts a
-	// block there. Beginning block N+1 while N is merely staged therefore finds no
-	// parent. Executing several blocks ahead of the decision to keep them -- which a
-	// consensus certifying blocks before finalizing them does -- needs the parent
-	// header of a staged block to be reachable; that belongs with the speculation
-	// stack rather than here.
-	const window = uint64(1)
-	// Take the block back mid-chain rather than at the tip, so the rollback acts on
-	// a trie that already holds history and the chain visibly continues past it.
+	// Stack several blocks rather than one: a stack of one has no ordering, so it
+	// cannot show that blocks are committed oldest first and rolled back newest
+	// first. Three is the consensus engine's default speculation window; a chain
+	// with fewer replayable blocks is stacked as deep as it allows, but a chain
+	// too short to stack at all is not a meaningful subject and says so rather
+	// than quietly testing a window of one.
+	const speculationWindow = uint64(3)
+	window := min(speculationWindow, last-head.Number)
+	require.GreaterOrEqual(window, uint64(2),
+		"chain of %d blocks is too short to stack speculative blocks", last-head.Number)
+	// Report the depth reached: a shorter chain tests a shallower stack, and that
+	// should be visible rather than inferred from the chain's length.
+	t.Logf("stacking %d of up to %d speculative blocks (%d replayable blocks)",
+		window, speculationWindow, last-head.Number)
+
+	// Take the blocks back mid-chain rather than at the tip, so the rollback acts on
+	// a trie that already holds history and the chain visibly continues past it. On a
+	// chain that is only just long enough, the pivot is the head itself.
 	pivot := (firstReplayed + last) / 2
 	if pivot+window > last {
 		pivot = last - window
@@ -320,49 +335,65 @@ func verifyBlocksOnLedgerWithRollback(
 
 	// Replay and commit the chain up to the pivot.
 	for i := firstReplayed; i <= pivot; i++ {
-		processor, candidate := replayBlockOnLedger(t, ledger, genesis, blocks[i], liveStateRoot)
-		processor.Commit()
-		processor.Publish()
-		liveStateRoot = candidate.Block.StateRoot
+		replayBlockOnLedger(t, ledger, genesis, blocks[i])
+		commitOnLedger(t, ledger)
 	}
-	pivotStateRoot := liveStateRoot
 
-	// Execute the next blocks without deciding their fate, as a consensus does
-	// while it is still waiting for them to be certified. Each of them must be the
-	// block that was recorded, which replayBlockOnLedger asserts.
-	speculate := func() ([]gossip.BlockProcessor, common.Hash) {
-		processors := []gossip.BlockProcessor{}
-		root := pivotStateRoot
-		for i := pivot + 1; i <= pivot+window; i++ {
-			processor, candidate := replayBlockOnLedger(t, ledger, genesis, blocks[i], root)
-			processors = append(processors, processor)
-			root = candidate.Block.StateRoot
+	// speculate executes blocks pivot+1 .. pivot+n without deciding their fate, as a
+	// consensus does while it waits for them to be certified, and returns the live
+	// state root at each depth: roots[k] is the root with k blocks stacked, so
+	// roots[0] is the pivot's. Each block must be the one that was recorded, which
+	// replayBlockOnLedger asserts.
+	speculate := func(from, to uint64) []common.Hash {
+		roots := []common.Hash{}
+		for i := from; i <= to; i++ {
+			candidate := replayBlockOnLedger(t, ledger, genesis, blocks[i])
+			roots = append(roots, candidate.Block.StateRoot)
 		}
-		return processors, root
+		return roots
 	}
 
-	processors, speculatedRoot := speculate()
+	pivotRoot := mustTip(t, ledger).StateRoot
+	roots := append([]common.Hash{pivotRoot}, speculate(pivot+1, pivot+window)...)
+	require.Equal(int(window), ledger.Depth(), "not every speculative block was stacked")
 
-	// Take them all back, newest first, and the live state must return to the
-	// pivot.
-	for i := len(processors) - 1; i >= 0; i-- {
-		require.NoError(processors[i].Rollback(),
-			"block %d: failed to roll back", blocks[pivot+1+uint64(i)].NumberU64())
+	// Unwind one block at a time and check the live state at every depth. Rolling
+	// the whole stack back at once would still pass if an intermediate step restored
+	// the wrong state, because the last one would correct it.
+	for keep := int(window) - 1; keep >= 0; keep-- {
+		require.NoError(ledger.RevertTo(keep),
+			"failed to revert to depth %d", keep)
+		require.Equal(keep, ledger.Depth(), "reverting to depth %d left a different depth", keep)
+		require.Equal(roots[keep], mustTip(t, ledger).StateRoot,
+			"reverting to depth %d did not restore the live state", keep)
 	}
+
+	// Add two, take one back, and re-add it: the engine reverts a mispredicted
+	// suffix and re-executes the blocks above it on the surviving prefix, so a
+	// partial revert followed by a rebuild is the ordinary path, not an exotic one.
+	speculate(pivot+1, pivot+2)
+	require.NoError(ledger.RevertTo(1), "failed to revert the newest of two blocks")
+	require.Equal(roots[1], mustTip(t, ledger).StateRoot,
+		"reverting the newest of two blocks did not restore the live state")
+	speculate(pivot+2, pivot+2)
+	require.Equal(roots[2], mustTip(t, ledger).StateRoot,
+		"re-adding onto a partially reverted stack did not reproduce the block")
+	require.NoError(ledger.RevertTo(0), "failed to revert the rebuilt stack")
+	require.Equal(roots[0], mustTip(t, ledger).StateRoot,
+		"reverting the rebuilt stack did not restore the live state")
 
 	// Nothing of the rolled back blocks may have reached the archive, so the whole
 	// run can be repeated -- and must reproduce exactly the same blocks.
-	processors, reSpeculatedRoot := speculate()
-	require.Equal(speculatedRoot, reSpeculatedRoot,
-		"re-executing the rolled back blocks produced a different state root")
+	reSpeculatedRoots := append([]common.Hash{pivotRoot}, speculate(pivot+1, pivot+window)...)
+	require.Equal(roots, reSpeculatedRoots,
+		"re-executing the rolled back blocks produced different state roots")
 
 	// Keep them this time, oldest first -- the order the append-only archive
 	// requires.
-	for _, processor := range processors {
-		processor.Commit()
-		processor.Publish()
+	for range window {
+		commitOnLedger(t, ledger)
 	}
-	liveStateRoot = reSpeculatedRoot
+	require.Zero(ledger.Depth(), "committing every block left something in flight")
 
 	// The archive must hold every committed block and nothing else: had a rolled
 	// back block reached it, re-committing its height would have been rejected as
@@ -376,11 +407,18 @@ func verifyBlocksOnLedgerWithRollback(
 	// The chain continues to work after the rollback: the remaining blocks replay
 	// on top of it as usual.
 	for i := pivot + window + 1; i <= last; i++ {
-		processor, candidate := replayBlockOnLedger(t, ledger, genesis, blocks[i], liveStateRoot)
-		processor.Commit()
-		processor.Publish()
-		liveStateRoot = candidate.Block.StateRoot
+		replayBlockOnLedger(t, ledger, genesis, blocks[i])
+		commitOnLedger(t, ledger)
 	}
+}
+
+// mustTip returns the ledger's tip, which is also a check that the Carmen live
+// state matches it.
+func mustTip(t *testing.T, ledger *integration.Ledger) *inter.Block {
+	t.Helper()
+	tip, err := ledger.Tip()
+	require.NoError(t, err, "failed to read ledger tip")
+	return tip
 }
 
 // initLedgerDataDirFromGenesis creates a temporary Sonic data directory and

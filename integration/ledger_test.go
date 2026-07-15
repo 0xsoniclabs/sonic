@@ -49,11 +49,17 @@ func TestOpenLedger_GenesisInitializedDir_OpensReadsAndCloses(t *testing.T) {
 
 	// The ledger opened over the applied genesis exposes a consistent head: the
 	// genesis head block is readable and its finalized state root matches the
-	// Carmen live state (GetHeadBlock performs that consistency check).
-	head, err := ledger.GetHeadBlock()
+	// Carmen live state (Tip performs that consistency check). Nothing is in
+	// flight on a freshly opened ledger, so its tip is its committed head.
+	head, err := ledger.Tip()
 	require.NoError(t, err)
 	require.NotNil(t, head, "genesis head block should be readable")
 	require.NotZero(t, head.StateRoot, "finalized state root should be set")
+
+	committed, err := ledger.Head()
+	require.NoError(t, err)
+	require.Equal(t, head.Hash(), committed.Hash(),
+		"the tip of a ledger with nothing in flight is its committed head")
 
 	require.NoError(t, ledger.Close())
 }

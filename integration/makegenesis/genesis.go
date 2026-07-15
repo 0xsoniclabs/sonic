@@ -262,9 +262,15 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 		}},
 		blockCtx.Idx,
 	)
+	// The chain-initialization block chains onto the last genesis-baked block. Its
+	// header comes from the same source the EVM resolves the rest of the chain
+	// against; Start no longer reads it, because a parent may be a block that has
+	// been executed but not yet written anywhere.
+	chain := dummyHeaderReturner{b.blocks}
+	parent := chain.Header(common.Hash{}, uint64(blockCtx.Idx)-1)
 	evmProcessor := blockProc.EVMModule.Start(
 		blockCtx.Idx, blockCtx.Time, blockCtx.Atropos.Epoch(),
-		b.tmpStateDB, dummyHeaderReturner{b.blocks},
+		b.tmpStateDB, chain, parent,
 		func(l *core_types.Log) { txListener.OnNewLog(l) },
 		es.Rules,
 		chainConfig,

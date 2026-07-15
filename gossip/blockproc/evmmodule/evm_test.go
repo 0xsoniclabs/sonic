@@ -75,6 +75,7 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 		0,
 		stateDb,
 		nil,
+		nil, // < block 0 has no parent
 		nil,
 		opera.Rules{
 			Economy: opera.EconomyRules{
@@ -155,7 +156,7 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInReceipts(t *test
 
 	evmModule := New()
 	processor := evmModule.Start(
-		0, 0, 0, stateDb, nil, logConsumer.OnNewLog,
+		0, 0, 0, stateDb, nil, nil, logConsumer.OnNewLog,
 		opera.Rules{}, &params.ChainConfig{}, common.Hash{}, nil,
 	)
 
@@ -413,7 +414,7 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 
 	evmModule := New()
 	processor := evmModule.Start(
-		0, 0, 0, stateDb, nil, logConsumer.OnNewLog,
+		0, 0, 0, stateDb, nil, nil, logConsumer.OnNewLog,
 		opera.Rules{}, &params.ChainConfig{}, common.Hash{}, nil,
 	)
 
@@ -488,7 +489,7 @@ func TestOperaEVMProcessor_Finalize_DoesNotWaitForTheArchive(t *testing.T) {
 		blockTime := time.Now().Add(-1*time.Hour + time.Second) // < a recent block
 		processor := evmModule.Start(
 			0, inter.FromUnix(blockTime.Unix()), 0,
-			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+			stateDb, nil, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
 			nil,
 		)
 
@@ -516,7 +517,7 @@ func TestOperaEVMProcessor_Finalize_ReturnsTheStagedBlockAndItsStateRoot(t *test
 
 	evmModule := New()
 	processor := evmModule.Start(
-		0, 0, 0, stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{}, nil,
+		0, 0, 0, stateDb, nil, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{}, nil,
 	)
 
 	evmBlock, _, _, got := processor.Finalize()
@@ -535,7 +536,7 @@ func TestOperaEVMProcessor_Finalize_ReportsEndBlockError(t *testing.T) {
 
 	evmModule := New()
 	processor := evmModule.Start(
-		0, 0, 0, stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{}, nil,
+		0, 0, 0, stateDb, nil, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{}, nil,
 	)
 
 	// A failed EndBlock leaves no staged block behind, and must not be mistaken for
