@@ -105,6 +105,11 @@ func NewPublicFilterAPI(backend Backend, cfg Config) *PublicFilterAPI {
 	return api
 }
 
+// Stop shuts down the API's event system and blocks until it has stopped.
+func (api *PublicFilterAPI) Stop() {
+	api.events.Stop()
+}
+
 // timeoutLoop runs at the interval set by 'timeout' and deletes filters
 // that have not been recently used. It is started when the API is created.
 func timeoutLoop(
