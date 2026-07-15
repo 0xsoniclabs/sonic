@@ -119,7 +119,7 @@ func (h *priorityHinter) eligible(tx *types.Transaction) (bool, [32]byte) {
 	if err != nil || !p.IsPrioritized() {
 		return false, [32]byte{}
 	}
-	if h.counts[p.Id] >= h.config.MaxTxsPerEntityPerEvent {
+	if h.counts[p.Id] >= h.config.MaxPiggybackTxsPerEntityPerEvent {
 		return false, [32]byte{}
 	}
 	return true, p.Id

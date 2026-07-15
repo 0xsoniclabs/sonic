@@ -198,7 +198,7 @@ func TestGetConfig_ValidatesResult(t *testing.T) {
 	cfg, err := GetConfig(enabledUpgrades(), vm)
 	require.NoError(t, err)
 	require.Equal(t, uint64(16), cfg.MaxGasPerEntityPerBlock)
-	require.Equal(t, uint64(4), cfg.MaxTxsPerEntityPerEvent)
+	require.Equal(t, uint64(4), cfg.MaxPiggybackTxsPerEntityPerEvent)
 
 	// overflow: a non-zero high byte must be rejected.
 	data[0] = 1
@@ -291,5 +291,5 @@ func TestGetPriorityAndGetConfig_AgainstRealBytecode(t *testing.T) {
 	cfg, err := GetConfig(upgrades, evm)
 	require.NoError(err)
 	require.Equal(uint64(10_000_000), cfg.MaxGasPerEntityPerBlock)
-	require.Equal(uint64(4), cfg.MaxTxsPerEntityPerEvent)
+	require.Equal(uint64(4), cfg.MaxPiggybackTxsPerEntityPerEvent)
 }

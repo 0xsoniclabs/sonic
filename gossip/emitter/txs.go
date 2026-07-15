@@ -195,7 +195,7 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 //     priority-then-tip order and does not consume the hinter cap.
 //   - A prioritized tx for another validator's turn is admitted only via the
 //     priority hinter's eager path, subject to the per-entity per-event cap
-//     (priorityHinter.config.MaxTxsPerEntityPerEvent, keyed by Priority.Id).
+//     (priorityHinter.config.MaxPiggybackTxsPerEntityPerEvent, keyed by Priority.Id).
 //     If the hinter is nil (feature disabled), foreign-priority admissions are
 //     never attempted.
 //   - Between successful phase-2 admissions the sender's next nonce may flip
@@ -207,7 +207,7 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 // Gas power (event gas power / event MaxEventGas / block MaxBlockGas) and
 // total transaction size (maxTotalTransactionsSizeInEventInBytes) form a
 // shared budget deducted inside tryAdd for every successful admission from
-// any phase. The hinter's MaxTxsPerEntityPerEvent counts only foreign-
+// any phase. The hinter's MaxPiggybackTxsPerEntityPerEvent counts only foreign-
 // priority admissions; my-turn admissions never consume it — including
 // my-turn admissions that reached the phase-2 heap because an earlier nonce
 // of the same sender was not-my-turn.

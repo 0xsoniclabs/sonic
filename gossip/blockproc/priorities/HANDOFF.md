@@ -29,7 +29,7 @@ Block order when enabled:
    reorders but cannot force-*include* omitted txs.
 3. **Rate limit via registry config call** `getPriorityConfig()` returning
    `maxGasPerEntityPerBlock` (block formation, total gas budget per entity per
-   block) and `maxTxsPerEntityPerEvent` (emitter).
+   block) and `maxPiggybackTxsPerEntityPerEvent` (emitter).
 4. **Overflow = demote to normal pool.** Once an entity's running gas total for
    prioritized txs would exceed the budget, the offending tx and all further
    ones (in `(level desc, weight desc, hash asc)` order) lose priority and stay
@@ -94,7 +94,7 @@ Block order when enabled:
   blocks. Mirror `gossip/blockproc/subsidies/subsidies.go`:
   - `type VirtualMachine interface { Call(from, to common.Address, input []byte, gas uint64, value *uint256.Int) ([]byte, uint64, error) }` (satisfied by `*vm.EVM`).
   - `type Priority struct { Level, Weight *big.Int; Id [32]byte }`; `IsPrioritized()`.
-  - `type Config struct { MaxGasPerEntityPerBlock, MaxTxsPerEntityPerEvent uint64 }`.
+  - `type Config struct { MaxGasPerEntityPerBlock, MaxPiggybackTxsPerEntityPerEvent uint64 }`.
   - `GetPriority(upgrades, vm, signer, tx) (Priority, error)`,
     `GetConfig(upgrades, vm) (Config, error)` — hand-rolled ABI, strict length
     checks, fixed gas caps.

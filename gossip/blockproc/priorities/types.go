@@ -63,7 +63,10 @@ type Config struct {
 	// order until the next transaction would exceed the budget; the remainder
 	// is demoted.
 	MaxGasPerEntityPerBlock uint64
-	// MaxTxsPerEntityPerEvent bounds how many transactions of one entity a
-	// validator eagerly includes in a single emitted event (best-effort hint).
-	MaxTxsPerEntityPerEvent uint64
+	// MaxPiggybackTxsPerEntityPerEvent bounds how many foreign prioritized
+	// transactions of one entity a validator eagerly includes in a single
+	// emitted event (best-effort hint). It applies only to prioritized
+	// transactions admitted while it is not this validator's turn; transactions
+	// admitted on the validator's own turn are unbounded by this limit.
+	MaxPiggybackTxsPerEntityPerEvent uint64
 }

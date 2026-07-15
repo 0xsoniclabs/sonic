@@ -31,8 +31,10 @@ contract PriorityRegistry {
     uint256 public maxGas;
 
     // Per-entity rate limits. Zero selects the built-in defaults below.
+    // maxPiggybackTxsPerEntityPerEventValue bounds only foreign prioritized
+    // transactions: those a validator eagerly includes while it is not its turn.
     uint256 private maxGasPerEntityPerBlockValue;
-    uint256 private maxTxsPerEntityPerEventValue;
+    uint256 private maxPiggybackTxsPerEntityPerEventValue;
 
     uint256 constant DEFAULT_MAX_GAS_PER_BLOCK = 10_000_000;
     uint256 constant DEFAULT_MAX_PER_EVENT = 4;
@@ -54,7 +56,7 @@ contract PriorityRegistry {
 
     function setConfig(uint256 perBlockGas, uint256 perEvent) external {
         maxGasPerEntityPerBlockValue = perBlockGas;
-        maxTxsPerEntityPerEventValue = perEvent;
+        maxPiggybackTxsPerEntityPerEventValue = perEvent;
     }
 
     // --- interface consumed by the Sonic client ---
@@ -79,14 +81,14 @@ contract PriorityRegistry {
         view
         returns (
             uint256 maxGasPerEntityPerBlock,
-            uint256 maxTxsPerEntityPerEvent
+            uint256 maxPiggybackTxsPerEntityPerEvent
         )
     {
         maxGasPerEntityPerBlock = maxGasPerEntityPerBlockValue == 0
             ? DEFAULT_MAX_GAS_PER_BLOCK
             : maxGasPerEntityPerBlockValue;
-        maxTxsPerEntityPerEvent = maxTxsPerEntityPerEventValue == 0
+        maxPiggybackTxsPerEntityPerEvent = maxPiggybackTxsPerEntityPerEventValue == 0
             ? DEFAULT_MAX_PER_EVENT
-            : maxTxsPerEntityPerEventValue;
+            : maxPiggybackTxsPerEntityPerEventValue;
     }
 }

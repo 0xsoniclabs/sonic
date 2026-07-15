@@ -40,7 +40,7 @@ contract EvenValuePriority {
         pure
         returns (
             uint256 maxGasPerEntityPerBlock,
-            uint256 maxTxsPerEntityPerEvent
+            uint256 maxPiggybackTxsPerEntityPerEvent
         )
     {
         return (PER_BLOCK_GAS, PER_EVENT_TXS);

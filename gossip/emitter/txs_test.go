@@ -350,12 +350,12 @@ func TestEmitter_addTxsWithHinter_InclusionDeterminedByHinter(t *testing.T) {
 	}}
 	noPrioHinter := &priorityHinter{
 		classifier: noPrioClassifier,
-		config:     priorities.Config{MaxTxsPerEntityPerEvent: 10},
+		config:     priorities.Config{MaxPiggybackTxsPerEntityPerEvent: 10},
 		counts:     map[[32]byte]uint64{},
 	}
 	prioTx1Hinter := &priorityHinter{
 		classifier: prioClassifier,
-		config:     priorities.Config{MaxTxsPerEntityPerEvent: 10},
+		config:     priorities.Config{MaxPiggybackTxsPerEntityPerEvent: 10},
 		counts:     map[[32]byte]uint64{},
 	}
 
@@ -437,7 +437,7 @@ func TestEmitter_addTxsWithHinter_PerEntityCapEnforced(t *testing.T) {
 	}}
 	hinter := &priorityHinter{
 		classifier: classifier,
-		config:     priorities.Config{MaxTxsPerEntityPerEvent: 2},
+		config:     priorities.Config{MaxPiggybackTxsPerEntityPerEvent: 2},
 		counts:     map[[32]byte]uint64{},
 	}
 
@@ -473,7 +473,7 @@ func TestEmitter_addTxsWithHinter_Phase2SkippedWhenNoMyTurnCandidate(t *testing.
 	}}
 	hinter := &priorityHinter{
 		classifier: classifier,
-		config:     priorities.Config{MaxTxsPerEntityPerEvent: 5},
+		config:     priorities.Config{MaxPiggybackTxsPerEntityPerEvent: 5},
 		counts:     map[[32]byte]uint64{},
 	}
 

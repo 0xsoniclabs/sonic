@@ -31,8 +31,8 @@ var (
 
 // EvenValuePriorityMetaData contains all meta data concerning the EvenValuePriority contract.
 var EvenValuePriorityMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"getPriority\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"level\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"weight\",\"type\":\"uint256\"},{\"internalType\":\"bytes32\",\"name\":\"id\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getPriorityConfig\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"maxGasPerEntityPerBlock\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxTxsPerEntityPerEvent\",\"type\":\"uint256\"}],\"stateMutability\":\"pure\",\"type\":\"function\"}]",
-	Bin: "0x6080604052348015600e575f5ffd5b506103918061001c5f395ff3fe608060405234801561000f575f5ffd5b5060043610610034575f3560e01c8063928461bd14610038578063d9dceeb814610057575b5f5ffd5b610040610089565b60405161004e9291906100f3565b60405180910390f35b610071600480360381019061006c9190610207565b61009b565b604051610080939291906102c9565b60405180910390f35b5f5f633b9aca006103e8915091509091565b5f5f5f5f6002896100ac919061032b565b036100c25760015f5f5f1b9250925092506100ce565b5f5f5f5f1b9250925092505b9750975097945050505050565b5f819050919050565b6100ed816100db565b82525050565b5f6040820190506101065f8301856100e4565b61011360208301846100e4565b9392505050565b5f5ffd5b5f5ffd5b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f61014b82610122565b9050919050565b61015b81610141565b8114610165575f5ffd5b50565b5f8135905061017681610152565b92915050565b610185816100db565b811461018f575f5ffd5b50565b5f813590506101a08161017c565b92915050565b5f5ffd5b5f5ffd5b5f5ffd5b5f5f83601f8401126101c7576101c66101a6565b5b8235905067ffffffffffffffff8111156101e4576101e36101aa565b5b602083019150836001820283011115610200576101ff6101ae565b5b9250929050565b5f5f5f5f5f5f5f60c0888a0312156102225761022161011a565b5b5f61022f8a828b01610168565b97505060206102408a828b01610168565b96505060406102518a828b01610192565b95505060606102628a828b01610192565b945050608088013567ffffffffffffffff8111156102835761028261011e565b5b61028f8a828b016101b2565b935093505060a06102a28a828b01610192565b91505092959891949750929550565b5f819050919050565b6102c3816102b1565b82525050565b5f6060820190506102dc5f8301866100e4565b6102e960208301856100e4565b6102f660408301846102ba565b949350505050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601260045260245ffd5b5f610335826100db565b9150610340836100db565b9250826103505761034f6102fe565b5b82820690509291505056fea26469706673582212209e607049578562a2e533567fc305c6883001f0c45cfda1a49911e771f6b2dc6164736f6c634300081e0033",
+	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"getPriority\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"level\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"weight\",\"type\":\"uint256\"},{\"internalType\":\"bytes32\",\"name\":\"id\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getPriorityConfig\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"maxGasPerEntityPerBlock\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxPiggybackTxsPerEntityPerEvent\",\"type\":\"uint256\"}],\"stateMutability\":\"pure\",\"type\":\"function\"}]",
+	Bin: "0x6080604052348015600e575f5ffd5b506103918061001c5f395ff3fe608060405234801561000f575f5ffd5b5060043610610034575f3560e01c8063928461bd14610038578063d9dceeb814610057575b5f5ffd5b610040610089565b60405161004e9291906100f3565b60405180910390f35b610071600480360381019061006c9190610207565b61009b565b604051610080939291906102c9565b60405180910390f35b5f5f633b9aca006103e8915091509091565b5f5f5f5f6002896100ac919061032b565b036100c25760015f5f5f1b9250925092506100ce565b5f5f5f5f1b9250925092505b9750975097945050505050565b5f819050919050565b6100ed816100db565b82525050565b5f6040820190506101065f8301856100e4565b61011360208301846100e4565b9392505050565b5f5ffd5b5f5ffd5b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f61014b82610122565b9050919050565b61015b81610141565b8114610165575f5ffd5b50565b5f8135905061017681610152565b92915050565b610185816100db565b811461018f575f5ffd5b50565b5f813590506101a08161017c565b92915050565b5f5ffd5b5f5ffd5b5f5ffd5b5f5f83601f8401126101c7576101c66101a6565b5b8235905067ffffffffffffffff8111156101e4576101e36101aa565b5b602083019150836001820283011115610200576101ff6101ae565b5b9250929050565b5f5f5f5f5f5f5f60c0888a0312156102225761022161011a565b5b5f61022f8a828b01610168565b97505060206102408a828b01610168565b96505060406102518a828b01610192565b95505060606102628a828b01610192565b945050608088013567ffffffffffffffff8111156102835761028261011e565b5b61028f8a828b016101b2565b935093505060a06102a28a828b01610192565b91505092959891949750929550565b5f819050919050565b6102c3816102b1565b82525050565b5f6060820190506102dc5f8301866100e4565b6102e960208301856100e4565b6102f660408301846102ba565b949350505050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601260045260245ffd5b5f610335826100db565b9150610340836100db565b9250826103505761034f6102fe565b5b82820690509291505056fea26469706673582212203a23464eb990b2f50fbdc419bfc1d16b9f10366be540097a194c18fa87fe6a9464736f6c634300081e0033",
 }
 
 // EvenValuePriorityABI is the input ABI used to generate the binding from.
@@ -254,24 +254,24 @@ func (_EvenValuePriority *EvenValuePriorityCallerSession) GetPriority(arg0 commo
 
 // GetPriorityConfig is a free data retrieval call binding the contract method 0x928461bd.
 //
-// Solidity: function getPriorityConfig() pure returns(uint256 maxGasPerEntityPerBlock, uint256 maxTxsPerEntityPerEvent)
+// Solidity: function getPriorityConfig() pure returns(uint256 maxGasPerEntityPerBlock, uint256 maxPiggybackTxsPerEntityPerEvent)
 func (_EvenValuePriority *EvenValuePriorityCaller) GetPriorityConfig(opts *bind.CallOpts) (struct {
-	MaxGasPerEntityPerBlock *big.Int
-	MaxTxsPerEntityPerEvent *big.Int
+	MaxGasPerEntityPerBlock          *big.Int
+	MaxPiggybackTxsPerEntityPerEvent *big.Int
 }, error) {
 	var out []interface{}
 	err := _EvenValuePriority.contract.Call(opts, &out, "getPriorityConfig")
 
 	outstruct := new(struct {
-		MaxGasPerEntityPerBlock *big.Int
-		MaxTxsPerEntityPerEvent *big.Int
+		MaxGasPerEntityPerBlock          *big.Int
+		MaxPiggybackTxsPerEntityPerEvent *big.Int
 	})
 	if err != nil {
 		return *outstruct, err
 	}
 
 	outstruct.MaxGasPerEntityPerBlock = *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
-	outstruct.MaxTxsPerEntityPerEvent = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
+	outstruct.MaxPiggybackTxsPerEntityPerEvent = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
 
 	return *outstruct, err
 
@@ -279,20 +279,20 @@ func (_EvenValuePriority *EvenValuePriorityCaller) GetPriorityConfig(opts *bind.
 
 // GetPriorityConfig is a free data retrieval call binding the contract method 0x928461bd.
 //
-// Solidity: function getPriorityConfig() pure returns(uint256 maxGasPerEntityPerBlock, uint256 maxTxsPerEntityPerEvent)
+// Solidity: function getPriorityConfig() pure returns(uint256 maxGasPerEntityPerBlock, uint256 maxPiggybackTxsPerEntityPerEvent)
 func (_EvenValuePriority *EvenValuePrioritySession) GetPriorityConfig() (struct {
-	MaxGasPerEntityPerBlock *big.Int
-	MaxTxsPerEntityPerEvent *big.Int
+	MaxGasPerEntityPerBlock          *big.Int
+	MaxPiggybackTxsPerEntityPerEvent *big.Int
 }, error) {
 	return _EvenValuePriority.Contract.GetPriorityConfig(&_EvenValuePriority.CallOpts)
 }
 
 // GetPriorityConfig is a free data retrieval call binding the contract method 0x928461bd.
 //
-// Solidity: function getPriorityConfig() pure returns(uint256 maxGasPerEntityPerBlock, uint256 maxTxsPerEntityPerEvent)
+// Solidity: function getPriorityConfig() pure returns(uint256 maxGasPerEntityPerBlock, uint256 maxPiggybackTxsPerEntityPerEvent)
 func (_EvenValuePriority *EvenValuePriorityCallerSession) GetPriorityConfig() (struct {
-	MaxGasPerEntityPerBlock *big.Int
-	MaxTxsPerEntityPerEvent *big.Int
+	MaxGasPerEntityPerBlock          *big.Int
+	MaxPiggybackTxsPerEntityPerEvent *big.Int
 }, error) {
 	return _EvenValuePriority.Contract.GetPriorityConfig(&_EvenValuePriority.CallOpts)
 }

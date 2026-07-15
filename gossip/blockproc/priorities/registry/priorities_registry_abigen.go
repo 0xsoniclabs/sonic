@@ -31,8 +31,8 @@ var (
 
 // RegistryMetaData contains all meta data concerning the Registry contract.
 var RegistryMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"gas\",\"type\":\"uint256\"}],\"name\":\"getPriority\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"level\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"weight\",\"type\":\"uint256\"},{\"internalType\":\"bytes32\",\"name\":\"id\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getPriorityConfig\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"maxGasPerEntityPerBlock\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxTxsPerEntityPerEvent\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"maxGas\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"senderPriority\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"level\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"weight\",\"type\":\"uint256\"},{\"internalType\":\"bytes32\",\"name\":\"id\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"perBlockGas\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"perEvent\",\"type\":\"uint256\"}],\"name\":\"setConfig\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"g\",\"type\":\"uint256\"}],\"name\":\"setMaxGas\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"level\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"weight\",\"type\":\"uint256\"},{\"internalType\":\"bytes32\",\"name\":\"id\",\"type\":\"bytes32\"}],\"name\":\"setSenderPriority\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
-	Bin: "0x6080604052348015600e575f5ffd5b506103af8061001c5f395ff3fe608060405234801561000f575f5ffd5b506004361061007a575f3560e01c80638e928076116100585780638e92807614610108578063928461bd1461011b578063d9dceeb814610138578063e3c1859d14610166575f5ffd5b80631e34c5851461007e578063501d815c1461009957806381afb106146100b5575b5f5ffd5b61009761008c366004610228565b600291909155600355565b005b6100a260015481565b6040519081526020015b60405180910390f35b6100976100c3366004610263565b6040805160608101825293845260208085019384528482019283526001600160a01b039095165f90815294859052909320915182555160018201559051600290910155565b610097610116366004610299565b600155565b610123610194565b604080519283526020830191909152016100ac565b61014b6101463660046102b0565b6101c8565b604080519384526020840192909252908201526060016100ac565b61014b610174366004610359565b5f6020819052908152604090208054600182015460029092015490919083565b5f5f6002545f146101a7576002546101ac565b629896805b91506003545f146101bf576003546101c2565b60045b90509091565b5f5f5f6001545f141580156101de575060015484115b156101f057505f91508190508061021b565b5050506001600160a01b0387165f908152602081905260409020805460018201546002909201549091905b9750975097945050505050565b5f5f60408385031215610239575f5ffd5b50508035926020909101359150565b80356001600160a01b038116811461025e575f5ffd5b919050565b5f5f5f5f60808587031215610276575f5ffd5b61027f85610248565b966020860135965060408601359560600135945092505050565b5f602082840312156102a9575f5ffd5b5035919050565b5f5f5f5f5f5f5f60c0888a0312156102c6575f5ffd5b6102cf88610248565b96506102dd60208901610248565b95506040880135945060608801359350608088013567ffffffffffffffff811115610306575f5ffd5b8801601f81018a13610316575f5ffd5b803567ffffffffffffffff81111561032c575f5ffd5b8a602082840101111561033d575f5ffd5b979a9699509497939660209095019560a0909401359392505050565b5f60208284031215610369575f5ffd5b61037282610248565b939250505056fea26469706673582212209af97f3d50732ad9ad5e0bfcfc01862b9e064bb32957f11f8765562b32d3975264736f6c634300081e0033",
+	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"gas\",\"type\":\"uint256\"}],\"name\":\"getPriority\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"level\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"weight\",\"type\":\"uint256\"},{\"internalType\":\"bytes32\",\"name\":\"id\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getPriorityConfig\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"maxGasPerEntityPerBlock\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxPiggybackTxsPerEntityPerEvent\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"maxGas\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"senderPriority\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"level\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"weight\",\"type\":\"uint256\"},{\"internalType\":\"bytes32\",\"name\":\"id\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"perBlockGas\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"perEvent\",\"type\":\"uint256\"}],\"name\":\"setConfig\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"g\",\"type\":\"uint256\"}],\"name\":\"setMaxGas\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"level\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"weight\",\"type\":\"uint256\"},{\"internalType\":\"bytes32\",\"name\":\"id\",\"type\":\"bytes32\"}],\"name\":\"setSenderPriority\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
+	Bin: "0x6080604052348015600e575f5ffd5b506103af8061001c5f395ff3fe608060405234801561000f575f5ffd5b506004361061007a575f3560e01c80638e928076116100585780638e92807614610108578063928461bd1461011b578063d9dceeb814610138578063e3c1859d14610166575f5ffd5b80631e34c5851461007e578063501d815c1461009957806381afb106146100b5575b5f5ffd5b61009761008c366004610228565b600291909155600355565b005b6100a260015481565b6040519081526020015b60405180910390f35b6100976100c3366004610263565b6040805160608101825293845260208085019384528482019283526001600160a01b039095165f90815294859052909320915182555160018201559051600290910155565b610097610116366004610299565b600155565b610123610194565b604080519283526020830191909152016100ac565b61014b6101463660046102b0565b6101c8565b604080519384526020840192909252908201526060016100ac565b61014b610174366004610359565b5f6020819052908152604090208054600182015460029092015490919083565b5f5f6002545f146101a7576002546101ac565b629896805b91506003545f146101bf576003546101c2565b60045b90509091565b5f5f5f6001545f141580156101de575060015484115b156101f057505f91508190508061021b565b5050506001600160a01b0387165f908152602081905260409020805460018201546002909201549091905b9750975097945050505050565b5f5f60408385031215610239575f5ffd5b50508035926020909101359150565b80356001600160a01b038116811461025e575f5ffd5b919050565b5f5f5f5f60808587031215610276575f5ffd5b61027f85610248565b966020860135965060408601359560600135945092505050565b5f602082840312156102a9575f5ffd5b5035919050565b5f5f5f5f5f5f5f60c0888a0312156102c6575f5ffd5b6102cf88610248565b96506102dd60208901610248565b95506040880135945060608801359350608088013567ffffffffffffffff811115610306575f5ffd5b8801601f81018a13610316575f5ffd5b803567ffffffffffffffff81111561032c575f5ffd5b8a602082840101111561033d575f5ffd5b979a9699509497939660209095019560a0909401359392505050565b5f60208284031215610369575f5ffd5b61037282610248565b939250505056fea264697066735822122046cfa9646250caef5fc91a459572420c8cef930f382c5750be36d9e9ad37c83364736f6c634300081e0033",
 }
 
 // RegistryABI is the input ABI used to generate the binding from.
@@ -254,24 +254,24 @@ func (_Registry *RegistryCallerSession) GetPriority(from common.Address, arg1 co
 
 // GetPriorityConfig is a free data retrieval call binding the contract method 0x928461bd.
 //
-// Solidity: function getPriorityConfig() view returns(uint256 maxGasPerEntityPerBlock, uint256 maxTxsPerEntityPerEvent)
+// Solidity: function getPriorityConfig() view returns(uint256 maxGasPerEntityPerBlock, uint256 maxPiggybackTxsPerEntityPerEvent)
 func (_Registry *RegistryCaller) GetPriorityConfig(opts *bind.CallOpts) (struct {
-	MaxGasPerEntityPerBlock *big.Int
-	MaxTxsPerEntityPerEvent *big.Int
+	MaxGasPerEntityPerBlock          *big.Int
+	MaxPiggybackTxsPerEntityPerEvent *big.Int
 }, error) {
 	var out []interface{}
 	err := _Registry.contract.Call(opts, &out, "getPriorityConfig")
 
 	outstruct := new(struct {
-		MaxGasPerEntityPerBlock *big.Int
-		MaxTxsPerEntityPerEvent *big.Int
+		MaxGasPerEntityPerBlock          *big.Int
+		MaxPiggybackTxsPerEntityPerEvent *big.Int
 	})
 	if err != nil {
 		return *outstruct, err
 	}
 
 	outstruct.MaxGasPerEntityPerBlock = *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
-	outstruct.MaxTxsPerEntityPerEvent = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
+	outstruct.MaxPiggybackTxsPerEntityPerEvent = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
 
 	return *outstruct, err
 
@@ -279,20 +279,20 @@ func (_Registry *RegistryCaller) GetPriorityConfig(opts *bind.CallOpts) (struct 
 
 // GetPriorityConfig is a free data retrieval call binding the contract method 0x928461bd.
 //
-// Solidity: function getPriorityConfig() view returns(uint256 maxGasPerEntityPerBlock, uint256 maxTxsPerEntityPerEvent)
+// Solidity: function getPriorityConfig() view returns(uint256 maxGasPerEntityPerBlock, uint256 maxPiggybackTxsPerEntityPerEvent)
 func (_Registry *RegistrySession) GetPriorityConfig() (struct {
-	MaxGasPerEntityPerBlock *big.Int
-	MaxTxsPerEntityPerEvent *big.Int
+	MaxGasPerEntityPerBlock          *big.Int
+	MaxPiggybackTxsPerEntityPerEvent *big.Int
 }, error) {
 	return _Registry.Contract.GetPriorityConfig(&_Registry.CallOpts)
 }
 
 // GetPriorityConfig is a free data retrieval call binding the contract method 0x928461bd.
 //
-// Solidity: function getPriorityConfig() view returns(uint256 maxGasPerEntityPerBlock, uint256 maxTxsPerEntityPerEvent)
+// Solidity: function getPriorityConfig() view returns(uint256 maxGasPerEntityPerBlock, uint256 maxPiggybackTxsPerEntityPerEvent)
 func (_Registry *RegistryCallerSession) GetPriorityConfig() (struct {
-	MaxGasPerEntityPerBlock *big.Int
-	MaxTxsPerEntityPerEvent *big.Int
+	MaxGasPerEntityPerBlock          *big.Int
+	MaxPiggybackTxsPerEntityPerEvent *big.Int
 }, error) {
 	return _Registry.Contract.GetPriorityConfig(&_Registry.CallOpts)
 }

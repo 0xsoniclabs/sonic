@@ -82,7 +82,7 @@ Priority is **orthogonal** to subsidies and bundles: a transaction may be sponso
 
 ```solidity
 function getPriorityConfig() external view
-    returns (uint256 maxGasPerEntityPerBlock, uint256 maxTxsPerEntityPerEvent /*, ... */);
+    returns (uint256 maxGasPerEntityPerBlock, uint256 maxPiggybackTxsPerEntityPerEvent /*, ... */);
 ```
 
 Queried once per block (block formation) and opportunistically by the emitter. As
@@ -96,6 +96,11 @@ while the running gas total stays within the budget; the first transaction that
 would exceed the budget and all following ones are demoted. This lets an entity
 trade *many cheap* transactions against *few expensive* ones with the same
 per-block cost.
+
+`maxPiggybackTxsPerEntityPerEvent` bounds only **foreign** prioritized
+transactions — those an emitter eagerly piggybacks onto an event while it is
+**not** this validator's turn (see the emitter section below). Transactions the
+validator includes on its own turn are not counted against this cap.
 
 ### Versioning & failure handling
 
@@ -172,7 +177,7 @@ holds prioritized transactions it does not own under `isMyTxTurn`. The event-emi
 decision and all throttling (`NoTxsThreshold`, `LimitedTpsThreshold`, stake-based
 suppression) are unchanged. Prioritized transactions the validator is not the
 turn-owner of are only *added* to an event that is already being emitted for other
-reasons — capped per entity at `MaxTxsPerEntityPerEvent`. This bounds duplication
+reasons — capped per entity at `MaxPiggybackTxsPerEntityPerEvent`. This bounds duplication
 across validators, prevents priority-only events, and avoids inducing low-stake
 validators to emit.
 

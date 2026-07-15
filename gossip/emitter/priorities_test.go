@@ -65,7 +65,7 @@ func TestPriorityHinter_NonPrioritized_IsNotEligible(t *testing.T) {
 	a := tx(0) // not in classifier map -> level 0
 	h := &priorityHinter{
 		classifier: fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{}},
-		config:     priorities.Config{MaxTxsPerEntityPerEvent: 5},
+		config:     priorities.Config{MaxPiggybackTxsPerEntityPerEvent: 5},
 		counts:     map[[32]byte]uint64{},
 	}
 	ok, _ := h.eligible(a)
@@ -80,7 +80,7 @@ func TestPriorityHinter_EnforcesPerEntityPerEventCap(t *testing.T) {
 			b.Hash(): prioritized(7), // same entity
 			c.Hash(): prioritized(7),
 		}},
-		config: priorities.Config{MaxTxsPerEntityPerEvent: 2},
+		config: priorities.Config{MaxPiggybackTxsPerEntityPerEvent: 2},
 		counts: map[[32]byte]uint64{},
 	}
 

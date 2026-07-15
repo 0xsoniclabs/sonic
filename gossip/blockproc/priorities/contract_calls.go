@@ -124,7 +124,7 @@ func GetConfig(upgrades opera.Upgrades, vm VirtualMachine) (Config, error) {
 // fails to read the config produces the same (un-prioritized) ordering.
 var FallbackConfig = Config{
 	MaxGasPerEntityPerBlock: 0,
-	MaxTxsPerEntityPerEvent: 0,
+	MaxPiggybackTxsPerEntityPerEvent: 0,
 }
 
 // --- ABI encoding / decoding (hand-rolled for determinism) ---
@@ -195,7 +195,7 @@ func parseGetPriorityResult(data []byte) (Priority, error) {
 }
 
 // parseGetPriorityConfigResult decodes the
-// (uint256 maxGasPerEntityPerBlock, uint256 maxTxsPerEntityPerEvent) response of
+// (uint256 maxGasPerEntityPerBlock, uint256 maxPiggybackTxsPerEntityPerEvent) response of
 // the getPriorityConfig call. The result must be exactly two 32-byte words, each
 // fitting into a uint64.
 func parseGetPriorityConfigResult(data []byte) (Config, error) {
@@ -209,6 +209,6 @@ func parseGetPriorityConfigResult(data []byte) (Config, error) {
 	}
 	return Config{
 		MaxGasPerEntityPerBlock: binary.BigEndian.Uint64(data[24:32]),
-		MaxTxsPerEntityPerEvent: binary.BigEndian.Uint64(data[56:64]),
+		MaxPiggybackTxsPerEntityPerEvent: binary.BigEndian.Uint64(data[56:64]),
 	}, nil
 }
