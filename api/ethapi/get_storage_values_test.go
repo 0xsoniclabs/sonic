@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package rpctest
+package ethapi
 
 import (
 	"encoding/json"
@@ -23,13 +23,11 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/api/rpctest"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 )
-
-const maxGetStorageSlots = 1024
 
 var (
 	storageAddr1 = common.HexToAddress("0x1111111111111111111111111111111111111111")
@@ -47,23 +45,23 @@ var (
 
 // newStorageValuesAPI builds a fake backend with two accounts holding
 // pre-defined storage and returns the block chain API handler on top of it.
-func newStorageValuesAPI(t *testing.T) *ethapi.PublicBlockChainAPI {
-	be := NewBackendBuilder(t).
-		WithAccount(storageAddr1, AccountState{
+func newStorageValuesAPI(t *testing.T) *PublicBlockChainAPI {
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(storageAddr1, rpctest.AccountState{
 			Balance: big.NewInt(1e18),
 			Store: map[common.Hash]common.Hash{
 				slot0: val0,
 				slot1: val1,
 			},
 		}).
-		WithAccount(storageAddr2, AccountState{
+		WithAccount(storageAddr2, rpctest.AccountState{
 			Balance: big.NewInt(1e18),
 			Store: map[common.Hash]common.Hash{
 				slot2: val2,
 			},
 		}).
 		Build()
-	return ethapi.NewPublicBlockChainAPI(be)
+	return NewPublicBlockChainAPI(be)
 }
 
 func TestGetStorageValues_ReturnsRequestedValues(t *testing.T) {

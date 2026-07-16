@@ -17,13 +17,9 @@
 package ethapi
 
 import (
-	"context"
-
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // BlockOverrides is a set of header fields to override.
@@ -67,38 +63,4 @@ func (diff *BlockOverrides) apply(blockCtx *vm.BlockContext) {
 	if diff.BlobBaseFee != nil {
 		blockCtx.BlobBaseFee = diff.BlobBaseFee.ToInt()
 	}
-}
-
-// GetBlockContext returns a new vm.BlockContext based on the given header and backend
-func GetBlockContext(ctx context.Context, backend Backend, header *evmcore.EvmHeader) vm.BlockContext {
-	chain := chainContext{
-		ctx: ctx,
-		b:   backend,
-	}
-	return evmcore.NewEVMBlockContext(header, &chain, nil)
-}
-
-// chainContextBackend provides methods required to implement ChainContext.
-type chainContextBackend interface {
-	HeaderByNumber(context.Context, rpc.BlockNumber) (*evmcore.EvmHeader, error)
-}
-
-// chainContext is an implementation of core.chainContext. It's main use-case
-// is instantiating a vm.BlockContext without having access to the BlockChain object.
-type chainContext struct {
-	b   chainContextBackend
-	ctx context.Context
-}
-
-func (context *chainContext) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
-	// This method is called to get the hash for a block number when executing the BLOCKHASH
-	// opcode. Hence no need to search for non-canonical blocks.
-	header, err := context.b.HeaderByNumber(context.ctx, rpc.BlockNumber(number))
-	if header == nil || err != nil {
-		return nil
-	}
-	if header.Hash != hash {
-		return nil
-	}
-	return header
 }

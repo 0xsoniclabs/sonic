@@ -34,7 +34,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/api/backend"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -201,7 +201,7 @@ func defaultBlockHistory() []Block {
 // implemented, the test will panic. ethapi.Backend methods are to be implemented
 // on demand as the tests require more of them.
 type fakeBackend struct {
-	ethapi.Backend
+	backend.Backend
 
 	chainID      uint64
 	state        *testState
@@ -233,7 +233,7 @@ func (b *fakeBackend) GetEVM(
 	blockContext *vm.BlockContext,
 ) (*vm.EVM, func() error, error) {
 	if blockContext == nil {
-		blkctx := ethapi.GetBlockContext(ctx, b, header)
+		blkctx := backend.GetBlockContext(ctx, b, header)
 		blockContext = &blkctx
 	}
 	chainConfig := b.ChainConfig(idx.Block(blockContext.BlockNumber.Uint64()))
