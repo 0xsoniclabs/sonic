@@ -48,9 +48,6 @@ import (
 // Known missing APIs which are not implemented in Sonic
 var (
 	knownMissingAPIs = namespaceMap{
-		"eth": {
-			"GetStorageValues": struct{}{},
-		},
 		"debug": {
 			"DbAncient":                   struct{}{},
 			"DbAncients":                  struct{}{},

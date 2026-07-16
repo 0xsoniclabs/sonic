@@ -48,6 +48,19 @@ const (
 	errCodeSendRawSyncNonceGap = 6
 )
 
+// invalidParamsError is a JSON-RPC error indicating invalid request parameters.
+type invalidParamsError struct{ message string }
+
+func (e *invalidParamsError) Error() string  { return e.message }
+func (e *invalidParamsError) ErrorCode() int { return errCodeInvalidParams }
+
+// clientLimitExceededError is a JSON-RPC error indicating that a
+// client-configured request limit was exceeded.
+type clientLimitExceededError struct{ message string }
+
+func (e *clientLimitExceededError) Error() string  { return e.message }
+func (e *clientLimitExceededError) ErrorCode() int { return errCodeClientLimitExceeded }
+
 // simInvalidTxError is an error type for invalid transactions
 // in simulation, with an associated error code for JSON-RPC responses.
 type simInvalidTxError struct {
