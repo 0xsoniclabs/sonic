@@ -185,6 +185,67 @@ func TestEthApiBackend_proposeTransactionsInternal_ReturnsEmissionIssue(t *testi
 	require.ErrorIs(t, backend.proposeTransactionsInternal(nil, emitter), issue)
 }
 
+func TestEthApiBackend_AddTransactions_ReturnsErrorWhenTestOnlyApiDisabled(t *testing.T) {
+	backend := &EthAPIBackend{
+		svc: &Service{
+			config: Config{EnableTestOnlyApi: false},
+		},
+	}
+
+	err := backend.AddTransactions(nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "disabled")
+}
+
+func TestEthApiBackend_AddTransactions_ReturnsErrorWhenTxPoolMissing(t *testing.T) {
+	backend := &EthAPIBackend{
+		svc: &Service{
+			config: Config{EnableTestOnlyApi: true},
+		},
+	}
+
+	err := backend.AddTransactions(nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no transaction pool")
+}
+
+func TestEthApiBackend_AddTransactions_ForwardsTransactionsToPool(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	pool := NewMockTxPool(ctrl)
+
+	backend := &EthAPIBackend{
+		svc: &Service{
+			config: Config{EnableTestOnlyApi: true},
+			txpool: pool,
+		},
+	}
+
+	txs := []*types.Transaction{
+		types.NewTx(&types.LegacyTx{Nonce: 1}),
+		types.NewTx(&types.LegacyTx{Nonce: 2}),
+	}
+
+	pool.EXPECT().AddLocals(types.Transactions(txs)).Return([]error{nil, nil})
+	require.NoError(t, backend.AddTransactions(txs))
+}
+
+func TestEthApiBackend_AddTransactions_ReturnsPoolRejections(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	pool := NewMockTxPool(ctrl)
+
+	backend := &EthAPIBackend{
+		svc: &Service{
+			config: Config{EnableTestOnlyApi: true},
+			txpool: pool,
+		},
+	}
+
+	issue := fmt.Errorf("injected test issue")
+
+	pool.EXPECT().AddLocals(gomock.Any()).Return([]error{nil, issue})
+	require.ErrorIs(t, backend.AddTransactions(nil), issue)
+}
+
 func TestEthApiBackend_epochWithDefault_RejectsEpochsAboveUint32Max(t *testing.T) {
 	const currentEpoch = idx.Epoch(1000)
 
