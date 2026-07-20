@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/proxy"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/proxy"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
