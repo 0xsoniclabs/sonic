@@ -17,6 +17,7 @@
 package txtrace
 
 import (
+	"encoding/json"
 	"errors"
 	"math/big"
 	"strings"
@@ -74,15 +75,30 @@ type ActionTrace struct {
 // account interaction
 type AddressAction struct {
 	CallType      *string         `json:"callType,omitempty"`
-	From          *common.Address `json:"from"`
+	From          *common.Address `json:"from,omitempty"`
 	To            *common.Address `json:"to,omitempty"`
-	Value         hexutil.Big     `json:"value"`
-	Gas           hexutil.Uint64  `json:"gas"`
+	Value         *hexutil.Big    `json:"value,omitempty"`
+	Gas           *hexutil.Uint64 `json:"gas,omitempty"`
 	Init          *hexutil.Bytes  `json:"init,omitempty"`
 	Input         *hexutil.Bytes  `json:"input,omitempty"`
 	Address       *common.Address `json:"address,omitempty"`
-	RefundAddress *common.Address `json:"refund_address,omitempty"`
+	RefundAddress *common.Address `json:"refundAddress,omitempty"`
 	Balance       *hexutil.Big    `json:"balance,omitempty"`
+}
+
+// MarshalJSON serializes the trace in Parity format: suicide traces always
+// carry an explicit "result": null, while other traces embed the result
+// object on success and omit the key entirely on error.
+func (trace ActionTrace) MarshalJSON() ([]byte, error) {
+	type actionTrace ActionTrace // drops this method to avoid recursion
+	plain := actionTrace(trace)
+	if trace.TraceType == SELFDESTRUCT {
+		return json.Marshal(&struct {
+			*actionTrace
+			Result *TraceActionResult `json:"result"`
+		}{actionTrace: &plain})
+	}
+	return json.Marshal(&plain)
 }
 
 // TraceActionResult holds information related to result of the
@@ -118,11 +134,12 @@ func (tr *TraceStructLogger) NewActionTrace(tType string) *ActionTrace {
 
 // NewAddressAction creates specific information about trace addresses
 func NewAddressAction(from common.Address, gas uint64, data []byte, to *common.Address, value hexutil.Big, callType *string) *AddressAction {
+	gasHex := hexutil.Uint64(gas)
 	action := AddressAction{
 		From:     &from,
 		To:       to,
-		Gas:      hexutil.Uint64(gas),
-		Value:    value,
+		Gas:      &gasHex,
+		Value:    &value,
 		CallType: callType,
 	}
 	inputHex := hexutil.Bytes(common.CopyBytes(data))
@@ -201,11 +218,14 @@ func (tr *TraceStructLogger) OnEnter(depth int, typ byte, from common.Address, t
 	case vm.SELFDESTRUCT:
 
 		trace = tr.NewActionTrace(SELFDESTRUCT)
-		traceAction := NewAddressAction(from, gas, input, nil, hexutil.Big(*value), nil)
-		traceAction.Address = &from
-		traceAction.RefundAddress = &to
-		traceAction.Balance = (*hexutil.Big)(value)
-		trace.Action = traceAction
+		// Parity suicide actions carry only address, refundAddress and balance,
+		// and their result is an explicit null.
+		trace.Result = nil
+		trace.Action = &AddressAction{
+			Address:       &from,
+			RefundAddress: &to,
+			Balance:       (*hexutil.Big)(value),
+		}
 	}
 	if depth == 0 {
 		tr.rootTrace.Actions = append(tr.rootTrace.Actions, *trace)
