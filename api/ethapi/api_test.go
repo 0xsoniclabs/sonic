@@ -398,7 +398,7 @@ func TestReplayInternalTransaction(t *testing.T) {
 	require.NoError(t, err, "must be possible to trace internal transaction on index 0 and 1 with zero gas price")
 }
 
-func TestBlockOverrides(t *testing.T) {
+func TestBlockStateOverrides(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -418,6 +418,7 @@ func TestBlockOverrides(t *testing.T) {
 	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
 	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().HeaderByNumber(any, any).Return(&block.EvmHeader, nil)
+	mockState.EXPECT().SetBalance(common.Address{1}, uint256.NewInt(123)).AnyTimes() // state override
 	setExpectedStateCalls(mockState)
 
 	expectedBlockCtx := &vm.BlockContext{
@@ -436,10 +437,18 @@ func TestBlockOverrides(t *testing.T) {
 		BaseFee: (*hexutil.Big)(big.NewInt(1234)),
 	}
 
+	overwrittenBalance := (*hexutil.U256)(uint256.NewInt(123))
+	stateOverrides := &StateOverride{
+		common.Address{1}: OverrideAccount{
+			Balance: &overwrittenBalance,
+		},
+	}
+
 	// Check block overrides on debug api with debug_traceCall rpc function
 	apiDebug := NewPublicDebugAPI(mockBackend, 10000, 10000)
 	traceConfig := &TraceCallConfig{
 		BlockOverrides: blockOverrides,
+		StateOverrides: stateOverrides,
 	}
 
 	rpcBlkNr := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr))
@@ -450,10 +459,10 @@ func TestBlockOverrides(t *testing.T) {
 	// Check block overrides on eth api with eth_call and eth_estimateGas rpc function
 	apiEth := NewPublicBlockChainAPI(mockBackend)
 
-	_, err = apiEth.Call(context.Background(), getTxArgs(t), rpcBlkNr, nil, blockOverrides)
+	_, err = apiEth.Call(context.Background(), getTxArgs(t), rpcBlkNr, stateOverrides, blockOverrides)
 	require.NoError(t, err, "debug api must be able to override block number and base fee")
 
-	_, err = apiEth.EstimateGas(context.Background(), getTxArgs(t), &rpcBlkNr, nil, blockOverrides)
+	_, err = apiEth.EstimateGas(context.Background(), getTxArgs(t), &rpcBlkNr, stateOverrides, blockOverrides)
 	require.NoError(t, err, "estimate gas must be able to override block number and base fee")
 }
 
