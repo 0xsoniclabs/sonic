@@ -2489,16 +2489,6 @@ func (api *PublicDebugAPI) GetBlockRlp(ctx context.Context, number uint64) (stri
 	return fmt.Sprintf("%x", encoded), nil
 }
 
-// TestSignCliqueBlock fetches the given block number, and attempts to sign it as a clique header with the
-// given address, returning the address of the recovered signature
-//
-// This is a temporary method to debug the externalsigner integration,
-func (api *PublicDebugAPI) TestSignCliqueBlock(ctx context.Context, address common.Address, number uint64) (common.Address, error) {
-	// This is a user-facing error, so we want to provide a clear message.
-	//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
-	return common.Address{}, errors.New("Clique isn't supported")
-}
-
 // PrintBlock retrieves a block and returns its pretty printed form.
 func (api *PublicDebugAPI) PrintBlock(ctx context.Context, number uint64) (string, error) {
 	block, err := api.b.BlockByNumber(ctx, rpc.BlockNumber(number))
@@ -2845,12 +2835,12 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 	defer statedb.Release()
 
 	blockCtx := GetBlockContext(ctx, api.b, &block.EvmHeader)
-	if config.BlockOverrides != nil {
+	if config != nil && config.BlockOverrides != nil {
 		config.BlockOverrides.apply(&blockCtx)
 	}
 
 	// Apply state overrides
-	if config != nil {
+	if config != nil && config.StateOverrides != nil {
 		if err := config.StateOverrides.Apply(statedb); err != nil {
 			return nil, err
 		}
@@ -2925,7 +2915,7 @@ func NewPrivateDebugAPI(b Backend) *PrivateDebugAPI {
 
 // ChaindbProperty returns leveldb properties of the key-value database.
 func (api *PrivateDebugAPI) ChaindbProperty(property string) (string, error) {
-	return "", errors.New("carmen database does provide db properties")
+	return "", errors.New("carmen database does not provide db properties")
 }
 
 // ChaindbCompact flattens the entire key-value database into a single level,
