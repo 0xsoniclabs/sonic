@@ -48,13 +48,45 @@ func (a *TestApi) ProposeTransactions(
 	if !a.backend.IsTestOnlyApiEnabled() {
 		return fmt.Errorf("test-only API is not enabled")
 	}
+	txs, err := decodeTransactions(transactions)
+	if err != nil {
+		return err
+	}
+	return a.backend.ProposeTransactions(txs)
+}
+
+// AddTransactions decodes and adds a batch of transactions to the node's
+// transaction pool in a single call, so they all become available for event
+// emission at the same time. Unlike ProposeTransactions it does not bypass the
+// pool: normal validation and priority-based ordering still apply.
+//
+// This method is intended to be used in integration tests that need a whole
+// batch to reach the pool atomically, avoiding the race where the emitter
+// builds an event before every transaction submitted via separate RPCs has
+// arrived.
+func (a *TestApi) AddTransactions(
+	_ context.Context,
+	transactions [][]byte,
+) error {
+	if !a.backend.IsTestOnlyApiEnabled() {
+		return fmt.Errorf("test-only API is not enabled")
+	}
+	txs, err := decodeTransactions(transactions)
+	if err != nil {
+		return err
+	}
+	return a.backend.AddTransactions(txs)
+}
+
+// decodeTransactions RLP-decodes a batch of transactions.
+func decodeTransactions(transactions [][]byte) (types.Transactions, error) {
 	txs := make(types.Transactions, len(transactions))
 	for i, cur := range transactions {
 		var tx types.Transaction
 		if err := rlp.DecodeBytes(cur, &tx); err != nil {
-			return err
+			return nil, err
 		}
 		txs[i] = &tx
 	}
-	return a.backend.ProposeTransactions(txs)
+	return txs, nil
 }

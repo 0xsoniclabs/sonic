@@ -40,6 +40,20 @@ func (m *MockBackend) EXPECT() *MockBackendMockRecorder {
 	return m.recorder
 }
 
+// AddTransactions mocks base method.
+func (m *MockBackend) AddTransactions(txs types.Transactions) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddTransactions", txs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddTransactions indicates an expected call of AddTransactions.
+func (mr *MockBackendMockRecorder) AddTransactions(txs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddTransactions", reflect.TypeOf((*MockBackend)(nil).AddTransactions), txs)
+}
+
 // IsTestOnlyApiEnabled mocks base method.
 func (m *MockBackend) IsTestOnlyApiEnabled() bool {
 	m.ctrl.T.Helper()

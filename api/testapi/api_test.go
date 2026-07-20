@@ -17,6 +17,7 @@
 package testapi
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -26,64 +27,92 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestTestApi_ProposeTransactions_FailsIfNotEnabled(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	backend := NewMockBackend(ctrl)
-	backend.EXPECT().IsTestOnlyApiEnabled().Return(false)
-
-	api := &TestApi{backend: backend}
-
-	err := api.ProposeTransactions(t.Context(), nil)
-	require.ErrorContains(t, err, "test-only API is not enabled")
+var methods = map[string]struct {
+	call   func(*TestApi, context.Context, [][]byte) error
+	expect func(*MockBackend) *gomock.Call
+}{
+	"ProposeTransactions": {
+		call:   (*TestApi).ProposeTransactions,
+		expect: func(b *MockBackend) *gomock.Call { return b.EXPECT().ProposeTransactions(gomock.Any()) },
+	},
+	"AddTransactions": {
+		call:   (*TestApi).AddTransactions,
+		expect: func(b *MockBackend) *gomock.Call { return b.EXPECT().AddTransactions(gomock.Any()) },
+	},
 }
 
-func TestTestApi_ProposeTransactions_FailsOnDecodingError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	backend := NewMockBackend(ctrl)
-	backend.EXPECT().IsTestOnlyApiEnabled().Return(true)
+func TestTestApi_FailsIfNotEnabled(t *testing.T) {
+	for name, m := range methods {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			backend := NewMockBackend(ctrl)
+			backend.EXPECT().IsTestOnlyApiEnabled().Return(false)
 
-	data := [][]byte{[]byte("not a valid RLP encoding")}
-
-	api := &TestApi{backend: backend}
-	err := api.ProposeTransactions(t.Context(), data)
-	require.ErrorContains(t, err, "typed transaction too short")
+			api := &TestApi{backend: backend}
+			err := m.call(api, t.Context(), nil)
+			require.ErrorContains(t, err, "test-only API is not enabled")
+		})
+	}
 }
 
-func TestTestApi_ProposeTransactions_ForwardsTransactionsToBackend(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	backend := NewMockBackend(ctrl)
-	backend.EXPECT().IsTestOnlyApiEnabled().Return(true)
+func TestTestApi_FailsOnDecodingError(t *testing.T) {
+	for name, m := range methods {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			backend := NewMockBackend(ctrl)
+			backend.EXPECT().IsTestOnlyApiEnabled().Return(true)
 
-	tx := types.NewTx(&types.LegacyTx{Nonce: 1})
-	txData, err := rlp.EncodeToBytes(tx)
-	require.NoError(t, err)
+			data := [][]byte{[]byte("not a valid RLP encoding")}
 
-	want := []*types.Transaction{tx}
-	data := [][]byte{txData}
-
-	backend.EXPECT().ProposeTransactions(gomock.Any()).DoAndReturn(
-		func(got []*types.Transaction) error {
-			require.Equal(t, len(want), len(got))
-			for i := range want {
-				require.Equal(t, want[i].Hash(), got[i].Hash())
-			}
-			return nil
-		},
-	)
-
-	api := &TestApi{backend: backend}
-	require.NoError(t, api.ProposeTransactions(t.Context(), data))
+			api := &TestApi{backend: backend}
+			err := m.call(api, t.Context(), data)
+			require.ErrorContains(t, err, "typed transaction too short")
+		})
+	}
 }
 
-func TestTestApi_ProposeTransactions_ReturnsEncounteredIssueDuringProposing(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	backend := NewMockBackend(ctrl)
-	backend.EXPECT().IsTestOnlyApiEnabled().Return(true)
+func TestTestApi_ForwardsTransactionsToBackend(t *testing.T) {
+	for name, m := range methods {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			backend := NewMockBackend(ctrl)
+			backend.EXPECT().IsTestOnlyApiEnabled().Return(true)
 
-	issue := fmt.Errorf("introduced test-issue")
+			tx := types.NewTx(&types.LegacyTx{Nonce: 1})
+			txData, err := rlp.EncodeToBytes(tx)
+			require.NoError(t, err)
 
-	backend.EXPECT().ProposeTransactions(gomock.Any()).Return(issue)
+			want := []*types.Transaction{tx}
+			data := [][]byte{txData}
 
-	api := &TestApi{backend: backend}
-	require.ErrorIs(t, api.ProposeTransactions(t.Context(), nil), issue)
+			m.expect(backend).DoAndReturn(
+				func(got []*types.Transaction) error {
+					require.Equal(t, len(want), len(got))
+					for i := range want {
+						require.Equal(t, want[i].Hash(), got[i].Hash())
+					}
+					return nil
+				},
+			)
+
+			api := &TestApi{backend: backend}
+			require.NoError(t, m.call(api, t.Context(), data))
+		})
+	}
+}
+
+func TestTestApi_ReturnsEncounteredIssueFromBackend(t *testing.T) {
+	for name, m := range methods {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			backend := NewMockBackend(ctrl)
+			backend.EXPECT().IsTestOnlyApiEnabled().Return(true)
+
+			issue := fmt.Errorf("introduced test-issue")
+			m.expect(backend).Return(issue)
+
+			api := &TestApi{backend: backend}
+			require.ErrorIs(t, m.call(api, t.Context(), nil), issue)
+		})
+	}
 }

@@ -18,6 +18,7 @@ package gossip
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -657,6 +658,18 @@ func (b *EthAPIBackend) ProposeTransactions(
 		return fmt.Errorf("no emitters available to propose transactions")
 	}
 	return b.proposeTransactionsInternal(txs, b.svc.emitters[0])
+}
+
+func (b *EthAPIBackend) AddTransactions(
+	txs types.Transactions,
+) error {
+	if !b.IsTestOnlyApiEnabled() {
+		return fmt.Errorf("this feature is disabled")
+	}
+	if b.svc.txpool == nil {
+		return fmt.Errorf("no transaction pool available to add transactions")
+	}
+	return stderrors.Join(b.svc.txpool.AddLocals(txs)...)
 }
 
 func (b *EthAPIBackend) proposeTransactionsInternal(

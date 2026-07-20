@@ -1201,6 +1201,16 @@ func (s *Session) TrySendAll(tx []*types.Transaction) ([]common.Hash, map[common
 	return accepted, rejected, err
 }
 
+// SendAllToPool adds the given transactions to the node's transaction pool in a
+// single batch RPC, so they all become available for event emission at the same
+// time. Unlike SendAll, which submits each transaction via a separate parallel
+// RPC, this avoids the race where the emitter builds an event before the whole
+// batch has reached the pool. The transactions are ordered by the emitter as
+// usual. It returns the transaction hashes in input order.
+func (s *Session) SendAllToPool(ctx context.Context, txs []*types.Transaction) ([]common.Hash, error) {
+	return s.callWithEncodedTxs(ctx, "test_addTransactions", txs)
+}
+
 func (s *Session) ForceEmit(
 	ctx context.Context,
 	tx *types.Transaction,
@@ -1213,6 +1223,10 @@ func (s *Session) ForceEmit(
 }
 
 func (s *Session) ForceEmitAll(ctx context.Context, txs []*types.Transaction) ([]common.Hash, error) {
+	return s.callWithEncodedTxs(ctx, "test_proposeTransactions", txs)
+}
+
+func (s *Session) callWithEncodedTxs(ctx context.Context, method string, txs []*types.Transaction) ([]common.Hash, error) {
 	client, err := s.GetClient()
 	if err != nil {
 		return nil, err
@@ -1228,8 +1242,7 @@ func (s *Session) ForceEmitAll(ctx context.Context, txs []*types.Transaction) ([
 		data[i] = encoded
 	}
 
-	err = client.Client().CallContext(ctx, nil, "test_proposeTransactions", data)
-	if err != nil {
+	if err := client.Client().CallContext(ctx, nil, method, data); err != nil {
 		return nil, err
 	}
 

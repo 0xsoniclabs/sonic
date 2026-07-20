@@ -33,4 +33,10 @@ type Backend interface {
 	// This method is intended to be used in integration tests to simulate the
 	// malicious behavior of a validator proposing invalid transactions.
 	ProposeTransactions(txs types.Transactions) error
+
+	// AddTransactions adds a batch of transactions to the node's transaction
+	// pool in a single call, so they all become available for event emission at
+	// the same time. In contrast to ProposeTransactions the transactions are
+	// not proposed directly but validated and ordered by the emitter as usual.
+	AddTransactions(txs types.Transactions) error
 }
