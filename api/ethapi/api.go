@@ -2386,16 +2386,6 @@ func (api *PublicDebugAPI) GetBlockRlp(ctx context.Context, number uint64) (stri
 	return fmt.Sprintf("%x", encoded), nil
 }
 
-// TestSignCliqueBlock fetches the given block number, and attempts to sign it as a clique header with the
-// given address, returning the address of the recovered signature
-//
-// This is a temporary method to debug the externalsigner integration,
-func (api *PublicDebugAPI) TestSignCliqueBlock(ctx context.Context, address common.Address, number uint64) (common.Address, error) {
-	// This is a user-facing error, so we want to provide a clear message.
-	//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
-	return common.Address{}, errors.New("Clique isn't supported")
-}
-
 // PrintBlock retrieves a block and returns its pretty printed form.
 func (api *PublicDebugAPI) PrintBlock(ctx context.Context, number uint64) (string, error) {
 	block, err := api.b.BlockByNumber(ctx, rpc.BlockNumber(number))
