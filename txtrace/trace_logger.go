@@ -224,7 +224,7 @@ func (tr *TraceStructLogger) OnEnter(depth int, typ byte, from common.Address, t
 		trace.Action = &AddressAction{
 			Address:       &from,
 			RefundAddress: &to,
-			Balance:       (*hexutil.Big)(value),
+			Balance:       (*hexutil.Big)(new(big.Int).Set(value)),
 		}
 	}
 	if depth == 0 {
