@@ -2925,7 +2925,7 @@ func NewPrivateDebugAPI(b Backend) *PrivateDebugAPI {
 
 // ChaindbProperty returns leveldb properties of the key-value database.
 func (api *PrivateDebugAPI) ChaindbProperty(property string) (string, error) {
-	return "", errors.New("carmen database does provide db properties")
+	return "", errors.New("carmen database does not provide db properties")
 }
 
 // ChaindbCompact flattens the entire key-value database into a single level,
