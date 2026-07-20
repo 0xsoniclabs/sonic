@@ -71,12 +71,12 @@ func (l *ErrorLock) Permanent(err error) {
 			"originalErr", err,
 			"writeErr", writeErr,
 		)
-	} else {
-		// User facing error message, so we want to provide a clear message.
-		fmt.Fprintf(os.Stderr, "Node is permanently stopping due to an issue. Please"+
-			" fix the issue and then delete file \"%s\". Error message:\n%s",
-			eLockPath, err.Error())
 	}
+
+	// User facing error message, so we want to provide a clear message.
+	fmt.Fprintf(os.Stderr, "Node is permanently stopping due to an issue. Please"+
+		" fix the issue and then delete file \"%s\". Error message:\n%s",
+		eLockPath, err.Error())
 	debug.PrintStack()
 
 	// distinct exit code to avoid silently restarting into the same unsafe state
