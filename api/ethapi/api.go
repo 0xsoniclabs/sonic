@@ -2742,12 +2742,12 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 	defer statedb.Release()
 
 	blockCtx := GetBlockContext(ctx, api.b, &block.EvmHeader)
-	if config.BlockOverrides != nil {
+	if config != nil && config.BlockOverrides != nil {
 		config.BlockOverrides.apply(&blockCtx)
 	}
 
 	// Apply state overrides
-	if config != nil {
+	if config != nil && config.StateOverrides != nil {
 		if err := config.StateOverrides.Apply(statedb); err != nil {
 			return nil, err
 		}
