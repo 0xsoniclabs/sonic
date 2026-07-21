@@ -17,7 +17,6 @@
 package txtrace
 
 import (
-	"bytes"
 	"errors"
 	"math/big"
 
@@ -52,7 +51,8 @@ type VmExecutedOperation struct {
 	Store *StorageDiff  `json:"store"`
 }
 
-// MemoryDiff records the full VM memory snapshot at opcode execution time.
+// MemoryDiff records the memory region written (or, for MLOAD, read) by an
+// opcode, matching the Parity/OpenEthereum vmTrace "mem" semantics.
 type MemoryDiff struct {
 	Off  uint64        `json:"off"`
 	Data hexutil.Bytes `json:"data"`
@@ -66,11 +66,26 @@ type StorageDiff struct {
 
 // vmTraceFrame is the call frame state maintained by VmTraceLogger.
 type vmTraceFrame struct {
-	trace       *VmTrace
-	lastOpIdx   int       // index of the most recently appended op, -1 if none
-	lastOp      vm.OpCode // opcode at lastOpIdx
-	memSnapshot []byte    // memory snapshot taken at OnOpcode time for the last op
+	trace     *VmTrace
+	lastOpIdx int       // index of the most recently appended op, -1 if none
+	lastOp    vm.OpCode // opcode at lastOpIdx
+	showMem   bool      // lastOp touches a memory region to be reported
+	memOff    uint64    // offset of the memory region touched by lastOp
+	memLen    uint64    // length of the memory region touched by lastOp
 }
+
+// vmTraceSizeLimit caps the cumulative size of data retained in a single
+// vmTrace (memory regions, code, per-op overhead). Tracing aborts with an
+// error once the limit is exceeded, protecting the node from OOM on
+// pathological traces.
+const vmTraceSizeLimit = 256 << 20 // 256 MB
+
+// vmTraceOpOverhead approximates the fixed per-operation memory footprint
+// counted against vmTraceSizeLimit.
+const vmTraceOpOverhead = 64
+
+// errVmTraceTooLarge is returned by GetResult when the trace exceeded vmTraceSizeLimit.
+var errVmTraceTooLarge = errors.New("vmTrace result exceeds size limit")
 
 // VmTraceLogger implements VM tracing hooks to build vmTrace.
 type VmTraceLogger struct {
@@ -78,6 +93,8 @@ type VmTraceLogger struct {
 	result       *VmTrace
 	stateDB      tracing.StateDB
 	pendingStore *StorageDiff // latest storage write, attributed to the current op
+	traceSize    uint64       // approximate retained bytes, checked against vmTraceSizeLimit
+	err          error        // set when the trace was aborted (size limit exceeded)
 }
 
 // NewVmTraceLogger creates a new VmTraceLogger.
@@ -97,14 +114,34 @@ func (l *VmTraceLogger) Hooks() *tracing.Hooks {
 	}
 }
 
-// GetResult returns the completed vmTrace after execution.
-func (l *VmTraceLogger) GetResult() *VmTrace {
-	return l.result
+// GetResult returns the completed vmTrace after execution, or an error when
+// the trace was aborted because it exceeded the size limit.
+func (l *VmTraceLogger) GetResult() (*VmTrace, error) {
+	if l.err != nil {
+		return nil, l.err
+	}
+	return l.result, nil
+}
+
+// addSize accounts n bytes against the trace size limit. When the limit is
+// exceeded, the trace is aborted: the error is recorded and all accumulated
+// data is released so it can be garbage collected.
+func (l *VmTraceLogger) addSize(n uint64) {
+	l.traceSize += n
+	if l.traceSize > vmTraceSizeLimit {
+		l.err = errVmTraceTooLarge
+		l.traceStack = nil
+		l.result = nil
+		l.pendingStore = nil
+	}
 }
 
 // OnStorageChange records a storage write so it can be attributed to the
 // currently executing opcode.
 func (l *VmTraceLogger) OnStorageChange(_ common.Address, slot common.Hash, _ common.Hash, newVal common.Hash) {
+	if l.err != nil {
+		return
+	}
 	l.pendingStore = &StorageDiff{Key: slot, Val: newVal}
 }
 
@@ -115,6 +152,9 @@ func (l *VmTraceLogger) onTxStart(vmCtx *tracing.VMContext, _ *types.Transaction
 
 // onEnter creates a new VmTrace frame for each call or create.
 func (l *VmTraceLogger) onEnter(depth int, typ byte, _ common.Address, to common.Address, input []byte, gas uint64, _ *big.Int) {
+	if l.err != nil {
+		return
+	}
 	var (
 		code    []byte
 		noTrace = false
@@ -143,6 +183,11 @@ func (l *VmTraceLogger) onEnter(depth int, typ byte, _ common.Address, to common
 		lastOpIdx: -1,
 	}
 
+	l.addSize(uint64(len(code)))
+	if l.err != nil {
+		return
+	}
+
 	// Link this trace to the parent frame's last operation as a sub-trace.
 	if depth > 0 && len(l.traceStack) > 0 {
 		parent := l.traceStack[len(l.traceStack)-1]
@@ -156,7 +201,7 @@ func (l *VmTraceLogger) onEnter(depth int, typ byte, _ common.Address, to common
 
 // onExit finalizes the exiting frame's last operation and pops the frame.
 func (l *VmTraceLogger) onExit(depth int, _ []byte, _ uint64, _ error, _ bool) {
-	if len(l.traceStack) == 0 {
+	if l.err != nil || len(l.traceStack) == 0 {
 		return
 	}
 	frame := l.traceStack[len(l.traceStack)-1]
@@ -185,7 +230,7 @@ func (l *VmTraceLogger) onExit(depth int, _ []byte, _ uint64, _ error, _ bool) {
 // It finalizes the previous op's Ex using the current post execution
 // state, then records a new operation entry for the current opcode.
 func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, _ []byte, _ int, _ error) {
-	if len(l.traceStack) == 0 {
+	if l.err != nil || len(l.traceStack) == 0 {
 		return
 	}
 	frame := l.traceStack[len(l.traceStack)-1]
@@ -197,13 +242,17 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 		if prevOp.Ex != nil {
 			prevOp.Ex.Push = computePushed(frame.lastOp, scope.StackData())
 			// scope.MemoryData() here is post-execution of the previous op.
-			// Compare against the pre-execution snapshot; only record a Mem diff
-			// when the opcode actually wrote to memory.
-			curMem := scope.MemoryData()
-			if !bytes.Equal(curMem, frame.memSnapshot) {
-				postMem := make([]byte, len(curMem))
-				copy(postMem, curMem)
-				prevOp.Ex.Mem = &MemoryDiff{Off: 0, Data: hexutil.Bytes(postMem)}
+			// Record only the memory region the previous op touched, matching
+			// the Parity/OpenEthereum "mem" semantics. For CALL-family ops this
+			// fires when the frame resumes after the sub-call, so the region
+			// holds the return data written to the caller's memory.
+			if frame.showMem && frame.memLen > 0 {
+				data := memoryRegion(scope.MemoryData(), frame.memOff, frame.memLen)
+				prevOp.Ex.Mem = &MemoryDiff{Off: frame.memOff, Data: data}
+				l.addSize(uint64(len(data)))
+				if l.err != nil {
+					return
+				}
 			}
 			if l.pendingStore != nil {
 				prevOp.Ex.Store = l.pendingStore
@@ -224,12 +273,60 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 	frame.lastOpIdx = len(frame.trace.Ops) - 1
 	frame.lastOp = vm.OpCode(op)
 
-	// Memory snapshot is taken here. For dynamic gas opcodes this is BEFORE memory
-	// expansion (the interpreter expands memory after firing OnOpcode), so the snapshot
-	// reflects the pre execution memory state of this opcode.
-	curMem := scope.MemoryData()
-	frame.memSnapshot = make([]byte, len(curMem))
-	copy(frame.memSnapshot, curMem)
+	// Determine the memory region this opcode will touch. The stack is
+	// pre-execution here, so operand offsets/lengths can be read from it.
+	frame.showMem, frame.memOff, frame.memLen = memTouchedRegion(vm.OpCode(op), scope.StackData())
+	l.addSize(vmTraceOpOverhead)
+}
+
+// stackBack returns the n-th element from the top of the stack (0 = top).
+func stackBack(st []uint256.Int, n int) *uint256.Int {
+	return &st[len(st)-1-n]
+}
+
+// memTouchedRegion returns the memory region reported for an opcode in the
+// Parity/OpenEthereum vmTrace format: the region written by the op (MLOAD is
+// the historical exception — Parity reports the region it reads). Offsets and
+// lengths come from the pre-execution stack. CREATE/CREATE2/SELFDESTRUCT
+// report no region, matching OpenEthereum.
+func memTouchedRegion(op vm.OpCode, st []uint256.Int) (show bool, off, size uint64) {
+	switch op {
+	case vm.MSTORE, vm.MLOAD:
+		if len(st) > 0 {
+			return true, stackBack(st, 0).Uint64(), 32
+		}
+	case vm.MSTORE8:
+		if len(st) > 0 {
+			return true, stackBack(st, 0).Uint64(), 1
+		}
+	case vm.RETURNDATACOPY, vm.CALLDATACOPY, vm.CODECOPY, vm.MCOPY:
+		if len(st) > 2 {
+			return true, stackBack(st, 0).Uint64(), stackBack(st, 2).Uint64()
+		}
+	case vm.EXTCODECOPY:
+		if len(st) > 3 {
+			return true, stackBack(st, 1).Uint64(), stackBack(st, 3).Uint64()
+		}
+	case vm.STATICCALL, vm.DELEGATECALL:
+		if len(st) > 5 {
+			return true, stackBack(st, 4).Uint64(), stackBack(st, 5).Uint64()
+		}
+	case vm.CALL, vm.CALLCODE:
+		if len(st) > 6 {
+			return true, stackBack(st, 5).Uint64(), stackBack(st, 6).Uint64()
+		}
+	}
+	return false, 0, 0
+}
+
+// memoryRegion copies [off, off+size) from mem, zero-padding any part that
+// lies beyond the current memory size.
+func memoryRegion(mem []byte, off, size uint64) hexutil.Bytes {
+	data := make([]byte, size)
+	if off < uint64(len(mem)) {
+		copy(data, mem[off:])
+	}
+	return data
 }
 
 // onFault is called when an opcode causes a fault.
@@ -240,7 +337,7 @@ func (l *VmTraceLogger) onFault(_ uint64, _ byte, _, _ uint64, _ tracing.OpConte
 		// REVERT is a valid opcode execution; its Ex remains intact.
 		return
 	}
-	if len(l.traceStack) == 0 {
+	if l.err != nil || len(l.traceStack) == 0 {
 		return
 	}
 	frame := l.traceStack[len(l.traceStack)-1]
