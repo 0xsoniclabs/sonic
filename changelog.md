@@ -22,6 +22,9 @@ For optimal compatibility and stability, it is recommended to use the most recen
 ### Added
 
 ### Changed
+ - Changed the format of `SELFDESTRUCT` (suicide) traces returned by `trace_` RPC methods to match the Parity/OpenEthereum specification: the refund address field was renamed from `refund_address` to
+  `refundAddress`, suicide actions now carry only `address`, `refundAddress` and `balance`, and their `result` is an explicit `null`.
+ - Fields `from`, `value` and `gas` are no longer reported with zero values in `trace_` RPC results when not applicable to the trace type.
 
 ### Removed
 
