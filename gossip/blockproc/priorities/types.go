@@ -42,8 +42,8 @@ func (p Priority) IsPrioritized() bool {
 
 // Cmp compares two priorities by (level, weight), returning -1, 0, or +1.
 // A higher level takes precedence; weight breaks ties within the same non-zero
-// level. Non-prioritized entries (level zero) always compare equal regardless
-// of weight.
+// level. Two non-prioritized entries (level zero) always compare equal
+// regardless of weight.
 func (p Priority) Cmp(other Priority) int {
 	if c := cmp.Compare(p.Level, other.Level); c != 0 {
 		return c

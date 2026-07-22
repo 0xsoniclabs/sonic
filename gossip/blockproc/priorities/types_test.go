@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPriority_IsPrioritized_ChecksIfLevelIsGreater0(t *testing.T) {
+func TestPriority_IsPrioritized_ChecksIfLevelIsNonZero(t *testing.T) {
 	tests := map[string]struct {
 		prio Priority
 		want bool
