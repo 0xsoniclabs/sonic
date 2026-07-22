@@ -22,6 +22,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // index is a specialized indexes for log records storing and fetching.
@@ -47,8 +48,12 @@ func (tt *index) WrapTablesAsBatched() (unwrap func()) {
 	batchedLogrec := batched.Wrap(tt.table.Logrec)
 	tt.table.Logrec = batchedLogrec
 	return func() {
-		_ = batchedTopic.Flush()
-		_ = batchedLogrec.Flush()
+		if err := batchedTopic.Flush(); err != nil {
+			log.Error("Failed to flush topic batch", "err", err)
+		}
+		if err := batchedLogrec.Flush(); err != nil {
+			log.Error("Failed to flush logrec batch", "err", err)
+		}
 		tt.table = origTables
 	}
 }
@@ -104,6 +109,10 @@ func (tt *index) Push(recs ...*types.Log) error {
 }
 
 func (tt *index) Close() {
-	_ = tt.table.Topic.Close()
-	_ = tt.table.Logrec.Close()
+	if err := tt.table.Topic.Close(); err != nil {
+		log.Error("Failed to close topic table", "err", err)
+	}
+	if err := tt.table.Logrec.Close(); err != nil {
+		log.Error("Failed to close logrec table", "err", err)
+	}
 }

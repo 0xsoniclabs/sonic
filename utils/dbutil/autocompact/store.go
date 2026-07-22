@@ -104,8 +104,12 @@ func (s *Store) mayCompact(force bool) {
 
 	if force || s.cont.Size() > s.limit {
 		for _, r := range s.cont.Ranges() {
-			log.Debug("Autocompact", "name", s.name, "from", hexutils.BytesToHex(r.minKey), "to", hexutils.BytesToHex(r.maxKey))
-			_ = s.Compact(r.minKey, r.maxKey)
+			log.Debug("Autocompact", "name", s.name, "from",
+				hexutils.BytesToHex(r.minKey), "to", hexutils.BytesToHex(r.maxKey))
+			if err := s.Compact(r.minKey, r.maxKey); err != nil {
+				log.Error("Autocompact range failed", "name", s.name,
+					"from", hexutils.BytesToHex(r.minKey), "to", hexutils.BytesToHex(r.maxKey), "err", err)
+			}
 		}
 		s.cont.Reset()
 	}

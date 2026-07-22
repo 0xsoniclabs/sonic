@@ -190,7 +190,9 @@ func dropAllEpochDbs(producer kvdb.IterableDBProducer) error {
 			if err != nil {
 				return fmt.Errorf("unable to open db %s; %s", name, err)
 			}
-			_ = db.Close()
+			if err := db.Close(); err != nil {
+				log.Error("Failed to close db before drop", "name", name, "err", err)
+			}
 			db.Drop()
 		}
 	}
