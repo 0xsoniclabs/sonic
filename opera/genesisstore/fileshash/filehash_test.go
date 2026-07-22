@@ -18,6 +18,7 @@ package fileshash
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -26,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/utils/ioread"
@@ -237,4 +239,78 @@ func testFileHash_ReadWrite(t *testing.T, content []byte, expRoot hash.Hash, pie
 		err = ioread.ReadAll(oomReader, data)
 		require.Errorf(err, "hashed file requires too much memory")
 	}
+}
+
+// errTmp wraps a real file-backed TmpWriter and returns injected errors from
+// Close and Drop, so we can exercise the log branches in readFromTmp.
+type errTmp struct {
+	TmpWriter
+	closeErr error
+	dropErr  error
+}
+
+func (e *errTmp) Close() error {
+	_ = e.TmpWriter.Close()
+	return e.closeErr
+}
+
+func (e *errTmp) Drop() error {
+	_ = e.TmpWriter.Drop()
+	return e.dropErr
+}
+
+// captureLog redirects the default logger to a buffer for the duration of
+// the test and returns the buffer.
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	orig := log.Root()
+	log.SetDefault(log.NewLogger(log.NewTerminalHandler(buf, false)))
+	t.Cleanup(func() { log.SetDefault(orig) })
+	return buf
+}
+
+func newFileTmp(t *testing.T, dir string, i int) TmpWriter {
+	t.Helper()
+	fh, err := os.OpenFile(path.Join(dir, fmt.Sprintf("tmp%d.dat", i)), os.O_CREATE|os.O_RDWR, 0600)
+	require.NoError(t, err)
+	return dropableFile{ReadWriteSeeker: fh, Closer: fh, path: fh.Name()}
+}
+
+func TestWriter_ReadFromTmp_CloseErrorIsLogged(t *testing.T) {
+	dir := t.TempDir()
+	outFile, err := os.CreateTemp(dir, "out")
+	require.NoError(t, err)
+	defer func() { _ = outFile.Close() }()
+
+	buf := captureLog(t)
+	w := WrapWriter(outFile, 2, func(i int) TmpWriter {
+		return &errTmp{TmpWriter: newFileTmp(t, dir, i), closeErr: errors.New("boom-close")}
+	})
+	_, err = w.Write([]byte{1, 2})
+	require.NoError(t, err)
+	_, err = w.Flush()
+	require.NoError(t, err)
+
+	require.Contains(t, buf.String(), "failed to close tmp piece")
+	require.Contains(t, buf.String(), "boom-close")
+}
+
+func TestWriter_ReadFromTmp_DropErrorIsLogged(t *testing.T) {
+	dir := t.TempDir()
+	outFile, err := os.CreateTemp(dir, "out")
+	require.NoError(t, err)
+	defer func() { _ = outFile.Close() }()
+
+	buf := captureLog(t)
+	w := WrapWriter(outFile, 2, func(i int) TmpWriter {
+		return &errTmp{TmpWriter: newFileTmp(t, dir, i), dropErr: errors.New("boom-drop")}
+	})
+	_, err = w.Write([]byte{1, 2})
+	require.NoError(t, err)
+	_, err = w.Flush()
+	require.NoError(t, err)
+
+	require.Contains(t, buf.String(), "failed to drop tmp piece")
+	require.Contains(t, buf.String(), "boom-drop")
 }
