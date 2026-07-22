@@ -32,7 +32,11 @@ func OpenFile(path string, isSyncMode bool) *os.File {
 	if isSyncMode {
 		sync = os.O_SYNC
 	}
-	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|sync, 0666)
+
+	// Used for the emitter's "last-emitted-*" state files; new files are created
+	// as owner-read/write only (existing files keep their current mode).
+	const filePerm = 0600
+	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|sync, filePerm)
 	if err != nil {
 		log.Crit("Failed to open file", "file", path, "err", err)
 	}
