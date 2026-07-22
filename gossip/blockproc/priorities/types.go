@@ -20,24 +20,24 @@
 // transactions and to order them first during block formation.
 package priorities
 
-import "github.com/holiman/uint256"
+import "cmp"
 
 // Priority is the result of a getPriority query for a single transaction.
 //
 // Level zero means the transaction is not prioritized. A higher level forms an
 // earlier partition (scheduled before lower levels). Weight breaks ties within a
-// level (higher first). Id identifies the entity the transaction belongs to and
-// is used for per-entity rate limiting. The semantics of Id are opaque to this
+// level (higher first). ID identifies the entity the transaction belongs to and
+// is used for per-entity rate limiting. The semantics of ID are opaque to this
 // code and only interpreted by the registry.
 type Priority struct {
-	Level  uint256.Int
-	Weight uint256.Int
-	ID     [32]byte
+	Level  uint64
+	Weight uint64
+	ID     [16]byte
 }
 
 // IsPrioritized reports whether the transaction has a non-zero priority level.
 func (p Priority) IsPrioritized() bool {
-	return !p.Level.IsZero()
+	return p.Level != 0
 }
 
 // Cmp compares two priorities by (level, weight), returning -1, 0, or +1.
@@ -45,13 +45,13 @@ func (p Priority) IsPrioritized() bool {
 // level. Non-prioritized entries (level zero) always compare equal regardless
 // of weight.
 func (p Priority) Cmp(other Priority) int {
-	if c := p.Level.Cmp(&other.Level); c != 0 {
+	if c := cmp.Compare(p.Level, other.Level); c != 0 {
 		return c
 	}
-	if p.Level.IsZero() {
+	if p.Level == 0 {
 		return 0
 	}
-	return p.Weight.Cmp(&other.Weight)
+	return cmp.Compare(p.Weight, other.Weight)
 }
 
 // Config holds the per-entity rate limits returned by the registry's

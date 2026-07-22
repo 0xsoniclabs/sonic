@@ -24,10 +24,6 @@ import (
 )
 
 func TestPriority_IsPrioritized_ChecksIfLevelIsGreater0(t *testing.T) {
-	var with9ByteLevel Priority
-	with9ByteLevel.Level.SetUint64(math.MaxUint64)
-	with9ByteLevel.Level.AddUint64(&with9ByteLevel.Level, 1)
-
 	tests := map[string]struct {
 		prio Priority
 		want bool
@@ -35,7 +31,7 @@ func TestPriority_IsPrioritized_ChecksIfLevelIsGreater0(t *testing.T) {
 		"zero level":         {Prio(0, 0, 0), false},
 		"zero level, weight": {Prio(0, 5, 0), false},
 		"non-zero level":     {Prio(1, 0, 0), true},
-		"non-zero 9 byte":    {with9ByteLevel, true},
+		"max level":          {Prio(math.MaxUint64, 0, 0), true},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -63,12 +59,8 @@ func TestPriority_Cmp(t *testing.T) {
 	}
 }
 
-// Prio builds a Priority for tests. Level and weight are limited to uint64 and
-// id to a single byte for simplicity.
+// Prio builds a Priority for tests. The id is limited to a single byte for
+// simplicity.
 func Prio(level uint64, weight uint64, id byte) Priority {
-	p := Priority{}
-	p.Level.SetUint64(level)
-	p.Weight.SetUint64(weight)
-	p.ID[31] = id
-	return p
+	return Priority{Level: level, Weight: weight, ID: [16]byte{15: id}}
 }
