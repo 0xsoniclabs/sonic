@@ -21,6 +21,9 @@ import (
 	"io"
 	"os"
 	"path"
+	"runtime/debug"
+
+	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/0xsoniclabs/sonic/utils/caution"
 )
@@ -59,12 +62,25 @@ func (l *ErrorLock) Check() error {
 
 // Permanent error
 func (l *ErrorLock) Permanent(err error) {
-	eLockPath, _ := write(l.dataDir, err.Error())
-	// This is a user-facing error, so we want to provide a clear message.
-	//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
-	panic(fmt.Errorf("Node is permanently stopping due to an issue. Please fix"+
-		" the issue and then delete file \"%s\". Error message:\n%s",
-		eLockPath, err.Error()))
+	eLockPath, writeErr := write(l.dataDir, err.Error())
+	if writeErr != nil {
+		log.Error("errlock: failed to write halt-lock file; terminating"+
+			" with distinct exit code so the node is not silently restarted"+
+			" into the same unsafe state that triggered Permanent()",
+			"path", eLockPath,
+			"originalErr", err,
+			"writeErr", writeErr,
+		)
+	}
+
+	// User facing error message, so we want to provide a clear message.
+	fmt.Fprintf(os.Stderr, "Node is permanently stopping due to an issue. Please"+
+		" fix the issue and then delete file \"%s\". Error message:\n%s",
+		eLockPath, err.Error())
+	debug.PrintStack()
+
+	// distinct exit code to avoid silently restarting into the same unsafe state
+	os.Exit(74)
 }
 
 func readAll(reader io.Reader, max int) ([]byte, error) {
