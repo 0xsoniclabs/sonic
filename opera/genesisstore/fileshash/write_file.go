@@ -24,6 +24,7 @@ import (
 
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/0xsoniclabs/sonic/utils/ioread"
 )
@@ -127,9 +128,13 @@ func (w *Writer) readFromTmp(p []byte, destructive bool) error {
 	}
 	w.tmpReadPos += maxToRead
 	if w.tmpReadPos%w.pieceSize == 0 {
-		_ = w.tmps[tmpI].Close()
+		if err := w.tmps[tmpI].Close(); err != nil {
+			log.Error("failed to close tmp piece", "tmpI", tmpI, "err", err)
+		}
 		if destructive {
-			_ = w.tmps[tmpI].Drop()
+			if err := w.tmps[tmpI].Drop(); err != nil {
+				log.Error("failed to drop tmp piece", "tmpI", tmpI, "err", err)
+			}
 		}
 		w.tmps[tmpI].TmpWriter = nil
 	}
