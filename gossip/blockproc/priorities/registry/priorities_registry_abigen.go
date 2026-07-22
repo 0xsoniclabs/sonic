@@ -31,8 +31,8 @@ var (
 
 // RegistryMetaData contains all meta data concerning the Registry contract.
 var RegistryMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"gas\",\"type\":\"uint256\"}],\"name\":\"getPriority\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"level\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"weight\",\"type\":\"uint256\"},{\"internalType\":\"bytes32\",\"name\":\"id\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getPriorityConfig\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"maxGasPerEntityPerBlock\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxPiggybackTxsPerEntityPerEvent\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"maxGas\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"senderPriority\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"level\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"weight\",\"type\":\"uint256\"},{\"internalType\":\"bytes32\",\"name\":\"id\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"perBlockGas\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"perEvent\",\"type\":\"uint256\"}],\"name\":\"setConfig\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"g\",\"type\":\"uint256\"}],\"name\":\"setMaxGas\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"level\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"weight\",\"type\":\"uint256\"},{\"internalType\":\"bytes32\",\"name\":\"id\",\"type\":\"bytes32\"}],\"name\":\"setSenderPriority\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
-	Bin: "0x6080604052348015600e575f5ffd5b506103af8061001c5f395ff3fe608060405234801561000f575f5ffd5b506004361061007a575f3560e01c80638e928076116100585780638e92807614610108578063928461bd1461011b578063d9dceeb814610138578063e3c1859d14610166575f5ffd5b80631e34c5851461007e578063501d815c1461009957806381afb106146100b5575b5f5ffd5b61009761008c366004610228565b600291909155600355565b005b6100a260015481565b6040519081526020015b60405180910390f35b6100976100c3366004610263565b6040805160608101825293845260208085019384528482019283526001600160a01b039095165f90815294859052909320915182555160018201559051600290910155565b610097610116366004610299565b600155565b610123610194565b604080519283526020830191909152016100ac565b61014b6101463660046102b0565b6101c8565b604080519384526020840192909252908201526060016100ac565b61014b610174366004610359565b5f6020819052908152604090208054600182015460029092015490919083565b5f5f6002545f146101a7576002546101ac565b629896805b91506003545f146101bf576003546101c2565b60045b90509091565b5f5f5f6001545f141580156101de575060015484115b156101f057505f91508190508061021b565b5050506001600160a01b0387165f908152602081905260409020805460018201546002909201549091905b9750975097945050505050565b5f5f60408385031215610239575f5ffd5b50508035926020909101359150565b80356001600160a01b038116811461025e575f5ffd5b919050565b5f5f5f5f60808587031215610276575f5ffd5b61027f85610248565b966020860135965060408601359560600135945092505050565b5f602082840312156102a9575f5ffd5b5035919050565b5f5f5f5f5f5f5f60c0888a0312156102c6575f5ffd5b6102cf88610248565b96506102dd60208901610248565b95506040880135945060608801359350608088013567ffffffffffffffff811115610306575f5ffd5b8801601f81018a13610316575f5ffd5b803567ffffffffffffffff81111561032c575f5ffd5b8a602082840101111561033d575f5ffd5b979a9699509497939660209095019560a0909401359392505050565b5f60208284031215610369575f5ffd5b61037282610248565b939250505056fea2646970667358221220ff78e7b45f329f214cfde543f52b73ac3fcf7074c8210a63d6df4ea1b44618aa64736f6c634300081e0033",
+	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"gas\",\"type\":\"uint256\"}],\"name\":\"getPriority\",\"outputs\":[{\"internalType\":\"uint64\",\"name\":\"level\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"weight\",\"type\":\"uint64\"},{\"internalType\":\"uint128\",\"name\":\"id\",\"type\":\"uint128\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getPriorityConfig\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"maxGasPerEntityPerBlock\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxPiggybackTxsPerEntityPerEvent\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"maxGas\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"senderPriority\",\"outputs\":[{\"internalType\":\"uint64\",\"name\":\"level\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"weight\",\"type\":\"uint64\"},{\"internalType\":\"uint128\",\"name\":\"id\",\"type\":\"uint128\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"perBlockGas\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"perEvent\",\"type\":\"uint256\"}],\"name\":\"setConfig\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"g\",\"type\":\"uint256\"}],\"name\":\"setMaxGas\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"uint64\",\"name\":\"level\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"weight\",\"type\":\"uint64\"},{\"internalType\":\"uint128\",\"name\":\"id\",\"type\":\"uint128\"}],\"name\":\"setSenderPriority\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
+	Bin: "0x6080604052348015600e575f5ffd5b5061047e8061001c5f395ff3fe608060405234801561000f575f5ffd5b506004361061007a575f3560e01c80638e928076116100585780638e92807614610151578063928461bd14610164578063d9dceeb814610181578063e3c1859d146101c4575f5ffd5b80631e34c5851461007e578063392ebdff14610099578063501d815c14610135575b5f5ffd5b61009761008c3660046102b8565b600291909155600355565b005b6100976100a736600461030a565b6040805160608101825267ffffffffffffffff948516815292841660208085019182526001600160801b039384168584019081526001600160a01b039097165f908152908190529190912092518354915195518316600160801b02958516600160401b026fffffffffffffffffffffffffffffffff1990921694169390931792909217909116919091179055565b61013e60015481565b6040519081526020015b60405180910390f35b61009761015f366004610368565b600155565b61016c61020b565b60408051928352602083019190915201610148565b61019461018f36600461037f565b61023f565b6040805167ffffffffffffffff94851681529390921660208401526001600160801b031690820152606001610148565b6101946101d2366004610428565b5f6020819052908152604090205467ffffffffffffffff80821691600160401b810490911690600160801b90046001600160801b031683565b5f5f6002545f1461021e57600254610223565b629896805b91506003545f1461023657600354610239565b60045b90509091565b5f5f5f6001545f14158015610255575060015484115b1561026757505f9150819050806102ab565b5050506001600160a01b0387165f9081526020819052604090205467ffffffffffffffff80821691600160401b810490911690600160801b90046001600160801b03165b9750975097945050505050565b5f5f604083850312156102c9575f5ffd5b50508035926020909101359150565b80356001600160a01b03811681146102ee575f5ffd5b919050565b803567ffffffffffffffff811681146102ee575f5ffd5b5f5f5f5f6080858703121561031d575f5ffd5b610326856102d8565b9350610334602086016102f3565b9250610342604086016102f3565b915060608501356001600160801b038116811461035d575f5ffd5b939692955090935050565b5f60208284031215610378575f5ffd5b5035919050565b5f5f5f5f5f5f5f60c0888a031215610395575f5ffd5b61039e886102d8565b96506103ac602089016102d8565b95506040880135945060608801359350608088013567ffffffffffffffff8111156103d5575f5ffd5b8801601f81018a136103e5575f5ffd5b803567ffffffffffffffff8111156103fb575f5ffd5b8a602082840101111561040c575f5ffd5b979a9699509497939660209095019560a0909401359392505050565b5f60208284031215610438575f5ffd5b610441826102d8565b939250505056fea26469706673582212200cd28ec0b63218e0bc1ed98d050da3766c4904032aced740e547244e21d018d764736f6c634300081e0033",
 }
 
 // RegistryABI is the input ABI used to generate the binding from.
@@ -204,27 +204,27 @@ func (_Registry *RegistryTransactorRaw) Transact(opts *bind.TransactOpts, method
 
 // GetPriority is a free data retrieval call binding the contract method 0xd9dceeb8.
 //
-// Solidity: function getPriority(address from, address , uint256 , uint256 , bytes , uint256 gas) view returns(uint256 level, uint256 weight, bytes32 id)
+// Solidity: function getPriority(address from, address , uint256 , uint256 , bytes , uint256 gas) view returns(uint64 level, uint64 weight, uint128 id)
 func (_Registry *RegistryCaller) GetPriority(opts *bind.CallOpts, from common.Address, arg1 common.Address, arg2 *big.Int, arg3 *big.Int, arg4 []byte, gas *big.Int) (struct {
-	Level  *big.Int
-	Weight *big.Int
-	Id     [32]byte
+	Level  uint64
+	Weight uint64
+	Id     *big.Int
 }, error) {
 	var out []interface{}
 	err := _Registry.contract.Call(opts, &out, "getPriority", from, arg1, arg2, arg3, arg4, gas)
 
 	outstruct := new(struct {
-		Level  *big.Int
-		Weight *big.Int
-		Id     [32]byte
+		Level  uint64
+		Weight uint64
+		Id     *big.Int
 	})
 	if err != nil {
 		return *outstruct, err
 	}
 
-	outstruct.Level = *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
-	outstruct.Weight = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
-	outstruct.Id = *abi.ConvertType(out[2], new([32]byte)).(*[32]byte)
+	outstruct.Level = *abi.ConvertType(out[0], new(uint64)).(*uint64)
+	outstruct.Weight = *abi.ConvertType(out[1], new(uint64)).(*uint64)
+	outstruct.Id = *abi.ConvertType(out[2], new(*big.Int)).(**big.Int)
 
 	return *outstruct, err
 
@@ -232,22 +232,22 @@ func (_Registry *RegistryCaller) GetPriority(opts *bind.CallOpts, from common.Ad
 
 // GetPriority is a free data retrieval call binding the contract method 0xd9dceeb8.
 //
-// Solidity: function getPriority(address from, address , uint256 , uint256 , bytes , uint256 gas) view returns(uint256 level, uint256 weight, bytes32 id)
+// Solidity: function getPriority(address from, address , uint256 , uint256 , bytes , uint256 gas) view returns(uint64 level, uint64 weight, uint128 id)
 func (_Registry *RegistrySession) GetPriority(from common.Address, arg1 common.Address, arg2 *big.Int, arg3 *big.Int, arg4 []byte, gas *big.Int) (struct {
-	Level  *big.Int
-	Weight *big.Int
-	Id     [32]byte
+	Level  uint64
+	Weight uint64
+	Id     *big.Int
 }, error) {
 	return _Registry.Contract.GetPriority(&_Registry.CallOpts, from, arg1, arg2, arg3, arg4, gas)
 }
 
 // GetPriority is a free data retrieval call binding the contract method 0xd9dceeb8.
 //
-// Solidity: function getPriority(address from, address , uint256 , uint256 , bytes , uint256 gas) view returns(uint256 level, uint256 weight, bytes32 id)
+// Solidity: function getPriority(address from, address , uint256 , uint256 , bytes , uint256 gas) view returns(uint64 level, uint64 weight, uint128 id)
 func (_Registry *RegistryCallerSession) GetPriority(from common.Address, arg1 common.Address, arg2 *big.Int, arg3 *big.Int, arg4 []byte, gas *big.Int) (struct {
-	Level  *big.Int
-	Weight *big.Int
-	Id     [32]byte
+	Level  uint64
+	Weight uint64
+	Id     *big.Int
 }, error) {
 	return _Registry.Contract.GetPriority(&_Registry.CallOpts, from, arg1, arg2, arg3, arg4, gas)
 }
@@ -330,27 +330,27 @@ func (_Registry *RegistryCallerSession) MaxGas() (*big.Int, error) {
 
 // SenderPriority is a free data retrieval call binding the contract method 0xe3c1859d.
 //
-// Solidity: function senderPriority(address ) view returns(uint256 level, uint256 weight, bytes32 id)
+// Solidity: function senderPriority(address ) view returns(uint64 level, uint64 weight, uint128 id)
 func (_Registry *RegistryCaller) SenderPriority(opts *bind.CallOpts, arg0 common.Address) (struct {
-	Level  *big.Int
-	Weight *big.Int
-	Id     [32]byte
+	Level  uint64
+	Weight uint64
+	Id     *big.Int
 }, error) {
 	var out []interface{}
 	err := _Registry.contract.Call(opts, &out, "senderPriority", arg0)
 
 	outstruct := new(struct {
-		Level  *big.Int
-		Weight *big.Int
-		Id     [32]byte
+		Level  uint64
+		Weight uint64
+		Id     *big.Int
 	})
 	if err != nil {
 		return *outstruct, err
 	}
 
-	outstruct.Level = *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
-	outstruct.Weight = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
-	outstruct.Id = *abi.ConvertType(out[2], new([32]byte)).(*[32]byte)
+	outstruct.Level = *abi.ConvertType(out[0], new(uint64)).(*uint64)
+	outstruct.Weight = *abi.ConvertType(out[1], new(uint64)).(*uint64)
+	outstruct.Id = *abi.ConvertType(out[2], new(*big.Int)).(**big.Int)
 
 	return *outstruct, err
 
@@ -358,22 +358,22 @@ func (_Registry *RegistryCaller) SenderPriority(opts *bind.CallOpts, arg0 common
 
 // SenderPriority is a free data retrieval call binding the contract method 0xe3c1859d.
 //
-// Solidity: function senderPriority(address ) view returns(uint256 level, uint256 weight, bytes32 id)
+// Solidity: function senderPriority(address ) view returns(uint64 level, uint64 weight, uint128 id)
 func (_Registry *RegistrySession) SenderPriority(arg0 common.Address) (struct {
-	Level  *big.Int
-	Weight *big.Int
-	Id     [32]byte
+	Level  uint64
+	Weight uint64
+	Id     *big.Int
 }, error) {
 	return _Registry.Contract.SenderPriority(&_Registry.CallOpts, arg0)
 }
 
 // SenderPriority is a free data retrieval call binding the contract method 0xe3c1859d.
 //
-// Solidity: function senderPriority(address ) view returns(uint256 level, uint256 weight, bytes32 id)
+// Solidity: function senderPriority(address ) view returns(uint64 level, uint64 weight, uint128 id)
 func (_Registry *RegistryCallerSession) SenderPriority(arg0 common.Address) (struct {
-	Level  *big.Int
-	Weight *big.Int
-	Id     [32]byte
+	Level  uint64
+	Weight uint64
+	Id     *big.Int
 }, error) {
 	return _Registry.Contract.SenderPriority(&_Registry.CallOpts, arg0)
 }
@@ -420,23 +420,23 @@ func (_Registry *RegistryTransactorSession) SetMaxGas(g *big.Int) (*types.Transa
 	return _Registry.Contract.SetMaxGas(&_Registry.TransactOpts, g)
 }
 
-// SetSenderPriority is a paid mutator transaction binding the contract method 0x81afb106.
+// SetSenderPriority is a paid mutator transaction binding the contract method 0x392ebdff.
 //
-// Solidity: function setSenderPriority(address from, uint256 level, uint256 weight, bytes32 id) returns()
-func (_Registry *RegistryTransactor) SetSenderPriority(opts *bind.TransactOpts, from common.Address, level *big.Int, weight *big.Int, id [32]byte) (*types.Transaction, error) {
+// Solidity: function setSenderPriority(address from, uint64 level, uint64 weight, uint128 id) returns()
+func (_Registry *RegistryTransactor) SetSenderPriority(opts *bind.TransactOpts, from common.Address, level uint64, weight uint64, id *big.Int) (*types.Transaction, error) {
 	return _Registry.contract.Transact(opts, "setSenderPriority", from, level, weight, id)
 }
 
-// SetSenderPriority is a paid mutator transaction binding the contract method 0x81afb106.
+// SetSenderPriority is a paid mutator transaction binding the contract method 0x392ebdff.
 //
-// Solidity: function setSenderPriority(address from, uint256 level, uint256 weight, bytes32 id) returns()
-func (_Registry *RegistrySession) SetSenderPriority(from common.Address, level *big.Int, weight *big.Int, id [32]byte) (*types.Transaction, error) {
+// Solidity: function setSenderPriority(address from, uint64 level, uint64 weight, uint128 id) returns()
+func (_Registry *RegistrySession) SetSenderPriority(from common.Address, level uint64, weight uint64, id *big.Int) (*types.Transaction, error) {
 	return _Registry.Contract.SetSenderPriority(&_Registry.TransactOpts, from, level, weight, id)
 }
 
-// SetSenderPriority is a paid mutator transaction binding the contract method 0x81afb106.
+// SetSenderPriority is a paid mutator transaction binding the contract method 0x392ebdff.
 //
-// Solidity: function setSenderPriority(address from, uint256 level, uint256 weight, bytes32 id) returns()
-func (_Registry *RegistryTransactorSession) SetSenderPriority(from common.Address, level *big.Int, weight *big.Int, id [32]byte) (*types.Transaction, error) {
+// Solidity: function setSenderPriority(address from, uint64 level, uint64 weight, uint128 id) returns()
+func (_Registry *RegistryTransactorSession) SetSenderPriority(from common.Address, level uint64, weight uint64, id *big.Int) (*types.Transaction, error) {
 	return _Registry.Contract.SetSenderPriority(&_Registry.TransactOpts, from, level, weight, id)
 }

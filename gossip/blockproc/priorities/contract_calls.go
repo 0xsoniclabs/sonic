@@ -187,18 +187,22 @@ func createGetPriorityInput(sender common.Address, tx *types.Transaction) ([]byt
 	return input, nil
 }
 
-// parseGetPriorityResult decodes the (uint256 level, uint256 weight, bytes32 id)
+// parseGetPriorityResult decodes the (uint64 level, uint64 weight, uint128 id)
 // response of the getPriority call. The result must be exactly three 32-byte
-// words; any other length is rejected.
+// words with level and weight fitting into a uint64 and id into a uint128; any
+// other shape is rejected.
 func parseGetPriorityResult(data []byte) (Priority, error) {
 	if len(data) != 3*32 {
 		return Priority{}, fmt.Errorf("invalid result length from getPriority call: %d", len(data))
 	}
-	var p Priority
-	p.Level.SetBytes(data[0:32])
-	p.Weight.SetBytes(data[32:64])
-	p.ID = [32]byte(data[64:96])
-	return p, nil
+	if !allZero(data[0:24]) || !allZero(data[32:56]) || !allZero(data[64:80]) {
+		return Priority{}, fmt.Errorf("invalid result from getPriority call")
+	}
+	return Priority{
+		Level:  binary.BigEndian.Uint64(data[24:32]),
+		Weight: binary.BigEndian.Uint64(data[56:64]),
+		ID:     [16]byte(data[80:96]),
+	}, nil
 }
 
 // parseGetPriorityConfigResult decodes the
@@ -209,13 +213,21 @@ func parseGetPriorityConfigResult(data []byte) (Config, error) {
 	if len(data) != 2*32 {
 		return Config{}, fmt.Errorf("invalid result length from getPriorityConfig call: %d", len(data))
 	}
-	type bytes24 [24]byte
-	zero := bytes24{}
-	if bytes24(data[0:24]) != zero || bytes24(data[32:56]) != zero {
+	if !allZero(data[0:24]) || !allZero(data[32:56]) {
 		return Config{}, fmt.Errorf("invalid result from getPriorityConfig call, values do not fit into uint64")
 	}
 	return Config{
 		MaxGasPerEntityPerBlock:          binary.BigEndian.Uint64(data[24:32]),
 		MaxPiggybackTxsPerEntityPerEvent: binary.BigEndian.Uint64(data[56:64]),
 	}, nil
+}
+
+// allZero reports whether every byte in b is zero.
+func allZero(b []byte) bool {
+	for _, x := range b {
+		if x != 0 {
+			return false
+		}
+	}
+	return true
 }

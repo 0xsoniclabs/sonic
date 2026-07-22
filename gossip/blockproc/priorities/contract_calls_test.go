@@ -70,29 +70,47 @@ func TestGetPriority_EmptyResult_ReportsMissingContract(t *testing.T) {
 	require.ErrorContains(t, err, "priority registry contract not found")
 }
 
-func TestGetPriority_InvalidResult_ReportsInvalidLength(t *testing.T) {
-	for _, n := range []int{0, 32, 64, 95, 97, 128} {
-		tx, signer := makeTx(t)
-		vm := &fakeVM{result: make([]byte, n)}
-		_, err := GetPriority(enabledUpgrades(), vm, signer, tx)
-		require.ErrorContains(t, err, "invalid result length")
+func TestGetPriority_InvalidResult_ReportsIssue(t *testing.T) {
+	// withByte returns a valid-length result with a single non-zero byte set, so
+	// only the range check for that byte's field fails.
+	withByte := func(i int) []byte { r := make([]byte, 96); r[i] = 1; return r }
+	tests := map[string]struct {
+		result []byte
+		msg    string
+	}{
+		"empty":                 {make([]byte, 0), "invalid result length"},
+		"one word":              {make([]byte, 32), "invalid result length"},
+		"two words":             {make([]byte, 64), "invalid result length"},
+		"one byte short":        {make([]byte, 95), "invalid result length"},
+		"one byte long":         {make([]byte, 97), "invalid result length"},
+		"four words":            {make([]byte, 128), "invalid result length"},
+		"level exceeds uint64":  {withByte(23), "invalid result from getPriority call"},
+		"weight exceeds uint64": {withByte(55), "invalid result from getPriority call"},
+		"id exceeds uint128":    {withByte(79), "invalid result from getPriority call"},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			tx, signer := makeTx(t)
+			_, err := GetPriority(enabledUpgrades(), &fakeVM{result: tc.result}, signer, tx)
+			require.ErrorContains(t, err, tc.msg)
+		})
 	}
 }
 
 func TestGetPriority_DecodesResult(t *testing.T) {
 	tx, signer := makeTx(t)
-	id := [32]byte{0xde, 0xad}
+	id := [16]byte{0xde, 0xad}
 	result := make([]byte, 96)
-	big.NewInt(2).FillBytes(result[0:32])
-	big.NewInt(100).FillBytes(result[32:64])
-	copy(result[64:96], id[:])
+	binary.BigEndian.PutUint64(result[24:32], 3)
+	binary.BigEndian.PutUint64(result[56:64], 5)
+	copy(result[80:96], id[:])
 
 	vm := &fakeVM{result: result}
 	p, err := GetPriority(enabledUpgrades(), vm, signer, tx)
 	require.NoError(t, err)
 	require.True(t, p.IsPrioritized())
-	require.Equal(t, uint64(2), p.Level.Uint64())
-	require.Equal(t, uint64(100), p.Weight.Uint64())
+	require.Equal(t, uint64(3), p.Level)
+	require.Equal(t, uint64(5), p.Weight)
 	require.Equal(t, id, p.ID)
 }
 

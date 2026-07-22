@@ -18,9 +18,9 @@ pragma solidity ^0.8.24;
 // the node depends only on the ABI shape, not on this implementation.
 contract PriorityRegistry {
     struct Priority {
-        uint256 level;
-        uint256 weight;
-        bytes32 id;
+        uint64 level;
+        uint64 weight;
+        uint128 id;
     }
 
     // Priority assigned to transactions by sender. Configurable for testing.
@@ -41,9 +41,9 @@ contract PriorityRegistry {
 
     function setSenderPriority(
         address from,
-        uint256 level,
-        uint256 weight,
-        bytes32 id
+        uint64 level,
+        uint64 weight,
+        uint128 id
     ) external {
         senderPriority[from] = Priority(level, weight, id);
     }
@@ -66,9 +66,9 @@ contract PriorityRegistry {
         uint256 /*nonce*/,
         bytes calldata /*data*/,
         uint256 gas
-    ) external view returns (uint256 level, uint256 weight, bytes32 id) {
+    ) external view returns (uint64 level, uint64 weight, uint128 id) {
         if (maxGas != 0 && gas > maxGas) {
-            return (0, 0, bytes32(0));
+            return (0, 0, 0);
         }
         Priority storage p = senderPriority[from];
         return (p.level, p.weight, p.id);
