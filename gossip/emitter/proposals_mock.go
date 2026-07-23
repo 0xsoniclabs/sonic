@@ -14,14 +14,13 @@ import (
 	reflect "reflect"
 	time "time"
 
+	priorities "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	scheduler "github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	opera "github.com/0xsoniclabs/sonic/opera"
 	hash "github.com/Fantom-foundation/lachesis-base/hash"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
-	txpool "github.com/ethereum/go-ethereum/core/txpool"
 	types "github.com/ethereum/go-ethereum/core/types"
-	uint256 "github.com/holiman/uint256"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -263,41 +262,40 @@ func (m *MocktransactionIndex) EXPECT() *MocktransactionIndexMockRecorder {
 	return m.recorder
 }
 
-// Peek mocks base method.
-func (m *MocktransactionIndex) Peek() (*txpool.LazyTransaction, *uint256.Int) {
+// DiscardBest mocks base method.
+func (m *MocktransactionIndex) DiscardBest() {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Peek")
-	ret0, _ := ret[0].(*txpool.LazyTransaction)
-	ret1, _ := ret[1].(*uint256.Int)
-	return ret0, ret1
+	m.ctrl.Call(m, "DiscardBest")
 }
 
-// Peek indicates an expected call of Peek.
-func (mr *MocktransactionIndexMockRecorder) Peek() *gomock.Call {
+// DiscardBest indicates an expected call of DiscardBest.
+func (mr *MocktransactionIndexMockRecorder) DiscardBest() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Peek", reflect.TypeOf((*MocktransactionIndex)(nil).Peek))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DiscardBest", reflect.TypeOf((*MocktransactionIndex)(nil).DiscardBest))
 }
 
-// Pop mocks base method.
-func (m *MocktransactionIndex) Pop() {
+// PeekBest mocks base method.
+func (m *MocktransactionIndex) PeekBest() *txWithMinerFee {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Pop")
+	ret := m.ctrl.Call(m, "PeekBest")
+	ret0, _ := ret[0].(*txWithMinerFee)
+	return ret0
 }
 
-// Pop indicates an expected call of Pop.
-func (mr *MocktransactionIndexMockRecorder) Pop() *gomock.Call {
+// PeekBest indicates an expected call of PeekBest.
+func (mr *MocktransactionIndexMockRecorder) PeekBest() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Pop", reflect.TypeOf((*MocktransactionIndex)(nil).Pop))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PeekBest", reflect.TypeOf((*MocktransactionIndex)(nil).PeekBest))
 }
 
-// Shift mocks base method.
-func (m *MocktransactionIndex) Shift() {
+// ShiftBest mocks base method.
+func (m *MocktransactionIndex) ShiftBest(classifier priorities.Classifier) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Shift")
+	m.ctrl.Call(m, "ShiftBest", classifier)
 }
 
-// Shift indicates an expected call of Shift.
-func (mr *MocktransactionIndexMockRecorder) Shift() *gomock.Call {
+// ShiftBest indicates an expected call of ShiftBest.
+func (mr *MocktransactionIndexMockRecorder) ShiftBest(classifier any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Shift", reflect.TypeOf((*MocktransactionIndex)(nil).Shift))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShiftBest", reflect.TypeOf((*MocktransactionIndex)(nil).ShiftBest), classifier)
 }

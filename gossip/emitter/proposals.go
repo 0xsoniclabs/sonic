@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
@@ -30,7 +31,6 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
-	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
@@ -55,7 +55,8 @@ import (
 // proposer for the current turn can be determined.
 func (em *Emitter) createPayload(
 	event inter.EventI,
-	sorted *transactionsByPriceAndNonce,
+	sorted *transactionsByPriorityAndPriceAndNonce,
+	classifier priorities.Classifier,
 ) (inter.Payload, error) {
 	adapter := worldAdapter{External: em.world}
 	randaoMixer := randao.NewRandaoMixerAdapter(em.world.EventsSigner)
@@ -66,6 +67,7 @@ func (em *Emitter) createPayload(
 		event,
 		&em.proposalTracker,
 		sorted,
+		classifier,
 		scheduler.NewScheduler(adapter),
 		randaoMixer,
 		proposalSchedulingTimer,
@@ -88,7 +90,8 @@ func createPayload(
 	validators *pos.Validators,
 	event inter.EventI,
 	proposalTracker proposalTracker,
-	sorted *transactionsByPriceAndNonce,
+	sorted *transactionsByPriorityAndPriceAndNonce,
+	classifier priorities.Classifier,
 	transactionScheduler txScheduler,
 	randaoMixer randao.RandaoMixer,
 	durationMetric timerMetric,
@@ -137,7 +140,7 @@ func createPayload(
 		event.MedianTime(), // < time of the new block
 		currentFrame,
 		transactionScheduler,
-		&transactionPriorityAdapter{sorted},
+		&transactionPriorityAdapter{sorted: sorted, classifier: classifier},
 		randaoMixer,
 		durationMetric,
 		timeoutMetric,
@@ -319,27 +322,28 @@ type counterMetric interface {
 // transactionPriorityAdapter is an adapter between the transactionsByPriceAndNonce
 // and the scheduler's PrioritizedTransactions interface.
 type transactionPriorityAdapter struct {
-	sorted transactionIndex
+	sorted     transactionIndex
+	classifier priorities.Classifier
 }
 
 func (a *transactionPriorityAdapter) Current() *types.Transaction {
-	tx, _ := a.sorted.Peek()
-	if tx == nil {
+	entry := a.sorted.PeekBest()
+	if entry == nil {
 		return nil
 	}
-	return tx.Resolve()
+	return entry.tx.Resolve()
 }
 
 func (a *transactionPriorityAdapter) Accept() {
-	a.sorted.Shift()
+	a.sorted.ShiftBest(a.classifier)
 }
 
 func (a *transactionPriorityAdapter) Skip() {
-	a.sorted.Pop()
+	a.sorted.DiscardBest()
 }
 
 type transactionIndex interface {
-	Peek() (*txpool.LazyTransaction, *uint256.Int)
-	Shift()
-	Pop()
+	PeekBest() *txWithMinerFee
+	ShiftBest(classifier priorities.Classifier)
+	DiscardBest()
 }
