@@ -210,17 +210,26 @@ func TestGetConfig_EncodesExpectedCalldata(t *testing.T) {
 	require.Equal(t, uint32(registry.GetPriorityConfigFunctionSelector), binary.BigEndian.Uint32(in[0:4]))
 }
 
-func TestGetConfigOrFallback_ReturnsConfigOnSuccess(t *testing.T) {
+func TestGetConfigOrFallback_ValidResult_ReturnsConfig(t *testing.T) {
 	data := make([]byte, 64)
 	binary.BigEndian.PutUint64(data[24:32], 3)
 	binary.BigEndian.PutUint64(data[56:64], 5)
-	cfg := GetConfigOrFallback(enabledUpgrades(), &fakeVM{result: data})
+	var failures countingMeter
+	cfg := GetConfigOrFallback(enabledUpgrades(), &fakeVM{result: data}, &failures)
 	require.Equal(t, Config{MaxGasPerEntityPerBlock: 3, MaxPiggybackTxsPerEntityPerEvent: 5}, cfg)
+	require.Zero(t, failures)
 }
 
-func TestGetConfigOrFallback_ReturnsFallbackOnError(t *testing.T) {
-	cfg := GetConfigOrFallback(enabledUpgrades(), &fakeVM{err: fmt.Errorf("call failed")})
-	require.Equal(t, FallbackConfig, cfg)
+func TestGetConfigOrFallback_CallError_ReturnsFallbackAndCountsEachFailure(t *testing.T) {
+	var failures countingMeter
+	vm := &fakeVM{err: fmt.Errorf("call failed")}
+
+	calls := 2
+	for range calls {
+		cfg := GetConfigOrFallback(enabledUpgrades(), vm, &failures)
+		require.Equal(t, FallbackConfig, cfg)
+	}
+	require.Equal(t, countingMeter(calls), failures)
 }
 
 // TestGetPriorityAndGetConfig_AgainstRealBytecode validates the hand-rolled ABI

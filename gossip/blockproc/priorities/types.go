@@ -56,6 +56,12 @@ func (p Priority) Cmp(other Priority) int {
 
 type PriorityID [16]byte
 
+// Meter is an abstraction of the metrics.Meter type to facilitate mocking in
+// tests. It is used to report failed registry queries.
+type Meter interface {
+	Mark(int64)
+}
+
 // Config holds the per-entity rate limits returned by the registry's
 // getPriorityConfig function.
 type Config struct {
