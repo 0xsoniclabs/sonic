@@ -18,15 +18,60 @@ package priorities
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"math/big"
 	"slices"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
+
+func TestEvmClassifier_Priority_IsolatesEachQueryWithSnapshot(t *testing.T) {
+	tx, signer := makeTx(t)
+	snap := &countingSnapshotter{}
+	vm := &fakeVM{result: make([]byte, 96)}
+	cls := NewEvmClassifier(enabledUpgrades(), vm, signer, snap)
+
+	calls := 3
+	for i := 0; i < calls; i++ {
+		_, err := cls.Priority(tx)
+		require.NoError(t, err)
+	}
+	require.Equal(t, calls, snap.snapshots, "one snapshot per query")
+	require.Equal(t, calls, snap.reverts, "one revert per query")
+}
+
+func TestEvmClassifier_Priority_RevertsSnapshotOnError(t *testing.T) {
+	tx, signer := makeTx(t)
+	snap := &countingSnapshotter{}
+	vm := &fakeVM{err: fmt.Errorf("boom")}
+	cls := NewEvmClassifier(enabledUpgrades(), vm, signer, snap)
+
+	_, err := cls.Priority(tx)
+	require.Error(t, err)
+	require.Equal(t, 1, snap.snapshots)
+	require.Equal(t, 1, snap.reverts)
+}
+
+func TestEvmClassifier_Priority_DelegatesToGetPriority(t *testing.T) {
+	tx, signer := makeTx(t)
+	id := [16]byte{0xde, 0xad}
+	result := make([]byte, 96)
+	binary.BigEndian.PutUint64(result[24:32], 3)
+	binary.BigEndian.PutUint64(result[56:64], 5)
+	copy(result[80:96], id[:])
+	vm := &fakeVM{result: result}
+	cls := NewEvmClassifier(enabledUpgrades(), vm, signer, &countingSnapshotter{})
+
+	p, err := cls.Priority(tx)
+	require.NoError(t, err)
+	require.Equal(t, uint32(registry.GetPriorityFunctionSelector), binary.BigEndian.Uint32(vm.gotIn[0:4]))
+	require.Equal(t, Priority{Level: 3, Weight: 5, ID: id}, p)
+}
 
 func TestTransactionWithPriority_Cmp_ComparesByLevelDescWeightDescHashAsc(t *testing.T) {
 	lowHash, highHash := makeTxWithNonce(0), makeTxWithNonce(1)
@@ -476,6 +521,21 @@ func (fakeSigner) Equal(types.Signer) bool { return false }
 type fakeNonceReader map[common.Address]uint64
 
 func (f fakeNonceReader) GetNonce(sender common.Address) uint64 { return f[sender] }
+
+// countingSnapshotter records snapshot/revert calls.
+type countingSnapshotter struct {
+	snapshots int
+	reverts   int
+}
+
+func (c *countingSnapshotter) Snapshot() int {
+	c.snapshots++
+	return c.snapshots
+}
+
+func (c *countingSnapshotter) RevertToSnapshot(int) {
+	c.reverts++
+}
 
 // makeTxWithNonce creates a transaction with the given nonce and 21k gas.
 func makeTxWithNonce(nonce uint64) *types.Transaction {
