@@ -79,6 +79,11 @@ var (
 	skippedTxsMeter   = metrics.GetOrRegisterMeter("chain/txs/skipped", nil)
 	invalidTxsMeter   = metrics.GetOrRegisterMeter("chain/txs/invalid", nil)
 
+	priorityFailures = priorityFailureMeters{
+		config: metrics.GetOrRegisterMeter("chain/priorities/config/failed", nil),
+		txs:    metrics.GetOrRegisterMeter("chain/priorities/txs/failed", nil),
+	}
+
 	confirmedEventsMeter = metrics.GetOrRegisterMeter("chain/events/confirmed", nil) // events received from lachesis
 	spilledEventsMeter   = metrics.GetOrRegisterMeter("chain/events/spilled", nil)   // tx excluded because of MaxBlockGas
 
@@ -95,6 +100,13 @@ var (
 		})),
 	}
 )
+
+// priorityFailureMeters collects the meters reporting silently degraded
+// transaction prioritization.
+type priorityFailureMeters struct {
+	config metricCounter // config query failed, the default limits are used
+	txs    metricCounter // per-transaction query failed, the tx is not prioritized
+}
 
 type ExtendedTxPosition struct {
 	evmstore.TxPosition
@@ -346,6 +358,7 @@ func consensusCallbackBeginBlockFn(
 					blockCtx.Time,
 					randao,
 					lastBlockHeader,
+					priorityFailures,
 				)
 
 				sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
@@ -979,8 +992,10 @@ func isPermissibleInternal(
 // registry query is run against the block-start state through a snapshot that is
 // immediately reverted, so the queries leave no residue in the state used for
 // block execution. The query EVM context is derived exclusively from consensus
-// inputs, so every validator reproduces the same ordering. Any query error is
-// treated as "not prioritized" and never aborts the block formation.
+// inputs, so every validator reproduces the same ordering. Query errors never
+// abort the block formation: a failed config query falls back to
+// priorities.FallbackConfig, a failed transaction query is treated as
+// "not prioritized".
 func applyTransactionPriorities(
 	txs types.Transactions,
 	rules opera.Rules,
@@ -992,6 +1007,7 @@ func applyTransactionPriorities(
 	blockTime inter.Timestamp,
 	randao common.Hash,
 	parent *evmcore.EvmHeader,
+	failures priorityFailureMeters,
 ) types.Transactions {
 	if !rules.Upgrades.TransactionPriorities || len(txs) == 0 {
 		return txs
@@ -1002,10 +1018,10 @@ func applyTransactionPriorities(
 	evm := vm.NewEVM(blockContext, statedb, chainCfg, opera.GetVmConfig(rules))
 
 	snapshot := statedb.InterTxSnapshot()
-	cfg := priorities.GetConfigOrFallback(rules.Upgrades, evm)
+	cfg := priorities.GetConfigOrFallback(rules.Upgrades, evm, failures.config)
 	statedb.RevertToInterTxSnapshot(snapshot)
 
-	classifier := priorities.NewEvmClassifier(rules.Upgrades, evm, signer, statedb)
+	classifier := priorities.NewEvmClassifier(rules.Upgrades, evm, signer, statedb, failures.txs)
 	return priorities.Prioritize(txs, classifier, signer, statedb, cfg)
 }
 

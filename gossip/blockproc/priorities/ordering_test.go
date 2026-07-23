@@ -33,8 +33,9 @@ import (
 func TestEvmClassifier_Priority_IsolatesEachQueryWithSnapshot(t *testing.T) {
 	tx, signer := makeTx(t)
 	snap := &countingSnapshotter{}
+	var failures countingMeter
 	vm := &fakeVM{result: make([]byte, 96)}
-	cls := NewEvmClassifier(enabledUpgrades(), vm, signer, snap)
+	cls := NewEvmClassifier(enabledUpgrades(), vm, signer, snap, &failures)
 
 	calls := 3
 	for range calls {
@@ -43,13 +44,15 @@ func TestEvmClassifier_Priority_IsolatesEachQueryWithSnapshot(t *testing.T) {
 	}
 	require.Equal(t, calls, snap.snapshots)
 	require.Equal(t, calls, snap.reverts)
+	require.Zero(t, failures)
 }
 
-func TestEvmClassifier_Priority_RevertsSnapshot(t *testing.T) {
+func TestEvmClassifier_Priority_QueryError_RevertsSnapshotAndCountsEachFailure(t *testing.T) {
 	tx, signer := makeTx(t)
 	snap := &countingSnapshotter{}
+	var failures countingMeter
 	vm := &fakeVM{err: fmt.Errorf("boom")}
-	cls := NewEvmClassifier(enabledUpgrades(), vm, signer, snap)
+	cls := NewEvmClassifier(enabledUpgrades(), vm, signer, snap, &failures)
 
 	calls := 2
 	for range calls {
@@ -58,6 +61,7 @@ func TestEvmClassifier_Priority_RevertsSnapshot(t *testing.T) {
 	}
 	require.Equal(t, calls, snap.snapshots)
 	require.Equal(t, calls, snap.reverts)
+	require.Equal(t, countingMeter(calls), failures)
 }
 
 func TestEvmClassifier_Priority_DelegatesToGetPriority(t *testing.T) {
@@ -68,7 +72,7 @@ func TestEvmClassifier_Priority_DelegatesToGetPriority(t *testing.T) {
 	binary.BigEndian.PutUint64(result[56:64], 5)
 	copy(result[80:96], id[:])
 	vm := &fakeVM{result: result}
-	cls := NewEvmClassifier(enabledUpgrades(), vm, signer, &countingSnapshotter{})
+	cls := NewEvmClassifier(enabledUpgrades(), vm, signer, &countingSnapshotter{}, new(countingMeter))
 
 	p, err := cls.Priority(tx)
 	require.NoError(t, err)
@@ -549,6 +553,11 @@ func (c *countingSnapshotter) InterTxSnapshot() int {
 func (c *countingSnapshotter) RevertToInterTxSnapshot(int) {
 	c.reverts++
 }
+
+// countingMeter accumulates the values passed to Mark.
+type countingMeter int64
+
+func (c *countingMeter) Mark(n int64) { *c += countingMeter(n) }
 
 // makeTxWithNonce creates a transaction with the given nonce and 21k gas.
 func makeTxWithNonce(nonce uint64) *types.Transaction {

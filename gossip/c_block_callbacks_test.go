@@ -2322,6 +2322,7 @@ func TestApplyTransactionPriorities_FeatureDisabled_IsNoOp(t *testing.T) {
 		nil, // reader
 		nil, // signer
 		0, 0, common.Hash{}, nil,
+		priorityFailureMeters{},
 	)
 	require.Equal(t, txs, got)
 }
@@ -2339,6 +2340,7 @@ func TestApplyTransactionPriorities_EmptyInput_IsNoOp(t *testing.T) {
 		nil, // reader
 		nil, // signer
 		0, 0, common.Hash{}, nil,
+		priorityFailureMeters{},
 	)
 	require.Empty(t, got)
 }
@@ -2367,6 +2369,7 @@ func TestApplyTransactionPriorities_EveryQueryIsWrappedInAnInterTxSnapshot(t *te
 	got := applyTransactionPriorities(
 		txs, rules, chainCfg, statedb, nil, signer,
 		1, inter.Timestamp(1234), common.Hash{0x1}, parent,
+		noPriorityFailures(ctrl),
 	)
 
 	require.Equal(t, txs, got) // empty storage => nothing prioritized
@@ -2375,6 +2378,36 @@ func TestApplyTransactionPriorities_EveryQueryIsWrappedInAnInterTxSnapshot(t *te
 	// to the snapshot it took.
 	require.Equal(t, []int{0, 1, 2}, snapshots)
 	require.Equal(t, []int{0, 1, 2}, reverts)
+}
+
+func TestApplyTransactionPriorities_MissingRegistry_CountsConfigAndTxFailuresSeparately(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	rules := opera.FakeNetRules(opera.GetBrioUpgrades())
+	rules.Upgrades.TransactionPriorities = true
+	chainCfg := opera.CreateTransientEvmChainConfig(rules.NetworkID, nil, 1)
+	signer := types.LatestSigner(chainCfg)
+
+	// No registry code deployed, so the config query and every per-transaction
+	// query fail.
+	statedb := newRegistryStateDB(ctrl, nil, emptyRegistryStorage)
+	statedb.EXPECT().InterTxSnapshot().Return(0).Times(3) // config plus one per tx
+	statedb.EXPECT().RevertToInterTxSnapshot(gomock.Any()).Times(3)
+
+	configFailures := NewMockmetricCounter(ctrl)
+	configFailures.EXPECT().Mark(int64(1))
+	txFailures := NewMockmetricCounter(ctrl)
+	txFailures.EXPECT().Mark(int64(1)).Times(2)
+
+	txs := types.Transactions{makeSignedTx(t, signer), makeSignedTx(t, signer)}
+	parent := &evmcore.EvmHeader{Hash: common.Hash{0xae}, BaseFee: big.NewInt(1), GasUsed: 10_000}
+
+	got := applyTransactionPriorities(
+		txs, rules, chainCfg, statedb, nil, signer,
+		1, inter.Timestamp(1234), common.Hash{0x1}, parent,
+		priorityFailureMeters{config: configFailures, txs: txFailures},
+	)
+	require.Equal(t, txs, got)
 }
 
 func TestApplyTransactionPriorities_UsesEvmClassifier(t *testing.T) {
@@ -2407,6 +2440,7 @@ func TestApplyTransactionPriorities_UsesEvmClassifier(t *testing.T) {
 	got := applyTransactionPriorities(
 		types.Transactions{plainTx, prioritizedTx}, rules, chainCfg, statedb, nil, signer,
 		1, inter.Timestamp(1234), common.Hash{0x1}, parent,
+		noPriorityFailures(ctrl),
 	)
 	require.Equal(t, types.Transactions{prioritizedTx, plainTx}, got)
 }
@@ -2482,6 +2516,15 @@ func newRegistryStateDB(
 	statedb.EXPECT().SlotInAccessList(any, any).AnyTimes()
 	statedb.EXPECT().AddSlotToAccessList(any, any).AnyTimes()
 	return statedb
+}
+
+// noPriorityFailures returns failure meters that fail the test if a failure is
+// reported to them.
+func noPriorityFailures(ctrl *gomock.Controller) priorityFailureMeters {
+	return priorityFailureMeters{
+		config: NewMockmetricCounter(ctrl),
+		txs:    NewMockmetricCounter(ctrl),
+	}
 }
 
 // emptyRegistryStorage resolves every registry storage slot to zero, under which

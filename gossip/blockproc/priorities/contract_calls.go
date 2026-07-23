@@ -17,7 +17,7 @@
 // Package priorities implements the transaction-priorities feature: querying an
 // on-chain registry contract to determine, per transaction, a priority level, a
 // weight, and an entity id, and using those to order transactions during block
-// formation. See transaction_priorities.md for the design.
+// formation.
 package priorities
 
 import (
@@ -125,10 +125,12 @@ var FallbackConfig = Config{
 }
 
 // GetConfigOrFallback queries the registry configuration via GetConfig and, on
-// error, returns the deterministic FallbackConfig.
-func GetConfigOrFallback(upgrades opera.Upgrades, vm VirtualMachine) Config {
+// error, reports the failure to the failures meter and returns the deterministic
+// FallbackConfig.
+func GetConfigOrFallback(upgrades opera.Upgrades, vm VirtualMachine, failures Meter) Config {
 	cfg, err := GetConfig(upgrades, vm)
 	if err != nil {
+		failures.Mark(1)
 		return FallbackConfig
 	}
 	return cfg
