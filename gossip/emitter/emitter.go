@@ -156,8 +156,7 @@ type Emitter struct {
 		priorityConfig priorities.Config // rate limits read while the sortedTxs were built
 	}
 
-	// priorityCache memoizes the transaction priorities used for ordering. It is
-	// shared with the transaction pool.
+	// priorityCache memoizes the transaction priorities used for ordering.
 	priorityCache *evmcore.PriorityCache
 
 	emittedEventFile *os.File

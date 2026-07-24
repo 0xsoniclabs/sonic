@@ -721,7 +721,7 @@ func TestEmitter_GetSortedTxs_ResolvesCandidatePrioritiesFromTheCacheOrTheHeadSt
 			prioritiesEnabled: true,
 			cached:            nil,
 			queried:           true,
-			// queried always returns the default priority because the contract is not deployed, but is makes sure that the db is called.
+			// queried always returns the default priority because the contract is not deployed, but it makes sure that the db is called.
 			expectPriority: priorities.Priority{},
 			expectConfig:   priorities.FallbackConfig,
 		},
