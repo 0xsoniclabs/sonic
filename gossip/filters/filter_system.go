@@ -98,6 +98,11 @@ type EventSystem struct {
 	txsCh     chan evmcore.NewTxsNotify    // Channel to receive new transactions notify
 	logsCh    chan []*types.Log            // Channel to receive new log notify
 	blocksCh  chan evmcore.ChainHeadNotify // Channel to receive new chain notify
+
+	// Lifecycle
+	quit     chan struct{} // closed by Stop to signal the loop to exit
+	stopOnce sync.Once     // makes Stop idempotent
+	done     chan struct{} // closed once the loop has exited
 }
 
 // NewEventSystem creates a new manager that listens for event on the given chans,
@@ -113,6 +118,8 @@ func NewEventSystem(backend Backend) *EventSystem {
 		blocksCh:  make(chan evmcore.ChainHeadNotify, blocksChanSize),
 		txsCh:     make(chan evmcore.NewTxsNotify, txChanSize),
 		logsCh:    make(chan []*types.Log, logsChanSize),
+		quit:      make(chan struct{}),
+		done:      make(chan struct{}),
 	}
 
 	// Subscribe events
@@ -127,6 +134,16 @@ func NewEventSystem(backend Backend) *EventSystem {
 
 	go m.eventLoop()
 	return m
+}
+
+// Stop terminates the event loop and blocks until it has exited, including any
+// broadcast in progress. After Stop returns the backend is no longer read, so
+// it is safe to close. Stop is idempotent.
+func (es *EventSystem) Stop() {
+	es.stopOnce.Do(func() {
+		close(es.quit)
+	})
+	<-es.done
 }
 
 // Subscription is created when the client registers itself for a particular event.
@@ -329,6 +346,7 @@ func (es *EventSystem) broadcast(filters filterIndex, ev interface{}) {
 
 // eventLoop (un)installs filters and processes mux events.
 func (es *EventSystem) eventLoop() {
+	defer close(es.done)
 	// Ensure all subscriptions get cleaned up
 	defer func() {
 		es.blocksSub.Unsubscribe()
@@ -342,7 +360,17 @@ func (es *EventSystem) eventLoop() {
 	}
 
 	for {
+		// Prioritize quit so no buffered event is broadcast after Stop.
 		select {
+		case <-es.quit:
+			return
+		default:
+		}
+
+		select {
+		case <-es.quit:
+			return
+
 		// Handle subscribed events
 		case ev := <-es.txsCh:
 			es.broadcast(index, ev)
