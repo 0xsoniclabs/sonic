@@ -62,5 +62,5 @@ func TestPriority_Cmp(t *testing.T) {
 // Prio builds a Priority for tests. The id is limited to a single byte for
 // simplicity.
 func Prio(level uint64, weight uint64, id byte) Priority {
-	return Priority{Level: level, Weight: weight, ID: [16]byte{15: id}}
+	return Priority{Level: level, Weight: weight, ID: PriorityID{15: id}}
 }

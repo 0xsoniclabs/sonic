@@ -32,7 +32,7 @@ import "cmp"
 type Priority struct {
 	Level  uint64
 	Weight uint64
-	ID     [16]byte
+	ID     PriorityID
 }
 
 // IsPrioritized reports whether the transaction has a non-zero priority level.
@@ -53,6 +53,8 @@ func (p Priority) Cmp(other Priority) int {
 	}
 	return cmp.Compare(p.Weight, other.Weight)
 }
+
+type PriorityID [16]byte
 
 // Config holds the per-entity rate limits returned by the registry's
 // getPriorityConfig function.

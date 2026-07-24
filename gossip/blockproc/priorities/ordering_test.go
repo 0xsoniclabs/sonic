@@ -233,6 +233,11 @@ func TestPrioritizedSenderSequences_ReducesToContiguousNonceSequenceOfPrioTxsFro
 			startNonces:       map[byte]uint64{0xa: 0},
 			expectedSequences: map[byte][]int{0xa: {0}},
 		},
+		"duplicate nonce demoted but sequence not skipped": {
+			txs:               []tx{{nonce: 0, level: 1, sender: 0xa}, {nonce: 0, level: 0, sender: 0xa}, {nonce: 1, level: 1, sender: 0xa}},
+			startNonces:       map[byte]uint64{0xa: 0},
+			expectedSequences: map[byte][]int{0xa: {0, 2}},
+		},
 		"contiguous sequence kept": {
 			txs:               []tx{{nonce: 0, level: 1, sender: 0xa}, {nonce: 1, level: 1, sender: 0xa}, {nonce: 2, level: 1, sender: 0xa}},
 			startNonces:       map[byte]uint64{0xa: 0},

@@ -201,8 +201,8 @@ func computePrioritizedTxsPrefix(
 	perEntityBudget uint64,
 ) []int {
 	selected := make([]int, 0, len(txsWithPrio))
-	remaining := make(map[[16]byte]uint64)
-	budgetOf := func(id [16]byte) uint64 {
+	remaining := make(map[PriorityID]uint64)
+	budgetOf := func(id PriorityID) uint64 {
 		if r, ok := remaining[id]; ok {
 			return r
 		}
