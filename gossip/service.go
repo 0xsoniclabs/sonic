@@ -256,6 +256,9 @@ type Service struct {
 	EthAPI        *EthAPIBackend
 	netRPCService *ethapi.PublicNetAPI
 
+	// filterAPI must be stopped during shutdown before the store is closed.
+	filterAPI *filters.PublicFilterAPI
+
 	procLogger *proclogger.Logger
 
 	stopped   bool
@@ -526,6 +529,9 @@ func (s *Service) Protocols() ([]p2p.Protocol, CleanupFunc) {
 func (s *Service) APIs() []rpc.API {
 	apis := api.GetAPIs(s.EthAPI)
 
+	// Retained so its event loop can be stopped before the store is closed.
+	s.filterAPI = filters.NewPublicFilterAPI(s.EthAPI, s.config.FilterAPI)
+
 	apis = append(apis, []rpc.API{
 		{
 			Namespace: "eth",
@@ -535,7 +541,7 @@ func (s *Service) APIs() []rpc.API {
 		}, {
 			Namespace: "eth",
 			Version:   "1.0",
-			Service:   filters.NewPublicFilterAPI(s.EthAPI, s.config.FilterAPI),
+			Service:   s.filterAPI,
 			Public:    true,
 		}, {
 			Namespace: "net",
@@ -625,6 +631,10 @@ func (s *Service) Stop() error {
 	s.operaDialCandidates.Close()
 
 	s.handler.Stop()
+	// Must stop before the store is closed to avoid reading from a closed store.
+	if s.filterAPI != nil {
+		s.filterAPI.Stop()
+	}
 	s.feed.Stop()
 	s.gpo.Stop()
 	// it's safe to stop tflusher only before locking engineMu
