@@ -1,0 +1,47 @@
+# Copyright 2026 Sonic Operations Ltd
+# This file is part of the Sonic Client
+#
+# Sonic is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Sonic is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
+# Convenience wrapper around the transaction-priorities demo image.
+#
+#   cd gbs-demo && docker compose up --build
+#
+# The RPC endpoint is then available at http://localhost:18545.
+services:
+  sonic-priorities:
+    build:
+      context: ..
+      dockerfile: gbs-demo/Dockerfile
+    image: sonic-priorities-demo
+    # Demo configuration. Override from your shell (e.g. `DEMO_USERS=20 docker
+    # compose up`) or edit the defaults here.
+    environment:
+      VALIDATORS: ${VALIDATORS:-5}
+      DEMO_USERS: ${DEMO_USERS:-10}
+      DEMO_BALANCE: ${DEMO_BALANCE:-1000000000}
+    ports:
+      - "18545:18545" # validator 1 HTTP RPC (primary endpoint)
+      - "18546:18546" # validator 2 HTTP RPC
+      - "18547:18547" # validator 3 HTTP RPC
+      - "18548:18548" # validator 4 HTTP RPC
+      - "18549:18549" # validator 5 HTTP RPC
+      - "18645:18645" # validator 1 WebSocket RPC
+    # The network is recreated fresh on every start. Uncomment to persist the
+    # chain data (and thus balances/priority config) across restarts:
+    # volumes:
+    #   - sonic-demo-data:/data
+
+# volumes:
+#   sonic-demo-data:
