@@ -25,8 +25,9 @@ import (
 	"os"
 	"time"
 
+	priorityRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/proxy"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
+	subsidiesRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/integration/makegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
@@ -156,7 +157,7 @@ func GenerateFakeJsonGenesis(
 		copy(addressAsStorageValue[12:], implementationAddress[:])
 		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
 			Name:    "GasSubsidiesRegistryProxy",
-			Address: registry.GetAddress(),
+			Address: subsidiesRegistry.GetAddress(),
 			Code:    proxy.GetCode(),
 			Nonce:   1,
 			Storage: map[common.Hash]common.Hash{
@@ -168,7 +169,31 @@ func GenerateFakeJsonGenesis(
 		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
 			Name:    "GasSubsidiesRegistryImplementation",
 			Address: implementationAddress,
-			Code:    registry.GetCode(),
+			Code:    subsidiesRegistry.GetCode(),
+			Nonce:   1,
+		})
+	}
+
+	// Deploy the transaction priority registry contract if enabled.
+	if upgrades.TransactionPriorities {
+		implementationAddress := common.Address{1, 2, 3, 4, 5, 6, 8}
+		addressAsStorageValue := common.Hash{}
+		copy(addressAsStorageValue[12:], implementationAddress[:])
+		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
+			Name:    "PriorityRegistryProxy",
+			Address: priorityRegistry.GetAddress(),
+			Code:    proxy.GetCode(),
+			Nonce:   1,
+			Storage: map[common.Hash]common.Hash{
+				// Set the implementation address in the proxy contract.
+				proxy.GetSlotForImplementation(): addressAsStorageValue,
+			},
+		})
+
+		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
+			Name:    "PriorityRegistryImplementation",
+			Address: implementationAddress,
+			Code:    priorityRegistry.GetCode(),
 			Nonce:   1,
 		})
 	}

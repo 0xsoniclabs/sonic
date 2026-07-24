@@ -26,7 +26,8 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
+	priorityRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
+	subsidiesRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -93,6 +94,10 @@ func TestForkId_UpgradesProduceDifferentIds(t *testing.T) {
 		"with bundles":    true,
 		"without bundles": false,
 	}
+	priorities := map[string]bool{
+		"with priorities":    true,
+		"without priorities": false,
+	}
 
 	genesisHash := common.Hash{0x42}
 
@@ -101,22 +106,25 @@ func TestForkId_UpgradesProduceDifferentIds(t *testing.T) {
 		for proposerName, singleProposer := range proposer {
 			for subsidiesName, withSubsidies := range subsidies {
 				for bundlesName, withBundles := range bundles {
-					for _, height := range []idx.Block{1, 5, 10} {
-						upgrades := upgrades
-						upgrades.SingleProposerBlockFormation = singleProposer
-						upgrades.GasSubsidies = withSubsidies
-						upgrades.TransactionBundles = withBundles
+					for prioritiesName, withPriorities := range priorities {
+						for _, height := range []idx.Block{1, 5, 10} {
+							upgrades := upgrades
+							upgrades.SingleProposerBlockFormation = singleProposer
+							upgrades.GasSubsidies = withSubsidies
+							upgrades.TransactionBundles = withBundles
+							upgrades.TransactionPriorities = withPriorities
 
-						upgradeHeight := opera.MakeUpgradeHeight(upgrades, height)
-						testName := fmt.Sprintf("%s-%s-%s-%s-%d", hardfork, proposerName, subsidiesName, bundlesName, height)
+							upgradeHeight := opera.MakeUpgradeHeight(upgrades, height)
+							testName := fmt.Sprintf("%s-%s-%s-%s-%s-%d", hardfork, proposerName, subsidiesName, bundlesName, prioritiesName, height)
 
-						t.Run(testName, func(t *testing.T) {
-							got, err := MakeForkId(upgradeHeight, genesisHash)
-							require.NoError(t, err, "makeForkHash failed")
-							_, exists := generated[got]
-							require.False(t, exists, "duplicate fork ID generated for different upgrades")
-							generated[got] = struct{}{}
-						})
+							t.Run(testName, func(t *testing.T) {
+								got, err := MakeForkId(upgradeHeight, genesisHash)
+								require.NoError(t, err, "makeForkHash failed")
+								_, exists := generated[got]
+								require.False(t, exists, "duplicate fork ID generated for different upgrades")
+								generated[got] = struct{}{}
+							})
+						}
 					}
 				}
 			}
@@ -156,6 +164,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 	sonicHeight := idx.Block(1)
 	allegroHeight := idx.Block(5)
 	gasSubsidiesHeight := idx.Block(10)
+	prioritiesHeight := idx.Block(15)
 
 	tests := map[string]struct {
 		upgradeHeight    opera.UpgradeHeight
@@ -182,7 +191,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				}(),
 				Height: gasSubsidiesHeight,
 			},
-			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY_ADDRESS": registry.GetAddress()},
+			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY_ADDRESS": subsidiesRegistry.GetAddress()},
 		},
 		"Sonic+GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -193,7 +202,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				}(),
 				Height: gasSubsidiesHeight,
 			},
-			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY_ADDRESS": registry.GetAddress()},
+			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY_ADDRESS": subsidiesRegistry.GetAddress()},
 		},
 		"Allegro+GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -206,7 +215,30 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 			},
 			wantSysContracts: contractRegistry{
 				"HISTORY_STORAGE_ADDRESS":      params.HistoryStorageAddress,
-				"GAS_SUBSIDY_REGISTRY_ADDRESS": registry.GetAddress(),
+				"GAS_SUBSIDY_REGISTRY_ADDRESS": subsidiesRegistry.GetAddress(),
+			},
+		},
+		"TransactionPriorities": {
+			upgradeHeight: opera.UpgradeHeight{
+				Upgrades: opera.Upgrades{TransactionPriorities: true},
+				Height:   prioritiesHeight,
+			},
+			wantSysContracts: contractRegistry{"TRANSACTION_PRIORITY_REGISTRY_ADDRESS": priorityRegistry.GetAddress()},
+		},
+		"Allegro+GasSubsidies+TransactionPriorities": {
+			upgradeHeight: opera.UpgradeHeight{
+				Upgrades: func() opera.Upgrades {
+					upgrades := opera.GetAllegroUpgrades()
+					upgrades.GasSubsidies = true
+					upgrades.TransactionPriorities = true
+					return upgrades
+				}(),
+				Height: prioritiesHeight,
+			},
+			wantSysContracts: contractRegistry{
+				"HISTORY_STORAGE_ADDRESS":               params.HistoryStorageAddress,
+				"GAS_SUBSIDY_REGISTRY_ADDRESS":          subsidiesRegistry.GetAddress(),
+				"TRANSACTION_PRIORITY_REGISTRY_ADDRESS": priorityRegistry.GetAddress(),
 			},
 		},
 	}

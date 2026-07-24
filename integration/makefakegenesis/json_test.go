@@ -20,6 +20,9 @@ import (
 	"testing"
 	"time"
 
+	priorityRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/proxy"
+	subsidiesRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -35,6 +38,59 @@ func TestJsonGenesis_AcceptsGenesisWithoutCommittee(t *testing.T) {
 	genesis := GenerateFakeJsonGenesis(opera.GetSonicUpgrades(), CreateEqualValidatorStake(1))
 	_, err := ApplyGenesisJson(genesis)
 	require.NoError(t, err)
+}
+
+func TestJsonGenesis_DeploysRegistryContracts(t *testing.T) {
+	tests := map[string]struct {
+		enable  func(*opera.Upgrades)
+		address common.Address
+		code    []byte
+	}{
+		"gas subsidies registry": {
+			enable:  func(u *opera.Upgrades) { u.GasSubsidies = true },
+			address: subsidiesRegistry.GetAddress(),
+			code:    subsidiesRegistry.GetCode(),
+		},
+		"transaction priority registry": {
+			enable:  func(u *opera.Upgrades) { u.TransactionPriorities = true },
+			address: priorityRegistry.GetAddress(),
+			code:    priorityRegistry.GetCode(),
+		},
+	}
+
+	findAccount := func(genesis *GenesisJson, address common.Address) *Account {
+		for i := range genesis.Accounts {
+			if genesis.Accounts[i].Address == address {
+				return &genesis.Accounts[i]
+			}
+		}
+		return nil
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			upgrades := opera.GetSonicUpgrades()
+
+			// The registry is not deployed while the feature is disabled.
+			genesis := GenerateFakeJsonGenesis(upgrades, CreateEqualValidatorStake(1))
+			require.Nil(t, findAccount(genesis, test.address))
+
+			// Enabling the feature deploys a proxy pointing at an
+			// implementation holding the registry code.
+			test.enable(&upgrades)
+			genesis = GenerateFakeJsonGenesis(upgrades, CreateEqualValidatorStake(1))
+
+			proxyAccount := findAccount(genesis, test.address)
+			require.NotNil(t, proxyAccount)
+			require.Equal(t, proxy.GetCode(), []byte(proxyAccount.Code))
+
+			implAddress := common.BytesToAddress(
+				proxyAccount.Storage[proxy.GetSlotForImplementation()].Bytes())
+			implAccount := findAccount(genesis, implAddress)
+			require.NotNil(t, implAccount)
+			require.Equal(t, test.code, []byte(implAccount.Code))
+		})
+	}
 }
 
 func TestJsonGenesis_Network_RulesValidated_WithAllegroAndLater(t *testing.T) {
