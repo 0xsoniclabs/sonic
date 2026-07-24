@@ -207,10 +207,11 @@ func newMetricsServer(address string) *http.Server {
 	m.Handle("/debug/metrics/prometheus", gethprometheus.Handler(metrics.DefaultRegistry))
 	m.Handle("/debug/metrics/prometheus/native", promhttp.Handler())
 	return &http.Server{
-		Addr:         address,
-		Handler:      m,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Addr:              address,
+		Handler:           m,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 }
