@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
@@ -358,17 +359,24 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 	// reach epoch ceiling to apply the new rules
 	net.AdvanceEpoch(t, 1)
 
-	// Wait for another block, this is time for the tx_pool to tick, run reorg,
-	// and implement the new rules.
-	receipt, err := net.EndowAccount(account.Address(), big.NewInt(1e18))
-	require.NoError(t, err, "failed to endow account with balance")
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-
-	t.Run("expectations before sonic-allegro hardfork", func(t *testing.T) {
-
-		// Submit a transaction that requires the new behavior
+	t.Run("expectations after sonic-allegro hardfork", func(t *testing.T) {
+		// Submit a transaction that requires the new behavior. The transaction
+		// pool applies the new rules asynchronously after the epoch change, so
+		// retry submitting until the SetCodeTx type is accepted by the pool.
 		tx := makeSetCodeTx(t, net, account)
-		receipt, err := net.Run(tx)
+		client, err := net.GetClient()
+		require.NoError(t, err)
+		defer client.Close()
+		err = tests.WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+			err := client.SendTransaction(ctx, tx)
+			if err != nil && !strings.Contains(err.Error(), evmcore.ErrTxTypeNotSupported.Error()) {
+				return false, err
+			}
+			return err == nil, nil
+		})
+		require.NoError(t, err, "SetCodeTx was not accepted after enabling Allegro")
+
+		receipt, err := net.GetReceipt(tx.Hash())
 		require.NoError(t, err)
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
