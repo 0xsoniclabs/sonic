@@ -62,13 +62,6 @@ coverage:
 clean:
 	rm -fr ./build/*
 
-# Linting
-
-.PHONY: lint
-lint: 
-	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.1
-	@golangci-lint run ./...
-
 .PHONY: license-check
 license-check:
 	go run ./scripts/license/add_license_header.go --check -dir ./
