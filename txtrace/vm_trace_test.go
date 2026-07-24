@@ -188,7 +188,9 @@ func TestComputePushed_StackClamp(t *testing.T) {
 
 func TestVmTraceLogger_GetResultBeforeExecution(t *testing.T) {
 	l := NewVmTraceLogger()
-	require.Nil(t, l.GetResult(), "result must be nil before any execution")
+	result, err := l.GetResult()
+	require.NoError(t, err)
+	require.Nil(t, result, "result must be nil before any execution")
 }
 
 func TestVmTraceLogger_EmptyFrame(t *testing.T) {
@@ -199,7 +201,8 @@ func TestVmTraceLogger_EmptyFrame(t *testing.T) {
 	l.onEnter(0, 0x00 /* STOP */, addr(1), addr(2), code, 100, big.NewInt(0))
 	l.onExit(0, nil, 0, nil, false)
 
-	result := l.GetResult()
+	result, err := l.GetResult()
+	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Empty(t, result.Ops)
 }
@@ -215,7 +218,8 @@ func TestVmTraceLogger_OnFaultSetsExToNil(t *testing.T) {
 
 	l.onExit(0, nil, 3, errFoo, true)
 
-	result := l.GetResult()
+	result, err := l.GetResult()
+	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Len(t, result.Ops, 1)
 	require.Nil(t, result.Ops[0].Ex, "Ex must be nil after a fault")
@@ -238,7 +242,8 @@ func TestVmTraceLogger_StorageChangeAttributed(t *testing.T) {
 
 	l.onExit(0, nil, 20000, nil, false)
 
-	result := l.GetResult()
+	result, err := l.GetResult()
+	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Len(t, result.Ops, 2)
 
@@ -260,7 +265,8 @@ func TestVmTraceLogger_GasAccountingUsed(t *testing.T) {
 
 	l.onExit(0, nil, 3, nil, false)
 
-	result := l.GetResult()
+	result, err := l.GetResult()
+	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Len(t, result.Ops, 2)
 
@@ -289,7 +295,8 @@ func TestVmTraceLogger_SubTraceLinked(t *testing.T) {
 	l.onOpcode(10, 0x00 /* STOP */, 890, 0, &mockOpContext{}, nil, 0, nil)
 	l.onExit(0, nil, 110, nil, false)
 
-	result := l.GetResult()
+	result, err := l.GetResult()
+	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Len(t, result.Ops, 2)
 
@@ -314,7 +321,8 @@ func TestVmTraceLogger_StorageChangeOnLastOp(t *testing.T) {
 	// Frame exits immediately; onExit must consume pendingStore.
 	l.onExit(0, nil, 20000, nil, false)
 
-	result := l.GetResult()
+	result, err := l.GetResult()
+	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Len(t, result.Ops, 1)
 
@@ -329,7 +337,9 @@ func TestVmTraceLogger_NoOpsOnEmptyExec(t *testing.T) {
 	l := NewVmTraceLogger()
 	// Guard: multiple OnExit calls without matching OnEnter must not panic
 	l.onExit(0, nil, 0, nil, false)
-	require.Nil(t, l.GetResult())
+	result, err := l.GetResult()
+	require.NoError(t, err)
+	require.Nil(t, result)
 }
 
 func TestVmTraceLogger_RevertHasNonNilEx(t *testing.T) {
@@ -340,7 +350,8 @@ func TestVmTraceLogger_RevertHasNonNilEx(t *testing.T) {
 	l.onFault(0, 0xfd, 1000, 0, &mockOpContext{}, 0, vm.ErrExecutionReverted)
 	l.onExit(0, nil, 0, vm.ErrExecutionReverted, true)
 
-	result := l.GetResult()
+	result, err := l.GetResult()
+	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Len(t, result.Ops, 1)
 	require.NotNil(t, result.Ops[0].Ex, "REVERT must have non-nil Ex")
@@ -379,18 +390,20 @@ func TestVmTraceLogger_MemNilForNonMemoryOp(t *testing.T) {
 	l.onOpcode(2, byte(vm.STOP), 997, 0, &mockOpContext{}, nil, 0, nil)
 	l.onExit(0, nil, 3, nil, false)
 
-	result := l.GetResult()
+	result, err := l.GetResult()
+	require.NoError(t, err)
 	require.Len(t, result.Ops, 2)
 	require.Nil(t, result.Ops[0].Ex.Mem, "PUSH1 must have Mem=nil (no memory write)")
 }
 
 func TestVmTraceLogger_MemSetAfterMSTORE(t *testing.T) {
-	// MSTORE writes 32 bytes; Ex.Mem must carry the post-execution memory with Off=0.
+	// MSTORE writes 32 bytes; Ex.Mem must carry the written region with the
+	// offset taken from the stack (Parity/OpenEthereum semantics).
 	l := NewVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 
-	// Before MSTORE: memory empty.
-	ctxBeforeMstore := &mockOpContext{memory: []byte{}}
+	// MSTORE stack (top last): value=0x42, offset=0.
+	ctxBeforeMstore := &mockOpContext{stack: makeStack(0x42, 0)}
 	l.onOpcode(0, byte(vm.MSTORE), 1000, 6, ctxBeforeMstore, nil, 0, nil)
 
 	// After MSTORE: 32 bytes, last byte = 0x42.
@@ -401,22 +414,24 @@ func TestVmTraceLogger_MemSetAfterMSTORE(t *testing.T) {
 
 	l.onExit(0, nil, 6, nil, false)
 
-	result := l.GetResult()
+	result, err := l.GetResult()
+	require.NoError(t, err)
 	require.Len(t, result.Ops, 2)
 
 	mstoreOp := result.Ops[0]
 	require.NotNil(t, mstoreOp.Ex)
 	require.NotNil(t, mstoreOp.Ex.Mem, "MSTORE must have Mem set")
-	require.Equal(t, uint64(0), mstoreOp.Ex.Mem.Off, "Mem.Off must be 0")
-	require.Equal(t, []byte(memAfter), []byte(mstoreOp.Ex.Mem.Data), "Mem.Data must equal post-MSTORE memory")
+	require.Equal(t, uint64(0), mstoreOp.Ex.Mem.Off, "Mem.Off must be the MSTORE offset")
+	require.Equal(t, []byte(memAfter), []byte(mstoreOp.Ex.Mem.Data), "Mem.Data must equal the written 32-byte region")
 }
 
-func TestVmTraceLogger_MemOffAlwaysZero(t *testing.T) {
-	// Off must be 0 regardless of memory size — never len(data).
+func TestVmTraceLogger_MemOffsetFromStack(t *testing.T) {
+	// MSTORE at offset 32 must report Off=32 and only the written 32-byte region.
 	l := NewVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 
-	l.onOpcode(0, byte(vm.MSTORE), 1000, 6, &mockOpContext{memory: []byte{}}, nil, 0, nil)
+	// MSTORE stack (top last): value=0x02, offset=32.
+	l.onOpcode(0, byte(vm.MSTORE), 1000, 6, &mockOpContext{stack: makeStack(0x02, 32)}, nil, 0, nil)
 
 	// 64-byte post-execution memory (two MSTORE slots).
 	bigMem := make([]byte, 64)
@@ -425,12 +440,274 @@ func TestVmTraceLogger_MemOffAlwaysZero(t *testing.T) {
 	l.onOpcode(33, byte(vm.STOP), 994, 0, &mockOpContext{memory: bigMem}, nil, 0, nil)
 	l.onExit(0, nil, 6, nil, false)
 
-	result := l.GetResult()
+	result, err := l.GetResult()
+	require.NoError(t, err)
 	require.Len(t, result.Ops, 2)
 	mem := result.Ops[0].Ex.Mem
 	require.NotNil(t, mem)
-	require.Equal(t, uint64(0), mem.Off, "Off must be 0, not len(data)")
-	require.NotEqual(t, uint64(len(mem.Data)), mem.Off, "Off must not equal len(Data)")
+	require.Equal(t, uint64(32), mem.Off, "Off must be the MSTORE offset")
+	require.Equal(t, []byte(bigMem[32:64]), []byte(mem.Data), "Data must be the written region only")
+}
+
+func TestVmTraceLogger_MemRegionForCallReturnData(t *testing.T) {
+	// A CALL op must report the return-data region (retOffset, retSize) of the
+	// caller's memory once the frame resumes after the sub-call.
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+
+	// CALL stack (top last): retSize=32, retOffset=64, argsLen, argsOff, value, to, gas.
+	callStack := makeStack(32, 64, 0, 0, 0, 2, 800)
+	l.onOpcode(0, byte(vm.CALL), 1000, 100, &mockOpContext{stack: callStack}, nil, 0, nil)
+
+	// Sub-call runs and exits.
+	l.onEnter(1, byte(vm.CALL), addr(2), addr(3), nil, 800, big.NewInt(0))
+	l.onExit(1, nil, 10, nil, false)
+
+	// Back in the root frame: memory now holds return data at [64, 96).
+	mem := make([]byte, 96)
+	mem[64] = 0xAA
+	mem[95] = 0xBB
+	l.onOpcode(10, byte(vm.STOP), 890, 0, &mockOpContext{memory: mem, stack: makeStack(1)}, nil, 0, nil)
+	l.onExit(0, nil, 110, nil, false)
+
+	result, err := l.GetResult()
+	require.NoError(t, err)
+	require.Len(t, result.Ops, 2)
+
+	callOp := result.Ops[0]
+	require.NotNil(t, callOp.Ex.Mem, "CALL must report the return-data region")
+	require.Equal(t, uint64(64), callOp.Ex.Mem.Off)
+	require.Equal(t, []byte(mem[64:96]), []byte(callOp.Ex.Mem.Data))
+}
+
+func TestVmTraceLogger_MemZeroPaddedBeyondMemory(t *testing.T) {
+	// A region extending past the current memory size is zero-padded.
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+
+	// MSTORE at offset 16 while post-exec memory is only 24 bytes long
+	// (cannot happen in the real EVM, but the copy must stay safe).
+	l.onOpcode(0, byte(vm.MSTORE), 1000, 6, &mockOpContext{stack: makeStack(0x01, 16)}, nil, 0, nil)
+	shortMem := make([]byte, 24)
+	shortMem[16] = 0x7F
+	l.onOpcode(33, byte(vm.STOP), 994, 0, &mockOpContext{memory: shortMem}, nil, 0, nil)
+	l.onExit(0, nil, 6, nil, false)
+
+	result, err := l.GetResult()
+	require.NoError(t, err)
+	mem := result.Ops[0].Ex.Mem
+	require.NotNil(t, mem)
+	require.Equal(t, uint64(16), mem.Off)
+	require.Len(t, []byte(mem.Data), 32)
+	require.Equal(t, byte(0x7F), mem.Data[0])
+	require.Equal(t, make([]byte, 24), []byte(mem.Data[8:]), "bytes beyond memory must be zero-padded")
+}
+
+func TestVmTraceLogger_SizeLimitAbortsTrace(t *testing.T) {
+	// Exceeding vmTraceSizeLimit must abort the trace, release the data, and
+	// surface an error from GetResult.
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+	l.traceSize = vmTraceSizeLimit // next accounted byte tips over the limit
+
+	l.onOpcode(0, byte(vm.MSTORE), 1000, 6, &mockOpContext{stack: makeStack(0x01, 0)}, nil, 0, nil)
+	l.onOpcode(33, byte(vm.STOP), 994, 0, &mockOpContext{memory: make([]byte, 32)}, nil, 0, nil)
+	l.onExit(0, nil, 6, nil, false)
+
+	result, err := l.GetResult()
+	require.ErrorIs(t, err, errVmTraceTooLarge)
+	require.Nil(t, result)
+	require.Nil(t, l.traceStack, "accumulated data must be released on abort")
+}
+
+func TestMemTouchedRegion(t *testing.T) {
+	// Stacks are built with makeStack (top of stack = last element).
+	tests := []struct {
+		name     string
+		op       vm.OpCode
+		stack    []uint256.Int
+		wantShow bool
+		wantOff  uint64
+		wantLen  uint64
+	}{
+		// Region-reporting opcodes, offsets/lengths from the pre-execution stack.
+		{"MSTORE", vm.MSTORE, makeStack(0x42, 5), true, 5, 32},
+		{"MLOAD", vm.MLOAD, makeStack(7), true, 7, 32},
+		{"MSTORE8", vm.MSTORE8, makeStack(0x42, 9), true, 9, 1},
+		{"CALLDATACOPY", vm.CALLDATACOPY, makeStack(10, 3, 64), true, 64, 10},
+		{"CODECOPY", vm.CODECOPY, makeStack(10, 3, 64), true, 64, 10},
+		{"RETURNDATACOPY", vm.RETURNDATACOPY, makeStack(10, 3, 64), true, 64, 10},
+		{"MCOPY", vm.MCOPY, makeStack(10, 3, 64), true, 64, 10},
+		{"EXTCODECOPY", vm.EXTCODECOPY, makeStack(10, 3, 64, 0xAA), true, 64, 10},
+		{"CALL", vm.CALL, makeStack(32, 96, 0, 0, 0, 2, 800), true, 96, 32},
+		{"CALLCODE", vm.CALLCODE, makeStack(32, 96, 0, 0, 0, 2, 800), true, 96, 32},
+		{"DELEGATECALL", vm.DELEGATECALL, makeStack(32, 96, 0, 0, 2, 800), true, 96, 32},
+		{"STATICCALL", vm.STATICCALL, makeStack(32, 96, 0, 0, 2, 800), true, 96, 32},
+
+		// Zero-length regions are still reported as touched; the logger skips
+		// emitting a Mem entry for them (memLen > 0 guard).
+		{"CALLDATACOPY zero length", vm.CALLDATACOPY, makeStack(0, 3, 64), true, 64, 0},
+		{"CALL zero retSize", vm.CALL, makeStack(0, 96, 0, 0, 0, 2, 800), true, 96, 0},
+
+		// Stack too shallow for the operands → nothing reported (the op will fault).
+		{"MSTORE empty stack", vm.MSTORE, nil, false, 0, 0},
+		{"MLOAD empty stack", vm.MLOAD, nil, false, 0, 0},
+		{"CALLDATACOPY short stack", vm.CALLDATACOPY, makeStack(1, 2), false, 0, 0},
+		{"EXTCODECOPY short stack", vm.EXTCODECOPY, makeStack(1, 2, 3), false, 0, 0},
+		{"CALL short stack", vm.CALL, makeStack(1, 2, 3, 4, 5, 6), false, 0, 0},
+		{"STATICCALL short stack", vm.STATICCALL, makeStack(1, 2, 3, 4, 5), false, 0, 0},
+
+		// Opcodes that never report a region, matching OpenEthereum. CREATE,
+		// CREATE2 and SELFDESTRUCT are explicitly excluded there.
+		{"ADD", vm.ADD, makeStack(1, 2), false, 0, 0},
+		{"SSTORE", vm.SSTORE, makeStack(1, 2), false, 0, 0},
+		{"KECCAK256 reads only", vm.KECCAK256, makeStack(32, 0), false, 0, 0},
+		{"RETURN", vm.RETURN, makeStack(32, 0), false, 0, 0},
+		{"REVERT", vm.REVERT, makeStack(32, 0), false, 0, 0},
+		{"LOG0 reads only", vm.LOG0, makeStack(32, 0), false, 0, 0},
+		{"CREATE", vm.CREATE, makeStack(32, 0, 0), false, 0, 0},
+		{"CREATE2", vm.CREATE2, makeStack(1, 32, 0, 0), false, 0, 0},
+		{"SELFDESTRUCT", vm.SELFDESTRUCT, makeStack(2), false, 0, 0},
+		{"STOP", vm.STOP, nil, false, 0, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			show, off, size := memTouchedRegion(tt.op, tt.stack)
+			require.Equal(t, tt.wantShow, show)
+			require.Equal(t, tt.wantOff, off)
+			require.Equal(t, tt.wantLen, size)
+		})
+	}
+}
+
+func TestMemTouchedRegion_OffsetBeyondUint64DoesNotPanic(t *testing.T) {
+	// An offset ≥ 2^64 cannot be executed (the op faults on gas), but the
+	// region decoding must not panic on it. Uint64() truncates; the value is
+	// irrelevant because onFault nils the op's Ex before any Mem is emitted.
+	huge := uint256.MustFromBig(new(big.Int).Lsh(big.NewInt(1), 64))
+	stack := []uint256.Int{*uint256.NewInt(0x42), *huge}
+	require.NotPanics(t, func() {
+		show, _, size := memTouchedRegion(vm.MSTORE, stack)
+		require.True(t, show)
+		require.Equal(t, uint64(32), size)
+	})
+}
+
+func TestMemoryRegion(t *testing.T) {
+	mem := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+	tests := []struct {
+		name string
+		off  uint64
+		size uint64
+		want []byte
+	}{
+		{"fully inside", 2, 4, []byte{2, 3, 4, 5}},
+		{"exact fit", 0, 10, mem},
+		{"partially beyond end", 8, 4, []byte{8, 9, 0, 0}},
+		{"offset at memory size", 10, 3, []byte{0, 0, 0}},
+		{"offset beyond memory size", 20, 3, []byte{0, 0, 0}},
+		{"zero size", 2, 0, []byte{}},
+		{"empty memory", 0, 3, []byte{0, 0, 0}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			src := mem
+			if tt.name == "empty memory" {
+				src = nil
+			}
+			got := memoryRegion(src, tt.off, tt.size)
+			require.Equal(t, tt.want, []byte(got))
+		})
+	}
+}
+
+func TestVmTraceLogger_ZeroLengthCopyHasNoMem(t *testing.T) {
+	// CALLDATACOPY with length 0 touches nothing → Mem must stay nil.
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+
+	l.onOpcode(0, byte(vm.CALLDATACOPY), 1000, 3, &mockOpContext{stack: makeStack(0, 0, 64)}, nil, 0, nil)
+	l.onOpcode(1, byte(vm.STOP), 997, 0, &mockOpContext{memory: make([]byte, 96)}, nil, 0, nil)
+	l.onExit(0, nil, 3, nil, false)
+
+	result, err := l.GetResult()
+	require.NoError(t, err)
+	require.Len(t, result.Ops, 2)
+	require.Nil(t, result.Ops[0].Ex.Mem, "zero-length copy must not produce a Mem entry")
+}
+
+func TestVmTraceLogger_MLOADReportsReadRegion(t *testing.T) {
+	// Parity quirk: MLOAD reports the 32-byte region it reads.
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+
+	mem := make([]byte, 64)
+	mem[32] = 0x11
+	mem[63] = 0x22
+	l.onOpcode(0, byte(vm.MLOAD), 1000, 3, &mockOpContext{stack: makeStack(32), memory: mem}, nil, 0, nil)
+	l.onOpcode(1, byte(vm.STOP), 997, 0, &mockOpContext{memory: mem, stack: makeStack(0x11)}, nil, 0, nil)
+	l.onExit(0, nil, 3, nil, false)
+
+	result, err := l.GetResult()
+	require.NoError(t, err)
+	require.Len(t, result.Ops, 2)
+	mloadOp := result.Ops[0]
+	require.NotNil(t, mloadOp.Ex.Mem, "MLOAD must report the region it reads")
+	require.Equal(t, uint64(32), mloadOp.Ex.Mem.Off)
+	require.Equal(t, []byte(mem[32:64]), []byte(mloadOp.Ex.Mem.Data))
+}
+
+func TestVmTraceLogger_FaultedMemoryOpHasNoMem(t *testing.T) {
+	// A memory op that faults gets Ex=nil; the pending region must not be
+	// emitted and nothing may panic.
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+
+	l.onOpcode(0, byte(vm.MSTORE), 1000, 6, &mockOpContext{stack: makeStack(0x42, 0)}, nil, 0, nil)
+	l.onFault(0, byte(vm.MSTORE), 1000, 6, &mockOpContext{}, 0, errFoo)
+	l.onExit(0, nil, 1000, errFoo, true)
+
+	result, err := l.GetResult()
+	require.NoError(t, err)
+	require.Len(t, result.Ops, 1)
+	require.Nil(t, result.Ops[0].Ex, "faulted op must have Ex=nil")
+}
+
+func TestVmTraceLogger_SizeLimitBoundaryIsNotExceeded(t *testing.T) {
+	// Reaching the limit exactly is fine; only exceeding it aborts.
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+	l.traceSize = vmTraceSizeLimit - vmTraceOpOverhead
+
+	l.onOpcode(0, byte(vm.STOP), 1000, 0, &mockOpContext{}, nil, 0, nil)
+	l.onExit(0, nil, 0, nil, false)
+
+	result, err := l.GetResult()
+	require.NoError(t, err)
+	require.Len(t, result.Ops, 1)
+}
+
+func TestVmTraceLogger_OversizedCodeAbortsAndHooksStayInert(t *testing.T) {
+	// Contract code accounting can trip the limit in onEnter; every later hook
+	// must be a no-op without panicking.
+	l := NewVmTraceLogger()
+	l.traceSize = vmTraceSizeLimit - 10
+
+	l.onEnter(0, byte(vm.CREATE), addr(1), addr(2), make([]byte, 100), 1000, big.NewInt(0))
+
+	require.NotPanics(t, func() {
+		l.onEnter(1, byte(vm.CALL), addr(2), addr(3), nil, 500, big.NewInt(0))
+		l.onOpcode(0, byte(vm.MSTORE), 1000, 6, &mockOpContext{stack: makeStack(0x42, 0)}, nil, 0, nil)
+		l.onFault(0, byte(vm.MSTORE), 1000, 6, &mockOpContext{}, 0, errFoo)
+		l.OnStorageChange(addr(2), common.Hash{0x01}, common.Hash{}, common.Hash{0x02})
+		l.onExit(1, nil, 0, nil, false)
+		l.onExit(0, nil, 0, nil, false)
+	})
+
+	result, err := l.GetResult()
+	require.ErrorIs(t, err, errVmTraceTooLarge)
+	require.Nil(t, result)
+	require.Nil(t, l.traceStack, "accumulated data must be released on abort")
 }
 
 func TestVmTraceLogger_MemLastOpIsNil(t *testing.T) {
@@ -442,7 +719,8 @@ func TestVmTraceLogger_MemLastOpIsNil(t *testing.T) {
 	l.onOpcode(0, byte(vm.STOP), 1000, 0, &mockOpContext{}, nil, 0, nil)
 	l.onExit(0, nil, 0, nil, false)
 
-	result := l.GetResult()
+	result, err := l.GetResult()
+	require.NoError(t, err)
 	require.Len(t, result.Ops, 1)
 	require.Nil(t, result.Ops[0].Ex.Mem, "last op must have Mem=nil")
 }
