@@ -25,9 +25,9 @@ import (
 	"os"
 	"time"
 
-	priorityregistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
+	priorityRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/proxy"
-	subsidiesregistry "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
+	subsidiesRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/integration/makegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
@@ -157,7 +157,7 @@ func GenerateFakeJsonGenesis(
 		copy(addressAsStorageValue[12:], implementationAddress[:])
 		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
 			Name:    "GasSubsidiesRegistryProxy",
-			Address: subsidiesregistry.GetAddress(),
+			Address: subsidiesRegistry.GetAddress(),
 			Code:    proxy.GetCode(),
 			Nonce:   1,
 			Storage: map[common.Hash]common.Hash{
@@ -169,7 +169,7 @@ func GenerateFakeJsonGenesis(
 		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
 			Name:    "GasSubsidiesRegistryImplementation",
 			Address: implementationAddress,
-			Code:    subsidiesregistry.GetCode(),
+			Code:    subsidiesRegistry.GetCode(),
 			Nonce:   1,
 		})
 	}
@@ -181,7 +181,7 @@ func GenerateFakeJsonGenesis(
 		copy(addressAsStorageValue[12:], implementationAddress[:])
 		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
 			Name:    "PriorityRegistryProxy",
-			Address: priorityregistry.GetAddress(),
+			Address: priorityRegistry.GetAddress(),
 			Code:    proxy.GetCode(),
 			Nonce:   1,
 			Storage: map[common.Hash]common.Hash{
@@ -193,7 +193,7 @@ func GenerateFakeJsonGenesis(
 		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
 			Name:    "PriorityRegistryImplementation",
 			Address: implementationAddress,
-			Code:    priorityregistry.GetCode(),
+			Code:    priorityRegistry.GetCode(),
 			Nonce:   1,
 		})
 	}

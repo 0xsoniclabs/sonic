@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	priorityregistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
+	priorityRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/proxy"
-	subsidiesregistry "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
+	subsidiesRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -48,13 +48,13 @@ func TestJsonGenesis_DeploysRegistryContracts(t *testing.T) {
 	}{
 		"gas subsidies registry": {
 			enable:  func(u *opera.Upgrades) { u.GasSubsidies = true },
-			address: subsidiesregistry.GetAddress(),
-			code:    subsidiesregistry.GetCode(),
+			address: subsidiesRegistry.GetAddress(),
+			code:    subsidiesRegistry.GetCode(),
 		},
 		"transaction priority registry": {
 			enable:  func(u *opera.Upgrades) { u.TransactionPriorities = true },
-			address: priorityregistry.GetAddress(),
-			code:    priorityregistry.GetCode(),
+			address: priorityRegistry.GetAddress(),
+			code:    priorityRegistry.GetCode(),
 		},
 	}
 

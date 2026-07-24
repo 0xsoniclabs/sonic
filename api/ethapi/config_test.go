@@ -26,8 +26,8 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
-	priorityregistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
-	subsidiesregistry "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
+	priorityRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
+	subsidiesRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -191,7 +191,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				}(),
 				Height: gasSubsidiesHeight,
 			},
-			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY_ADDRESS": subsidiesregistry.GetAddress()},
+			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY_ADDRESS": subsidiesRegistry.GetAddress()},
 		},
 		"Sonic+GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -202,7 +202,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				}(),
 				Height: gasSubsidiesHeight,
 			},
-			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY_ADDRESS": subsidiesregistry.GetAddress()},
+			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY_ADDRESS": subsidiesRegistry.GetAddress()},
 		},
 		"Allegro+GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -215,7 +215,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 			},
 			wantSysContracts: contractRegistry{
 				"HISTORY_STORAGE_ADDRESS":      params.HistoryStorageAddress,
-				"GAS_SUBSIDY_REGISTRY_ADDRESS": subsidiesregistry.GetAddress(),
+				"GAS_SUBSIDY_REGISTRY_ADDRESS": subsidiesRegistry.GetAddress(),
 			},
 		},
 		"TransactionPriorities": {
@@ -223,7 +223,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Upgrades: opera.Upgrades{TransactionPriorities: true},
 				Height:   prioritiesHeight,
 			},
-			wantSysContracts: contractRegistry{"TRANSACTION_PRIORITY_REGISTRY_ADDRESS": priorityregistry.GetAddress()},
+			wantSysContracts: contractRegistry{"TRANSACTION_PRIORITY_REGISTRY_ADDRESS": priorityRegistry.GetAddress()},
 		},
 		"Allegro+GasSubsidies+TransactionPriorities": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -237,8 +237,8 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 			},
 			wantSysContracts: contractRegistry{
 				"HISTORY_STORAGE_ADDRESS":               params.HistoryStorageAddress,
-				"GAS_SUBSIDY_REGISTRY_ADDRESS":          subsidiesregistry.GetAddress(),
-				"TRANSACTION_PRIORITY_REGISTRY_ADDRESS": priorityregistry.GetAddress(),
+				"GAS_SUBSIDY_REGISTRY_ADDRESS":          subsidiesRegistry.GetAddress(),
+				"TRANSACTION_PRIORITY_REGISTRY_ADDRESS": priorityRegistry.GetAddress(),
 			},
 		},
 	}
