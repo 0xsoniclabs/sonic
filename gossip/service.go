@@ -488,14 +488,11 @@ func MakeProtocols(svc *Service, backend *handler, disc enode.Iterator) ([]p2p.P
 				peer := newPeer(version, p, rw, backend.config.Protocol.PeerCache)
 				defer peer.Close()
 
-				select {
-				case <-backend.quitSync:
+				if !backend.acquireRunSlot() {
 					return p2p.DiscQuitting
-				default:
-					backend.wg.Add(1)
-					defer backend.wg.Done()
-					return backend.handle(peer)
 				}
+				defer backend.releaseRunSlot()
+				return backend.handle(peer)
 			},
 			NodeInfo: func() interface{} {
 				return backend.NodeInfo()
