@@ -60,9 +60,10 @@ type Config struct {
 	// MaxGasPerEntityPerBlock bounds the total gas limit of prioritized
 	// transactions of one entity in a single block (authoritative, enforced at
 	// block formation).
-	// Transactions are packed in (level desc, weight desc, hash asc) order
-	// until the next transaction would exceed the budget; the remainder is
-	// demoted.
+	// Prioritized transactions are hoisted ahead of ordinary ones in
+	// (level desc, weight desc, hash asc) order until one would exceed the
+	// budget; that transaction and the later nonces of its sender are demoted,
+	// while other senders of the same entity keep packing.
 	MaxGasPerEntityPerBlock uint64
 	// MaxPiggybackTxsPerEntityPerEvent bounds how many prioritized transactions
 	// of one entity a validator eagerly includes in a single emitted event
