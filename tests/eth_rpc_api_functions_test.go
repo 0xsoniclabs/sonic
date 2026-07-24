@@ -85,6 +85,21 @@ func TestRPCApis(t *testing.T) {
 	require.Zero(t, len(missing), "missing namespaces %v", missing)
 }
 
+func TestDebugOverride_CoversAllHandlerMethods(t *testing.T) {
+
+	// methods on go-ethereum's debug.Handler (HandlerT)
+	ethDebugMethods := parseAPIs(rpc_test_utils.GetDebugHandlerApis())
+
+	// methods on sonic's PublicDebugAPI (debug namespace)
+	sonicDebugMethods := parseAPIs(getNodeService(t).APIs())
+
+	// all go-ethereum debug.Handler methods must be present in sonic's debug API
+	// (either implemented or shadowed in debugOverride.go)
+	missing := findMissingMethods(ethDebugMethods, sonicDebugMethods)
+	require.Zero(t, len(missing),
+		"go-ethereum debug.Handler has methods not shadowed in sonic's PublicDebugAPI: %v", missing)
+}
+
 // getNodeService returns a gossip service
 // which includes initialization of RPC APIs for Sonic
 func getNodeService(t *testing.T) *gossip.Service {
