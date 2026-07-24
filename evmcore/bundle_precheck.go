@@ -24,6 +24,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
@@ -147,7 +148,14 @@ func getBundleState(
 	// Next, check whether there are any nonce conflicts in the execution of
 	// the bundle. This is a quicker check than actually running the bundle in
 	// full to determine whether it can succeed or not.
-	state := checkForNonceConflicts(bundle, signer, stateDb)
+	state := checkForNonceConflicts(
+		bundle,
+		signer,
+		stateDb,
+		currentBlock,
+		currentTime,
+		stateDb,
+	)
 	if !state.Executable {
 		return state
 	}
@@ -184,8 +192,13 @@ type NonceSource interface {
 	GetNonce(addr common.Address) uint64
 }
 
+type ProcessedBundleSource interface {
+	HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool
+}
+
 // checkForNonceConflicts checks whether there are any nonce conflicts in the
-// execution of the bundle.
+// execution of the bundle. It also checks plan constraints for nested bundles
+// (block range, time period, already processed).
 //
 // It returns a BundleState with Executable=false and a reason if there is a
 // nonce conflict that will never be resolved.
@@ -199,13 +212,18 @@ func checkForNonceConflicts(
 	txBundle *bundle.TransactionBundle,
 	signer types.Signer,
 	nonceSource NonceSource,
+	blockNumber uint64,
+	blockTime inter.Timestamp,
+	processedBundleSource ProcessedBundleSource,
 ) BundleState {
-
 	// Step 1: run with current nonces to check whether the bundle is ready to
 	// run right now. The runner does not allow nonce-gaps.
 	strictRunner := &dryRunner{
-		signer:       signer,
-		nonceTracker: &nonceTracker{source: nonceSource},
+		signer:         signer,
+		nonceTracker:   &nonceTracker{source: nonceSource},
+		blockNumber:    blockNumber,
+		blockTime:      blockTime,
+		bundlesTracker: &processedBundleTracker{source: processedBundleSource},
 	}
 	if bundle.RunBundle(txBundle, strictRunner) {
 		return makeRunnableState(nil)
@@ -214,9 +232,12 @@ func checkForNonceConflicts(
 	// Step 2: check with future nonces, to check whether the bundle may become
 	// executable in the future. The runner allows nonce-gaps.
 	looseRunner := &dryRunner{
-		signer:       signer,
-		nonceTracker: &nonceTracker{source: nonceSource},
-		allowGaps:    true, // for each account, a future nonce may be chosen once
+		signer:         signer,
+		nonceTracker:   &nonceTracker{source: nonceSource},
+		allowGaps:      true, // for each account, a future nonce may be chosen once
+		blockNumber:    blockNumber,
+		blockTime:      blockTime,
+		bundlesTracker: &processedBundleTracker{source: processedBundleSource},
 	}
 	if bundle.RunBundle(txBundle, looseRunner) {
 		return makeTemporaryBlockedState("gapped nonce")
@@ -236,11 +257,14 @@ func checkForNonceConflicts(
 // It is only to be used by the checkForNonceConflicts function, which performs
 // the proper lifecycle management of the dryRunner.
 type dryRunner struct {
-	signer       types.Signer
-	nonceTracker *nonceTracker
-	allowGaps    bool
-	nonceLocked  map[common.Address]struct{}
-	undo         []func()
+	signer         types.Signer
+	nonceTracker   *nonceTracker
+	allowGaps      bool
+	nonceLocked    map[common.Address]struct{}
+	undo           []func()
+	blockNumber    uint64
+	blockTime      inter.Timestamp
+	bundlesTracker *processedBundleTracker
 }
 
 func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
@@ -250,6 +274,23 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 		if err != nil {
 			return core_types.TransactionResultInvalid
 		}
+
+		// Check plan constraints for nested bundles: must be in range and not
+		// already processed.
+		plan := txBundle.Plan
+		if !plan.Range.IsInRange(r.blockNumber) {
+			return core_types.TransactionResultInvalid
+		}
+		if !plan.Period.IsInPeriod(r.blockTime) {
+			return core_types.TransactionResultInvalid
+		}
+		planHash := plan.Hash()
+		if r.bundlesTracker.HasBundleRecentlyBeenProcessed(planHash) {
+			return core_types.TransactionResultInvalid
+		}
+
+		// Mark bundle as processed, to detect multiple use.
+		r.bundlesTracker.AddProcessedBundle(planHash)
 
 		if bundle.RunBundle(&txBundle, r) {
 			return core_types.TransactionResultSuccessful
@@ -294,9 +335,11 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 
 func (r *dryRunner) CreateSnapshot() int {
 	nonceBackup := r.nonceTracker.backup()
+	bundlesBackup := r.bundlesTracker.backup()
 	nonceLockedBackup := maps.Clone(r.nonceLocked)
 	r.undo = append(r.undo, func() {
 		r.nonceTracker.restore(nonceBackup)
+		r.bundlesTracker.restore(bundlesBackup)
 		r.nonceLocked = nonceLockedBackup
 	})
 	return len(r.undo) - 1
@@ -345,6 +388,39 @@ func (t *nonceTracker) backup() *nonceTracker {
 func (t *nonceTracker) restore(backup *nonceTracker) {
 	t.source = backup.source
 	t.nonces = backup.nonces
+}
+
+// processedBundleTracker is keeping track of processed bundles during the
+// execution of a bundle in dry-run mode.
+type processedBundleTracker struct {
+	source    ProcessedBundleSource
+	processed map[common.Hash]struct{}
+}
+
+func (t *processedBundleTracker) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
+	if _, ok := t.processed[execPlanHash]; ok {
+		return true
+	}
+	return t.source.HasBundleRecentlyBeenProcessed(execPlanHash)
+}
+
+func (t *processedBundleTracker) AddProcessedBundle(execPlanHash common.Hash) {
+	if t.processed == nil {
+		t.processed = make(map[common.Hash]struct{})
+	}
+	t.processed[execPlanHash] = struct{}{}
+}
+
+func (t *processedBundleTracker) backup() *processedBundleTracker {
+	return &processedBundleTracker{
+		source:    t.source,
+		processed: maps.Clone(t.processed),
+	}
+}
+
+func (t *processedBundleTracker) restore(backup *processedBundleTracker) {
+	t.source = backup.source
+	t.processed = backup.processed
 }
 
 // --- Trial Run Logic ---
