@@ -110,9 +110,9 @@ func Prioritize(
 	prioSenderSequences := prioritizedSenderSequences(txsWithPrio, signer, state)
 
 	// Collect the transaction indices which should form the block txs prefix.
-	prioPrefixIndices := computePrioritizedTxsPrefix(txsWithPrio, prioSenderSequences, cfg.MaxGasPerEntityPerBlock)
+	prioritizedPrefixIndices := computePrioritizedTxsPrefix(txsWithPrio, prioSenderSequences, cfg.MaxGasPerEntityPerBlock)
 
-	return combinePrioPrefixWithRemainder(txsWithPrio, prioPrefixIndices)
+	return combinePrioritizedPrefixWithRemainder(txsWithPrio, prioritizedPrefixIndices)
 }
 
 // classify pairs each transaction with its priority, preserving order. A
@@ -235,13 +235,13 @@ func computePrioritizedTxsPrefix(
 	return selected
 }
 
-// combinePrioPrefixWithRemainder builds the final transaction order: the
-// prioritized entries in prefix order, followed by the remaining entries
+// combinePrioritizedPrefixWithRemainder builds the final transaction order:
+// the prioritized entries in prefix order, followed by the remaining entries
 // (demoted + non-prioritized) in their original base order.
-func combinePrioPrefixWithRemainder(entries []transactionWithPriority, prioPrefixIndices []int) types.Transactions {
+func combinePrioritizedPrefixWithRemainder(entries []transactionWithPriority, prioritizedPrefixIndices []int) types.Transactions {
 	isPrioritized := make([]bool, len(entries))
 	result := make(types.Transactions, 0, len(entries))
-	for _, i := range prioPrefixIndices {
+	for _, i := range prioritizedPrefixIndices {
 		isPrioritized[i] = true
 		result = append(result, entries[i].tx)
 	}

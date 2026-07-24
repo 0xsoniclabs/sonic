@@ -409,7 +409,7 @@ func TestComputePrioritizedTxsPrefix_PacksManyCheapOrFewExpensivePerEntity(t *te
 	require.ElementsMatch(t, []int{0, 1, 2, 3, 4}, got)
 }
 
-func TestCombinePrioPrefixWithRemainder_PrefixThenRemainderInBaseOrder(t *testing.T) {
+func TestCombinePrioritizedPrefixWithRemainder_PrefixThenRemainderInBaseOrder(t *testing.T) {
 	t0, t1, t2, t3 := makeTxWithNonce(0), makeTxWithNonce(1), makeTxWithNonce(2), makeTxWithNonce(3)
 	entries := []transactionWithPriority{{t0, Priority{}}, {t1, Priority{}}, {t2, Priority{}}, {t3, Priority{}}}
 	tests := map[string]struct {
@@ -427,7 +427,7 @@ func TestCombinePrioPrefixWithRemainder_PrefixThenRemainderInBaseOrder(t *testin
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			require.Equal(t, hashes(tc.want), hashes(combinePrioPrefixWithRemainder(entries, tc.prefix)))
+			require.Equal(t, hashes(tc.want), hashes(combinePrioritizedPrefixWithRemainder(entries, tc.prefix)))
 		})
 	}
 }
