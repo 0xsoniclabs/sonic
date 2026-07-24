@@ -20,6 +20,8 @@ import (
 	"context"
 	"math/big"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -155,6 +157,131 @@ func (b *testBackend) CalcBlockExtApi() bool {
 
 func (b *testBackend) ChainID() *big.Int {
 	return params.TestChainConfig.ChainID
+}
+
+// instrumentedBackend observes and, optionally, blocks the GetReceiptsByNumber
+// calls the event loop makes while broadcasting blocks.
+type instrumentedBackend struct {
+	*testBackend
+	receiptCalls atomic.Int32
+	entered      chan struct{} // if non-nil, signaled on each call
+	release      chan struct{} // if non-nil, each call blocks until it is closed
+}
+
+func (b *instrumentedBackend) GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error) {
+	b.receiptCalls.Add(1)
+	if b.entered != nil {
+		b.entered <- struct{}{}
+	}
+	if b.release != nil {
+		<-b.release
+	}
+	return b.testBackend.GetReceiptsByNumber(ctx, number)
+}
+
+func sendBlock(backend *instrumentedBackend, number int64) {
+	backend.blocksFeed.Send(evmcore.ChainHeadNotify{
+		Block: &evmcore.EvmBlock{
+			EvmHeader: evmcore.EvmHeader{Number: big.NewInt(number)},
+		},
+	})
+}
+
+// Stop must not return while a broadcast is reading from the backend, since the
+// store may be closed right after.
+func TestEventSystem_Stop_WaitsForInFlightBroadcast(t *testing.T) {
+	backend := &instrumentedBackend{
+		testBackend: newTestBackend(),
+		entered:     make(chan struct{}),
+		release:     make(chan struct{}),
+	}
+	es := NewEventSystem(backend)
+
+	sendBlock(backend, 1)
+
+	// Wait until the broadcast is blocked inside the backend read.
+	select {
+	case <-backend.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("broadcast did not reach the backend")
+	}
+
+	stopped := make(chan struct{})
+	go func() {
+		es.Stop()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+		t.Fatal("Stop returned while a broadcast was still in flight")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(backend.release)
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop did not return after the broadcast completed")
+	}
+}
+
+// After Stop returns the loop is gone and no longer reads from the backend.
+func TestEventSystem_Stop_NoBroadcastAfterStop(t *testing.T) {
+	backend := &instrumentedBackend{testBackend: newTestBackend()}
+	es := NewEventSystem(backend)
+
+	es.Stop()
+
+	sendBlock(backend, 1)
+	time.Sleep(100 * time.Millisecond) // allow any erroneous processing to run
+
+	if got := backend.receiptCalls.Load(); got != 0 {
+		t.Fatalf("expected no receipt reads after Stop, got %d", got)
+	}
+}
+
+func TestEventSystem_Stop_Idempotent(t *testing.T) {
+	es := NewEventSystem(newTestBackend())
+
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			es.Stop()
+		}()
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("concurrent Stop calls did not all return")
+	}
+
+	es.Stop()
+}
+
+func TestPublicFilterAPI_Stop(t *testing.T) {
+	api := NewPublicFilterAPI(newTestBackend(), testConfig())
+
+	done := make(chan struct{})
+	go func() {
+		api.Stop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("PublicFilterAPI.Stop did not return")
+	}
 }
 
 func TestPendingTxFilter(t *testing.T) {
