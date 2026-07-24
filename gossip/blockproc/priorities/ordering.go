@@ -40,16 +40,17 @@ type NonceReader interface {
 	GetNonce(common.Address) uint64
 }
 
-// txWithPrio pairs a transaction with its classified priority.
-type txWithPrio struct {
+// transactionWithPriority pairs a transaction with its classified priority.
+type transactionWithPriority struct {
 	tx       *types.Transaction
 	priority Priority
 }
 
-// cmpLevelWeightHash orders two txWithPrio for the prioritized prefix, returning
-// >0 when x precedes y, i.e. by (level desc, weight desc, hash asc). Note this is
-// the opposite sign convention to the ascending cmpNonceHash.
-func (x txWithPrio) cmpLevelWeightHash(y txWithPrio) int {
+// cmpLevelWeightHash orders two transactionWithPriority for the prioritized
+// prefix, returning >0 when x precedes y, i.e. by (level desc, weight desc,
+// hash asc). Note this is the opposite sign convention to the ascending
+// cmpNonceHash.
+func (x transactionWithPriority) cmpLevelWeightHash(y transactionWithPriority) int {
 	if c := cmp.Compare(x.priority.Level, y.priority.Level); c != 0 {
 		return c
 	}
@@ -59,8 +60,8 @@ func (x txWithPrio) cmpLevelWeightHash(y txWithPrio) int {
 	return bytes.Compare(y.tx.Hash().Bytes(), x.tx.Hash().Bytes())
 }
 
-// cmpNonceHash orders two txWithPrio by (nonce asc, hash asc).
-func (x txWithPrio) cmpNonceHash(y txWithPrio) int {
+// cmpNonceHash orders two transactionWithPriority by (nonce asc, hash asc).
+func (x transactionWithPriority) cmpNonceHash(y transactionWithPriority) int {
 	if c := cmp.Compare(x.tx.Nonce(), y.tx.Nonce()); c != 0 {
 		return c
 	}
@@ -72,7 +73,7 @@ func (x txWithPrio) cmpNonceHash(y txWithPrio) int {
 // subject to two coupled constraints:
 //
 //   - Per-sender nonce ordering: a transaction keeps its priority only while it
-//     extends its sender's contiguous run of prioritized nonces from the
+//     extends its sender's contiguous sequence of prioritized nonces from the
 //     block-start account nonce. This keeps each sender in nonce order: a later
 //     nonce hoisted ahead of a lower-nonce predecessor left behind would be
 //     nonce-too-high and skipped.
@@ -81,7 +82,7 @@ func (x txWithPrio) cmpNonceHash(y txWithPrio) int {
 //
 // Transactions that are not selected — non-prioritized, nonce-blocked, or over
 // budget — are pushed back by the hoisted prioritized prefix but keep their
-// relative base order among themselves.
+// original relative order among themselves.
 //
 // The base order must already be the mode-specific order (scrambler output in
 // legacy mode, proposal order in single-proposer mode) and must already be
@@ -105,11 +106,11 @@ func Prioritize(
 	txsWithPrio := classify(base, classifier)
 
 	// Collect the prioritized transactions per sender ordered by nonce which
-	// form a continuous run starting at the start-of-block sender nonce.
-	prioSenderRuns := prioritizedSenderRuns(txsWithPrio, signer, state)
+	// form a continuous sequence starting at the start-of-block sender nonce.
+	prioSenderSequences := prioritizedSenderSequences(txsWithPrio, signer, state)
 
 	// Collect the transaction indices which should form the block txs prefix.
-	prioPrefixIndices := prioritizedTxsPrefix(txsWithPrio, prioSenderRuns, cfg.MaxGasPerEntityPerBlock)
+	prioPrefixIndices := computePrioritizedTxsPrefix(txsWithPrio, prioSenderSequences, cfg.MaxGasPerEntityPerBlock)
 
 	return combinePrioPrefixWithRemainder(txsWithPrio, prioPrefixIndices)
 }
@@ -117,27 +118,28 @@ func Prioritize(
 // classify pairs each transaction with its priority, preserving order. A
 // classifier error is treated as "not prioritized" (zero Priority), which
 // keeps Prioritize a total function of its inputs.
-func classify(base types.Transactions, classifier Classifier) []txWithPrio {
-	txsWithPrio := make([]txWithPrio, len(base))
+func classify(base types.Transactions, classifier Classifier) []transactionWithPriority {
+	txsWithPrio := make([]transactionWithPriority, len(base))
 	for i, tx := range base {
 		p, err := classifier.Priority(tx)
 		if err != nil {
 			p = Priority{} // deterministic failure rule: errors => not prioritized
 		}
-		txsWithPrio[i] = txWithPrio{tx: tx, priority: p}
+		txsWithPrio[i] = transactionWithPriority{tx: tx, priority: p}
 	}
 	return txsWithPrio
 }
 
-// prioritizedSenderRuns groups the prioritized entries by sender and reduces
-// each sender to its run: its prioritized transactions in nonce order forming a
-// contiguous run from the block-start account nonce. Stale nonces (below the
-// account nonce) are skipped and the first gap ends the run, as later nonces are
-// unreachable. A transaction whose sender cannot be recovered is left
-// non-prioritized. It returns, per sender, the entry indices of the run in
-// nonce order; senders left with an empty run are omitted.
-func prioritizedSenderRuns(
-	txsWithPrio []txWithPrio,
+// prioritizedSenderSequences groups the prioritized entries by sender and
+// reduces each sender to its sequence: its prioritized transactions in nonce
+// order forming a contiguous sequence from the block-start account nonce. Stale
+// nonces (below the account nonce) are skipped and the first gap ends the
+// sequence, as later nonces are unreachable. A transaction whose sender cannot
+// be recovered is left non-prioritized. It returns, per sender, the entry
+// indices of the sequence in nonce order; senders left with an empty sequence
+// are omitted.
+func prioritizedSenderSequences(
+	txsWithPrio []transactionWithPriority,
 	signer types.Signer,
 	state NonceReader,
 ) map[common.Address][]int {
@@ -154,43 +156,47 @@ func prioritizedSenderRuns(
 		bySender[sender] = append(bySender[sender], i)
 	}
 
-	// Reduce each sender's transactions to its run.
+	// Reduce each sender's transactions to its sequence.
 	for sender, idxs := range bySender {
 		slices.SortFunc(idxs, func(a, b int) int {
+			// Sort by nonce to ensure transactions can execute and use hash as
+			// tie breaker.
 			return txsWithPrio[a].cmpNonceHash(txsWithPrio[b])
 		})
 		expected := state.GetNonce(sender)
-		var run []int
+		var sequence []int
 		for _, idx := range idxs {
 			n := txsWithPrio[idx].tx.Nonce()
 			if n < expected {
 				continue // stale nonce: do not prioritize this transaction
 			}
 			if n > expected {
-				break // nonce gap: do not prioritize this or any later transaction from this sender
+				// nonce gap: do not prioritize this or any later transaction
+				// from this sender
+				break
 			}
-			run = append(run, idx)
+			sequence = append(sequence, idx)
 			expected++
 		}
-		if len(run) == 0 {
+		if len(sequence) == 0 {
 			delete(bySender, sender)
 		} else {
-			bySender[sender] = run
+			bySender[sender] = sequence
 		}
 	}
 	return bySender
 }
 
-// prioritizedTxsPrefix walks the per-sender runs greedily, returning the
-// entry indices in prioritized-prefix order. Each step takes the highest-priority
-// eligible frontier transaction (a sender's lowest un-selected nonce) and
-// advances that sender. A frontier that does not fit its entity budget removes
-// the sender's remaining transactions (its later nonces depend on it),
-// so a budget is only ever spent on transactions that can actually execute in
-// the prioritized prefix. It consumes bySender, mutating it as senders are
-// advanced and exhausted.
-func prioritizedTxsPrefix(
-	txsWithPrio []txWithPrio,
+// computePrioritizedTxsPrefix walks the per-sender sequences greedily,
+// returning the entry indices in prioritized-prefix order. Each step takes the
+// highest-priority eligible frontier transaction (a sender's lowest un-selected
+// nonce) and advances that sender. A frontier that does not fit its entity
+// budget removes the sender's remaining transactions (its later nonces depend
+// on it), so a budget is only ever spent on transactions that can actually
+// execute in the prioritized prefix. It consumes bySender, mutating it as
+// senders are advanced and exhausted.
+func computePrioritizedTxsPrefix(
+	txsWithPrio []transactionWithPriority,
 	bySender map[common.Address][]int,
 	perEntityBudget uint64,
 ) []int {
@@ -205,8 +211,8 @@ func prioritizedTxsPrefix(
 	for len(bySender) > 0 {
 		best := -1
 		var bestSender common.Address
-		for sender, run := range bySender {
-			idx := run[0]
+		for sender, sequence := range bySender {
+			idx := sequence[0]
 			if txsWithPrio[idx].tx.Gas() > budgetOf(txsWithPrio[idx].priority.ID) {
 				delete(bySender, sender) // frontier does not fit the budget: sender blocked
 				continue
@@ -232,7 +238,7 @@ func prioritizedTxsPrefix(
 // combinePrioPrefixWithRemainder builds the final transaction order: the
 // prioritized entries in prefix order, followed by the remaining entries
 // (demoted + non-prioritized) in their original base order.
-func combinePrioPrefixWithRemainder(entries []txWithPrio, prioPrefixIndices []int) types.Transactions {
+func combinePrioPrefixWithRemainder(entries []transactionWithPriority, prioPrefixIndices []int) types.Transactions {
 	isPrioritized := make([]bool, len(entries))
 	result := make(types.Transactions, 0, len(entries))
 	for _, i := range prioPrefixIndices {
