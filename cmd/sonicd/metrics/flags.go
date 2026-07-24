@@ -192,14 +192,26 @@ func SplitTagsFlag(tagsFlag string) map[string]string {
 // It serves go-ethereum metrics in expvar and Prometheus summary format, and
 // also native Prometheus metrics (including bucketed histograms) via promhttp.
 func setupMetricsServer(address string) {
+	server := newMetricsServer(address)
+	log.Info("Starting metrics server", "addr", fmt.Sprintf("http://%s/debug/metrics", address))
+	go func() {
+		if err := server.ListenAndServe(); err != nil {
+			log.Error("Failure in running metrics server", "err", err)
+		}
+	}()
+}
+
+func newMetricsServer(address string) *http.Server {
 	m := http.NewServeMux()
 	m.Handle("/debug/metrics", exp.ExpHandler(metrics.DefaultRegistry))
 	m.Handle("/debug/metrics/prometheus", gethprometheus.Handler(metrics.DefaultRegistry))
 	m.Handle("/debug/metrics/prometheus/native", promhttp.Handler())
-	log.Info("Starting metrics server", "addr", fmt.Sprintf("http://%s/debug/metrics", address))
-	go func() {
-		if err := http.ListenAndServe(address, m); err != nil {
-			log.Error("Failure in running metrics server", "err", err)
-		}
-	}()
+	return &http.Server{
+		Addr:              address,
+		Handler:           m,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 }

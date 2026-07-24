@@ -25,6 +25,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -210,12 +211,25 @@ func StartPProf(address string, withMetrics bool) {
 		exp.Exp(metrics.DefaultRegistry)
 		http.Handle("/debug/metrics/prometheus/native", promhttp.Handler())
 	}
+	server := newPProfServer(address)
 	log.Info("Starting pprof server", "addr", fmt.Sprintf("http://%s/debug/pprof", address))
 	go func() {
-		if err := http.ListenAndServe(address, nil); err != nil {
+		if err := server.ListenAndServe(); err != nil {
 			log.Error("Failure in running pprof server", "err", err)
 		}
 	}()
+}
+
+func newPProfServer(address string) *http.Server {
+	return &http.Server{
+		Addr:              address,
+		Handler:           http.DefaultServeMux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		// pprof endpoints can legitimately take a long time (e.g. /debug/pprof/profile).
+		// Avoid timing out the handler execution by leaving WriteTimeout unset.
+		IdleTimeout: 120 * time.Second,
+	}
 }
 
 // Exit stops all running profiles, flushing their output to the

@@ -89,3 +89,13 @@ func TestSetupMetricsServer_Returns404ForUnknownPaths(t *testing.T) {
 	}()
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
+
+func TestNewMetricsServer_SetsDefaultValues(t *testing.T) {
+	addr := "127.0.0.1:9999"
+	server := newMetricsServer(addr)
+	require.Equal(t, addr, server.Addr)
+	require.NotNil(t, server.Handler)
+	require.NotZero(t, server.ReadTimeout)
+	require.NotZero(t, server.WriteTimeout)
+	require.NotZero(t, server.IdleTimeout)
+}
