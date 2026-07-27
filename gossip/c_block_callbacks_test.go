@@ -47,9 +47,12 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
+	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
+	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -671,6 +674,146 @@ func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 	defer mu.Unlock()
 	require.Equal([]idx.ValidatorID{originCreator}, reportedOriginators,
 		"receipt origin must be tracked using the block's start rules (Brio enabled)")
+}
+
+// TestConsensusCallback_AppliesTransactionPriorities verifies that block
+// processing runs the priority ordering step on the transactions of the block.
+//
+// The block is formed from a proposal listing the prioritized transaction last,
+// while the priority registry deployed in the genesis state registers its sender
+// with a non-zero priority level. Observing the prioritized transaction first in
+// the transactions handed to the EVM processor proves the ordering step ran, and
+// that its result is what gets executed.
+func TestConsensusCallback_AppliesTransactionPriorities(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.SingleProposerBlockFormation = true
+	upgrades.TransactionPriorities = true
+
+	signer := types.LatestSignerForChainID(
+		new(big.Int).SetUint64(opera.FakeNetRules(upgrades).NetworkID),
+	)
+	plainTx := makeSignedTx(t, signer)
+	prioritizedTx := makeSignedTx(t, signer)
+	prioritizedSender, err := types.Sender(signer, prioritizedTx)
+	require.NoError(err)
+
+	// Unlike the genesis of newInMemoryStoreWithGenesisData, the JSON genesis of
+	// fake networks deploys the priority registry.
+	jsonGenesis := makefakegenesis.GenerateFakeJsonGenesis(upgrades, []uint64{genesisStake})
+	jsonGenesis.Accounts = append(jsonGenesis.Accounts, makefakegenesis.Account{
+		Name:    "PriorityRegistryConfiguration",
+		Address: registry.GetAddress(),
+		Storage: map[common.Hash]common.Hash{
+			senderPriorityStorageSlot(prioritizedSender): packSenderPriority(1, 0, 1),
+		},
+	})
+	genesisStore, err := makefakegenesis.ApplyGenesisJson(jsonGenesis)
+	require.NoError(err)
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+	t.Cleanup(func() {
+		require.NoError(store.Close())
+	})
+	require.NoError(store.ApplyGenesis(genesisStore.Genesis()))
+
+	// A single event serving as both the atropos and the proposal of the block.
+	// The single-proposer mode places the transactions in the block as given,
+	// independent of the base ordering computed by the scrambler.
+	lastBlock := store.GetBlockState().LastBlock
+	builder := inter.MutableEventPayload{}
+	builder.SetVersion(3)
+	builder.SetEpoch(store.GetEpochState().Epoch)
+	builder.SetPayload(inter.Payload{
+		Proposal: &inter.Proposal{
+			Number:       lastBlock.Idx + 1,
+			ParentHash:   store.GetBlock(lastBlock.Idx).Hash(),
+			Transactions: types.Transactions{plainTx, prioritizedTx},
+		},
+	})
+	event := builder.Build()
+	store.SetEvent(event)
+
+	ctrl := gomock.NewController(t)
+	_any := gomock.Any()
+
+	confirmedEventProcessor := blockproc.NewMockConfirmedEventsProcessor(ctrl)
+	confirmedEventProcessor.EXPECT().ProcessConfirmedEvent(_any)
+	confirmedEventProcessor.EXPECT().Finalize(_any, _any).Return(iblockproc.BlockState{})
+	eventsModule := blockproc.NewMockConfirmedEventsModule(ctrl)
+	eventsModule.EXPECT().Start(_any, _any).Return(confirmedEventProcessor)
+
+	// Record the transactions handed to the EVM processor. The internal
+	// transaction batches are empty, so this collects the user transactions.
+	var executedTxs types.Transactions
+	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+	evmProcessor.EXPECT().Execute(_any, _any, _any).
+		DoAndReturn(func(txs types.Transactions, _ uint64, _ uint64) evmcore.ProcessSummary {
+			executedTxs = append(executedTxs, txs...)
+			return evmcore.ProcessSummary{}
+		}).AnyTimes()
+	evmProcessor.EXPECT().Finalize().Return(&evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			BaseFee: big.NewInt(0),
+			// A non-empty transaction root, as required for caching the block.
+			TxHash: common.Hash{1, 2, 3},
+		},
+	}, 0, nil)
+	evmModule := blockproc.NewMockEVM(ctrl)
+	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+
+	sealer := blockproc.NewMockSealerProcessor(ctrl)
+	sealer.EXPECT().EpochSealing().Return(false)
+	sealerModule := blockproc.NewMockSealerModule(ctrl)
+	sealerModule.EXPECT().Start(_any, _any, _any).Return(sealer)
+
+	txListener := blockproc.NewMockTxListener(ctrl)
+	txListener.EXPECT().Finalize().Return(iblockproc.BlockState{}).AnyTimes()
+	txListenerModule := blockproc.NewMockTxListenerModule(ctrl)
+	txListenerModule.EXPECT().Start(_any, _any, _any, _any).Return(txListener)
+
+	txTransactor := blockproc.NewMockTxTransactor(ctrl)
+	txTransactor.EXPECT().PopInternalTxs(_any, _any, _any, _any, _any).
+		Return(types.Transactions{}).Times(2)
+
+	proc := BlockProc{
+		EventsModule:     eventsModule,
+		SealerModule:     sealerModule,
+		TxListenerModule: txListenerModule,
+		EVMModule:        evmModule,
+		PreTxTransactor:  txTransactor,
+		PostTxTransactor: txTransactor,
+	}
+
+	// Worker group running the (possibly asynchronous) block processing.
+	stop := make(chan struct{})
+	var workerWaitGroup sync.WaitGroup
+	workers := workers.New(&workerWaitGroup, stop, 1)
+	workers.Start(1)
+	defer func() {
+		close(stop)
+		workerWaitGroup.Wait()
+	}()
+
+	var callbackWaitGroup sync.WaitGroup
+	bootstrapping := false
+	blockBusyFlag := uint32(0)
+	emitters := []*emitter.Emitter{}
+	beginBlock := consensusCallbackBeginBlockFn(
+		workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping,
+	)
+
+	callbacks := beginBlock(&lachesis.Block{Atropos: event.ID()})
+	callbacks.ApplyEvent(event)
+	callbacks.EndBlock()
+	callbackWaitGroup.Wait()
+
+	// The prioritized transaction is hoisted ahead of the plain one, overriding
+	// the order of the proposal.
+	require.Equal(types.Transactions{prioritizedTx, plainTx}, executedTxs)
 }
 
 func TestExtractProposalForNextBlock_NoEvents_ReturnsNoProposal(t *testing.T) {
@@ -2164,6 +2307,140 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupWithBrio(t *te
 	}
 }
 
+func TestApplyTransactionPriorities_FeatureDisabled_IsNoOp(t *testing.T) {
+	txs := types.Transactions{
+		types.NewTransaction(0, common.Address{0x1}, big.NewInt(0), 21000, big.NewInt(1), nil),
+		types.NewTransaction(1, common.Address{0x2}, big.NewInt(0), 21000, big.NewInt(1), nil),
+	}
+	rules := opera.FakeNetRules(opera.GetBrioUpgrades()) // TransactionPriorities == false
+
+	// all interfaces are nil, so if they would be called the test would panic
+	got := applyTransactionPriorities(
+		txs, rules,
+		nil, // chainCfg
+		nil, // statedb
+		nil, // reader
+		nil, // signer
+		0, 0, common.Hash{}, nil,
+	)
+	require.Equal(t, txs, got)
+}
+
+func TestApplyTransactionPriorities_EmptyInput_IsNoOp(t *testing.T) {
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionPriorities = true
+	rules := opera.FakeNetRules(upgrades)
+
+	got := applyTransactionPriorities(
+		types.Transactions{},
+		rules,
+		nil, // chainCfg
+		nil, // statedb
+		nil, // reader
+		nil, // signer
+		0, 0, common.Hash{}, nil,
+	)
+	require.Empty(t, got)
+}
+
+func TestApplyTransactionPriorities_EveryQueryIsWrappedInAnInterTxSnapshot(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	rules := opera.FakeNetRules(opera.GetBrioUpgrades())
+	rules.Upgrades.TransactionPriorities = true
+	chainCfg := opera.CreateTransientEvmChainConfig(rules.NetworkID, nil, 1)
+	signer := types.LatestSigner(chainCfg)
+
+	var snapshots, reverts []int
+	statedb := newRegistryStateDB(ctrl, registry.GetCode(), emptyRegistryStorage)
+	statedb.EXPECT().InterTxSnapshot().DoAndReturn(func() int {
+		snapshots = append(snapshots, len(snapshots))
+		return len(snapshots) - 1
+	}).AnyTimes()
+	statedb.EXPECT().RevertToInterTxSnapshot(gomock.Any()).Do(func(id int) {
+		reverts = append(reverts, id)
+	}).AnyTimes()
+
+	txs := types.Transactions{makeSignedTx(t, signer), makeSignedTx(t, signer)}
+	parent := &evmcore.EvmHeader{Hash: common.Hash{0xae}, BaseFee: big.NewInt(1), GasUsed: 10_000}
+
+	got := applyTransactionPriorities(
+		txs, rules, chainCfg, statedb, nil, signer,
+		1, inter.Timestamp(1234), common.Hash{0x1}, parent,
+	)
+
+	require.Equal(t, txs, got) // empty storage => nothing prioritized
+
+	// One isolated query for the config plus one per transaction, each reverted
+	// to the snapshot it took.
+	require.Equal(t, []int{0, 1, 2}, snapshots)
+	require.Equal(t, []int{0, 1, 2}, reverts)
+}
+
+func TestApplyTransactionPriorities_UsesEvmClassifier(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	rules := opera.FakeNetRules(opera.GetBrioUpgrades())
+	rules.Upgrades.TransactionPriorities = true
+	chainCfg := opera.CreateTransientEvmChainConfig(rules.NetworkID, nil, 1)
+	signer := types.LatestSigner(chainCfg)
+
+	plainTx := makeSignedTx(t, signer)
+	prioritizedTx := makeSignedTx(t, signer)
+	prioritizedSender, err := types.Sender(signer, prioritizedTx)
+	require.NoError(t, err)
+	prioritizedSlot := senderPriorityStorageSlot(prioritizedSender)
+
+	statedb := newRegistryStateDB(ctrl, registry.GetCode(),
+		func(addr common.Address, slot common.Hash) common.Hash {
+			if addr == registry.GetAddress() && slot == prioritizedSlot {
+				return packSenderPriority(1, 0, 1)
+			}
+			return common.Hash{}
+		},
+	)
+	statedb.EXPECT().InterTxSnapshot().Return(0).AnyTimes()
+	statedb.EXPECT().RevertToInterTxSnapshot(gomock.Any()).AnyTimes()
+
+	parent := &evmcore.EvmHeader{Hash: common.Hash{0xae}, BaseFee: big.NewInt(1), GasUsed: 10_000}
+
+	got := applyTransactionPriorities(
+		types.Transactions{plainTx, prioritizedTx}, rules, chainCfg, statedb, nil, signer,
+		1, inter.Timestamp(1234), common.Hash{0x1}, parent,
+	)
+	require.Equal(t, types.Transactions{prioritizedTx, plainTx}, got)
+}
+
+func TestPriorityQueryHeader_DerivesFieldsFromConsensusInputs(t *testing.T) {
+	rules := opera.FakeNetRules(opera.GetBrioUpgrades())
+	parent := &evmcore.EvmHeader{
+		Hash:     common.Hash{0xae},
+		BaseFee:  big.NewInt(1000),
+		GasUsed:  10_000,
+		Duration: time.Second,
+	}
+	blockIdx := idx.Block(42)
+	blockTime := inter.Timestamp(1234)
+	randao := common.Hash{0x1}
+
+	header := priorityQueryHeader(rules, blockIdx, blockTime, randao, parent)
+
+	wantBaseFee := gasprice.GetBaseFeeForNextBlock(gasprice.ParentBlockInfo{
+		BaseFee:  parent.BaseFee,
+		Duration: parent.Duration,
+		GasUsed:  parent.GasUsed,
+	}, rules.Economy)
+
+	require.Equal(t, new(big.Int).SetUint64(uint64(blockIdx)), header.Number)
+	require.Equal(t, parent.Hash, header.ParentHash)
+	require.Equal(t, blockTime, header.Time)
+	require.Equal(t, evmcore.GetCoinbase(), header.Coinbase)
+	require.Equal(t, rules.Blocks.MaxBlockGas, header.GasLimit)
+	require.Equal(t, wantBaseFee, header.BaseFee)
+	require.Equal(t, evmcore.GetBlobBaseFee().ToBig(), header.BlobBaseFee)
+	require.Equal(t, randao, header.PrevRandao)
+}
+
 type fakePayload struct {
 	inter.EventPayloadI // just here to satisfy the interface
 	signature           inter.Signature
@@ -2175,4 +2452,69 @@ func (p *fakePayload) Sig() inter.Signature {
 }
 func (p *fakePayload) GasPowerUsed() uint64 {
 	return p.gasUsed
+}
+
+// newRegistryStateDB returns a StateDB mock hosting the given code at the
+// priority registry address and resolving all storage reads through storage.
+// The intra-transaction snapshots taken by the EVM itself are stubbed out;
+// callers add expectations for the inter-transaction snapshots that isolate the
+// individual registry queries.
+func newRegistryStateDB(
+	ctrl *gomock.Controller,
+	code []byte,
+	storage func(common.Address, common.Hash) common.Hash,
+) *state.MockStateDB {
+	any := gomock.Any()
+	statedb := state.NewMockStateDB(ctrl)
+	statedb.EXPECT().Exist(any).Return(true).AnyTimes()
+	statedb.EXPECT().GetCode(registry.GetAddress()).Return(code).AnyTimes()
+	statedb.EXPECT().GetCodeHash(registry.GetAddress()).Return(crypto.Keccak256Hash(code)).AnyTimes()
+	statedb.EXPECT().GetState(any, any).DoAndReturn(storage).AnyTimes()
+	statedb.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)).AnyTimes()
+	statedb.EXPECT().GetNonce(any).Return(uint64(0)).AnyTimes()
+	statedb.EXPECT().Snapshot().Return(0).AnyTimes()
+	statedb.EXPECT().RevertToSnapshot(any).AnyTimes()
+	statedb.EXPECT().SubBalance(any, any, any).AnyTimes()
+	statedb.EXPECT().AddBalance(any, any, any).AnyTimes()
+	statedb.EXPECT().AddRefund(any).AnyTimes()
+	statedb.EXPECT().SubRefund(any).AnyTimes()
+	statedb.EXPECT().GetRefund().Return(uint64(0)).AnyTimes()
+	statedb.EXPECT().SlotInAccessList(any, any).AnyTimes()
+	statedb.EXPECT().AddSlotToAccessList(any, any).AnyTimes()
+	return statedb
+}
+
+// emptyRegistryStorage resolves every registry storage slot to zero, under which
+// no transaction is prioritized.
+func emptyRegistryStorage(common.Address, common.Hash) common.Hash {
+	return common.Hash{}
+}
+
+// makeSignedTx creates a 21k-gas transaction signed by a fresh key, so that each
+// call yields a distinct sender.
+func makeSignedTx(t *testing.T, signer types.Signer) *types.Transaction {
+	t.Helper()
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	to := common.Address{0xaa}
+	return types.MustSignNewTx(key, signer, &types.LegacyTx{
+		To:       &to,
+		Gas:      21000,
+		GasPrice: big.NewInt(1),
+	})
+}
+
+// senderPriorityStorageSlot returns the storage slot holding the priority of the
+// given sender in the priority registry (the `senderPriority` mapping at slot 0).
+func senderPriorityStorageSlot(sender common.Address) common.Hash {
+	return crypto.Keccak256Hash(common.LeftPadBytes(sender.Bytes(), 32), make([]byte, 32))
+}
+
+// packSenderPriority packs a registry Priority{level, weight, id} into its
+// single storage word: level in bits [0,64), weight in [64,128), id in [128,256).
+func packSenderPriority(level, weight, id uint64) common.Hash {
+	v := uint256.NewInt(level)
+	v.Or(v, new(uint256.Int).Lsh(uint256.NewInt(weight), 64))
+	v.Or(v, new(uint256.Int).Lsh(uint256.NewInt(id), 128))
+	return common.Hash(v.Bytes32())
 }

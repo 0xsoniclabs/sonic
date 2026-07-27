@@ -21,6 +21,7 @@ import (
 	"cmp"
 	"slices"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -38,6 +39,51 @@ type Classifier interface {
 // state.StateDB that Prioritize needs to enforce per-sender nonce ordering.
 type NonceReader interface {
 	GetNonce(common.Address) uint64
+}
+
+// Snapshotter is the subset of state.StateDB used to isolate each registry query
+// so a read leaves no residue (warm slots, transient storage, refunds,
+// self-destructs) in the state used for block execution.
+type Snapshotter interface {
+	InterTxSnapshot() int
+	RevertToInterTxSnapshot(id int)
+}
+
+// EvmClassifier classifies transactions by issuing one getPriority call per
+// transaction against the registry. Each query is wrapped in a state snapshot
+// that is immediately reverted, so individual queries are isolated from one
+// another and from subsequent block execution.
+type EvmClassifier struct {
+	upgrades opera.Upgrades
+	vm       VirtualMachine
+	signer   types.Signer
+	state    Snapshotter
+}
+
+// NewEvmClassifier creates a Classifier that queries the registry per
+// transaction. The provided state must be the same one backing vm so that
+// snapshots isolate the query.
+func NewEvmClassifier(
+	upgrades opera.Upgrades,
+	vm VirtualMachine,
+	signer types.Signer,
+	state Snapshotter,
+) *EvmClassifier {
+	return &EvmClassifier{
+		upgrades: upgrades,
+		vm:       vm,
+		signer:   signer,
+		state:    state,
+	}
+}
+
+// Priority implements Classifier.
+func (c *EvmClassifier) Priority(tx *types.Transaction) (Priority, error) {
+	snapshot := c.state.InterTxSnapshot()
+	defer c.state.RevertToInterTxSnapshot(snapshot)
+
+	priority, err := GetPriority(c.upgrades, c.vm, c.signer, tx)
+	return priority, err
 }
 
 // transactionWithPriority pairs a transaction with its classified priority.
