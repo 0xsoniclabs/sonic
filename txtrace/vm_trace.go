@@ -127,13 +127,14 @@ func (l *VmTraceLogger) GetResult() (*VmTrace, error) {
 // exceeded, the trace is aborted: the error is recorded and all accumulated
 // data is released so it can be garbage collected.
 func (l *VmTraceLogger) addSize(n uint64) {
-	l.traceSize += n
-	if l.traceSize > vmTraceSizeLimit {
+	if n > vmTraceSizeLimit-l.traceSize {
 		l.err = errVmTraceTooLarge
 		l.traceStack = nil
 		l.result = nil
 		l.pendingStore = nil
+		return
 	}
+	l.traceSize += n
 }
 
 // OnStorageChange records a storage write so it can be attributed to the

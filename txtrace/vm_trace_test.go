@@ -18,6 +18,7 @@ package txtrace
 
 import (
 	"errors"
+	"math"
 	"math/big"
 	"testing"
 
@@ -518,6 +519,17 @@ func TestVmTraceLogger_SizeLimitAbortsTrace(t *testing.T) {
 	require.ErrorIs(t, err, errVmTraceTooLarge)
 	require.Nil(t, result)
 	require.Nil(t, l.traceStack, "accumulated data must be released on abort")
+}
+
+func TestVmTraceLogger_AddSizeHugeValueDoesNotOverflow(t *testing.T) {
+	// A size close to the uint64 maximum must abort the trace instead of
+	// wrapping traceSize around and bypassing the limit.
+	l := NewVmTraceLogger()
+	l.addSize(math.MaxUint64)
+
+	result, err := l.GetResult()
+	require.ErrorIs(t, err, errVmTraceTooLarge)
+	require.Nil(t, result)
 }
 
 func TestMemTouchedRegion(t *testing.T) {
