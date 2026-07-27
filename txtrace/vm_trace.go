@@ -230,7 +230,7 @@ func (l *VmTraceLogger) onExit(depth int, _ []byte, _ uint64, _ error, _ bool) {
 // onOpcode is called before each opcode executes.
 // It finalizes the previous op's Ex using the current post execution
 // state, then records a new operation entry for the current opcode.
-func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, _ []byte, _ int, _ error) {
+func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, _ []byte, _ int, opErr error) {
 	if l.err != nil || len(l.traceStack) == 0 {
 		return
 	}
@@ -266,11 +266,20 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 
 	// Create a new operation entry. Ex.Used = gas before this opcode (gasCopy from
 	// interpreter, captured before any gas deduction for this op).
+	//
+	// The interpreter reports pre-execution failures (stack validation, memory
+	// size overflow, out-of-gas on dynamic gas) through OnOpcode with a non-nil
+	// error instead of OnFault. Such an opcode never executes, so it gets no
+	// execution result — matching the onFault treatment.
+	var ex *VmExecutedOperation
+	if opErr == nil || errors.Is(opErr, vm.ErrExecutionReverted) {
+		ex = &VmExecutedOperation{Used: gas, Push: []hexutil.Big{}}
+	}
 	newOp := VmOperation{
 		Op:   vm.OpCode(op).String(),
 		PC:   pc,
 		Cost: cost,
-		Ex:   &VmExecutedOperation{Used: gas, Push: []hexutil.Big{}},
+		Ex:   ex,
 	}
 	frame.trace.Ops = append(frame.trace.Ops, newOp)
 	frame.lastOpIdx = len(frame.trace.Ops) - 1
