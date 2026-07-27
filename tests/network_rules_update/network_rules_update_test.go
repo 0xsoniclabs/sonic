@@ -21,7 +21,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -358,18 +360,24 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 	// reach epoch ceiling to apply the new rules
 	net.AdvanceEpoch(t, 1)
 
-	// Wait for another block, this is time for the tx_pool to tick, run reorg,
-	// and implement the new rules.
+	// Give the account extra balance for the SetCodeTx it will submit below.
 	receipt, err := net.EndowAccount(account.Address(), big.NewInt(1e18))
 	require.NoError(t, err, "failed to endow account with balance")
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	t.Run("expectations before sonic-allegro hardfork", func(t *testing.T) {
 
-		// Submit a transaction that requires the new behavior
+		// Submit a transaction that requires the new behavior.
+		//
+		// Activating Allegro happens at an epoch boundary, which triggers a
+		// reorg in the tx pool. During that reorg the pool re-derives the fork
+		// flags and re-validates its content, and it may drop an already-accepted
+		// transaction (demoteUnexecutables/reinjection in evmcore/tx_pool.go).
+		// A dropped transaction is not resubmitted automatically, so a single
+		// send is not enough to guarantee it is eventually mined. Resubmit until
+		// a receipt is observed to be robust against that race.
 		tx := makeSetCodeTx(t, net, account)
-		receipt, err := net.Run(tx)
-		require.NoError(t, err)
+		receipt := runTxWithResubmit(t, net, tx)
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 		delegationIndicator :=
@@ -431,6 +439,58 @@ func makeSetCodeTx(
 		AuthList: []types.SetCodeAuthorization{authorization},
 	}
 	return tests.CreateTransaction(t, net, txData, account)
+}
+
+// runTxWithResubmit submits the given transaction and waits for its receipt,
+// resubmitting periodically until the receipt is observed or the timeout is
+// reached. Unlike net.Run, which sends the transaction exactly once, this
+// tolerates the transaction being dropped by the tx pool (e.g. during the
+// reorg that an epoch boundary / upgrade activation triggers) by resubmitting
+// the same signed transaction until it lands.
+func runTxWithResubmit(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	tx *types.Transaction,
+) *types.Receipt {
+	t.Helper()
+
+	client, err := net.GetClient()
+	require.NoError(t, err, "failed to get client for the network")
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Second)
+	defer cancel()
+
+	var lastSubmit time.Time
+	const resubmitInterval = 2 * time.Second
+	for {
+		if lastSubmit.IsZero() || time.Since(lastSubmit) >= resubmitInterval {
+			// (Re)submit the transaction, tolerating benign errors:
+			//   - ErrAlreadyKnown: still in the pool, keep waiting.
+			//   - ErrNonceTooLow: already mined, the receipt is on its way.
+			//   - ErrTxTypeNotSupported: this node has not applied the Allegro
+			//     rules to its pool yet, keep retrying until it has.
+			err := client.SendTransaction(ctx, tx)
+			if err != nil &&
+				!strings.Contains(err.Error(), evmcore.ErrAlreadyKnown.Error()) &&
+				!strings.Contains(err.Error(), evmcore.ErrNonceTooLow.Error()) &&
+				!strings.Contains(err.Error(), evmcore.ErrTxTypeNotSupported.Error()) {
+				require.NoError(t, err, "failed to submit transaction")
+			}
+			lastSubmit = time.Now()
+		}
+
+		receipt, err := client.TransactionReceipt(ctx, tx.Hash())
+		if err == nil {
+			return receipt
+		}
+
+		select {
+		case <-ctx.Done():
+			t.Fatalf("transaction %s was never mined: %v", tx.Hash(), ctx.Err())
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
 }
 
 func TestNetworkRulesUpdate_BrioFeaturesBecomeAvailable_WhenBrioUpgradesEnabled(t *testing.T) {
