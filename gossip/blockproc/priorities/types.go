@@ -32,7 +32,7 @@ import "cmp"
 type Priority struct {
 	Level  uint64
 	Weight uint64
-	ID     [16]byte
+	ID     PriorityID
 }
 
 // IsPrioritized reports whether the transaction has a non-zero priority level.
@@ -54,15 +54,18 @@ func (p Priority) Cmp(other Priority) int {
 	return cmp.Compare(p.Weight, other.Weight)
 }
 
+type PriorityID [16]byte
+
 // Config holds the per-entity rate limits returned by the registry's
 // getPriorityConfig function.
 type Config struct {
 	// MaxGasPerEntityPerBlock bounds the total gas limit of prioritized
 	// transactions of one entity in a single block (authoritative, enforced at
 	// block formation).
-	// Transactions are packed in (level desc, weight desc, hash asc) order
-	// until the next transaction would exceed the budget; the remainder is
-	// demoted.
+	// Prioritized transactions are hoisted ahead of ordinary ones in
+	// (level desc, weight desc, hash asc) order until one would exceed the
+	// budget; that transaction and the later nonces of its sender are demoted,
+	// while other senders of the same entity keep packing.
 	MaxGasPerEntityPerBlock uint64
 	// MaxPiggybackTxsPerEntityPerEvent bounds how many prioritized transactions
 	// of one entity a validator eagerly includes in a single emitted event
