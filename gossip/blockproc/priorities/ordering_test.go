@@ -60,6 +60,11 @@ func TestTransactionWithPriority_Cmp_ComparesByLevelDescWeightDescHashAsc(t *tes
 			transactionWithPriority{tx, Prio(1, 20, 100)},
 			-1,
 		},
+		"zero level different weight not equal": {
+			transactionWithPriority{tx, Prio(0, 10, 100)},
+			transactionWithPriority{tx, Prio(0, 20, 100)},
+			-1,
+		},
 		"same level and weight lower hash wins": {
 			transactionWithPriority{lowHash, Prio(1, 10, 100)},
 			transactionWithPriority{highHash, Prio(1, 10, 100)},
