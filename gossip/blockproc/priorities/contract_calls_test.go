@@ -99,7 +99,7 @@ func TestGetPriority_InvalidResult_ReportsIssue(t *testing.T) {
 
 func TestGetPriority_DecodesResult(t *testing.T) {
 	tx, signer := makeTx(t)
-	id := [16]byte{0xde, 0xad}
+	id := PriorityID{0xde, 0xad}
 	result := make([]byte, 96)
 	binary.BigEndian.PutUint64(result[24:32], 3)
 	binary.BigEndian.PutUint64(result[56:64], 5)
