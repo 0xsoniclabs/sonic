@@ -247,12 +247,14 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 			// fires when the frame resumes after the sub-call, so the region
 			// holds the return data written to the caller's memory.
 			if frame.showMem && frame.memLen > 0 {
-				data := memoryRegion(scope.MemoryData(), frame.memOff, frame.memLen)
-				prevOp.Ex.Mem = &MemoryDiff{Off: frame.memOff, Data: data}
-				l.addSize(uint64(len(data)))
+				// Account the region size before allocating it so the limit
+				// check cannot be preceded by an oversized allocation.
+				l.addSize(frame.memLen)
 				if l.err != nil {
 					return
 				}
+				data := memoryRegion(scope.MemoryData(), frame.memOff, frame.memLen)
+				prevOp.Ex.Mem = &MemoryDiff{Off: frame.memOff, Data: data}
 			}
 			if l.pendingStore != nil {
 				prevOp.Ex.Store = l.pendingStore
