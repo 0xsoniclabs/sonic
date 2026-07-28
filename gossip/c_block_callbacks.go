@@ -80,8 +80,8 @@ var (
 	invalidTxsMeter   = metrics.GetOrRegisterMeter("chain/txs/invalid", nil)
 
 	priorityFailures = priorityFailureMeters{
-		config: metrics.GetOrRegisterMeter("chain/priorities/config/failed", nil),
-		txs:    metrics.GetOrRegisterMeter("chain/priorities/txs/failed", nil),
+		config: metrics.GetOrRegisterMeter("chain/priorities/config/failed", nil), // priority config query failed, the default config is used
+		txs:    metrics.GetOrRegisterMeter("chain/priorities/txs/failed", nil),    // per-transaction query failed, the tx is not prioritized
 	}
 
 	confirmedEventsMeter = metrics.GetOrRegisterMeter("chain/events/confirmed", nil) // events received from lachesis
@@ -104,7 +104,7 @@ var (
 // priorityFailureMeters collects the meters reporting silently degraded
 // transaction prioritization.
 type priorityFailureMeters struct {
-	config metricCounter // config query failed, the default limits are used
+	config metricCounter // config query failed, the default config is used
 	txs    metricCounter // per-transaction query failed, the tx is not prioritized
 }
 
