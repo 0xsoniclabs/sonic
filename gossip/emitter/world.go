@@ -25,6 +25,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	notify "github.com/ethereum/go-ethereum/event"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -99,4 +100,8 @@ type TxPool interface {
 
 	// Count returns the total number of transactions
 	Count() int
+
+	// SubscribeNewTxsNotify registers a subscription notifying about the
+	// transactions newly added to the pool.
+	SubscribeNewTxsNotify(chan<- evmcore.NewTxsNotify) notify.Subscription
 }

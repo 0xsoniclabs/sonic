@@ -134,7 +134,12 @@ func makeHappyStateDb(
 	state := state.NewMockStateDB(ctrl)
 	state.EXPECT().GetNonce(any).Return(uint64(0)).AnyTimes()
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)).AnyTimes()
-	state.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
+	// The code hash must distinguish the accounts: the interpreter caches the
+	// code it analyzed by hash, so two contracts sharing one hash would run the
+	// code of whichever was executed first.
+	state.EXPECT().GetCodeHash(any).DoAndReturn(func(address common.Address) common.Hash {
+		return crypto.Keccak256Hash(address[:])
+	}).AnyTimes()
 
 	state.EXPECT().Snapshot().MinTimes(1)
 	state.EXPECT().Exist(any).Return(true).AnyTimes()

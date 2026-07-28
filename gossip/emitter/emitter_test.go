@@ -31,6 +31,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -688,6 +689,96 @@ func TestEmitter_EmitEvent_skippingTxsAlsoSkipsGappedNoncesTxs(t *testing.T) {
 	sorted.Shift()
 	_, ok = sorted.Peek()
 	require.False(t, ok, "expected no more txs after the nonce gap")
+}
+
+func TestEmitter_GetSortedTxs_TakesPrioritiesFromTheCacheAndObservesThePool(t *testing.T) {
+	sender := common.Address{1}
+	tx := types.NewTx(&types.LegacyTx{
+		Nonce:    0,
+		GasPrice: big.NewInt(1000),
+		Gas:      21000,
+	})
+
+	ctrl := gomock.NewController(t)
+	world := NewMockExternal(ctrl)
+	world.EXPECT().GetRules().Return(opera.Rules{
+		Upgrades: opera.Upgrades{SingleProposerBlockFormation: true},
+	})
+	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(1))
+
+	txPool := NewMockTxPool(ctrl)
+	txPool.EXPECT().Count().Return(1)
+	txPool.EXPECT().Pending(true).Return(
+		map[common.Address]types.Transactions{sender: {tx}}, nil,
+	)
+
+	em := &Emitter{
+		config: config.Config{MaxTxsPerAddress: 10},
+		world:  World{External: world, TxPool: txPool},
+	}
+	em.priorityCache = newPriorityCache(time.Minute, nil)
+	em.priorityCache.entries[tx.Hash()] = cachedPriority{
+		priority:   prioritized(1),
+		computedAt: time.Now(),
+	}
+
+	sorted := em.getSortedTxs(big.NewInt(0))
+	entry, ok := sorted.Peek()
+	require.True(t, ok)
+	require.Equal(t, prioritized(1), entry.priority)
+
+	// The pool content is handed to the cache to be kept up to date.
+	require.Contains(t, em.priorityCache.pending, tx.Hash())
+}
+
+func TestEmitter_GetSortedTxs_ReusesTheOrderingUnlessPrioritiesChanged(t *testing.T) {
+	tests := map[string]struct {
+		classifyBetween bool
+		wantPoolFetches int
+	}{
+		"priorities unchanged": {false, 1},
+		"priorities updated":   {true, 2},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			tx := types.NewTx(&types.LegacyTx{
+				Nonce:    0,
+				GasPrice: big.NewInt(1000),
+				Gas:      21000,
+			})
+
+			ctrl := gomock.NewController(t)
+			world := NewMockExternal(ctrl)
+			world.EXPECT().GetRules().Return(opera.Rules{
+				Upgrades: opera.Upgrades{SingleProposerBlockFormation: true},
+			}).Times(test.wantPoolFetches)
+			world.EXPECT().GetLatestBlockIndex().Return(idx.Block(1)).Times(2)
+
+			txPool := NewMockTxPool(ctrl)
+			txPool.EXPECT().Count().Return(1).Times(2)
+			txPool.EXPECT().Pending(true).Return(
+				map[common.Address]types.Transactions{{1}: {tx}}, nil,
+			).Times(test.wantPoolFetches)
+
+			em := &Emitter{
+				config: config.Config{
+					MaxTxsPerAddress:     10,
+					TxsCacheInvalidation: time.Minute,
+				},
+				world: World{External: world, TxPool: txPool},
+			}
+			em.priorityCache = newPriorityCache(time.Minute, nil)
+
+			require.NotNil(t, em.getSortedTxs(big.NewInt(0)))
+			if test.classifyBetween {
+				em.priorityCache.store(
+					map[common.Hash]priorities.Priority{tx.Hash(): prioritized(1)},
+					priorities.Config{},
+				)
+			}
+			require.NotNil(t, em.getSortedTxs(big.NewInt(0)))
+		})
+	}
 }
 
 func TestEmitter_ThrottlerWorldAdapter_ReturnsNilIfNoEventIsFound(t *testing.T) {

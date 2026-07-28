@@ -109,17 +109,22 @@ func compareTxByStagePriorityPriceTime(a, b *txWithMetadata) int {
 	return b.tx.Time.Compare(a.tx.Time)
 }
 
-// classifyPriority resolves the priority of the given transaction. Nil
-// classifier or an error yields a zero-valued (non-prioritized) priority.
-func classifyPriority(classifier priorities.Classifier, tx *txpool.LazyTransaction) priorities.Priority {
-	if classifier == nil {
+// priorityLookup resolves the priority of a pending transaction without
+// modifying the state, so that priorities can be attached to every candidate
+// while an event is being built. It is implemented by priorityCache.
+type priorityLookup interface {
+	// Priority returns the priority of the transaction with the given hash, or
+	// a zero-valued (non-prioritized) priority if it is unknown.
+	Priority(hash common.Hash) priorities.Priority
+}
+
+// lookupPriority resolves the priority of the given transaction. A nil lookup
+// yields a zero-valued (non-prioritized) priority.
+func lookupPriority(lookup priorityLookup, tx *txpool.LazyTransaction) priorities.Priority {
+	if lookup == nil {
 		return priorities.Priority{}
 	}
-	p, err := classifier.Priority(tx.Tx)
-	if err != nil {
-		return priorities.Priority{}
-	}
-	return p
+	return lookup.Priority(tx.Hash)
 }
 
 // transactionsByPriorityAndPriceAndNonce represents a set of transactions that
@@ -130,27 +135,28 @@ func classifyPriority(classifier priorities.Classifier, tx *txpool.LazyTransacti
 // stage first, so a head of a later stage only surfaces while no earlier-stage
 // head is present. Stages are not monotonic per sender: a promoted head is
 // staged on its own priority and turn and may re-enter an earlier stage.
-//
-// The classifier and the turn policy staging a head are the ones supplied to
-// the constructor; they are applied to every head, the initial ones as well as
-// the promoted ones.
 type transactionsByPriorityAndPriceAndNonce struct {
-	heap frontierheap.FrontierHeap[*txpool.LazyTransaction, *txWithMetadata]
+	heap *frontierheap.FrontierHeap[*txWithMetadata]
 }
 
 // newTransactionsByPriorityAndPriceAndNonce creates a transaction set that
 // returns transactions in (stage asc, priority desc, effective tip desc, time
 // asc) order while honouring per-sender nonce sequencing.
 //
+// Every transaction is wrapped up front: its priority is taken from the lookup
+// and its turn from the turn policy. A transaction whose effective tip cannot
+// be computed is dropped together with the sender's later nonces, which depend
+// on it.
+//
 // Note, the input map is reowned so the caller should not interact any more
 // with it after providing it to the constructor.
 //
-// Pass a nil classifier to disable priority ordering — every head is treated
+// Pass a nil lookup to disable priority ordering — every transaction is treated
 // as non-prioritized.
 func newTransactionsByPriorityAndPriceAndNonce(
 	txs map[common.Address][]*txpool.LazyTransaction,
 	baseFee *big.Int,
-	classifier priorities.Classifier,
+	lookup priorityLookup,
 	turnPolicy func(tx *txpool.LazyTransaction) bool,
 ) *transactionsByPriorityAndPriceAndNonce {
 	// Convert the basefee from header format to uint256 format
@@ -160,19 +166,20 @@ func newTransactionsByPriorityAndPriceAndNonce(
 	}
 
 	t := &transactionsByPriorityAndPriceAndNonce{
-		heap: frontierheap.New[*txpool.LazyTransaction](compareTxByStagePriorityPriceTime),
+		heap: frontierheap.NewFrontierHeap(compareTxByStagePriorityPriceTime),
 	}
 
 	for sender, senderTxs := range txs {
-		t.heap.AddSequence(frontierheap.NewSequence(senderTxs, func(tx *txpool.LazyTransaction) (*txWithMetadata, bool) {
-			priority := classifyPriority(classifier, tx)
-			myTurn := turnPolicy(tx)
-			wrapped, err := newTxWithMetadata(tx, sender, baseFeeUint, priority, myTurn)
+		sequence := make([]*txWithMetadata, 0, len(senderTxs))
+		for _, tx := range senderTxs {
+			priority := lookupPriority(lookup, tx)
+			wrapped, err := newTxWithMetadata(tx, sender, baseFeeUint, priority, turnPolicy(tx))
 			if err != nil {
-				return nil, false
+				break // the sender's later nonces depend on the dropped transaction
 			}
-			return wrapped, true
-		}))
+			sequence = append(sequence, wrapped)
+		}
+		t.heap.AddSequence(sequence)
 	}
 	return t
 }
@@ -194,7 +201,7 @@ func (t *transactionsByPriorityAndPriceAndNonce) Shift() {
 // Discard drops the best head (see Peek) together with the sender's remaining
 // queued transactions.
 func (t *transactionsByPriorityAndPriceAndNonce) Discard() {
-	t.heap.Pop()
+	t.heap.PopSequence()
 }
 
 func (t *transactionsByPriorityAndPriceAndNonce) Copy() *transactionsByPriorityAndPriceAndNonce {

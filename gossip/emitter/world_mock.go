@@ -23,6 +23,7 @@ import (
 	pos "github.com/Fantom-foundation/lachesis-base/inter/pos"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
+	event "github.com/ethereum/go-ethereum/event"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -667,4 +668,18 @@ func (m *MockTxPool) Pending(enforceTips bool) (map[common.Address]types.Transac
 func (mr *MockTxPoolMockRecorder) Pending(enforceTips any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Pending", reflect.TypeOf((*MockTxPool)(nil).Pending), enforceTips)
+}
+
+// SubscribeNewTxsNotify mocks base method.
+func (m *MockTxPool) SubscribeNewTxsNotify(arg0 chan<- evmcore.NewTxsNotify) event.Subscription {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SubscribeNewTxsNotify", arg0)
+	ret0, _ := ret[0].(event.Subscription)
+	return ret0
+}
+
+// SubscribeNewTxsNotify indicates an expected call of SubscribeNewTxsNotify.
+func (mr *MockTxPoolMockRecorder) SubscribeNewTxsNotify(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribeNewTxsNotify", reflect.TypeOf((*MockTxPool)(nil).SubscribeNewTxsNotify), arg0)
 }

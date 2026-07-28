@@ -325,7 +325,7 @@ func TestTxOrdering_NonceOrderPreserved(t *testing.T) {
 	a, b, c := build(keyA), build(keyB), build(keyC)
 
 	// Scatter priorities across senders and nonces.
-	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+	lookup := fakePriorityLookup{byHash: map[common.Hash]priorities.Priority{
 		a[0].Hash: prioritized(1),
 		a[2].Hash: prioritized(1),
 		b[1].Hash: priorityWith(2, 2, 1),
@@ -335,7 +335,7 @@ func TestTxOrdering_NonceOrderPreserved(t *testing.T) {
 
 	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{
 		addrA: a, addrB: b, addrC: c,
-	}, classifier, alwaysMyTurn)
+	}, lookup, alwaysMyTurn)
 
 	out := drain(txset)
 	require.Len(t, out, 12)
@@ -358,7 +358,7 @@ func TestTxOrdering_Peek_OrdersByPriorityLevelThenWeightThenPriceThenTime(t *tes
 	e := makeLazyTx(t, keyE, 0, 4, baseTime)
 	f := makeLazyTx(t, keyF, 0, 5, baseTime.Add(time.Second))
 	g := makeLazyTx(t, keyG, 0, 5, baseTime)
-	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+	lookup := fakePriorityLookup{byHash: map[common.Hash]priorities.Priority{
 		a.Hash: priorityWith(1, 1, 2),
 		b.Hash: priorityWith(2, 2, 1),
 		c.Hash: priorityWith(3, 1, 1),
@@ -366,7 +366,7 @@ func TestTxOrdering_Peek_OrdersByPriorityLevelThenWeightThenPriceThenTime(t *tes
 	}}
 	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{
 		addrA: {a}, addrB: {b}, addrC: {c}, addrD: {d}, addrE: {e}, addrF: {f}, addrG: {g},
-	}, classifier, alwaysMyTurn)
+	}, lookup, alwaysMyTurn)
 
 	require.Equal(t,
 		[]common.Hash{
@@ -400,9 +400,9 @@ func TestTxOrdering_Peek_OrdersByStageBeforePriority(t *testing.T) {
 	ordinary := makeLazyTx(t, keyO, 0, 100, baseTime) // the highest tip of all
 	txs[addrO] = []*txpool.LazyTransaction{ordinary}
 
-	classifier := fakePriorityClassifier{byHash: byHash}
+	lookup := fakePriorityLookup{byHash: byHash}
 	// The two highest-priority transactions are another validator's turn.
-	txset := newTxSet(txs, classifier, notMyTurnFor(prio[0], prio[1]))
+	txset := newTxSet(txs, lookup, notMyTurnFor(prio[0], prio[1]))
 
 	require.Equal(t,
 		[]common.Hash{
@@ -422,12 +422,12 @@ func TestTxOrdering_Peek_PrioritizedCannotJumpOwnLowerNonce(t *testing.T) {
 	a1 := makeLazyTx(t, keyA, 1, 100, baseTime)
 	b0 := makeLazyTx(t, keyB, 0, 10, baseTime)
 
-	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+	lookup := fakePriorityLookup{byHash: map[common.Hash]priorities.Priority{
 		a1.Hash: prioritized(1),
 	}}
 	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{
 		addrA: {a0, a1}, addrB: {b0},
-	}, classifier, alwaysMyTurn)
+	}, lookup, alwaysMyTurn)
 
 	// No prioritized head exists at construction: both heads are non-prioritized.
 	head, ok := txset.Peek()
@@ -468,7 +468,7 @@ func TestTxOrdering_Shift_StagesPromotedHead(t *testing.T) {
 			}
 			txset := newTxSet(
 				map[common.Address][]*txpool.LazyTransaction{addrA: {head, next}},
-				fakePriorityClassifier{byHash: byHash}, policy,
+				fakePriorityLookup{byHash: byHash}, policy,
 			)
 
 			txset.Shift()
@@ -492,14 +492,14 @@ func TestTxOrdering_Shift_PromotedHeadCanReenterAnEarlierStage(t *testing.T) {
 	keyB, addrB := newSenderKey(t)
 	b0 := makeLazyTx(t, keyB, 0, 1, baseTime)
 
-	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+	lookup := fakePriorityLookup{byHash: map[common.Hash]priorities.Priority{
 		a0.Hash: priorityWith(1, 5, 1),
 		a1.Hash: priorityWith(2, 1, 1),
 		b0.Hash: priorityWith(3, 3, 1),
 	}}
 	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{
 		addrA: {a0, a1}, addrB: {b0},
-	}, classifier, notMyTurnFor(a0, b0))
+	}, lookup, notMyTurnFor(a0, b0))
 
 	// a1 is this validator's turn, so it precedes b0 despite its lower level.
 	require.Equal(t, []common.Hash{a0.Hash, a1.Hash, b0.Hash}, hashesOf(drain(txset)))
@@ -508,10 +508,10 @@ func TestTxOrdering_Shift_PromotedHeadCanReenterAnEarlierStage(t *testing.T) {
 func TestTxOrdering_Shift_ExhaustedSenderLeavesTheSet(t *testing.T) {
 	keyA, addrA := newSenderKey(t)
 	head := makeLazyTx(t, keyA, 0, 10, baseTime)
-	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+	lookup := fakePriorityLookup{byHash: map[common.Hash]priorities.Priority{
 		head.Hash: prioritized(1),
 	}}
-	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: {head}}, classifier, alwaysMyTurn)
+	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: {head}}, lookup, alwaysMyTurn)
 
 	txset.Shift()
 
@@ -523,10 +523,10 @@ func TestTxOrdering_Discard_DropsSenderRemainder(t *testing.T) {
 	keyA, addrA := newSenderKey(t)
 	head := makeLazyTx(t, keyA, 0, 10, baseTime)
 	next := makeLazyTx(t, keyA, 1, 10, baseTime)
-	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+	lookup := fakePriorityLookup{byHash: map[common.Hash]priorities.Priority{
 		head.Hash: prioritized(1), next.Hash: prioritized(1),
 	}}
-	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: {head, next}}, classifier, alwaysMyTurn)
+	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: {head, next}}, lookup, alwaysMyTurn)
 
 	txset.Discard()
 
@@ -575,8 +575,8 @@ func makeLazyTx(t *testing.T, key *ecdsa.PrivateKey, nonce uint64, tip int64, at
 }
 
 // newTxSet builds a transaction set with a nil base fee.
-func newTxSet(txs map[common.Address][]*txpool.LazyTransaction, classifier priorities.Classifier, policy func(tx *txpool.LazyTransaction) bool) *transactionsByPriorityAndPriceAndNonce {
-	return newTransactionsByPriorityAndPriceAndNonce(txs, nil, classifier, policy)
+func newTxSet(txs map[common.Address][]*txpool.LazyTransaction, lookup priorityLookup, policy func(tx *txpool.LazyTransaction) bool) *transactionsByPriorityAndPriceAndNonce {
+	return newTransactionsByPriorityAndPriceAndNonce(txs, nil, lookup, policy)
 }
 
 // notMyTurnFor returns a turn policy putting every transaction but the given

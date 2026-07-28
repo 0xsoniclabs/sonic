@@ -110,6 +110,16 @@ func TestFrontierHeap_PopSequence_EmptyHeapReturnsFalse(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestFrontierHeap_Clone_IsConsumedIndependentlyOfTheOriginal(t *testing.T) {
+	h := NewFrontierHeap(cmp.Compare[int])
+	h.AddSequence([]int{5, 4})
+	h.AddSequence([]int{3})
+
+	clone := h.Clone()
+	require.Equal(t, []int{5, 4, 3}, drain(h))
+	require.Equal(t, []int{5, 4, 3}, drain(clone))
+}
+
 func drain[T any](h *FrontierHeap[T]) []T {
 	var out []T
 	for v, ok := h.Shift(); ok; v, ok = h.Shift() {

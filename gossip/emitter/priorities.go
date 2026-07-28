@@ -20,22 +20,23 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/core/vm"
 )
 
-// priorityContext holds the per-head-block state required to classify and
-// rate-limit prioritized transactions. A single instance is shared by both
-// the hinter (eager inclusion) and the transaction-ordering heap, so only one
-// statedb is acquired per head block.
+// priorityContext holds the state required to classify and rate-limit
+// prioritized transactions against a fixed head block. It is owned by the
+// priority cache's worker, which is the only user of the acquired statedb.
 type priorityContext struct {
 	classifier priorities.Classifier
 	config     priorities.Config
+	block      idx.Block // the head block the context was built against
 	release    func()
 }
 
-// newPriorityContext builds the per-block priority state, or returns nil if
-// priorities are disabled or the head state is unavailable. The caller must
-// invoke release() (only when non-nil) when done.
+// newPriorityContext builds the priority state for the current head block, or
+// returns nil if priorities are disabled or the head state is unavailable. The
+// caller must invoke release() (only when non-nil) when done.
 func (em *Emitter) newPriorityContext() *priorityContext {
 	rules := em.world.GetRules()
 	if !rules.Upgrades.TransactionPriorities {
@@ -49,11 +50,15 @@ func (em *Emitter) newPriorityContext() *priorityContext {
 	if header == nil {
 		return nil
 	}
-	statedb := em.world.StateDB() // TODO could be nil
+	statedb := em.world.StateDB()
+	if statedb == nil {
+		return nil
+	}
+	block := em.world.GetLatestBlockIndex()
 	chainCfg := opera.CreateTransientEvmChainConfig(
 		rules.NetworkID,
 		em.world.GetUpgradeHeights(),
-		em.world.GetLatestBlockIndex(),
+		block,
 	)
 	evm := vm.NewEVM(
 		evmcore.NewEVMBlockContext(header, em.world, nil),
@@ -61,12 +66,26 @@ func (em *Emitter) newPriorityContext() *priorityContext {
 		chainCfg,
 		opera.GetVmConfig(rules),
 	)
-	config := priorities.GetConfigOrFallback(rules.Upgrades, evm)
+	config := priorities.GetConfigOrFallback(rules.Upgrades, evm, priorityConfigFailures)
 	return &priorityContext{
-		classifier: priorities.NewEvmClassifier(rules.Upgrades, evm, em.world.TransactionSigner, statedb),
+		classifier: priorities.NewEvmClassifier(rules.Upgrades, evm, em.world.TransactionSigner, statedb, priorityTxFailures),
 		config:     config,
+		block:      block,
 		release:    statedb.Release,
 	}
+}
+
+// refreshPriorityContext returns a priority context for the current head block:
+// the given one if it was built against that block, a new one otherwise. The
+// stale context is released, and nil is returned if no new one can be built.
+func (em *Emitter) refreshPriorityContext(context *priorityContext) *priorityContext {
+	if context != nil {
+		if context.block == em.world.GetLatestBlockIndex() {
+			return context
+		}
+		context.release()
+	}
+	return em.newPriorityContext()
 }
 
 // priorityHinter provides best-effort transaction-priority classification for
@@ -82,16 +101,13 @@ type priorityHinter struct {
 	counts map[[16]byte]uint64
 }
 
-// newPriorityHinter builds a per-event hinter from the cached priorityContext,
-// or returns nil if priorities are disabled. Its lifetime is scoped to the
-// event being built; the underlying statedb is owned by the cache.
+// newPriorityHinter builds a per-event hinter from the rate-limit configuration
+// last read by the priority cache. Its lifetime is scoped to the event being
+// built. While priorities are disabled the configuration is zero-valued, which
+// makes the hinter reject every transaction.
 func (em *Emitter) newPriorityHinter() *priorityHinter {
-	ctx := em.cache.priorityCtx
-	if ctx == nil {
-		return nil
-	}
 	return &priorityHinter{
-		config: ctx.config,
+		config: em.priorityCache.getConfig(),
 		counts: map[[16]byte]uint64{},
 	}
 }

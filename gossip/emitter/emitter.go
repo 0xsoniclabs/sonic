@@ -43,7 +43,6 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/originatedtxs"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/throttler"
@@ -98,6 +97,9 @@ var (
 	skipEmissionNotAllowed = metrics.GetOrRegisterCounter("emitter/skip_emission/not_allowed", nil)
 	skipEmissionBusy       = metrics.GetOrRegisterCounter("emitter/skip_emission/busy", nil)
 	skipEmissionThrottle   = metrics.GetOrRegisterCounter("emitter/skip_emission/throttle", nil)
+
+	priorityConfigFailures = metrics.GetOrRegisterMeter("emitter/priorities/config/failed", nil) // priority config query failed, the default config is used
+	priorityTxFailures     = metrics.GetOrRegisterMeter("emitter/priorities/txs/failed", nil)    // per-transaction query failed, the tx is not prioritized
 )
 
 type Emitter struct {
@@ -141,13 +143,16 @@ type Emitter struct {
 	maxParents idx.Event
 
 	cache struct {
-		sortedTxs     *transactionsByPriorityAndPriceAndNonce
-		poolTime      time.Time
-		poolBlock     idx.Block
-		poolCount     int
-		priorityCtx   *priorityContext // shared classifier+config; refreshed when head block changes
-		priorityBlock idx.Block        // head block the cached priorityCtx was built against
+		sortedTxs        *transactionsByPriorityAndPriceAndNonce
+		poolTime         time.Time
+		poolBlock        idx.Block
+		poolCount        int
+		priorityRevision uint64 // priority cache revision the sortedTxs were built with
 	}
+
+	// priorityCache supplies the transaction priorities used for ordering,
+	// computed in the background while the emitter is running.
+	priorityCache *priorityCache
 
 	emittedEventFile *os.File
 	emittedBvsFile   *os.File
@@ -212,6 +217,7 @@ func NewEmitter(
 		errorLock:     errorLock,
 		bundleCache:   bundleCache,
 	}
+	res.priorityCache = newPriorityCache(config.PriorityCacheInvalidation, res.refreshPriorityContext)
 	res.eventEmissionThrottler = throttler.NewThrottlingState(
 		config.Validator.ID,
 		config.ThrottlerConfig,
@@ -253,6 +259,17 @@ func (em *Emitter) Start() {
 	em.done = make(chan struct{})
 
 	done := em.done
+
+	// Classify the transactions in the background, starting when they enter the
+	// pool, so that their priorities are available to the emission path without
+	// querying the state.
+	em.wg.Go(func() {
+		em.priorityCache.run(done)
+	})
+	em.wg.Go(func() {
+		em.observeNewPoolTxs(done)
+	})
+
 	if em.config.EmitIntervals.Min == 0 {
 		return
 	}
@@ -281,12 +298,6 @@ func (em *Emitter) Stop() {
 	close(em.done)
 	em.done = nil
 	em.wg.Wait()
-
-	if em.cache.priorityCtx != nil {
-		em.cache.priorityCtx.release()
-		em.cache.priorityCtx = nil
-		em.cache.sortedTxs = nil
-	}
 }
 
 func (em *Emitter) tick() {
@@ -318,28 +329,17 @@ func (em *Emitter) tick() {
 }
 
 func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriorityAndPriceAndNonce {
-	// Refresh the priority context when it is missing (first use, or a previous
-	// build failed) or when the head block changes. The context must outlive
-	// this function because createEvent consumes the returned copy after we
-	// return; it is released by the next refresh or by Stop.
 	currentBlock := em.world.GetLatestBlockIndex()
-	if em.cache.priorityCtx == nil || em.cache.priorityBlock != currentBlock {
-		if em.cache.priorityCtx != nil {
-			em.cache.priorityCtx.release()
-		}
-		em.cache.priorityCtx = em.newPriorityContext()
-		em.cache.priorityBlock = currentBlock
-	}
-	var classifier priorities.Classifier
-	if em.cache.priorityCtx != nil {
-		classifier = em.cache.priorityCtx.classifier
-	}
 
-	// Short circuit if pool wasn't updated since the cache was built
+	// Short circuit if neither the pool nor the priorities of its transactions
+	// were updated since the cache was built. A stale ordering must not hold a
+	// freshly classified transaction back.
 	poolCount := em.world.TxPool.Count()
+	priorityRevision := em.priorityCache.getRevision()
 	if em.cache.sortedTxs != nil &&
 		em.cache.poolBlock == currentBlock &&
 		em.cache.poolCount == poolCount &&
+		em.cache.priorityRevision == priorityRevision &&
 		time.Since(em.cache.poolTime) < em.config.TxsCacheInvalidation {
 		return em.cache.sortedTxs.Copy()
 	}
@@ -405,11 +405,21 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriorityAndPric
 		turnPolicy = em.newTurnPolicy()
 	}
 
-	sortedTxs := newTransactionsByPriorityAndPriceAndNonce(txs, baseFee, classifier, turnPolicy)
+	// The priorities used below are the ones computed when the transactions
+	// entered the pool (see observeNewPoolTxs); re-observing the pending ones
+	// keeps the priorities of long-pending transactions from expiring.
+	pending := make(types.Transactions, 0, poolCount)
+	for _, list := range pendingTxs {
+		pending = append(pending, list...)
+	}
+	em.priorityCache.observe(pending)
+
+	sortedTxs := newTransactionsByPriorityAndPriceAndNonce(txs, baseFee, em.priorityCache, turnPolicy)
 	em.cache.sortedTxs = sortedTxs
 	em.cache.poolCount = poolCount
 	em.cache.poolBlock = currentBlock
 	em.cache.poolTime = time.Now()
+	em.cache.priorityRevision = priorityRevision
 	return sortedTxs.Copy()
 }
 

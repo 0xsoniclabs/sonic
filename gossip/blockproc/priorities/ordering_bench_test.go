@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package priorities
+package priorities_test
 
 import (
 	"crypto/ecdsa"
@@ -25,6 +25,7 @@ import (
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/carmen/go/state/gostate"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/proxy"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
@@ -71,16 +72,16 @@ type benchEnv struct {
 	evm      *vm.EVM
 	signer   types.Signer
 	upgrades opera.Upgrades
-	cfg      Config
+	cfg      priorities.Config
 
 	keys           []*ecdsa.PrivateKey
-	prioByAddr     map[common.Address]Priority
+	prioByAddr     map[common.Address]priorities.Priority
 	numPrioritized int
 }
 
 func BenchmarkPrioritize(b *testing.B) {
 	env := setupBenchEnv(b, benchStateAccounts, benchPrioritizedSenders)
-	evmClassifier := NewEvmClassifier(env.upgrades, env.evm, env.signer, env.statedb)
+	evmClassifier := priorities.NewEvmClassifier(env.upgrades, env.evm, env.signer, env.statedb, nopMeter{})
 	nativeClassifier := env.nativeClassifier()
 
 	// Default arm vs. native fallback arm across realistic block sizes, using a
@@ -122,11 +123,16 @@ func BenchmarkPrioritize(b *testing.B) {
 	}
 }
 
-func runPrioritize(b *testing.B, txs types.Transactions, classifier Classifier, signer types.Signer, state NonceReader, cfg Config) {
+// nopMeter discards the reported query failures, which the benchmark ignores.
+type nopMeter struct{}
+
+func (nopMeter) Mark(int64) {}
+
+func runPrioritize(b *testing.B, txs types.Transactions, classifier priorities.Classifier, signer types.Signer, state priorities.NonceReader, cfg priorities.Config) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if got := Prioritize(txs, classifier, signer, state, cfg); len(got) != len(txs) {
+		if got := priorities.Prioritize(txs, classifier, signer, state, cfg); len(got) != len(txs) {
 			b.Fatalf("Prioritize returned %d txs, want %d", len(got), len(txs))
 		}
 	}
@@ -135,24 +141,24 @@ func runPrioritize(b *testing.B, txs types.Transactions, classifier Classifier, 
 // nativeClassifier returns a Classifier that resolves priorities from an
 // in-memory map (the criteria fetched once per block), modeling the
 // native-filter fallback.
-func (e *benchEnv) nativeClassifier() Classifier {
+func (e *benchEnv) nativeClassifier() priorities.Classifier {
 	return &mapClassifier{signer: e.signer, byAddr: e.prioByAddr}
 }
 
 type mapClassifier struct {
 	signer types.Signer
-	byAddr map[common.Address]Priority
+	byAddr map[common.Address]priorities.Priority
 }
 
-func (c *mapClassifier) Priority(tx *types.Transaction) (Priority, error) {
+func (c *mapClassifier) Priority(tx *types.Transaction) (priorities.Priority, error) {
 	sender, err := types.Sender(c.signer, tx)
 	if err != nil {
-		return Priority{}, err
+		return priorities.Priority{}, err
 	}
 	if p, ok := c.byAddr[sender]; ok {
 		return p, nil
 	}
-	return Priority{}, nil
+	return priorities.Priority{}, nil
 }
 
 // makeTxs builds n signed transactions. Every oneInEach-th transaction is sent
@@ -204,7 +210,7 @@ func setupBenchEnv(b *testing.B, numAccounts, numPrioritized int) *benchEnv {
 
 	statedb := evmstore.CreateCarmenStateDb(carmen.CreateStateDBUsing(st), nil)
 
-	upgrades := enabledUpgrades()
+	upgrades := enabledBenchUpgrades()
 	rules := opera.FakeNetRules(upgrades)
 	chainConfig := opera.CreateTransientEvmChainConfig(rules.NetworkID, nil, 1)
 	signer := types.LatestSigner(chainConfig)
@@ -263,7 +269,7 @@ func setupBenchEnv(b *testing.B, numAccounts, numPrioritized int) *benchEnv {
 	// Generous per-entity limits so rate limiting does not distort the timing.
 	callRegistry("setConfig", big.NewInt(1_000_000), big.NewInt(1_000_000))
 
-	prioByAddr := make(map[common.Address]Priority, numPrioritized)
+	prioByAddr := make(map[common.Address]priorities.Priority, numPrioritized)
 	for i := 0; i < numPrioritized; i++ {
 		addr := crypto.PubkeyToAddress(keys[i].PublicKey)
 		level := uint64(1 + i%4)    // a few distinct levels
@@ -272,7 +278,7 @@ func setupBenchEnv(b *testing.B, numAccounts, numPrioritized int) *benchEnv {
 		binary.BigEndian.PutUint64(id[8:], uint64(i)) // distinct entity per sender
 		callRegistry("setSenderPriority", addr, level, weight, new(big.Int).SetBytes(id[:]))
 
-		prioByAddr[addr] = Priority{Level: level, Weight: weight, ID: id}
+		prioByAddr[addr] = priorities.Priority{Level: level, Weight: weight, ID: id}
 	}
 
 	if ch := statedb.EndBlock(1); ch != nil {
@@ -283,7 +289,7 @@ func setupBenchEnv(b *testing.B, numAccounts, numPrioritized int) *benchEnv {
 	statedb.BeginBlock(2)
 	b.Cleanup(func() { statedb.EndBlock(2) })
 
-	cfg, err := GetConfig(upgrades, evm)
+	cfg, err := priorities.GetConfig(upgrades, evm)
 	require.NoError(err)
 
 	return &benchEnv{
@@ -309,4 +315,11 @@ func benchKey(i int) *ecdsa.PrivateKey {
 		}
 		seed = crypto.Keccak256(seed)
 	}
+}
+
+// enabledBenchUpgrades returns the upgrades with transaction priorities enabled.
+func enabledBenchUpgrades() opera.Upgrades {
+	u := opera.GetBrioUpgrades()
+	u.TransactionPriorities = true
+	return u
 }

@@ -343,7 +343,7 @@ func TestEmitter_addTxsWithHinter_FollowsStageOrder(t *testing.T) {
 	p3s := f.makeTxsWithSingleSender(t, 0, 1)
 	p3Ordinary, p3PrioMyTurn := p3s[0], p3s[1]
 
-	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+	lookup := fakePriorityLookup{byHash: map[common.Hash]priorities.Priority{
 		p1PrioMyTurn.Hash():    prioritized(1),
 		p2PrioNotMyTurn.Hash(): prioritized(2),
 		p2PrioMyTurn.Hash():    prioritized(3),
@@ -353,7 +353,7 @@ func TestEmitter_addTxsWithHinter_FollowsStageOrder(t *testing.T) {
 		config: priorities.Config{MaxPiggybackTxsPerEntityPerEvent: 10},
 		counts: map[[16]byte]uint64{},
 	}
-	txSet := f.makeSorted(classifier, myTurnFor(p1PrioMyTurn, p2PrioMyTurn, p3Ordinary, p3PrioMyTurn),
+	txSet := f.makeSorted(lookup, myTurnFor(p1PrioMyTurn, p2PrioMyTurn, p3Ordinary, p3PrioMyTurn),
 		p1PrioMyTurn, p2PrioNotMyTurn, p2PrioMyTurn, p3Ordinary, p3PrioMyTurn)
 
 	event := f.makeEvent()
@@ -389,7 +389,7 @@ func TestEmitter_addTxsWithHinter_PerEntityCapEnforced(t *testing.T) {
 	prio3 := f.makeTx(t, 0)
 	ordinary := f.makeTx(t, 0)
 
-	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+	lookup := fakePriorityLookup{byHash: map[common.Hash]priorities.Priority{
 		prio1.Hash(): prioritized(7),
 		prio2.Hash(): prioritized(7),
 		prio3.Hash(): prioritized(7),
@@ -422,7 +422,7 @@ func TestEmitter_addTxsWithHinter_PerEntityCapEnforced(t *testing.T) {
 
 			f.em.addTxsWithHinter(
 				event,
-				f.makeSorted(classifier, tc.turn, prio1, prio2, prio3, ordinary),
+				f.makeSorted(lookup, tc.turn, prio1, prio2, prio3, ordinary),
 				hinter,
 			)
 
@@ -444,7 +444,7 @@ func TestEmitter_addTxsWithHinter_ForeignPriorityAdmissionsAreRolledBack(t *test
 	prioTx := f.makeTx(t, 0)     // prioritized
 	ordinaryTx := f.makeTx(t, 0) // ordinary
 
-	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+	lookup := fakePriorityLookup{byHash: map[common.Hash]priorities.Priority{
 		prioTx.Hash(): prioritized(3),
 	}}
 	hinter := &priorityHinter{
@@ -454,7 +454,7 @@ func TestEmitter_addTxsWithHinter_ForeignPriorityAdmissionsAreRolledBack(t *test
 
 	event := f.makeEvent()
 	gasPowerLeft := event.GasPowerLeft()
-	f.em.addTxsWithHinter(event, f.makeSorted(classifier, neverMyTurn, prioTx, ordinaryTx), hinter)
+	f.em.addTxsWithHinter(event, f.makeSorted(lookup, neverMyTurn, prioTx, ordinaryTx), hinter)
 
 	require.Empty(t, event.Transactions())
 	require.Zero(t, event.GasPowerUsed())
@@ -472,7 +472,7 @@ func TestEmitter_addTxsWithHinter_PromotedMyTurnNonceKeepsTheEvent(t *testing.T)
 	txs := f.makeTxsWithSingleSender(t, 0, 1)
 	notMyTurn, myTurn := txs[0], txs[1]
 
-	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+	lookup := fakePriorityLookup{byHash: map[common.Hash]priorities.Priority{
 		notMyTurn.Hash(): prioritized(3),
 		myTurn.Hash():    prioritized(3),
 	}}
@@ -482,7 +482,7 @@ func TestEmitter_addTxsWithHinter_PromotedMyTurnNonceKeepsTheEvent(t *testing.T)
 	}
 
 	event := f.makeEvent()
-	f.em.addTxsWithHinter(event, f.makeSorted(classifier, myTurnFor(myTurn), notMyTurn, myTurn), hinter)
+	f.em.addTxsWithHinter(event, f.makeSorted(lookup, myTurnFor(myTurn), notMyTurn, myTurn), hinter)
 
 	require.Equal(t,
 		[]common.Hash{notMyTurn.Hash(), myTurn.Hash()},
@@ -504,7 +504,7 @@ func TestEmitter_addTxsWithHinter_AllTransactionsTreatedAsNotPrioritized(t *test
 	ordinaryMyTurn := f.makeTx(t, 0)
 	ordinaryNotMyTurn := f.makeTx(t, 0)
 
-	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+	lookup := fakePriorityLookup{byHash: map[common.Hash]priorities.Priority{
 		prioMyTurn.Hash():    prioritized(1),
 		prioNotMyTurn.Hash(): prioritized(2),
 	}}
@@ -512,7 +512,7 @@ func TestEmitter_addTxsWithHinter_AllTransactionsTreatedAsNotPrioritized(t *test
 	event := f.makeEvent()
 	f.em.addTxsWithHinter(
 		event,
-		f.makeSorted(classifier, myTurnFor(prioMyTurn, ordinaryMyTurn),
+		f.makeSorted(lookup, myTurnFor(prioMyTurn, ordinaryMyTurn),
 			prioMyTurn, prioNotMyTurn, ordinaryMyTurn, ordinaryNotMyTurn),
 		nil,
 	)
@@ -627,9 +627,9 @@ func (f *addTxsFixture) makeEvent() *inter.MutableEventPayload {
 }
 
 // makeSorted wraps the given txs as a transactionsByPriorityAndPriceAndNonce
-// set, grouping them by recovered sender. The classifier and the turn policy
-// stage every head, the initial ones as well as the promoted ones.
-func (f *addTxsFixture) makeSorted(classifier priorities.Classifier, policy func(tx *txpool.LazyTransaction) bool, txs ...*types.Transaction) *transactionsByPriorityAndPriceAndNonce {
+// set, grouping them by recovered sender. The lookup and the turn policy stage
+// every transaction of the set.
+func (f *addTxsFixture) makeSorted(lookup priorityLookup, policy func(tx *txpool.LazyTransaction) bool, txs ...*types.Transaction) *transactionsByPriorityAndPriceAndNonce {
 	bySender := map[common.Address][]*txpool.LazyTransaction{}
 	for _, tx := range txs {
 		sender, _ := types.Sender(f.signer, tx)
@@ -642,5 +642,5 @@ func (f *addTxsFixture) makeSorted(classifier priorities.Classifier, policy func
 			Gas:       tx.Gas(),
 		})
 	}
-	return newTransactionsByPriorityAndPriceAndNonce(bySender, nil, classifier, policy)
+	return newTransactionsByPriorityAndPriceAndNonce(bySender, nil, lookup, policy)
 }

@@ -66,6 +66,8 @@ type Config struct {
 
 	TxsCacheInvalidation time.Duration
 
+	PriorityCacheInvalidation time.Duration
+
 	PrevEmittedEventFile FileConfig
 	PrevBlockVotesFile   FileConfig
 	PrevEpochVoteFile    FileConfig
@@ -124,6 +126,8 @@ func DefaultConfig() Config {
 		EmergencyThreshold:  opera.DefaultEventGas * 5,
 
 		TxsCacheInvalidation: 200 * time.Millisecond,
+
+		PriorityCacheInvalidation: time.Minute,
 
 		ThrottlerConfig: DefaultThrottlerConfig(),
 	}

@@ -19,21 +19,24 @@ package emitter
 import (
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
+	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
-type fakePriorityClassifier struct {
+// fakePriorityLookup resolves priorities from a fixed map, standing in for the
+// priority cache. Unknown transactions are non-prioritized.
+type fakePriorityLookup struct {
 	byHash map[common.Hash]priorities.Priority
 }
 
-func (c fakePriorityClassifier) Priority(tx *types.Transaction) (priorities.Priority, error) {
-	if p, ok := c.byHash[tx.Hash()]; ok {
-		return p, nil
-	}
-	return priorities.Priority{}, nil
+func (l fakePriorityLookup) Priority(hash common.Hash) priorities.Priority {
+	return l.byHash[hash]
 }
 
 func prioritized(id byte) priorities.Priority {
@@ -44,6 +47,59 @@ func prioritized(id byte) priorities.Priority {
 // so tests can assert (level, weight) ordering.
 func priorityWith(id byte, level, weight uint64) priorities.Priority {
 	return priorities.Priority{Level: level, Weight: weight, ID: [16]byte{id}}
+}
+
+func TestEmitter_NewPriorityContext_IsNilWithoutClassifiableHeadState(t *testing.T) {
+	enabled := opera.Rules{Upgrades: opera.Upgrades{TransactionPriorities: true}}
+	tests := map[string]func(*MockExternal){
+		"priorities disabled": func(world *MockExternal) {
+			world.EXPECT().GetRules().Return(opera.Rules{})
+		},
+		"no head block": func(world *MockExternal) {
+			world.EXPECT().GetRules().Return(enabled)
+			world.EXPECT().GetLatestBlock().Return(nil)
+		},
+		"no head header": func(world *MockExternal) {
+			world.EXPECT().GetRules().Return(enabled)
+			world.EXPECT().GetLatestBlock().Return(&inter.Block{})
+			world.EXPECT().Header(gomock.Any(), gomock.Any()).Return(nil)
+		},
+		"no head state": func(world *MockExternal) {
+			world.EXPECT().GetRules().Return(enabled)
+			world.EXPECT().GetLatestBlock().Return(&inter.Block{})
+			world.EXPECT().Header(gomock.Any(), gomock.Any()).Return(&evmcore.EvmHeader{})
+			world.EXPECT().StateDB().Return(nil)
+		},
+	}
+	for name, setup := range tests {
+		t.Run(name, func(t *testing.T) {
+			world := NewMockExternal(gomock.NewController(t))
+			setup(world)
+			em := &Emitter{world: World{External: world}}
+			require.Nil(t, em.newPriorityContext())
+		})
+	}
+}
+
+func TestEmitter_RefreshPriorityContext_KeepsTheContextOfTheHeadBlock(t *testing.T) {
+	world := NewMockExternal(gomock.NewController(t))
+	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(7))
+	em := &Emitter{world: World{External: world}}
+
+	context := &priorityContext{block: 7}
+	require.Same(t, context, em.refreshPriorityContext(context))
+}
+
+func TestEmitter_RefreshPriorityContext_ReleasesTheContextOfAnOutdatedBlock(t *testing.T) {
+	world := NewMockExternal(gomock.NewController(t))
+	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(8))
+	world.EXPECT().GetRules().Return(opera.Rules{}) // priorities disabled: no new context
+	em := &Emitter{world: World{External: world}}
+
+	released := 0
+	context := &priorityContext{block: 7, release: func() { released++ }}
+	require.Nil(t, em.refreshPriorityContext(context))
+	require.Equal(t, 1, released)
 }
 
 func TestPriorityHinter_Nil_IsNeverEligible(t *testing.T) {
