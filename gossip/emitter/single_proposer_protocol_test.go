@@ -412,7 +412,6 @@ func (n *Node) emitEventInternal(
 		event,
 		&n.tracker,
 		nil,
-		nil,
 		fakeScheduler{},
 		fakeRandaoMixer{},
 		fakeTimerMetric{},

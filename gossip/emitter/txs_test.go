@@ -328,12 +328,12 @@ func Test_Emitter_evaluateBundleTx_ReturnsGasEfficiencyFromEvaluator(t *testing.
 	}
 }
 
-// TestEmitter_addTxsWithHinter_FollowsThreePhases verifies that a single call
-// consumes transactions in the documented phase order: prioritized my-turn
-// (phase 1), prioritized not-my-turn admitted eagerly via the hinter (phase 2),
-// then ordinary my-turn (phase 3). The resulting event lists them in that
-// order, and only the phase-2 admission consumes the per-entity hinter cap.
-func TestEmitter_addTxsWithHinter_FollowsThreePhases(t *testing.T) {
+// TestEmitter_addTxsWithHinter_FollowsStageOrder verifies that a single call
+// consumes transactions in the documented stage order: prioritized my-turn,
+// prioritized not-my-turn admitted eagerly via the hinter, then ordinary
+// my-turn. The resulting event lists them in that order, and only the
+// not-my-turn admission consumes the per-entity hinter cap.
+func TestEmitter_addTxsWithHinter_FollowsStageOrder(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	f := newAddTxsFixture(t, ctrl)
 
@@ -353,19 +353,19 @@ func TestEmitter_addTxsWithHinter_FollowsThreePhases(t *testing.T) {
 		config: priorities.Config{MaxPiggybackTxsPerEntityPerEvent: 10},
 		counts: map[[16]byte]uint64{},
 	}
-	txSet := f.makeSorted(classifier, p1PrioMyTurn, p2PrioNotMyTurn, p2PrioMyTurn, p3Ordinary, p3PrioMyTurn)
-	myTurn := myTurnFor(p1PrioMyTurn, p2PrioMyTurn, p3Ordinary, p3PrioMyTurn)
+	txSet := f.makeSorted(classifier, myTurnFor(p1PrioMyTurn, p2PrioMyTurn, p3Ordinary, p3PrioMyTurn),
+		p1PrioMyTurn, p2PrioNotMyTurn, p2PrioMyTurn, p3Ordinary, p3PrioMyTurn)
 
 	event := f.makeEvent()
-	f.em.addTxsWithHinter(event, txSet, classifier, hinter, myTurn)
+	f.em.addTxsWithHinter(event, txSet, hinter)
 
 	require.Equal(t,
 		[]common.Hash{
-			p1PrioMyTurn.Hash(),    // phase 1
-			p2PrioNotMyTurn.Hash(), // phase 2, not my turn
-			p2PrioMyTurn.Hash(),    // phase 2, my turn following its not-my-turn predecessor
-			p3Ordinary.Hash(),      // phase 3
-			p3PrioMyTurn.Hash(),    // phase 3, my turn following its ordinary predecessor
+			p1PrioMyTurn.Hash(),    // prioritized, my turn
+			p2PrioNotMyTurn.Hash(), // prioritized, not my turn
+			p2PrioMyTurn.Hash(),    // my turn following its not-my-turn predecessor
+			p3Ordinary.Hash(),      // ordinary
+			p3PrioMyTurn.Hash(),    // my turn following its ordinary predecessor
 		},
 		txHashes(event.Transactions()),
 	)
@@ -376,14 +376,14 @@ func TestEmitter_addTxsWithHinter_FollowsThreePhases(t *testing.T) {
 
 // TestEmitter_addTxsWithHinter_PerEntityCapEnforced verifies that the per-entity
 // hinter cap bounds only prioritized transactions admitted while it is not this
-// validator's turn (phase 2); prioritized transactions admitted on the
-// validator's own turn (phase 1) are unbounded by it.
+// validator's turn; prioritized transactions admitted on the validator's own
+// turn are unbounded by it.
 func TestEmitter_addTxsWithHinter_PerEntityCapEnforced(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	f := newAddTxsFixture(t, ctrl)
 
 	// Three prioritized txs of the same entity plus one ordinary tx whose turn
-	// it always is (so phase 2 is never skipped for lack of a my-turn candidate).
+	// it always is (so the eager admissions are never rolled back).
 	prio1 := f.makeTx(t, 0)
 	prio2 := f.makeTx(t, 0)
 	prio3 := f.makeTx(t, 0)
@@ -396,18 +396,18 @@ func TestEmitter_addTxsWithHinter_PerEntityCapEnforced(t *testing.T) {
 	}}
 
 	cases := map[string]struct {
-		turn        func(*txpool.LazyTransaction) bool
+		turn        func(tx *txpool.LazyTransaction) bool
 		wantCounter uint64
 		wantTxs     int
 	}{
 		"my-turn prio bypasses cap": {
 			turn:        alwaysMyTurn,
-			wantCounter: 0, // all admitted in phase 1, cap never consulted
+			wantCounter: 0, // all admitted on their own turn, cap never consulted
 			wantTxs:     4, // 3 prio + ordinary
 		},
 		"not-my-turn prio subject to cap": {
 			turn:        myTurnFor(ordinary),
-			wantCounter: 2, // cap admits 2 of 3 in phase 2, drops the third
+			wantCounter: 2, // cap admits 2 of 3 eagerly, drops the third
 			wantTxs:     3, // 2 prio + ordinary
 		},
 	}
@@ -422,8 +422,8 @@ func TestEmitter_addTxsWithHinter_PerEntityCapEnforced(t *testing.T) {
 
 			f.em.addTxsWithHinter(
 				event,
-				f.makeSorted(classifier, prio1, prio2, prio3, ordinary),
-				classifier, hinter, tc.turn,
+				f.makeSorted(classifier, tc.turn, prio1, prio2, prio3, ordinary),
+				hinter,
 			)
 
 			require.Len(t, event.Transactions(), tc.wantTxs)
@@ -432,12 +432,12 @@ func TestEmitter_addTxsWithHinter_PerEntityCapEnforced(t *testing.T) {
 	}
 }
 
-// TestEmitter_addTxsWithHinter_Phase2SkippedWhenNoMyTurnCandidate verifies the
-// "do not emit an event solely for foreign priorities" invariant: when this
-// validator has no my-turn transaction of its own to contribute, phase 2 is
-// skipped entirely, so prioritized not-my-turn txs are neither emitted nor
-// charged against the hinter cap.
-func TestEmitter_addTxsWithHinter_Phase2SkippedWhenNoMyTurnCandidate(t *testing.T) {
+// TestEmitter_addTxsWithHinter_ForeignPriorityAdmissionsAreRolledBack verifies
+// the "do not emit an event solely for foreign priorities" invariant: when this
+// validator contributes no transaction of its own, the eagerly admitted
+// prioritized transactions are undone, restoring the event's gas-power
+// accounting along with them.
+func TestEmitter_addTxsWithHinter_ForeignPriorityAdmissionsAreRolledBack(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	f := newAddTxsFixture(t, ctrl)
 
@@ -453,19 +453,48 @@ func TestEmitter_addTxsWithHinter_Phase2SkippedWhenNoMyTurnCandidate(t *testing.
 	}
 
 	event := f.makeEvent()
-	f.em.addTxsWithHinter(
-		event, f.makeSorted(classifier, prioTx, ordinaryTx), classifier, hinter, neverMyTurn,
-	)
+	gasPowerLeft := event.GasPowerLeft()
+	f.em.addTxsWithHinter(event, f.makeSorted(classifier, neverMyTurn, prioTx, ordinaryTx), hinter)
 
 	require.Empty(t, event.Transactions())
-	require.Zero(t, hinter.counts[[16]byte{3}])
+	require.Zero(t, event.GasPowerUsed())
+	require.Equal(t, gasPowerLeft, event.GasPowerLeft())
+}
+
+// TestEmitter_addTxsWithHinter_PromotedMyTurnNonceKeepsTheEvent verifies that a
+// my-turn transaction only surfacing after an eager admission — the next nonce
+// of the sender that was just piggybacked — counts as this validator's own
+// contribution, so nothing is rolled back.
+func TestEmitter_addTxsWithHinter_PromotedMyTurnNonceKeepsTheEvent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	f := newAddTxsFixture(t, ctrl)
+
+	txs := f.makeTxsWithSingleSender(t, 0, 1)
+	notMyTurn, myTurn := txs[0], txs[1]
+
+	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+		notMyTurn.Hash(): prioritized(3),
+		myTurn.Hash():    prioritized(3),
+	}}
+	hinter := &priorityHinter{
+		config: priorities.Config{MaxPiggybackTxsPerEntityPerEvent: 5},
+		counts: map[[16]byte]uint64{},
+	}
+
+	event := f.makeEvent()
+	f.em.addTxsWithHinter(event, f.makeSorted(classifier, myTurnFor(myTurn), notMyTurn, myTurn), hinter)
+
+	require.Equal(t,
+		[]common.Hash{notMyTurn.Hash(), myTurn.Hash()},
+		txHashes(event.Transactions()),
+	)
 }
 
 // TestEmitter_addTxsWithHinter_AllTransactionsTreatedAsNotPrioritized verifies
 // that when the hinter is nil (feature disabled) priority classification grants
 // no eager inclusion: every transaction is admitted purely by turn, exactly as
 // an ordinary one would be. Prioritized txs are only included on their own turn
-// (phase 1) and never piggybacked while it is another validator's turn.
+// and never piggybacked while it is another validator's turn.
 func TestEmitter_addTxsWithHinter_AllTransactionsTreatedAsNotPrioritized(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	f := newAddTxsFixture(t, ctrl)
@@ -483,8 +512,9 @@ func TestEmitter_addTxsWithHinter_AllTransactionsTreatedAsNotPrioritized(t *test
 	event := f.makeEvent()
 	f.em.addTxsWithHinter(
 		event,
-		f.makeSorted(classifier, prioMyTurn, prioNotMyTurn, ordinaryMyTurn, ordinaryNotMyTurn),
-		classifier, nil, myTurnFor(prioMyTurn, ordinaryMyTurn),
+		f.makeSorted(classifier, myTurnFor(prioMyTurn, ordinaryMyTurn),
+			prioMyTurn, prioNotMyTurn, ordinaryMyTurn, ordinaryNotMyTurn),
+		nil,
 	)
 
 	require.Equal(t,
@@ -495,7 +525,7 @@ func TestEmitter_addTxsWithHinter_AllTransactionsTreatedAsNotPrioritized(t *test
 
 func alwaysMyTurn(*txpool.LazyTransaction) bool { return true }
 func neverMyTurn(*txpool.LazyTransaction) bool  { return false }
-func myTurnFor(txs ...*types.Transaction) func(*txpool.LazyTransaction) bool {
+func myTurnFor(txs ...*types.Transaction) func(tx *txpool.LazyTransaction) bool {
 	mine := make(map[common.Hash]bool, len(txs))
 	for _, tx := range txs {
 		mine[tx.Hash()] = true
@@ -597,10 +627,9 @@ func (f *addTxsFixture) makeEvent() *inter.MutableEventPayload {
 }
 
 // makeSorted wraps the given txs as a transactionsByPriorityAndPriceAndNonce
-// set, grouping them by recovered sender. The classifier is used both to place
-// each account's initial head in the prioritized or ordinary heap and to
-// classify subsequent nonces as they are promoted via advanceSenderInto.
-func (f *addTxsFixture) makeSorted(classifier priorities.Classifier, txs ...*types.Transaction) *transactionsByPriorityAndPriceAndNonce {
+// set, grouping them by recovered sender. The classifier and the turn policy
+// stage every head, the initial ones as well as the promoted ones.
+func (f *addTxsFixture) makeSorted(classifier priorities.Classifier, policy func(tx *txpool.LazyTransaction) bool, txs ...*types.Transaction) *transactionsByPriorityAndPriceAndNonce {
 	bySender := map[common.Address][]*txpool.LazyTransaction{}
 	for _, tx := range txs {
 		sender, _ := types.Sender(f.signer, tx)
@@ -613,5 +642,5 @@ func (f *addTxsFixture) makeSorted(classifier priorities.Classifier, txs ...*typ
 			Gas:       tx.Gas(),
 		})
 	}
-	return newTransactionsByPriorityAndPriceAndNonce(f.signer, bySender, nil, classifier)
+	return newTransactionsByPriorityAndPriceAndNonce(bySender, nil, classifier, policy)
 }

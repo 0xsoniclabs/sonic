@@ -681,13 +681,13 @@ func TestEmitter_EmitEvent_skippingTxsAlsoSkipsGappedNoncesTxs(t *testing.T) {
 	// Only the valid tx at nonce=0 should survive.
 	// The malformed tx at nonce=1 was skipped, which breaks the loop
 	// and also drops the valid tx at nonce=2 due to the nonce gap.
-	entry := sorted.PeekNonPrioHead()
-	require.NotNil(t, entry, "expected the valid tx at nonce=0 to be present")
+	entry, ok := sorted.Peek()
+	require.True(t, ok, "expected the valid tx at nonce=0 to be present")
 	require.Equal(t, validTx0.Hash(), entry.tx.Hash)
 
-	sorted.ShiftNonPrioHead()
-	entry = sorted.PeekNonPrioHead()
-	require.Nil(t, entry, "expected no more txs after the nonce gap")
+	sorted.Shift()
+	_, ok = sorted.Peek()
+	require.False(t, ok, "expected no more txs after the nonce gap")
 }
 
 func TestEmitter_ThrottlerWorldAdapter_ReturnsNilIfNoEventIsFound(t *testing.T) {

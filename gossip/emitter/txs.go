@@ -33,7 +33,6 @@ import (
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -172,22 +171,34 @@ func (em *Emitter) isMyTxTurn(txHash common.Hash, sender common.Address, account
 	return false
 }
 
-func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPriorityAndPriceAndNonce, classifier priorities.Classifier) {
+// newTurnPolicy returns the per-transaction turn check of this validator, used
+// to stage the transactions of the ordering set.
+func (em *Emitter) newTurnPolicy() func(tx *txpool.LazyTransaction) bool {
+	return func(tx *txpool.LazyTransaction) bool {
+		resolvedTx := tx.Resolve()
+		sender, _ := types.Sender(em.world.TransactionSigner, resolvedTx)
+		return em.isMyTxTurn(tx.Hash, sender, resolvedTx.Nonce(), time.Now(), em.validators.Load(), em.config.Validator.ID, idx.Epoch(em.epoch.Load()))
+	}
+}
+
+func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPriorityAndPriceAndNonce) {
 	// Best-effort priority hinter: lets prioritized transactions be eagerly
 	// included regardless of the per-transaction turn. Nil while the feature is
 	// disabled, keeping behavior unchanged.
-	hinter := em.newPriorityHinter()
-	isMyTurn := func(tx *txpool.LazyTransaction) bool {
-		resolvedTx := tx.Resolve()
-		sender, _ := types.Sender(em.world.TransactionSigner, resolvedTx)
-		return em.isMyTxTurn(tx.Hash, sender, resolvedTx.Nonce(), time.Now(), em.validators.Load(), e.Creator(), idx.Epoch(em.epoch.Load()))
-	}
-	em.addTxsWithHinter(e, sorted, classifier, hinter, isMyTurn)
+	em.addTxsWithHinter(e, sorted, em.newPriorityHinter())
 }
 
 // addTxsWithHinter appends transactions from sorted to the event e, honoring
 // the event's gas-power and size budgets and this validator's per-transaction
 // turn policy.
+//
+// # Consumption order
+//
+// Candidates are taken from a single ordering set that hands them out stage by
+// stage (see stage): prioritized heads of this validator's turn first, then
+// prioritized heads of another validator's turn, then the ordinary ones. A
+// promotion is staged on its own priority and turn, so admitting a head of one
+// stage may well hand out a head of an earlier one next.
 //
 // # Prioritized inclusion
 //
@@ -201,39 +212,32 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 //   - A prioritized tx for another validator's turn is admitted only via the
 //     priority hinter's eager path, subject to the per-entity per-event cap
 //     (priorityHinter.config.MaxPiggybackTxsPerEntityPerEvent, keyed by Priority.Id).
-//     If the hinter is nil (feature disabled), foreign-priority admissions are
-//     never attempted.
-//   - Between successful phase-2 admissions the sender's next nonce may flip
-//     back to this validator's turn; those admissions take the my-turn branch
-//     and, like phase 1, do not consume the hinter cap.
+//     Once the cap is exhausted such a tx is dropped like an ordinary tx of
+//     another validator's turn. If the hinter is nil (feature disabled),
+//     foreign-priority admissions are never attempted.
+//   - Between successful second-stage admissions the sender's next nonce may
+//     flip back to this validator's turn; those admissions re-enter the first
+//     stage and do not consume the hinter cap either.
 //
 // # Limit accounting
 //
 // Gas power (event gas power / event MaxEventGas / block MaxBlockGas) and
 // total transaction size (maxTotalTransactionsSizeInEventInBytes) form a
 // shared budget deducted inside tryAdd for every successful admission from
-// any phase. The hinter's MaxPiggybackTxsPerEntityPerEvent counts only foreign-
+// any stage. The hinter's MaxPiggybackTxsPerEntityPerEvent counts only foreign-
 // priority admissions; my-turn admissions never consume it — including
-// my-turn admissions that reached the phase-2 heap because an earlier nonce
+// my-turn admissions that reached the second stage because an earlier nonce
 // of the same sender was not-my-turn.
 //
-// # "Emit only if my-turn tx included" is best-effort
+// # "Emit only if my-turn tx included"
 //
 // To keep events from consisting solely of other validators' prioritized
-// transactions, foreign-priority admissions are skipped when it is already
-// known that this validator will contribute nothing on its own. The check
-// is a cheap forward-peek at the non-prioritized heap performed after
-// phase 1: if phase 1 admitted nothing and no non-prioritized head is my
-// turn, foreign-priority admissions are skipped entirely.
-//
-// This is best-effort: a my-turn candidate spotted by the peek may still
-// fail tryAdd (e.g. outdated, conflicting sender, invalid bundle,
-// insufficient gas). When that happens, foreign-priority txs that were
-// already admitted before phase 3 discovered the failure remain in the
-// event. Conversely, my-turn admissions that only surface *within* the
-// phase-2 loop (nonce+1 promotions after a hinter admission) can never
-// trigger the skip because they only exist once phase 2 runs.
-func (em *Emitter) addTxsWithHinter(e *inter.MutableEventPayload, sorted *transactionsByPriorityAndPriceAndNonce, classifier priorities.Classifier, hinter *priorityHinter, isMyTurn func(tx *txpool.LazyTransaction) bool) {
+// transactions, foreign-priority admissions are attempted unconditionally and
+// undone once it is certain that this validator contributed nothing on its
+// own. The event's transactions and gas-power accounting are then restored to
+// their state on entry; the skip metrics and the hinter counts accumulated
+// along the way are not, both being scoped to the discarded attempt.
+func (em *Emitter) addTxsWithHinter(e *inter.MutableEventPayload, sorted *transactionsByPriorityAndPriceAndNonce, hinter *priorityHinter) {
 	maxGasUsed := em.maxGasPowerToUse(e)
 	if maxGasUsed <= e.GasPowerUsed() {
 		return
@@ -301,78 +305,42 @@ func (em *Emitter) addTxsWithHinter(e *inter.MutableEventPayload, sorted *transa
 		return false
 	}
 
-	// Phase 1: prioritized heads for which it is this validator's turn.
-	// Heads that are prioritized but not my turn are demoted into the
-	// prioritized not-my-turn heap for phase 2.
-	for entry := sorted.PeekPrioHead(); entry != nil; entry = sorted.PeekPrioHead() {
-		if !isMyTurn(entry.tx) {
-			sorted.DemotePrioHead()
-			continue
-		}
-		if tryAdd(entry.tx, func() {
-			sorted.ShiftPrioHead(classifier)
-		}, sorted.DiscardPrioHead) {
-			return
-		}
-	}
+	// State to restore if the event ends up carrying foreign-priority
+	// transactions only.
+	txPrefixOnEntry := e.Transactions()
+	gasPowerUsedOnEntry := e.GasPowerUsed()
+	gasPowerLeftOnEntry := e.GasPowerLeft()
+	ownTxs := len(txPrefixOnEntry) > 0
 
-	// The invariant "events are never emitted solely to carry other validators'
-	// prioritized transactions" means phase 2 must only run if the event would
-	// not be empty otherwise. If the event is currently still empty check
-	// whether phase 3 has at least one my-turn candidate
-	if len(e.Transactions()) == 0 {
-		for entry := sorted.PeekNonPrioHead(); entry != nil; entry = sorted.PeekNonPrioHead() {
-			if isMyTurn(entry.tx) {
-				break
+	for entry, ok := sorted.Peek(); ok; entry, ok = sorted.Peek() {
+		var prioID [16]byte
+		if !entry.myTurn {
+			eager, id := hinter.eligible(entry.priority)
+			if !eager {
+				txsSkippedNotMyTurn.Inc(1)
+				sorted.Discard()
+				continue
 			}
-			txsSkippedNotMyTurn.Inc(1)
-			sorted.DiscardNonPrioHead()
+			prioID = id
 		}
-		if sorted.PeekNonPrioHead() == nil {
-			return
-		}
-	}
-
-	// Phase 2: prioritized heads that were not my turn when first observed.
-	// A head that has become my turn (a subsequent nonce from a sender whose
-	// earlier nonce landed here) is admitted directly without consuming the
-	// per-entity hinter cap. Heads that are still not my turn go through the
-	// hinter eligibility path for eager inclusion.
-	for entry := sorted.PeekPrioNotMyTurnHead(); entry != nil; entry = sorted.PeekPrioNotMyTurnHead() {
-		if isMyTurn(entry.tx) {
-			if tryAdd(entry.tx, func() {
-				sorted.ShiftPrioNotMyTurnHead(classifier)
-			}, sorted.DiscardPrioNotMyTurnHead) {
-				return
+		if tryAdd(entry.tx, func() {
+			if entry.myTurn {
+				ownTxs = true
+			} else {
+				hinter.record(prioID)
 			}
-			continue
-		}
-		eagerPrio, prioId := hinter.eligible(entry.priority)
-		if !eagerPrio {
-			txsSkippedNotMyTurn.Inc(1)
-			sorted.DiscardPrioNotMyTurnHead()
-			continue
-		}
-		if tryAdd(entry.tx, func() {
-			hinter.record(prioId)
-			sorted.ShiftPrioNotMyTurnHead(classifier)
-		}, sorted.DiscardPrioNotMyTurnHead) {
-			return
+			sorted.Shift()
+		}, sorted.Discard) {
+			break
 		}
 	}
 
-	// Phase 3: ordinary (non-prioritized) heads, my-turn only.
-	for entry := sorted.PeekNonPrioHead(); entry != nil; entry = sorted.PeekNonPrioHead() {
-		if !isMyTurn(entry.tx) {
-			txsSkippedNotMyTurn.Inc(1)
-			sorted.DiscardNonPrioHead()
-			continue
-		}
-		if tryAdd(entry.tx, func() {
-			sorted.ShiftNonPrioHead()
-		}, sorted.DiscardNonPrioHead) {
-			return
-		}
+	// If this validator contributed none of its own transactions, roll the
+	// eagerly included ones back.
+	if !ownTxs {
+		e.SetTxs(txPrefixOnEntry)
+		e.SetGasPowerUsed(gasPowerUsedOnEntry)
+		e.SetGasPowerLeft(gasPowerLeftOnEntry)
 	}
 }
 

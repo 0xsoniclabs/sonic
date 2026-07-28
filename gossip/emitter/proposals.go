@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
@@ -56,7 +55,6 @@ import (
 func (em *Emitter) createPayload(
 	event inter.EventI,
 	sorted *transactionsByPriorityAndPriceAndNonce,
-	classifier priorities.Classifier,
 ) (inter.Payload, error) {
 	adapter := worldAdapter{External: em.world}
 	randaoMixer := randao.NewRandaoMixerAdapter(em.world.EventsSigner)
@@ -67,7 +65,6 @@ func (em *Emitter) createPayload(
 		event,
 		&em.proposalTracker,
 		sorted,
-		classifier,
 		scheduler.NewScheduler(adapter),
 		randaoMixer,
 		proposalSchedulingTimer,
@@ -91,7 +88,6 @@ func createPayload(
 	event inter.EventI,
 	proposalTracker proposalTracker,
 	sorted *transactionsByPriorityAndPriceAndNonce,
-	classifier priorities.Classifier,
 	transactionScheduler txScheduler,
 	randaoMixer randao.RandaoMixer,
 	durationMetric timerMetric,
@@ -140,7 +136,7 @@ func createPayload(
 		event.MedianTime(), // < time of the new block
 		currentFrame,
 		transactionScheduler,
-		&transactionPriorityAdapter{sorted: sorted, classifier: classifier},
+		&transactionPriorityAdapter{sorted: sorted},
 		randaoMixer,
 		durationMetric,
 		timeoutMetric,
@@ -322,28 +318,27 @@ type counterMetric interface {
 // transactionPriorityAdapter is an adapter between the transactionsByPriceAndNonce
 // and the scheduler's PrioritizedTransactions interface.
 type transactionPriorityAdapter struct {
-	sorted     transactionIndex
-	classifier priorities.Classifier
+	sorted transactionIndex
 }
 
 func (a *transactionPriorityAdapter) Current() *types.Transaction {
-	entry := a.sorted.PeekBest()
-	if entry == nil {
+	entry, ok := a.sorted.Peek()
+	if !ok {
 		return nil
 	}
 	return entry.tx.Resolve()
 }
 
 func (a *transactionPriorityAdapter) Accept() {
-	a.sorted.ShiftBest(a.classifier)
+	a.sorted.Shift()
 }
 
 func (a *transactionPriorityAdapter) Skip() {
-	a.sorted.DiscardBest()
+	a.sorted.Discard()
 }
 
 type transactionIndex interface {
-	PeekBest() *txWithMinerFee
-	ShiftBest(classifier priorities.Classifier)
-	DiscardBest()
+	Peek() (*txWithMetadata, bool)
+	Shift()
+	Discard()
 }

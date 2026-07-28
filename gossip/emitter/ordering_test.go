@@ -106,12 +106,12 @@ func testTransactionPriceNonceSort(t *testing.T, baseFee *big.Int) {
 		expectedCount += count
 	}
 	// Sort the transactions and cross check the nonce ordering
-	txset := newTransactionsByPriorityAndPriceAndNonce(signer, groups, baseFee, nil)
+	txset := newTransactionsByPriorityAndPriceAndNonce(groups, baseFee, nil, alwaysMyTurn)
 
 	txs := types.Transactions{}
-	for entry := txset.PeekNonPrioHead(); entry != nil; entry = txset.PeekNonPrioHead() {
+	for entry, ok := txset.Peek(); ok; entry, ok = txset.Peek() {
 		txs = append(txs, entry.tx.Tx)
-		txset.ShiftNonPrioHead()
+		txset.Shift()
 	}
 	if len(txs) != expectedCount {
 		t.Errorf("expected %d transactions, found %d", expectedCount, len(txs))
@@ -172,12 +172,12 @@ func TestTransactionTimeSort(t *testing.T) {
 		})
 	}
 	// Sort the transactions and cross check the nonce ordering
-	txset := newTransactionsByPriorityAndPriceAndNonce(signer, groups, nil, nil)
+	txset := newTransactionsByPriorityAndPriceAndNonce(groups, nil, nil, alwaysMyTurn)
 
 	txs := types.Transactions{}
-	for entry := txset.PeekNonPrioHead(); entry != nil; entry = txset.PeekNonPrioHead() {
+	for entry, ok := txset.Peek(); ok; entry, ok = txset.Peek() {
 		txs = append(txs, entry.tx.Tx)
-		txset.ShiftNonPrioHead()
+		txset.Shift()
 	}
 	if len(txs) != len(keys) {
 		t.Errorf("expected %d transactions, found %d", len(keys), len(txs))
@@ -275,86 +275,41 @@ func TestTransactionsOrdering_MinerFeesCanBeComputedWithAllTransactions(t *testi
 			}
 			from := common.Address{1}
 
-			withFee, err := newTxWithMinerFee(lazy, from, baseFee, priorities.Priority{})
+			withFee, err := newTxWithMetadata(lazy, from, baseFee, priorities.Priority{}, false)
 			require.ErrorIs(t, err, test.expectedError)
 			if test.expectedError == nil {
-				require.EqualValues(t, withFee.fees.Uint64(), test.expectedMinerFee)
+				require.EqualValues(t, withFee.tip.Uint64(), test.expectedMinerFee)
 			}
 		})
 	}
 }
 
-// TestTransactionsByPriorityAndPriceAndNonce_ShiftDemotesLostPriority verifies
-// that whenever a shift pops a prioritized head and promotes the same sender's
-// next queued transaction, a next tx that is no longer prioritized ends up in
-// the non-prioritized heap rather than staying in a priority heap.
-func TestTransactionsByPriorityAndPriceAndNonce_ShiftDemotesLostPriority(t *testing.T) {
-	key, _ := crypto.GenerateKey()
-	signer := types.LatestSignerForChainID(common.Big1)
-	from := crypto.PubkeyToAddress(key.PublicKey)
-
-	makeLazy := func(nonce uint64) *txpool.LazyTransaction {
-		raw, _ := types.SignTx(types.NewTransaction(nonce, common.Address{0x1}, big.NewInt(0), 21000, big.NewInt(1), nil), signer, key)
-		return &txpool.LazyTransaction{
-			Hash:      raw.Hash(),
-			Tx:        raw,
-			Time:      raw.Time(),
-			GasFeeCap: uint256.MustFromBig(raw.GasFeeCap()),
-			GasTipCap: uint256.MustFromBig(raw.GasTipCap()),
-			Gas:       raw.Gas(),
-		}
+func TestTxWithMinerFee_StageFollowsPriorityAndTurn(t *testing.T) {
+	tests := map[string]struct {
+		priority priorities.Priority
+		myTurn   bool
+		want     stage
+	}{
+		"prioritized, my turn":     {prioritized(1), true, stagePrioritizedMyTurn},
+		"prioritized, not my turn": {prioritized(1), false, stagePrioritizedNotMyTurn},
+		"ordinary, my turn":        {priorities.Priority{}, true, stageOrdinary},
+		"ordinary, not my turn":    {priorities.Priority{}, false, stageOrdinary},
 	}
-
-	// Only nonce=0 is prioritized. After the first shift, the sender's next tx
-	// (nonce=1) must be re-classified and land in nonPrioHeads.
-	head, next := makeLazy(0), makeLazy(1)
-	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
-		head.Hash: prioritized(1),
-	}}
-
-	cases := map[string]func(t *transactionsByPriorityAndPriceAndNonce){
-		"ShiftPrioHead": func(t *transactionsByPriorityAndPriceAndNonce) {
-			t.ShiftPrioHead(classifier)
-		},
-		"ShiftPrioNotMyTurnHead": func(t *transactionsByPriorityAndPriceAndNonce) {
-			t.DemotePrioHead()
-			t.ShiftPrioNotMyTurnHead(classifier)
-		},
-		"ShiftBest": func(t *transactionsByPriorityAndPriceAndNonce) {
-			t.ShiftBest(classifier)
-		},
-	}
-
-	for name, shift := range cases {
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			txset := newTransactionsByPriorityAndPriceAndNonce(
-				signer,
-				map[common.Address][]*txpool.LazyTransaction{from: {head, next}},
-				nil,
-				classifier,
-			)
-			require.Equal(t, head.Hash, txset.PeekPrioHead().tx.Hash)
-			require.Empty(t, txset.nonPrioHeads)
-
-			shift(txset)
-
-			require.Empty(t, txset.prioHeads)
-			require.Empty(t, txset.prioNotMyTurnHeads)
-			require.Len(t, txset.nonPrioHeads, 1)
-			require.Equal(t, next.Hash, txset.nonPrioHeads[0].tx.Hash)
+			entry := txWithMetadata{priority: test.priority, myTurn: test.myTurn}
+			require.Equal(t, test.want, entry.stage())
 		})
 	}
 }
 
-func TestTxOrdering_PeekOnEmptyHeapsReturnNil(t *testing.T) {
-	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{}, nil)
-	require.Nil(t, txset.PeekBest())
-	require.Nil(t, txset.PeekPrioHead())
-	require.Nil(t, txset.PeekPrioNotMyTurnHead())
-	require.Nil(t, txset.PeekNonPrioHead())
+func TestTxOrdering_Peek_OnEmptySetReturnsFalse(t *testing.T) {
+	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{}, nil, alwaysMyTurn)
+	_, ok := txset.Peek()
+	require.False(t, ok)
 }
 
-func TestTxOrdering_NonceOrderPreservedInAllModes(t *testing.T) {
+func TestTxOrdering_NonceOrderPreserved(t *testing.T) {
 	keyA, addrA := newSenderKey(t)
 	keyB, addrB := newSenderKey(t)
 	keyC, addrC := newSenderKey(t)
@@ -378,23 +333,16 @@ func TestTxOrdering_NonceOrderPreservedInAllModes(t *testing.T) {
 		c[3].Hash: prioritized(3),
 	}}
 
-	drains := map[string]func(*transactionsByPriorityAndPriceAndNonce, priorities.Classifier) []*txWithMinerFee{
-		"Best":   drainBest,
-		"Staged": drainStaged,
-	}
-	for name, drain := range drains {
-		t.Run(name, func(t *testing.T) {
-			txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{
-				addrA: a, addrB: b, addrC: c,
-			}, classifier)
-			out := drain(txset, classifier)
-			require.Len(t, out, 12)
-			assertNonceOrder(t, out)
-		})
-	}
+	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{
+		addrA: a, addrB: b, addrC: c,
+	}, classifier, alwaysMyTurn)
+
+	out := drain(txset)
+	require.Len(t, out, 12)
+	assertNonceOrder(t, out)
 }
 
-func TestTxOrdering_Best_TransitionsOrderedByPriorityLevelThenWeightThenPriceThenTime(t *testing.T) {
+func TestTxOrdering_Peek_OrdersByPriorityLevelThenWeightThenPriceThenTime(t *testing.T) {
 	keyA, addrA := newSenderKey(t)
 	keyB, addrB := newSenderKey(t)
 	keyC, addrC := newSenderKey(t)
@@ -418,7 +366,7 @@ func TestTxOrdering_Best_TransitionsOrderedByPriorityLevelThenWeightThenPriceThe
 	}}
 	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{
 		addrA: {a}, addrB: {b}, addrC: {c}, addrD: {d}, addrE: {e}, addrF: {f}, addrG: {g},
-	}, classifier)
+	}, classifier, alwaysMyTurn)
 
 	require.Equal(t,
 		[]common.Hash{
@@ -430,11 +378,43 @@ func TestTxOrdering_Best_TransitionsOrderedByPriorityLevelThenWeightThenPriceThe
 			f.Hash, // non-prioritized, price 5, later time
 			e.Hash, // non-prioritized, price 4
 		},
-		hashesOf(drainBest(txset, classifier)),
+		hashesOf(drain(txset)),
 	)
 }
 
-func TestTxOrdering_Best_PrioritizedCannotJumpOwnLowerNonce(t *testing.T) {
+// TestTxOrdering_Peek_OrdersByStageBeforePriority verifies that the stage
+// dominates the composite order: prioritized heads of another validator's turn
+// follow every prioritized head of this one's and precede every ordinary head,
+// whatever their priority and tip.
+func TestTxOrdering_Peek_OrdersByStageBeforePriority(t *testing.T) {
+	prio := make([]*txpool.LazyTransaction, 4)
+	byHash := map[common.Hash]priorities.Priority{}
+	txs := map[common.Address][]*txpool.LazyTransaction{}
+	for i := range prio {
+		key, addr := newSenderKey(t)
+		prio[i] = makeLazyTx(t, key, 0, 1, baseTime)
+		byHash[prio[i].Hash] = priorityWith(byte(i), uint64(len(prio)-i), 1)
+		txs[addr] = []*txpool.LazyTransaction{prio[i]}
+	}
+	keyO, addrO := newSenderKey(t)
+	ordinary := makeLazyTx(t, keyO, 0, 100, baseTime) // the highest tip of all
+	txs[addrO] = []*txpool.LazyTransaction{ordinary}
+
+	classifier := fakePriorityClassifier{byHash: byHash}
+	// The two highest-priority transactions are another validator's turn.
+	txset := newTxSet(txs, classifier, notMyTurnFor(prio[0], prio[1]))
+
+	require.Equal(t,
+		[]common.Hash{
+			prio[2].Hash, prio[3].Hash, // my turn, levels 2 and 1
+			prio[0].Hash, prio[1].Hash, // not my turn, despite levels 4 and 3
+			ordinary.Hash, // ordinary, despite the highest tip
+		},
+		hashesOf(drain(txset)),
+	)
+}
+
+func TestTxOrdering_Peek_PrioritizedCannotJumpOwnLowerNonce(t *testing.T) {
 	keyA, addrA := newSenderKey(t)
 	keyB, addrB := newSenderKey(t)
 
@@ -447,286 +427,111 @@ func TestTxOrdering_Best_PrioritizedCannotJumpOwnLowerNonce(t *testing.T) {
 	}}
 	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{
 		addrA: {a0, a1}, addrB: {b0},
-	}, classifier)
+	}, classifier, alwaysMyTurn)
 
 	// No prioritized head exists at construction: both heads are non-prioritized.
-	require.Empty(t, txset.prioHeads)
+	head, ok := txset.Peek()
+	require.True(t, ok)
+	require.Equal(t, stageOrdinary, head.stage())
 
-	order := hashesOf(drainBest(txset, classifier))
+	order := hashesOf(drain(txset))
 	// b0 (higher tip) then a0, and only afterwards the prioritized a1.
 	require.Equal(t, []common.Hash{b0.Hash, a0.Hash, a1.Hash}, order)
 }
 
-// TestTxOrdering_Peek_ReturnsHeadsInCompositeOrder verifies the per-heap
-// Peek/Shift views are using the composite order:
-// (priority level desc, weight desc, price/tip desc, first-seen time asc)
-func TestTxOrdering_Peek_ReturnsHeadsInCompositeOrder(t *testing.T) {
-	type orderSpec struct {
-		level, weight uint64
-		price         int64
-		at            time.Time
-	}
+// TestTxOrdering_Shift_StagesPromotedHead verifies that the promoted head is
+// staged on its own priority and turn.
+func TestTxOrdering_Shift_StagesPromotedHead(t *testing.T) {
+	keyA, addrA := newSenderKey(t)
+	head := makeLazyTx(t, keyA, 0, 10, baseTime)
+	next := makeLazyTx(t, keyA, 1, 10, baseTime)
 
-	later := baseTime.Add(time.Second)
-
-	prioSpecs := []orderSpec{
-		{level: 3, weight: 1, price: 1, at: baseTime}, // level 3
-		{level: 2, weight: 2, price: 1, at: baseTime}, // level 2, weight 2
-		{level: 2, weight: 1, price: 2, at: baseTime}, // level 2, weight 1, price 2
-		{level: 2, weight: 1, price: 1, at: baseTime}, // level 2, weight 1, price 1
-		{level: 2, weight: 1, price: 1, at: later},    // level 2, weight 1, price 1, later time
-	}
-
-	nonPrioSpecs := []orderSpec{
-		{price: 2, at: baseTime}, // price 2
-		{price: 1, at: baseTime}, // price 1
-		{price: 1, at: later},    // price 1, later time
-	}
-
-	cases := map[string]struct {
-		prioritized bool
-		specs       []orderSpec
-		drain       func(*transactionsByPriorityAndPriceAndNonce) []*txWithMinerFee
+	tests := map[string]struct {
+		nextPrioritized bool
+		nextMyTurn      bool
+		want            stage
 	}{
-		"PrioHead": {
-			true,
-			prioSpecs,
-			func(s *transactionsByPriorityAndPriceAndNonce) []*txWithMinerFee {
-				var out []*txWithMinerFee
-				for e := s.PeekPrioHead(); e != nil; e = s.PeekPrioHead() {
-					out = append(out, e)
-					s.ShiftPrioHead(nil)
-				}
-				return out
-			}},
-		"PrioNotMyTurnHead": {
-			true,
-			prioSpecs,
-			func(s *transactionsByPriorityAndPriceAndNonce) []*txWithMinerFee {
-				for s.PeekPrioHead() != nil {
-					s.DemotePrioHead()
-				}
-				var out []*txWithMinerFee
-				for e := s.PeekPrioNotMyTurnHead(); e != nil; e = s.PeekPrioNotMyTurnHead() {
-					out = append(out, e)
-					s.ShiftPrioNotMyTurnHead(nil)
-				}
-				return out
-			}},
-		"NonPrioHead": {
-			false,
-			nonPrioSpecs,
-			func(s *transactionsByPriorityAndPriceAndNonce) []*txWithMinerFee {
-				var out []*txWithMinerFee
-				for e := s.PeekNonPrioHead(); e != nil; e = s.PeekNonPrioHead() {
-					out = append(out, e)
-					s.ShiftNonPrioHead()
-				}
-				return out
-			}},
+		"prioritized, my turn":     {true, true, stagePrioritizedMyTurn},
+		"prioritized, not my turn": {true, false, stagePrioritizedNotMyTurn},
+		"ordinary, my turn":        {false, true, stageOrdinary},
+		"ordinary, not my turn":    {false, false, stageOrdinary},
 	}
-
-	for name, tc := range cases {
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			want := make([]common.Hash, len(tc.specs))
-			prioByHash := map[common.Hash]priorities.Priority{}
-			txs := map[common.Address][]*txpool.LazyTransaction{}
-			for i, s := range tc.specs {
-				key, addr := newSenderKey(t)
-				lazy := makeLazyTx(t, key, 0, s.price, s.at)
-				want[i] = lazy.Hash
-				prioByHash[lazy.Hash] = priorityWith(byte(i), s.level, s.weight)
-				txs[addr] = []*txpool.LazyTransaction{lazy}
+			byHash := map[common.Hash]priorities.Priority{head.Hash: prioritized(1)}
+			if test.nextPrioritized {
+				byHash[next.Hash] = prioritized(1)
 			}
-
-			var classifier priorities.Classifier
-			if tc.prioritized {
-				classifier = fakePriorityClassifier{byHash: prioByHash}
+			policy := alwaysMyTurn
+			if !test.nextMyTurn {
+				policy = notMyTurnFor(next)
 			}
-			// txs is a map, so the order is not the order of tc.specs
-			txset := newTxSet(txs, classifier)
+			txset := newTxSet(
+				map[common.Address][]*txpool.LazyTransaction{addrA: {head, next}},
+				fakePriorityClassifier{byHash: byHash}, policy,
+			)
 
-			require.Equal(t, want, hashesOf(tc.drain(txset)))
+			txset.Shift()
+
+			got, ok := txset.Peek()
+			require.True(t, ok)
+			require.Equal(t, next.Hash, got.tx.Hash)
+			require.Equal(t, test.want, got.stage())
 		})
 	}
 }
 
-func TestTxOrdering_ShiftPrioHead_Routing(t *testing.T) {
+// TestTxOrdering_Shift_PromotedHeadCanReenterAnEarlierStage verifies that the
+// stage of a sender is not monotonic: the transaction promoted after a
+// not-my-turn head is staged on its own turn and thereby overtakes the
+// higher-priority heads still waiting in the later stage.
+func TestTxOrdering_Shift_PromotedHeadCanReenterAnEarlierStage(t *testing.T) {
 	keyA, addrA := newSenderKey(t)
-	head := makeLazyTx(t, keyA, 0, 10, baseTime)
+	a0 := makeLazyTx(t, keyA, 0, 1, baseTime)
+	a1 := makeLazyTx(t, keyA, 1, 1, baseTime)
+	keyB, addrB := newSenderKey(t)
+	b0 := makeLazyTx(t, keyB, 0, 1, baseTime)
 
-	t.Run("next prioritized -> prioHeads", func(t *testing.T) {
-		next := makeLazyTx(t, keyA, 1, 10, baseTime)
-		classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
-			head.Hash: prioritized(1), next.Hash: prioritized(1),
-		}}
-		txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: {head, next}}, classifier)
-		txset.ShiftPrioHead(classifier)
-		require.Len(t, txset.prioHeads, 1)
-		require.Equal(t, next.Hash, txset.prioHeads[0].tx.Hash)
-		require.Empty(t, txset.prioNotMyTurnHeads)
-		require.Empty(t, txset.nonPrioHeads)
-	})
+	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+		a0.Hash: priorityWith(1, 5, 1),
+		a1.Hash: priorityWith(2, 1, 1),
+		b0.Hash: priorityWith(3, 3, 1),
+	}}
+	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{
+		addrA: {a0, a1}, addrB: {b0},
+	}, classifier, notMyTurnFor(a0, b0))
 
-	t.Run("next non-prioritized -> nonPrioHeads", func(t *testing.T) {
-		next := makeLazyTx(t, keyA, 1, 10, baseTime)
-		classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
-			head.Hash: prioritized(1),
-		}}
-		txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: {head, next}}, classifier)
-		txset.ShiftPrioHead(classifier)
-		require.Empty(t, txset.prioHeads)
-		require.Len(t, txset.nonPrioHeads, 1)
-		require.Equal(t, next.Hash, txset.nonPrioHeads[0].tx.Hash)
-	})
-
-	t.Run("sender exhausted -> nothing", func(t *testing.T) {
-		classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
-			head.Hash: prioritized(1),
-		}}
-		txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: {head}}, classifier)
-		txset.ShiftPrioHead(classifier)
-		require.Empty(t, txset.prioHeads)
-		require.Empty(t, txset.prioNotMyTurnHeads)
-		require.Empty(t, txset.nonPrioHeads)
-	})
+	// a1 is this validator's turn, so it precedes b0 despite its lower level.
+	require.Equal(t, []common.Hash{a0.Hash, a1.Hash, b0.Hash}, hashesOf(drain(txset)))
 }
 
-func TestTxOrdering_ShiftPrioNotMyTurnHead_Routing(t *testing.T) {
+func TestTxOrdering_Shift_ExhaustedSenderLeavesTheSet(t *testing.T) {
 	keyA, addrA := newSenderKey(t)
 	head := makeLazyTx(t, keyA, 0, 10, baseTime)
+	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
+		head.Hash: prioritized(1),
+	}}
+	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: {head}}, classifier, alwaysMyTurn)
 
-	// setup builds a set whose head has been demoted into prioNotMyTurnHeads.
-	setup := func(txs []*txpool.LazyTransaction, classifier priorities.Classifier) *transactionsByPriorityAndPriceAndNonce {
-		txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: txs}, classifier)
-		txset.DemotePrioHead()
-		require.Len(t, txset.prioNotMyTurnHeads, 1)
-		return txset
-	}
+	txset.Shift()
 
-	t.Run("next prioritized -> prioNotMyTurnHeads", func(t *testing.T) {
-		next := makeLazyTx(t, keyA, 1, 10, baseTime)
-		classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
-			head.Hash: prioritized(1), next.Hash: prioritized(1),
-		}}
-		txset := setup([]*txpool.LazyTransaction{head, next}, classifier)
-		txset.ShiftPrioNotMyTurnHead(classifier)
-		require.Len(t, txset.prioNotMyTurnHeads, 1)
-		require.Equal(t, next.Hash, txset.prioNotMyTurnHeads[0].tx.Hash)
-		require.Empty(t, txset.prioHeads)
-		require.Empty(t, txset.nonPrioHeads)
-	})
-
-	t.Run("next non-prioritized -> nonPrioHeads", func(t *testing.T) {
-		next := makeLazyTx(t, keyA, 1, 10, baseTime)
-		classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
-			head.Hash: prioritized(1),
-		}}
-		txset := setup([]*txpool.LazyTransaction{head, next}, classifier)
-		txset.ShiftPrioNotMyTurnHead(classifier)
-		require.Empty(t, txset.prioNotMyTurnHeads)
-		require.Len(t, txset.nonPrioHeads, 1)
-		require.Equal(t, next.Hash, txset.nonPrioHeads[0].tx.Hash)
-	})
-
-	t.Run("sender exhausted -> nothing", func(t *testing.T) {
-		classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
-			head.Hash: prioritized(1),
-		}}
-		txset := setup([]*txpool.LazyTransaction{head}, classifier)
-		txset.ShiftPrioNotMyTurnHead(classifier)
-		require.Empty(t, txset.prioHeads)
-		require.Empty(t, txset.prioNotMyTurnHeads)
-		require.Empty(t, txset.nonPrioHeads)
-	})
-}
-
-func TestTxOrdering_ShiftNonPrioHead_Routing(t *testing.T) {
-	keyA, addrA := newSenderKey(t)
-	head := makeLazyTx(t, keyA, 0, 10, baseTime)
-
-	t.Run("next always routes to nonPrioHeads even if it would classify as prioritized", func(t *testing.T) {
-		next := makeLazyTx(t, keyA, 1, 10, baseTime)
-		// head is non-prioritized (goes to nonPrioHeads); classifier would
-		// prioritize next, but ShiftNonPrioHead advances with a nil classifier.
-		classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
-			next.Hash: prioritized(1),
-		}}
-		txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: {head, next}}, classifier)
-		require.Len(t, txset.nonPrioHeads, 1)
-
-		txset.ShiftNonPrioHead()
-		require.Empty(t, txset.prioHeads)
-		require.Empty(t, txset.prioNotMyTurnHeads)
-		require.Len(t, txset.nonPrioHeads, 1)
-		require.Equal(t, next.Hash, txset.nonPrioHeads[0].tx.Hash)
-	})
-
-	t.Run("sender exhausted -> nothing", func(t *testing.T) {
-		txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: {head}}, nil)
-		txset.ShiftNonPrioHead()
-		require.Empty(t, txset.nonPrioHeads)
-	})
+	_, ok := txset.Peek()
+	require.False(t, ok)
 }
 
 func TestTxOrdering_Discard_DropsSenderRemainder(t *testing.T) {
 	keyA, addrA := newSenderKey(t)
 	head := makeLazyTx(t, keyA, 0, 10, baseTime)
 	next := makeLazyTx(t, keyA, 1, 10, baseTime)
-
-	t.Run("DiscardPrioHead", func(t *testing.T) {
-		classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
-			head.Hash: prioritized(1), next.Hash: prioritized(1),
-		}}
-		txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: {head, next}}, classifier)
-		txset.DiscardPrioHead()
-		require.Empty(t, txset.prioHeads)
-		require.Empty(t, drainBest(txset, classifier), "sender remainder must not resurface")
-	})
-
-	t.Run("DiscardPrioNotMyTurnHead", func(t *testing.T) {
-		classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
-			head.Hash: prioritized(1), next.Hash: prioritized(1),
-		}}
-		txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: {head, next}}, classifier)
-		txset.DemotePrioHead()
-		require.Len(t, txset.prioNotMyTurnHeads, 1)
-		txset.DiscardPrioNotMyTurnHead()
-		require.Empty(t, txset.prioNotMyTurnHeads)
-		require.Empty(t, drainBest(txset, classifier), "sender remainder must not resurface")
-	})
-
-	t.Run("DiscardNonPrioHead", func(t *testing.T) {
-		txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: {head, next}}, nil)
-		require.Len(t, txset.nonPrioHeads, 1)
-		txset.DiscardNonPrioHead()
-		require.Empty(t, txset.nonPrioHeads)
-		require.Empty(t, drainBest(txset, nil), "sender remainder must not resurface")
-	})
-}
-
-func TestTxOrdering_DemotePrioHead_MovesEntryIntoPrioNotMyTurnHeads(t *testing.T) {
-	keyA, addrA := newSenderKey(t)
-	head := makeLazyTx(t, keyA, 0, 10, baseTime)
-	next := makeLazyTx(t, keyA, 1, 10, baseTime)
 	classifier := fakePriorityClassifier{byHash: map[common.Hash]priorities.Priority{
 		head.Hash: prioritized(1), next.Hash: prioritized(1),
 	}}
-	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: {head, next}}, classifier)
+	txset := newTxSet(map[common.Address][]*txpool.LazyTransaction{addrA: {head, next}}, classifier, alwaysMyTurn)
 
-	require.Equal(t, head.Hash, txset.PeekPrioHead().tx.Hash)
+	txset.Discard()
 
-	txset.DemotePrioHead()
-	require.Empty(t, txset.prioHeads)
-	require.Len(t, txset.prioNotMyTurnHeads, 1)
-	// The same entry moved over; the sender's next tx was NOT promoted.
-	require.Equal(t, head.Hash, txset.prioNotMyTurnHeads[0].tx.Hash)
-	require.Equal(t, []*txpool.LazyTransaction{next}, txset.txs[addrA])
-
-	// No-op when prioHeads is empty.
-	txset.DemotePrioHead()
-	require.Empty(t, txset.prioHeads)
-	require.Len(t, txset.prioNotMyTurnHeads, 1)
+	_, ok := txset.Peek()
+	require.False(t, ok)
 }
 
 var (
@@ -770,40 +575,31 @@ func makeLazyTx(t *testing.T, key *ecdsa.PrivateKey, nonce uint64, tip int64, at
 }
 
 // newTxSet builds a transaction set with a nil base fee.
-func newTxSet(txs map[common.Address][]*txpool.LazyTransaction, classifier priorities.Classifier) *transactionsByPriorityAndPriceAndNonce {
-	return newTransactionsByPriorityAndPriceAndNonce(orderingSigner, txs, nil, classifier)
+func newTxSet(txs map[common.Address][]*txpool.LazyTransaction, classifier priorities.Classifier, policy func(tx *txpool.LazyTransaction) bool) *transactionsByPriorityAndPriceAndNonce {
+	return newTransactionsByPriorityAndPriceAndNonce(txs, nil, classifier, policy)
 }
 
-// drainBest consumes the whole set through the single-proposer Best view.
-func drainBest(txset *transactionsByPriorityAndPriceAndNonce, classifier priorities.Classifier) []*txWithMinerFee {
-	var out []*txWithMinerFee
-	for e := txset.PeekBest(); e != nil; e = txset.PeekBest() {
+// notMyTurnFor returns a turn policy putting every transaction but the given
+// ones at this validator's turn.
+func notMyTurnFor(txs ...*txpool.LazyTransaction) func(tx *txpool.LazyTransaction) bool {
+	theirs := make(map[common.Hash]bool, len(txs))
+	for _, tx := range txs {
+		theirs[tx.Hash] = true
+	}
+	return func(tx *txpool.LazyTransaction) bool { return !theirs[tx.Hash] }
+}
+
+// drain consumes the whole set in its ordering.
+func drain(txset *transactionsByPriorityAndPriceAndNonce) []*txWithMetadata {
+	var out []*txWithMetadata
+	for e, ok := txset.Peek(); ok; e, ok = txset.Peek() {
 		out = append(out, e)
-		txset.ShiftBest(classifier)
+		txset.Shift()
 	}
 	return out
 }
 
-// drainStaged consumes the whole set through the staged per-heap view: all
-// prioritized heads, then the not-my-turn heads, then the non-prioritized ones.
-func drainStaged(txset *transactionsByPriorityAndPriceAndNonce, classifier priorities.Classifier) []*txWithMinerFee {
-	var out []*txWithMinerFee
-	for e := txset.PeekPrioHead(); e != nil; e = txset.PeekPrioHead() {
-		out = append(out, e)
-		txset.ShiftPrioHead(classifier)
-	}
-	for e := txset.PeekPrioNotMyTurnHead(); e != nil; e = txset.PeekPrioNotMyTurnHead() {
-		out = append(out, e)
-		txset.ShiftPrioNotMyTurnHead(classifier)
-	}
-	for e := txset.PeekNonPrioHead(); e != nil; e = txset.PeekNonPrioHead() {
-		out = append(out, e)
-		txset.ShiftNonPrioHead()
-	}
-	return out
-}
-
-func hashesOf(entries []*txWithMinerFee) []common.Hash {
+func hashesOf(entries []*txWithMetadata) []common.Hash {
 	out := make([]common.Hash, len(entries))
 	for i, e := range entries {
 		out[i] = e.tx.Hash
@@ -813,7 +609,7 @@ func hashesOf(entries []*txWithMinerFee) []common.Hash {
 
 // assertNonceOrder verifies that, within each sender, nonces are emitted in
 // strictly increasing order.
-func assertNonceOrder(t *testing.T, entries []*txWithMinerFee) {
+func assertNonceOrder(t *testing.T, entries []*txWithMetadata) {
 	t.Helper()
 	last := map[common.Address]uint64{}
 	for _, e := range entries {

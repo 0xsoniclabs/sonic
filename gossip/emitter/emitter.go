@@ -396,7 +396,16 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriorityAndPric
 		}
 	}
 
-	sortedTxs := newTransactionsByPriorityAndPriceAndNonce(em.world.TransactionSigner, txs, baseFee, classifier)
+	// In single-proposer mode the per-transaction turn does not apply: the
+	// proposer schedules every candidate itself.
+	turnPolicy := func(*txpool.LazyTransaction) bool {
+		return true
+	}
+	if !rules.Upgrades.SingleProposerBlockFormation {
+		turnPolicy = em.newTurnPolicy()
+	}
+
+	sortedTxs := newTransactionsByPriorityAndPriceAndNonce(txs, baseFee, classifier, turnPolicy)
 	em.cache.sortedTxs = sortedTxs
 	em.cache.poolCount = poolCount
 	em.cache.poolBlock = currentBlock
@@ -515,11 +524,6 @@ func (em *Emitter) loadPrevEmitTime() time.Time {
 
 // createEvent is not safe for concurrent use.
 func (em *Emitter) createEvent(sortedTxs *transactionsByPriorityAndPriceAndNonce) (*inter.EventPayload, error) {
-	var classifier priorities.Classifier
-	if em.cache.priorityCtx != nil {
-		classifier = em.cache.priorityCtx.classifier
-	}
-
 	if synced := em.logSyncStatus(em.isSyncedToEmit()); !synced {
 		// I'm reindexing my old events, so don't create events until connect all the existing self-events
 		return nil, nil
@@ -608,7 +612,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriorityAndPriceAndNonce
 
 	if version == 3 {
 		// add proposal sync state and an optional proposal
-		payload, err := em.createPayload(mutEvent, sortedTxs, classifier)
+		payload, err := em.createPayload(mutEvent, sortedTxs)
 		if err != nil {
 			em.Log.Error("Failed to create payload", "err", err)
 			return nil, err
@@ -616,7 +620,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriorityAndPriceAndNonce
 		mutEvent.SetPayload(payload)
 	} else {
 		// Add txs
-		em.addTxs(mutEvent, sortedTxs, classifier)
+		em.addTxs(mutEvent, sortedTxs)
 		// calc Payload hash
 		mutEvent.SetPayloadHash(inter.CalcPayloadHash(mutEvent))
 	}
