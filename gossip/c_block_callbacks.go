@@ -331,13 +331,10 @@ func consensusCallbackBeginBlockFn(
 					)
 				}
 
-				// Apply transaction priorities. This is the single authoritative
-				// ordering step: it reorders the (already filtered) transactions
-				// according to the on-chain priority registry, identically in both
-				// legacy and single-proposer modes, overriding any proposer order.
-				// It is a no-op while the feature is disabled, keeping block
-				// formation byte-identical to before. Queries run against the
-				// block-start state (statedb) before any execution begins.
+				// Apply the transaction priorities and reorder the (already
+				// filtered) transactions, identically in both legacy and
+				// single-proposer modes, overriding any proposer order.
+				// It is a no-op while the feature is disabled.
 				proposal.Transactions = applyTransactionPriorities(
 					proposal.Transactions,
 					thisBlocksRules,
@@ -1014,9 +1011,9 @@ func applyTransactionPriorities(
 
 // priorityQueryHeader builds the EVM header used for priority registry queries.
 // It mirrors the Sonic path of the header construction in the EVM module
-// (evmmodule.Start and evmmodule.evmBlockWith) using the same consensus-derived
-// inputs, so the query context matches the block being formed and is identical
-// across validators.
+// (evmmodule.Start and evmmodule.evmBlockWith) contrained to only the
+// consensus-derived inputs, so the query context matches the block being
+// formed and is identical across validators.
 func priorityQueryHeader(
 	rules opera.Rules,
 	blockIdx idx.Block,
