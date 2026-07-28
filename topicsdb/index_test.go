@@ -19,6 +19,7 @@ package topicsdb
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
@@ -61,6 +62,36 @@ func TestIndex_Close_LogsTopicAndLogrecErrors(t *testing.T) {
 	require.Contains(t, out, "boom-topic")
 	require.Contains(t, out, "Failed to close logrec table")
 	require.Contains(t, out, "boom-logrec")
+}
+
+func TestIndex_Close_DoesNotLogUnsupportedCloseOfTableViews(t *testing.T) {
+	buf := captureLog(t)
+
+	// newIndex builds its tables as prefixed views over the given store, and
+	// those do not support Close. This is the production setup.
+	idx := newIndex(memorydb.New())
+
+	idx.Close()
+
+	require.Empty(t, buf.String())
+}
+
+func TestIndex_Close_DoesNotLogWrappedUnsupportedError(t *testing.T) {
+	buf := captureLog(t)
+
+	idx := newIndex(memorydb.New())
+	idx.table.Topic = &errOnCloseStore{
+		Store:    memorydb.New(),
+		closeErr: fmt.Errorf("closing topic table: %w", kvdb.ErrUnsupportedOp),
+	}
+	idx.table.Logrec = &errOnCloseStore{
+		Store:    memorydb.New(),
+		closeErr: fmt.Errorf("closing logrec table: %w", kvdb.ErrUnsupportedOp),
+	}
+
+	idx.Close()
+
+	require.Empty(t, buf.String())
 }
 
 // errOnBatchWriteStore wraps a kvdb.Store whose batches always fail on Write.
