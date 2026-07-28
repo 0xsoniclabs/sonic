@@ -17,6 +17,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -291,7 +292,10 @@ func lachesisMainInternal(
 		cfg.OperaStore.EVM.StateDb.ArchiveCache = archiveCache
 	}
 
-	node, _, nodeClose, err := config.MakeNode(ctx, cfg)
+	sigCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	node, _, nodeClose, err := config.MakeNode(sigCtx, ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize the node: %w", err)
 	}
@@ -304,8 +308,7 @@ func lachesisMainInternal(
 		return config.SaveAllConfigs(outputConfigFile, cfg)
 	}
 
-	stop := make(chan bool, 1)
-	if err := startNode(ctx, node, stop); err != nil {
+	if err := startNode(sigCtx, ctx, node); err != nil {
 		return fmt.Errorf("failed to start the node: %w", err)
 	}
 
@@ -322,10 +325,7 @@ func lachesisMainInternal(
 			go func() {
 				<-control.Shutdown
 				log.Info("Got shutdown signal, shutting down...")
-				close(stop)
-				if err := node.Close(); err != nil {
-					log.Warn("Error during shutdown", "err", err)
-				}
+				cancel()
 			}()
 		}
 	}
@@ -336,45 +336,26 @@ func lachesisMainInternal(
 
 // startNode boots up the system node and all registered protocols, after which
 // it unlocks any requested accounts, and starts the RPC/IPC interfaces.
-func startNode(ctx *cli.Context, stack *node.Node, stop <-chan bool) error {
+func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error {
 	// Start up the node itself
 	if err := stack.Start(); err != nil {
 		return fmt.Errorf("error starting protocol stack: %w", err)
 	}
 	go func() {
 		stopNodeSig := make(chan os.Signal, 1)
-		signal.Notify(stopNodeSig, syscall.SIGINT, syscall.SIGTERM)
-		defer signal.Stop(stopNodeSig)
-
 		startFreeDiskSpaceMonitor(ctx, stopNodeSig, stack.InstanceDir())
 
 		select {
 		case <-stopNodeSig:
-			log.Info("Node got interrupt, shutting down...")
-		case <-stop:
+			log.Info("Node got interrupt by disk space monitoring, shutting down...")
+		case <-sigCtx.Done():
 			log.Info("Node received stop signal, shutting down...")
 		}
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			if err := stack.Close(); err != nil {
-				log.Warn("Error during shutdown", "err", err)
-			}
-		}()
-		for i := 10; i > 0; i-- {
-			select {
-			case <-stopNodeSig:
-				if i > 1 {
-					log.Warn("Already shutting down, interrupt more to panic.", "times", i-1)
-				}
-			case <-done:
-				log.Info("Shutdown complete.")
-				return
-			}
+
+		if err := stack.Close(); err != nil {
+			log.Warn("Error during shutdown", "err", err)
 		}
-		// received 10 interrupts - kill the node forcefully
-		debug.Exit(ctx) // ensure trace and CPU profile data is flushed.
-		debug.LoudPanic("boom")
+		log.Info("Shutdown complete.")
 	}()
 
 	// Unlock any account specifically requested
@@ -425,7 +406,7 @@ func startNode(ctx *cli.Context, stack *node.Node, stop <-chan bool) error {
 						log.Warn("Failed to close wallet", "url", event.Wallet.URL(), "err", err)
 					}
 				}
-			case <-stop:
+			case <-sigCtx.Done():
 				return
 			}
 		}

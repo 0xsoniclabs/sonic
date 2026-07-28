@@ -17,6 +17,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"path"
 	"strconv"
@@ -46,7 +47,7 @@ var (
 	chainInfoGauge = metrics.GetOrRegisterGaugeInfo("chain/info", nil)
 )
 
-func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(), error) {
+func MakeNode(sigCtx context.Context, ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(), error) {
 	var success bool
 	var cleanup []func()
 	defer func() { // if the function fails, clean-up in defer, otherwise return cleaning function
@@ -138,7 +139,7 @@ func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(
 
 	// unlock validator key
 	if !valPubkey.Empty() {
-		err := unlockValidatorKey(ctx, valPubkey, valKeystore)
+		err := unlockValidatorKey(sigCtx, ctx, valPubkey, valKeystore)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("failed to unlock validator key: %w", err)
 		}
