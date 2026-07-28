@@ -17,6 +17,8 @@
 package topicsdb
 
 import (
+	"errors"
+
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/batched"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
@@ -109,10 +111,13 @@ func (tt *index) Push(recs ...*types.Log) error {
 }
 
 func (tt *index) Close() {
-	if err := tt.table.Topic.Close(); err != nil {
+	// The tables are usually prefixed views over a store owned by the caller of
+	// newIndex, and those do not support being closed. Not being able to close
+	// such a view is expected and not an error.
+	if err := tt.table.Topic.Close(); err != nil && !errors.Is(err, kvdb.ErrUnsupportedOp) {
 		log.Error("Failed to close topic table", "err", err)
 	}
-	if err := tt.table.Logrec.Close(); err != nil {
+	if err := tt.table.Logrec.Close(); err != nil && !errors.Is(err, kvdb.ErrUnsupportedOp) {
 		log.Error("Failed to close logrec table", "err", err)
 	}
 }
