@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
@@ -106,7 +107,7 @@ func testTransactionPriceNonceSort(t *testing.T, baseFee *big.Int) {
 		expectedCount += count
 	}
 	// Sort the transactions and cross check the nonce ordering
-	txset := newTransactionsByPriceAndNonce(groups, baseFee)
+	txset := newTransactionsByPriorityAndPriceAndNonce(groups, baseFee, nil, alwaysMyTurn)
 
 	txs := types.Transactions{}
 	for entry, ok := txset.Peek(); ok; entry, ok = txset.Peek() {
@@ -172,7 +173,7 @@ func TestTransactionTimeSort(t *testing.T) {
 		})
 	}
 	// Sort the transactions and cross check the nonce ordering
-	txset := newTransactionsByPriceAndNonce(groups, nil)
+	txset := newTransactionsByPriorityAndPriceAndNonce(groups, nil, nil, alwaysMyTurn)
 
 	txs := types.Transactions{}
 	for entry, ok := txset.Peek(); ok; entry, ok = txset.Peek() {
@@ -275,59 +276,93 @@ func TestTransactionsOrdering_MinerFeesCanBeComputedWithAllTransactions(t *testi
 			}
 			from := common.Address{1}
 
-			withFee, err := newTxWithMinerFee(lazy, from, baseFee)
+			withFee, err := newTxWithMetadata(lazy, from, baseFee, priorities.Priority{}, false)
 			require.ErrorIs(t, err, test.expectedError)
 			if test.expectedError == nil {
-				require.EqualValues(t, withFee.fees.Uint64(), test.expectedMinerFee)
+				require.EqualValues(t, withFee.tip.Uint64(), test.expectedMinerFee)
 			}
 		})
 	}
 }
 
-func TestCompareTxByPriceAndTime_OrdersByFeeThenByTime(t *testing.T) {
-	entry := func(fees uint64, at time.Time) *txWithMinerFee {
-		return &txWithMinerFee{
-			tx:   &txpool.LazyTransaction{Time: at},
-			fees: uint256.NewInt(fees),
+func TestTxWithMetadata_StageFollowsPriorityAndTurn(t *testing.T) {
+	tests := map[string]struct {
+		priority priorities.Priority
+		myTurn   bool
+		want     stage
+	}{
+		"prioritized, my turn":     {prioritized(1), true, stagePrioritizedMyTurn},
+		"prioritized, not my turn": {prioritized(1), false, stagePrioritizedNotMyTurn},
+		"ordinary, my turn":        {priorities.Priority{}, true, stageOrdinary},
+		"ordinary, not my turn":    {priorities.Priority{}, false, stageOrdinary},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			entry := txWithMetadata{priority: test.priority, myTurn: test.myTurn}
+			require.Equal(t, test.want, entry.stage())
+		})
+	}
+}
+
+func TestCompareTxByStagePriorityPriceTime_OrdersByStageThenPriorityThenTipThenTime(t *testing.T) {
+	later := baseTime.Add(time.Second)
+	entry := func(priority priorities.Priority, myTurn bool, tip uint64, at time.Time) *txWithMetadata {
+		return &txWithMetadata{
+			tx:       &txpool.LazyTransaction{Time: at},
+			tip:      uint256.NewInt(tip),
+			priority: priority,
+			myTurn:   myTurn,
 		}
 	}
-	later := baseTime.Add(time.Second)
 
 	tests := map[string]struct {
-		a, b     *txWithMinerFee
+		a, b     *txWithMetadata
 		expected int
 	}{
-		"higher fee precedes": {
-			a:        entry(2, baseTime),
-			b:        entry(1, baseTime),
+		"my turn precedes another's, whatever its priority and tip": {
+			a:        entry(priorityWith(1, 1, 1), true, 1, later),
+			b:        entry(priorityWith(2, 9, 9), false, 100, baseTime),
 			expected: 1,
 		},
-		"lower fee follows": {
-			a:        entry(1, baseTime),
-			b:        entry(2, baseTime),
-			expected: -1,
-		},
-		"equal fee, earlier time precedes": {
-			a:        entry(1, baseTime),
-			b:        entry(1, later),
+		"prioritized precedes ordinary, whatever its tip": {
+			a:        entry(priorityWith(1, 1, 1), false, 1, later),
+			b:        entry(priorities.Priority{}, true, 100, baseTime),
 			expected: 1,
 		},
-		"equal fee, later time follows": {
-			a:        entry(1, later),
-			b:        entry(1, baseTime),
-			expected: -1,
+		"higher level precedes, whatever its weight and tip": {
+			a:        entry(priorityWith(1, 2, 1), true, 1, later),
+			b:        entry(priorityWith(2, 1, 9), true, 100, baseTime),
+			expected: 1,
 		},
-		"equal fee and time are equivalent": {
-			a:        entry(1, baseTime),
-			b:        entry(1, baseTime),
+		"higher weight precedes, whatever its tip": {
+			a:        entry(priorityWith(1, 1, 2), true, 1, later),
+			b:        entry(priorityWith(2, 1, 1), true, 100, baseTime),
+			expected: 1,
+		},
+		"higher tip precedes, whatever its time": {
+			a:        entry(priorities.Priority{}, true, 2, later),
+			b:        entry(priorities.Priority{}, true, 1, baseTime),
+			expected: 1,
+		},
+		"equal tip, earlier time precedes": {
+			a:        entry(priorities.Priority{}, true, 1, baseTime),
+			b:        entry(priorities.Priority{}, true, 1, later),
+			expected: 1,
+		},
+		// Priority IDs are ignored by the ordering.
+		"equal entries are equivalent": {
+			a:        entry(priorityWith(1, 1, 1), true, 1, baseTime),
+			b:        entry(priorityWith(2, 1, 1), true, 1, baseTime),
 			expected: 0,
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			got := compareTxByPriceAndTime(test.a, test.b)
+			got := compareTxByStagePriorityPriceTime(test.a, test.b)
 			require.Equal(t, test.expected, cmp.Compare(got, 0))
+			reversed := compareTxByStagePriorityPriceTime(test.b, test.a)
+			require.Equal(t, -test.expected, cmp.Compare(reversed, 0))
 		})
 	}
 }
@@ -346,12 +381,9 @@ func TestTxOrdering_OrdersByFeeAndTimeWithinNonceConstraints(t *testing.T) {
 	c1 := makeLazyTx(t, keyC, 1, 10, baseTime)
 	d0 := makeLazyTx(t, keyD, 0, 3, baseTime.Add(time.Second))
 
-	txset := newTransactionsByPriceAndNonce(
-		map[common.Address][]*txpool.LazyTransaction{
-			addrA: {a0, a1}, addrB: {b0, b1}, addrC: {c0, c1}, addrD: {d0},
-		},
-		nil,
-	)
+	txset := newTransactionsByPriorityAndPriceAndNonce(map[common.Address][]*txpool.LazyTransaction{
+		addrA: {a0, a1}, addrB: {b0, b1}, addrC: {c0, c1}, addrD: {d0},
+	}, nil, nil, alwaysMyTurn)
 
 	names := map[common.Hash]string{
 		a0.Hash: "a0", a1.Hash: "a1",
@@ -359,13 +391,231 @@ func TestTxOrdering_OrdersByFeeAndTimeWithinNonceConstraints(t *testing.T) {
 		c0.Hash: "c0", c1.Hash: "c1",
 		d0.Hash: "d0",
 	}
-	out := drain(txset)
-	got := make([]string, 0, len(out))
-	for _, e := range out {
+	got := make([]string, 0, len(names))
+	for _, e := range drain(txset) {
 		got = append(got, names[e.tx.Hash])
 	}
 
 	require.Equal(t, []string{"a0", "b0", "b1", "d0", "a1", "c0", "c1"}, got)
+}
+
+func TestTxOrdering_KeepsNonceOrderWithPrioritiesScatteredAcrossSenders(t *testing.T) {
+	keyA, addrA := newSenderKey(t)
+	keyB, addrB := newSenderKey(t)
+	keyC, addrC := newSenderKey(t)
+
+	a, b, c := makeSenderTxs(t, keyA), makeSenderTxs(t, keyB), makeSenderTxs(t, keyC)
+
+	// Scatter priorities across senders and nonces.
+	lookup := map[common.Hash]priorities.Priority{
+		a[0].Hash: prioritized(1),
+		a[2].Hash: prioritized(1),
+		b[1].Hash: priorityWith(2, 2, 1),
+		c[0].Hash: prioritized(3),
+		c[3].Hash: prioritized(3),
+	}
+
+	txset := newTransactionsByPriorityAndPriceAndNonce(map[common.Address][]*txpool.LazyTransaction{
+		addrA: a, addrB: b, addrC: c,
+	}, nil, lookup, alwaysMyTurn)
+
+	out := drain(txset)
+	require.Len(t, out, 12)
+	assertNonceOrder(t, out)
+}
+
+func TestTxOrdering_Peek_OrdersByPriorityLevelThenWeightThenPriceThenTime(t *testing.T) {
+	keyA, addrA := newSenderKey(t)
+	keyB, addrB := newSenderKey(t)
+	keyC, addrC := newSenderKey(t)
+	keyD, addrD := newSenderKey(t)
+	keyE, addrE := newSenderKey(t)
+	keyF, addrF := newSenderKey(t)
+	keyG, addrG := newSenderKey(t)
+
+	a := makeLazyTx(t, keyA, 0, 1, baseTime)
+	b := makeLazyTx(t, keyB, 0, 1, baseTime)
+	c := makeLazyTx(t, keyC, 0, 1, baseTime)
+	d := makeLazyTx(t, keyD, 0, 2, baseTime)
+	e := makeLazyTx(t, keyE, 0, 4, baseTime)
+	f := makeLazyTx(t, keyF, 0, 5, baseTime.Add(time.Second))
+	g := makeLazyTx(t, keyG, 0, 5, baseTime)
+	lookup := map[common.Hash]priorities.Priority{
+		a.Hash: priorityWith(1, 1, 2),
+		b.Hash: priorityWith(2, 2, 1),
+		c.Hash: priorityWith(3, 1, 1),
+		d.Hash: priorityWith(4, 1, 1),
+	}
+	txset := newTransactionsByPriorityAndPriceAndNonce(map[common.Address][]*txpool.LazyTransaction{
+		addrA: {a}, addrB: {b}, addrC: {c}, addrD: {d}, addrE: {e}, addrF: {f}, addrG: {g},
+	}, nil, lookup, alwaysMyTurn)
+
+	require.Equal(t,
+		[]common.Hash{
+			b.Hash, // level 2, weight 1, price 1
+			a.Hash, // level 1, weight 2, price 1
+			d.Hash, // level 1, weight 1, price 2
+			c.Hash, // level 1, weight 1, price 1
+			g.Hash, // non-prioritized, price 5
+			f.Hash, // non-prioritized, price 5, later time
+			e.Hash, // non-prioritized, price 4
+		},
+		hashesOf(drain(txset)),
+	)
+}
+
+// TestTxOrdering_Peek_OrdersByStageBeforePriority verifies that the stage
+// dominates the composite order: prioritized heads of another validator's turn
+// follow every prioritized head of this one's and precede every ordinary head,
+// whatever their priority and tip.
+func TestTxOrdering_Peek_OrdersByStageBeforePriority(t *testing.T) {
+	prio := make([]*txpool.LazyTransaction, 4)
+	byHash := map[common.Hash]priorities.Priority{}
+	txs := map[common.Address][]*txpool.LazyTransaction{}
+	for i := range prio {
+		key, addr := newSenderKey(t)
+		prio[i] = makeLazyTx(t, key, 0, 1, baseTime)
+		byHash[prio[i].Hash] = priorityWith(byte(i), uint64(len(prio)-i), 1)
+		txs[addr] = []*txpool.LazyTransaction{prio[i]}
+	}
+	keyO, addrO := newSenderKey(t)
+	ordinary := makeLazyTx(t, keyO, 0, 100, baseTime) // the highest tip of all
+	txs[addrO] = []*txpool.LazyTransaction{ordinary}
+
+	lookup := byHash
+	// The two highest-priority transactions are another validator's turn.
+	txset := newTransactionsByPriorityAndPriceAndNonce(txs, nil, lookup, notMyTurnFor(prio[0], prio[1]))
+
+	require.Equal(t,
+		[]common.Hash{
+			prio[2].Hash, prio[3].Hash, // my turn, levels 2 and 1
+			prio[0].Hash, prio[1].Hash, // not my turn, despite levels 4 and 3
+			ordinary.Hash, // ordinary, despite the highest tip
+		},
+		hashesOf(drain(txset)),
+	)
+}
+
+func TestTxOrdering_Peek_PrioritizedCannotJumpOwnLowerNonce(t *testing.T) {
+	keyA, addrA := newSenderKey(t)
+	keyB, addrB := newSenderKey(t)
+
+	a0 := makeLazyTx(t, keyA, 0, 1, baseTime)
+	a1 := makeLazyTx(t, keyA, 1, 100, baseTime)
+	b0 := makeLazyTx(t, keyB, 0, 10, baseTime)
+
+	lookup := map[common.Hash]priorities.Priority{
+		a1.Hash: prioritized(1),
+	}
+	txset := newTransactionsByPriorityAndPriceAndNonce(map[common.Address][]*txpool.LazyTransaction{
+		addrA: {a0, a1}, addrB: {b0},
+	}, nil, lookup, alwaysMyTurn)
+
+	// No prioritized head exists at construction: both heads are non-prioritized.
+	head, ok := txset.Peek()
+	require.True(t, ok)
+	require.Equal(t, stageOrdinary, head.stage())
+
+	order := hashesOf(drain(txset))
+	// b0 (higher tip) then a0, and only afterwards the prioritized a1.
+	require.Equal(t, []common.Hash{b0.Hash, a0.Hash, a1.Hash}, order)
+}
+
+// TestTxOrdering_Shift_StagesPromotedHead verifies that the promoted head is
+// staged on its own priority and turn.
+func TestTxOrdering_Shift_StagesPromotedHead(t *testing.T) {
+	keyA, addrA := newSenderKey(t)
+	head := makeLazyTx(t, keyA, 0, 10, baseTime)
+	next := makeLazyTx(t, keyA, 1, 10, baseTime)
+
+	tests := map[string]struct {
+		nextPrioritized bool
+		nextMyTurn      bool
+		want            stage
+	}{
+		"prioritized, my turn":     {true, true, stagePrioritizedMyTurn},
+		"prioritized, not my turn": {true, false, stagePrioritizedNotMyTurn},
+		"ordinary, my turn":        {false, true, stageOrdinary},
+		"ordinary, not my turn":    {false, false, stageOrdinary},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			byHash := map[common.Hash]priorities.Priority{head.Hash: prioritized(1)}
+			if test.nextPrioritized {
+				byHash[next.Hash] = prioritized(1)
+			}
+			policy := alwaysMyTurn
+			if !test.nextMyTurn {
+				policy = notMyTurnFor(next)
+			}
+			txset := newTransactionsByPriorityAndPriceAndNonce(
+				map[common.Address][]*txpool.LazyTransaction{addrA: {head, next}},
+				nil, byHash, policy,
+			)
+
+			txset.Shift()
+
+			got, ok := txset.Peek()
+			require.True(t, ok)
+			require.Equal(t, next.Hash, got.tx.Hash)
+			require.Equal(t, test.want, got.stage())
+		})
+	}
+}
+
+// TestTxOrdering_Shift_PromotedHeadCanReenterAnEarlierStage verifies that the
+// stage of a sender is not monotonic: the transaction promoted after a
+// not-my-turn head is staged on its own turn and thereby overtakes the
+// higher-priority heads still waiting in the later stage.
+func TestTxOrdering_Shift_PromotedHeadCanReenterAnEarlierStage(t *testing.T) {
+	keyA, addrA := newSenderKey(t)
+	a0 := makeLazyTx(t, keyA, 0, 1, baseTime)
+	a1 := makeLazyTx(t, keyA, 1, 1, baseTime)
+	keyB, addrB := newSenderKey(t)
+	b0 := makeLazyTx(t, keyB, 0, 1, baseTime)
+
+	lookup := map[common.Hash]priorities.Priority{
+		a0.Hash: priorityWith(1, 5, 1),
+		a1.Hash: priorityWith(2, 1, 1),
+		b0.Hash: priorityWith(3, 3, 1),
+	}
+	txset := newTransactionsByPriorityAndPriceAndNonce(map[common.Address][]*txpool.LazyTransaction{
+		addrA: {a0, a1}, addrB: {b0},
+	}, nil, lookup, notMyTurnFor(a0, b0))
+
+	// a1 is this validator's turn, so it precedes b0 despite its lower level.
+	require.Equal(t, []common.Hash{a0.Hash, a1.Hash, b0.Hash}, hashesOf(drain(txset)))
+}
+
+func TestTxOrdering_Shift_ExhaustedSenderLeavesTheSet(t *testing.T) {
+	keyA, addrA := newSenderKey(t)
+	head := makeLazyTx(t, keyA, 0, 10, baseTime)
+	lookup := map[common.Hash]priorities.Priority{
+		head.Hash: prioritized(1),
+	}
+	txset := newTransactionsByPriorityAndPriceAndNonce(
+		map[common.Address][]*txpool.LazyTransaction{addrA: {head}}, nil, lookup, alwaysMyTurn)
+
+	txset.Shift()
+
+	_, ok := txset.Peek()
+	require.False(t, ok)
+}
+
+func TestTxOrdering_PopSequence_DropsSenderRemainder(t *testing.T) {
+	keyA, addrA := newSenderKey(t)
+	head := makeLazyTx(t, keyA, 0, 10, baseTime)
+	next := makeLazyTx(t, keyA, 1, 10, baseTime)
+	lookup := map[common.Hash]priorities.Priority{
+		head.Hash: prioritized(1), next.Hash: prioritized(1),
+	}
+	txset := newTransactionsByPriorityAndPriceAndNonce(
+		map[common.Address][]*txpool.LazyTransaction{addrA: {head, next}}, nil, lookup, alwaysMyTurn)
+
+	txset.PopSequence()
+
+	_, ok := txset.Peek()
+	require.False(t, ok)
 }
 
 var (
@@ -408,12 +658,69 @@ func makeLazyTx(t *testing.T, key *ecdsa.PrivateKey, nonce uint64, tip int64, at
 	}
 }
 
+// makeSenderTxs builds a sender's sequence of four transactions with
+// consecutive nonces and varying tips and times.
+func makeSenderTxs(t *testing.T, key *ecdsa.PrivateKey) []*txpool.LazyTransaction {
+	t.Helper()
+	tips := []int64{5, 9, 1, 7}
+	txs := make([]*txpool.LazyTransaction, len(tips))
+	for i, tip := range tips {
+		txs[i] = makeLazyTx(t, key, uint64(i), tip, baseTime.Add(time.Duration(i)*time.Second))
+	}
+	return txs
+}
+
+func alwaysMyTurn(*txpool.LazyTransaction) bool { return true }
+func neverMyTurn(*txpool.LazyTransaction) bool  { return false }
+
+// notMyTurnFor returns a turn policy putting every transaction but the given
+// ones at this validator's turn.
+func notMyTurnFor(txs ...*txpool.LazyTransaction) func(tx *txpool.LazyTransaction) bool {
+	theirs := make(map[common.Hash]bool, len(txs))
+	for _, tx := range txs {
+		theirs[tx.Hash] = true
+	}
+	return func(tx *txpool.LazyTransaction) bool { return !theirs[tx.Hash] }
+}
+
+// myTurnFor returns a turn policy putting only the given transactions at this
+// validator's turn.
+func myTurnFor(txs ...*types.Transaction) func(tx *txpool.LazyTransaction) bool {
+	mine := make(map[common.Hash]bool, len(txs))
+	for _, tx := range txs {
+		mine[tx.Hash()] = true
+	}
+	return func(tx *txpool.LazyTransaction) bool { return mine[tx.Hash] }
+}
+
 // drain consumes the whole set in its ordering.
-func drain(txset *transactionsByPriceAndNonce) []*txWithMinerFee {
-	var out []*txWithMinerFee
+func drain(txset *transactionsByPriorityAndPriceAndNonce) []*txWithMetadata {
+	var out []*txWithMetadata
 	for e, ok := txset.Peek(); ok; e, ok = txset.Peek() {
 		out = append(out, e)
 		txset.Shift()
 	}
 	return out
+}
+
+func hashesOf(entries []*txWithMetadata) []common.Hash {
+	out := make([]common.Hash, len(entries))
+	for i, e := range entries {
+		out[i] = e.tx.Hash
+	}
+	return out
+}
+
+// assertNonceOrder verifies that, within each sender, nonces are emitted in
+// strictly increasing order.
+func assertNonceOrder(t *testing.T, entries []*txWithMetadata) {
+	t.Helper()
+	last := map[common.Address]uint64{}
+	for _, e := range entries {
+		nonce := e.tx.Tx.Nonce()
+		if prev, ok := last[e.from]; ok {
+			require.Greater(t, nonce, prev)
+		}
+		last[e.from] = nonce
+	}
 }

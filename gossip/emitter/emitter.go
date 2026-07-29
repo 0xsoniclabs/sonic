@@ -43,6 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/originatedtxs"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/throttler"
@@ -97,6 +98,11 @@ var (
 	skipEmissionNotAllowed = metrics.GetOrRegisterCounter("emitter/skip_emission/not_allowed", nil)
 	skipEmissionBusy       = metrics.GetOrRegisterCounter("emitter/skip_emission/busy", nil)
 	skipEmissionThrottle   = metrics.GetOrRegisterCounter("emitter/skip_emission/throttle", nil)
+
+	// priority config query failed, the default config is used
+	priorityConfigFailures = metrics.GetOrRegisterMeter("emitter/priorities/config/failed", nil)
+	// per-transaction query failed, the tx is not prioritized
+	priorityTxFailures = metrics.GetOrRegisterMeter("emitter/priorities/txs/failed", nil)
 )
 
 type Emitter struct {
@@ -140,11 +146,16 @@ type Emitter struct {
 	maxParents idx.Event
 
 	cache struct {
-		sortedTxs *transactionsByPriceAndNonce
-		poolTime  time.Time
-		poolBlock idx.Block
-		poolCount int
+		sortedTxs      *transactionsByPriorityAndPriceAndNonce
+		poolTime       time.Time
+		poolBlock      idx.Block
+		poolCount      int
+		priorityConfig priorities.Config // rate limits read while the sortedTxs were built
 	}
+
+	// priorityCache memoizes the transaction priorities used for ordering. It is
+	// shared with the transaction pool.
+	priorityCache *PriorityCache
 
 	emittedEventFile *os.File
 	emittedBvsFile   *os.File
@@ -194,6 +205,7 @@ func NewEmitter(
 	baseFeeSource BaseFeeSource,
 	errorLock *errlock.ErrorLock,
 	bundleCache evmcore.BundleEvaluator,
+	priorityCache *PriorityCache,
 ) *Emitter {
 	// Randomize event time to decrease chance of 2 parallel instances emitting event at the same time
 	// It increases the chance of detecting parallel instances
@@ -208,6 +220,7 @@ func NewEmitter(
 		baseFeeSource: baseFeeSource,
 		errorLock:     errorLock,
 		bundleCache:   bundleCache,
+		priorityCache: priorityCache,
 	}
 	res.eventEmissionThrottler = throttler.NewThrottlingState(
 		config.Validator.ID,
@@ -308,11 +321,13 @@ func (em *Emitter) tick() {
 	}
 }
 
-func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
+func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriorityAndPriceAndNonce {
+	currentBlock := em.world.GetLatestBlockIndex()
+
 	// Short circuit if pool wasn't updated since the cache was built
 	poolCount := em.world.TxPool.Count()
 	if em.cache.sortedTxs != nil &&
-		em.cache.poolBlock == em.world.GetLatestBlockIndex() &&
+		em.cache.poolBlock == currentBlock &&
 		em.cache.poolCount == poolCount &&
 		time.Since(em.cache.poolTime) < em.config.TxsCacheInvalidation {
 		return em.cache.sortedTxs.Copy()
@@ -336,7 +351,7 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 	}
 
 	// Convert to lists of LazyTransactions
-	txs := make(map[common.Address][]*txpool.LazyTransaction, len(pendingTxs))
+	lazyTxsBySender := make(map[common.Address][]*txpool.LazyTransaction, len(pendingTxs))
 	for from, list := range pendingTxs {
 		lazyTxs := make([]*txpool.LazyTransaction, 0, len(list))
 		for _, tx := range list {
@@ -365,15 +380,38 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 			})
 		}
 		if len(lazyTxs) != 0 {
-			txs[from] = lazyTxs
+			lazyTxsBySender[from] = lazyTxs
 		}
 	}
 
-	sortedTxs := newTransactionsByPriceAndNonce(txs, baseFee)
+	// In single-proposer mode the per-transaction turn does not apply: the
+	// proposer schedules every candidate itself.
+	turnPolicy := func(*txpool.LazyTransaction) bool { return true }
+	if !rules.Upgrades.SingleProposerBlockFormation {
+		turnPolicy = em.newTurnPolicy()
+	}
+
+	// Resolve the priorities of the candidates against the head state,
+	// classifying whatever the cache is missing. The context, and thereby the
+	// acquired head state, is only held for the duration of the build.
+	context := em.newPriorityContext()
+	if context != nil {
+		defer context.release()
+	}
+	txs := make(types.Transactions, 0, poolCount)
+	for _, senderTxs := range lazyTxsBySender {
+		for _, tx := range senderTxs {
+			txs = append(txs, tx.Resolve())
+		}
+	}
+	priorityOf := em.priorityCache.Priorities(txs, context)
+
+	sortedTxs := newTransactionsByPriorityAndPriceAndNonce(lazyTxsBySender, baseFee, priorityOf, turnPolicy)
 	em.cache.sortedTxs = sortedTxs
 	em.cache.poolCount = poolCount
-	em.cache.poolBlock = em.world.GetLatestBlockIndex()
+	em.cache.poolBlock = currentBlock
 	em.cache.poolTime = time.Now()
+	em.cache.priorityConfig = context.getConfig()
 	return sortedTxs.Copy()
 }
 
@@ -487,7 +525,7 @@ func (em *Emitter) loadPrevEmitTime() time.Time {
 }
 
 // createEvent is not safe for concurrent use.
-func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.EventPayload, error) {
+func (em *Emitter) createEvent(sortedTxs *transactionsByPriorityAndPriceAndNonce) (*inter.EventPayload, error) {
 	if synced := em.logSyncStatus(em.isSyncedToEmit()); !synced {
 		// I'm reindexing my old events, so don't create events until connect all the existing self-events
 		return nil, nil

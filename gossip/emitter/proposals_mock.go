@@ -262,10 +262,10 @@ func (m *MocktransactionIndex) EXPECT() *MocktransactionIndexMockRecorder {
 }
 
 // Peek mocks base method.
-func (m *MocktransactionIndex) Peek() (*txWithMinerFee, bool) {
+func (m *MocktransactionIndex) Peek() (*txWithMetadata, bool) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Peek")
-	ret0, _ := ret[0].(*txWithMinerFee)
+	ret0, _ := ret[0].(*txWithMetadata)
 	ret1, _ := ret[1].(bool)
 	return ret0, ret1
 }
@@ -277,10 +277,10 @@ func (mr *MocktransactionIndexMockRecorder) Peek() *gomock.Call {
 }
 
 // PopSequence mocks base method.
-func (m *MocktransactionIndex) PopSequence() ([]*txWithMinerFee, bool) {
+func (m *MocktransactionIndex) PopSequence() ([]*txWithMetadata, bool) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "PopSequence")
-	ret0, _ := ret[0].([]*txWithMinerFee)
+	ret0, _ := ret[0].([]*txWithMetadata)
 	ret1, _ := ret[1].(bool)
 	return ret0, ret1
 }
@@ -292,10 +292,10 @@ func (mr *MocktransactionIndexMockRecorder) PopSequence() *gomock.Call {
 }
 
 // Shift mocks base method.
-func (m *MocktransactionIndex) Shift() (*txWithMinerFee, bool) {
+func (m *MocktransactionIndex) Shift() (*txWithMetadata, bool) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Shift")
-	ret0, _ := ret[0].(*txWithMinerFee)
+	ret0, _ := ret[0].(*txWithMetadata)
 	ret1, _ := ret[1].(bool)
 	return ret0, ret1
 }

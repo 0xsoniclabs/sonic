@@ -26,14 +26,20 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
@@ -79,7 +85,7 @@ func TestEmitter(t *testing.T) {
 		TxPool:            txPool,
 		EventsSigner:      signer,
 		TransactionSigner: txSigner,
-	}, fixedPriceBaseFeeSource{}, nil, nil)
+	}, fixedPriceBaseFeeSource{}, nil, nil, nil)
 
 	t.Run("init", func(t *testing.T) {
 		external.EXPECT().GetRules().
@@ -688,6 +694,218 @@ func TestEmitter_EmitEvent_skippingTxsAlsoSkipsGappedNoncesTxs(t *testing.T) {
 	sorted.Shift()
 	_, ok = sorted.Peek()
 	require.False(t, ok, "expected no more txs after the nonce gap")
+}
+
+func TestEmitter_GetSortedTxs_TakesCachedPrioritiesAndClassifiesWhatIsMissing(t *testing.T) {
+	cached := types.NewTx(&types.LegacyTx{
+		Nonce:    0,
+		GasPrice: big.NewInt(1000),
+		Gas:      21000,
+	})
+	classified := types.NewTx(&types.LegacyTx{
+		Nonce:    0,
+		GasPrice: big.NewInt(999),
+		Gas:      21000,
+	})
+
+	any := gomock.Any()
+	ctrl := gomock.NewController(t)
+	world := NewMockExternal(ctrl)
+	upgrades := opera.GetSonicUpgrades()
+	upgrades.SingleProposerBlockFormation = true
+	upgrades.TransactionPriorities = true
+	world.EXPECT().GetRules().Return(opera.FakeNetRules(upgrades)).Times(2)
+	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(1)).Times(2)
+	world.EXPECT().GetLatestBlock().Return(&inter.Block{})
+	world.EXPECT().Header(any, any).Return(&evmcore.EvmHeader{
+		Number:     big.NewInt(1),
+		BaseFee:    big.NewInt(0),
+		PrevRandao: common.Hash{1}, // required for the EVM to run the registry
+	})
+	world.EXPECT().GetUpgradeHeights()
+
+	txSigner := NewMockTxSigner(ctrl)
+	txSigner.EXPECT().Sender(classified).Return(common.Address{2}, nil)
+
+	// The head state is acquired for the duration of the build only and serves the
+	// deployed registry over empty storage. Exactly one classification is expected,
+	// for the transaction whose priority is not cached yet.
+	statedb := state.NewMockStateDB(ctrl)
+	statedb.EXPECT().InterTxSnapshot()
+	statedb.EXPECT().RevertToInterTxSnapshot(any)
+	statedb.EXPECT().Release()
+	registryCode := registry.GetCode()
+	statedb.EXPECT().Exist(registry.GetAddress()).Return(true).AnyTimes()
+	statedb.EXPECT().GetCode(registry.GetAddress()).Return(registryCode).AnyTimes()
+	statedb.EXPECT().GetCodeHash(registry.GetAddress()).
+		Return(crypto.Keccak256Hash(registryCode)).AnyTimes()
+	statedb.EXPECT().GetState(any, any).Return(common.Hash{}).AnyTimes()
+	statedb.EXPECT().Snapshot().AnyTimes()
+	statedb.EXPECT().SubBalance(any, any, any).AnyTimes()
+	statedb.EXPECT().AddBalance(any, any, any).AnyTimes()
+	statedb.EXPECT().AddRefund(any).AnyTimes()
+	statedb.EXPECT().SubRefund(any).AnyTimes()
+	statedb.EXPECT().GetRefund().AnyTimes()
+	statedb.EXPECT().SlotInAccessList(any, any).AnyTimes()
+	statedb.EXPECT().AddSlotToAccessList(any, any).AnyTimes()
+	world.EXPECT().StateDB().Return(statedb)
+
+	txPool := NewMockTxPool(ctrl)
+	txPool.EXPECT().Count().Return(2)
+	txPool.EXPECT().Pending(true).Return(
+		map[common.Address]types.Transactions{{1}: {cached}, {2}: {classified}}, nil,
+	)
+
+	em := &Emitter{
+		config: config.Config{MaxTxsPerAddress: 10},
+		world:  World{External: world, TxPool: txPool, TransactionSigner: txSigner},
+	}
+	em.priorityCache = newTestPriorityCache()
+	em.priorityCache.entries.Add(cached.Hash(), prioritized(1))
+
+	sorted := em.getSortedTxs(big.NewInt(0))
+
+	// The cached priority is used as-is, ordering its transaction first.
+	entry, ok := sorted.Peek()
+	require.True(t, ok)
+	require.Equal(t, cached.Hash(), entry.tx.Hash)
+	require.Equal(t, prioritized(1), entry.priority)
+
+	// The missing one has been classified by the registry, which reports it as
+	// non-prioritized over empty storage, and the result has been memoized.
+	sorted.Shift()
+	entry, ok = sorted.Peek()
+	require.True(t, ok)
+	require.Equal(t, classified.Hash(), entry.tx.Hash)
+	require.Equal(t, priorities.Priority{}, entry.priority)
+	require.True(t, em.priorityCache.entries.Contains(classified.Hash()))
+
+	// The registry's rate limits are kept for the event built from this ordering.
+	require.Equal(t, priorities.Config{
+		MaxGasPerEntityPerBlock:          10_000_000,
+		MaxPiggybackTxsPerEntityPerEvent: 4,
+	}, em.cache.priorityConfig)
+}
+
+func TestEmitter_GetSortedTxs_WithoutPrioritiesEveryTransactionIsOrdinary(t *testing.T) {
+	tx := types.NewTx(&types.LegacyTx{
+		Nonce:    0,
+		GasPrice: big.NewInt(1000),
+		Gas:      21000,
+	})
+
+	ctrl := gomock.NewController(t)
+	world := NewMockExternal(ctrl)
+	world.EXPECT().GetRules().Return(opera.Rules{
+		Upgrades: opera.Upgrades{SingleProposerBlockFormation: true},
+	}).Times(2)
+	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(1))
+
+	txPool := NewMockTxPool(ctrl)
+	txPool.EXPECT().Count().Return(1)
+	txPool.EXPECT().Pending(true).Return(
+		map[common.Address]types.Transactions{{1}: {tx}}, nil,
+	)
+
+	em := &Emitter{
+		config: config.Config{MaxTxsPerAddress: 10},
+		world:  World{External: world, TxPool: txPool},
+	}
+	em.priorityCache = newTestPriorityCache()
+	em.priorityCache.entries.Add(tx.Hash(), prioritized(1))
+
+	sorted := em.getSortedTxs(big.NewInt(0))
+	entry, ok := sorted.Peek()
+	require.True(t, ok)
+	require.Equal(t, priorities.Priority{}, entry.priority)
+	require.Equal(t, priorities.Config{}, em.cache.priorityConfig)
+}
+
+func TestEmitter_GetSortedTxs_StagesTransactionsOnThisValidatorsTurn(t *testing.T) {
+	me, other := idx.ValidatorID(1), idx.ValidatorID(2)
+
+	tests := map[string]struct {
+		singleProposer bool
+		turnOf         idx.ValidatorID
+		wantMyTurn     bool
+	}{
+		"my turn":                  {false, me, true},
+		"another validator's turn": {false, other, false},
+		// The proposer schedules every candidate itself.
+		"single proposer": {true, other, true},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			key, sender := newSenderKey(t)
+			tx := makeLazyTx(t, key, 0, 1, baseTime).Tx
+
+			// A sole validator owns the turn of every transaction.
+			builder := pos.NewBuilder()
+			builder.Set(test.turnOf, pos.Weight(1))
+
+			ctrl := gomock.NewController(t)
+			world := NewMockExternal(ctrl)
+			world.EXPECT().GetRules().Return(opera.Rules{Upgrades: opera.Upgrades{
+				SingleProposerBlockFormation: test.singleProposer,
+			}}).Times(2)
+			world.EXPECT().GetLatestBlockIndex().Return(idx.Block(1))
+
+			txPool := NewMockTxPool(ctrl)
+			txPool.EXPECT().Count().Return(1)
+			txPool.EXPECT().Pending(true).Return(
+				map[common.Address]types.Transactions{sender: {tx}}, nil,
+			)
+
+			em := &Emitter{
+				config: config.Config{
+					MaxTxsPerAddress: 10,
+					Validator:        config.ValidatorConfig{ID: me},
+				},
+				world: World{External: world, TxPool: txPool, TransactionSigner: orderingSigner},
+			}
+			em.validators.Store(builder.Build())
+			em.epoch.Store(1)
+
+			entry, ok := em.getSortedTxs(big.NewInt(0)).Peek()
+			require.True(t, ok)
+			require.Equal(t, test.wantMyTurn, entry.myTurn)
+		})
+	}
+}
+
+func TestEmitter_GetSortedTxs_ReusesTheCachedOrderingAndItsPriorityConfig(t *testing.T) {
+	key, sender := newSenderKey(t)
+	tx := makeLazyTx(t, key, 0, 1, baseTime)
+
+	ctrl := gomock.NewController(t)
+	// Neither the pending set nor the head state is queried again.
+	world := NewMockExternal(ctrl)
+	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(1))
+	txPool := NewMockTxPool(ctrl)
+	txPool.EXPECT().Count().Return(1)
+
+	priorityConfig := priorities.Config{MaxPiggybackTxsPerEntityPerEvent: 4}
+	em := &Emitter{
+		config: config.Config{TxsCacheInvalidation: time.Minute},
+		world:  World{External: world, TxPool: txPool},
+	}
+	em.cache.sortedTxs = newTransactionsByPriorityAndPriceAndNonce(
+		map[common.Address][]*txpool.LazyTransaction{sender: {tx}},
+		nil,
+		map[common.Hash]priorities.Priority{tx.Hash: prioritized(1)},
+		alwaysMyTurn,
+	)
+	em.cache.poolBlock = idx.Block(1)
+	em.cache.poolCount = 1
+	em.cache.poolTime = time.Now()
+	em.cache.priorityConfig = priorityConfig
+
+	entry, ok := em.getSortedTxs(big.NewInt(0)).Peek()
+	require.True(t, ok)
+	require.Equal(t, tx.Hash, entry.tx.Hash)
+	require.Equal(t, prioritized(1), entry.priority)
+	require.Equal(t, priorityConfig, em.cache.priorityConfig)
 }
 
 func TestEmitter_ThrottlerWorldAdapter_ReturnsNilIfNoEventIsFound(t *testing.T) {

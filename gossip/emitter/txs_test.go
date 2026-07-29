@@ -23,14 +23,19 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
+	"github.com/0xsoniclabs/sonic/gossip/emitter/originatedtxs"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -44,6 +49,213 @@ func Test_DefaultMaxTxsPerAddress_Equals_txTurnNonces(t *testing.T) {
 
 	defaultConfig := config.DefaultConfig()
 	require.EqualValues(t, txTurnNonces, defaultConfig.MaxTxsPerAddress, "Default MaxTxsPerAddress should equal txTurnNonces")
+}
+
+func Test_DefaultTxsCacheInvalidation_IsBelow_txTurnPeriodLatency(t *testing.T) {
+
+	// The per-transaction turn is evaluated while the ordering is built and the
+	// ordering is reused for up to TxsCacheInvalidation. Since isMyTxTurn holds
+	// its verdict for txTurnPeriodLatency, a longer invalidation period would let
+	// two validators originate the same transaction.
+
+	defaultConfig := config.DefaultConfig()
+	require.Less(t, defaultConfig.TxsCacheInvalidation, txTurnPeriodLatency)
+}
+
+// TestEmitter_addTxsWithHinter_FollowsStageOrder verifies that a single call
+// consumes transactions in the documented stage order: prioritized my-turn,
+// prioritized not-my-turn admitted eagerly via the hinter, then ordinary
+// my-turn. The resulting event lists them in that order, and only the
+// not-my-turn admission consumes the per-entity hinter cap.
+func TestEmitter_addTxsWithHinter_FollowsStageOrder(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	f := newAddTxsFixture(t, ctrl)
+
+	p1PrioMyTurn := f.makeTx(t, 0)
+	p2s := f.makeTxsWithSingleSender(t, 0, 1)
+	p2PrioNotMyTurn, p2PrioMyTurn := p2s[0], p2s[1]
+	p3s := f.makeTxsWithSingleSender(t, 0, 1)
+	p3Ordinary, p3PrioMyTurn := p3s[0], p3s[1]
+
+	lookup := map[common.Hash]priorities.Priority{
+		p1PrioMyTurn.Hash():    prioritized(1),
+		p2PrioNotMyTurn.Hash(): prioritized(2),
+		p2PrioMyTurn.Hash():    prioritized(3),
+		p3PrioMyTurn.Hash():    prioritized(4),
+	}
+	hinter := &priorityHinter{
+		config: priorities.Config{MaxPiggybackTxsPerEntityPerEvent: 10},
+		counts: map[priorities.PriorityID]uint64{},
+	}
+	txSet := f.makeSorted(lookup, myTurnFor(p1PrioMyTurn, p2PrioMyTurn, p3Ordinary, p3PrioMyTurn),
+		p1PrioMyTurn, p2PrioNotMyTurn, p2PrioMyTurn, p3Ordinary, p3PrioMyTurn)
+
+	event := f.makeEvent()
+	f.em.addTxsWithHinter(event, txSet, hinter)
+
+	require.Equal(t,
+		[]common.Hash{
+			p1PrioMyTurn.Hash(),    // prioritized, my turn
+			p2PrioNotMyTurn.Hash(), // prioritized, not my turn
+			p2PrioMyTurn.Hash(),    // my turn following its not-my-turn predecessor
+			p3Ordinary.Hash(),      // ordinary
+			p3PrioMyTurn.Hash(),    // my turn following its ordinary predecessor
+		},
+		txHashes(event.Transactions()),
+	)
+	// Only the not-my-turn admission consumes the hinter cap.
+	require.Len(t, hinter.counts, 1)
+	require.Equal(t, uint64(1), hinter.counts[priorities.PriorityID{2}])
+}
+
+// TestEmitter_addTxsWithHinter_PerEntityCapEnforced verifies that the per-entity
+// hinter cap bounds only prioritized transactions admitted while it is not this
+// validator's turn; prioritized transactions admitted on the validator's own
+// turn are unbounded by it.
+func TestEmitter_addTxsWithHinter_PerEntityCapEnforced(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	f := newAddTxsFixture(t, ctrl)
+
+	// Three prioritized txs of the same entity plus one ordinary tx whose turn
+	// it always is (so the eager admissions are never rolled back).
+	prio1 := f.makeTx(t, 0)
+	prio2 := f.makeTx(t, 0)
+	prio3 := f.makeTx(t, 0)
+	ordinary := f.makeTx(t, 0)
+
+	lookup := map[common.Hash]priorities.Priority{
+		prio1.Hash(): prioritized(7),
+		prio2.Hash(): prioritized(7),
+		prio3.Hash(): prioritized(7),
+	}
+
+	cases := map[string]struct {
+		turn        func(tx *txpool.LazyTransaction) bool
+		wantCounter uint64
+		wantTxs     int
+	}{
+		"my-turn prio bypasses cap": {
+			turn:        alwaysMyTurn,
+			wantCounter: 0, // all admitted on their own turn, cap never consulted
+			wantTxs:     4, // 3 prio + ordinary
+		},
+		"not-my-turn prio subject to cap": {
+			turn:        myTurnFor(ordinary),
+			wantCounter: 2, // cap admits 2 of 3 eagerly, drops the third
+			wantTxs:     3, // 2 prio + ordinary
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			hinter := &priorityHinter{
+				config: priorities.Config{MaxPiggybackTxsPerEntityPerEvent: 2},
+				counts: map[priorities.PriorityID]uint64{},
+			}
+			event := f.makeEvent()
+
+			f.em.addTxsWithHinter(
+				event,
+				f.makeSorted(lookup, tc.turn, prio1, prio2, prio3, ordinary),
+				hinter,
+			)
+
+			require.Len(t, event.Transactions(), tc.wantTxs)
+			require.Equal(t, tc.wantCounter, hinter.counts[priorities.PriorityID{7}])
+		})
+	}
+}
+
+// TestEmitter_addTxsWithHinter_ForeignPriorityAdmissionsAreRolledBack verifies
+// the "do not emit an event solely for foreign priorities" invariant: when this
+// validator contributes no transaction of its own, the eagerly admitted
+// prioritized transactions are undone, restoring the event's gas-power
+// accounting along with them.
+func TestEmitter_addTxsWithHinter_ForeignPriorityAdmissionsAreRolledBack(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	f := newAddTxsFixture(t, ctrl)
+
+	prioTx := f.makeTx(t, 0)     // prioritized
+	ordinaryTx := f.makeTx(t, 0) // ordinary
+
+	lookup := map[common.Hash]priorities.Priority{
+		prioTx.Hash(): prioritized(3),
+	}
+	hinter := &priorityHinter{
+		config: priorities.Config{MaxPiggybackTxsPerEntityPerEvent: 5},
+		counts: map[priorities.PriorityID]uint64{},
+	}
+
+	event := f.makeEvent()
+	gasPowerLeft := event.GasPowerLeft()
+	f.em.addTxsWithHinter(event, f.makeSorted(lookup, neverMyTurn, prioTx, ordinaryTx), hinter)
+
+	require.Empty(t, event.Transactions())
+	require.Zero(t, event.GasPowerUsed())
+	require.Equal(t, gasPowerLeft, event.GasPowerLeft())
+}
+
+// TestEmitter_addTxsWithHinter_PromotedMyTurnNonceKeepsTheEvent verifies that a
+// my-turn transaction only surfacing after an eager admission — the next nonce
+// of the sender that was just piggybacked — counts as this validator's own
+// contribution, so nothing is rolled back.
+func TestEmitter_addTxsWithHinter_PromotedMyTurnNonceKeepsTheEvent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	f := newAddTxsFixture(t, ctrl)
+
+	txs := f.makeTxsWithSingleSender(t, 0, 1)
+	notMyTurn, myTurn := txs[0], txs[1]
+
+	lookup := map[common.Hash]priorities.Priority{
+		notMyTurn.Hash(): prioritized(3),
+		myTurn.Hash():    prioritized(3),
+	}
+	hinter := &priorityHinter{
+		config: priorities.Config{MaxPiggybackTxsPerEntityPerEvent: 5},
+		counts: map[priorities.PriorityID]uint64{},
+	}
+
+	event := f.makeEvent()
+	f.em.addTxsWithHinter(event, f.makeSorted(lookup, myTurnFor(myTurn), notMyTurn, myTurn), hinter)
+
+	require.Equal(t,
+		[]common.Hash{notMyTurn.Hash(), myTurn.Hash()},
+		txHashes(event.Transactions()),
+	)
+}
+
+// TestEmitter_addTxsWithHinter_AllTransactionsTreatedAsNotPrioritized verifies
+// that without a hinter — what newPriorityHinter yields while the feature is
+// disabled — priority classification grants no eager inclusion: every
+// transaction is admitted purely by turn, exactly as an ordinary one would be.
+// Prioritized txs are only included on their own turn and never piggybacked
+// while it is another validator's turn.
+func TestEmitter_addTxsWithHinter_AllTransactionsTreatedAsNotPrioritized(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	f := newAddTxsFixture(t, ctrl)
+
+	prioMyTurn := f.makeTx(t, 0)
+	prioNotMyTurn := f.makeTx(t, 0)
+	ordinaryMyTurn := f.makeTx(t, 0)
+	ordinaryNotMyTurn := f.makeTx(t, 0)
+
+	lookup := map[common.Hash]priorities.Priority{
+		prioMyTurn.Hash():    prioritized(1),
+		prioNotMyTurn.Hash(): prioritized(2),
+	}
+
+	event := f.makeEvent()
+	f.em.addTxsWithHinter(
+		event,
+		f.makeSorted(lookup, myTurnFor(prioMyTurn, ordinaryMyTurn),
+			prioMyTurn, prioNotMyTurn, ordinaryMyTurn, ordinaryNotMyTurn),
+		nil,
+	)
+
+	require.Equal(t,
+		[]common.Hash{prioMyTurn.Hash(), ordinaryMyTurn.Hash()},
+		txHashes(event.Transactions()),
+	)
 }
 
 func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testing.T) {
@@ -320,4 +532,104 @@ func Test_Emitter_evaluateBundleTx_ReturnsGasEfficiencyFromEvaluator(t *testing.
 			require.Equal(t, tc.executable, valid)
 		})
 	}
+}
+
+func txHashes(txs types.Transactions) []common.Hash {
+	if len(txs) == 0 {
+		return nil
+	}
+	hashes := make([]common.Hash, len(txs))
+	for i, tx := range txs {
+		hashes[i] = tx.Hash()
+	}
+	return hashes
+}
+
+// addTxsFixture builds a minimal Emitter ready to exercise addTxsWithHinter.
+type addTxsFixture struct {
+	em     *Emitter
+	signer types.Signer
+}
+
+func newAddTxsFixture(t *testing.T, ctrl *gomock.Controller) *addTxsFixture {
+	t.Helper()
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	rules := opera.Rules{
+		NetworkID: 1,
+		Economy: opera.EconomyRules{
+			Gas: opera.GasRules{MaxEventGas: 100_000_000},
+		},
+		Blocks: opera.BlocksRules{MaxBlockGas: 100_000_000},
+	}
+
+	external := NewMockExternal(ctrl)
+	external.EXPECT().GetRules().Return(rules).AnyTimes()
+
+	txPool := NewMockTxPool(ctrl)
+	txPool.EXPECT().Has(gomock.Any()).Return(true).AnyTimes()
+
+	em := &Emitter{
+		world: World{
+			External:          external,
+			TxPool:            txPool,
+			TransactionSigner: signer,
+		},
+		originatedTxs: originatedtxs.New(SenderCountBufferSize),
+	}
+
+	return &addTxsFixture{em: em, signer: signer}
+}
+
+// makeTx returns a signed legacy transaction from a fresh, unique sender, so
+// each tx forms its own account queue in makeSorted.
+func (f *addTxsFixture) makeTx(t *testing.T, nonce uint64) *types.Transaction {
+	t.Helper()
+	return f.makeTxsWithSingleSender(t, nonce)[0]
+}
+
+// makeTxsWithSingleSender returns one signed legacy transaction per given nonce, all from
+// a single fresh sender, so they form one nonce-ordered account queue in
+// makeSorted. Pass the nonces in ascending order.
+func (f *addTxsFixture) makeTxsWithSingleSender(t *testing.T, nonces ...uint64) []*types.Transaction {
+	t.Helper()
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	txs := make([]*types.Transaction, len(nonces))
+	for i, nonce := range nonces {
+		tx, err := types.SignTx(
+			types.NewTransaction(nonce, common.Address{0xaa}, big.NewInt(0), 21000, big.NewInt(1), nil),
+			f.signer, key,
+		)
+		require.NoError(t, err)
+		txs[i] = tx
+	}
+	return txs
+}
+
+// makeEvent returns a mutable event payload with plenty of gas power.
+func (f *addTxsFixture) makeEvent() *inter.MutableEventPayload {
+	e := &inter.MutableEventPayload{}
+	e.SetGasPowerLeft(inter.GasPowerLeft{Gas: [2]uint64{100_000_000, 100_000_000}})
+	return e
+}
+
+// makeSorted wraps the given txs as a transactionsByPriorityAndPriceAndNonce
+// set, grouping them by recovered sender. The priorities and the turn policy
+// stage every transaction of the set.
+func (f *addTxsFixture) makeSorted(priorityOf map[common.Hash]priorities.Priority, policy func(tx *txpool.LazyTransaction) bool, txs ...*types.Transaction) *transactionsByPriorityAndPriceAndNonce {
+	bySender := map[common.Address][]*txpool.LazyTransaction{}
+	for _, tx := range txs {
+		sender, _ := types.Sender(f.signer, tx)
+		bySender[sender] = append(bySender[sender], &txpool.LazyTransaction{
+			Hash:      tx.Hash(),
+			Tx:        tx,
+			Time:      tx.Time(),
+			GasFeeCap: uint256.MustFromBig(tx.GasFeeCap()),
+			GasTipCap: uint256.MustFromBig(tx.GasTipCap()),
+			Gas:       tx.Gas(),
+		})
+	}
+	return newTransactionsByPriorityAndPriceAndNonce(bySender, nil, priorityOf, policy)
 }

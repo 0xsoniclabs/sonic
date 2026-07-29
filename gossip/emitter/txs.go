@@ -24,6 +24,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/prometheus/client_golang/prometheus"
@@ -32,6 +33,7 @@ import (
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -170,17 +172,71 @@ func (em *Emitter) isMyTxTurn(txHash common.Hash, sender common.Address, account
 	return false
 }
 
-func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPriceAndNonce) {
+// newTurnPolicy returns the per-transaction turn check of this validator, used
+// to stage the transactions of the ordering set.
+func (em *Emitter) newTurnPolicy() func(tx *txpool.LazyTransaction) bool {
+	return func(tx *txpool.LazyTransaction) bool {
+		resolvedTx := tx.Resolve()
+		sender, _ := types.Sender(em.world.TransactionSigner, resolvedTx)
+		return em.isMyTxTurn(tx.Hash, sender, resolvedTx.Nonce(), time.Now(), em.validators.Load(), em.config.Validator.ID, idx.Epoch(em.epoch.Load()))
+	}
+}
+
+func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPriorityAndPriceAndNonce) {
+	// Best-effort priority hinter: lets prioritized transactions be eagerly
+	// included regardless of the per-transaction turn. It is absent while the
+	// feature is disabled, keeping behavior unchanged.
+	em.addTxsWithHinter(e, sorted, em.newPriorityHinter())
+}
+
+// addTxsWithHinter appends transactions from sorted to the event e, honoring the
+// event's gas-power and size budgets and the per-transaction turn.
+//
+// Candidates arrive stage by stage (see stage), but not monotonically: a
+// promotion is staged on its own priority and turn, so admitting a head of one
+// stage may well hand out a head of an earlier one next.
+//
+// A transaction of another validator's turn is admitted only via the priority
+// hinter's eager path, capped at MaxPiggybackTxsPerEntityPerEvent per
+// Priority.ID. Beyond that cap — or without a hinter, i.e. while the feature is
+// disabled — it is dropped like any ordinary tx of another validator's turn.
+// My-turn admissions never consume the cap.
+//
+// So that an event never consists solely of other validators' prioritized
+// transactions, the eager admissions are rolled back once it is certain that
+// this validator contributed nothing of its own. The skip metrics and hinter
+// counts accumulated along the way are not, both being scoped to the discarded
+// attempt.
+func (em *Emitter) addTxsWithHinter(e *inter.MutableEventPayload, sorted *transactionsByPriorityAndPriceAndNonce, hinter *priorityHinter) {
 	maxGasUsed := em.maxGasPowerToUse(e)
 	if maxGasUsed <= e.GasPowerUsed() {
 		return
 	}
 
 	totalTxSizeInBytes := uint64(0)
-
-	// sort transactions by price and nonce
 	rules := em.world.GetRules()
+
+	// State to restore if the event ends up carrying foreign-priority
+	// transactions only.
+	txPrefixOnEntry := e.Transactions()
+	gasPowerUsedOnEntry := e.GasPowerUsed()
+	gasPowerLeftOnEntry := e.GasPowerLeft()
+	ownTxs := len(txPrefixOnEntry) > 0
+
 	for entry, ok := sorted.Peek(); ok; entry, ok = sorted.Peek() {
+		// not my turn, i.e. include the transaction only if the priority hinter
+		// admits it eagerly
+		var prioID priorities.PriorityID
+		if !entry.myTurn {
+			eager, id := hinter.eligible(entry.priority)
+			if !eager {
+				txsSkippedNotMyTurn.Inc(1)
+				sorted.PopSequence()
+				continue
+			}
+			prioID = id
+		}
+
 		tx := entry.tx
 		resolvedTx := tx.Resolve()
 
@@ -215,12 +271,6 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 			sorted.PopSequence()
 			continue
 		}
-		// my turn, i.e. try to not include the same tx simultaneously by different validators
-		if !em.isMyTxTurn(tx.Hash, sender, resolvedTx.Nonce(), time.Now(), em.validators.Load(), e.Creator(), idx.Epoch(em.epoch.Load())) {
-			txsSkippedNotMyTurn.Inc(1)
-			sorted.PopSequence()
-			continue
-		}
 		// check transaction is not outdated
 		if !em.world.TxPool.Has(tx.Hash) {
 			txsSkippedOutdated.Inc(1)
@@ -238,7 +288,20 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 		e.SetGasPowerLeft(e.GasPowerLeft().Sub(tx.Gas))
 		e.SetTxs(append(e.Transactions(), resolvedTx))
 		totalTxSizeInBytes += txSize
+		if entry.myTurn {
+			ownTxs = true
+		} else {
+			hinter.record(prioID)
+		}
 		sorted.Shift()
+	}
+
+	// If this validator contributed none of its own transactions, roll the
+	// eagerly included ones back.
+	if !ownTxs {
+		e.SetTxs(txPrefixOnEntry)
+		e.SetGasPowerUsed(gasPowerUsedOnEntry)
+		e.SetGasPowerLeft(gasPowerLeftOnEntry)
 	}
 }
 

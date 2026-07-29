@@ -17,8 +17,10 @@
 package emitter
 
 import (
+	"cmp"
 	"math/big"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/utils/frontierheap"
 	"github.com/ethereum/go-ethereum/common"
@@ -27,17 +29,49 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// txWithMinerFee wraps a transaction with its gas price or effective miner gasTipCap
-type txWithMinerFee struct {
-	tx   *txpool.LazyTransaction
-	from common.Address
-	fees *uint256.Int
+// stage is the consumption stage of a transaction. Stages are consumed in
+// ascending order.
+type stage uint8
+
+const (
+	stagePrioritizedMyTurn    stage = iota // prioritized, this validator's turn
+	stagePrioritizedNotMyTurn              // prioritized, another validator's turn
+	stageOrdinary                          // not prioritized
+)
+
+// txWithMetadata wraps a transaction with its effective miner tip, the address
+// that submitted it, its priority and whether it is this validator's turn to
+// originate it. Non-prioritized entries carry a zero-valued priority.
+type txWithMetadata struct {
+	tx       *txpool.LazyTransaction
+	from     common.Address
+	tip      *uint256.Int
+	priority priorities.Priority
+	myTurn   bool
 }
 
-// newTxWithMinerFee creates a wrapped transaction, calculating the effective
+// stage returns the consumption stage of the transaction.
+func (t *txWithMetadata) stage() stage {
+	switch {
+	case !t.priority.IsPrioritized():
+		return stageOrdinary
+	case t.myTurn:
+		return stagePrioritizedMyTurn
+	default:
+		return stagePrioritizedNotMyTurn
+	}
+}
+
+// newTxWithMetadata creates a wrapped transaction, calculating the effective
 // miner gasTipCap if a base fee is provided.
 // Returns error in case of a negative effective miner gasTipCap.
-func newTxWithMinerFee(tx *txpool.LazyTransaction, from common.Address, baseFee *uint256.Int) (*txWithMinerFee, error) {
+func newTxWithMetadata(
+	tx *txpool.LazyTransaction,
+	from common.Address,
+	baseFee *uint256.Int,
+	priority priorities.Priority,
+	myTurn bool,
+) (*txWithMetadata, error) {
 	tip := new(uint256.Int).Set(tx.GasTipCap)
 	if baseFee != nil {
 		if tx.GasFeeCap.Cmp(baseFee) < 0 {
@@ -50,48 +84,74 @@ func newTxWithMinerFee(tx *txpool.LazyTransaction, from common.Address, baseFee 
 			tip = tx.GasTipCap
 		}
 	}
-	return &txWithMinerFee{
-		tx:   tx,
-		from: from,
-		fees: tip,
+	return &txWithMetadata{
+		tx:       tx,
+		from:     from,
+		tip:      tip,
+		priority: priority,
+		myTurn:   myTurn,
 	}, nil
 }
 
-// compareTxByPriceAndTime orders transactions by (effective miner tip desc,
+// compareTxByStagePriorityPriceTime orders transactions by (stage asc,
+// priority level desc, priority weight desc, effective miner tip desc,
 // first-seen time asc), returning >0 when a precedes b.
-func compareTxByPriceAndTime(a, b *txWithMinerFee) int {
-	if c := a.fees.Cmp(b.fees); c != 0 {
+func compareTxByStagePriorityPriceTime(a, b *txWithMetadata) int {
+	if c := cmp.Compare(b.stage(), a.stage()); c != 0 {
+		return c
+	}
+	if c := a.priority.Cmp(b.priority); c != 0 {
+		return c
+	}
+	if c := a.tip.Cmp(b.tip); c != 0 {
 		return c
 	}
 	return b.tx.Time.Compare(a.tx.Time)
 }
 
-// transactionsByPriceAndNonce is the heap of transaction sequences used to
-// order the candidates of an event, see newTransactionsByPriceAndNonce.
-type transactionsByPriceAndNonce = frontierheap.FrontierHeap[*txWithMinerFee]
+// transactionsByPriorityAndPriceAndNonce is the heap of transaction sequences
+// used to order the candidates of an event, see
+// newTransactionsByPriorityAndPriceAndNonce.
+type transactionsByPriorityAndPriceAndNonce = frontierheap.FrontierHeap[*txWithMetadata]
 
-// newTransactionsByPriceAndNonce creates a heap over the senders' transaction
-// sequences that returns transactions in a profit-maximizing order (effective
-// tip desc, time asc) while honouring per-sender nonce sequencing.
+// newTransactionsByPriorityAndPriceAndNonce creates a heap over the senders'
+// transaction sequences that returns transactions in a profit-maximizing order
+// (stage asc, priority desc, effective tip desc, time asc) while honouring
+// per-sender nonce sequencing.
 //
-// Every transaction is wrapped up front. A transaction whose effective tip
-// cannot be computed is dropped together with the sender's later nonces, which
-// depend on it.
-func newTransactionsByPriceAndNonce(
+// The heap holds all senders' heads ordered by stage first, so a head of a
+// later stage only surfaces while no earlier-stage head is present. Stages are
+// not monotonic per sender: a head promoted by a shift is staged on its own
+// priority and turn and may re-enter an earlier stage, so it may well precede
+// the head just dropped.
+//
+// Every transaction is wrapped up front: its priority is taken from priorityOf
+// and its turn from the turn policy. A transaction whose effective tip cannot
+// be computed is dropped together with the sender's later nonces, which depend
+// on it.
+//
+// Note, the input map is reowned so the caller should not interact any more
+// with it after providing it to the constructor.
+//
+// A transaction absent from priorityOf is treated as non-prioritized, so a nil
+// map disables priority ordering altogether.
+func newTransactionsByPriorityAndPriceAndNonce(
 	txs map[common.Address][]*txpool.LazyTransaction,
 	baseFee *big.Int,
-) *transactionsByPriceAndNonce {
+	priorityOf map[common.Hash]priorities.Priority,
+	turnPolicy func(tx *txpool.LazyTransaction) bool,
+) *transactionsByPriorityAndPriceAndNonce {
 	// Convert the basefee from header format to uint256 format
 	var baseFeeUint *uint256.Int
 	if baseFee != nil {
 		baseFeeUint = uint256.MustFromBig(baseFee)
 	}
 
-	heap := frontierheap.NewFrontierHeap(compareTxByPriceAndTime)
+	heap := frontierheap.NewFrontierHeap(compareTxByStagePriorityPriceTime)
 	for sender, senderTxs := range txs {
-		sequence := make([]*txWithMinerFee, 0, len(senderTxs))
+		sequence := make([]*txWithMetadata, 0, len(senderTxs))
 		for _, tx := range senderTxs {
-			wrapped, err := newTxWithMinerFee(tx, sender, baseFeeUint)
+			wrapped, err := newTxWithMetadata(tx, sender, baseFeeUint, priorityOf[tx.Hash], turnPolicy(tx))
 			if err != nil {
 				break // the sender's later nonces depend on the dropped transaction
 			}
