@@ -17,6 +17,7 @@
 package emitter
 
 import (
+	"cmp"
 	"crypto/ecdsa"
 	"math/big"
 	"math/rand/v2"
@@ -105,11 +106,11 @@ func testTransactionPriceNonceSort(t *testing.T, baseFee *big.Int) {
 		expectedCount += count
 	}
 	// Sort the transactions and cross check the nonce ordering
-	txset := newTransactionsByPriceAndNonce(signer, groups, baseFee)
+	txset := newTransactionsByPriceAndNonce(groups, baseFee)
 
 	txs := types.Transactions{}
-	for tx, _ := txset.Peek(); tx != nil; tx, _ = txset.Peek() {
-		txs = append(txs, tx.Tx)
+	for entry, ok := txset.Peek(); ok; entry, ok = txset.Peek() {
+		txs = append(txs, entry.tx.Tx)
 		txset.Shift()
 	}
 	if len(txs) != expectedCount {
@@ -171,11 +172,11 @@ func TestTransactionTimeSort(t *testing.T) {
 		})
 	}
 	// Sort the transactions and cross check the nonce ordering
-	txset := newTransactionsByPriceAndNonce(signer, groups, nil)
+	txset := newTransactionsByPriceAndNonce(groups, nil)
 
 	txs := types.Transactions{}
-	for tx, _ := txset.Peek(); tx != nil; tx, _ = txset.Peek() {
-		txs = append(txs, tx.Tx)
+	for entry, ok := txset.Peek(); ok; entry, ok = txset.Peek() {
+		txs = append(txs, entry.tx.Tx)
 		txset.Shift()
 	}
 	if len(txs) != len(keys) {
@@ -281,4 +282,138 @@ func TestTransactionsOrdering_MinerFeesCanBeComputedWithAllTransactions(t *testi
 			}
 		})
 	}
+}
+
+func TestCompareTxByPriceAndTime_OrdersByFeeThenByTime(t *testing.T) {
+	entry := func(fees uint64, at time.Time) *txWithMinerFee {
+		return &txWithMinerFee{
+			tx:   &txpool.LazyTransaction{Time: at},
+			fees: uint256.NewInt(fees),
+		}
+	}
+	later := baseTime.Add(time.Second)
+
+	tests := map[string]struct {
+		a, b     *txWithMinerFee
+		expected int
+	}{
+		"higher fee precedes": {
+			a:        entry(2, baseTime),
+			b:        entry(1, baseTime),
+			expected: 1,
+		},
+		"lower fee follows": {
+			a:        entry(1, baseTime),
+			b:        entry(2, baseTime),
+			expected: -1,
+		},
+		"equal fee, earlier time precedes": {
+			a:        entry(1, baseTime),
+			b:        entry(1, later),
+			expected: 1,
+		},
+		"equal fee, later time follows": {
+			a:        entry(1, later),
+			b:        entry(1, baseTime),
+			expected: -1,
+		},
+		"equal fee and time are equivalent": {
+			a:        entry(1, baseTime),
+			b:        entry(1, baseTime),
+			expected: 0,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := compareTxByPriceAndTime(test.a, test.b)
+			require.Equal(t, test.expected, cmp.Compare(got, 0))
+		})
+	}
+}
+
+func TestTxOrdering_OrdersByFeeAndTimeWithinNonceConstraints(t *testing.T) {
+	keyA, addrA := newSenderKey(t)
+	keyB, addrB := newSenderKey(t)
+	keyC, addrC := newSenderKey(t)
+	keyD, addrD := newSenderKey(t)
+
+	a0 := makeLazyTx(t, keyA, 0, 9, baseTime.Add(2*time.Second))
+	a1 := makeLazyTx(t, keyA, 1, 3, baseTime.Add(2*time.Second))
+	b0 := makeLazyTx(t, keyB, 0, 8, baseTime)
+	b1 := makeLazyTx(t, keyB, 1, 7, baseTime)
+	c0 := makeLazyTx(t, keyC, 0, 2, baseTime)
+	c1 := makeLazyTx(t, keyC, 1, 10, baseTime)
+	d0 := makeLazyTx(t, keyD, 0, 3, baseTime.Add(time.Second))
+
+	txset := newTransactionsByPriceAndNonce(
+		map[common.Address][]*txpool.LazyTransaction{
+			addrA: {a0, a1}, addrB: {b0, b1}, addrC: {c0, c1}, addrD: {d0},
+		},
+		nil,
+	)
+
+	names := map[common.Hash]string{
+		a0.Hash: "a0", a1.Hash: "a1",
+		b0.Hash: "b0", b1.Hash: "b1",
+		c0.Hash: "c0", c1.Hash: "c1",
+		d0.Hash: "d0",
+	}
+	out := drain(txset)
+	got := make([]string, 0, len(out))
+	for _, e := range out {
+		got = append(got, names[e.tx.Hash])
+	}
+
+	require.Equal(t, []string{"a0", "b0", "b1", "d0", "a1", "c0", "c1"}, got)
+}
+
+var (
+	orderingSigner = types.LatestSignerForChainID(common.Big1)
+	baseTime       = time.Unix(1_000, 0)
+)
+
+// newSenderKey returns a fresh private key and its derived sender address.
+func newSenderKey(t *testing.T) (*ecdsa.PrivateKey, common.Address) {
+	t.Helper()
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	return key, crypto.PubkeyToAddress(key.PublicKey)
+}
+
+// makeLazyTx builds a signed dynamic-fee LazyTransaction. With a nil base fee
+// (as used by these tests) the effective miner tip equals tip, so tip is the
+// "price" used for ordering. at is the transaction's first-seen time, used as
+// the final ordering tie-break.
+func makeLazyTx(t *testing.T, key *ecdsa.PrivateKey, nonce uint64, tip int64, at time.Time) *txpool.LazyTransaction {
+	t.Helper()
+	raw, err := types.SignTx(types.NewTx(&types.DynamicFeeTx{
+		ChainID:   common.Big1,
+		Nonce:     nonce,
+		To:        &common.Address{0x2},
+		Value:     big.NewInt(0),
+		Gas:       21000,
+		GasFeeCap: big.NewInt(tip),
+		GasTipCap: big.NewInt(tip),
+	}), orderingSigner, key)
+	require.NoError(t, err)
+	raw.SetTime(at)
+	return &txpool.LazyTransaction{
+		Hash:      raw.Hash(),
+		Tx:        raw,
+		Time:      raw.Time(),
+		GasFeeCap: uint256.MustFromBig(raw.GasFeeCap()),
+		GasTipCap: uint256.MustFromBig(raw.GasTipCap()),
+		Gas:       raw.Gas(),
+	}
+}
+
+// drain consumes the whole set in its ordering.
+func drain(txset *transactionsByPriceAndNonce) []*txWithMinerFee {
+	var out []*txWithMinerFee
+	for e, ok := txset.Peek(); ok; e, ok = txset.Peek() {
+		out = append(out, e)
+		txset.Shift()
+	}
+	return out
 }

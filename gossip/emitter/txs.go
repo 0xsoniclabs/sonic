@@ -180,14 +180,15 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 
 	// sort transactions by price and nonce
 	rules := em.world.GetRules()
-	for tx, _ := sorted.Peek(); tx != nil; tx, _ = sorted.Peek() {
+	for entry, ok := sorted.Peek(); ok; entry, ok = sorted.Peek() {
+		tx := entry.tx
 		resolvedTx := tx.Resolve()
 
 		// check transaction size limits
 		txSize := resolvedTx.Size()
 		if totalTxSizeInBytes+txSize > maxTotalTransactionsSizeInEventInBytes {
 			txsSkippedSizeLimit.Inc(1)
-			sorted.Pop()
+			sorted.PopSequence()
 			continue
 		}
 
@@ -195,7 +196,7 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 		// check transaction epoch rules (tx type, gas price)
 		if epochcheck.CheckTxs(types.Transactions{resolvedTx}, rules) != nil {
 			txsSkippedEpochRules.Inc(1)
-			sorted.Pop()
+			sorted.PopSequence()
 			continue
 		}
 		// check there's enough gas power to originate the transaction
@@ -205,30 +206,30 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 				// stop if cannot originate even an empty transaction
 				break
 			}
-			sorted.Pop()
+			sorted.PopSequence()
 			continue
 		}
 		// check not conflicted with already originated txs (in any connected event)
 		if em.originatedTxs.TotalOf(sender) != 0 {
 			txsSkippedConflictingSender.Inc(1)
-			sorted.Pop()
+			sorted.PopSequence()
 			continue
 		}
 		// my turn, i.e. try to not include the same tx simultaneously by different validators
 		if !em.isMyTxTurn(tx.Hash, sender, resolvedTx.Nonce(), time.Now(), em.validators.Load(), e.Creator(), idx.Epoch(em.epoch.Load())) {
 			txsSkippedNotMyTurn.Inc(1)
-			sorted.Pop()
+			sorted.PopSequence()
 			continue
 		}
 		// check transaction is not outdated
 		if !em.world.TxPool.Has(tx.Hash) {
 			txsSkippedOutdated.Inc(1)
-			sorted.Pop()
+			sorted.PopSequence()
 			continue
 		}
 		// check validity of bundled transactions
 		if em.world.GetRules().Upgrades.Brio && bundle.IsEnvelope(resolvedTx) && !em.isValidBundleTx(resolvedTx) {
-			sorted.Pop()
+			sorted.PopSequence()
 			continue
 		}
 

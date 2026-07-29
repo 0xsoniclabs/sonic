@@ -18,6 +18,7 @@ package frontierheap
 
 import (
 	"container/heap"
+	"slices"
 )
 
 // FrontierHeap is a max-heap over the frontier of a set of sequences (sequence
@@ -63,8 +64,6 @@ func (q *FrontierHeap[T]) Shift() (T, bool) {
 	}
 	head := q.heap.sequences[0][0]
 	if len(q.heap.sequences[0]) > 1 {
-		var zero T
-		q.heap.sequences[0][0] = zero
 		q.heap.sequences[0] = q.heap.sequences[0][1:]
 		heap.Fix(&q.heap, 0)
 	} else {
@@ -82,6 +81,17 @@ func (q *FrontierHeap[T]) PopSequence() ([]T, bool) {
 		return nil, false
 	}
 	return heap.Pop(&q.heap).([]T), true
+}
+
+// Copy returns a heap that can be consumed independently of this one. The
+// sequence elements themselves are shared, not copied.
+func (q *FrontierHeap[T]) Copy() *FrontierHeap[T] {
+	// The sequences are only resliced, never mutated, so a deep copy of each
+	// sequence is not necessary.
+	return &FrontierHeap[T]{heap: sequenceHeap[T]{
+		sequences: slices.Clone(q.heap.sequences),
+		order:     q.heap.order,
+	}}
 }
 
 // -- Heap Implementation --

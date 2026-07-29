@@ -17,12 +17,10 @@
 package emitter
 
 import (
-	"container/heap"
-	"maps"
 	"math/big"
-	"slices"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
+	"github.com/0xsoniclabs/sonic/utils/frontierheap"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -59,123 +57,47 @@ func newTxWithMinerFee(tx *txpool.LazyTransaction, from common.Address, baseFee 
 	}, nil
 }
 
-// txByPriceAndTime implements both the sort and the heap interface, making it useful
-// for all at once sorting as well as individually adding and removing elements.
-type txByPriceAndTime []*txWithMinerFee
-
-func (s txByPriceAndTime) Len() int { return len(s) }
-func (s txByPriceAndTime) Less(i, j int) bool {
-	// If the prices are equal, use the time the transaction was first seen for
-	// deterministic sorting
-	cmp := s[i].fees.Cmp(s[j].fees)
-	if cmp == 0 {
-		return s[i].tx.Time.Before(s[j].tx.Time)
+// compareTxByPriceAndTime orders transactions by (effective miner tip desc,
+// first-seen time asc), returning >0 when a precedes b.
+func compareTxByPriceAndTime(a, b *txWithMinerFee) int {
+	if c := a.fees.Cmp(b.fees); c != 0 {
+		return c
 	}
-	return cmp > 0
-}
-func (s txByPriceAndTime) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
-
-func (s *txByPriceAndTime) Push(x interface{}) {
-	*s = append(*s, x.(*txWithMinerFee))
+	return b.tx.Time.Compare(a.tx.Time)
 }
 
-func (s *txByPriceAndTime) Pop() interface{} {
-	old := *s
-	n := len(old)
-	x := old[n-1]
-	old[n-1] = nil
-	*s = old[0 : n-1]
-	return x
-}
+// transactionsByPriceAndNonce is the heap of transaction sequences used to
+// order the candidates of an event, see newTransactionsByPriceAndNonce.
+type transactionsByPriceAndNonce = frontierheap.FrontierHeap[*txWithMinerFee]
 
-// transactionsByPriceAndNonce represents a set of transactions that can return
-// transactions in a profit-maximizing sorted order, while supporting removing
-// entire batches of transactions for non-executable accounts.
-type transactionsByPriceAndNonce struct {
-	txs     map[common.Address][]*txpool.LazyTransaction // Per account nonce-sorted list of transactions
-	heads   txByPriceAndTime                             // Next transaction for each unique account (price heap)
-	signer  types.Signer                                 // Signer for the set of transactions
-	baseFee *uint256.Int                                 // Current base fee
-}
-
-// newTransactionsByPriceAndNonce creates a transaction set that can retrieve
-// price sorted transactions in a nonce-honouring way.
+// newTransactionsByPriceAndNonce creates a heap over the senders' transaction
+// sequences that returns transactions in a profit-maximizing order (effective
+// tip desc, time asc) while honouring per-sender nonce sequencing.
 //
-// Note, the input map is reowned so the caller should not interact any more with
-// if after providing it to the constructor.
-func newTransactionsByPriceAndNonce(signer types.Signer, txs map[common.Address][]*txpool.LazyTransaction, baseFee *big.Int) *transactionsByPriceAndNonce {
+// Every transaction is wrapped up front. A transaction whose effective tip
+// cannot be computed is dropped together with the sender's later nonces, which
+// depend on it.
+func newTransactionsByPriceAndNonce(
+	txs map[common.Address][]*txpool.LazyTransaction,
+	baseFee *big.Int,
+) *transactionsByPriceAndNonce {
 	// Convert the basefee from header format to uint256 format
 	var baseFeeUint *uint256.Int
 	if baseFee != nil {
 		baseFeeUint = uint256.MustFromBig(baseFee)
 	}
-	// Initialize a price and received time based heap with the head transactions
-	heads := make(txByPriceAndTime, 0, len(txs))
-	for from, accTxs := range txs {
-		wrapped, err := newTxWithMinerFee(accTxs[0], from, baseFeeUint)
-		if err != nil {
-			delete(txs, from)
-			continue
+
+	heap := frontierheap.NewFrontierHeap(compareTxByPriceAndTime)
+	for sender, senderTxs := range txs {
+		sequence := make([]*txWithMinerFee, 0, len(senderTxs))
+		for _, tx := range senderTxs {
+			wrapped, err := newTxWithMinerFee(tx, sender, baseFeeUint)
+			if err != nil {
+				break // the sender's later nonces depend on the dropped transaction
+			}
+			sequence = append(sequence, wrapped)
 		}
-		heads = append(heads, wrapped)
-		txs[from] = accTxs[1:]
+		heap.AddSequence(sequence)
 	}
-	heap.Init(&heads)
-
-	// Assemble and return the transaction set
-	return &transactionsByPriceAndNonce{
-		txs:     txs,
-		heads:   heads,
-		signer:  signer,
-		baseFee: baseFeeUint,
-	}
-}
-
-// Peek returns the next transaction by price.
-func (t *transactionsByPriceAndNonce) Peek() (*txpool.LazyTransaction, *uint256.Int) {
-	if len(t.heads) == 0 {
-		return nil, nil
-	}
-	return t.heads[0].tx, t.heads[0].fees
-}
-
-// Shift replaces the current best head with the next one from the same account.
-func (t *transactionsByPriceAndNonce) Shift() {
-	acc := t.heads[0].from
-	if txs, ok := t.txs[acc]; ok && len(txs) > 0 {
-		if wrapped, err := newTxWithMinerFee(txs[0], acc, t.baseFee); err == nil {
-			t.heads[0], t.txs[acc] = wrapped, txs[1:]
-			heap.Fix(&t.heads, 0)
-			return
-		}
-	}
-	heap.Pop(&t.heads)
-}
-
-// Pop removes the best transaction, *not* replacing it with the next one from
-// the same account. This should be used when a transaction cannot be executed
-// and hence all subsequent ones should be discarded from the same account.
-func (t *transactionsByPriceAndNonce) Pop() {
-	heap.Pop(&t.heads)
-}
-
-// Empty returns if the price heap is empty. It can be used to check it simpler
-// than calling peek and checking for nil return.
-func (t *transactionsByPriceAndNonce) Empty() bool {
-	return len(t.heads) == 0
-}
-
-// Clear removes the entire content of the heap.
-func (t *transactionsByPriceAndNonce) Clear() {
-	t.heads, t.txs = nil, nil
-}
-
-func (t *transactionsByPriceAndNonce) Copy() *transactionsByPriceAndNonce {
-	txsCopy := maps.Clone(t.txs)
-	return &transactionsByPriceAndNonce{
-		txs:     txsCopy,
-		heads:   slices.Clone(t.heads),
-		signer:  t.signer,
-		baseFee: t.baseFee, // not writable, no need to copy
-	}
+	return heap
 }
