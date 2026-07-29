@@ -29,6 +29,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -353,6 +354,7 @@ func setupTxPoolWithConfig(config *params.ChainConfig) (*TxPool, *ecdsa.PrivateK
 		blockchain,
 		testSubsidiesCheckerFactory,
 		nil,
+		nil,
 	)
 
 	return pool, key
@@ -468,7 +470,7 @@ func TestStateChangeDuringTransactionPoolReset(t *testing.T) {
 	tx0 := transaction(0, 100000, key)
 	tx1 := transaction(1, 100000, key)
 
-	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain, nil)
+	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain, nil, nil)
 	defer pool.Stop()
 
 	nonce := pool.Nonce(address)
@@ -944,7 +946,7 @@ func TestSetCodeTransactions(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 
 			// initialize the pool
-			pool := newTxPool(testTxPoolConfig, pragueConfig, blockchain, testSubsidiesCheckerFactory, nil)
+			pool := newTxPool(testTxPoolConfig, pragueConfig, blockchain, testSubsidiesCheckerFactory, nil, nil)
 			defer pool.Stop()
 
 			test.test(t, pool)
@@ -974,6 +976,7 @@ func TestSetCodeTransactionsReorg(t *testing.T) {
 		pragueConfig,
 		blockchain,
 		testSubsidiesCheckerFactory,
+		nil,
 		nil,
 	)
 	defer pool.Stop()
@@ -1031,7 +1034,7 @@ func TestSetCodeTransaction_RemoveAuthorityWhenSetCodeTxIsRemoved(t *testing.T) 
 	blockchain := NewTestBlockChain(db)
 
 	// initialize the pool
-	pool := newTxPool(testTxPoolConfig, pragueConfig, blockchain, testSubsidiesCheckerFactory, nil)
+	pool := newTxPool(testTxPoolConfig, pragueConfig, blockchain, testSubsidiesCheckerFactory, nil, nil)
 	defer pool.Stop()
 
 	// Create the test accounts
@@ -1481,6 +1484,7 @@ func TestTransactionPostponing(t *testing.T) {
 		blockchain,
 		testSubsidiesCheckerFactory,
 		nil,
+		nil,
 	)
 	defer pool.Stop()
 
@@ -1703,6 +1707,7 @@ func testTransactionQueueGlobalLimiting(t *testing.T, nolocals bool) {
 		blockchain,
 		testSubsidiesCheckerFactory,
 		nil,
+		nil,
 	)
 	defer pool.Stop()
 
@@ -1800,6 +1805,7 @@ func testTransactionQueueTimeLimiting(t *testing.T, nolocals bool) {
 		params.TestChainConfig,
 		blockchain,
 		testSubsidiesCheckerFactory,
+		nil,
 		nil,
 	)
 	defer pool.Stop()
@@ -1945,6 +1951,7 @@ func TestTransactionQueueTruncating(t *testing.T) {
 		blockchain,
 		testSubsidiesCheckerFactory,
 		nil,
+		nil,
 	)
 	defer pool.Stop()
 
@@ -2056,6 +2063,7 @@ func TestTransactionPendingGlobalLimiting(t *testing.T) {
 		blockchain,
 		testSubsidiesCheckerFactory,
 		nil,
+		nil,
 	)
 	defer pool.Stop()
 
@@ -2166,6 +2174,7 @@ func TestTransactionCapClearsFromAll(t *testing.T) {
 		blockchain,
 		testSubsidiesCheckerFactory,
 		nil,
+		nil,
 	)
 	defer pool.Stop()
 
@@ -2203,6 +2212,7 @@ func TestTransactionPendingMinimumAllowance(t *testing.T) {
 		params.TestChainConfig,
 		blockchain,
 		testSubsidiesCheckerFactory,
+		nil,
 		nil,
 	)
 	defer pool.Stop()
@@ -2250,6 +2260,7 @@ func TestTransactionPool_CanReadMinTipFromPool(t *testing.T) {
 		blockchain,
 		testSubsidiesCheckerFactory,
 		nil,
+		nil,
 	)
 	defer pool.Stop()
 
@@ -2281,6 +2292,7 @@ func TestTransactionPool_RejectsUnderTippedTransactions(t *testing.T) {
 		params.TestChainConfig,
 		blockchain,
 		testSubsidiesCheckerFactory,
+		nil,
 		nil,
 	)
 	defer pool.Stop()
@@ -2325,6 +2337,7 @@ func TestTransactionPool_AcceptsUnderTippedLocals(t *testing.T) {
 		params.TestChainConfig,
 		blockchain,
 		testSubsidiesCheckerFactory,
+		nil,
 		nil,
 	)
 	defer pool.Stop()
@@ -2371,6 +2384,7 @@ func TestTransactionPool_DropUnderpricedTransactionsWhenPoolIsFull(t *testing.T)
 		params.TestChainConfig,
 		blockchain,
 		testSubsidiesCheckerFactory,
+		nil,
 		nil,
 	)
 	defer pool.Stop()
@@ -2492,6 +2506,7 @@ func TestTransactionPool_DroppingUnderpricedTransactionsDoesNotCreateNonceGaps(t
 		params.TestChainConfig,
 		blockchain,
 		testSubsidiesCheckerFactory,
+		nil,
 		nil,
 	)
 	defer pool.Stop()
@@ -2734,6 +2749,7 @@ func TestTransactionDeduplication(t *testing.T) {
 		blockchain,
 		testSubsidiesCheckerFactory,
 		nil,
+		nil,
 	)
 	defer pool.Stop()
 
@@ -2806,6 +2822,7 @@ func TestTransactionReplacement(t *testing.T) {
 		blockchain,
 		testSubsidiesCheckerFactory,
 		nil,
+		nil,
 	)
 	defer pool.Stop()
 
@@ -2874,6 +2891,73 @@ func TestTransactionReplacement(t *testing.T) {
 	}
 	if err := validateTxPoolInternals(pool); err != nil {
 		t.Fatalf("pool internal state corrupted: %v", err)
+	}
+}
+
+func TestTransactionReplacement_PrioritizedTransactionsAreNotReplaced(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		nonce       uint64 // nonce 0 is executable and gets promoted, nonce 1 stays queued
+		prioritized bool
+	}{
+		"pending prioritized":     {0, true},
+		"pending not prioritized": {0, false},
+		"queued prioritized":      {1, true},
+		"queued not prioritized":  {1, false},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			pool := newTxPool(
+				testTxPoolConfig,
+				params.TestChainConfig,
+				NewTestBlockChain(newTestTxPoolStateDb()),
+				testSubsidiesCheckerFactory,
+				NewPriorityCache(testTxPoolConfig),
+				nil,
+			)
+			t.Cleanup(pool.Stop)
+
+			key, _ := crypto.GenerateKey()
+			addr := crypto.PubkeyToAddress(key.PublicKey)
+			testAddBalance(pool, addr, big.NewInt(1000000000))
+
+			const price = 100
+			tx := pricedTransaction(test.nonce, 100000, big.NewInt(price), key)
+			_, err := pool.add(tx, false)
+			require.NoError(t, err)
+			pool.promoteExecutables([]common.Address{addr})
+
+			// An executable nonce is promoted to pending, a gapped one stays queued.
+			lists := pool.pending
+			if test.nonce != 0 {
+				lists = pool.queue
+			}
+			require.Equal(t, tx, lists[addr].GetByNonce(test.nonce))
+
+			var level uint64
+			var expectErr error
+			if test.prioritized {
+				level, expectErr = 1, ErrReplacePrioritized
+			}
+			pool.priorityCache.entries.Add(tx.Hash(), priorities.Priority{Level: level})
+
+			bumped := price * (100 + int64(testTxPoolConfig.PriceBump)) / 100
+			replacement := pricedTransaction(test.nonce, 100000, big.NewInt(bumped), key)
+			replaced, err := pool.add(replacement, false)
+			require.ErrorIs(t, err, expectErr)
+			require.Equal(t, !test.prioritized, replaced)
+
+			// A prioritized transaction keeps its nonce slot, otherwise the
+			// replacement takes it over and the old one is discarded.
+			kept, dropped := replacement, tx
+			if test.prioritized {
+				kept, dropped = tx, replacement
+			}
+			require.Equal(t, kept, lists[addr].GetByNonce(test.nonce))
+			require.Nil(t, pool.Get(dropped.Hash()))
+			require.NoError(t, validateTxPoolInternals(pool))
+		})
 	}
 }
 
@@ -3004,6 +3088,7 @@ func testTransactionJournaling(t *testing.T, nolocals bool) {
 		blockchain,
 		testSubsidiesCheckerFactory,
 		nil,
+		nil,
 	)
 
 	// Create two test accounts to ensure remotes expire but locals do not
@@ -3047,6 +3132,7 @@ func testTransactionJournaling(t *testing.T, nolocals bool) {
 		blockchain,
 		testSubsidiesCheckerFactory,
 		nil,
+		nil,
 	)
 
 	pending, queued = pool.Stats()
@@ -3078,6 +3164,7 @@ func testTransactionJournaling(t *testing.T, nolocals bool) {
 		params.TestChainConfig,
 		blockchain,
 		testSubsidiesCheckerFactory,
+		nil,
 		nil,
 	)
 
@@ -3114,6 +3201,7 @@ func TestTransactionStatusCheck(t *testing.T) {
 		params.TestChainConfig,
 		blockchain,
 		testSubsidiesCheckerFactory,
+		nil,
 		nil,
 	)
 	defer pool.Stop()
@@ -3189,6 +3277,7 @@ func TestSampleHashes_AllExpectedTransactionsAreReturned(t *testing.T) {
 		params.TestChainConfig,
 		blockchain,
 		testSubsidiesCheckerFactory,
+		nil,
 		nil,
 	)
 	defer pool.Stop()
@@ -3270,7 +3359,7 @@ func TestSampleHashesManySenders(t *testing.T) {
 	statedb := newTestTxPoolStateDb()
 	blockchain := NewTestBlockChain(statedb)
 
-	pool := newTxPool(testTxPoolConfig, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory, nil)
+	pool := newTxPool(testTxPoolConfig, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory, nil, nil)
 	defer pool.Stop()
 
 	expectedTxs := make(map[common.Hash]int)
@@ -3333,6 +3422,7 @@ func TestTxPool_ActivatingOsakaDropsTransactionsWithHighGas(t *testing.T) {
 		params.TestChainConfig,
 		blockchain,
 		testSubsidiesCheckerFactory,
+		nil,
 		nil,
 	)
 	defer pool.Stop()

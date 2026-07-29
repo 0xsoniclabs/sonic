@@ -155,7 +155,7 @@ func MakeNode(sigCtx context.Context, ctx *cli.Context, cfg *Config) (*node.Node
 		if cfg.TxPool.Journal != "" {
 			cfg.TxPool.Journal = path.Join(cfg.Node.DataDir, cfg.TxPool.Journal)
 		}
-		pool := evmcore.NewTxPool(cfg.TxPool, reader.CurrentConfig(), reader, bundleEvaluationCache)
+		pool := evmcore.NewTxPool(cfg.TxPool, reader.CurrentConfig(), reader, priorityCache, bundleEvaluationCache)
 		cleanup = append(cleanup, pool.Stop)
 		return pool
 	}

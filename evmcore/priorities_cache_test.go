@@ -96,10 +96,33 @@ func TestPriorityCache_GetOrClassify_PrefersTheCacheAndRetainsClassifications(t 
 	}
 }
 
+func TestPriorityCache_IsCachedAsPrioritized_OnlyReportsCachedNonZeroLevels(t *testing.T) {
+	tests := map[string]struct {
+		cached   *priorities.Priority
+		expected bool
+	}{
+		"not cached":             {nil, false},
+		"cached prioritized":     {new(priorities.Priority{Level: 1}), true},
+		"cached non-prioritized": {new(priorities.Priority{}), false},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			hash := common.Hash{1}
+			cache := NewPriorityCache(DefaultTxPoolConfig)
+			if tc.cached != nil {
+				cache.entries.Add(hash, *tc.cached)
+			}
+
+			require.Equal(t, tc.expected, cache.IsCachedAsPrioritized(hash))
+		})
+	}
+}
+
 func TestPriorityCache_NilCache_TreatsTransactionsAsNotPrioritized(t *testing.T) {
 	tx := types.NewTx(&types.LegacyTx{})
 	classifier := priorities.NewMockClassifier(gomock.NewController(t))
 
 	var cache *PriorityCache
 	require.Equal(t, priorities.Priority{}, cache.GetOrClassify(tx, classifier))
+	require.False(t, cache.IsCachedAsPrioritized(tx.Hash()))
 }
