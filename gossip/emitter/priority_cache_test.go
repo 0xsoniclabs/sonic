@@ -35,6 +35,28 @@ func TestNewPriorityCache_HoldsTwiceThePoolCapacity(t *testing.T) {
 	require.Equal(t, 10, cache.entries.Len())
 }
 
+func TestPriorityCache_IsPrioritized_FollowsTheCachedPriority(t *testing.T) {
+	tests := map[string]struct {
+		priority   priorities.Priority
+		classified bool
+		want       bool
+	}{
+		"not classified": {},
+		"ordinary":       {classified: true},
+		"prioritized":    {priority: prioritized(1), classified: true, want: true},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			hash := common.Hash{1}
+			cache := newTestPriorityCache()
+			if test.classified {
+				cache.entries.Add(hash, test.priority)
+			}
+			require.Equal(t, test.want, cache.IsPrioritized(hash))
+		})
+	}
+}
+
 func TestPriorityCache_Priorities_ClassifiesWhatIsNotCached(t *testing.T) {
 	cached, classified := newCacheTx(1), newCacheTx(2)
 	context := &priorityContext{classifier: fakeClassifier{
@@ -59,9 +81,7 @@ func TestPriorityCache_Priorities_CachesTheClassification(t *testing.T) {
 	cache := newTestPriorityCache()
 	cache.Priorities(types.Transactions{tx}, context)
 
-	entry, found := cache.entries.Get(tx.Hash())
-	require.True(t, found)
-	require.Equal(t, prioritized(1), entry)
+	require.True(t, cache.IsPrioritized(tx.Hash()))
 }
 
 func TestPriorityCache_Priorities_WithoutAContextNothingIsPrioritized(t *testing.T) {
@@ -74,6 +94,7 @@ func TestPriorityCache_Priorities_WithoutAContextNothingIsPrioritized(t *testing
 
 func TestPriorityCache_NilCacheIsInert(t *testing.T) {
 	var cache *PriorityCache
+	require.False(t, cache.IsPrioritized(common.Hash{1}))
 	require.Empty(t, cache.Priorities(types.Transactions{newCacheTx(1)}, &priorityContext{}))
 }
 

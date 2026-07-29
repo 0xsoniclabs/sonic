@@ -28,20 +28,25 @@ import (
 // classification issues an EVM call against the head state, which is too
 // expensive to repeat for every candidate whenever an event is built.
 //
-// The emitter calls Priorities, which classifies whatever is missing, so that a
-// transaction is never ordered as ordinary merely because it has not been
-// classified before.
+// The cache serves its two consumers with deliberately different semantics:
+//
+//   - The emitter calls Priorities, which classifies whatever is missing, so
+//     that a transaction is never ordered as ordinary merely because it has not
+//     been classified before.
+//   - The transaction pool calls IsPrioritized, which only reads the cache and
+//     reports an unknown transaction as non-prioritized. It is called with the
+//     pool lock held and must therefore never classify.
 //
 // Entries do not expire; they are evicted in least-recently-used order once the
 // cache is full. Since it holds twice as many entries as the pool admits
 // transactions, a classification normally survives for as long as its
 // transaction is pending, and a cached priority may thus be older than the
-// current head state. That is admissible because it only affects the order in
-// which this validator offers transactions to the DAG and never affects
-// consensus: the authoritative priority ordering is re-derived during block
-// formation.
+// current head state. That is admissible because it is a hint only and never
+// affects consensus (see priorityHinter): the authoritative priority ordering is
+// re-derived during block formation.
 //
-// A nil cache is inert: it classifies nothing.
+// A nil cache is inert: it classifies nothing and reports every transaction as
+// non-prioritized.
 type PriorityCache struct {
 	// entries maps a transaction hash to its priorities.Priority. The
 	// underlying cache is safe for concurrent use.
@@ -54,6 +59,18 @@ func NewPriorityCache(poolConfig evmcore.TxPoolConfig) *PriorityCache {
 	capacity := 2 * (poolConfig.GlobalSlots + poolConfig.GlobalQueue)
 	entries, _ := lru.New(max(int(capacity), 1)) // only fails for a non-positive capacity
 	return &PriorityCache{entries: entries}
+}
+
+// IsPrioritized implements evmcore.PriorityLookup, allowing the transaction pool
+// to protect prioritized transactions from being replaced. It only reads the
+// cache — an unclassified transaction is reported as non-prioritized — and is
+// therefore safe to call while the pool lock is held.
+func (c *PriorityCache) IsPrioritized(hash common.Hash) bool {
+	if c == nil {
+		return false
+	}
+	entry, found := c.entries.Get(hash)
+	return found && entry.(priorities.Priority).IsPrioritized()
 }
 
 // Priorities returns the priority of each of the given transactions, classifying

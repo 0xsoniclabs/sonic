@@ -171,3 +171,41 @@ func (mr *MockStateReaderMockRecorder) SubscribeNewBlock(ch any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribeNewBlock", reflect.TypeOf((*MockStateReader)(nil).SubscribeNewBlock), ch)
 }
+
+// MockPriorityLookup is a mock of PriorityLookup interface.
+type MockPriorityLookup struct {
+	ctrl     *gomock.Controller
+	recorder *MockPriorityLookupMockRecorder
+	isgomock struct{}
+}
+
+// MockPriorityLookupMockRecorder is the mock recorder for MockPriorityLookup.
+type MockPriorityLookupMockRecorder struct {
+	mock *MockPriorityLookup
+}
+
+// NewMockPriorityLookup creates a new mock instance.
+func NewMockPriorityLookup(ctrl *gomock.Controller) *MockPriorityLookup {
+	mock := &MockPriorityLookup{ctrl: ctrl}
+	mock.recorder = &MockPriorityLookupMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockPriorityLookup) EXPECT() *MockPriorityLookupMockRecorder {
+	return m.recorder
+}
+
+// IsPrioritized mocks base method.
+func (m *MockPriorityLookup) IsPrioritized(hash common.Hash) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsPrioritized", hash)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsPrioritized indicates an expected call of IsPrioritized.
+func (mr *MockPriorityLookupMockRecorder) IsPrioritized(hash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsPrioritized", reflect.TypeOf((*MockPriorityLookup)(nil).IsPrioritized), hash)
+}
