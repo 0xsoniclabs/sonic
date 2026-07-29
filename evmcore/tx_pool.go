@@ -83,6 +83,10 @@ var (
 	// with a different one without the required price bump.
 	ErrReplaceUnderpriced = errors.New("replacement transaction underpriced")
 
+	// ErrReplacePrioritized is returned if a prioritized transaction is attempted
+	// to be replaced.
+	ErrReplacePrioritized = errors.New("prioritized transaction cannot be replaced")
+
 	// ErrGasLimit is returned if a transaction's requested gas limit exceeds the
 	// maximum allowance of the current block.
 	ErrGasLimit = errors.New("exceeds block gas limit")
@@ -183,6 +187,17 @@ type StateReader interface {
 	CurrentConfig() *params.ChainConfig
 	CurrentRules() opera.Rules
 	Header(hash common.Hash, number uint64) *EvmHeader
+}
+
+// PriorityLookup resolves whether a pending transaction is prioritized. It is
+// implemented by the emitter's priority cache, which classifies the pool's
+// transactions while ordering them for emission. It may be nil, in which case no
+// transaction is prioritized.
+type PriorityLookup interface {
+	// IsCachedAsPrioritized reports whether the given transaction hash has a cached
+	// priority that is prioritized. An uncached transaction is reported as not
+	// prioritized.
+	IsCachedAsPrioritized(hash common.Hash) bool
 }
 
 // subsidiesCheckFuncFactory is a factory method to create a subsidies checker instance.
@@ -337,6 +352,8 @@ type TxPool struct {
 	subsidiesCheckerFactory subsidiesCheckFuncFactory    // Factory to create a subsidies checker instance
 	subsidiesCheckerCache   *utils.TransactionCheckCache // Cache for heavy subsidies check results
 
+	priorityLookup PriorityLookup // Source of the transaction priorities, nil if unavailable
+
 	bundleEvaluationCache BundleEvaluator // Cache for bundle evaluation results
 }
 
@@ -350,6 +367,7 @@ func NewTxPool(
 	config TxPoolConfig,
 	chainconfig *params.ChainConfig,
 	chain StateReader,
+	priorityLookup PriorityLookup,
 	bundlesCache BundleEvaluator,
 ) *TxPool {
 	return newTxPool(
@@ -357,6 +375,7 @@ func NewTxPool(
 		chainconfig,
 		chain,
 		newSubsidiesChecker,
+		priorityLookup,
 		bundlesCache,
 	)
 }
@@ -366,6 +385,7 @@ func newTxPool(
 	chainconfig *params.ChainConfig,
 	chain StateReader,
 	subsidiesCheckerFactory subsidiesCheckFuncFactory,
+	priorityLookup PriorityLookup,
 	bundlesCache BundleEvaluator,
 ) *TxPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
@@ -394,6 +414,8 @@ func newTxPool(
 
 		subsidiesCheckerFactory: subsidiesCheckerFactory,
 		subsidiesCheckerCache:   utils.NewCheckerCache(-1), // use default size
+
+		priorityLookup: priorityLookup,
 
 		bundleEvaluationCache: bundlesCache,
 	}
@@ -872,6 +894,12 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	// Try to replace an existing transaction in the pending pool
 	from, _ := types.Sender(pool.signer, tx) // already validated
 	if list := pool.pending[from]; list != nil && list.Overlaps(tx) {
+		// Prioritized transactions are not replaced to avoid repeatedly
+		// reevaluating the priority of replacement transactions.
+		if pool.isPrioritized(list.Get(tx.Nonce())) {
+			pendingDiscardMeter.Mark(1)
+			return false, ErrReplacePrioritized
+		}
 		// Nonce already pending, check if required price bump is met
 		inserted, old := list.Add(tx, pool.config.PriceBump)
 		if !inserted {
@@ -933,6 +961,11 @@ func (pool *TxPool) enqueueTx(hash common.Hash, tx *types.Transaction, local boo
 	from, _ := types.Sender(pool.signer, tx) // already validated
 	if pool.queue[from] == nil {
 		pool.queue[from] = newTxList(false)
+	}
+	// A prioritized transaction is kept, just like in the pending list.
+	if pool.isPrioritized(pool.queue[from].Get(tx.Nonce())) {
+		queuedDiscardMeter.Mark(1)
+		return false, ErrReplacePrioritized
 	}
 	inserted, old := pool.queue[from].Add(tx, pool.config.PriceBump)
 	if !inserted {
@@ -1600,6 +1633,19 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 	}
 	promotedTxsCounter.Inc(int64(len(promoted)))
 	return promoted
+}
+
+// isPrioritized reports whether the given transaction is prioritized according
+// to the pool's priority lookup. A nil transaction, a transaction that has not
+// been classified yet, and any transaction in a pool without a lookup are not
+// prioritized.
+//
+// Note, this method assumes the pool lock is held!
+func (pool *TxPool) isPrioritized(tx *types.Transaction) bool {
+	if tx == nil || pool.priorityLookup == nil {
+		return false
+	}
+	return pool.priorityLookup.IsCachedAsPrioritized(tx.Hash())
 }
 
 func (pool *TxPool) getSubsidiesCheckerForReorg() utils.TransactionCheckFunc {
