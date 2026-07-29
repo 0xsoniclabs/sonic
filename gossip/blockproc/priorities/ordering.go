@@ -58,22 +58,26 @@ type EvmClassifier struct {
 	vm       VirtualMachine
 	signer   types.Signer
 	state    Snapshotter
+	failures Meter
 }
 
 // NewEvmClassifier creates a Classifier that queries the registry per
 // transaction. The provided state must be the same one backing vm so that
-// snapshots isolate the query.
+// snapshots isolate the query. Failed classifications, which silently degrade
+// the transaction to "not prioritized", are reported to the failures meter.
 func NewEvmClassifier(
 	upgrades opera.Upgrades,
 	vm VirtualMachine,
 	signer types.Signer,
 	state Snapshotter,
+	failures Meter,
 ) *EvmClassifier {
 	return &EvmClassifier{
 		upgrades: upgrades,
 		vm:       vm,
 		signer:   signer,
 		state:    state,
+		failures: failures,
 	}
 }
 
@@ -83,6 +87,9 @@ func (c *EvmClassifier) Priority(tx *types.Transaction) (Priority, error) {
 	defer c.state.RevertToInterTxSnapshot(snapshot)
 
 	priority, err := GetPriority(c.upgrades, c.vm, c.signer, tx)
+	if err != nil {
+		c.failures.Mark(1)
+	}
 	return priority, err
 }
 
