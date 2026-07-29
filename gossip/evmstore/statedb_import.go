@@ -106,7 +106,8 @@ func (s *Store) InitializeArchiveWorldState(liveReader io.Reader, blockNum uint6
 // The Store must be closed during the call.
 func (s *Store) ExportLiveWorldState(ctx context.Context, out io.Writer) error {
 	liveDir := filepath.Join(s.parameters.Directory, "live")
-	if err := mptio.Export(ctx, mptio.NewLog(), liveDir, out); err != nil {
+	liveScratchDir := filepath.Join(s.parameters.Directory, "live-scratch")
+	if err := mptio.Export(ctx, mptio.NewLog(), liveDir, out, liveScratchDir); err != nil {
 		return fmt.Errorf("failed to export Live StateDB; %v", err)
 	}
 	return nil
@@ -116,11 +117,13 @@ func (s *Store) ExportLiveWorldState(ctx context.Context, out io.Writer) error {
 // The Store must be closed during the call.
 func (s *Store) ExportArchiveWorldState(ctx context.Context, out io.Writer) error {
 	archiveDir := filepath.Join(s.parameters.Directory, "archive")
+	archiveScratchDir := filepath.Join(s.parameters.Directory, "archive-scratch")
 	if err := mptio.ExportArchiveWithConfig(
 		ctx,
 		mptio.NewLog(),
 		archiveDir,
 		out,
+		archiveScratchDir,
 		mpt.NodeCacheConfig{Capacity: s.cfg.Cache.StateDbCapacity},
 		mpt.ArchiveConfig{},
 	); err != nil {
