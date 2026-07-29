@@ -80,6 +80,24 @@ func TestTxSortedMap_ContainsFunc_LocatesMatchingTransactions(t *testing.T) {
 	}))
 }
 
+func TestTxList_GetByNonce_ReturnsTheMatchingTransactionOrNil(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	list := newTxList(false)
+	txs := map[uint64]*types.Transaction{}
+	for _, nonce := range []uint64{0, 1, 3} {
+		txs[nonce] = transaction(nonce, 0, key)
+		added, _ := list.Add(txs[nonce], DefaultTxPoolConfig.PriceBump)
+		require.True(t, added)
+	}
+
+	// An absent nonce maps to a nil transaction in both the list and txs.
+	for _, nonce := range []uint64{0, 1, 2, 3, 4} {
+		require.Equal(t, txs[nonce], list.GetByNonce(nonce))
+	}
+}
+
 func TestTxList_Filter_WithSponsoredTransactions_RetainsCovered(t *testing.T) {
 	require := require.New(t)
 

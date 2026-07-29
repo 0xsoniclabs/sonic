@@ -68,3 +68,14 @@ func (c *PriorityCache) GetOrClassify(
 	c.entries.Add(hash, priority)
 	return priority
 }
+
+// IsCachedAsPrioritized reports whether the given transaction hash has a cached
+// priority that is prioritized. A transaction that has not been classified yet is
+// reported as not prioritized.
+func (c *PriorityCache) IsCachedAsPrioritized(hash common.Hash) bool {
+	if c == nil {
+		return false
+	}
+	priority, found := c.entries.Get(hash)
+	return found && priority.IsPrioritized()
+}

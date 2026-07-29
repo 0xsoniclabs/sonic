@@ -83,6 +83,10 @@ var (
 	// with a different one without the required price bump.
 	ErrReplaceUnderpriced = errors.New("replacement transaction underpriced")
 
+	// ErrReplacePrioritized is returned if a prioritized transaction is attempted
+	// to be replaced.
+	ErrReplacePrioritized = errors.New("prioritized transaction cannot be replaced")
+
 	// ErrGasLimit is returned if a transaction's requested gas limit exceeds the
 	// maximum allowance of the current block.
 	ErrGasLimit = errors.New("exceeds block gas limit")
@@ -338,6 +342,8 @@ type TxPool struct {
 	subsidiesCheckerFactory subsidiesCheckFuncFactory    // Factory to create a subsidies checker instance
 	subsidiesCheckerCache   *utils.TransactionCheckCache // Cache for heavy subsidies check results
 
+	priorityCache *PriorityCache // Priorities classified by the emitter; nil disables the check
+
 	bundleEvaluationCache BundleEvaluator // Cache for bundle evaluation results
 }
 
@@ -351,6 +357,7 @@ func NewTxPool(
 	config TxPoolConfig,
 	chainconfig *params.ChainConfig,
 	chain StateReader,
+	priorityCache *PriorityCache,
 	bundlesCache BundleEvaluator,
 ) *TxPool {
 	return newTxPool(
@@ -358,6 +365,7 @@ func NewTxPool(
 		chainconfig,
 		chain,
 		newSubsidiesChecker,
+		priorityCache,
 		bundlesCache,
 	)
 }
@@ -367,6 +375,7 @@ func newTxPool(
 	chainconfig *params.ChainConfig,
 	chain StateReader,
 	subsidiesCheckerFactory subsidiesCheckFuncFactory,
+	priorityCache *PriorityCache,
 	bundlesCache BundleEvaluator,
 ) *TxPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
@@ -395,6 +404,8 @@ func newTxPool(
 
 		subsidiesCheckerFactory: subsidiesCheckerFactory,
 		subsidiesCheckerCache:   utils.NewCheckerCache(-1), // use default size
+
+		priorityCache: priorityCache,
 
 		bundleEvaluationCache: bundlesCache,
 	}
@@ -848,6 +859,21 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	// Mark a new received valid tx
 	receivedTxsMeter.Mark(1)
 
+	from, _ := types.Sender(pool.signer, tx) // already validated
+
+	// Prioritized transactions are not replaced to avoid repeatedly
+	// reevaluating the priority of replacement transactions.
+	if pool.isPrioritizedAt(pool.pending[from], tx.Nonce()) {
+		log.Trace("Discarding replacement of prioritized transaction", "hash", hash, "from", from, "nonce", tx.Nonce())
+		pendingDiscardMeter.Mark(1)
+		return false, ErrReplacePrioritized
+	}
+	if pool.isPrioritizedAt(pool.queue[from], tx.Nonce()) {
+		log.Trace("Discarding replacement of prioritized transaction", "hash", hash, "from", from, "nonce", tx.Nonce())
+		queuedDiscardMeter.Mark(1)
+		return false, ErrReplacePrioritized
+	}
+
 	// If the transaction pool is full, discard underpriced transactions
 	if uint64(pool.all.Slots()+numSlots(tx)) > pool.config.GlobalSlots+pool.config.GlobalQueue {
 		// If the new transaction is underpriced, don't accept it
@@ -875,7 +901,6 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 		}
 	}
 	// Try to replace an existing transaction in the pending pool
-	from, _ := types.Sender(pool.signer, tx) // already validated
 	if list := pool.pending[from]; list != nil && list.Overlaps(tx) {
 		// Nonce already pending, check if required price bump is met
 		inserted, old := list.Add(tx, pool.config.PriceBump)
@@ -920,6 +945,16 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 
 	log.Trace("Pooled new future transaction", "hash", hash, "from", from, "to", tx.To())
 	return replaced, nil
+}
+
+// isPrioritizedAt reports whether the given list holds a transaction with the
+// provided nonce whose priority is cached as prioritized.
+func (pool *TxPool) isPrioritizedAt(list *txList, nonce uint64) bool {
+	if list == nil {
+		return false
+	}
+	existing := list.GetByNonce(nonce)
+	return existing != nil && pool.priorityCache.IsCachedAsPrioritized(existing.Hash())
 }
 
 func (pool *TxPool) updateUsedGauges() {
