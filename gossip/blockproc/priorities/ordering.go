@@ -22,6 +22,7 @@ import (
 	"slices"
 
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils/frontierheap"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -246,13 +247,19 @@ func prioritizedSenderSequences(
 // nonce) and advances that sender. A frontier that does not fit its entity
 // budget removes the sender's remaining transactions (its later nonces depend
 // on it), so a budget is only ever spent on transactions that can actually
-// execute in the prioritized prefix. It consumes bySender, mutating it as
-// senders are advanced and exhausted.
+// execute in the prioritized prefix.
 func computePrioritizedTxsPrefix(
 	txsWithPrio []transactionWithPriority,
 	bySender map[common.Address][]int,
 	perEntityBudget uint64,
 ) []int {
+	frontier := frontierheap.NewFrontierHeap(func(a, b int) int {
+		return txsWithPrio[a].cmpLevelWeightHash(txsWithPrio[b])
+	})
+	for _, sequence := range bySender {
+		frontier.AddSequence(sequence)
+	}
+
 	selected := make([]int, 0, len(txsWithPrio))
 	remaining := make(map[PriorityID]uint64)
 	budgetOf := func(id PriorityID) uint64 {
@@ -261,29 +268,21 @@ func computePrioritizedTxsPrefix(
 		}
 		return perEntityBudget
 	}
-	for len(bySender) > 0 {
-		best := -1
-		var bestSender common.Address
-		for sender, sequence := range bySender {
-			idx := sequence[0]
-			if txsWithPrio[idx].tx.Gas() > budgetOf(txsWithPrio[idx].priority.ID) {
-				delete(bySender, sender) // frontier does not fit the budget: sender blocked
-				continue
-			}
-			if best == -1 || txsWithPrio[idx].cmpLevelWeightHash(txsWithPrio[best]) > 0 {
-				best, bestSender = idx, sender
-			}
-		}
-		if best == -1 {
+	for {
+		idx, ok := frontier.Peek()
+		if !ok {
 			break
 		}
-		id := txsWithPrio[best].priority.ID
-		remaining[id] = budgetOf(id) - txsWithPrio[best].tx.Gas()
-		selected = append(selected, best)
-		bySender[bestSender] = bySender[bestSender][1:]
-		if len(bySender[bestSender]) == 0 {
-			delete(bySender, bestSender)
+		gas := txsWithPrio[idx].tx.Gas()
+		id := txsWithPrio[idx].priority.ID
+		budget := budgetOf(id)
+		if gas > budget {
+			frontier.PopSequence() // tx does not fit the budget: sender blocked
+			continue
 		}
+		remaining[id] = budget - gas
+		selected = append(selected, idx)
+		frontier.Shift()
 	}
 	return selected
 }
