@@ -17,14 +17,12 @@
 package emitter
 
 import (
-	"cmp"
 	"crypto/ecdsa"
 	"math/big"
-	"math/rand/v2"
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/gossip/gasprice"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -32,174 +30,29 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
-func TestTransactionPriceNonceSortLegacy(t *testing.T) {
-	t.Parallel()
-	testTransactionPriceNonceSort(t, nil)
-}
-
-func TestTransactionPriceNonceSort1559(t *testing.T) {
-	t.Parallel()
-	testTransactionPriceNonceSort(t, big.NewInt(0))
-	testTransactionPriceNonceSort(t, big.NewInt(5))
-	testTransactionPriceNonceSort(t, big.NewInt(50))
-}
-
-// Tests that transactions can be correctly sorted according to their price in
-// decreasing order, but at the same time with increasing nonces when issued by
-// the same account.
-func testTransactionPriceNonceSort(t *testing.T, baseFee *big.Int) {
-	// Generate a batch of accounts to start with
-	keys := make([]*ecdsa.PrivateKey, 25)
-	for i := 0; i < len(keys); i++ {
-		keys[i], _ = crypto.GenerateKey()
+func TestTxWithMetadata_StageFollowsPriorityAndTurn(t *testing.T) {
+	tests := map[string]struct {
+		priority priorities.Priority
+		myTurn   bool
+		want     stage
+	}{
+		"prioritized, my turn":     {withPrio, true, stagePrioritizedMyTurn},
+		"prioritized, not my turn": {withPrio, false, stagePrioritizedNotMyTurn},
+		"ordinary, my turn":        {withoutPrio, true, stageNotPrioritized},
+		"ordinary, not my turn":    {withoutPrio, false, stageNotPrioritized},
 	}
-	signer := types.LatestSignerForChainID(common.Big1)
-
-	// Generate a batch of transactions with overlapping values, but shifted nonces
-	groups := map[common.Address][]*txpool.LazyTransaction{}
-	expectedCount := 0
-	for start, key := range keys {
-		addr := crypto.PubkeyToAddress(key.PublicKey)
-		count := 25
-		for i := 0; i < 25; i++ {
-			var tx *types.Transaction
-			gasFeeCap := rand.IntN(50)
-			if baseFee == nil {
-				tx = types.NewTx(&types.LegacyTx{
-					Nonce: uint64(start + i),
-					// no to, cannot be a sponsored tx
-					Value:    big.NewInt(100),
-					Gas:      100,
-					GasPrice: big.NewInt(int64(gasFeeCap)),
-					Data:     nil,
-				})
-			} else {
-				tx = types.NewTx(&types.DynamicFeeTx{
-					Nonce: uint64(start + i),
-					// no to, cannot be a sponsored tx
-					Value:     big.NewInt(100),
-					Gas:       100,
-					GasFeeCap: big.NewInt(int64(gasFeeCap)),
-					GasTipCap: big.NewInt(int64(rand.IntN(gasFeeCap + 1))),
-					Data:      nil,
-				})
-				if count == 25 && int64(gasFeeCap) < baseFee.Int64() {
-					count = i
-				}
-			}
-			tx, err := types.SignTx(tx, signer, key)
-			if err != nil {
-				t.Fatalf("failed to sign tx: %s", err)
-			}
-			groups[addr] = append(groups[addr], &txpool.LazyTransaction{
-				Hash:      tx.Hash(),
-				Tx:        tx,
-				Time:      tx.Time(),
-				GasFeeCap: uint256.MustFromBig(tx.GasFeeCap()),
-				GasTipCap: uint256.MustFromBig(tx.GasTipCap()),
-				Gas:       tx.Gas(),
-				BlobGas:   tx.BlobGas(),
-			})
-		}
-		expectedCount += count
-	}
-	// Sort the transactions and cross check the nonce ordering
-	txset := newTransactionsByPriceAndNonce(groups, baseFee)
-
-	txs := types.Transactions{}
-	for entry, ok := txset.Peek(); ok; entry, ok = txset.Peek() {
-		txs = append(txs, entry.tx.Tx)
-		txset.Shift()
-	}
-	if len(txs) != expectedCount {
-		t.Errorf("expected %d transactions, found %d", expectedCount, len(txs))
-	}
-	for i, txi := range txs {
-		fromi, _ := types.Sender(signer, txi)
-
-		// Make sure the nonce order is valid
-		for j, txj := range txs[i+1:] {
-			fromj, _ := types.Sender(signer, txj)
-			if fromi == fromj && txi.Nonce() > txj.Nonce() {
-				t.Errorf("invalid nonce ordering: tx #%d (A=%x N=%v) < tx #%d (A=%x N=%v)", i, fromi[:4], txi.Nonce(), i+j, fromj[:4], txj.Nonce())
-			}
-		}
-		// If the next tx has different from account, the price must be lower than the current one
-		if i+1 < len(txs) {
-			next := txs[i+1]
-			fromNext, _ := types.Sender(signer, next)
-			tip, err := gasprice.EffectiveGasTip(txi, baseFee)
-			nextTip, nextErr := gasprice.EffectiveGasTip(next, baseFee)
-			if err != nil || nextErr != nil {
-				t.Errorf("error calculating effective tip: %v, %v", err, nextErr)
-			}
-			if fromi != fromNext && tip.Cmp(nextTip) < 0 {
-				t.Errorf("invalid gasprice ordering: tx #%d (A=%x P=%v) < tx #%d (A=%x P=%v)", i, fromi[:4], txi.GasPrice(), i+1, fromNext[:4], next.GasPrice())
-			}
-		}
-	}
-}
-
-// Tests that if multiple transactions have the same price, the ones seen earlier
-// are prioritized to avoid network spam attacks aiming for a specific ordering.
-func TestTransactionTimeSort(t *testing.T) {
-	t.Parallel()
-	// Generate a batch of accounts to start with
-	keys := make([]*ecdsa.PrivateKey, 5)
-	for i := 0; i < len(keys); i++ {
-		keys[i], _ = crypto.GenerateKey()
-	}
-	signer := types.HomesteadSigner{}
-
-	// Generate a batch of transactions with overlapping prices, but different creation times
-	groups := map[common.Address][]*txpool.LazyTransaction{}
-	for start, key := range keys {
-		addr := crypto.PubkeyToAddress(key.PublicKey)
-
-		tx, _ := types.SignTx(types.NewTransaction(0, common.Address{}, big.NewInt(100), 100, big.NewInt(1), nil), signer, key)
-		tx.SetTime(time.Unix(0, int64(len(keys)-start)))
-
-		groups[addr] = append(groups[addr], &txpool.LazyTransaction{
-			Hash:      tx.Hash(),
-			Tx:        tx,
-			Time:      tx.Time(),
-			GasFeeCap: uint256.MustFromBig(tx.GasFeeCap()),
-			GasTipCap: uint256.MustFromBig(tx.GasTipCap()),
-			Gas:       tx.Gas(),
-			BlobGas:   tx.BlobGas(),
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			entry := txWithMetadata{priority: test.priority, myTurn: test.myTurn}
+			require.Equal(t, test.want, entry.stage())
 		})
 	}
-	// Sort the transactions and cross check the nonce ordering
-	txset := newTransactionsByPriceAndNonce(groups, nil)
-
-	txs := types.Transactions{}
-	for entry, ok := txset.Peek(); ok; entry, ok = txset.Peek() {
-		txs = append(txs, entry.tx.Tx)
-		txset.Shift()
-	}
-	if len(txs) != len(keys) {
-		t.Errorf("expected %d transactions, found %d", len(keys), len(txs))
-	}
-	for i, txi := range txs {
-		fromi, _ := types.Sender(signer, txi)
-		if i+1 < len(txs) {
-			next := txs[i+1]
-			fromNext, _ := types.Sender(signer, next)
-
-			if txi.GasPrice().Cmp(next.GasPrice()) < 0 {
-				t.Errorf("invalid gasprice ordering: tx #%d (A=%x P=%v) < tx #%d (A=%x P=%v)", i, fromi[:4], txi.GasPrice(), i+1, fromNext[:4], next.GasPrice())
-			}
-			// Make sure time order is ascending if the txs have the same gas price
-			if txi.GasPrice().Cmp(next.GasPrice()) == 0 && txi.Time().After(next.Time()) {
-				t.Errorf("invalid received time ordering: tx #%d (A=%x T=%v) > tx #%d (A=%x T=%v)", i, fromi[:4], txi.Time(), i+1, fromNext[:4], next.Time())
-			}
-		}
-	}
 }
 
-func TestTransactionsOrdering_MinerFeesCanBeComputedWithAllTransactions(t *testing.T) {
+func TestComputeEffectiveTip_TipCanBeComputedForAllTransactionKinds(t *testing.T) {
 
 	baseFee := uint256.NewInt(50)
 
@@ -207,9 +60,9 @@ func TestTransactionsOrdering_MinerFeesCanBeComputedWithAllTransactions(t *testi
 	// when calculating the miner fee for sorting purposes.
 
 	tests := map[string]struct {
-		tx               *types.Transaction
-		expectedError    error
-		expectedMinerFee uint64
+		tx            *types.Transaction
+		expectedError error
+		expectedTip   uint64
 	}{
 		"sponsored transaction": {
 			tx: types.NewTx(&types.DynamicFeeTx{
@@ -219,7 +72,7 @@ func TestTransactionsOrdering_MinerFeesCanBeComputedWithAllTransactions(t *testi
 				GasTipCap: big.NewInt(0),
 				V:         big.NewInt(27), // non-internal, since internal transaction cannot be sponsored
 			}),
-			expectedMinerFee: 0,
+			expectedTip: 0,
 		},
 		"non sponsored transaction": {
 			tx: types.NewTx(&types.DynamicFeeTx{
@@ -238,7 +91,7 @@ func TestTransactionsOrdering_MinerFeesCanBeComputedWithAllTransactions(t *testi
 				GasFeeCap: big.NewInt(100),
 				GasTipCap: big.NewInt(0),
 			}),
-			expectedMinerFee: 0,
+			expectedTip: 0,
 		},
 		"non sponsored transaction with enough fee cap and tip": {
 			tx: types.NewTx(&types.DynamicFeeTx{
@@ -247,7 +100,7 @@ func TestTransactionsOrdering_MinerFeesCanBeComputedWithAllTransactions(t *testi
 				GasFeeCap: big.NewInt(100),
 				GasTipCap: big.NewInt(10),
 			}),
-			expectedMinerFee: 10,
+			expectedTip: 10,
 		},
 		"non sponsored legacy transaction": {
 			// legacy transactions have a default tip equal to the gas price
@@ -258,7 +111,7 @@ func TestTransactionsOrdering_MinerFeesCanBeComputedWithAllTransactions(t *testi
 				Gas:      100,
 				GasPrice: big.NewInt(100),
 			}),
-			expectedMinerFee: 50, // gas price - base fee
+			expectedTip: 50, // gas price - base fee
 		},
 	}
 
@@ -273,104 +126,203 @@ func TestTransactionsOrdering_MinerFeesCanBeComputedWithAllTransactions(t *testi
 				Gas:       test.tx.Gas(),
 				BlobGas:   test.tx.BlobGas(),
 			}
-			from := common.Address{1}
-
-			withFee, err := newTxWithMinerFee(lazy, from, baseFee)
+			tip, err := computeEffectiveTip(lazy, baseFee)
 			require.ErrorIs(t, err, test.expectedError)
 			if test.expectedError == nil {
-				require.EqualValues(t, withFee.fees.Uint64(), test.expectedMinerFee)
+				require.EqualValues(t, test.expectedTip, tip.Uint64())
 			}
 		})
 	}
 }
 
-func TestCompareTxByPriceAndTime_OrdersByFeeThenByTime(t *testing.T) {
-	entry := func(fees uint64, at time.Time) *txWithMinerFee {
-		return &txWithMinerFee{
-			tx:   &txpool.LazyTransaction{Time: at},
-			fees: uint256.NewInt(fees),
+func TestCompareTxByStagePriorityPriceTime_OrdersByStageThenPriorityThenTipThenTime(t *testing.T) {
+	later := baseTime.Add(time.Second)
+	entry := func(priority priorities.Priority, myTurn bool, tip uint64, at time.Time) *txWithMetadata {
+		return &txWithMetadata{
+			tx:       &txpool.LazyTransaction{Time: at},
+			tip:      uint256.NewInt(tip),
+			priority: priority,
+			myTurn:   myTurn,
 		}
 	}
-	later := baseTime.Add(time.Second)
 
 	tests := map[string]struct {
-		a, b     *txWithMinerFee
+		a, b     *txWithMetadata
 		expected int
 	}{
-		"higher fee precedes": {
-			a:        entry(2, baseTime),
-			b:        entry(1, baseTime),
+		"my turn with priority precedes not my turn, whatever its priority and tip and time": {
+			a:        entry(withPrio, true, 1, later),
+			b:        entry(withPrio, false, 100, baseTime),
 			expected: 1,
 		},
-		"lower fee follows": {
-			a:        entry(1, baseTime),
-			b:        entry(2, baseTime),
-			expected: -1,
-		},
-		"equal fee, earlier time precedes": {
-			a:        entry(1, baseTime),
-			b:        entry(1, later),
+		"my turn with priority precedes without priority, whatever its turn and tip and time": {
+			a:        entry(withPrio, true, 1, later),
+			b:        entry(withoutPrio, true, 100, baseTime),
 			expected: 1,
 		},
-		"equal fee, later time follows": {
-			a:        entry(1, later),
-			b:        entry(1, baseTime),
-			expected: -1,
+		"not my turn with priority precedes without priority, whatever its turn and tip and time": {
+			a:        entry(withPrio, false, 1, later),
+			b:        entry(withoutPrio, true, 100, baseTime),
+			expected: 1,
 		},
-		"equal fee and time are equivalent": {
-			a:        entry(1, baseTime),
-			b:        entry(1, baseTime),
+		"without priority, the turn is ignored": {
+			a:        entry(withoutPrio, true, 1, baseTime),
+			b:        entry(withoutPrio, false, 1, baseTime),
+			expected: 0,
+		},
+		"higher level precedes, whatever its weight and tip and time": {
+			a:        entry(prio(2, 1, 0), true, 1, later),
+			b:        entry(prio(1, 9, 0), true, 100, baseTime),
+			expected: 1,
+		},
+		"higher weight precedes, whatever its tip and time": {
+			a:        entry(prio(1, 2, 0), true, 1, later),
+			b:        entry(prio(1, 1, 0), true, 100, baseTime),
+			expected: 1,
+		},
+		"without priority, the weight is ignored": {
+			a:        entry(prio(0, 1, 0), true, 1, baseTime),
+			b:        entry(prio(0, 9, 0), true, 1, baseTime),
+			expected: 0,
+		},
+		"higher tip precedes, whatever its time": {
+			a:        entry(withoutPrio, true, 2, later),
+			b:        entry(withoutPrio, true, 1, baseTime),
+			expected: 1,
+		},
+		"earlier time precedes": {
+			a:        entry(withoutPrio, true, 1, baseTime),
+			b:        entry(withoutPrio, true, 1, later),
+			expected: 1,
+		},
+		"entries differing only in priority ID are equivalent": {
+			a:        entry(prio(1, 1, 1), true, 1, baseTime),
+			b:        entry(prio(1, 1, 2), true, 1, baseTime),
 			expected: 0,
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			got := compareTxByPriceAndTime(test.a, test.b)
-			require.Equal(t, test.expected, cmp.Compare(got, 0))
+			got := compareTxByStagePriorityPriceTime(test.a, test.b)
+			require.Equal(t, test.expected, got)
+			reversed := compareTxByStagePriorityPriceTime(test.b, test.a)
+			require.Equal(t, -test.expected, reversed)
 		})
 	}
 }
 
-func TestTxOrdering_OrdersByFeeAndTimeWithinNonceConstraints(t *testing.T) {
-	keyA, addrA := newSenderKey(t)
-	keyB, addrB := newSenderKey(t)
-	keyC, addrC := newSenderKey(t)
-	keyD, addrD := newSenderKey(t)
+// TestTransactionsByPriorityAndPriceAndNonce_OrdersByStagePriorityTipAndTime
+// cross-checks the composite order on a whole set: that the metadata the set
+// attaches to each transaction feeds the comparison as intended, that only a
+// sender's lowest nonce takes part in that comparison, and that a promoted
+// nonce is staged on its own metadata rather than its predecessor's - which
+// makes the resulting order non-monotonic.
+func TestTransactionsByPriorityAndPriceAndNonce_OrdersByStagePriorityTipAndTime(t *testing.T) {
+	specs := []struct {
+		name     string
+		sender   string
+		priority priorities.Priority
+		myTurn   bool
+		tip      int64
+		delay    time.Duration
+	}{
+		{name: "level2", sender: "a", priority: prio(2, 1, 1), myTurn: true, tip: 1},
+		{name: "level1/weight2", sender: "b", priority: prio(1, 2, 2), myTurn: true, tip: 1},
+		{name: "level1/weight1", sender: "c", priority: prio(1, 1, 3), myTurn: true, tip: 1},
+		{name: "prioNotMyTurn", sender: "d", priority: prio(9, 9, 4), tip: 1},
+		{name: "tip50", sender: "e", tip: 50},
+		{name: "tip5/early", sender: "f", tip: 5},
+		{name: "tip5/late", sender: "g", tip: 5, delay: time.Second},
+		{name: "blocking", sender: "h", tip: 10},
+		{name: "blocked", sender: "h", priority: prio(3, 1, 5), myTurn: true, tip: 100},
+	}
 
-	a0 := makeLazyTx(t, keyA, 0, 9, baseTime.Add(2*time.Second))
-	a1 := makeLazyTx(t, keyA, 1, 3, baseTime.Add(2*time.Second))
-	b0 := makeLazyTx(t, keyB, 0, 8, baseTime)
-	b1 := makeLazyTx(t, keyB, 1, 7, baseTime)
-	c0 := makeLazyTx(t, keyC, 0, 2, baseTime)
-	c1 := makeLazyTx(t, keyC, 1, 10, baseTime)
-	d0 := makeLazyTx(t, keyD, 0, 3, baseTime.Add(time.Second))
+	expected := []string{
+		// prioritized and my turn, by level, then weight
+		"level2", "level1/weight2", "level1/weight1",
+		// prioritized but not my turn, whatever its level and weight
+		"prioNotMyTurn",
+		// not prioritized, by tip - the blocked nonce takes no part in the
+		// comparison until its predecessor has been consumed
+		"tip50", "blocking",
+		// promoted and staged on its own priority, ahead of what is left
+		"blocked",
+		// not prioritized, equal tips broken by the first-seen time
+		"tip5/early", "tip5/late",
+	}
 
-	txset := newTransactionsByPriceAndNonce(
-		map[common.Address][]*txpool.LazyTransaction{
-			addrA: {a0, a1}, addrB: {b0, b1}, addrC: {c0, c1}, addrD: {d0},
+	type sender struct {
+		key  *ecdsa.PrivateKey
+		addr common.Address
+	}
+	senders := map[string]sender{}
+	txBySender := map[common.Address][]*txpool.LazyTransaction{}
+	prioByHash := map[common.Hash]priorities.Priority{}
+	nameByHash := map[common.Hash]string{}
+	turnByHash := map[common.Hash]bool{}
+	for _, spec := range specs {
+		if _, ok := senders[spec.sender]; !ok {
+			key, addr := newSenderKey(t)
+			senders[spec.sender] = sender{key, addr}
+		}
+		s := senders[spec.sender]
+		tx := makeLazyTx(t, s.key, uint64(len(txBySender[s.addr])), spec.tip, baseTime.Add(spec.delay))
+		txBySender[s.addr] = append(txBySender[s.addr], tx)
+		nameByHash[tx.Hash] = spec.name
+		prioByHash[tx.Hash] = spec.priority
+		turnByHash[tx.Hash] = spec.myTurn
+	}
+
+	classifier := priorities.NewMockClassifier(gomock.NewController(t))
+	classifier.EXPECT().Priority(gomock.Any()).DoAndReturn(
+		func(tx *types.Transaction) (priorities.Priority, error) {
+			return prioByHash[tx.Hash()], nil
 		},
-		nil,
-	)
+	).AnyTimes()
 
-	names := map[common.Hash]string{
-		a0.Hash: "a0", a1.Hash: "a1",
-		b0.Hash: "b0", b1.Hash: "b1",
-		c0.Hash: "c0", c1.Hash: "c1",
-		d0.Hash: "d0",
-	}
-	out := drain(txset)
-	got := make([]string, 0, len(out))
-	for _, e := range out {
-		got = append(got, names[e.tx.Hash])
-	}
+	txset := newTransactionsByPriorityAndPriceAndNonce(txBySender, nil, &priorityContext{classifier: classifier},
+		func(tx *txpool.LazyTransaction) bool { return turnByHash[tx.Hash] })
 
-	require.Equal(t, []string{"a0", "b0", "b1", "d0", "a1", "c0", "c1"}, got)
+	got := make([]string, 0, len(expected))
+	for _, e := range drain(txset) {
+		got = append(got, nameByHash[e.tx.Hash])
+	}
+	require.Equal(t, expected, got)
+}
+
+func TestNewTransactionsByPriorityAndPriceAndNonce_DropsSenderTailWithoutComputableTip(t *testing.T) {
+	baseFee := big.NewInt(50)
+
+	tests := map[string]struct {
+		tips []int64
+		want int
+	}{
+		"every nonce covers the base fee": {[]int64{100, 100, 100}, 3},
+		"a later nonce falls short":       {[]int64{100, 10, 100}, 1},
+		"the first nonce falls short":     {[]int64{10, 100}, 0},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			key, addr := newSenderKey(t)
+			txs := make([]*txpool.LazyTransaction, len(test.tips))
+			for i, tip := range test.tips {
+				txs[i] = makeLazyTx(t, key, uint64(i), tip, baseTime)
+			}
+			txset := newTransactionsByPriorityAndPriceAndNonce(
+				map[common.Address][]*txpool.LazyTransaction{addr: txs}, baseFee, nil, alwaysMyTurn)
+
+			require.Len(t, drain(txset), test.want)
+		})
+	}
 }
 
 var (
 	orderingSigner = types.LatestSignerForChainID(common.Big1)
 	baseTime       = time.Unix(1_000, 0)
+
+	withPrio    = prio(1, 1, 1)
+	withoutPrio = prio(0, 0, 0)
 )
 
 // newSenderKey returns a fresh private key and its derived sender address.
@@ -408,9 +360,21 @@ func makeLazyTx(t *testing.T, key *ecdsa.PrivateKey, nonce uint64, tip int64, at
 	}
 }
 
+func alwaysMyTurn(*txpool.LazyTransaction) bool { return true }
+
+// myTurnFor returns a turn policy putting only the given transactions at this
+// validator's turn.
+func myTurnFor(txs ...*types.Transaction) func(tx *txpool.LazyTransaction) bool {
+	mine := make(map[common.Hash]bool, len(txs))
+	for _, tx := range txs {
+		mine[tx.Hash()] = true
+	}
+	return func(tx *txpool.LazyTransaction) bool { return mine[tx.Hash] }
+}
+
 // drain consumes the whole set in its ordering.
-func drain(txset *transactionsByPriceAndNonce) []*txWithMinerFee {
-	var out []*txWithMinerFee
+func drain(txset *transactionsByPriorityAndPriceAndNonce) []*txWithMetadata {
+	var out []*txWithMetadata
 	for e, ok := txset.Peek(); ok; e, ok = txset.Peek() {
 		out = append(out, e)
 		txset.Shift()
