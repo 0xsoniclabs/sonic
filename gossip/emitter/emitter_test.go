@@ -84,7 +84,7 @@ func TestEmitter(t *testing.T) {
 		TxPool:            txPool,
 		EventsSigner:      signer,
 		TransactionSigner: txSigner,
-	}, fixedPriceBaseFeeSource{}, nil, nil)
+	}, fixedPriceBaseFeeSource{}, nil, nil, nil)
 
 	t.Run("init", func(t *testing.T) {
 		external.EXPECT().GetRules().
@@ -699,18 +699,37 @@ func TestEmitter_EmitEvent_skippingTxsAlsoSkipsGappedNoncesTxs(t *testing.T) {
 	require.False(t, ok, "expected no more txs after the nonce gap")
 }
 
-func TestEmitter_GetSortedTxs_ClassifiesCandidatesPriorityAgainstHeadStateWhenPrioritiesEnabled(t *testing.T) {
+func TestEmitter_GetSortedTxs_ResolvesCandidatePrioritiesFromTheCacheOrTheHeadState(t *testing.T) {
 	tests := map[string]struct {
-		priorities bool
-		wantConfig priorities.Config
+		prioritiesEnabled bool
+		cached            *priorities.Priority
+		queried           bool
+		expectPriority    priorities.Priority
+		expectConfig      priorities.Config
 	}{
+		// The cache is not consulted at all, so the seeded priority is ignored
+		// and left untouched.
 		"disabled": {
-			false,
-			priorities.Config{},
+			prioritiesEnabled: false,
+			cached:            &priorities.Priority{Level: 1},
+			expectPriority:    priorities.Priority{},
+			expectConfig:      priorities.Config{},
 		},
-		"enabled": {
-			true,
-			priorities.FallbackConfig,
+		// No registry is deployed, so the candidate cannot be prioritized and
+		// the failed classification is memoized.
+		"cache miss": {
+			prioritiesEnabled: true,
+			cached:            nil,
+			queried:           true,
+			// queried always returns the default priority because the contract is not deployed, but is makes sure that the db is called.
+			expectPriority: priorities.Priority{},
+			expectConfig:   priorities.FallbackConfig,
+		},
+		"cache hit": {
+			prioritiesEnabled: true,
+			cached:            &priorities.Priority{Level: 1},
+			expectPriority:    priorities.Priority{Level: 1},
+			expectConfig:      priorities.FallbackConfig,
 		},
 	}
 
@@ -727,13 +746,13 @@ func TestEmitter_GetSortedTxs_ClassifiesCandidatesPriorityAgainstHeadStateWhenPr
 			world := NewMockExternal(ctrl)
 			upgrades := opera.GetSonicUpgrades()
 			upgrades.SingleProposerBlockFormation = true
-			upgrades.TransactionPriorities = test.priorities
+			upgrades.TransactionPriorities = test.prioritiesEnabled
 			world.EXPECT().GetRules().Return(opera.FakeNetRules(upgrades)).Times(2)
 			world.EXPECT().GetLatestBlockIndex().Return(idx.Block(1)) // for the cache
 
 			txSigner := NewMockTxSigner(ctrl)
 
-			if test.priorities {
+			if test.prioritiesEnabled {
 				world.EXPECT().GetLatestBlockIndex().Return(idx.Block(1)) // for the chain config
 				world.EXPECT().GetLatestBlock().Return(&inter.Block{})
 				world.EXPECT().Header(any, any).Return(&evmcore.EvmHeader{
@@ -742,18 +761,19 @@ func TestEmitter_GetSortedTxs_ClassifiesCandidatesPriorityAgainstHeadStateWhenPr
 					PrevRandao: common.Hash{1}, // required by the EVM block context
 				})
 				world.EXPECT().GetUpgradeHeights()
-				txSigner.EXPECT().Sender(any).Return(common.Address{2}, nil)
 
-				// The head state is acquired for the duration of the build only.
-				// No registry is deployed, so the config read falls back to the
-				// fallback config and the candidate cannot be classified as
-				// prioritized.
-				// Two registry calls, one for the config and one for the candidate.
+				// It is read once for the config, and once more for the candidate
+				// unless its priority is already cached.
+				registryCalls := 1
+				if test.queried {
+					registryCalls = 2
+					txSigner.EXPECT().Sender(tx).Return(common.Address{1}, nil)
+				}
 				statedb := state.NewMockStateDB(ctrl)
-				statedb.EXPECT().InterTxSnapshot().Times(2)
-				statedb.EXPECT().RevertToInterTxSnapshot(any).Times(2)
-				statedb.EXPECT().Snapshot().Times(2)
-				statedb.EXPECT().Exist(registry.GetAddress()).Return(false).Times(2)
+				statedb.EXPECT().InterTxSnapshot().Times(registryCalls)
+				statedb.EXPECT().RevertToInterTxSnapshot(any).Times(registryCalls)
+				statedb.EXPECT().Snapshot().Times(registryCalls)
+				statedb.EXPECT().Exist(registry.GetAddress()).Return(false).Times(registryCalls)
 				statedb.EXPECT().Release()
 				world.EXPECT().StateDB().Return(statedb)
 			}
@@ -768,15 +788,19 @@ func TestEmitter_GetSortedTxs_ClassifiesCandidatesPriorityAgainstHeadStateWhenPr
 				config: config.Config{MaxTxsPerAddress: 10},
 				world:  World{External: world, TxPool: txPool, TransactionSigner: txSigner},
 			}
+			cacheClassifier := priorities.NewMockClassifier(ctrl)
+			em.priorityCache = evmcore.NewPriorityCache(evmcore.DefaultTxPoolConfig)
+			// If the element should be cached, query it here once so that it is added to the cache.
+			if test.cached != nil {
+				cacheClassifier.EXPECT().Priority(tx).Return(*test.cached, nil)
+				em.priorityCache.GetOrClassify(tx, cacheClassifier)
+			}
 
 			entry, ok := em.getSortedTxs(big.NewInt(0)).Peek()
 			require.True(t, ok)
 			require.Equal(t, tx.Hash(), entry.tx.Hash)
-			require.Equal(t, priorities.Priority{}, entry.priority)
-
-			// The rate limits read along with the context are kept for the event
-			// built from this ordering.
-			require.Equal(t, test.wantConfig, em.cache.priorityConfig)
+			require.Equal(t, test.expectPriority, entry.priority)
+			require.Equal(t, test.expectConfig, em.cache.priorityConfig)
 		})
 	}
 }
@@ -862,7 +886,10 @@ func TestEmitter_GetSortedTxs_ReusesTheCachedOrderingAndItsPriorityConfig(t *tes
 	em.cache.sortedTxs = newTransactionsByPriorityAndPriceAndNonce(
 		map[common.Address][]*txpool.LazyTransaction{sender: {tx}},
 		nil,
-		&priorityContext{classifier: classifier},
+		&priorityContext{
+			cache:      evmcore.NewPriorityCache(evmcore.DefaultTxPoolConfig),
+			classifier: classifier,
+		},
 		alwaysMyTurn,
 	)
 	em.cache.poolBlock = idx.Block(1)

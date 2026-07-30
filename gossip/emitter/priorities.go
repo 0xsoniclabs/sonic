@@ -27,8 +27,10 @@ import (
 // priorityContext holds the state required to classify and rate-limit
 // prioritized transactions against the current head block. It is owned by the
 // emitter for the duration of one ordering build, which is the only user of the
-// acquired state db.
+// acquired state db. The cache it classifies into outlives the context, see
+// PriorityCache.
 type priorityContext struct {
+	cache      *evmcore.PriorityCache
 	classifier priorities.Classifier
 	config     priorities.Config
 	releaseDB  func()
@@ -69,6 +71,7 @@ func (em *Emitter) newPriorityContext() *priorityContext {
 	config := priorities.GetConfigOrFallback(rules.Upgrades, evm, priorityConfigFailures)
 	statedb.RevertToInterTxSnapshot(snapshot)
 	return &priorityContext{
+		cache:      em.priorityCache,
 		classifier: priorities.NewEvmClassifier(rules.Upgrades, evm, em.world.TransactionSigner, statedb, priorityTxFailures),
 		config:     config,
 		releaseDB:  statedb.Release,
@@ -89,11 +92,7 @@ func (c *priorityContext) priorityOf(tx *types.Transaction) priorities.Priority 
 	if c == nil {
 		return priorities.Priority{}
 	}
-	priority, err := c.classifier.Priority(tx)
-	if err != nil {
-		return priorities.Priority{}
-	}
-	return priority
+	return c.cache.GetOrClassify(tx, c.classifier)
 }
 
 // getConfig returns the rate limits read along with the context, or the
