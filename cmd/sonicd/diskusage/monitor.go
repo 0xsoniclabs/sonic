@@ -17,15 +17,14 @@
 package diskusage
 
 import (
-	"os"
-	"syscall"
+	"context"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 )
 
-func MonitorFreeDiskSpace(stopNodeSig chan os.Signal, path string, freeDiskSpaceCritical uint64) {
+func MonitorFreeDiskSpace(ctx context.Context, stopNode context.CancelFunc, path string, freeDiskSpaceCritical uint64) {
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -36,11 +35,15 @@ func MonitorFreeDiskSpace(stopNodeSig chan os.Signal, path string, freeDiskSpace
 		}
 		if freeSpace < freeDiskSpaceCritical {
 			log.Error("Low disk space. Gracefully shutting down Sonic to prevent database corruption.", "available", common.StorageSize(freeSpace))
-			stopNodeSig <- syscall.SIGTERM
+			stopNode()
 			break
 		} else if freeSpace < 2*freeDiskSpaceCritical {
 			log.Warn("Disk space is running low. Sonic will shutdown if disk space runs below critical level.", "available", common.StorageSize(freeSpace), "critical_level", common.StorageSize(freeDiskSpaceCritical))
 		}
-		<-ticker.C
+		select {
+		case <-ticker.C:
+		case <-ctx.Done():
+			return
+		}
 	}
 }

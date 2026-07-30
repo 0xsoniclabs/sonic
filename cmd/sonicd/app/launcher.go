@@ -19,7 +19,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/signal"
 	"sort"
 	"strings"
@@ -308,6 +307,8 @@ func lachesisMainInternal(
 		return config.SaveAllConfigs(outputConfigFile, cfg)
 	}
 
+	startFreeDiskSpaceMonitor(sigCtx, ctx, cancel, node.InstanceDir())
+
 	if err := startNode(sigCtx, ctx, node); err != nil {
 		return fmt.Errorf("failed to start the node: %w", err)
 	}
@@ -342,16 +343,9 @@ func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error
 		return fmt.Errorf("error starting protocol stack: %w", err)
 	}
 	go func() {
-		stopNodeSig := make(chan os.Signal, 1)
-		startFreeDiskSpaceMonitor(ctx, stopNodeSig, stack.InstanceDir())
-
-		select {
-		case <-stopNodeSig:
-			log.Info("Node got interrupt by disk space monitoring, shutting down...")
-		case <-sigCtx.Done():
-			log.Info("Node received stop signal, shutting down...")
-		}
-
+		// stop the node when the context is canceled
+		<-sigCtx.Done()
+		log.Info("Shutting down...")
 		if err := stack.Close(); err != nil {
 			log.Warn("Error during shutdown", "err", err)
 		}
@@ -415,7 +409,7 @@ func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error
 	return nil
 }
 
-func startFreeDiskSpaceMonitor(ctx *cli.Context, stopNodeSig chan os.Signal, path string) {
+func startFreeDiskSpaceMonitor(sigCtx context.Context, ctx *cli.Context, stopNode context.CancelFunc, path string) {
 	var minFreeDiskSpace int
 	if ctx.GlobalIsSet(flags.MinFreeDiskSpaceFlag.Name) {
 		minFreeDiskSpace = ctx.GlobalInt(flags.MinFreeDiskSpaceFlag.Name)
@@ -423,6 +417,6 @@ func startFreeDiskSpaceMonitor(ctx *cli.Context, stopNodeSig chan os.Signal, pat
 		minFreeDiskSpace = 8192
 	}
 	if minFreeDiskSpace > 0 {
-		go diskusage.MonitorFreeDiskSpace(stopNodeSig, path, uint64(minFreeDiskSpace)*1024*1024)
+		go diskusage.MonitorFreeDiskSpace(sigCtx, stopNode, path, uint64(minFreeDiskSpace)*1024*1024)
 	}
 }
