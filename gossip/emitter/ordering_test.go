@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
@@ -281,7 +282,11 @@ func TestTransactionsByPriorityAndPriceAndNonce_OrdersByStagePriorityTipAndTime(
 		},
 	).AnyTimes()
 
-	txset := newTransactionsByPriorityAndPriceAndNonce(txBySender, nil, &priorityContext{classifier: classifier},
+	context := &priorityContext{
+		cache:      evmcore.NewPriorityCache(evmcore.DefaultTxPoolConfig),
+		classifier: classifier,
+	}
+	txset := newTransactionsByPriorityAndPriceAndNonce(txBySender, nil, context,
 		func(tx *txpool.LazyTransaction) bool { return turnByHash[tx.Hash] })
 
 	got := make([]string, 0, len(expected))

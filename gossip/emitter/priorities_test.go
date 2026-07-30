@@ -27,6 +27,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -113,8 +114,7 @@ func TestPriorityContext_Release_CallsReleaseDBFunctionIfContextNotNil(t *testin
 }
 
 func TestPriorityContext_PriorityOf_TakesTheClassificationUnlessItFails(t *testing.T) {
-	key, _ := newSenderKey(t)
-	tx := makeLazyTx(t, key, 0, 1, baseTime).Tx
+	tx := types.NewTx(&types.LegacyTx{Nonce: 1})
 
 	tests := map[string]struct {
 		priority priorities.Priority
@@ -141,17 +141,18 @@ func TestPriorityContext_PriorityOf_TakesTheClassificationUnlessItFails(t *testi
 		t.Run(name, func(t *testing.T) {
 			classifier := priorities.NewMockClassifier(gomock.NewController(t))
 			classifier.EXPECT().Priority(tx).Return(test.priority, test.err)
-			context := &priorityContext{classifier: classifier}
+			context := &priorityContext{
+				cache:      evmcore.NewPriorityCache(evmcore.DefaultTxPoolConfig),
+				classifier: classifier,
+			}
 			require.Equal(t, test.expected, context.priorityOf(tx))
 		})
 	}
 }
 
 func TestPriorityContext_PriorityOf_ReturnsNotPrioritizedWhenContextIsNil(t *testing.T) {
-	key, _ := newSenderKey(t)
-
 	var context *priorityContext
-	require.Equal(t, priorities.Priority{}, context.priorityOf(makeLazyTx(t, key, 0, 1, baseTime).Tx))
+	require.Equal(t, priorities.Priority{}, context.priorityOf(types.NewTx(&types.LegacyTx{Nonce: 1})))
 }
 
 func TestPriorityContext_GetConfig_ReturnsConfigIfContextIsNotNil(t *testing.T) {

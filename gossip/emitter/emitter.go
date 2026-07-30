@@ -156,6 +156,9 @@ type Emitter struct {
 		priorityConfig priorities.Config // rate limits read while the sortedTxs were built
 	}
 
+	// priorityCache memoizes the transaction priorities used for ordering.
+	priorityCache *evmcore.PriorityCache
+
 	emittedEventFile *os.File
 	emittedBvsFile   *os.File
 	emittedEvFile    *os.File
@@ -204,6 +207,7 @@ func NewEmitter(
 	baseFeeSource BaseFeeSource,
 	errorLock *errlock.ErrorLock,
 	bundleCache evmcore.BundleEvaluator,
+	priorityCache *evmcore.PriorityCache,
 ) *Emitter {
 	// Randomize event time to decrease chance of 2 parallel instances emitting event at the same time
 	// It increases the chance of detecting parallel instances
@@ -218,6 +222,7 @@ func NewEmitter(
 		baseFeeSource: baseFeeSource,
 		errorLock:     errorLock,
 		bundleCache:   bundleCache,
+		priorityCache: priorityCache,
 	}
 	res.eventEmissionThrottler = throttler.NewThrottlingState(
 		config.Validator.ID,
