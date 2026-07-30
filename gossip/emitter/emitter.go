@@ -97,6 +97,11 @@ var (
 	skipEmissionNotAllowed = metrics.GetOrRegisterCounter("emitter/skip_emission/not_allowed", nil)
 	skipEmissionBusy       = metrics.GetOrRegisterCounter("emitter/skip_emission/busy", nil)
 	skipEmissionThrottle   = metrics.GetOrRegisterCounter("emitter/skip_emission/throttle", nil)
+
+	// priority config query failed, the fallback config is used
+	priorityConfigFailures = metrics.GetOrRegisterMeter("emitter/priorities/config/failed", nil)
+	// per-transaction query failed, the tx is not prioritized
+	priorityTxFailures = metrics.GetOrRegisterMeter("emitter/priorities/txs/failed", nil)
 )
 
 type Emitter struct {
