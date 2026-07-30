@@ -146,8 +146,9 @@ func MakeNode(sigCtx context.Context, ctx *cli.Context, cfg *Config) (*node.Node
 	}
 	signer := valkeystore.NewSignerAuthority(valKeystore, cfg.Emitter.Validator.PubKey)
 
-	// shared resource between the tx pool and the emitter
+	// shared resources between the tx pool and the emitter
 	bundleEvaluationCache := evmcore.NewBundleEvaluationCache()
+	priorityCache := evmcore.NewPriorityCache(cfg.TxPool)
 
 	// Create and register a gossip network service.
 	newTxPool := func(reader evmcore.StateReader) gossip.TxPool {
@@ -196,6 +197,7 @@ func MakeNode(sigCtx context.Context, ctx *cli.Context, cfg *Config) (*node.Node
 			gdb.AsBaseFeeSource(),
 			errorLock,
 			bundleEvaluationCache,
+			priorityCache,
 		))
 	}
 
