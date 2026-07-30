@@ -30,7 +30,6 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
-	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
@@ -316,18 +315,18 @@ type counterMetric interface {
 	Inc(int64)
 }
 
-// transactionPriorityAdapter is an adapter between the transactionsByPriceAndNonce
+// transactionPriorityAdapter is an adapter between the transaction ordering heap
 // and the scheduler's PrioritizedTransactions interface.
 type transactionPriorityAdapter struct {
 	sorted transactionIndex
 }
 
 func (a *transactionPriorityAdapter) Current() *types.Transaction {
-	tx, _ := a.sorted.Peek()
-	if tx == nil {
+	entry, ok := a.sorted.Peek()
+	if !ok {
 		return nil
 	}
-	return tx.Resolve()
+	return entry.tx.Resolve()
 }
 
 func (a *transactionPriorityAdapter) Accept() {
@@ -335,11 +334,11 @@ func (a *transactionPriorityAdapter) Accept() {
 }
 
 func (a *transactionPriorityAdapter) Skip() {
-	a.sorted.Pop()
+	a.sorted.PopSequence()
 }
 
 type transactionIndex interface {
-	Peek() (*txpool.LazyTransaction, *uint256.Int)
-	Shift()
-	Pop()
+	Peek() (*txWithMinerFee, bool)
+	Shift() (*txWithMinerFee, bool)
+	PopSequence() ([]*txWithMinerFee, bool)
 }

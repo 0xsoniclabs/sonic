@@ -19,9 +19,7 @@ import (
 	opera "github.com/0xsoniclabs/sonic/opera"
 	hash "github.com/Fantom-foundation/lachesis-base/hash"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
-	txpool "github.com/ethereum/go-ethereum/core/txpool"
 	types "github.com/ethereum/go-ethereum/core/types"
-	uint256 "github.com/holiman/uint256"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -264,11 +262,11 @@ func (m *MocktransactionIndex) EXPECT() *MocktransactionIndexMockRecorder {
 }
 
 // Peek mocks base method.
-func (m *MocktransactionIndex) Peek() (*txpool.LazyTransaction, *uint256.Int) {
+func (m *MocktransactionIndex) Peek() (*txWithMinerFee, bool) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Peek")
-	ret0, _ := ret[0].(*txpool.LazyTransaction)
-	ret1, _ := ret[1].(*uint256.Int)
+	ret0, _ := ret[0].(*txWithMinerFee)
+	ret1, _ := ret[1].(bool)
 	return ret0, ret1
 }
 
@@ -278,22 +276,28 @@ func (mr *MocktransactionIndexMockRecorder) Peek() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Peek", reflect.TypeOf((*MocktransactionIndex)(nil).Peek))
 }
 
-// Pop mocks base method.
-func (m *MocktransactionIndex) Pop() {
+// PopSequence mocks base method.
+func (m *MocktransactionIndex) PopSequence() ([]*txWithMinerFee, bool) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Pop")
+	ret := m.ctrl.Call(m, "PopSequence")
+	ret0, _ := ret[0].([]*txWithMinerFee)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
 }
 
-// Pop indicates an expected call of Pop.
-func (mr *MocktransactionIndexMockRecorder) Pop() *gomock.Call {
+// PopSequence indicates an expected call of PopSequence.
+func (mr *MocktransactionIndexMockRecorder) PopSequence() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Pop", reflect.TypeOf((*MocktransactionIndex)(nil).Pop))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PopSequence", reflect.TypeOf((*MocktransactionIndex)(nil).PopSequence))
 }
 
 // Shift mocks base method.
-func (m *MocktransactionIndex) Shift() {
+func (m *MocktransactionIndex) Shift() (*txWithMinerFee, bool) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Shift")
+	ret := m.ctrl.Call(m, "Shift")
+	ret0, _ := ret[0].(*txWithMinerFee)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
 }
 
 // Shift indicates an expected call of Shift.
