@@ -353,7 +353,7 @@ func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error
 	}()
 
 	// Unlock any account specifically requested
-	err := unlockAccounts(ctx, stack)
+	err := unlockAccounts(sigCtx, ctx, stack)
 	if err != nil {
 		return fmt.Errorf("failed to unlock accounts: %w", err)
 	}

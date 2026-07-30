@@ -76,7 +76,7 @@ func unlockValidatorKey(sigCtx context.Context, cliCtx *cli.Context, pubKey vali
 		if err != nil {
 			return err
 		}
-		password, err := GetPassPhrase(prompt, false, 0, passwordList)
+		password, err := GetPassPhrase(sigCtx, prompt, false, 0, passwordList)
 		if err != nil {
 			return err
 		}
