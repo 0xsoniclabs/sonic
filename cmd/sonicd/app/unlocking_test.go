@@ -19,7 +19,9 @@ package app
 import (
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/cespare/cp"
 )
@@ -221,5 +223,49 @@ Testing your passphrase against all of them...
 	cli.ExpectExit()
 	if !strings.Contains(cli.StderrText(), "none of the listed files could be unlocked") {
 		t.Errorf("stderr text does not contain expected error")
+	}
+}
+
+// TestUnlockFlagPasswordFifoInterruptedBySignal verifies that a shutdown
+// signal interrupts --unlock while it is blocked reading an empty --password
+// FIFO, instead of hanging forever waiting for data that never arrives.
+func TestUnlockFlagPasswordFifoInterruptedBySignal(t *testing.T) {
+	datadir := tmpDatadirWithKeystore(t)
+	initFakenetDatadir(datadir, 1)
+
+	fifoPath := filepath.Join(tmpdir(t), "password.fifo")
+	if err := syscall.Mkfifo(fifoPath, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cli := exec(t,
+		"--fakenet", "0/1", "--datadir", datadir, "--nat", "none", "--nodiscover", "--maxpeers", "0", "--port", "0",
+		"--password", fifoPath,
+		"--unlock", "f466859ead1932d743d622cb74fc058882e8648a",
+		"--ipcdisable")
+
+	// Give the node a moment to start and block reading the empty password
+	// FIFO before sending the shutdown signal.
+	time.Sleep(500 * time.Millisecond)
+	cli.Interrupt()
+
+	exited := make(chan struct{})
+	go func() {
+		cli.WaitExit()
+		close(exited)
+	}()
+
+	select {
+	case <-exited:
+		if cli.Cleanup != nil {
+			cli.Cleanup()
+		}
+	case <-time.After(5 * time.Second):
+		cli.Kill()
+		t.Fatal("node did not shut down after the interrupt signal while blocked reading the password FIFO")
+	}
+
+	if !strings.Contains(cli.StderrText(), "context canceled") {
+		t.Errorf("stderr text does not contain expected shutdown error, got:\n%s", cli.StderrText())
 	}
 }

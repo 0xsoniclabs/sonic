@@ -47,7 +47,7 @@ func unlockAccounts(sigCtx context.Context, ctx *cli.Context, stack *node.Node) 
 		return fmt.Errorf("account unlock with HTTP access is forbidden")
 	}
 	ks := stack.AccountManager().Backends(keystore.KeyStoreType)[0].(*keystore.KeyStore)
-	passwords, err := config.MakePasswordList(ctx)
+	passwords, err := config.MakePasswordList(sigCtx, ctx)
 	if err != nil {
 		return err
 	}

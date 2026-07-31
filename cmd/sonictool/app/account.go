@@ -70,7 +70,7 @@ func accountCreate(ctx *cli.Context) error {
 		scryptP = keystore.LightScryptP
 	}
 
-	passwordList, err := config.MakePasswordList(ctx)
+	passwordList, err := config.MakePasswordList(context.Background(), ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get password list: %w", err)
 	}
@@ -148,7 +148,7 @@ func accountImport(ctx *cli.Context) (err error) {
 	}
 	defer caution.CloseAndReportError(&err, stack, "failed to close network stack")
 
-	passwordList, err := config.MakePasswordList(ctx)
+	passwordList, err := config.MakePasswordList(context.Background(), ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get password list: %w", err)
 	}

@@ -47,7 +47,7 @@ func validatorKeyCreate(ctx *cli.Context) error {
 		return err
 	}
 
-	passwordList, err := config.MakePasswordList(ctx)
+	passwordList, err := config.MakePasswordList(context.Background(), ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get password list: %w", err)
 	}
