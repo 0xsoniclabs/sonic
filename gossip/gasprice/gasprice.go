@@ -31,7 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 var (
@@ -83,7 +83,7 @@ type Oracle struct {
 
 	cfg Config
 
-	tCache *lru.Cache
+	tCache *lru.Cache[uint64, tipCache]
 
 	wg   sync.WaitGroup
 	quit chan struct{}
@@ -111,7 +111,7 @@ func NewOracle(params Config, backend Reader) *Oracle {
 	params.MaxGasPrice = sanitizeBigInt(params.MaxGasPrice, nil, nil, DefaultMaxGasPrice(), "MaxGasPrice")
 	params.MinGasPrice = sanitizeBigInt(params.MinGasPrice, nil, nil, new(big.Int), "MinGasPrice")
 	params.DefaultCertainty = sanitizeBigInt(new(big.Int).SetUint64(params.DefaultCertainty), big.NewInt(0), DecimalUnitBn, big.NewInt(DecimalUnit/2), "DefaultCertainty").Uint64()
-	tCache, _ := lru.New(100)
+	tCache, _ := lru.New[uint64, tipCache](100)
 	return &Oracle{
 		cfg:     params,
 		tCache:  tCache,
@@ -174,8 +174,7 @@ func (gpo *Oracle) SuggestTip(certainty uint64) *big.Int {
 
 	const cacheSlack = DecimalUnit * 0.05
 	roundedCertainty := certainty / cacheSlack
-	if cached, ok := gpo.tCache.Get(roundedCertainty); ok {
-		cache := cached.(tipCache)
+	if cache, ok := gpo.tCache.Get(roundedCertainty); ok {
 		if time.Since(cache.upd) < statUpdatePeriod {
 			return new(big.Int).Set(cache.tip)
 		} else {

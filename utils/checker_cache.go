@@ -22,7 +22,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 type TransactionCheckFunc func(*types.Transaction) bool
@@ -45,7 +45,7 @@ type TransactionCheckFunc func(*types.Transaction) bool
 // This approach balances performance (by avoiding repeated expensive checks) and correctness
 // (by ensuring results are eventually refreshed), adapting dynamically to transaction access patterns.
 type TransactionCheckCache struct {
-	cache *lru.Cache
+	cache *lru.Cache[common.Hash, checkerEntry]
 }
 
 // NewCheckerCache creates a new CheckerCache with the given size in bytes.
@@ -57,13 +57,13 @@ func NewCheckerCache(size int) *TransactionCheckCache {
 
 	entrySize := reflect.TypeOf(checkerEntry{}).Size()
 	capacity := max(size/(int(entrySize)), 1)
-	cache, _ := lru.New(capacity) // only fails if capacity <= 0
+	cache, _ := lru.New[common.Hash, checkerEntry](capacity) // only fails if capacity <= 0
 	return &TransactionCheckCache{cache: cache}
 }
 
 func (c *TransactionCheckCache) get(txHash common.Hash) (checkerEntry, bool) {
 	if entry, ok := c.cache.Get(txHash); ok {
-		return entry.(checkerEntry), true
+		return entry, true
 	}
 	return checkerEntry{}, false
 }
