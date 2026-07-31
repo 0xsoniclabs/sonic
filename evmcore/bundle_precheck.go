@@ -30,7 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/metrics"
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 var (
@@ -484,7 +484,7 @@ type BundleEvaluator interface {
 }
 
 type bundleEvaluationCache struct {
-	cache *lru.Cache
+	cache *lru.Cache[string, BundleState]
 }
 
 // NewBundleEvaluationCache creates a new instance of bundleEvaluationCache,
@@ -510,7 +510,7 @@ func NewBundleEvaluationCache() *bundleEvaluationCache {
 	// 32  + 8 + ( 1+1 + 24, aligned to 32) = 72 bytes per entry, so ~7.2MiB for 100k entries.
 	// Notice that the reasons in the bundle state point to static strings,
 	// so they do not contribute to the memory consumption of each entry.
-	cache, _ := lru.New(100_000)
+	cache, _ := lru.New[string, BundleState](100_000)
 	return &bundleEvaluationCache{cache: cache}
 }
 
@@ -548,7 +548,7 @@ func (c *bundleEvaluationCache) GetBundleState(
 		planHash.Bytes()...,
 	))
 	if state, ok := c.cache.Get(key); ok {
-		return state.(BundleState)
+		return state
 	}
 
 	state := GetBundleState(chain, stateDb, envelope)

@@ -17,6 +17,7 @@
 package utils
 
 import (
+	"math/big"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -47,7 +48,7 @@ func TestNewCachedChecker_CapacityIsEnforced(t *testing.T) {
 			// To check the full size, we add entries until one is evicted.
 			i := 0
 			for ; ; i++ {
-				if cache.cache.Add(i, struct{}{}) {
+				if cache.cache.Add(common.BigToHash(big.NewInt(int64(i))), checkerEntry{}) {
 					break
 				}
 			}
