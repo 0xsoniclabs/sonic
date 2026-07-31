@@ -40,6 +40,10 @@ const MaxSerializationVersion = 3
 
 const ProtocolMaxMsgSize = 10 * 1024 * 1024
 
+// parentsPreallocLimit bounds how much of the parent count announced by an
+// event's header is trusted for pre-allocation.
+const parentsPreallocLimit = 32
+
 func (e *Event) MarshalCSER(w *cser.Writer) error {
 	// version
 	if e.Version() > 0 {
@@ -140,7 +144,7 @@ func eventUnmarshalCSER(r *cser.Reader, e *MutableEventPayload) (err error) {
 	if parentsNum > ProtocolMaxMsgSize/24 {
 		return cser.ErrTooLargeAlloc
 	}
-	parents := make(hash.Events, 0, parentsNum)
+	parents := make(hash.Events, 0, min(parentsNum, parentsPreallocLimit))
 	for i := uint32(0); i < parentsNum; i++ {
 		// lamport difference
 		lamportDiff := r.U32()

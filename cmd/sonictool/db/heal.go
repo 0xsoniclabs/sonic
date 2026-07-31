@@ -144,7 +144,8 @@ func healGossipDb(
 
 	// removing excessive events (event epoch >= closed epoch)
 	log.Info("Removing excessive events")
-	gdb.ForEachEventRLP(epochId.Bytes(), func(id hash.Event, _ rlp.RawValue) bool {
+	// NoCopy is safe here: only the event id is used, never the payload.
+	gdb.ForEachEventRLPNoCopy(epochId.Bytes(), func(id hash.Event, _ rlp.RawValue) bool {
 		gdb.DelEvent(id)
 		return true
 	})
