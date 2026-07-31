@@ -349,7 +349,6 @@ func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error
 		if err := stack.Close(); err != nil {
 			log.Warn("Error during shutdown", "err", err)
 		}
-		log.Info("Shutdown complete.")
 	}()
 
 	// Unlock any account specifically requested

@@ -48,6 +48,7 @@ func addFakeValidatorKey(ctx *cli.Context, key *ecdsa.PrivateKey, pubkey validat
 // makeValidatorPasswordList reads password lines from the file specified by the global --validator.password flag.
 func makeValidatorPasswordList(sigCtx context.Context, cliCtx *cli.Context) ([]string, error) {
 	if path := cliCtx.GlobalString(flags.ValidatorPasswordFlag.Name); path != "" {
+		log.Info("Reading validator password from file...", "path", path)
 		text, err := readFileWithContext(sigCtx, path)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read validator password file: %w", err)

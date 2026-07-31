@@ -81,6 +81,7 @@ func MakePasswordList(sigCtx context.Context, ctx *cli.Context) ([]string, error
 	if path == "" {
 		return nil, nil
 	}
+	log.Info("Reading keystore password from file...", "path", path)
 	text, err := readFileWithContext(sigCtx, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read password file: %w", err)
