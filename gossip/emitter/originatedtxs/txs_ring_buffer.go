@@ -18,16 +18,16 @@ package originatedtxs
 
 import (
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/hashicorp/golang-lru/simplelru"
+	"github.com/hashicorp/golang-lru/v2/simplelru"
 )
 
 type Buffer struct {
-	senderCount *simplelru.LRU // sender address -> number of transactions
+	senderCount *simplelru.LRU[common.Address, int] // sender address -> number of transactions
 }
 
 func New(maxAddresses int) *Buffer {
 	ring := &Buffer{}
-	ring.senderCount, _ = simplelru.NewLRU(maxAddresses, nil)
+	ring.senderCount, _ = simplelru.NewLRU[common.Address, int](maxAddresses, nil)
 	return ring
 }
 
@@ -35,9 +35,9 @@ func New(maxAddresses int) *Buffer {
 func (ring *Buffer) Inc(sender common.Address) {
 	cur, ok := ring.senderCount.Peek(sender)
 	if ok {
-		ring.senderCount.Add(sender, cur.(int)+1)
+		ring.senderCount.Add(sender, cur+1)
 	} else {
-		ring.senderCount.Add(sender, int(1))
+		ring.senderCount.Add(sender, 1)
 	}
 }
 
@@ -47,10 +47,10 @@ func (ring *Buffer) Dec(sender common.Address) {
 	if !ok {
 		return
 	}
-	if cur.(int) <= 1 {
+	if cur <= 1 {
 		ring.senderCount.Remove(sender)
 	} else {
-		ring.senderCount.Add(sender, cur.(int)-1)
+		ring.senderCount.Add(sender, cur-1)
 	}
 }
 
@@ -65,7 +65,7 @@ func (ring *Buffer) TotalOf(sender common.Address) int {
 	if !ok {
 		return 0
 	}
-	return cur.(int)
+	return cur
 }
 
 // Empty is not safe for concurrent use
