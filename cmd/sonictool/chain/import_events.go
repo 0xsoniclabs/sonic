@@ -19,6 +19,7 @@ package chain
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -65,7 +66,10 @@ func EventsImport(ctx *cli.Context, files ...string) error {
 	cfg.Node.P2P.StaticNodes = nil
 	cfg.Node.P2P.TrustedNodes = nil
 
-	node, svc, nodeClose, err := config.MakeNode(ctx, cfg)
+	sigCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	node, svc, nodeClose, err := config.MakeNode(sigCtx, ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -77,7 +81,7 @@ func EventsImport(ctx *cli.Context, files ...string) error {
 
 	for _, fn := range files {
 		log.Info("Importing events from file", "file", fn)
-		if err := importEventsFile(svc, fn); err != nil {
+		if err := importEventsFile(sigCtx, svc, fn); err != nil {
 			log.Error("Import error", "file", fn, "err", err)
 			return err
 		}
@@ -102,13 +106,7 @@ func checkEventsFileHeader(reader io.Reader) error {
 	return nil
 }
 
-func importEventsFile(srv *gossip.Service, filename string) (err error) {
-	// Watch for Ctrl-C while the import is running.
-	// If a signal is received, the import will stop.
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, syscall.SIGINT, syscall.SIGTERM)
-	defer signal.Stop(interrupt)
-
+func importEventsFile(sigCtx context.Context, srv *gossip.Service, filename string) (err error) {
 	// Open the file handle and potentially unwrap the gzip stream
 	fileHandle, err := os.Open(filename)
 	if err != nil {
@@ -161,7 +159,7 @@ func importEventsFile(srv *gossip.Service, filename string) (err error) {
 
 	for {
 		select {
-		case <-interrupt:
+		case <-sigCtx.Done():
 			return fmt.Errorf("interrupted")
 		default:
 		}
