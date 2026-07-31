@@ -983,13 +983,14 @@ func (h *handler) handleMsg(p *peer) (err error) {
 		if err := msg.Decode(&infos); err != nil {
 			return errResp(ErrDecode, "%v: %v", msg, err)
 		}
+		if len(infos.Peers) > hardLimitItems {
+			infos.Peers = infos.Peers[:hardLimitItems]
+		}
 
 		reportedPeers := []*enode.Node{}
 		for _, info := range infos.Peers {
 			var enode enode.Node
-			if err := enode.UnmarshalText([]byte(info.Enode)); err != nil {
-				h.Log.Warn("Failed to unmarshal enode", "enode", info.Enode, "err", err)
-			} else {
+			if err := enode.UnmarshalText([]byte(info.Enode)); err == nil {
 				reportedPeers = append(reportedPeers, &enode)
 			}
 		}
