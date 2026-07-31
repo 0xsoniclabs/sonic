@@ -155,6 +155,8 @@ func initFlags() {
 		flags.RPCGlobalTimeoutFlag,
 		flags.RPCLogQueryParameterLimit,
 		flags.RPCLogQueryResultLimit,
+		flags.RPCTxSyncDefaultTimeoutFlag,
+		flags.RPCTxSyncMaxTimeoutFlag,
 		flags.BatchRequestLimit,
 		flags.BatchResponseMaxSize,
 		flags.MaxResponseSizeFlag,

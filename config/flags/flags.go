@@ -28,6 +28,7 @@ import (
 	pcsclite "github.com/gballet/go-libpcsclite"
 	"gopkg.in/urfave/cli.v1"
 
+	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/node"
 )
 
@@ -313,6 +314,16 @@ var (
 		Name:  "rpc.log-query-result-limit",
 		Usage: "Maximum number of logs that can be returned in a single eth_getLogs query if the query covers a range of more than one block. For a single block, there is no limit (0 = no cap)",
 		Value: filters.DefaultConfig().LogQueryResultLimit,
+	}
+	RPCTxSyncDefaultTimeoutFlag = &cli.DurationFlag{
+		Name:  "rpc.txsync.defaulttimeout",
+		Usage: "Default timeout for eth_sendRawTransactionSync (e.g. 2s, 500ms)",
+		Value: ethconfig.Defaults.TxSyncDefaultTimeout,
+	}
+	RPCTxSyncMaxTimeoutFlag = &cli.DurationFlag{
+		Name:  "rpc.txsync.maxtimeout",
+		Usage: "Maximum allowed timeout for eth_sendRawTransactionSync (e.g. 5m)",
+		Value: ethconfig.Defaults.TxSyncMaxTimeout,
 	}
 	BatchRequestLimit = &cli.IntFlag{
 		Name:  "rpc.batch-request-limit",

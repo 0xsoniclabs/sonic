@@ -544,6 +544,14 @@ func (b *EthAPIBackend) RPCTxFeeCap() float64 {
 	return b.svc.config.RPCTxFeeCap
 }
 
+func (b *EthAPIBackend) RPCTxSyncDefaultTimeout() time.Duration {
+	return b.svc.config.TxSyncDefaultTimeout
+}
+
+func (b *EthAPIBackend) RPCTxSyncMaxTimeout() time.Duration {
+	return b.svc.config.TxSyncMaxTimeout
+}
+
 func (b *EthAPIBackend) EvmLogIndex() topicsdb.Index {
 	return b.svc.store.evm.EvmLogs
 }
