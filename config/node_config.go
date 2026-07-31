@@ -17,6 +17,7 @@
 package config
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"fmt"
 	"os"
@@ -74,12 +75,14 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) error {
 }
 
 // MakePasswordList reads password lines from the file specified by the global --password flag.
-func MakePasswordList(ctx *cli.Context) ([]string, error) {
+// sigCtx allows interrupting the read if the file is a pipe that never receives data.
+func MakePasswordList(sigCtx context.Context, ctx *cli.Context) ([]string, error) {
 	path := ctx.String(flags.PasswordFileFlag.Name)
 	if path == "" {
 		return nil, nil
 	}
-	text, err := os.ReadFile(path)
+	log.Info("Reading keystore password from file...", "path", path)
+	text, err := readFileWithContext(sigCtx, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read password file: %w", err)
 	}

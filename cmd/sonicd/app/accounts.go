@@ -17,17 +17,19 @@
 package app
 
 import (
+	"context"
 	"fmt"
+	"strings"
+
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/node"
 	"gopkg.in/urfave/cli.v1"
-	"strings"
 )
 
 // unlockAccounts unlocks any account specifically requested.
-func unlockAccounts(ctx *cli.Context, stack *node.Node) error {
+func unlockAccounts(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error {
 	var unlocks []string
 	inputs := strings.Split(ctx.GlobalString(flags.UnlockedAccountFlag.Name), ",")
 	for _, input := range inputs {
@@ -45,12 +47,12 @@ func unlockAccounts(ctx *cli.Context, stack *node.Node) error {
 		return fmt.Errorf("account unlock with HTTP access is forbidden")
 	}
 	ks := stack.AccountManager().Backends(keystore.KeyStoreType)[0].(*keystore.KeyStore)
-	passwords, err := config.MakePasswordList(ctx)
+	passwords, err := config.MakePasswordList(sigCtx, ctx)
 	if err != nil {
 		return err
 	}
 	for i, account := range unlocks {
-		if _, _, err := config.UnlockAccount(ks, account, i, passwords); err != nil {
+		if _, _, err := config.UnlockAccount(sigCtx, ks, account, i, passwords); err != nil {
 			return err
 		}
 	}
