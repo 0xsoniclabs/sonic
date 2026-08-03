@@ -27,6 +27,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
+//go:generate mockgen -source=ordering.go -destination=ordering_mock.go -package=priorities
+
 // Classifier determines the Priority of a transaction. Implementations may
 // query the registry per transaction or apply criteria fetched once per block
 // in native code.
