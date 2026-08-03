@@ -27,7 +27,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -140,11 +139,9 @@ func TestPriorityContext_PriorityOf_TakesTheClassificationUnlessItFails(t *testi
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			context := &priorityContext{
-				classifier: fakeClassifier{func(*types.Transaction) (priorities.Priority, error) {
-					return test.priority, test.err
-				}},
-			}
+			classifier := priorities.NewMockClassifier(gomock.NewController(t))
+			classifier.EXPECT().Priority(tx).Return(test.priority, test.err)
+			context := &priorityContext{classifier: classifier}
 			require.Equal(t, test.expected, context.priorityOf(tx))
 		})
 	}
@@ -167,13 +164,4 @@ func TestPriorityContext_GetConfig_ReturnsConfigIfContextIsNotNil(t *testing.T) 
 
 func prio(level uint64, weight uint64, id byte) priorities.Priority {
 	return priorities.Priority{Level: level, Weight: weight, ID: priorities.PriorityID{id}}
-}
-
-// implements priorities.Classifier
-type fakeClassifier struct {
-	priority func(*types.Transaction) (priorities.Priority, error)
-}
-
-func (c fakeClassifier) Priority(tx *types.Transaction) (priorities.Priority, error) {
-	return c.priority(tx)
 }
