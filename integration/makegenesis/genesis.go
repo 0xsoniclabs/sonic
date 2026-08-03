@@ -29,6 +29,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/holiman/uint256"
 
@@ -61,12 +62,13 @@ type GenesisBuilder struct {
 	tmpStateDB    state.StateDB
 	carmenDir     string
 	carmenStateDb carmen.StateDB
-
-	totalSupply *uint256.Int
+	totalSupply   *uint256.Int
 
 	blocks       []ibr.LlrIdxFullBlockRecord
 	epochs       []ier.LlrIdxFullEpochRecord
 	currentEpoch ier.LlrIdxFullEpochRecord
+
+	dataDir string // temporary directory for genesis data export
 }
 
 type BlockProc struct {
@@ -150,11 +152,19 @@ func NewGenesisBuilder() *GenesisBuilder {
 	// Set cache size to lowest value possible
 	carmenStateDb := carmen.CreateCustomStateDBUsing(carmenState, 1024)
 	tmpStateDB := evmstore.CreateCarmenStateDb(carmenStateDb, nil)
+
+	// Create a temporary directory for the genesis data
+	dataDir, err := os.MkdirTemp("", "opera-tmp-genesis-data")
+	if err != nil {
+		panic(fmt.Errorf("failed to create temporary dir for GenesisBuilder data: %v", err))
+	}
+
 	return &GenesisBuilder{
 		tmpStateDB:    tmpStateDB,
 		carmenDir:     carmenDir,
 		carmenStateDb: carmenStateDb,
 		totalSupply:   new(uint256.Int),
+		dataDir:       dataDir,
 	}
 }
 
@@ -353,7 +363,7 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 	if err != nil {
 		panic(fmt.Errorf("failed to close genesis carmen state; %s", err))
 	}
-	return genesisstore.NewStore(func(name string) (io.Reader, error) {
+	return genesisstore.NewStore(func(name string) (_ io.Reader, retErr error) {
 		buf := &memFile{bytes.NewBuffer(nil)}
 		if name == genesisstore.BlocksSection(0) {
 			for i := len(b.blocks) - 1; i >= 0; i-- {
@@ -368,15 +378,31 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 			return buf, nil
 		}
 		if name == genesisstore.FwsLiveSection(0) {
-			err := mptIo.Export(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "live"), buf)
-			if err != nil {
-				return nil, err
+			{
+				scratchDir, cleanup, err := utils.MakeTempDir(b.dataDir, "live-scratch")
+				if err != nil {
+					return nil, fmt.Errorf("failed to create scratch dir for FWS live export; %v", err)
+				}
+				defer cleanup(&retErr)
+
+				err = mptIo.Export(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "live"), buf, scratchDir)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 		if name == genesisstore.FwsArchiveSection(0) {
-			err := mptIo.ExportArchive(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "archive"), buf)
-			if err != nil {
-				return nil, err
+			{
+				scratchDir, cleanup, err := utils.MakeTempDir(b.dataDir, "archive-scratch")
+				if err != nil {
+					return nil, fmt.Errorf("failed to create scratch dir for FWS archive export; %v", err)
+				}
+				defer cleanup(&retErr)
+
+				err = mptIo.ExportArchive(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "archive"), buf, scratchDir)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 		if buf.Len() == 0 {
