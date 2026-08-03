@@ -17,6 +17,7 @@
 package emitter
 
 import (
+	"maps"
 	"time"
 
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
@@ -24,6 +25,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/prometheus/client_golang/prometheus"
@@ -32,6 +34,7 @@ import (
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -140,7 +143,7 @@ func getTxRoundIndex(now, txTime time.Time, validatorsNum idx.Validator) int {
 }
 
 // safe for concurrent use
-func (em *Emitter) isMyTxTurn(txHash common.Hash, sender common.Address, accountNonce uint64, now time.Time, validators *pos.Validators, me idx.ValidatorID, epoch idx.Epoch) bool {
+func (em *Emitter) isMyTxTurn(txHash common.Hash, sender common.Address, accountNonce uint64, now time.Time, validators *pos.Validators, offlineValidators map[idx.ValidatorID]bool, me idx.ValidatorID, epoch idx.Epoch) bool {
 	txTime := txtime.Of(txHash)
 
 	roundIndex := getTxRoundIndex(now, txTime, validators.Len())
@@ -161,7 +164,7 @@ func (em *Emitter) isMyTxTurn(txHash common.Hash, sender common.Address, account
 		if chosenValidator == me {
 			return true // current validator is the chosen - emit
 		}
-		if !em.offlineValidators[chosenValidator] {
+		if !offlineValidators[chosenValidator] {
 			return false // chosen validator is online - don't emit
 		}
 		// otherwise try next validator in the sequence
@@ -170,17 +173,81 @@ func (em *Emitter) isMyTxTurn(txHash common.Hash, sender common.Address, account
 	return false
 }
 
-func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPriceAndNonce) {
+// newTurnPolicy returns the per-transaction turn check of this validator, used
+// to stage the transactions of the ordering set.
+//
+// The set of offline validators the check consults is guarded by the world lock,
+// so it is snapshotted here. The returned policy reads only that snapshot and can
+// therefore be evaluated without holding the lock.
+func (em *Emitter) newTurnPolicy(upgrades opera.Upgrades) func(tx *txpool.LazyTransaction) bool {
+	if upgrades.SingleProposerBlockFormation {
+		return func(*txpool.LazyTransaction) bool { return true }
+	}
+	em.world.Lock()
+	offlineValidators := maps.Clone(em.offlineValidators)
+	em.world.Unlock()
+
+	return func(tx *txpool.LazyTransaction) bool {
+		resolvedTx := tx.Resolve()
+		sender, _ := types.Sender(em.world.TransactionSigner, resolvedTx)
+		return em.isMyTxTurn(tx.Hash, sender, resolvedTx.Nonce(), time.Now(), em.validators.Load(), offlineValidators, em.config.Validator.ID, idx.Epoch(em.epoch.Load()))
+	}
+}
+
+// addTxs appends transactions from sorted to the event e within its gas-power
+// and size budgets.
+//
+// A transaction is admitted on this validator's turn, or eagerly while it is
+// another validator's turn so that prioritized transactions reach a block
+// quickly; anything else is dropped. An eager admission requires a priority and
+// counts against MaxPiggybackTxsPerEntityPerEvent per Priority.ID and half of the
+// gas budget, since prioritized candidates are staged first and a few large ones
+// would otherwise starve this validator's own. Eager admissions are rolled back
+// if the event carries nothing of this validator's own, and never affect
+// consensus: the authoritative priority ordering is re-derived during block
+// formation.
+func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPriorityAndPriceAndNonce) {
 	maxGasUsed := em.maxGasPowerToUse(e)
 	if maxGasUsed <= e.GasPowerUsed() {
 		return
 	}
 
 	totalTxSizeInBytes := uint64(0)
-
-	// sort transactions by price and nonce
 	rules := em.world.GetRules()
+
+	// Eager admissions per entity, and the share of the gas budget they may
+	// consume, leaving the rest for this validator's own transactions.
+	maxPiggybackTxs := em.cache.priorityConfig.MaxPiggybackTxsPerEntityPerEvent
+	piggybackTxs := map[priorities.PriorityID]uint64{}
+	maxPiggybackGas := (maxGasUsed - e.GasPowerUsed()) / 2
+	piggybackGas := uint64(0)
+
+	// State to restore if the event ends up carrying foreign-priority
+	// transactions only.
+	txPrefixOnEntry := e.Transactions()
+	gasPowerUsedOnEntry := e.GasPowerUsed()
+	gasPowerLeftOnEntry := e.GasPowerLeft()
+	ownTxs := false
+	eagerTxs := int64(0)
+
 	for entry, ok := sorted.Peek(); ok; entry, ok = sorted.Peek() {
+		// Another validator's turn: admit eagerly only if the transaction is
+		// prioritized and the eager limits are not yet exhausted.
+		if !entry.myTurn {
+			priority := entry.priority
+			if !priority.IsPrioritized() {
+				txsSkippedNotMyTurn.Inc(1)
+				sorted.PopSequence()
+				continue
+			}
+			if piggybackTxs[priority.ID] >= maxPiggybackTxs ||
+				piggybackGas+entry.tx.Gas > maxPiggybackGas {
+				txsSkippedPiggybackLimit.Inc(1)
+				sorted.PopSequence()
+				continue
+			}
+		}
+
 		tx := entry.tx
 		resolvedTx := tx.Resolve()
 
@@ -215,12 +282,6 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 			sorted.PopSequence()
 			continue
 		}
-		// my turn, i.e. try to not include the same tx simultaneously by different validators
-		if !em.isMyTxTurn(tx.Hash, sender, resolvedTx.Nonce(), time.Now(), em.validators.Load(), e.Creator(), idx.Epoch(em.epoch.Load())) {
-			txsSkippedNotMyTurn.Inc(1)
-			sorted.PopSequence()
-			continue
-		}
 		// check transaction is not outdated
 		if !em.world.TxPool.Has(tx.Hash) {
 			txsSkippedOutdated.Inc(1)
@@ -238,7 +299,23 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 		e.SetGasPowerLeft(e.GasPowerLeft().Sub(tx.Gas))
 		e.SetTxs(append(e.Transactions(), resolvedTx))
 		totalTxSizeInBytes += txSize
+		if entry.myTurn {
+			ownTxs = true
+		} else {
+			piggybackGas += tx.Gas
+			piggybackTxs[entry.priority.ID]++
+			eagerTxs++
+		}
 		sorted.Shift()
+	}
+
+	// If this validator contributed none of its own transactions, roll the
+	// eagerly included ones back.
+	if !ownTxs && eagerTxs > 0 {
+		e.SetTxs(txPrefixOnEntry)
+		e.SetGasPowerUsed(gasPowerUsedOnEntry)
+		e.SetGasPowerLeft(gasPowerLeftOnEntry)
+		txsSkippedPiggybackRollback.Inc(eagerTxs)
 	}
 }
 

@@ -43,6 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/originatedtxs"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/throttler"
@@ -84,6 +85,9 @@ var (
 	txsSkippedConflictingSender = metrics.GetOrRegisterCounter("emitter/skipped/conflictingsender", nil) // tx by given sender in some unconfirmed event
 	txsSkippedNotMyTurn         = metrics.GetOrRegisterCounter("emitter/skipped/notmyturn", nil)         // tx should be handled by other validator
 	txsSkippedOutdated          = metrics.GetOrRegisterCounter("emitter/skipped/outdated", nil)          // tx skipped because it is outdated
+
+	txsSkippedPiggybackLimit    = metrics.GetOrRegisterCounter("emitter/skipped/piggybacklimit", nil)    // eager admission would exceed the per-entity or the gas limit
+	txsSkippedPiggybackRollback = metrics.GetOrRegisterCounter("emitter/skipped/piggybackrollback", nil) // eager admissions rolled back, the event carries none of this validator's own txs
 
 	skippedOfflineValidatorsCounter = metrics.GetOrRegisterCounter("emitter/skipped_offline", nil)
 
@@ -145,10 +149,11 @@ type Emitter struct {
 	maxParents idx.Event
 
 	cache struct {
-		sortedTxs *transactionsByPriceAndNonce
-		poolTime  time.Time
-		poolBlock idx.Block
-		poolCount int
+		sortedTxs      *transactionsByPriorityAndPriceAndNonce
+		poolTime       time.Time
+		poolBlock      idx.Block
+		poolCount      int
+		priorityConfig priorities.Config // rate limits read while the sortedTxs were built
 	}
 
 	emittedEventFile *os.File
@@ -313,13 +318,13 @@ func (em *Emitter) tick() {
 	}
 }
 
-func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
+func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriorityAndPriceAndNonce {
 	// Short circuit if pool wasn't updated since the cache was built
 	poolCount := em.world.TxPool.Count()
 	if em.cache.sortedTxs != nil &&
 		em.cache.poolBlock == em.world.GetLatestBlockIndex() &&
 		em.cache.poolCount == poolCount &&
-		time.Since(em.cache.poolTime) < em.config.TxsCacheInvalidation {
+		time.Since(em.cache.poolTime) < min(em.config.TxsCacheInvalidation, txTurnPeriodLatency) {
 		return em.cache.sortedTxs.Copy()
 	}
 	// Build the cache
@@ -374,7 +379,14 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 		}
 	}
 
-	sortedTxs := newTransactionsByPriceAndNonce(txs, baseFee)
+	// The candidates are classified against the head state while the ordering is
+	// built, so the context — and thereby the acquired head state — is only held
+	// for the duration of the build.
+	context := em.newPriorityContext()
+	defer context.release()
+	sortedTxs := newTransactionsByPriorityAndPriceAndNonce(
+		txs, baseFee, context, em.newTurnPolicy(rules.Upgrades))
+	em.cache.priorityConfig = context.getConfig()
 	em.cache.sortedTxs = sortedTxs
 	em.cache.poolCount = poolCount
 	em.cache.poolBlock = em.world.GetLatestBlockIndex()
@@ -492,7 +504,7 @@ func (em *Emitter) loadPrevEmitTime() time.Time {
 }
 
 // createEvent is not safe for concurrent use.
-func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.EventPayload, error) {
+func (em *Emitter) createEvent(sortedTxs *transactionsByPriorityAndPriceAndNonce) (*inter.EventPayload, error) {
 	if synced := em.logSyncStatus(em.isSyncedToEmit()); !synced {
 		// I'm reindexing my old events, so don't create events until connect all the existing self-events
 		return nil, nil

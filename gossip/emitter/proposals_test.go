@@ -498,7 +498,7 @@ func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
 		index := NewMocktransactionIndex(ctrl)
 
 		tx := types.NewTx(&types.LegacyTx{Nonce: 1})
-		index.EXPECT().Peek().Return(&txWithMinerFee{tx: &txpool.LazyTransaction{Tx: tx}}, true)
+		index.EXPECT().Peek().Return(&txWithMetadata{tx: &txpool.LazyTransaction{Tx: tx}}, true)
 
 		adapter := transactionPriorityAdapter{index}
 		got := adapter.Current()

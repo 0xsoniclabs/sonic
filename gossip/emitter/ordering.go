@@ -17,8 +17,10 @@
 package emitter
 
 import (
+	"cmp"
 	"math/big"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/utils/frontierheap"
 	"github.com/ethereum/go-ethereum/common"
@@ -27,75 +29,113 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// txWithMinerFee wraps a transaction with its gas price or effective miner gasTipCap
-type txWithMinerFee struct {
-	tx   *txpool.LazyTransaction
-	from common.Address
-	fees *uint256.Int
+// stage is the consumption stage of a transaction.
+type stage uint8
+
+const (
+	stagePrioritizedMyTurn stage = iota
+	stagePrioritizedNotMyTurn
+	stageNotPrioritized
+)
+
+// txWithMetadata wraps a transaction with its effective miner tip, its priority
+// and whether it is this validator's turn to originate it. Non-prioritized
+// entries carry a zero-valued priority.
+type txWithMetadata struct {
+	tx       *txpool.LazyTransaction
+	tip      *uint256.Int
+	priority priorities.Priority
+	myTurn   bool
 }
 
-// newTxWithMinerFee creates a wrapped transaction, calculating the effective
-// miner gasTipCap if a base fee is provided.
-// Returns error in case of a negative effective miner gasTipCap.
-func newTxWithMinerFee(tx *txpool.LazyTransaction, from common.Address, baseFee *uint256.Int) (*txWithMinerFee, error) {
-	tip := new(uint256.Int).Set(tx.GasTipCap)
-	if baseFee != nil {
-		if tx.GasFeeCap.Cmp(baseFee) < 0 {
-			if !subsidies.IsSponsorshipRequest(tx.Tx) {
-				return nil, types.ErrGasFeeCapTooLow
-			}
-		}
-		tip = new(uint256.Int).Sub(tx.GasFeeCap, baseFee)
-		if tip.Gt(tx.GasTipCap) {
-			tip = tx.GasTipCap
-		}
+// stage returns the consumption stage of the transaction.
+func (t *txWithMetadata) stage() stage {
+	switch {
+	case !t.priority.IsPrioritized():
+		return stageNotPrioritized
+	case t.myTurn:
+		return stagePrioritizedMyTurn
+	default:
+		return stagePrioritizedNotMyTurn
 	}
-	return &txWithMinerFee{
-		tx:   tx,
-		from: from,
-		fees: tip,
-	}, nil
 }
 
-// compareTxByPriceAndTime orders transactions by (effective miner tip desc,
+// computeEffectiveTip returns the miner tip the transaction yields at the given
+// base fee. A transaction not covering the base fee has no tip to offer and is
+// rejected unless it requests sponsorship.
+func computeEffectiveTip(tx *txpool.LazyTransaction, baseFee *uint256.Int) (*uint256.Int, error) {
+	if baseFee == nil {
+		return new(uint256.Int).Set(tx.GasTipCap), nil
+	}
+	if tx.GasFeeCap.Cmp(baseFee) < 0 && !subsidies.IsSponsorshipRequest(tx.Tx) {
+		return nil, types.ErrGasFeeCapTooLow
+	}
+	tip := new(uint256.Int).Sub(tx.GasFeeCap, baseFee)
+	if tip.Gt(tx.GasTipCap) {
+		tip = tx.GasTipCap
+	}
+	return tip, nil
+}
+
+// compareTxByStagePriorityPriceTime orders transactions by (stage asc,
+// priority level desc, priority weight desc, effective miner tip desc,
 // first-seen time asc), returning >0 when a precedes b.
-func compareTxByPriceAndTime(a, b *txWithMinerFee) int {
-	if c := a.fees.Cmp(b.fees); c != 0 {
+func compareTxByStagePriorityPriceTime(a, b *txWithMetadata) int {
+	if c := cmp.Compare(b.stage(), a.stage()); c != 0 {
+		return c
+	}
+	if c := a.priority.Cmp(b.priority); c != 0 {
+		return c
+	}
+	if c := a.tip.Cmp(b.tip); c != 0 {
 		return c
 	}
 	return b.tx.Time.Compare(a.tx.Time)
 }
 
-// transactionsByPriceAndNonce is the heap of transaction sequences used to
-// order the candidates of an event, see newTransactionsByPriceAndNonce.
-type transactionsByPriceAndNonce = frontierheap.FrontierHeap[*txWithMinerFee]
+// transactionsByPriorityAndPriceAndNonce is a heap over the senders'
+// transaction sequences that returns transactions in the order
+// (stage asc, priority desc, effective tip desc, time asc) while honouring
+// per-sender nonce sequencing.
+// Because of nonce sequencing, elements are NOT necessarily in monotonic order.
+type transactionsByPriorityAndPriceAndNonce = frontierheap.FrontierHeap[*txWithMetadata]
 
-// newTransactionsByPriceAndNonce creates a heap over the senders' transaction
-// sequences that returns transactions in a profit-maximizing order (effective
-// tip desc, time asc) while honouring per-sender nonce sequencing.
+// newTransactionsByPriorityAndPriceAndNonce collects the senders' transactions
+// into a transactionsByPriorityAndPriceAndNonce, wrapping each with the metadata
+// the ordering compares: its effective tip at baseFee, its priority as
+// classified by context and its turn status as decided by turnPolicy.
 //
-// Every transaction is wrapped up front. A transaction whose effective tip
-// cannot be computed is dropped together with the sender's later nonces, which
-// depend on it.
-func newTransactionsByPriceAndNonce(
+// A transaction whose effective tip cannot be computed is dropped together with
+// the sender's later nonces, which depend on it.
+//
+// A nil context treats every transaction as non-prioritized and thereby disables
+// priority ordering altogether.
+func newTransactionsByPriorityAndPriceAndNonce(
 	txs map[common.Address][]*txpool.LazyTransaction,
 	baseFee *big.Int,
-) *transactionsByPriceAndNonce {
+	context *priorityContext,
+	turnPolicy func(tx *txpool.LazyTransaction) bool,
+) *transactionsByPriorityAndPriceAndNonce {
 	// Convert the basefee from header format to uint256 format
 	var baseFeeUint *uint256.Int
 	if baseFee != nil {
 		baseFeeUint = uint256.MustFromBig(baseFee)
 	}
 
-	heap := frontierheap.NewFrontierHeap(compareTxByPriceAndTime)
-	for sender, senderTxs := range txs {
-		sequence := make([]*txWithMinerFee, 0, len(senderTxs))
+	heap := frontierheap.NewFrontierHeap(compareTxByStagePriorityPriceTime)
+	for _, senderTxs := range txs {
+		sequence := make([]*txWithMetadata, 0, len(senderTxs))
 		for _, tx := range senderTxs {
-			wrapped, err := newTxWithMinerFee(tx, sender, baseFeeUint)
+			tip, err := computeEffectiveTip(tx, baseFeeUint)
 			if err != nil {
 				break // the sender's later nonces depend on the dropped transaction
 			}
-			sequence = append(sequence, wrapped)
+			sequence = append(sequence, &txWithMetadata{
+				tx:       tx,
+				tip:      tip,
+				priority: context.priorityOf(tx.Resolve()),
+				myTurn:   turnPolicy(tx),
+			})
 		}
 		heap.AddSequence(sequence)
 	}

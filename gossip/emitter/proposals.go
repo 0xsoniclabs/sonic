@@ -54,7 +54,7 @@ import (
 // proposer for the current turn can be determined.
 func (em *Emitter) createPayload(
 	event inter.EventI,
-	sorted *transactionsByPriceAndNonce,
+	sorted *transactionsByPriorityAndPriceAndNonce,
 ) (inter.Payload, error) {
 	adapter := worldAdapter{External: em.world}
 	randaoMixer := randao.NewRandaoMixerAdapter(em.world.EventsSigner)
@@ -87,7 +87,7 @@ func createPayload(
 	validators *pos.Validators,
 	event inter.EventI,
 	proposalTracker proposalTracker,
-	sorted *transactionsByPriceAndNonce,
+	sorted *transactionsByPriorityAndPriceAndNonce,
 	transactionScheduler txScheduler,
 	randaoMixer randao.RandaoMixer,
 	durationMetric timerMetric,
@@ -338,7 +338,7 @@ func (a *transactionPriorityAdapter) Skip() {
 }
 
 type transactionIndex interface {
-	Peek() (*txWithMinerFee, bool)
-	Shift() (*txWithMinerFee, bool)
-	PopSequence() ([]*txWithMinerFee, bool)
+	Peek() (*txWithMetadata, bool)
+	Shift() (*txWithMetadata, bool)
+	PopSequence() ([]*txWithMetadata, bool)
 }
