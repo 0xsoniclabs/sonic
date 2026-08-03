@@ -2130,8 +2130,13 @@ func TestTransactionAllowedTxSize(t *testing.T) {
 	if err := pool.addRemoteSync(pricedDataTransaction(2, pool.currentMaxGas, big.NewInt(1), key, txMaxSize)); err == nil {
 		t.Fatalf("expected rejection on slightly oversize transaction")
 	}
-	// Try adding a transaction of random not allowed size
-	if err := pool.addRemoteSync(pricedDataTransaction(2, pool.currentMaxGas, big.NewInt(1), key, dataSize+1+uint64(rand.IntN(10*txMaxSize)))); err == nil {
+	// Try adding a transaction of random not allowed size.
+	//
+	// The size is derived from txMaxSize rather than from dataSize: dataSize is
+	// a lower bound on the maximum allowed data size, so dataSize+1 is not
+	// guaranteed to exceed the limit. Letting the data alone exceed txMaxSize
+	// makes the rejection independent of the actual non-data overhead.
+	if err := pool.addRemoteSync(pricedDataTransaction(2, pool.currentMaxGas, big.NewInt(1), key, txMaxSize+1+uint64(rand.IntN(9*txMaxSize)))); err == nil {
 		t.Fatalf("expected rejection on oversize transaction")
 	}
 	// Run some sanity checks on the pool internals
