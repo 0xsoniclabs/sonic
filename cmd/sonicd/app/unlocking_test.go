@@ -244,9 +244,30 @@ func TestUnlockFlagPasswordFifoInterruptedBySignal(t *testing.T) {
 		"--unlock", "f466859ead1932d743d622cb74fc058882e8648a",
 		"--ipcdisable")
 
-	// Give the node a moment to start and block reading the empty password
-	// FIFO before sending the shutdown signal.
-	time.Sleep(500 * time.Millisecond)
+	// Wait until the node is actually blocked reading the empty password FIFO
+	// before sending the shutdown signal.
+	//
+	// A fixed sleep is not a sufficient barrier here: before reaching the
+	// blocking read the node has to install its signal handler, open the live
+	// and archive databases and start the whole gossip service. On a loaded
+	// machine, and in particular under the race detector, that can take well
+	// over half a second. An interrupt delivered before the signal handler is
+	// installed takes the default disposition and kills the node silently,
+	// which is exactly the empty-stderr failure reported in the issue.
+	//
+	// The log line below is emitted immediately before the blocking open of
+	// the FIFO, so its appearance is a reliable readiness marker.
+	const readyMarker = "Reading keystore password from file"
+	const readyTimeout = 60 * time.Second
+	deadline := time.Now().Add(readyTimeout)
+	for !strings.Contains(cli.StderrText(), readyMarker) {
+		if time.Now().After(deadline) {
+			cli.Kill()
+			t.Fatalf("node did not reach the password reading stage within %v, stderr:\n%s",
+				readyTimeout, cli.StderrText())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	cli.Interrupt()
 
 	exited := make(chan struct{})
