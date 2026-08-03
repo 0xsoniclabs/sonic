@@ -368,13 +368,21 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 			return buf, nil
 		}
 		if name == genesisstore.FwsLiveSection(0) {
-			err := mptIo.Export(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "live"), buf)
+			scratchDir := filepath.Join(b.carmenDir, "live-scratch")
+			if err := os.MkdirAll(scratchDir, 0700); err != nil {
+				return nil, fmt.Errorf("failed to create scratch dir for FWS live export; %v", err)
+			}
+			err := mptIo.Export(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "live"), buf, scratchDir)
 			if err != nil {
 				return nil, err
 			}
 		}
 		if name == genesisstore.FwsArchiveSection(0) {
-			err := mptIo.ExportArchive(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "archive"), buf)
+			scratchDir := filepath.Join(b.carmenDir, "archive-scratch")
+			if err := os.MkdirAll(scratchDir, 0700); err != nil {
+				return nil, fmt.Errorf("failed to create scratch dir for FWS archive export; %v", err)
+			}
+			err := mptIo.ExportArchive(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "archive"), buf, scratchDir)
 			if err != nil {
 				return nil, err
 			}

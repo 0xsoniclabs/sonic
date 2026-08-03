@@ -58,6 +58,10 @@ func heal(ctx *cli.Context) error {
 	chaindataDir := filepath.Join(dataDir, "chaindata")
 	carmenArchiveDir := filepath.Join(dataDir, "carmen", "archive")
 	carmenLiveDir := filepath.Join(dataDir, "carmen", "live")
+	carmenExportScratchDir := filepath.Join(dataDir, "carmen", "scratch")
+	if err := os.MkdirAll(carmenExportScratchDir, 0700); err != nil {
+		return fmt.Errorf("failed to create carmen scratch dir; %w", err)
+	}
 
 	archiveInfo, err := os.Stat(carmenArchiveDir)
 	if err != nil || !archiveInfo.IsDir() {
@@ -109,7 +113,7 @@ func heal(ctx *cli.Context) error {
 	log.Info("Archive state database reverted", "block", recoveredBlock)
 
 	log.Info("Re-creating live state from the archive...")
-	if err := healLiveFromArchive(cancelCtx, carmenLiveDir, carmenArchiveDir, recoveredBlock); err != nil {
+	if err := healLiveFromArchive(cancelCtx, carmenLiveDir, carmenArchiveDir, carmenExportScratchDir, recoveredBlock); err != nil {
 		return fmt.Errorf("failed to re-create carmen live state from archive; %w", err)
 	}
 
@@ -117,7 +121,7 @@ func heal(ctx *cli.Context) error {
 	return nil
 }
 
-func healLiveFromArchive(ctx context.Context, carmenLiveDir, carmenArchiveDir string, recoveredBlock idx.Block) (err error) {
+func healLiveFromArchive(ctx context.Context, carmenLiveDir, carmenArchiveDir, carmenExportScratchDir string, recoveredBlock idx.Block) (err error) {
 	if err := os.RemoveAll(carmenLiveDir); err != nil {
 		return fmt.Errorf("failed to remove broken live state: %w", err)
 	}
@@ -136,7 +140,7 @@ func healLiveFromArchive(ctx context.Context, carmenLiveDir, carmenArchiveDir st
 	go func() {
 		defer wg.Done()
 		defer caution.CloseAndReportError(&exportErr, writer, "failed to close writer")
-		exportErr = mptio.ExportBlockFromArchive(ctx, mptio.NewLog(), carmenArchiveDir, bufWriter, uint64(recoveredBlock))
+		exportErr = mptio.ExportBlockFromArchive(ctx, mptio.NewLog(), carmenArchiveDir, bufWriter, uint64(recoveredBlock), carmenExportScratchDir)
 		if exportErr == nil {
 			exportErr = bufWriter.Flush()
 		}
