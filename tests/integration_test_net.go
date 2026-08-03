@@ -242,6 +242,10 @@ type IntegrationTestNet struct {
 	genesisId common.Hash
 	nodes     []integrationTestNode
 
+	// directory is the root directory holding the genesis file and the data
+	// directories of all nodes. It is removed when the network is cleaned up.
+	directory string
+
 	sessionsMutex sync.Mutex
 	Session
 }
@@ -425,6 +429,9 @@ func StartIntegrationTestNetWithJsonGenesis(
 	encoded, err := json.MarshalIndent(jsonGenesis, "", "  ")
 	require.NoError(t, err, "failed to marshal genesis json")
 
+	// t.TempDir() is not usable here: it derives the path from the test name,
+	// and long (sub-)test names exceed the length limit of the Unix domain
+	// sockets created inside the node directories.
 	directory, err := os.MkdirTemp("", "TestNet")
 	require.NoError(t, err, "failed to create test directory")
 
@@ -455,7 +462,8 @@ func startIntegrationTestNet(
 ) (*IntegrationTestNet, error) {
 
 	net := &IntegrationTestNet{
-		options: options,
+		options:   options,
+		directory: directory,
 		Session: Session{
 			account: Account{evmcore.FakeKey(1)},
 		},
@@ -489,9 +497,22 @@ func startIntegrationTestNet(
 	require.NoError(t, net.start(), "failed to start the integration test network")
 
 	if !options.SkipCleanUp {
+		// Cleanups run in LIFO order, so the directory removal registered here
+		// runs after net.Stop: the nodes are shut down and their databases
+		// closed before the directory holding them is deleted.
+		t.Cleanup(net.cleanUpDirectory)
 		t.Cleanup(net.Stop)
 	}
 	return net, nil
+}
+
+// cleanUpDirectory removes the root directory of the network, containing the
+// genesis file and the data directories of all its nodes. The network must be
+// stopped before calling this function.
+func (n *IntegrationTestNet) cleanUpDirectory() {
+	if err := os.RemoveAll(n.directory); err != nil {
+		fmt.Printf("Failed to remove test network directory: %v\n", err)
+	}
 }
 
 func (n *integrationTestNode) getStateDir() string {
