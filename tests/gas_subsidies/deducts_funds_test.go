@@ -19,6 +19,7 @@ package gas_subsidies
 import (
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
@@ -252,10 +253,29 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 
 			// Scenarios may produce multiple blocks, so we need to
 			// iterate through all of them to find all sponsored transactions.
+			//
+			// The end of the scan window comes from the "latest" block, which
+			// can still lag the blocks the scenario has just produced: the
+			// scenario only waits for a receipt, not for the head pointer to
+			// catch up. If the window does not yet contain the sponsored
+			// transaction then no sponsorship request is seen, fundsDelta stays
+			// zero, and the assertion at the end of this test degrades into
+			// comparing the donation against itself. It then reports the full
+			// donation as the expected value even though the on-chain deduction
+			// happened correctly, which is the reported failure mode.
+			//
+			// The window is therefore extended and re-read while no sponsorship
+			// request has been observed, and the count is asserted below so that
+			// this can never again pass or fail vacuously.
 			var fundsDelta uint64
+			var sponsorshipRequests int
+
+			const maxWindowExtensions = 10
+			windowExtensions := 0
+			lastBlock := blockAfter.NumberU64()
 
 			// For every block created during test scenario
-			for blockNumber := blockBefore.NumberU64() + 1; blockNumber <= blockAfter.NumberU64(); blockNumber++ {
+			for blockNumber := blockBefore.NumberU64() + 1; blockNumber <= lastBlock; blockNumber++ {
 
 				tests.WaitForProofOf(t, client, int(blockNumber))
 
@@ -272,6 +292,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 					require.EqualValues(t, totalGasUsed, receipt.CumulativeGasUsed)
 
 					if subsidies.IsSponsorshipRequest(tx) {
+						sponsorshipRequests++
 						fundsUsed := (receipt.GasUsed +
 							config.OverheadChargeForFundBackedSponsorships.Uint64()) * block.BaseFee().Uint64()
 						require.Greater(t, fundsUsed, uint64(0),
@@ -292,9 +313,31 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 					}
 
 				}
+
+				// If the window is exhausted without having seen the sponsored
+				// transaction, the head pointer had not caught up yet when
+				// blockAfter was read. Re-read it and continue scanning.
+				if blockNumber == lastBlock &&
+					sponsorshipRequests == 0 &&
+					windowExtensions < maxWindowExtensions {
+					windowExtensions++
+					time.Sleep(100 * time.Millisecond)
+					latest, err := client.BlockByNumber(t.Context(), nil)
+					require.NoError(t, err)
+					lastBlock = latest.NumberU64()
+				}
 			}
 
-			tests.WaitForProofOf(t, client, int(blockAfter.NumberU64()))
+			// Every scenario in this test sponsors at least one transaction, so
+			// failing to observe one means the test did not measure what it is
+			// asserting about, rather than that no funds were deducted.
+			require.Greater(t, sponsorshipRequests, 0,
+				"no sponsorship request observed in blocks %d..%d after %d window extension(s); "+
+					"the fund assertion below would not be measuring anything",
+				blockBefore.NumberU64()+1, lastBlock, windowExtensions,
+			)
+
+			tests.WaitForProofOf(t, client, int(lastBlock))
 
 			_, fundId, err := sponsorshipRegistry.AccountSponsorshipFundId(nil, sponsoredSender.Address())
 			require.NoError(t, err)
