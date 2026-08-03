@@ -19,6 +19,7 @@ package tests
 import (
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -26,6 +27,13 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
+
+// pendingTxNotificationTimeout bounds the wait for a newPendingTransactions
+// notification. The notification is emitted when the transaction is accepted
+// into the pool rather than when it is included in a block, so this only has
+// to cover pool acceptance plus delivery over the web socket. It matches the
+// 60s RPC timeout the nodes of the integration test net are started with.
+const pendingTxNotificationTimeout = 60 * time.Second
 
 func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 
@@ -56,7 +64,15 @@ func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 	err = client.SendTransaction(t.Context(), tx)
 	require.NoError(t, err, "failed to send transaction ", err)
 
-	got := <-pendingTxs
+	var got *ethapi.RPCTransaction
+	select {
+	case got = <-pendingTxs:
+	case err := <-subs.Err():
+		t.Fatalf("subscription failed before a pending transaction was received: %v", err)
+	case <-time.After(pendingTxNotificationTimeout):
+		t.Fatalf("no pending-transaction notification received within %v", pendingTxNotificationTimeout)
+	}
+
 	want := ethapi.NewRPCPendingTransaction(tx, tx.GasPrice(), session.GetChainId())
 	require.Equal(t, want, got, "transaction from address does not match")
 
@@ -82,6 +98,14 @@ func TestPendingTransactionSubscription_ReturnsHashes(t *testing.T) {
 	err = client.SendTransaction(t.Context(), tx)
 	require.NoError(t, err, "failed to send transaction ", err)
 
-	got := <-pendingTxs
+	var got common.Hash
+	select {
+	case got = <-pendingTxs:
+	case err := <-subs.Err():
+		t.Fatalf("subscription failed before a pending transaction was received: %v", err)
+	case <-time.After(pendingTxNotificationTimeout):
+		t.Fatalf("no pending-transaction notification received within %v", pendingTxNotificationTimeout)
+	}
+
 	require.Equal(t, tx.Hash(), got, "transaction hash does not match")
 }
