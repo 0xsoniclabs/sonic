@@ -138,6 +138,9 @@ func testSingleProposerProtocol_CanProcessTransactions(
 			net.AdvanceEpoch(t, 1)
 			afterEpochAdvance, err := client.BlockNumber(t.Context())
 			require.NoError(err)
+			require.GreaterOrEqual(afterEpochAdvance, beforeEpochAdvance,
+				"block number decreased while advancing an epoch, from %d to %d",
+				beforeEpochAdvance, afterEpochAdvance)
 			epochAdvanceBlocks += afterEpochAdvance - beforeEpochAdvance
 		}
 	}
@@ -148,6 +151,9 @@ func testSingleProposerProtocol_CanProcessTransactions(
 	endBlock, err := client.BlockNumber(t.Context())
 	require.NoError(err)
 
+	require.GreaterOrEqual(endBlock, startBlock,
+		"block number decreased during the test, from %d to %d",
+		startBlock, endBlock)
 	require.GreaterOrEqual(endBlock-startBlock, epochAdvanceBlocks,
 		"epoch advance blocks cannot exceed the total block span")
 	blockSpan := endBlock - startBlock - epochAdvanceBlocks
