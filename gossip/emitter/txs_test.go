@@ -580,5 +580,9 @@ func (f *addTxsFixture) makeSorted(t *testing.T, priorityOf map[common.Hash]prio
 		},
 	).AnyTimes()
 
-	return newTransactionsByPriorityAndPriceAndNonce(bySender, nil, &priorityContext{classifier: classifier}, policy)
+	context := &priorityContext{
+		cache:      evmcore.NewPriorityCache(evmcore.DefaultTxPoolConfig),
+		classifier: classifier,
+	}
+	return newTransactionsByPriorityAndPriceAndNonce(bySender, nil, context, policy)
 }
