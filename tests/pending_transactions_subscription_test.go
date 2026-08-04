@@ -31,7 +31,7 @@ import (
 // pendingTxNotificationTimeout bounds the wait for a newPendingTransactions
 // notification. The notification is emitted when the transaction is accepted
 // into the pool rather than when it is included in a block, so this only has
-// to cover pool acceptance plus delivery over the web socket. It matches the
+// to cover pool acceptance plus delivery over the WebSocket. It matches the
 // 60s RPC timeout the nodes of the integration test net are started with.
 const pendingTxNotificationTimeout = 60 * time.Second
 
