@@ -266,66 +266,72 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 			//
 			// The window is therefore extended and re-read while no sponsorship
 			// request has been observed, and the count is asserted below so that
-			// this can never again pass or fail vacuously.
+			// this can never again pass or fail vacuously. Note that the head may
+			// not have advanced at all yet, leaving an initially empty window, so
+			// the extension has to happen outside the scan loop.
 			var fundsDelta uint64
 			var sponsorshipRequests int
 
 			const maxWindowExtensions = 10
 			windowExtensions := 0
+			// nextBlock is a cursor across window extensions: each scan resumes
+			// where the previous one stopped, so no block is counted twice.
+			nextBlock := blockBefore.NumberU64() + 1
 			lastBlock := blockAfter.NumberU64()
 
-			// For every block created during test scenario
-			for blockNumber := blockBefore.NumberU64() + 1; blockNumber <= lastBlock; blockNumber++ {
+			for {
+				// For every block created during test scenario
+				for ; nextBlock <= lastBlock; nextBlock++ {
 
-				tests.WaitForProofOf(t, client, int(blockNumber))
+					tests.WaitForProofOf(t, client, int(nextBlock))
 
-				block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
-				require.NoError(t, err)
-
-				var totalGasUsed uint64
-
-				for i, tx := range block.Transactions() {
-					receipt, err := net.GetReceipt(tx.Hash())
+					block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(nextBlock)))
 					require.NoError(t, err)
 
-					totalGasUsed += receipt.GasUsed
-					require.EqualValues(t, totalGasUsed, receipt.CumulativeGasUsed)
+					var totalGasUsed uint64
 
-					if subsidies.IsSponsorshipRequest(tx) {
-						sponsorshipRequests++
-						fundsUsed := (receipt.GasUsed +
-							config.OverheadChargeForFundBackedSponsorships.Uint64()) * block.BaseFee().Uint64()
-						require.Greater(t, fundsUsed, uint64(0),
-							"sponsored tx must have a non-zero funds cost",
-						)
-						fundsDelta += fundsUsed
-
-						require.Less(t, i, len(block.Transactions())-1,
-							"sponsored tx should not be the last tx in the block")
-						internalTx := block.Transactions()[i+1]
-
-						deduceFundsReceipt, err := net.GetReceipt(internalTx.Hash())
+					for i, tx := range block.Transactions() {
+						receipt, err := net.GetReceipt(tx.Hash())
 						require.NoError(t, err)
-						require.Equal(t, types.ReceiptStatusSuccessful, deduceFundsReceipt.Status)
 
-						validateSponsoredTxInBlock(t, net, tx.Hash())
+						totalGasUsed += receipt.GasUsed
+						require.EqualValues(t, totalGasUsed, receipt.CumulativeGasUsed)
+
+						if subsidies.IsSponsorshipRequest(tx) {
+							sponsorshipRequests++
+							fundsUsed := (receipt.GasUsed +
+								config.OverheadChargeForFundBackedSponsorships.Uint64()) * block.BaseFee().Uint64()
+							require.Greater(t, fundsUsed, uint64(0),
+								"sponsored tx must have a non-zero funds cost",
+							)
+							fundsDelta += fundsUsed
+
+							require.Less(t, i, len(block.Transactions())-1,
+								"sponsored tx should not be the last tx in the block")
+							internalTx := block.Transactions()[i+1]
+
+							deduceFundsReceipt, err := net.GetReceipt(internalTx.Hash())
+							require.NoError(t, err)
+							require.Equal(t, types.ReceiptStatusSuccessful, deduceFundsReceipt.Status)
+
+							validateSponsoredTxInBlock(t, net, tx.Hash())
+
+						}
 
 					}
-
 				}
 
 				// If the window is exhausted without having seen the sponsored
 				// transaction, the head pointer had not caught up yet when
-				// blockAfter was read. Re-read it and continue scanning.
-				if blockNumber == lastBlock &&
-					sponsorshipRequests == 0 &&
-					windowExtensions < maxWindowExtensions {
-					windowExtensions++
-					time.Sleep(100 * time.Millisecond)
-					latest, err := client.BlockByNumber(t.Context(), nil)
-					require.NoError(t, err)
-					lastBlock = latest.NumberU64()
+				// blockAfter was read. Re-read it and keep scanning.
+				if sponsorshipRequests > 0 || windowExtensions >= maxWindowExtensions {
+					break
 				}
+				windowExtensions++
+				time.Sleep(100 * time.Millisecond)
+				latest, err := client.BlockByNumber(t.Context(), nil)
+				require.NoError(t, err)
+				lastBlock = latest.NumberU64()
 			}
 
 			// Every scenario in this test sponsors at least one transaction, so
