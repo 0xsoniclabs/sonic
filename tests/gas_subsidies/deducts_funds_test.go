@@ -253,29 +253,17 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 
 			// Scenarios may produce multiple blocks, so we need to
 			// iterate through all of them to find all sponsored transactions.
-			//
-			// The end of the scan window comes from the "latest" block, which
-			// can still lag the blocks the scenario has just produced: the
-			// scenario only waits for a receipt, not for the head pointer to
-			// catch up. If the window does not yet contain the sponsored
-			// transaction then no sponsorship request is seen, fundsDelta stays
-			// zero, and the assertion at the end of this test degrades into
-			// comparing the donation against itself. It then reports the full
-			// donation as the expected value even though the on-chain deduction
-			// happened correctly, which is the reported failure mode.
-			//
-			// The window is therefore extended and re-read while no sponsorship
-			// request has been observed, and the count is asserted below so that
-			// this can never again pass or fail vacuously. Note that the head may
-			// not have advanced at all yet, leaving an initially empty window, so
-			// the extension has to happen outside the scan loop.
+			// The "latest" block can lag the blocks the scenario just produced,
+			// since the scenario only waits for a receipt, not for the head
+			// pointer to catch up. The scan window is therefore extended while
+			// no sponsorship request has been observed.
 			var fundsDelta uint64
 			var sponsorshipRequests int
 
 			const maxWindowExtensions = 10
 			windowExtensions := 0
-			// nextBlock is a cursor across window extensions: each scan resumes
-			// where the previous one stopped, so no block is counted twice.
+			// Cursor across window extensions: each scan resumes where the
+			// previous one stopped, so no block is counted twice.
 			nextBlock := blockBefore.NumberU64() + 1
 			lastBlock := blockAfter.NumberU64()
 
@@ -321,9 +309,8 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 					}
 				}
 
-				// If the window is exhausted without having seen the sponsored
-				// transaction, the head pointer had not caught up yet when
-				// blockAfter was read. Re-read it and keep scanning.
+				// Window exhausted without a sponsored transaction: re-read the
+				// head and keep scanning.
 				if sponsorshipRequests > 0 || windowExtensions >= maxWindowExtensions {
 					break
 				}
@@ -334,12 +321,9 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 				lastBlock = latest.NumberU64()
 			}
 
-			// Every scenario in this test sponsors at least one transaction, so
-			// failing to observe one means the test did not measure what it is
-			// asserting about, rather than that no funds were deducted.
+			// Every scenario sponsors at least one transaction.
 			require.Greater(t, sponsorshipRequests, 0,
-				"no sponsorship request observed in blocks %d..%d after %d window extension(s); "+
-					"the fund assertion below would not be measuring anything",
+				"no sponsorship request observed in blocks %d..%d after %d window extension(s)",
 				blockBefore.NumberU64()+1, lastBlock, windowExtensions,
 			)
 
