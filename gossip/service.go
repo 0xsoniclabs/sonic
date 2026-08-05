@@ -236,6 +236,10 @@ type Service struct {
 	// version watcher
 	verWatcher *verwatcher.VersionWatcher
 
+	// peerRuns tracks the peer handler goroutines started by the p2p server
+	// for the protocols returned by Protocols, so Stop can wait them out.
+	peerRuns peerRunTracker
+
 	blockProcWg        sync.WaitGroup
 	blockProcTasks     *workers.Workers
 	blockProcTasksDone chan struct{}
@@ -491,14 +495,11 @@ func MakeProtocols(svc *Service, backend *handler, disc enode.Iterator) ([]p2p.P
 				peer := newPeer(version, p, rw, backend.config.Protocol.PeerCache)
 				defer peer.Close()
 
-				select {
-				case <-backend.quitSync:
+				if !svc.peerRuns.acquireRun() {
 					return p2p.DiscQuitting
-				default:
-					backend.wg.Add(1)
-					defer backend.wg.Done()
-					return backend.handle(peer)
 				}
+				defer svc.peerRuns.releaseRun()
+				return backend.handle(peer)
 			},
 			NodeInfo: func() interface{} {
 				return backend.NodeInfo()
@@ -629,6 +630,14 @@ func (s *Service) Stop() error {
 
 	// Stop all the peer-related stuff first.
 	s.operaDialCandidates.Close()
+
+	// Bring down the peer handler goroutines the p2p server started for us
+	// before tearing down the handler they run against. The order matters:
+	// refusing new runs first means the wait cannot race an arriving one, and
+	// the running ones only return once their sessions are disconnected.
+	s.peerRuns.refuseNewRuns()
+	s.handler.disconnectPeers()
+	s.peerRuns.waitForRuns()
 
 	s.handler.Stop()
 	// Must stop before the store is closed to avoid reading from a closed store.
