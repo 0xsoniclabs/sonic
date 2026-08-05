@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 495" font-family="system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2C6BE0"/>
+    </marker>
+    <marker id="aha" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#B9740B"/>
+    </marker>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#101828" flood-opacity="0.07"/>
+    </filter>
+    <style>
+      .num{font-weight:600;font-size:12px;fill:#98A2B3}
+      .lbl{font-weight:600;font-size:14px;fill:#1B2129}
+      .ttl{font-weight:700;font-size:22px;fill:#111827}
+      .abr{stroke:#C9CFD8;stroke-width:1.2;fill:none}
+      .alab{font-weight:600;font-size:10px;fill:#8A93A0;letter-spacing:.09em}
+      .ic{fill:none;stroke:#2A313C;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+      .ica{fill:none;stroke:#B9740B;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+      .dot{fill:#2A313C;stroke:none}
+      .chip{fill:#FFFFFF;stroke:#E3E7ED;stroke-width:1.5}
+      .hint{fill:#FDF7EC;stroke:#E3B15F;stroke-width:1.5}
+      .arr{stroke:#2C6BE0;stroke-width:2;stroke-linecap:round;fill:none}
+      .qa{stroke:#B9740B;fill:none;stroke-linecap:round}
+      .atag{font-weight:600;font-size:11px;fill:#B9740B;paint-order:stroke;stroke:#FFFFFF;stroke-width:3px;stroke-linejoin:round}
+      .rtitle{font-weight:700;font-size:15px;fill:#8A560A}
+      .rsub{font-weight:500;font-size:11px;fill:#B9740B}
+      .rmono{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:11px;fill:#8A560A}
+      .rmono2{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:11px;fill:#B9740B}
+      .leg{font-weight:500;font-size:12.5px;fill:#667085}
+      .lega{font-weight:700;fill:#8A560A}
+    </style>
+  </defs>
+
+  <text class="ttl" x="54" y="40">Transaction Lifecycle</text>
+
+  <!-- actor band: where each stage runs -->
+  <text class="alab" x="100" y="64" text-anchor="middle">WALLET</text>
+  <path class="abr" d="M66 78 L66 74 L134 74 L134 78"/>
+  <text class="alab" x="277" y="64" text-anchor="middle">RPC NODE</text>
+  <path class="abr" d="M243 78 L243 74 L311 74 L311 78"/>
+  <text class="alab" x="454" y="64" text-anchor="middle">NETWORK</text>
+  <path class="abr" d="M420 78 L420 74 L488 74 L488 78"/>
+  <text class="alab" x="896" y="64" text-anchor="middle">VALIDATOR NODES</text>
+  <path class="abr" d="M597 78 L597 74 L1196 74 L1196 78"/>
+  <text class="alab" x="1339" y="64" text-anchor="middle">RPC NODE</text>
+  <path class="abr" d="M1305 78 L1305 74 L1373 74 L1373 78"/>
+
+  <!-- pipeline arrows -->
+  <line class="arr" x1="142" y1="146" x2="235" y2="146" marker-end="url(#ah)"/>
+  <line class="arr" x1="319" y1="146" x2="412" y2="146" marker-end="url(#ah)"/>
+  <line class="arr" x1="496" y1="146" x2="589" y2="146" marker-end="url(#ah)"/>
+  <line class="arr" x1="673" y1="146" x2="766" y2="146" marker-end="url(#ah)"/>
+  <line class="arr" x1="850" y1="146" x2="943" y2="146" marker-end="url(#ah)"/>
+  <line class="arr" x1="1027" y1="146" x2="1120" y2="146" marker-end="url(#ah)"/>
+  <line class="arr" x1="1204" y1="146" x2="1297" y2="146" marker-end="url(#ah)"/>
+
+  <!-- 1 created & signed -->
+  <text class="num" x="100" y="101" text-anchor="middle">01</text>
+  <rect class="chip" x="64" y="110" width="72" height="72" rx="18" filter="url(#sh)"/>
+  <g class="ic" transform="translate(84,130)">
+    <path d="M16 3 L23 17 L16 23 L9 17 Z"/><path d="M16 12 V22"/><circle class="dot" cx="16" cy="25" r="1.4"/>
+  </g>
+  <text class="lbl" x="100" text-anchor="middle"><tspan y="205">Created &amp;</tspan><tspan x="100" y="222">signed</tspan></text>
+
+  <!-- 2 sent to pool (touchpoint) -->
+  <text class="num" x="277" y="101" text-anchor="middle">02</text>
+  <rect class="chip" x="241" y="110" width="72" height="72" rx="18" filter="url(#sh)"/>
+  <g class="ic" transform="translate(261,130)">
+    <path d="M29 4 L4 14 L14 18 L18 28 Z"/><path d="M29 4 L14 18"/>
+  </g>
+  <text class="lbl" x="277" text-anchor="middle"><tspan y="205">Sent to pool</tspan><tspan x="277" y="222">(RPC)</tspan></text>
+
+  <!-- 3 gossipped -->
+  <text class="num" x="454" y="101" text-anchor="middle">03</text>
+  <rect class="chip" x="418" y="110" width="72" height="72" rx="18" filter="url(#sh)"/>
+  <g class="ic" transform="translate(438,130)">
+    <path d="M8 9 L24 9"/><path d="M8 9 L16 25"/><path d="M24 9 L16 25"/>
+    <circle class="dot" cx="8" cy="9" r="3"/><circle class="dot" cx="24" cy="9" r="3"/><circle class="dot" cx="16" cy="25" r="3"/>
+  </g>
+  <text class="lbl" x="454" text-anchor="middle"><tspan y="205">Gossipped</tspan><tspan x="454" y="222">between pools</tspan></text>
+
+  <!-- 4 bundled into event (touchpoint) -->
+  <text class="num" x="631" y="101" text-anchor="middle">04</text>
+  <rect class="hint" x="595" y="110" width="72" height="72" rx="18" filter="url(#sh)"/>
+  <g class="ic" transform="translate(615,130)">
+    <path d="M16 4 L28 10 L16 16 L4 10 Z"/><path d="M4 16 L16 22 L28 16"/><path d="M4 22 L16 28 L28 22"/>
+  </g>
+  <text class="lbl" x="631" text-anchor="middle"><tspan y="205">Bundled into</tspan><tspan x="631" y="222">event</tspan></text>
+
+  <!-- 5 consensus -->
+  <text class="num" x="808" y="101" text-anchor="middle">05</text>
+  <rect class="chip" x="772" y="110" width="72" height="72" rx="18" filter="url(#sh)"/>
+  <g class="ic" transform="translate(792,130)" stroke-width="1.5">
+    <path d="M3 9 L12 6"/><path d="M3 9 L12 17"/><path d="M3 23 L12 17"/><path d="M3 23 L12 28"/>
+    <path d="M12 6 L21 10"/><path d="M12 17 L21 10"/><path d="M12 17 L21 24"/><path d="M12 28 L21 24"/>
+    <path d="M21 10 L30 9"/><path d="M21 10 L30 22"/><path d="M21 24 L30 22"/>
+    <circle class="dot" cx="3" cy="9" r="2"/><circle class="dot" cx="3" cy="23" r="2"/>
+    <circle class="dot" cx="12" cy="6" r="2"/><circle class="dot" cx="12" cy="17" r="2"/><circle class="dot" cx="12" cy="28" r="2"/>
+    <circle class="dot" cx="21" cy="10" r="2"/><circle class="dot" cx="21" cy="24" r="2"/>
+    <circle class="dot" cx="30" cy="9" r="2"/><circle class="dot" cx="30" cy="22" r="2"/>
+  </g>
+  <text class="lbl" x="808" text-anchor="middle"><tspan y="210">Consensus</tspan></text>
+
+  <!-- 6 executed -->
+  <text class="num" x="985" y="101" text-anchor="middle">06</text>
+  <rect class="hint" x="949" y="110" width="72" height="72" rx="18" filter="url(#sh)"/>
+  <g class="ic" transform="translate(969,130)">
+    <rect x="9" y="9" width="14" height="14" rx="2"/><rect x="13" y="13" width="6" height="6"/>
+    <path d="M13 9 V5"/><path d="M19 9 V5"/><path d="M13 23 V27"/><path d="M19 23 V27"/>
+    <path d="M9 13 H5"/><path d="M9 19 H5"/><path d="M23 13 H27"/><path d="M23 19 H27"/>
+  </g>
+  <text class="lbl" x="985" text-anchor="middle"><tspan y="210">Execution</tspan></text>
+
+  <!-- 7 block finalized -->
+  <text class="num" x="1162" y="101" text-anchor="middle">07</text>
+  <rect class="chip" x="1126" y="110" width="72" height="72" rx="18" filter="url(#sh)"/>
+  <g class="ic" transform="translate(1146,130)">
+    <path d="M16 3 L27 9 L16 15 L5 9 Z"/><path d="M5 9 L5 21 L16 27 L16 15"/><path d="M27 9 L27 21 L16 27 L16 15"/>
+  </g>
+  <text class="lbl" x="1162" text-anchor="middle"><tspan y="205">Block</tspan><tspan x="1162" y="222">finalized</tspan></text>
+
+  <!-- 8 state & receipts -->
+  <text class="num" x="1339" y="101" text-anchor="middle">08</text>
+  <rect class="chip" x="1303" y="110" width="72" height="72" rx="18" filter="url(#sh)"/>
+  <g class="ic" transform="translate(1323,130)">
+    <path d="M8 4 H24 V24 L21 26 L18 24 L15 26 L12 24 L8 26 Z"/>
+    <path d="M12 10 H20"/><path d="M12 14 H20"/><path d="M12 18 H17"/>
+  </g>
+  <text class="lbl" x="1339" text-anchor="middle"><tspan y="205">State &amp;</tspan><tspan x="1339" y="222">receipts (RPC)</tspan></text>
+
+  <!-- ===== registry query lines ===== -->
+  <!-- best-effort ordering (dashed) from the emitter -->
+  <circle cx="631" cy="182" r="3.5" fill="#B9740B"/>
+  <path class="qa" d="M631 186 L672 327" stroke-width="1.8" stroke-dasharray="5 5" marker-end="url(#aha)"/>
+  <!-- authoritative ordering (solid, bold) from block formation / execution -->
+  <circle cx="985" cy="182" r="4" fill="#B9740B"/>
+  <path class="qa" d="M985 186 L880 327" stroke-width="2.8" marker-end="url(#aha)"/>
+
+  <!-- ===== priority registry box ===== -->
+  <rect x="558" y="330" width="404" height="94" rx="14" fill="#FCF2DE" stroke="#E3B15F" stroke-width="1.5"/>
+  <g class="ica" transform="translate(580,356)">
+    <rect x="7" y="4" width="14" height="24" rx="2"/>
+    <path d="M11 11 H17"/><path d="M11 15 H17"/>
+    <circle cx="19" cy="24" r="4" fill="#FCF2DE"/>
+    <path d="M17 24 L18.5 25.5 L21 22"/>
+  </g>
+  <text class="rtitle" x="626" y="358">Priority Registry</text>
+  <text class="rsub" x="626" y="375">on-chain contract — decides priority per transaction</text>
+  <text class="rmono" x="626" y="398">getPriority(from, to, value, nonce, data, gas)</text>
+  <text class="rmono2" x="626" y="414">returns  level · weight · id</text>
+
+  <!-- ===== legend ===== -->
+  <line x1="56" y1="452" x2="96" y2="452" stroke="#B9740B" stroke-width="1.8" stroke-dasharray="5 5"/>
+  <text class="leg" x="106" y="456"><tspan class="lega">best-effort ordering</tspan> (emitter) — moves priority txs forward to speed up inclusion; never changes the result.</text>
+  <line x1="56" y1="474" x2="96" y2="474" stroke="#B9740B" stroke-width="2.8"/>
+  <text class="leg" x="106" y="478"><tspan class="lega">authoritative ordering</tspan> (block formation) — sets the final block order, reproduced by every validator.</text>
+</svg>
