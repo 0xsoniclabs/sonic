@@ -27,13 +27,13 @@ import (
 
 func TestJsonGenesis_CanApplyGeneratedFakeJsonGensis(t *testing.T) {
 	genesis := GenerateFakeJsonGenesis(opera.GetSonicUpgrades(), CreateEqualValidatorStake(1))
-	_, err := ApplyGenesisJson(genesis)
+	_, err := ApplyGenesisJson(genesis, t.TempDir())
 	require.NoError(t, err)
 }
 
 func TestJsonGenesis_AcceptsGenesisWithoutCommittee(t *testing.T) {
 	genesis := GenerateFakeJsonGenesis(opera.GetSonicUpgrades(), CreateEqualValidatorStake(1))
-	_, err := ApplyGenesisJson(genesis)
+	_, err := ApplyGenesisJson(genesis, t.TempDir())
 	require.NoError(t, err)
 }
 
@@ -53,7 +53,7 @@ func TestJsonGenesis_Network_RulesValidated_WithAllegroAndLater(t *testing.T) {
 
 			genesis := GenerateFakeJsonGenesis(upgrades, CreateEqualValidatorStake(1))
 			genesis.Rules.Upgrades.Llr = true // LLR is not supported in any hardfork
-			_, err := ApplyGenesisJson(genesis)
+			_, err := ApplyGenesisJson(genesis, t.TempDir())
 
 			// Validation of network rules introduced in Allegro
 			if name == "Sonic" {
@@ -68,7 +68,7 @@ func TestJsonGenesis_Network_RulesValidated_WithAllegroAndLater(t *testing.T) {
 func TestJsonGenesis_GetGenesisIdFromJson(t *testing.T) {
 	genesis := GenerateFakeJsonGenesis(opera.GetSonicUpgrades(), CreateEqualValidatorStake(1))
 
-	store, err := ApplyGenesisJson(genesis)
+	store, err := ApplyGenesisJson(genesis, t.TempDir())
 	require.NoError(t, err)
 	want := common.Hash(store.Genesis().GenesisID)
 

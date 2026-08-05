@@ -41,11 +41,18 @@ func tmpdir(t *testing.T) string {
 }
 
 func initFakenetDatadir(dataDir string, validatorsNum idx.Validator) {
+	tmpDir, cleanup, err := futils.MakeTempDir(dataDir, "genesis-tmp")
+	if err != nil {
+		panic(fmt.Errorf("failed to create temporary dir for genesis: %v", err))
+	}
+	defer cleanup(nil)
+
 	genesisStore := makefakegenesis.FakeGenesisStore(
 		validatorsNum,
 		futils.ToFtmU256(1000000000),
 		futils.ToFtmU256(5000000),
 		opera.GetSonicUpgrades(),
+		tmpDir,
 	)
 	defer func() {
 		if err := genesisStore.Close(); err != nil {

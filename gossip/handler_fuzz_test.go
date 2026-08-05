@@ -109,6 +109,7 @@ func makeFuzzedHandler(t *testing.T) (*handler, error) {
 		utils.ToFtmU256(genesisBalance),
 		utils.ToFtmU256(genesisStake),
 		upgrades,
+		t.TempDir(),
 	)
 	genesis := genStore.Genesis()
 

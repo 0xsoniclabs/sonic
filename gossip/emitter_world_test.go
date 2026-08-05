@@ -66,6 +66,7 @@ func initStoreForTests(t *testing.T) *Store {
 		opera.FakeNetRules(opera.GetSonicUpgrades()),
 		2,
 		2,
+		t.TempDir(),
 	)
 	genesis := genStore.Genesis()
 	require.NoError(store.ApplyGenesis(genesis))

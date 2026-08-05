@@ -243,6 +243,7 @@ func newInMemoryStoreWithGenesisData(
 		rules,
 		firstEpoch,
 		2,
+		tb.TempDir(),
 	)
 	genesis := genStore.Genesis()
 

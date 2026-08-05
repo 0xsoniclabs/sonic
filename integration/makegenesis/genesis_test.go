@@ -43,7 +43,7 @@ import (
 
 func TestGenesisBuilder_ExecuteGenesisTxs_ExecutesTransactionsAccordingToUpgrades(t *testing.T) {
 	rules := opera.FakeNetRules(opera.GetAllegroUpgrades())
-	builder := NewGenesisBuilder()
+	builder := NewGenesisBuilder(t.TempDir())
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
@@ -84,7 +84,8 @@ func TestGenesisBuilder_Build_CleansScratchDirAfterDBExport(t *testing.T) {
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			builder := NewGenesisBuilder()
+			tmpDir := t.TempDir()
+			builder := NewGenesisBuilder(tmpDir)
 			rules := opera.FakeNetRules(opera.GetAllegroUpgrades())
 
 			store := builder.Build(genesis.Header{
@@ -93,7 +94,7 @@ func TestGenesisBuilder_Build_CleansScratchDirAfterDBExport(t *testing.T) {
 				NetworkName: rules.Name,
 			})
 
-			scratchDir := filepath.Join(builder.scratchPath, tc.dirName)
+			scratchDir := filepath.Join(tmpDir, tc.dirName)
 
 			reader, err := tc.runExport(store)
 			require.NoError(err)

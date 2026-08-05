@@ -60,22 +60,28 @@ func FakeKey(n idx.ValidatorID) *ecdsa.PrivateKey {
 	return evmcore.FakeKey(uint32(n))
 }
 
-func FakeGenesisStore(num idx.Validator, balance, stake *uint256.Int, upgrades opera.Upgrades) *genesisstore.Store {
-	return FakeGenesisStoreWithRules(num, balance, stake, opera.FakeNetRules(upgrades))
+// FakeGenesisStore creates a fake genesis store. The given tmpDir is used for temporary
+// data produced while reading the resulting store, see makegenesis.NewGenesisBuilder.
+func FakeGenesisStore(num idx.Validator, balance, stake *uint256.Int, upgrades opera.Upgrades, tmpDir string) *genesisstore.Store {
+	return FakeGenesisStoreWithRules(num, balance, stake, opera.FakeNetRules(upgrades), tmpDir)
 }
 
-func FakeGenesisStoreWithRules(num idx.Validator, balance, stake *uint256.Int, rules opera.Rules) *genesisstore.Store {
-	return FakeGenesisStoreWithRulesAndStart(num, balance, stake, rules, 2, 1)
+// FakeGenesisStoreWithRules is like FakeGenesisStore, but with explicit network rules.
+func FakeGenesisStoreWithRules(num idx.Validator, balance, stake *uint256.Int, rules opera.Rules, tmpDir string) *genesisstore.Store {
+	return FakeGenesisStoreWithRulesAndStart(num, balance, stake, rules, 2, 1, tmpDir)
 }
 
+// FakeGenesisStoreWithRulesAndStart is like FakeGenesisStoreWithRules, but with an explicit
+// start epoch and block.
 func FakeGenesisStoreWithRulesAndStart(
 	num idx.Validator,
 	balance, stake *uint256.Int,
 	rules opera.Rules,
 	epoch idx.Epoch,
 	block idx.Block,
+	tmpDir string,
 ) *genesisstore.Store {
-	builder := makegenesis.NewGenesisBuilder()
+	builder := makegenesis.NewGenesisBuilder(tmpDir)
 
 	validators := GetFakeValidators(num)
 

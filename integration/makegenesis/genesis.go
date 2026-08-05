@@ -68,7 +68,7 @@ type GenesisBuilder struct {
 	epochs       []ier.LlrIdxFullEpochRecord
 	currentEpoch ier.LlrIdxFullEpochRecord
 
-	scratchPath string // temporary directory for genesis data export
+	tmpDir string // caller-owned directory for temporary genesis export data
 }
 
 type BlockProc struct {
@@ -133,7 +133,11 @@ func (b *GenesisBuilder) CurrentHash() hash.Hash {
 	return er.Hash()
 }
 
-func NewGenesisBuilder() *GenesisBuilder {
+// NewGenesisBuilder creates a builder for a new genesis. The given tmpDir is used as the
+// parent directory for the scratch data produced while exporting the state into the genesis
+// store returned by Build. It must exist and remain available until that store has been
+// fully read; removing it is the responsibility of the caller.
+func NewGenesisBuilder(tmpDir string) *GenesisBuilder {
 	carmenDir, err := os.MkdirTemp("", "opera-tmp-genesis")
 	if err != nil {
 		panic(fmt.Errorf("failed to create temporary dir for GenesisBuilder: %v", err))
@@ -153,18 +157,12 @@ func NewGenesisBuilder() *GenesisBuilder {
 	carmenStateDb := carmen.CreateCustomStateDBUsing(carmenState, 1024)
 	tmpStateDB := evmstore.CreateCarmenStateDb(carmenStateDb, nil)
 
-	// Create a temporary directory for the genesis data
-	dataDir, err := os.MkdirTemp("", "opera-tmp-genesis-data")
-	if err != nil {
-		panic(fmt.Errorf("failed to create temporary dir for GenesisBuilder data: %v", err))
-	}
-
 	return &GenesisBuilder{
 		tmpStateDB:    tmpStateDB,
 		carmenDir:     carmenDir,
 		carmenStateDb: carmenStateDb,
 		totalSupply:   new(uint256.Int),
-		scratchPath:   dataDir,
+		tmpDir:        tmpDir,
 	}
 }
 
@@ -379,7 +377,7 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 		}
 		if name == genesisstore.FwsLiveSection(0) {
 			{
-				scratchDir, cleanup, err := utils.MakeTempDir(b.scratchPath, "live-scratch")
+				scratchDir, cleanup, err := utils.MakeTempDir(b.tmpDir, "live-scratch")
 				if err != nil {
 					return nil, fmt.Errorf("failed to create scratch dir for FWS live export; %v", err)
 				}
@@ -393,7 +391,7 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 		}
 		if name == genesisstore.FwsArchiveSection(0) {
 			{
-				scratchDir, cleanup, err := utils.MakeTempDir(b.scratchPath, "archive-scratch")
+				scratchDir, cleanup, err := utils.MakeTempDir(b.tmpDir, "archive-scratch")
 				if err != nil {
 					return nil, fmt.Errorf("failed to create scratch dir for FWS archive export; %v", err)
 				}

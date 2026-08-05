@@ -125,7 +125,13 @@ func jsonGenesisImport(ctx *cli.Context) (err error) {
 		return fmt.Errorf("failed to load JSON genesis: %w", err)
 	}
 
-	genesisStore, err := makefakegenesis.ApplyGenesisJson(genesisJson)
+	tmpDir, cleanup, err := futils.MakeTempDir(dataDir, "genesis-tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary dir for the genesis: %w", err)
+	}
+	defer cleanup(&err)
+
+	genesisStore, err := makefakegenesis.ApplyGenesisJson(genesisJson, tmpDir)
 	if err != nil {
 		return fmt.Errorf("failed to prepare JSON genesis: %w", err)
 	}
@@ -178,11 +184,18 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 		return fmt.Errorf("invalid profile %v - must be 'sonic', 'allegro', or 'brio'", upgradesString)
 	}
 
+	tmpDir, cleanup, err := futils.MakeTempDir(dataDir, "genesis-tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary dir for the genesis: %w", err)
+	}
+	defer cleanup(&err)
+
 	genesisStore := makefakegenesis.FakeGenesisStore(
 		idx.Validator(validatorsNumber),
 		futils.ToFtmU256(1_000_000_000),
 		futils.ToFtmU256(5_000_000),
 		upgrades,
+		tmpDir,
 	)
 	defer caution.CloseAndReportError(&err, genesisStore, "failed to close the genesis store")
 	return genesis.ImportGenesisStore(genesis.ImportParams{

@@ -106,6 +106,7 @@ func getNodeService(t *testing.T) *gossip.Service {
 		rules,
 		1,
 		2,
+		t.TempDir(),
 	)
 	genesis := genStore.Genesis()
 
