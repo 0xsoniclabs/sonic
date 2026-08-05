@@ -17,34 +17,16 @@
 package priorities
 
 import (
+	"math"
 	"math/big"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
-
-// buildOrdinaryTraffic constructs a set of signed transfers from freshly
-// created, non-prioritized accounts.
-func buildOrdinaryTraffic(
-	t *testing.T,
-	net *tests.IntegrationTestNet,
-	numAccounts int,
-	txsPerAccount int,
-) types.Transactions {
-	t.Helper()
-
-	txs := make([]*types.Transaction, 0, numAccounts*int(txsPerAccount))
-	for i := 0; i < numAccounts; i++ {
-		acc := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-		for n := 0; n < txsPerAccount; n++ {
-			txs = append(txs, newSignedTx(t, net, acc, uint64(n), 21000, nil))
-		}
-	}
-	return txs
-}
 
 // requirePriorityHasEffect proves that the currently installed priority
 // classifier is (or isn't, per `expectPrioritized`) consulted on the
@@ -71,7 +53,7 @@ func requirePriorityHasEffect(
 	// Pre-build ordinary background traffic (fresh accounts are funded now
 	// so their funding txs don't compete for block space with the actual
 	// test batch).
-	ordinaryTxs := buildOrdinaryTraffic(t, net, 10, 10)
+	ordinaryTxs := buildOrdinaryTraffic(t, net, 20, 5)
 
 	afterBlock, err := client.BlockNumber(t.Context())
 	require.NoError(err)
@@ -93,6 +75,26 @@ func requirePriorityHasEffect(
 	}
 
 	requirePriorityAppliedSince(t, net, afterBlock, expectPrioritized, isPrioritized)
+}
+
+// buildOrdinaryTraffic constructs a set of signed transfers from freshly
+// created, non-prioritized accounts.
+func buildOrdinaryTraffic(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	numAccounts int,
+	txsPerAccount int,
+) types.Transactions {
+	t.Helper()
+
+	txs := make([]*types.Transaction, 0, numAccounts*int(txsPerAccount))
+	for i := 0; i < numAccounts; i++ {
+		acc := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+		for n := 0; n < txsPerAccount; n++ {
+			txs = append(txs, newSignedTx(t, net, acc, uint64(n), 21000, nil))
+		}
+	}
+	return txs
 }
 
 // requirePriorityAppliedSince scans the user transactions of every block after
@@ -128,8 +130,10 @@ func requirePriorityAppliedSince(
 	latest, err := client.BlockNumber(t.Context())
 	require.NoError(err)
 
-	sawPriority := false
-	sawOrdinary := false
+	signer := types.LatestSignerForChainID(net.GetChainId())
+	prioritizedSenders := map[common.Address]struct{}{}
+	ordinarySenders := map[common.Address]struct{}{}
+	numPrioritized := 0
 	ordinaryBeforePriority := false
 	for n := afterBlock + 1; n <= latest; n++ {
 		block, err := client.BlockByNumber(t.Context(), new(big.Int).SetUint64(n))
@@ -138,18 +142,35 @@ func requirePriorityAppliedSince(
 			if internaltx.IsInternal(tx) {
 				continue
 			}
+			from, err := types.Sender(signer, tx)
+			require.NoError(err)
 			if isPrioritized(tx) {
-				sawPriority = true
-				if sawOrdinary {
+				numPrioritized++
+				prioritizedSenders[from] = struct{}{}
+				if len(ordinarySenders) > 0 {
 					ordinaryBeforePriority = true
 				}
 			} else {
-				sawOrdinary = true
+				ordinarySenders[from] = struct{}{}
 			}
 		}
 	}
 
-	allPrioritizedFirst := !ordinaryBeforePriority
-	require.True(sawPriority && sawOrdinary)
-	require.Equal(expectPrioritized, allPrioritizedFirst)
+	// For the test to be meaningful the chance of a false positive must be
+	// extremely low. Transactions of one sender are scheduled in nonce order, so
+	// only a single transaction per sender competes for the next slot. Without
+	// prioritization the chance of a slot going to a prioritized transaction is
+	// therefore at most `num_prioritized_senders/num_senders`, and all
+	// prioritized transactions come first only if that happens `num_prioritized`
+	// times in a row. This is a conservative estimate: the ratio only shrinks as
+	// prioritized senders run out of transactions, so the true chance is lower.
+	numSenders := len(prioritizedSenders) + len(ordinarySenders)
+	prioritizedChance := float64(len(prioritizedSenders)) / float64(numSenders)
+	falsePositiveChance := math.Pow(prioritizedChance, float64(numPrioritized))
+	require.Less(falsePositiveChance, 1e-6,
+		"false positive chance %.1e with %d prioritized and %d ordinary senders too high, "+
+			"use more prioritized transactions and/or ordinary senders to reduce it",
+		falsePositiveChance, len(prioritizedSenders), len(ordinarySenders))
+
+	require.Equal(expectPrioritized, !ordinaryBeforePriority)
 }
