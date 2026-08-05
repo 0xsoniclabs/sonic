@@ -22,13 +22,35 @@ For optimal compatibility and stability, it is recommended to use the most recen
 ### Added
 
 ### Changed
- - Changed the format of `SELFDESTRUCT` (suicide) traces returned by `trace_` RPC methods to match the Parity/OpenEthereum specification: the refund address field was renamed from `refund_address` to
-  `refundAddress`, suicide actions now carry only `address`, `refundAddress` and `balance`, and their `result` is an explicit `null`.
- - Fields `from`, `value` and `gas` are no longer reported with zero values in `trace_` RPC results when not applicable to the trace type.
 
 ### Removed
 
 ### Fixed
+
+## [2.2.1] - 5 August 2026
+
+Version 2.2.1 is a stability release. Upgrading is recommended for all operators but is not mandatory — the minimum version required to support the Brio hard-fork is still 2.2.0.
+
+### Changed
+
+- Changed the format of `SELFDESTRUCT` (suicide) traces returned by `trace_` RPC methods to match the Parity/OpenEthereum specification: the refund address field was renamed from `refund_address` to
+  `refundAddress`, suicide actions now carry only `address`, `refundAddress` and `balance`, and their `result` is an explicit `null`.
+- Fields `from`, `value` and `gas` are no longer reported with zero values in `trace_` RPC results when not applicable to the trace type.
+- The metrics and pprof HTTP endpoints now enforce request timeouts.
+- The node terminates with a distinct exit code (74) when it stops permanently due to an unrecoverable issue, instead of an unspecific failure.
+- Reduced log verbosity and resource utilization during event processing.
+
+### Removed
+
+- Remove SCC RPC namespace, the feature was not completed.
+- Remove `debug_blocksTransactionTimes` RPC method.
+- Remove `debug_testSignCliqueBlock` RPC method, which was never supported by Sonic.
+
+### Fixed
+
+- General robustness and hardening improvements of the node's external interfaces.
+- Fixed handling of omitted optional parameters in the `debug_traceCall` RPC method.
+- Improved shutdown behavior of the node and `sonictool`, removing spurious error reports.
 
 ## [2.2.0] - 2 July 2026
 
