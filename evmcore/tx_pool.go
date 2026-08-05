@@ -521,7 +521,7 @@ func (pool *TxPool) Stop() {
 
 		if pool.journal != nil {
 			if err := pool.journal.close(); err != nil {
-				log.Warn("Failed to close transaction journal:", err)
+				log.Warn("Failed to close transaction journal:", "err", err)
 			}
 		}
 		log.Info("Transaction pool stopped")
