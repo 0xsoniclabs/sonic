@@ -702,6 +702,32 @@ func (n *IntegrationTestNet) start() error {
 	return nil
 }
 
+// ringDialEdges returns the connections forming a ring over the given number of
+// nodes, as (dialer, target) pairs of node indexes: 0->1, 1->2, ..., n-1->0.
+// For two nodes it returns 0->1 alone, since 0->1 and 1->0 are the same pair.
+//
+// Dialing one pair from both ends can leave both nodes unconnected: each keeps
+// the connection it dialed itself and rejects the incoming one as "already
+// connected". The retry waits for the p2p dial cooldown (35s) that both nodes
+// started together, so it is equally simultaneous and can fail the same way.
+func ringDialEdges(numNodes int) [][2]int {
+	if numNodes < 2 {
+		return nil
+	}
+	edges := make([][2]int, 0, numNodes)
+	dialed := make(map[[2]int]bool, numNodes)
+	for dialer := range numNodes {
+		target := (dialer + 1) % numNodes
+		pair := [2]int{min(dialer, target), max(dialer, target)}
+		if dialed[pair] {
+			continue
+		}
+		dialed[pair] = true
+		edges = append(edges, [2]int{dialer, target})
+	}
+	return edges
+}
+
 // connectP2PNetwork connects all nodes in the network to each other.
 // The current implementation aims to keep the arity of the network low,
 // by connecting each node to the next one in the list, and the last one to the first.
@@ -713,13 +739,10 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 		return nil
 	}
 
-	// First, register each node's next neighbor in the ring as trusted before
-	// waiting for any connections.
-	//
-	// - Trusted status is important because if a gossip handshake times out),
-	// 	 the gossip layer bans the peer's node ID via discfilter.Ban() and
-	//   subsequent attempts to connect with that peer are rejected in postHandshakeChecks.
-	// 	 Marking the configured ring peers as trusted prevents this rejection.
+	// First mark each node's ring neighbor as trusted, before any connection is
+	// initiated. A failed gossip handshake bans the peer's node ID via
+	// discfilter.Ban(), after which postHandshakeChecks rejects further
+	// connection attempts. Trusted peers are exempt from that check.
 	for i := range n.nodes {
 		client, err := n.GetClientConnectedToNode(i)
 		if err != nil {
@@ -727,15 +750,26 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 		}
 
 		enode := enodes[(i+1)%len(n.nodes)]
-		if err := client.Client().Call(nil, "admin_addTrustedPeer", enode); err != nil {
-			client.Close()
+		err = client.Client().Call(nil, "admin_addTrustedPeer", enode)
+		client.Close()
+		if err != nil {
 			return fmt.Errorf("failed to add trusted peer on node %d: %v", i, err)
 		}
-		if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
-			client.Close()
-			return fmt.Errorf("failed to add peer on node %d: %v", i, err)
+	}
+
+	// Then dial, once per pair of nodes, see ringDialEdges.
+	for _, edge := range ringDialEdges(len(n.nodes)) {
+		dialer, target := edge[0], edge[1]
+		client, err := n.GetClientConnectedToNode(dialer)
+		if err != nil {
+			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 		}
+
+		err = client.Client().Call(nil, "admin_addPeer", enodes[target])
 		client.Close()
+		if err != nil {
+			return fmt.Errorf("failed to add peer on node %d: %v", dialer, err)
+		}
 	}
 
 	// Now wait for each node to have the expected number of connections.
