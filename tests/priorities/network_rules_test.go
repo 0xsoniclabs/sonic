@@ -55,7 +55,7 @@ func TestPriorities_PriorityCanBeEnabledAndDisabled(t *testing.T) {
 
 				txs := make([]*types.Transaction, 5)
 				for i := range txs {
-					txs[i] = newSignedTx(t, net, prioAccount, nonce+uint64(i), 21_000, nil)
+					txs[i] = newSignedTx(t, net, prioAccount, nonce+uint64(i), 1, 21_000, nil)
 				}
 				return txs
 			}
