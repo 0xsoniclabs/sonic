@@ -109,6 +109,15 @@ func testSingleProposerProtocol_CanProcessTransactions(
 	startBlock, err := client.BlockNumber(t.Context())
 	require.NoError(err)
 
+	// Blocks produced by the epoch advances below are not part of what the
+	// block-span check at the end of this test measures: AdvanceEpoch submits
+	// its own epoch-advancing transaction and one or more noop transactions to
+	// trigger blocks, none of which are the round transactions whose
+	// efficiency is under test. They are accounted for separately here and
+	// subtracted, so that the bound stays as tight as intended instead of
+	// having to absorb them as slack.
+	epochAdvanceBlocks := uint64(0)
+
 	// Send a sequence of transactions to the network, in several rounds,
 	// across multiple epochs, and check that all get processed.
 	for round := range uint64(NumRounds) {
@@ -124,7 +133,15 @@ func testSingleProposerProtocol_CanProcessTransactions(
 		// processing and the epoch change. Thus, the first epoch will run for
 		// EpochLength/2 rounds, and the rest for EpochLength rounds.
 		if round%EpochLength == EpochLength/2 {
+			beforeEpochAdvance, err := client.BlockNumber(t.Context())
+			require.NoError(err)
 			net.AdvanceEpoch(t, 1)
+			afterEpochAdvance, err := client.BlockNumber(t.Context())
+			require.NoError(err)
+			require.GreaterOrEqual(afterEpochAdvance, beforeEpochAdvance,
+				"block number decreased while advancing an epoch, from %d to %d",
+				beforeEpochAdvance, afterEpochAdvance)
+			epochAdvanceBlocks += afterEpochAdvance - beforeEpochAdvance
 		}
 	}
 
@@ -134,8 +151,16 @@ func testSingleProposerProtocol_CanProcessTransactions(
 	endBlock, err := client.BlockNumber(t.Context())
 	require.NoError(err)
 
-	blockSpan := endBlock - startBlock
-	require.Less(blockSpan, uint64(2*NumRounds))
+	require.GreaterOrEqual(endBlock, startBlock,
+		"block number decreased during the test, from %d to %d",
+		startBlock, endBlock)
+	require.GreaterOrEqual(endBlock-startBlock, epochAdvanceBlocks,
+		"epoch advance blocks cannot exceed the total block span")
+	blockSpan := endBlock - startBlock - epochAdvanceBlocks
+	require.Less(blockSpan, uint64(2*NumRounds),
+		"rounds consumed %d blocks (excluding %d blocks spent advancing epochs), "+
+			"which suggests unnecessary empty proposals",
+		blockSpan, epochAdvanceBlocks)
 }
 
 func TestSingleProposerProtocol_CanBeEnabledAndDisabled(t *testing.T) {
