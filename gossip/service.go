@@ -617,6 +617,22 @@ func (s *Service) WaitBlockEnd() {
 	s.blockProcWg.Wait()
 }
 
+// stopPeerHandling brings down the handler together with the peer handler
+// goroutines the p2p server started for us.
+//
+// New runs are refused before the handler teardown, and the running ones are
+// waited out after it: handler.Stop terminates everything a peer handler can
+// be parked on and disconnects the sessions it reads from. Waiting before
+// that teardown can deadlock -- a handler parked on one of the handler's
+// semaphores is only woken by a Release or a Terminate, and events buffered
+// while waiting for parents that the disconnected peers will never deliver
+// hold their semaphore weight until the DAG processor's Stop clears them.
+func (s *Service) stopPeerHandling() {
+	s.peerRuns.refuseNewRuns()
+	s.handler.Stop()
+	s.peerRuns.waitForRuns()
+}
+
 // Stop method invoked when the node terminates the service.
 func (s *Service) Stop() error {
 	defer log.Info("Sonic service stopped")
@@ -631,11 +647,8 @@ func (s *Service) Stop() error {
 	// Stop all the peer-related stuff first.
 	s.operaDialCandidates.Close()
 
-	// The wait must come after handler.Stop: it terminates everything a peer
-	// handler run can be parked on, so waiting any earlier can deadlock.
-	s.peerRuns.refuseNewRuns()
-	s.handler.Stop()
-	s.peerRuns.waitForRuns()
+	s.stopPeerHandling()
+
 	// Must stop before the store is closed to avoid reading from a closed store.
 	if s.filterAPI != nil {
 		s.filterAPI.Stop()

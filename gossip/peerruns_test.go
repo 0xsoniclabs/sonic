@@ -20,8 +20,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
+	"github.com/Fantom-foundation/lachesis-base/inter/dag"
+	"github.com/Fantom-foundation/lachesis-base/utils/datasemaphore"
 	"github.com/stretchr/testify/require"
 )
 
@@ -45,37 +48,41 @@ func TestPeerRunTracker_AcquireIsRefusedAfterRefuseNewRuns(t *testing.T) {
 	require.False(t, tracker.acquireRun())
 }
 
+// TestPeerRunTracker_WaitBlocksUntilRunsReturn runs in a synctest bubble: the
+// wait is only allowed to return once the last run has been released, and
+// synctest.Wait pins down that "once" exactly. It returns when every other
+// goroutine in the bubble is durably blocked, so the waiter has provably had
+// its chance to run before each assertion -- no sleeps, no timing windows,
+// and a wait that never returns surfaces as a bubble deadlock with stacks
+// instead of a hung test binary.
 func TestPeerRunTracker_WaitBlocksUntilRunsReturn(t *testing.T) {
-	const runs = 5
+	synctest.Test(t, func(t *testing.T) {
+		const runs = 5
 
-	var tracker peerRunTracker
-	for range runs {
-		require.True(t, tracker.acquireRun())
-	}
-	tracker.refuseNewRuns()
-
-	waited := make(chan struct{})
-	go func() {
-		defer close(waited)
-		tracker.waitForRuns()
-	}()
-
-	for range runs - 1 {
-		tracker.releaseRun()
-		select {
-		case <-waited:
-			t.Fatal("wait returned while peer handlers were still running")
-		case <-time.After(10 * time.Millisecond):
+		var tracker peerRunTracker
+		for range runs {
+			require.True(t, tracker.acquireRun())
 		}
-	}
+		tracker.refuseNewRuns()
 
-	tracker.releaseRun()
+		var waitReturned atomic.Bool
+		go func() {
+			tracker.waitForRuns()
+			waitReturned.Store(true)
+		}()
 
-	select {
-	case <-waited:
-	case <-time.After(time.Second):
-		t.Fatal("wait did not return after all peer handlers returned")
-	}
+		for range runs - 1 {
+			tracker.releaseRun()
+			synctest.Wait()
+			require.False(t, waitReturned.Load(),
+				"wait returned while peer handlers were still running")
+		}
+
+		tracker.releaseRun()
+		synctest.Wait()
+		require.True(t, waitReturned.Load(),
+			"wait did not return after all peer handlers returned")
+	})
 }
 
 // TestPeerRunTracker_NoRunOutlivesTheWait is the regression test for the
@@ -84,38 +91,101 @@ func TestPeerRunTracker_WaitBlocksUntilRunsReturn(t *testing.T) {
 // increment were two separate steps, so a handler could slip in between them
 // -- tripping "WaitGroup misuse: Add called concurrently with Wait" or, worse,
 // silently outliving the shutdown.
+//
+// This one deliberately does not use synctest: the point is real parallelism.
+// Each round is a fresh head-to-head race between a single arriving run and
+// the shutdown, because the dangerous interleaving needs the wait to start on
+// an empty tracker -- a crowd of runs would keep the counter above zero and
+// paper over it. Run with -race.
 func TestPeerRunTracker_NoRunOutlivesTheWait(t *testing.T) {
-	const attempts = 200
+	const rounds = 5000
 
-	var tracker peerRunTracker
+	for range rounds {
+		var tracker peerRunTracker
 
-	var running atomic.Int32
-	var done sync.WaitGroup
-	release := make(chan struct{})
+		var waitReturned atomic.Bool
+		var escaped atomic.Bool
 
-	for range attempts {
-		done.Add(1)
+		start := make(chan struct{})
+		var done sync.WaitGroup
+		done.Add(2)
+
 		go func() {
 			defer done.Done()
+			<-start
 			if !tracker.acquireRun() {
 				return
 			}
-			running.Add(1)
-			<-release
-			running.Add(-1)
+			if waitReturned.Load() {
+				escaped.Store(true)
+			}
 			tracker.releaseRun()
 		}()
+
+		go func() {
+			defer done.Done()
+			<-start
+			tracker.refuseNewRuns()
+			tracker.waitForRuns()
+			waitReturned.Store(true)
+		}()
+
+		close(start)
+		done.Wait()
+
+		require.False(t, escaped.Load(),
+			"a peer handler was still running after the shutdown wait returned")
+		require.False(t, tracker.acquireRun())
 	}
+}
 
-	go func() {
-		time.Sleep(time.Millisecond)
-		close(release)
-	}()
+// TestPeerRunTracker_WaitMustFollowTheTeardownThatUnparksRuns models the
+// shutdown ordering that Service.Stop depends on, with the real blocking
+// primitive and none of the p2p machinery: a peer run parked in a
+// DataSemaphore (as handleMsg is, on the message semaphore) can only be woken
+// by a Release or a Terminate. Waiting for the runs before that Terminate --
+// i.e. calling waitForRuns before handler.Stop -- deadlocks; waiting after it
+// does not.
+//
+// The bubble makes the "still blocked" half of that assertion exact rather
+// than a guess after a sleep.
+func TestPeerRunTracker_WaitMustFollowTheTeardownThatUnparksRuns(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		weight := dag.Metric{Num: 1, Size: 1}
+		semaphore := datasemaphore.New(weight, nil)
 
-	tracker.refuseNewRuns()
-	tracker.waitForRuns()
-	require.Zero(t, running.Load())
+		// Saturate the semaphore, so the peer run below has to park.
+		require.True(t, semaphore.Acquire(weight, time.Hour))
 
-	done.Wait()
-	require.False(t, tracker.acquireRun())
+		var tracker peerRunTracker
+		require.True(t, tracker.acquireRun())
+		go func() {
+			defer tracker.releaseRun()
+			if semaphore.Acquire(weight, time.Hour) {
+				semaphore.Release(weight)
+			}
+		}()
+
+		// The run is now parked in Acquire. Its timeout will not save it: the
+		// deadline is only re-checked when the condition variable is signalled.
+		synctest.Wait()
+
+		tracker.refuseNewRuns()
+
+		var waitReturned atomic.Bool
+		go func() {
+			tracker.waitForRuns()
+			waitReturned.Store(true)
+		}()
+		synctest.Wait()
+		require.False(t, waitReturned.Load(),
+			"waiting for peer runs before the teardown that unparks them must block")
+
+		// This is what handler.Stop does to the message semaphore.
+		semaphore.Terminate()
+
+		synctest.Wait()
+		require.True(t, waitReturned.Load(),
+			"terminating the semaphore did not unpark the peer run")
+	})
 }

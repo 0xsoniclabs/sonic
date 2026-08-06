@@ -96,6 +96,19 @@ func FuzzGossipHandlePeer(f *testing.F) {
 }
 
 func makeFuzzedHandler(t *testing.T) (*handler, error) {
+	h, err := makeStartedHandler(t, 3)
+	if err != nil {
+		return nil, err
+	}
+	t.Cleanup(h.Stop)
+	return h, nil
+}
+
+// makeStartedHandler builds and starts a handler backed by an in-memory store.
+// The caller owns the shutdown: nothing stops the returned handler, so tests
+// that exercise the teardown themselves can call Stop exactly once.
+// Shared with the peer-run shutdown tests in handler_shutdown_test.go.
+func makeStartedHandler(t testing.TB, maxPeers int) (*handler, error) {
 	const (
 		genesisStakers = 3
 		genesisBalance = 1e18
@@ -171,8 +184,7 @@ func makeFuzzedHandler(t *testing.T) (*handler, error) {
 		return nil, err
 	}
 
-	h.Start(3)
-	t.Cleanup(h.Stop)
+	h.Start(maxPeers)
 	return h, nil
 }
 

@@ -492,6 +492,14 @@ func (h *handler) Stop() {
 	// This also closes the gate for any new registrations on the peer set.
 	// Sessions which are already established but not added to h.peers yet
 	// will exit when they try to register.
+	//
+	// The peer handler goroutines these sessions keep alive belong to the p2p
+	// server, not to the handler; the Service waits for them to return right
+	// after this Stop. That wait must come after Stop: a peer handler parked
+	// on a DataSemaphore is only woken by a Release or a Terminate, never by
+	// its own timeout, and everything it can be parked on is terminated above
+	// -- the events semaphore by dagProcessor.Stop, which also clears the
+	// buffered events holding its weight, and the message semaphore here.
 	h.peers.Close()
 
 	log.Info("Sonic protocol stopped")
