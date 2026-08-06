@@ -91,7 +91,7 @@ func buildOrdinaryTraffic(
 	for i := 0; i < numAccounts; i++ {
 		acc := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 		for n := 0; n < txsPerAccount; n++ {
-			txs = append(txs, newSignedTx(t, net, acc, uint64(n), 21000, nil))
+			txs = append(txs, newSignedTx(t, net, acc, uint64(n), 1, 21000, nil))
 		}
 	}
 	return txs
