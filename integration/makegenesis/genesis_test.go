@@ -41,9 +41,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGenesisBuilder_NewGenesisBuilder_ReturnsErrorWhenTmpDirDoesNotExist(t *testing.T) {
+	require := require.New(t)
+
+	missingDir := filepath.Join(t.TempDir(), "does-not-exist")
+	builder, err := NewGenesisBuilder(missingDir)
+
+	require.Error(err)
+	require.Nil(builder)
+	require.Contains(err.Error(), "failed to create temporary dir")
+}
+
 func TestGenesisBuilder_ExecuteGenesisTxs_ExecutesTransactionsAccordingToUpgrades(t *testing.T) {
 	rules := opera.FakeNetRules(opera.GetAllegroUpgrades())
-	builder := NewGenesisBuilder(t.TempDir())
+	builder, err := NewGenesisBuilder(t.TempDir())
+	require.NoError(t, err)
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
@@ -85,14 +97,16 @@ func TestGenesisBuilder_Build_CleansScratchDirAfterDBExport(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			tmpDir := t.TempDir()
-			builder := NewGenesisBuilder(tmpDir)
+			builder, err := NewGenesisBuilder(tmpDir)
+			require.NoError(err)
 			rules := opera.FakeNetRules(opera.GetAllegroUpgrades())
 
-			store := builder.Build(genesis.Header{
+			store, err := builder.Build(genesis.Header{
 				GenesisID:   hash.Zero,
 				NetworkID:   rules.NetworkID,
 				NetworkName: rules.Name,
 			})
+			require.NoError(err)
 
 			scratchDir := filepath.Join(tmpDir, tc.dirName)
 

@@ -190,13 +190,16 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 	}
 	defer tmpDir.Cleanup(&err)
 
-	genesisStore := makefakegenesis.FakeGenesisStore(
+	genesisStore, err := makefakegenesis.FakeGenesisStore(
 		idx.Validator(validatorsNumber),
 		futils.ToFtmU256(1_000_000_000),
 		futils.ToFtmU256(5_000_000),
 		upgrades,
 		tmpDir.Path(),
 	)
+	if err != nil {
+		return fmt.Errorf("failed to create genesis store: %w", err)
+	}
 	defer caution.CloseAndReportError(&err, genesisStore, "failed to close the genesis store")
 	return genesis.ImportGenesisStore(genesis.ImportParams{
 		GenesisStore:  genesisStore,

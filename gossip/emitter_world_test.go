@@ -59,7 +59,7 @@ func initStoreForTests(t *testing.T) *Store {
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
-	genStore := makefakegenesis.FakeGenesisStoreWithRulesAndStart(
+	genStore, err := makefakegenesis.FakeGenesisStoreWithRulesAndStart(
 		2,
 		utils.ToFtmU256(genesisBalance),
 		utils.ToFtmU256(genesisStake),
@@ -68,6 +68,7 @@ func initStoreForTests(t *testing.T) *Store {
 		2,
 		t.TempDir(),
 	)
+	require.NoError(err)
 	genesis := genStore.Genesis()
 	require.NoError(store.ApplyGenesis(genesis))
 	return store

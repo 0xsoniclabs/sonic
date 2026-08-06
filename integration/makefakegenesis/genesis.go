@@ -18,6 +18,7 @@ package makefakegenesis
 
 import (
 	"crypto/ecdsa"
+	"fmt"
 	"math/big"
 	"time"
 
@@ -62,12 +63,12 @@ func FakeKey(n idx.ValidatorID) *ecdsa.PrivateKey {
 
 // FakeGenesisStore creates a fake genesis store. The given tmpDir is used for temporary
 // data produced while reading the resulting store, see makegenesis.NewGenesisBuilder.
-func FakeGenesisStore(num idx.Validator, balance, stake *uint256.Int, upgrades opera.Upgrades, tmpDir string) *genesisstore.Store {
+func FakeGenesisStore(num idx.Validator, balance, stake *uint256.Int, upgrades opera.Upgrades, tmpDir string) (*genesisstore.Store, error) {
 	return FakeGenesisStoreWithRules(num, balance, stake, opera.FakeNetRules(upgrades), tmpDir)
 }
 
 // FakeGenesisStoreWithRules is like FakeGenesisStore, but with explicit network rules.
-func FakeGenesisStoreWithRules(num idx.Validator, balance, stake *uint256.Int, rules opera.Rules, tmpDir string) *genesisstore.Store {
+func FakeGenesisStoreWithRules(num idx.Validator, balance, stake *uint256.Int, rules opera.Rules, tmpDir string) (*genesisstore.Store, error) {
 	return FakeGenesisStoreWithRulesAndStart(num, balance, stake, rules, 2, 1, tmpDir)
 }
 
@@ -80,8 +81,11 @@ func FakeGenesisStoreWithRulesAndStart(
 	epoch idx.Epoch,
 	block idx.Block,
 	tmpDir string,
-) *genesisstore.Store {
-	builder := makegenesis.NewGenesisBuilder(tmpDir)
+) (*genesisstore.Store, error) {
+	builder, err := makegenesis.NewGenesisBuilder(tmpDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create genesis builder: %v", err)
+	}
 
 	validators := GetFakeValidators(num)
 

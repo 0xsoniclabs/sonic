@@ -134,13 +134,13 @@ func (b *GenesisBuilder) CurrentHash() hash.Hash {
 }
 
 // NewGenesisBuilder creates a builder for a new genesis. The given tmpDir is used as the
-// parent directory for the scratch data produced while exporting the state into the genesis
+// parent directory for the Carmen database and data produced while exporting the state into the genesis
 // store returned by Build. It must exist and remain available until that store has been
 // fully read; removing it is the responsibility of the caller.
-func NewGenesisBuilder(tmpDir string) *GenesisBuilder {
-	carmenDir, err := os.MkdirTemp("", "opera-tmp-genesis")
+func NewGenesisBuilder(tmpDir string) (*GenesisBuilder, error) {
+	carmenDir, err := os.MkdirTemp(tmpDir, "opera-tmp-genesis")
 	if err != nil {
-		panic(fmt.Errorf("failed to create temporary dir for GenesisBuilder: %v", err))
+		return nil, fmt.Errorf("failed to create temporary dir for GenesisBuilder: %v", err)
 	}
 	carmenState, err := carmen.NewState(carmen.Parameters{
 		Variant:      "go-file",
@@ -151,7 +151,7 @@ func NewGenesisBuilder(tmpDir string) *GenesisBuilder {
 		ArchiveCache: 1, // use minimum cache (not default)
 	})
 	if err != nil {
-		panic(fmt.Errorf("failed to create carmen state; %s", err))
+		return nil, fmt.Errorf("failed to create carmen state; %s", err)
 	}
 	// Set cache size to lowest value possible
 	carmenStateDb := carmen.CreateCustomStateDBUsing(carmenState, 1024)
@@ -163,7 +163,7 @@ func NewGenesisBuilder(tmpDir string) *GenesisBuilder {
 		carmenStateDb: carmenStateDb,
 		totalSupply:   new(uint256.Int),
 		tmpDir:        tmpDir,
-	}
+	}, nil
 }
 
 type dummyHeaderReturner struct {
@@ -356,10 +356,10 @@ func (f *memFile) Close() error {
 	return nil
 }
 
-func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
+func (b *GenesisBuilder) Build(head genesis.Header) (*genesisstore.Store, error) {
 	err := b.carmenStateDb.Close()
 	if err != nil {
-		panic(fmt.Errorf("failed to close genesis carmen state; %s", err))
+		return nil, fmt.Errorf("failed to close genesis carmen state; %s", err)
 	}
 	return genesisstore.NewStore(func(name string) (_ io.Reader, retErr error) {
 		buf := &memFile{bytes.NewBuffer(nil)}
@@ -411,5 +411,5 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 		err := os.RemoveAll(b.carmenDir)
 		*b = GenesisBuilder{}
 		return err
-	})
+	}), nil
 }

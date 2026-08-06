@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -213,16 +212,14 @@ func GenerateFakeJsonGenesis(
 	return jsonGenesis
 }
 
-func GetGenesisIdFromJson(json *GenesisJson) (_ common.Hash, retErr error) {
-	tmpDir, err := os.MkdirTemp("", "sonic-tmp-genesis-json")
+func GetGenesisIdFromJson(json *GenesisJson, tmpDir string) (_ common.Hash, retErr error) {
+	genesisTmpDir, err := utils.MakeTempDir(tmpDir, "sonic-tmp-genesis-json")
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to create temporary dir for genesis; %w", err)
 	}
-	defer func() {
-		retErr = errors.Join(retErr, os.RemoveAll(tmpDir))
-	}()
+	defer genesisTmpDir.Cleanup(&retErr)
 
-	store, err := ApplyGenesisJson(json, tmpDir)
+	store, err := ApplyGenesisJson(json, genesisTmpDir.Path())
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to apply genesis json; %v", err)
 	}
@@ -238,7 +235,10 @@ func ApplyGenesisJson(json *GenesisJson, tmpDir string) (*genesisstore.Store, er
 		return nil, fmt.Errorf("block zero time must be set")
 	}
 
-	builder := makegenesis.NewGenesisBuilder(tmpDir)
+	builder, err := makegenesis.NewGenesisBuilder(tmpDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create genesis builder: %v", err)
+	}
 	for _, acc := range json.Accounts {
 		if acc.Balance != nil {
 			builder.AddBalance(acc.Address, acc.Balance)
@@ -312,7 +312,7 @@ func ApplyGenesisJson(json *GenesisJson, tmpDir string) (*genesisstore.Store, er
 		GenesisID:   builder.CurrentHash(),
 		NetworkID:   json.Rules.NetworkID,
 		NetworkName: json.Rules.Name,
-	}), nil
+	})
 }
 
 type VariableLenCode []byte

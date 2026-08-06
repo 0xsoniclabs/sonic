@@ -99,7 +99,7 @@ func getNodeService(t *testing.T) *gossip.Service {
 	rules.Epochs.MaxEpochDuration = inter.Timestamp(maxEpochDuration)
 	rules.Emitter.Interval = 0
 
-	genStore := makefakegenesis.FakeGenesisStoreWithRulesAndStart(
+	genStore, err := makefakegenesis.FakeGenesisStoreWithRulesAndStart(
 		1,
 		utils.ToFtmU256(genesisBalance),
 		utils.ToFtmU256(genesisStake),
@@ -108,6 +108,7 @@ func getNodeService(t *testing.T) *gossip.Service {
 		2,
 		t.TempDir(),
 	)
+	require.NoError(t, err)
 	genesis := genStore.Genesis()
 
 	err = store.ApplyGenesis(genesis)

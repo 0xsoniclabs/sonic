@@ -47,13 +47,16 @@ func initFakenetDatadir(dataDir string, validatorsNum idx.Validator) {
 	}
 	defer tmpDir.Cleanup(nil)
 
-	genesisStore := makefakegenesis.FakeGenesisStore(
+	genesisStore, err := makefakegenesis.FakeGenesisStore(
 		validatorsNum,
 		futils.ToFtmU256(1000000000),
 		futils.ToFtmU256(5000000),
 		opera.GetSonicUpgrades(),
 		tmpDir.Path(),
 	)
+	if err != nil {
+		panic(fmt.Errorf("failed to create genesis store: %v", err))
+	}
 	defer func() {
 		if err := genesisStore.Close(); err != nil {
 			panic(fmt.Errorf("failed to close genesis store: %v", err))

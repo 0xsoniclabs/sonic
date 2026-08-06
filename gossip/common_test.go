@@ -236,7 +236,7 @@ func newInMemoryStoreWithGenesisData(
 	rules.Epochs.MaxEpochDuration = inter.Timestamp(maxEpochDuration)
 	rules.Emitter.Interval = 0
 
-	genStore := makefakegenesis.FakeGenesisStoreWithRulesAndStart(
+	genStore, err := makefakegenesis.FakeGenesisStoreWithRulesAndStart(
 		numValidators,
 		utils.ToFtmU256(genesisBalance),
 		utils.ToFtmU256(genesisStake),
@@ -245,6 +245,7 @@ func newInMemoryStoreWithGenesisData(
 		2,
 		tb.TempDir(),
 	)
+	require.NoError(err)
 	genesis := genStore.Genesis()
 
 	store, err := NewMemStore(tb)

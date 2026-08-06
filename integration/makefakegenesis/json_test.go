@@ -72,7 +72,7 @@ func TestJsonGenesis_GetGenesisIdFromJson(t *testing.T) {
 	require.NoError(t, err)
 	want := common.Hash(store.Genesis().GenesisID)
 
-	got, err := GetGenesisIdFromJson(genesis)
+	got, err := GetGenesisIdFromJson(genesis, t.TempDir())
 	require.NoError(t, err)
 	require.NotZero(t, got)
 
@@ -84,7 +84,7 @@ func TestJsonGenesis_GetGenesisIdFromJson_ReportsErrorsFromApplyGenesis(t *testi
 	genesis := GenerateFakeJsonGenesis(opera.GetSonicUpgrades(), CreateEqualValidatorStake(1))
 	genesis.BlockZeroTime = time.Time{} // invalid time
 
-	_, err := GetGenesisIdFromJson(genesis)
+	_, err := GetGenesisIdFromJson(genesis, t.TempDir())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to apply genesis json")
 }
