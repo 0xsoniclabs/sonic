@@ -14,74 +14,54 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-// Fuzzes one Sonic entry point, on the toolchain image this commit ships (CI/Dockerfile.jenkins), so
-// the Go version the fuzzer runs on follows the code under test instead of whatever the agent
-// happens to have. That is why this pipeline lives here rather than in LaScala: a Jenkins dockerfile
-// agent is resolved against the pipeline's own repository, so only a pipeline in Sonic can use
-// Sonic's image.
-//
-// Which entry point, and for how long, is decided by the rotation job in LaScala
-// (fuzzing/rotation.jenkinsfile). This job takes the entry point as a plain string and finds the
-// package it lives in itself, so adding a fuzzer to this repository needs no pipeline change here
-// and none there.
+// Fuzzes one Sonic entry point a day, rotating over every `func FuzzXxx(f *testing.F)` this
+// repository has - so a new fuzzer joins the rotation without a change here. The decision and the
+// steps come from LaScala's shared library (fuzzRotation, fuzzer); the schedule and the toolchain
+// are this repository's, because a Jenkins dockerfile agent is resolved against the pipeline's own
+// repository and only a pipeline in Sonic can build on Sonic's CI/Dockerfile.jenkins.
 @Library('shared-library') _
 
-// The go.mod of Sonic sits at the checkout root.
 moduleRoot = '.'
 
-// Package holding the entry point, resolved from the checkout in 'prepare'. Null until then, which
-// the failure handler below has to allow for.
+def entryPoint
 def fuzzPackage
-// Repository url and commit of this checkout, for the reproduction instructions.
 def checkedOut
 
 pipeline {
     agent {
         dockerfile {
             filename 'CI/Dockerfile.jenkins'
-            // ?: because the very first build of a new job has no parameter definitions yet, and a
-            // null label would put a five hour fuzzing run on whatever agent happens to be free.
-            label params.AgentLabel ?: 'fuzzing-sonic'
+            label 'fuzzing-sonic'
         }
     }
 
     options {
         timestamps()
-        // Failsafe against a misconfigured job: sets the build to ABORTED when it triggers, and an
-        // aborted build runs no failure handler, so FuzzTime is kept an hour below it (checked in
-        // 'validate-parameters') to leave a bug found in the final minutes time to be reported.
         timeout(time: 6, unit: 'HOURS')
+        // Two builds at once would pick the same entry point.
+        disableConcurrentBuilds()
+        // The rotation reads what was fuzzed lately out of these build descriptions, so this history
+        // is its memory: it has to hold far more builds than the repository has entry points.
+        buildDiscarder(logRotator(numToKeepStr: '200'))
     }
 
-    // No triggers: the LaScala rotation job decides when this runs and what it fuzzes.
+    triggers {
+        cron('@daily')
+    }
 
     environment {
         GOMEMLIMIT = goMemLimit()
-        // The corpus the fuzzer builds up lives in $GOCACHE/fuzz - only the inputs that FAIL are
-        // written into the repository. The container is thrown away after every build, so the cache
-        // has to live in the workspace, which the agent keeps: otherwise every run starts from the
-        // seed corpus again and every hour ever spent fuzzing this entry point is discarded.
+        // The corpus lives in $GOCACHE/fuzz and the container is thrown away after every build, so
+        // the cache has to sit in the workspace, which the agent keeps.
         GOCACHE = "${env.WORKSPACE}/.gocache"
     }
 
     parameters {
         string(
-            name: 'AgentLabel',
-            defaultValue: 'fuzzing-sonic',
-            description: 'Jenkins agent label to run this job on. It builds a Docker image, so it ' +
-                'has to be an agent that can.'
-        )
-        string(
             name: 'EntryPoint',
             defaultValue: '',
-            description: '''Required. Fuzzer entry point to run. Any `func FuzzXxx(f *testing.F)` of
-this repository will do: the job searches the checkout for the package it lives in, and lists every
-entry point it found if this is not one of them.
-
-At the time of writing (a hint, not a constraint - the repository decides): FuzzScrambler,
-FuzzScheduler_Schedule_PicksLongestPrefixOfAcceptedTransactions, FuzzDominantSet,
-FuzzGossipHandlePeer, FuzzEventDeserialization, FuzzIsValidTurnProgression,
-FuzzPayloadDeserialization, FuzzValidateTransaction.'''
+            description: 'Fuzzer entry point to run. Empty - which is what the daily run leaves it - ' +
+                'means the one that has gone longest without a turn.'
         )
         string(
             name: 'FuzzTime',
@@ -92,35 +72,17 @@ FuzzPayloadDeserialization, FuzzValidateTransaction.'''
     }
 
     stages {
-        stage('validate-parameters') {
+        // No build stage: Sonic has no cgo and no submodules, so `go test` compiles what it needs
+        // straight from a clean checkout.
+        stage('prepare') {
             steps {
                 describeBuild()
 
                 script {
-                    // Against the 6 hour timeout set above.
                     fuzzer.requireSaneTimeout(fuzzTime: params.FuzzTime, timeoutMinutes: 6 * 60)
-                }
-            }
-        }
-
-        stage('prepare') {
-            // No build stage anywhere in this pipeline: Sonic has no cgo and no submodules, so
-            // `go test` compiles what it needs straight from a clean checkout.
-            steps {
-                script {
-                    // The SCM configuration of the job replaces the repository/version parameters a
-                    // pipeline outside this repository would need, so the reproduction instructions
-                    // read both back out of the checkout.
                     checkedOut = fuzzer.checkoutInfo()
-
-                    // Resolved against this checkout, so a mistyped EntryPoint aborts here with the
-                    // list of what this repository actually offers rather than fuzzing nothing.
-                    fuzzPackage = fuzzer.resolvePackage(
-                        entryPoint: params.EntryPoint,
-                        root: moduleRoot
-                    )
-
-                    // Workspaces are reused between builds; report only what this run produced.
+                    entryPoint = params.EntryPoint ?: fuzzRotation.pickTarget(root: moduleRoot)
+                    fuzzPackage = fuzzer.resolvePackage(entryPoint: entryPoint, root: moduleRoot)
                     fuzzer.resetLog()
                 }
             }
@@ -132,9 +94,18 @@ FuzzPayloadDeserialization, FuzzValidateTransaction.'''
                     fuzzer.fuzz(
                         root: moduleRoot,
                         package: fuzzPackage,
-                        entryPoint: params.EntryPoint,
+                        entryPoint: entryPoint,
                         fuzzTime: params.FuzzTime
                     )
+                }
+            }
+
+            post {
+                // Whatever the fuzzer found: an entry point that crashes must not be picked forever.
+                always {
+                    script {
+                        fuzzRotation.recordTarget(entryPoint)
+                    }
                 }
             }
         }
@@ -149,13 +120,12 @@ FuzzPayloadDeserialization, FuzzValidateTransaction.'''
 
         failure {
             script {
-                // A build that failed before 'prepare' resolved the package has no findings to
-                // attach: the failure is reported above and there is nothing to add.
+                // A build that failed before 'prepare' resolved the package has nothing to attach.
                 if (fuzzPackage) {
                     fuzzer.archiveFindings(
                         root: moduleRoot,
                         package: fuzzPackage,
-                        entryPoint: params.EntryPoint,
+                        entryPoint: entryPoint,
                         repository: checkedOut.repository,
                         version: checkedOut.version
                     )
