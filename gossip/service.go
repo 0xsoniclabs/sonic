@@ -631,15 +631,11 @@ func (s *Service) Stop() error {
 	// Stop all the peer-related stuff first.
 	s.operaDialCandidates.Close()
 
-	// Bring down the peer handler goroutines the p2p server started for us
-	// before tearing down the handler they run against. The order matters:
-	// refusing new runs first means the wait cannot race an arriving one, and
-	// the running ones only return once their sessions are disconnected.
+	// The wait must come after handler.Stop: it terminates everything a peer
+	// handler run can be parked on, so waiting any earlier can deadlock.
 	s.peerRuns.refuseNewRuns()
-	s.handler.disconnectPeers()
-	s.peerRuns.waitForRuns()
-
 	s.handler.Stop()
+	s.peerRuns.waitForRuns()
 	// Must stop before the store is closed to avoid reading from a closed store.
 	if s.filterAPI != nil {
 		s.filterAPI.Stop()
