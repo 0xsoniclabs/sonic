@@ -714,15 +714,12 @@ func ringDialEdges(numNodes int) [][2]int {
 	if numNodes < 2 {
 		return nil
 	}
+	if numNodes == 2 {
+		return [][2]int{{0, 1}}
+	}
 	edges := make([][2]int, 0, numNodes)
-	dialed := make(map[[2]int]bool, numNodes)
 	for dialer := range numNodes {
 		target := (dialer + 1) % numNodes
-		pair := [2]int{min(dialer, target), max(dialer, target)}
-		if dialed[pair] {
-			continue
-		}
-		dialed[pair] = true
 		edges = append(edges, [2]int{dialer, target})
 	}
 	return edges
