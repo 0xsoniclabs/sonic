@@ -18,6 +18,7 @@ package utils
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -27,7 +28,12 @@ type TempDir string
 // MakeTempDir creates a temporary directory at the specified path with the given name.
 // Everything in the directory is removed before creation. The function returns the path to the created directory,
 // a cleanup function to remove the directory, and an error if any occurred during the process.
+// The name must be a plain basename (no path separators, not "." or ".."); otherwise, an
+// error is returned.
 func MakeTempDir(path string, name string) (TempDir, error) {
+	if name == "" || name == "." || name == ".." || filepath.Base(name) != name {
+		return "", fmt.Errorf("invalid directory name %q: must be a basename with no path separators", name)
+	}
 	dir := filepath.Join(path, name)
 	err := os.RemoveAll(dir)
 	if err != nil {

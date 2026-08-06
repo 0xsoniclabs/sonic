@@ -57,6 +57,47 @@ func TestTempDir_MakeTempDir_ReturnsErrorWhenParentIsNotADirectory(t *testing.T)
 	require.Empty(dir.Path())
 }
 
+func TestTempDir_MakeTempDir_RejectsNonBasenameNames(t *testing.T) {
+	parent := t.TempDir()
+
+	// Create a sibling directory that must not be touched by MakeTempDir when
+	// a caller attempts to escape the intended parent via a relative name.
+	sibling := filepath.Join(parent, "sibling")
+	require.NoError(t, os.MkdirAll(sibling, 0700))
+	sentinel := filepath.Join(sibling, "keep.txt")
+	require.NoError(t, os.WriteFile(sentinel, []byte("keep"), 0600))
+
+	testCases := map[string]string{
+		"empty":            "",
+		"dot":              ".",
+		"double-dot":       "..",
+		"parent-traversal": "../sibling",
+		"nested":           "foo/bar",
+		"absolute":         "/tmp/attack",
+		"leading-slash":    "/scratch",
+		"trailing-slash":   "scratch/",
+	}
+
+	scratchParent := filepath.Join(parent, "scratch-parent")
+	require.NoError(t, os.MkdirAll(scratchParent, 0700))
+
+	for name, invalidName := range testCases {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+
+			dir, err := MakeTempDir(scratchParent, invalidName)
+			require.Error(err)
+			require.Empty(dir.Path())
+			require.Contains(err.Error(), "invalid directory name")
+
+			// Sibling directory and its sentinel file must still exist:
+			// MakeTempDir must not have escaped the intended parent.
+			_, statErr := os.Stat(sentinel)
+			require.NoError(statErr)
+		})
+	}
+}
+
 func TestTempDir_Path_ReturnsCorrectPath(t *testing.T) {
 	require := require.New(t)
 	parent := t.TempDir()
