@@ -17,8 +17,8 @@
 package app
 
 import (
+	"context"
 	"fmt"
-	"os"
 	"os/signal"
 	"sort"
 	"strings"
@@ -289,7 +289,10 @@ func lachesisMainInternal(
 		cfg.OperaStore.EVM.StateDb.ArchiveCache = archiveCache
 	}
 
-	node, _, nodeClose, err := config.MakeNode(ctx, cfg)
+	sigCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	node, _, nodeClose, err := config.MakeNode(sigCtx, ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize the node: %w", err)
 	}
@@ -302,8 +305,9 @@ func lachesisMainInternal(
 		return config.SaveAllConfigs(outputConfigFile, cfg)
 	}
 
-	stop := make(chan bool, 1)
-	if err := startNode(ctx, node, stop); err != nil {
+	startFreeDiskSpaceMonitor(sigCtx, ctx, cancel, node.InstanceDir())
+
+	if err := startNode(sigCtx, ctx, node); err != nil {
 		return fmt.Errorf("failed to start the node: %w", err)
 	}
 
@@ -320,10 +324,7 @@ func lachesisMainInternal(
 			go func() {
 				<-control.Shutdown
 				log.Info("Got shutdown signal, shutting down...")
-				close(stop)
-				if err := node.Close(); err != nil {
-					log.Warn("Error during shutdown", "err", err)
-				}
+				cancel()
 			}()
 		}
 	}
@@ -334,49 +335,22 @@ func lachesisMainInternal(
 
 // startNode boots up the system node and all registered protocols, after which
 // it unlocks any requested accounts, and starts the RPC/IPC interfaces.
-func startNode(ctx *cli.Context, stack *node.Node, stop <-chan bool) error {
+func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error {
 	// Start up the node itself
 	if err := stack.Start(); err != nil {
 		return fmt.Errorf("error starting protocol stack: %w", err)
 	}
 	go func() {
-		stopNodeSig := make(chan os.Signal, 1)
-		signal.Notify(stopNodeSig, syscall.SIGINT, syscall.SIGTERM)
-		defer signal.Stop(stopNodeSig)
-
-		startFreeDiskSpaceMonitor(ctx, stopNodeSig, stack.InstanceDir())
-
-		select {
-		case <-stopNodeSig:
-			log.Info("Node got interrupt, shutting down...")
-		case <-stop:
-			log.Info("Node received stop signal, shutting down...")
+		// stop the node when the context is canceled
+		<-sigCtx.Done()
+		log.Info("Shutting down...")
+		if err := stack.Close(); err != nil {
+			log.Warn("Error during shutdown", "err", err)
 		}
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			if err := stack.Close(); err != nil {
-				log.Warn("Error during shutdown", "err", err)
-			}
-		}()
-		for i := 10; i > 0; i-- {
-			select {
-			case <-stopNodeSig:
-				if i > 1 {
-					log.Warn("Already shutting down, interrupt more to panic.", "times", i-1)
-				}
-			case <-done:
-				log.Info("Shutdown complete.")
-				return
-			}
-		}
-		// received 10 interrupts - kill the node forcefully
-		debug.Exit(ctx) // ensure trace and CPU profile data is flushed.
-		debug.LoudPanic("boom")
 	}()
 
 	// Unlock any account specifically requested
-	err := unlockAccounts(ctx, stack)
+	err := unlockAccounts(sigCtx, ctx, stack)
 	if err != nil {
 		return fmt.Errorf("failed to unlock accounts: %w", err)
 	}
@@ -423,7 +397,7 @@ func startNode(ctx *cli.Context, stack *node.Node, stop <-chan bool) error {
 						log.Warn("Failed to close wallet", "url", event.Wallet.URL(), "err", err)
 					}
 				}
-			case <-stop:
+			case <-sigCtx.Done():
 				return
 			}
 		}
@@ -432,7 +406,7 @@ func startNode(ctx *cli.Context, stack *node.Node, stop <-chan bool) error {
 	return nil
 }
 
-func startFreeDiskSpaceMonitor(ctx *cli.Context, stopNodeSig chan os.Signal, path string) {
+func startFreeDiskSpaceMonitor(sigCtx context.Context, ctx *cli.Context, stopNode context.CancelFunc, path string) {
 	var minFreeDiskSpace int
 	if ctx.GlobalIsSet(flags.MinFreeDiskSpaceFlag.Name) {
 		minFreeDiskSpace = ctx.GlobalInt(flags.MinFreeDiskSpaceFlag.Name)
@@ -440,6 +414,6 @@ func startFreeDiskSpaceMonitor(ctx *cli.Context, stopNodeSig chan os.Signal, pat
 		minFreeDiskSpace = 8192
 	}
 	if minFreeDiskSpace > 0 {
-		go diskusage.MonitorFreeDiskSpace(stopNodeSig, path, uint64(minFreeDiskSpace)*1024*1024)
+		go diskusage.MonitorFreeDiskSpace(sigCtx, stopNode, path, uint64(minFreeDiskSpace)*1024*1024)
 	}
 }

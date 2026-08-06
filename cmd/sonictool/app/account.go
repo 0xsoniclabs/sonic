@@ -17,6 +17,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/0xsoniclabs/sonic/config"
@@ -69,11 +70,11 @@ func accountCreate(ctx *cli.Context) error {
 		scryptP = keystore.LightScryptP
 	}
 
-	passwordList, err := config.MakePasswordList(ctx)
+	passwordList, err := config.MakePasswordList(context.Background(), ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get password list: %w", err)
 	}
-	password, err := config.GetPassPhrase("Your new account is locked with a password. Please give a password. Do not forget this password.", true, 0, passwordList)
+	password, err := config.GetPassPhrase(context.Background(), "Your new account is locked with a password. Please give a password. Do not forget this password.", true, 0, passwordList)
 	if err != nil {
 		return fmt.Errorf("failed to get passphrase: %w", err)
 	}
@@ -112,11 +113,11 @@ func accountUpdate(ctx *cli.Context) (err error) {
 	ks := stack.AccountManager().Backends(keystore.KeyStoreType)[0].(*keystore.KeyStore)
 
 	for _, addr := range ctx.Args() {
-		account, oldPassword, err := config.UnlockAccount(ks, addr, 0, nil)
+		account, oldPassword, err := config.UnlockAccount(context.Background(), ks, addr, 0, nil)
 		if err != nil {
 			return err
 		}
-		newPassword, err := config.GetPassPhrase("Please give a new password. Do not forget this password.", true, 0, nil)
+		newPassword, err := config.GetPassPhrase(context.Background(), "Please give a new password. Do not forget this password.", true, 0, nil)
 		if err != nil {
 			return fmt.Errorf("failed to get passphrase: %w", err)
 		}
@@ -147,11 +148,11 @@ func accountImport(ctx *cli.Context) (err error) {
 	}
 	defer caution.CloseAndReportError(&err, stack, "failed to close network stack")
 
-	passwordList, err := config.MakePasswordList(ctx)
+	passwordList, err := config.MakePasswordList(context.Background(), ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get password list: %w", err)
 	}
-	passphrase, err := config.GetPassPhrase("Your new account is locked with a password. Please give a password. Do not forget this password.", true, 0, passwordList)
+	passphrase, err := config.GetPassPhrase(context.Background(), "Your new account is locked with a password. Please give a password. Do not forget this password.", true, 0, passwordList)
 	if err != nil {
 		return fmt.Errorf("failed to get passphrase: %w", err)
 	}

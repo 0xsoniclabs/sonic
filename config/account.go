@@ -17,6 +17,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/0xsoniclabs/sonic/utils/prompt"
@@ -27,7 +28,7 @@ import (
 )
 
 // UnlockAccount tries unlocking the specified account a few times.
-func UnlockAccount(ks *keystore.KeyStore, address string, i int, passwords []string) (accounts.Account, string, error) {
+func UnlockAccount(ctx context.Context, ks *keystore.KeyStore, address string, i int, passwords []string) (accounts.Account, string, error) {
 	if !common.IsHexAddress(address) {
 		return accounts.Account{}, "", fmt.Errorf("could not unlock account - '%s' is not an address", address)
 	}
@@ -35,7 +36,7 @@ func UnlockAccount(ks *keystore.KeyStore, address string, i int, passwords []str
 	var err error
 	for trials := 0; trials < 3; trials++ {
 		prompt := fmt.Sprintf("Unlocking account %s | Attempt %d/%d", address, trials+1, 3)
-		password, errPass := GetPassPhrase(prompt, false, i, passwords)
+		password, errPass := GetPassPhrase(ctx, prompt, false, i, passwords)
 		if errPass != nil {
 			return accounts.Account{}, "", errPass
 		}
@@ -89,7 +90,7 @@ func ambiguousAddrRecovery(ks *keystore.KeyStore, err *keystore.AmbiguousAddrErr
 
 // GetPassPhrase retrieves the password associated with an account, either fetched
 // from a list of preloaded passphrases, or requested interactively from the user.
-func GetPassPhrase(msg string, confirmation bool, i int, passwords []string) (string, error) {
+func GetPassPhrase(ctx context.Context, msg string, confirmation bool, i int, passwords []string) (string, error) {
 	// If a list of passwords was supplied, retrieve from them
 	if len(passwords) > 0 {
 		if i < len(passwords) {
@@ -97,22 +98,39 @@ func GetPassPhrase(msg string, confirmation bool, i int, passwords []string) (st
 		}
 		return passwords[len(passwords)-1], nil
 	}
-	// Otherwise prompt the user for the password
-	if msg != "" {
-		fmt.Println(msg)
+	// Otherwise prompt the user for the password - in a go-rutine to allow interrupting by context
+	type result struct {
+		password string
+		err      error
 	}
-	password, err := prompt.UserPrompt.PromptPassword("Passphrase: ")
-	if err != nil {
-		return "", fmt.Errorf("failed to read passphrase: %v", err)
-	}
-	if confirmation {
-		confirm, err := prompt.UserPrompt.PromptPassword("Repeat passphrase: ")
+	resultChan := make(chan result, 1)
+	go func() {
+		if msg != "" {
+			fmt.Println(msg)
+		}
+		password, err := prompt.UserPrompt.PromptPassword("Passphrase: ")
 		if err != nil {
-			return "", fmt.Errorf("failed to read passphrase confirmation: %v", err)
+			resultChan <- result{"", fmt.Errorf("failed to read passphrase: %v", err)}
+			return
 		}
-		if password != confirm {
-			return "", fmt.Errorf("passphrases do not match")
+		if confirmation {
+			confirm, err := prompt.UserPrompt.PromptPassword("Repeat passphrase: ")
+			if err != nil {
+				resultChan <- result{"", fmt.Errorf("failed to read passphrase confirmation: %v", err)}
+				return
+			}
+			if password != confirm {
+				resultChan <- result{"", fmt.Errorf("passphrases do not match")}
+				return
+			}
 		}
+		resultChan <- result{password, nil}
+	}()
+
+	select {
+	case res := <-resultChan:
+		return res.password, res.err
+	case <-ctx.Done():
+		return "", ctx.Err()
 	}
-	return password, nil
 }

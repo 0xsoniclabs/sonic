@@ -17,6 +17,7 @@
 package app
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"errors"
@@ -46,11 +47,11 @@ func validatorKeyCreate(ctx *cli.Context) error {
 		return err
 	}
 
-	passwordList, err := config.MakePasswordList(ctx)
+	passwordList, err := config.MakePasswordList(context.Background(), ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get password list: %w", err)
 	}
-	password, err := config.GetPassPhrase("Your new validator key is locked with a password. Please give a password. Do not forget this password.", true, 0, passwordList)
+	password, err := config.GetPassPhrase(context.Background(), "Your new validator key is locked with a password. Please give a password. Do not forget this password.", true, 0, passwordList)
 	if err != nil {
 		return fmt.Errorf("failed to get passphrase: %w", err)
 	}

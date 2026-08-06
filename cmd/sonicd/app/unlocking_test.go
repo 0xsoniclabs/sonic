@@ -19,7 +19,9 @@ package app
 import (
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/cespare/cp"
 )
@@ -221,5 +223,67 @@ Testing your passphrase against all of them...
 	cli.ExpectExit()
 	if !strings.Contains(cli.StderrText(), "none of the listed files could be unlocked") {
 		t.Errorf("stderr text does not contain expected error")
+	}
+}
+
+// waitForStderr blocks until the child process has written want to stderr, or
+// fails the test if that has not happened within timeout.
+func waitForStderr(t *testing.T, cli *testcli, want string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if strings.Contains(cli.StderrText(), want) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cli.Kill()
+	t.Fatalf("stderr text does not contain %q after %v, got:\n%s", want, timeout, cli.StderrText())
+}
+
+// TestUnlockFlagPasswordFifoInterruptedBySignal verifies that a shutdown
+// signal interrupts --unlock while it is blocked reading an empty --password
+// FIFO, instead of hanging forever waiting for data that never arrives.
+func TestUnlockFlagPasswordFifoInterruptedBySignal(t *testing.T) {
+	datadir := tmpDatadirWithKeystore(t)
+	initFakenetDatadir(datadir, 1)
+
+	fifoPath := filepath.Join(tmpdir(t), "password.fifo")
+	if err := syscall.Mkfifo(fifoPath, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cli := exec(t,
+		"--fakenet", "0/1", "--datadir", datadir, "--nat", "none", "--nodiscover", "--maxpeers", "0", "--port", "0",
+		"--password", fifoPath,
+		"--unlock", "f466859ead1932d743d622cb74fc058882e8648a",
+		"--ipcdisable")
+
+	// The node only installs its signal handler part way through startup; a
+	// signal delivered before that point terminates the process with the
+	// default disposition and no output at all. Wait for the log line that is
+	// emitted right before the blocking FIFO read instead of guessing how long
+	// startup takes.
+	waitForStderr(t, cli, "Reading keystore password from file", 60*time.Second)
+	cli.Interrupt()
+
+	exited := make(chan struct{})
+	go func() {
+		cli.WaitExit()
+		close(exited)
+	}()
+
+	select {
+	case <-exited:
+		if cli.Cleanup != nil {
+			cli.Cleanup()
+		}
+	case <-time.After(5 * time.Second):
+		cli.Kill()
+		t.Fatal("node did not shut down after the interrupt signal while blocked reading the password FIFO")
+	}
+
+	if !strings.Contains(cli.StderrText(), "context canceled") {
+		t.Errorf("stderr text does not contain expected shutdown error, got:\n%s", cli.StderrText())
 	}
 }
