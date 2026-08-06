@@ -59,11 +59,11 @@ func heal(ctx *cli.Context) (retErr error) {
 	chaindataDir := filepath.Join(dataDir, "chaindata")
 	carmenArchiveDir := filepath.Join(dataDir, "carmen", "archive")
 	carmenLiveDir := filepath.Join(dataDir, "carmen", "live")
-	carmenExportScratchDir, cleanup, err := utils.MakeTempDir(dataDir, "carmen-scratch")
+	carmenExportScratchDir, err := utils.MakeTempDir(dataDir, "carmen-scratch")
 	if err != nil {
 		return fmt.Errorf("failed to create scratch dir for carmen export; %v", err)
 	}
-	defer cleanup(&retErr)
+	defer carmenExportScratchDir.Cleanup(&retErr)
 
 	archiveInfo, err := os.Stat(carmenArchiveDir)
 	if err != nil || !archiveInfo.IsDir() {
@@ -115,7 +115,7 @@ func heal(ctx *cli.Context) (retErr error) {
 	log.Info("Archive state database reverted", "block", recoveredBlock)
 
 	log.Info("Re-creating live state from the archive...")
-	if err := healLiveFromArchive(cancelCtx, carmenLiveDir, carmenArchiveDir, carmenExportScratchDir, recoveredBlock); err != nil {
+	if err := healLiveFromArchive(cancelCtx, carmenLiveDir, carmenArchiveDir, carmenExportScratchDir.Path(), recoveredBlock); err != nil {
 		return fmt.Errorf("failed to re-create carmen live state from archive; %w", err)
 	}
 

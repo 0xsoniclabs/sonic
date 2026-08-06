@@ -187,12 +187,12 @@ func exportBlocksSection(ctx context.Context, gdb *gossip.Store, writer *unitWri
 
 func exportFwsSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter, tmpPath string) error {
 	log.Info("Exporting Sonic World State Live data")
-	liveScratchDir, _, err := utils.MakeTempDir(tmpPath, "live-scratch")
+	liveScratchDir, err := utils.MakeTempDir(tmpPath, "live-scratch")
 	if err != nil {
 		return fmt.Errorf("failed to create scratch dir for FWS export; %v", err)
 	}
 
-	if err := gdb.EvmStore().ExportLiveWorldState(ctx, writer, liveScratchDir); err != nil {
+	if err := gdb.EvmStore().ExportLiveWorldState(ctx, writer, liveScratchDir.Path()); err != nil {
 		return err
 	}
 	fwsHash, err := writer.Flush()
@@ -206,12 +206,12 @@ func exportFwsSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter
 
 func exportFwaSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter, tmpPath string) error {
 	log.Info("Exporting Sonic World State Archive data")
-	archiveScratchDir, _, err := utils.MakeTempDir(tmpPath, "archive-scratch")
+	archiveScratchDir, err := utils.MakeTempDir(tmpPath, "archive-scratch")
 	if err != nil {
 		return fmt.Errorf("failed to create scratch dir for FWS export; %v", err)
 	}
 
-	if err := gdb.EvmStore().ExportArchiveWorldState(ctx, writer, archiveScratchDir); err != nil {
+	if err := gdb.EvmStore().ExportArchiveWorldState(ctx, writer, archiveScratchDir.Path()); err != nil {
 		return err
 	}
 

@@ -377,13 +377,13 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 		}
 		if name == genesisstore.FwsLiveSection(0) {
 			{
-				scratchDir, cleanup, err := utils.MakeTempDir(b.tmpDir, "live-scratch")
+				scratchDir, err := utils.MakeTempDir(b.tmpDir, "live-scratch")
 				if err != nil {
 					return nil, fmt.Errorf("failed to create scratch dir for FWS live export; %v", err)
 				}
-				defer cleanup(&retErr)
+				defer scratchDir.Cleanup(&retErr)
 
-				err = mptIo.Export(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "live"), buf, scratchDir)
+				err = mptIo.Export(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "live"), buf, scratchDir.Path())
 				if err != nil {
 					return nil, err
 				}
@@ -391,13 +391,13 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 		}
 		if name == genesisstore.FwsArchiveSection(0) {
 			{
-				scratchDir, cleanup, err := utils.MakeTempDir(b.tmpDir, "archive-scratch")
+				scratchDir, err := utils.MakeTempDir(b.tmpDir, "archive-scratch")
 				if err != nil {
 					return nil, fmt.Errorf("failed to create scratch dir for FWS archive export; %v", err)
 				}
-				defer cleanup(&retErr)
+				defer scratchDir.Cleanup(&retErr)
 
-				err = mptIo.ExportArchive(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "archive"), buf, scratchDir)
+				err = mptIo.ExportArchive(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "archive"), buf, scratchDir.Path())
 				if err != nil {
 					return nil, err
 				}
