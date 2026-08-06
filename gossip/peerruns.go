@@ -19,20 +19,17 @@ package gossip
 import "sync"
 
 // peerRunTracker tracks the peer handler goroutines that the p2p server starts
-// on the Service's behalf. The Service does not own these goroutines and
-// cannot stop them directly: the p2p server keeps starting them until it is
-// itself shut down, which the node only does after every service has come
-// down. The tracker lets the Service refuse the late ones and wait out the
-// running ones instead.
+// on the Service's behalf. The Service cannot stop them directly: the p2p
+// server keeps starting them until it is itself shut down, which the node only
+// does after every service has come down. The tracker lets the Service refuse
+// the late ones and wait out the running ones instead.
 //
 // The zero value is an open tracker with no runs in flight.
 type peerRunTracker struct {
-	// mu serializes closing against acquire, so that wg.Add never happens
-	// concurrently with the wg.Wait in waitForRuns. Doing the check and the
-	// increment as two separate steps would let a run observe an open tracker,
-	// be descheduled, and increment the WaitGroup after the wait had already
-	// started on a zero counter -- which sync.WaitGroup explicitly forbids,
-	// and which would let the run outlive the shutdown.
+	// mu makes the closed check and the wg.Add a single step. As two steps, a
+	// run could observe an open tracker, be descheduled, and reach wg.Add
+	// after waitForRuns had already started on a zero counter -- which
+	// sync.WaitGroup forbids, and which lets the run outlive the shutdown.
 	mu     sync.Mutex
 	closed bool
 	wg     sync.WaitGroup
@@ -58,8 +55,7 @@ func (t *peerRunTracker) releaseRun() {
 }
 
 // refuseNewRuns makes all further acquireRun calls fail. It does not wait for
-// the runs already in flight; call waitForRuns for that, once whatever keeps
-// them running has been torn down.
+// the runs already in flight; see Service.stopPeerHandling for that.
 func (t *peerRunTracker) refuseNewRuns() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -68,8 +64,9 @@ func (t *peerRunTracker) refuseNewRuns() {
 }
 
 // waitForRuns blocks until every registered peer handler goroutine has
-// returned. Callers must have called refuseNewRuns first, otherwise a run
-// arriving concurrently races with the wait.
+// returned. It must follow refuseNewRuns, otherwise an arriving run races the
+// wait, and the teardown that releases the running ones -- see
+// Service.stopPeerHandling.
 func (t *peerRunTracker) waitForRuns() {
 	t.wg.Wait()
 }

@@ -617,6 +617,30 @@ func (s *Service) WaitBlockEnd() {
 	s.blockProcWg.Wait()
 }
 
+// stopPeerHandling brings down the handler together with the peer handler
+// goroutines the p2p server started for us.
+//
+// The order is load-bearing. Refusing first means the wait cannot race an
+// arriving run. Waiting last is what makes the wait finite: handler.Stop is
+// what releases the runs already in flight, by disconnecting their sessions
+// and terminating the semaphores they park on. A DataSemaphore only re-checks
+// the Acquire deadline when a Release or a Terminate wakes it, so waiting
+// first deadlocks on a run parked on the message semaphore, or on the events
+// semaphore whose weight is held by events buffered for parents that the
+// disconnected peers will never deliver.
+//
+// One wait a run can reach is not covered by handler.Stop: the per-peer send
+// semaphore in peer.enqueueSendEncodedItem, released by that peer's own
+// broadcast loop -- which keeps draining under the p2p write deadline -- and
+// bounded by its own Acquire timeout. Any further blocking wait added to the
+// message handling path has to be bounded like that, or be released by
+// handler.Stop, or this wait stops returning.
+func (s *Service) stopPeerHandling() {
+	s.peerRuns.refuseNewRuns()
+	s.handler.Stop()
+	s.peerRuns.waitForRuns()
+}
+
 // Stop method invoked when the node terminates the service.
 func (s *Service) Stop() error {
 	defer log.Info("Sonic service stopped")
@@ -631,11 +655,8 @@ func (s *Service) Stop() error {
 	// Stop all the peer-related stuff first.
 	s.operaDialCandidates.Close()
 
-	// The wait must come after handler.Stop: it terminates everything a peer
-	// handler run can be parked on, so waiting any earlier can deadlock.
-	s.peerRuns.refuseNewRuns()
-	s.handler.Stop()
-	s.peerRuns.waitForRuns()
+	s.stopPeerHandling()
+
 	// Must stop before the store is closed to avoid reading from a closed store.
 	if s.filterAPI != nil {
 		s.filterAPI.Stop()

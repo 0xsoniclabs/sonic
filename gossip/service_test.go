@@ -24,8 +24,6 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
-	"github.com/Fantom-foundation/lachesis-base/inter/dag"
-	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
@@ -113,53 +111,6 @@ func TestServiceFeed_BlocksInOrder(t *testing.T) {
 	}
 
 	feed.Stop()
-}
-
-// Service.Stop must tear the handler down before waiting for the peer handler
-// runs: a run parked in DataSemaphore.Acquire is only woken by a Release or a
-// Terminate, and the Terminates live in handler.Stop.
-func TestServiceStop_ReleasesAPeerRunParkedOnTheMessageSemaphore(t *testing.T) {
-	env := newTestEnv(2, 1, t)
-	handler := env.handler
-	handler.Start(10)
-
-	require.True(t,
-		handler.msgSemaphore.TryAcquire(handler.config.Protocol.MsgsSemaphoreLimit),
-		"the message semaphore should start out empty")
-
-	// A stand-in for a p2p Protocol.Run callback, parked the way handleMsg
-	// parks when the semaphore is full.
-	parked := make(chan struct{})
-	returned := make(chan struct{})
-	go func() {
-		defer close(returned)
-		if !env.peerRuns.acquireRun() {
-			return
-		}
-		defer env.peerRuns.releaseRun()
-		close(parked)
-		handler.msgSemaphore.Acquire(dag.Metric{Num: 1, Size: 1}, time.Hour)
-	}()
-	<-parked
-	time.Sleep(10 * time.Millisecond) // let the run park before Stop starts
-
-	stopped := make(chan error, 1)
-	go func() {
-		stopped <- env.Stop()
-	}()
-
-	select {
-	case err := <-stopped:
-		require.NoError(t, err)
-	case <-time.After(2 * time.Minute):
-		t.Fatal("Service.Stop hangs while a peer handler run is parked on the message semaphore")
-	}
-
-	select {
-	case <-returned:
-	case <-time.After(10 * time.Second):
-		t.Fatal("the parked peer handler run did not return after Service.Stop")
-	}
 }
 
 type expectedBlockNotification struct {

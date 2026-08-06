@@ -492,6 +492,10 @@ func (h *handler) Stop() {
 	// This also closes the gate for any new registrations on the peer set.
 	// Sessions which are already established but not added to h.peers yet
 	// will exit when they try to register.
+	//
+	// The peer handler goroutines these sessions keep alive belong to the p2p
+	// server, not to the handler; Service.stopPeerHandling waits for them once
+	// this Stop has released them.
 	h.peers.Close()
 
 	log.Info("Sonic protocol stopped")

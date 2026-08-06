@@ -20,7 +20,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/require"
 )
@@ -45,37 +45,38 @@ func TestPeerRunTracker_AcquireIsRefusedAfterRefuseNewRuns(t *testing.T) {
 	require.False(t, tracker.acquireRun())
 }
 
+// TestPeerRunTracker_WaitBlocksUntilRunsReturn runs in a synctest bubble:
+// synctest.Wait returns once every other goroutine is durably blocked, so the
+// waiter has provably had its chance to run before each assertion -- no
+// sleeps, and a wait that never returns fails with stacks instead of hanging.
 func TestPeerRunTracker_WaitBlocksUntilRunsReturn(t *testing.T) {
-	const runs = 5
+	synctest.Test(t, func(t *testing.T) {
+		const runs = 5
 
-	var tracker peerRunTracker
-	for range runs {
-		require.True(t, tracker.acquireRun())
-	}
-	tracker.refuseNewRuns()
-
-	waited := make(chan struct{})
-	go func() {
-		defer close(waited)
-		tracker.waitForRuns()
-	}()
-
-	for range runs - 1 {
-		tracker.releaseRun()
-		select {
-		case <-waited:
-			t.Fatal("wait returned while peer handlers were still running")
-		case <-time.After(10 * time.Millisecond):
+		var tracker peerRunTracker
+		for range runs {
+			require.True(t, tracker.acquireRun())
 		}
-	}
+		tracker.refuseNewRuns()
 
-	tracker.releaseRun()
+		var waitReturned atomic.Bool
+		go func() {
+			tracker.waitForRuns()
+			waitReturned.Store(true)
+		}()
 
-	select {
-	case <-waited:
-	case <-time.After(time.Second):
-		t.Fatal("wait did not return after all peer handlers returned")
-	}
+		for range runs - 1 {
+			tracker.releaseRun()
+			synctest.Wait()
+			require.False(t, waitReturned.Load(),
+				"wait returned while peer handlers were still running")
+		}
+
+		tracker.releaseRun()
+		synctest.Wait()
+		require.True(t, waitReturned.Load(),
+			"wait did not return after all peer handlers returned")
+	})
 }
 
 // TestPeerRunTracker_NoRunOutlivesTheWait is the regression test for the
@@ -84,38 +85,49 @@ func TestPeerRunTracker_WaitBlocksUntilRunsReturn(t *testing.T) {
 // increment were two separate steps, so a handler could slip in between them
 // -- tripping "WaitGroup misuse: Add called concurrently with Wait" or, worse,
 // silently outliving the shutdown.
+//
+// No synctest here: the point is real parallelism. Each round is a fresh
+// head-to-head race between one arriving run and the shutdown, since the
+// dangerous interleaving needs the wait to start on an empty tracker. Run with
+// -race.
 func TestPeerRunTracker_NoRunOutlivesTheWait(t *testing.T) {
-	const attempts = 200
+	const rounds = 5000
 
-	var tracker peerRunTracker
+	for range rounds {
+		var tracker peerRunTracker
 
-	var running atomic.Int32
-	var done sync.WaitGroup
-	release := make(chan struct{})
+		var waitReturned atomic.Bool
+		var escaped atomic.Bool
 
-	for range attempts {
-		done.Add(1)
+		start := make(chan struct{})
+		var done sync.WaitGroup
+		done.Add(2)
+
 		go func() {
 			defer done.Done()
+			<-start
 			if !tracker.acquireRun() {
 				return
 			}
-			running.Add(1)
-			<-release
-			running.Add(-1)
+			if waitReturned.Load() {
+				escaped.Store(true)
+			}
 			tracker.releaseRun()
 		}()
+
+		go func() {
+			defer done.Done()
+			<-start
+			tracker.refuseNewRuns()
+			tracker.waitForRuns()
+			waitReturned.Store(true)
+		}()
+
+		close(start)
+		done.Wait()
+
+		require.False(t, escaped.Load(),
+			"a peer handler was still running after the shutdown wait returned")
+		require.False(t, tracker.acquireRun())
 	}
-
-	go func() {
-		time.Sleep(time.Millisecond)
-		close(release)
-	}()
-
-	tracker.refuseNewRuns()
-	tracker.waitForRuns()
-	require.Zero(t, running.Load())
-
-	done.Wait()
-	require.False(t, tracker.acquireRun())
 }
