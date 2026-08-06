@@ -488,18 +488,13 @@ func (h *handler) Stop() {
 	// Quit the sync loop.
 	close(h.quitSync)
 
-	log.Info("Sonic protocol stopped")
-}
-
-// disconnectPeers tears down the established peer sessions and closes the gate
-// for any new registrations on the peer set. Sessions which are already
-// established but not added to h.peers yet will exit when they try to
-// register.
-//
-// The peer handler goroutines this releases belong to the p2p server, not to
-// the handler; the Service waits for them to return before calling Stop.
-func (h *handler) disconnectPeers() {
+	// Disconnect existing sessions.
+	// This also closes the gate for any new registrations on the peer set.
+	// Sessions which are already established but not added to h.peers yet
+	// will exit when they try to register.
 	h.peers.Close()
+
+	log.Info("Sonic protocol stopped")
 }
 
 func (h *handler) myProgress() PeerProgress {
