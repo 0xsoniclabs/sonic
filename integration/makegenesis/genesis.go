@@ -29,6 +29,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/holiman/uint256"
 
@@ -61,12 +62,13 @@ type GenesisBuilder struct {
 	tmpStateDB    state.StateDB
 	carmenDir     string
 	carmenStateDb carmen.StateDB
-
-	totalSupply *uint256.Int
+	totalSupply   *uint256.Int
 
 	blocks       []ibr.LlrIdxFullBlockRecord
 	epochs       []ier.LlrIdxFullEpochRecord
 	currentEpoch ier.LlrIdxFullEpochRecord
+
+	tmpDir string // caller-owned directory for temporary genesis export data
 }
 
 type BlockProc struct {
@@ -131,10 +133,14 @@ func (b *GenesisBuilder) CurrentHash() hash.Hash {
 	return er.Hash()
 }
 
-func NewGenesisBuilder() *GenesisBuilder {
-	carmenDir, err := os.MkdirTemp("", "opera-tmp-genesis")
+// NewGenesisBuilder creates a builder for a new genesis. The given tmpDir is used as the
+// parent directory for the Carmen database and data produced while exporting the state into the genesis
+// store returned by Build. It must exist and remain available until that store has been
+// fully read; removing it is the responsibility of the caller.
+func NewGenesisBuilder(tmpDir string) (*GenesisBuilder, error) {
+	carmenDir, err := os.MkdirTemp(tmpDir, "opera-tmp-genesis")
 	if err != nil {
-		panic(fmt.Errorf("failed to create temporary dir for GenesisBuilder: %v", err))
+		return nil, fmt.Errorf("failed to create temporary dir for GenesisBuilder: %v", err)
 	}
 	carmenState, err := carmen.NewState(carmen.Parameters{
 		Variant:      "go-file",
@@ -145,17 +151,19 @@ func NewGenesisBuilder() *GenesisBuilder {
 		ArchiveCache: 1, // use minimum cache (not default)
 	})
 	if err != nil {
-		panic(fmt.Errorf("failed to create carmen state; %s", err))
+		return nil, fmt.Errorf("failed to create carmen state; %s", err)
 	}
 	// Set cache size to lowest value possible
 	carmenStateDb := carmen.CreateCustomStateDBUsing(carmenState, 1024)
 	tmpStateDB := evmstore.CreateCarmenStateDb(carmenStateDb, nil)
+
 	return &GenesisBuilder{
 		tmpStateDB:    tmpStateDB,
 		carmenDir:     carmenDir,
 		carmenStateDb: carmenStateDb,
 		totalSupply:   new(uint256.Int),
-	}
+		tmpDir:        tmpDir,
+	}, nil
 }
 
 type dummyHeaderReturner struct {
@@ -348,12 +356,12 @@ func (f *memFile) Close() error {
 	return nil
 }
 
-func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
+func (b *GenesisBuilder) Build(head genesis.Header) (*genesisstore.Store, error) {
 	err := b.carmenStateDb.Close()
 	if err != nil {
-		panic(fmt.Errorf("failed to close genesis carmen state; %s", err))
+		return nil, fmt.Errorf("failed to close genesis carmen state; %s", err)
 	}
-	return genesisstore.NewStore(func(name string) (io.Reader, error) {
+	return genesisstore.NewStore(func(name string) (_ io.Reader, retErr error) {
 		buf := &memFile{bytes.NewBuffer(nil)}
 		if name == genesisstore.BlocksSection(0) {
 			for i := len(b.blocks) - 1; i >= 0; i-- {
@@ -368,15 +376,35 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 			return buf, nil
 		}
 		if name == genesisstore.FwsLiveSection(0) {
-			err := mptIo.Export(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "live"), buf)
-			if err != nil {
-				return nil, err
+			{
+				scratchDir, err := utils.MakeTempDir(b.tmpDir, "live-scratch")
+				if err != nil {
+					return nil, fmt.Errorf("failed to create scratch dir for FWS live export; %v", err)
+				}
+				defer func() {
+					retErr = errors.Join(retErr, scratchDir.Cleanup())
+				}()
+
+				err = mptIo.Export(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "live"), buf, scratchDir.Path())
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 		if name == genesisstore.FwsArchiveSection(0) {
-			err := mptIo.ExportArchive(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "archive"), buf)
-			if err != nil {
-				return nil, err
+			{
+				scratchDir, err := utils.MakeTempDir(b.tmpDir, "archive-scratch")
+				if err != nil {
+					return nil, fmt.Errorf("failed to create scratch dir for FWS archive export; %v", err)
+				}
+				defer func() {
+					retErr = errors.Join(retErr, scratchDir.Cleanup())
+				}()
+
+				err = mptIo.ExportArchive(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "archive"), buf, scratchDir.Path())
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 		if buf.Len() == 0 {
@@ -387,5 +415,5 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 		err := os.RemoveAll(b.carmenDir)
 		*b = GenesisBuilder{}
 		return err
-	})
+	}), nil
 }

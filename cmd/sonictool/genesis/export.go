@@ -30,6 +30,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore/fileshash"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/devnullfile"
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -82,7 +83,7 @@ func ExportGenesis(ctx context.Context, gdb *gossip.Store, includeArchive bool, 
 	if err := writer.Start(header, "fws", tmpPath); err != nil {
 		return err
 	}
-	if err := exportFwsSection(ctx, gdb, writer); err != nil {
+	if err := exportFwsSection(ctx, gdb, writer, tmpPath); err != nil {
 		return err
 	}
 
@@ -92,7 +93,7 @@ func ExportGenesis(ctx context.Context, gdb *gossip.Store, includeArchive bool, 
 		if err := writer.Start(header, "fwa", tmpPath); err != nil {
 			return err
 		}
-		if err := exportFwaSection(ctx, gdb, writer); err != nil {
+		if err := exportFwaSection(ctx, gdb, writer, tmpPath); err != nil {
 			return err
 		}
 	}
@@ -184,9 +185,14 @@ func exportBlocksSection(ctx context.Context, gdb *gossip.Store, writer *unitWri
 	return nil
 }
 
-func exportFwsSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter) error {
+func exportFwsSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter, tmpPath string) error {
 	log.Info("Exporting Sonic World State Live data")
-	if err := gdb.EvmStore().ExportLiveWorldState(ctx, writer); err != nil {
+	liveScratchDir, err := utils.MakeTempDir(tmpPath, "live-scratch")
+	if err != nil {
+		return fmt.Errorf("failed to create scratch dir for FWS export; %v", err)
+	}
+
+	if err := gdb.EvmStore().ExportLiveWorldState(ctx, writer, liveScratchDir.Path()); err != nil {
 		return err
 	}
 	fwsHash, err := writer.Flush()
@@ -198,9 +204,14 @@ func exportFwsSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter
 	return nil
 }
 
-func exportFwaSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter) error {
+func exportFwaSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter, tmpPath string) error {
 	log.Info("Exporting Sonic World State Archive data")
-	if err := gdb.EvmStore().ExportArchiveWorldState(ctx, writer); err != nil {
+	archiveScratchDir, err := utils.MakeTempDir(tmpPath, "archive-scratch")
+	if err != nil {
+		return fmt.Errorf("failed to create scratch dir for FWS export; %v", err)
+	}
+
+	if err := gdb.EvmStore().ExportArchiveWorldState(ctx, writer, archiveScratchDir.Path()); err != nil {
 		return err
 	}
 

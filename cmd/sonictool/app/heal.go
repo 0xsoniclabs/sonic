@@ -33,13 +33,14 @@ import (
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/config/flags"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/log"
 	"gopkg.in/urfave/cli.v1"
 )
 
-func heal(ctx *cli.Context) error {
+func heal(ctx *cli.Context) (retErr error) {
 	dataDir := ctx.GlobalString(flags.DataDirFlag.Name)
 	if dataDir == "" {
 		return fmt.Errorf("--%s need to be set", flags.DataDirFlag.Name)
@@ -58,6 +59,13 @@ func heal(ctx *cli.Context) error {
 	chaindataDir := filepath.Join(dataDir, "chaindata")
 	carmenArchiveDir := filepath.Join(dataDir, "carmen", "archive")
 	carmenLiveDir := filepath.Join(dataDir, "carmen", "live")
+	carmenExportScratchDir, err := utils.MakeTempDir(dataDir, "carmen-scratch")
+	if err != nil {
+		return fmt.Errorf("failed to create scratch dir for carmen export; %v", err)
+	}
+	defer func() {
+		retErr = errors.Join(retErr, carmenExportScratchDir.Cleanup())
+	}()
 
 	archiveInfo, err := os.Stat(carmenArchiveDir)
 	if err != nil || !archiveInfo.IsDir() {
@@ -109,7 +117,7 @@ func heal(ctx *cli.Context) error {
 	log.Info("Archive state database reverted", "block", recoveredBlock)
 
 	log.Info("Re-creating live state from the archive...")
-	if err := healLiveFromArchive(cancelCtx, carmenLiveDir, carmenArchiveDir, recoveredBlock); err != nil {
+	if err := healLiveFromArchive(cancelCtx, carmenLiveDir, carmenArchiveDir, carmenExportScratchDir.Path(), recoveredBlock); err != nil {
 		return fmt.Errorf("failed to re-create carmen live state from archive; %w", err)
 	}
 
@@ -117,7 +125,7 @@ func heal(ctx *cli.Context) error {
 	return nil
 }
 
-func healLiveFromArchive(ctx context.Context, carmenLiveDir, carmenArchiveDir string, recoveredBlock idx.Block) (err error) {
+func healLiveFromArchive(ctx context.Context, carmenLiveDir, carmenArchiveDir, carmenExportScratchDir string, recoveredBlock idx.Block) (err error) {
 	if err := os.RemoveAll(carmenLiveDir); err != nil {
 		return fmt.Errorf("failed to remove broken live state: %w", err)
 	}
@@ -136,7 +144,7 @@ func healLiveFromArchive(ctx context.Context, carmenLiveDir, carmenArchiveDir st
 	go func() {
 		defer wg.Done()
 		defer caution.CloseAndReportError(&exportErr, writer, "failed to close writer")
-		exportErr = mptio.ExportBlockFromArchive(ctx, mptio.NewLog(), carmenArchiveDir, bufWriter, uint64(recoveredBlock))
+		exportErr = mptio.ExportBlockFromArchive(ctx, mptio.NewLog(), carmenArchiveDir, bufWriter, uint64(recoveredBlock), carmenExportScratchDir)
 		if exportErr == nil {
 			exportErr = bufWriter.Flush()
 		}
