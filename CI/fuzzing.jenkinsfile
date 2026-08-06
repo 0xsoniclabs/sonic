@@ -1,0 +1,166 @@
+// Copyright 2026 Sonic Operations Ltd
+// This file is part of the Sonic Client
+//
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
+// Fuzzes one Sonic entry point, on the toolchain image this commit ships (CI/Dockerfile.jenkins), so
+// the Go version the fuzzer runs on follows the code under test instead of whatever the agent
+// happens to have. That is why this pipeline lives here rather than in LaScala: a Jenkins dockerfile
+// agent is resolved against the pipeline's own repository, so only a pipeline in Sonic can use
+// Sonic's image.
+//
+// Which entry point, and for how long, is decided by the rotation job in LaScala
+// (fuzzing/rotation.jenkinsfile). This job takes the entry point as a plain string and finds the
+// package it lives in itself, so adding a fuzzer to this repository needs no pipeline change here
+// and none there.
+@Library('shared-library') _
+
+// The go.mod of Sonic sits at the checkout root.
+moduleRoot = '.'
+
+// Package holding the entry point, resolved from the checkout in 'prepare'. Null until then, which
+// the failure handler below has to allow for.
+def fuzzPackage
+// Repository url and commit of this checkout, for the reproduction instructions.
+def checkedOut
+
+pipeline {
+    agent {
+        dockerfile {
+            filename 'CI/Dockerfile.jenkins'
+            // ?: because the very first build of a new job has no parameter definitions yet, and a
+            // null label would put a five hour fuzzing run on whatever agent happens to be free.
+            label params.AgentLabel ?: 'fuzzing-sonic'
+        }
+    }
+
+    options {
+        timestamps()
+        // Failsafe against a misconfigured job: sets the build to ABORTED when it triggers, and an
+        // aborted build runs no failure handler, so FuzzTime is kept an hour below it (checked in
+        // 'validate-parameters') to leave a bug found in the final minutes time to be reported.
+        timeout(time: 6, unit: 'HOURS')
+    }
+
+    // No triggers: the LaScala rotation job decides when this runs and what it fuzzes.
+
+    environment {
+        GOMEMLIMIT = goMemLimit()
+        // The corpus the fuzzer builds up lives in $GOCACHE/fuzz - only the inputs that FAIL are
+        // written into the repository. The container is thrown away after every build, so the cache
+        // has to live in the workspace, which the agent keeps: otherwise every run starts from the
+        // seed corpus again and every hour ever spent fuzzing this entry point is discarded.
+        GOCACHE = "${env.WORKSPACE}/.gocache"
+    }
+
+    parameters {
+        string(
+            name: 'AgentLabel',
+            defaultValue: 'fuzzing-sonic',
+            description: 'Jenkins agent label to run this job on. It builds a Docker image, so it ' +
+                'has to be an agent that can.'
+        )
+        string(
+            name: 'EntryPoint',
+            defaultValue: '',
+            description: '''Required. Fuzzer entry point to run. Any `func FuzzXxx(f *testing.F)` of
+this repository will do: the job searches the checkout for the package it lives in, and lists every
+entry point it found if this is not one of them.
+
+At the time of writing (a hint, not a constraint - the repository decides): FuzzScrambler,
+FuzzScheduler_Schedule_PicksLongestPrefixOfAcceptedTransactions, FuzzDominantSet,
+FuzzGossipHandlePeer, FuzzEventDeserialization, FuzzIsValidTurnProgression,
+FuzzPayloadDeserialization, FuzzValidateTransaction.'''
+        )
+        string(
+            name: 'FuzzTime',
+            defaultValue: '5h',
+            description: 'Time given to the fuzzer, as a Go duration. At most 5h, an hour below the ' +
+                'build timeout. Shorten it (e.g. 30s) to test this pipeline.'
+        )
+    }
+
+    stages {
+        stage('validate-parameters') {
+            steps {
+                describeBuild()
+
+                script {
+                    // Against the 6 hour timeout set above.
+                    fuzzer.requireSaneTimeout(fuzzTime: params.FuzzTime, timeoutMinutes: 6 * 60)
+                }
+            }
+        }
+
+        stage('prepare') {
+            // No build stage anywhere in this pipeline: Sonic has no cgo and no submodules, so
+            // `go test` compiles what it needs straight from a clean checkout.
+            steps {
+                script {
+                    // The SCM configuration of the job replaces the repository/version parameters a
+                    // pipeline outside this repository would need, so the reproduction instructions
+                    // read both back out of the checkout.
+                    checkedOut = fuzzer.checkoutInfo()
+
+                    // Resolved against this checkout, so a mistyped EntryPoint aborts here with the
+                    // list of what this repository actually offers rather than fuzzing nothing.
+                    fuzzPackage = fuzzer.resolvePackage(
+                        entryPoint: params.EntryPoint,
+                        root: moduleRoot
+                    )
+
+                    // Workspaces are reused between builds; report only what this run produced.
+                    fuzzer.resetLog()
+                }
+            }
+        }
+
+        stage('fuzzing-test') {
+            steps {
+                script {
+                    fuzzer.fuzz(
+                        root: moduleRoot,
+                        package: fuzzPackage,
+                        entryPoint: params.EntryPoint,
+                        fuzzTime: params.FuzzTime
+                    )
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                fuzzer.reportProgress(channel: 'sonic-jenkins')
+            }
+        }
+
+        failure {
+            script {
+                // A build that failed before 'prepare' resolved the package has no findings to
+                // attach: the failure is reported above and there is nothing to add.
+                if (fuzzPackage) {
+                    fuzzer.archiveFindings(
+                        root: moduleRoot,
+                        package: fuzzPackage,
+                        entryPoint: params.EntryPoint,
+                        repository: checkedOut.repository,
+                        version: checkedOut.version
+                    )
+                }
+            }
+        }
+    }
+}
