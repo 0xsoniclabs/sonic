@@ -432,6 +432,9 @@ func StartIntegrationTestNetWithJsonGenesis(
 	err = os.WriteFile(jsonFile, encoded, 0644)
 	require.NoError(t, err, "failed to write genesis json file")
 
+	genesisTmpDir, err := os.MkdirTemp(directory, "sonic-tmp-genesis-json")
+	require.NoError(t, err, "failed to create temporary dir for genesis")
+
 	net, err := startIntegrationTestNet(
 		t,
 		directory,
@@ -441,7 +444,7 @@ func StartIntegrationTestNetWithJsonGenesis(
 	require.NoError(t, err, "failed to start integration test network with json genesis")
 
 	net.genesis = jsonGenesis
-	net.genesisId, err = makefakegenesis.GetGenesisIdFromJson(jsonGenesis)
+	net.genesisId, err = makefakegenesis.GetGenesisIdFromJson(jsonGenesis, genesisTmpDir)
 	require.NoError(t, err, "failed to get genesis ID from json genesis")
 
 	return net

@@ -22,24 +22,31 @@ import (
 	"path/filepath"
 )
 
+type TempDir string
+
 // MakeTempDir creates a temporary directory at the specified path with the given name.
 // Everything in the directory is removed before creation. The function returns the path to the created directory,
 // a cleanup function to remove the directory, and an error if any occurred during the process.
-func MakeTempDir(path string, name string) (string, func(*error), error) {
+func MakeTempDir(path string, name string) (TempDir, error) {
 	dir := filepath.Join(path, name)
 	err := os.RemoveAll(dir)
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
 	err = os.MkdirAll(dir, 0700)
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
-	cleanup := func(retErr *error) {
-		if retErr == nil {
-			retErr = new(error)
-		}
-		*retErr = errors.Join(*retErr, os.RemoveAll(dir))
+	return TempDir(dir), nil
+}
+
+func (td TempDir) Path() string {
+	return string(td)
+}
+
+func (td TempDir) Cleanup(retErr *error) {
+	if retErr == nil {
+		retErr = new(error)
 	}
-	return dir, cleanup, nil
+	*retErr = errors.Join(*retErr, os.RemoveAll(string(td)))
 }
