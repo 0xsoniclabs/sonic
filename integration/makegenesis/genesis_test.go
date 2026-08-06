@@ -93,7 +93,7 @@ func TestGenesisBuilder_Build_CleansScratchDirAfterDBExport(t *testing.T) {
 				NetworkName: rules.Name,
 			})
 
-			scratchDir := filepath.Join(builder.dataDir, tc.dirName)
+			scratchDir := filepath.Join(builder.scratchPath, tc.dirName)
 
 			reader, err := tc.runExport(store)
 			require.NoError(err)

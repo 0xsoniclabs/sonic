@@ -104,7 +104,7 @@ func (s *Store) InitializeArchiveWorldState(liveReader io.Reader, blockNum uint6
 
 // ExportLiveWorldState exports Sonic World State data for the live state genesis section.
 // The Store must be closed during the call.
-func (s *Store) ExportLiveWorldState(ctx context.Context, out io.Writer, scratchDir string) (retErr error) {
+func (s *Store) ExportLiveWorldState(ctx context.Context, out io.Writer, scratchDir string) error {
 	liveDir := filepath.Join(s.parameters.Directory, "live")
 	if err := mptio.Export(ctx, mptio.NewLog(), liveDir, out, scratchDir); err != nil {
 		return fmt.Errorf("failed to export Live StateDB; %v", err)
@@ -114,7 +114,7 @@ func (s *Store) ExportLiveWorldState(ctx context.Context, out io.Writer, scratch
 
 // ExportArchiveWorldState exports Sonic World State data for the archive state genesis section.
 // The Store must be closed during the call.
-func (s *Store) ExportArchiveWorldState(ctx context.Context, out io.Writer, scratchDir string) (retErr error) {
+func (s *Store) ExportArchiveWorldState(ctx context.Context, out io.Writer, scratchDir string) error {
 	archiveDir := filepath.Join(s.parameters.Directory, "archive")
 	if err := mptio.ExportArchiveWithConfig(
 		ctx,

@@ -61,7 +61,7 @@ func heal(ctx *cli.Context) (retErr error) {
 	carmenLiveDir := filepath.Join(dataDir, "carmen", "live")
 	carmenExportScratchDir, cleanup, err := utils.MakeTempDir(dataDir, "carmen-scratch")
 	if err != nil {
-		return fmt.Errorf("failed to create scratch dir for FWS export; %v", err)
+		return fmt.Errorf("failed to create scratch dir for carmen export; %v", err)
 	}
 	defer cleanup(&retErr)
 

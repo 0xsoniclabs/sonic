@@ -68,7 +68,7 @@ type GenesisBuilder struct {
 	epochs       []ier.LlrIdxFullEpochRecord
 	currentEpoch ier.LlrIdxFullEpochRecord
 
-	dataDir string // temporary directory for genesis data export
+	scratchPath string // temporary directory for genesis data export
 }
 
 type BlockProc struct {
@@ -164,7 +164,7 @@ func NewGenesisBuilder() *GenesisBuilder {
 		carmenDir:     carmenDir,
 		carmenStateDb: carmenStateDb,
 		totalSupply:   new(uint256.Int),
-		dataDir:       dataDir,
+		scratchPath:   dataDir,
 	}
 }
 
@@ -379,7 +379,7 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 		}
 		if name == genesisstore.FwsLiveSection(0) {
 			{
-				scratchDir, cleanup, err := utils.MakeTempDir(b.dataDir, "live-scratch")
+				scratchDir, cleanup, err := utils.MakeTempDir(b.scratchPath, "live-scratch")
 				if err != nil {
 					return nil, fmt.Errorf("failed to create scratch dir for FWS live export; %v", err)
 				}
@@ -393,7 +393,7 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 		}
 		if name == genesisstore.FwsArchiveSection(0) {
 			{
-				scratchDir, cleanup, err := utils.MakeTempDir(b.dataDir, "archive-scratch")
+				scratchDir, cleanup, err := utils.MakeTempDir(b.scratchPath, "archive-scratch")
 				if err != nil {
 					return nil, fmt.Errorf("failed to create scratch dir for FWS archive export; %v", err)
 				}

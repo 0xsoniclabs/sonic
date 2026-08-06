@@ -185,7 +185,7 @@ func exportBlocksSection(ctx context.Context, gdb *gossip.Store, writer *unitWri
 	return nil
 }
 
-func exportFwsSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter, tmpPath string) (retErr error) {
+func exportFwsSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter, tmpPath string) error {
 	log.Info("Exporting Sonic World State Live data")
 	liveScratchDir, _, err := utils.MakeTempDir(tmpPath, "live-scratch")
 	if err != nil {
@@ -204,7 +204,7 @@ func exportFwsSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter
 	return nil
 }
 
-func exportFwaSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter, tmpPath string) (retErr error) {
+func exportFwaSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter, tmpPath string) error {
 	log.Info("Exporting Sonic World State Archive data")
 	archiveScratchDir, _, err := utils.MakeTempDir(tmpPath, "archive-scratch")
 	if err != nil {
