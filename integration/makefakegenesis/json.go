@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -217,7 +218,9 @@ func GetGenesisIdFromJson(json *GenesisJson, tmpDir string) (_ common.Hash, retE
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to create temporary dir for genesis; %w", err)
 	}
-	defer genesisTmpDir.Cleanup(&retErr)
+	defer func() {
+		retErr = errors.Join(retErr, genesisTmpDir.Cleanup())
+	}()
 
 	store, err := ApplyGenesisJson(json, genesisTmpDir.Path())
 	if err != nil {

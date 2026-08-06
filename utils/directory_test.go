@@ -17,7 +17,6 @@
 package utils
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -107,50 +106,16 @@ func TestTempDir_Path_ReturnsCorrectPath(t *testing.T) {
 	require.Equal(filepath.Join(parent, "scratch"), dir.Path())
 }
 
-func TestTempDir_Cleanup_RemovesDirectoryAndLeavesErrorNilOnSuccess(t *testing.T) {
+func TestTempDir_Cleanup_RemovesDirectory(t *testing.T) {
 	require := require.New(t)
 	parent := t.TempDir()
 
 	dir, err := MakeTempDir(parent, "scratch")
 	require.NoError(err)
 
-	var retErr error
-	dir.Cleanup(&retErr)
-	require.NoError(retErr)
+	err = dir.Cleanup()
+	require.NoError(err)
 
 	_, err = os.Stat(dir.Path())
 	require.True(os.IsNotExist(err))
-}
-
-func TestTempDir_Cleanup_JoinsWithExistingError(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("permission checks are bypassed when running as root")
-	}
-	require := require.New(t)
-	parent := t.TempDir()
-
-	dir, err := MakeTempDir(parent, "scratch")
-	require.NoError(err)
-
-	require.NoError(os.WriteFile(filepath.Join(dir.Path(), "child"), []byte("x"), 0600))
-	require.NoError(os.Chmod(dir.Path(), 0500))
-	defer func() {
-		require.NoError(os.Chmod(dir.Path(), 0700))
-	}()
-
-	original := errors.New("boom")
-	retErr := original
-	dir.Cleanup(&retErr)
-	require.ErrorIs(retErr, original)
-	require.ErrorIs(retErr, os.ErrPermission)
-}
-
-func TestTempDir_Cleanup_WithNilPointerDoesNotPanic(t *testing.T) {
-	require := require.New(t)
-	parent := t.TempDir()
-
-	dir, err := MakeTempDir(parent, "scratch")
-	require.NoError(err)
-
-	require.NotPanics(func() { dir.Cleanup(nil) })
 }

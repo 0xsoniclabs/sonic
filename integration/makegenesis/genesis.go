@@ -381,7 +381,9 @@ func (b *GenesisBuilder) Build(head genesis.Header) (*genesisstore.Store, error)
 				if err != nil {
 					return nil, fmt.Errorf("failed to create scratch dir for FWS live export; %v", err)
 				}
-				defer scratchDir.Cleanup(&retErr)
+				defer func() {
+					retErr = errors.Join(retErr, scratchDir.Cleanup())
+				}()
 
 				err = mptIo.Export(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "live"), buf, scratchDir.Path())
 				if err != nil {
@@ -395,7 +397,9 @@ func (b *GenesisBuilder) Build(head genesis.Header) (*genesisstore.Store, error)
 				if err != nil {
 					return nil, fmt.Errorf("failed to create scratch dir for FWS archive export; %v", err)
 				}
-				defer scratchDir.Cleanup(&retErr)
+				defer func() {
+					retErr = errors.Join(retErr, scratchDir.Cleanup())
+				}()
 
 				err = mptIo.ExportArchive(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "archive"), buf, scratchDir.Path())
 				if err != nil {

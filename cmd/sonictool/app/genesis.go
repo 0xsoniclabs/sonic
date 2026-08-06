@@ -100,7 +100,7 @@ func gfileGenesisImport(ctx *cli.Context) (err error) {
 	})
 }
 
-func jsonGenesisImport(ctx *cli.Context) (err error) {
+func jsonGenesisImport(ctx *cli.Context) (retErr error) {
 	if len(ctx.Args()) < 1 {
 		return fmt.Errorf("this command requires an argument - the genesis file to import")
 	}
@@ -129,7 +129,9 @@ func jsonGenesisImport(ctx *cli.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to create temporary dir for the genesis: %w", err)
 	}
-	defer tmpDir.Cleanup(&err)
+	defer func() {
+		retErr = errors.Join(retErr, tmpDir.Cleanup())
+	}()
 
 	genesisStore, err := makefakegenesis.ApplyGenesisJson(genesisJson, tmpDir.Path())
 	if err != nil {
@@ -147,7 +149,7 @@ func jsonGenesisImport(ctx *cli.Context) (err error) {
 	})
 }
 
-func fakeGenesisImport(ctx *cli.Context) (err error) {
+func fakeGenesisImport(ctx *cli.Context) (retErr error) {
 	if len(ctx.Args()) < 1 {
 		return fmt.Errorf("this command requires an argument - the number of validators in the fake network")
 	}
@@ -188,7 +190,9 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to create temporary dir for the genesis: %w", err)
 	}
-	defer tmpDir.Cleanup(&err)
+	defer func() {
+		retErr = errors.Join(retErr, tmpDir.Cleanup())
+	}()
 
 	genesisStore, err := makefakegenesis.FakeGenesisStore(
 		idx.Validator(validatorsNumber),

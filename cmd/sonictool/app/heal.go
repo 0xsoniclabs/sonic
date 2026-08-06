@@ -63,7 +63,9 @@ func heal(ctx *cli.Context) (retErr error) {
 	if err != nil {
 		return fmt.Errorf("failed to create scratch dir for carmen export; %v", err)
 	}
-	defer carmenExportScratchDir.Cleanup(&retErr)
+	defer func() {
+		retErr = errors.Join(retErr, carmenExportScratchDir.Cleanup())
+	}()
 
 	archiveInfo, err := os.Stat(carmenArchiveDir)
 	if err != nil || !archiveInfo.IsDir() {

@@ -45,7 +45,11 @@ func initFakenetDatadir(dataDir string, validatorsNum idx.Validator) {
 	if err != nil {
 		panic(fmt.Errorf("failed to create temporary dir for genesis: %v", err))
 	}
-	defer tmpDir.Cleanup(nil)
+	defer func() {
+		if err := tmpDir.Cleanup(); err != nil {
+			panic(fmt.Errorf("failed to cleanup temporary dir: %v", err))
+		}
+	}()
 
 	genesisStore, err := makefakegenesis.FakeGenesisStore(
 		validatorsNum,

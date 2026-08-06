@@ -17,7 +17,6 @@
 package utils
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -50,9 +49,6 @@ func (td TempDir) Path() string {
 	return string(td)
 }
 
-func (td TempDir) Cleanup(retErr *error) {
-	if retErr == nil {
-		retErr = new(error)
-	}
-	*retErr = errors.Join(*retErr, os.RemoveAll(string(td)))
+func (td TempDir) Cleanup() error {
+	return os.RemoveAll(string(td))
 }
