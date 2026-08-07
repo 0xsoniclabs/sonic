@@ -39,8 +39,9 @@ func TestPriorities_SwapContract_PrioritizationChanges(t *testing.T) {
 	registered := newFundedPrioritizedAccount(t, net, 1, 0, 0xaa)
 	unregistered := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
-	// The replacement registry is deployed up front so its magic value is known.
-	// Deploying does not affect the network until the swap below.
+	// MagicValuePriority classifies a transaction as prioritized iff its value
+	// equals a fixed magic constant. It is deployed up front so its magic value
+	// is known; deploying does not affect the network until the swap below.
 	impl, deployReceipt, err := tests.DeployContract(net, magic_value_priority.DeployMagicValuePriority)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, deployReceipt.Status)
