@@ -253,6 +253,11 @@ type Service struct {
 
 	operaDialCandidates enode.Iterator
 
+	// waitForEnrUpdaterShutdown blocks until the ENR updater loop started by
+	// Start has terminated. It must be called during shutdown before the store
+	// is closed, since the loop reads from the store.
+	waitForEnrUpdaterShutdown func()
+
 	EthAPI        *EthAPIBackend
 	netRPCService *ethapi.PublicNetAPI
 
@@ -593,7 +598,7 @@ func (s *Service) Start() error {
 	s.blockProcTasks.Start(1)
 
 	// start p2p
-	StartENRUpdater(s, s.p2pServer.LocalNode())
+	s.waitForEnrUpdaterShutdown = StartENRUpdater(s, s.p2pServer.LocalNode())
 	s.handler.Start(s.p2pServer.MaxPeers)
 
 	// start emitters
@@ -636,6 +641,13 @@ func (s *Service) Stop() error {
 		s.filterAPI.Stop()
 	}
 	s.feed.Stop()
+	// The ENR updater is terminated by the feed's subscription scope being
+	// closed in feed.Stop above. It must be awaited before returning, since it
+	// reads from the store, which is closed once this service is stopped.
+	if s.waitForEnrUpdaterShutdown != nil {
+		s.waitForEnrUpdaterShutdown()
+		s.waitForEnrUpdaterShutdown = nil
+	}
 	s.gpo.Stop()
 	// it's safe to stop tflusher only before locking engineMu
 	s.tflusher.Stop()

@@ -41,13 +41,27 @@ func (e enrEntry) ENRKey() string {
 
 // StartENRUpdater starts the `opera` ENR updater loop, which listens for chain
 // head events and updates the requested node record whenever a fork is passed.
-func StartENRUpdater(svc *Service, ln *enode.LocalNode) {
+// The loop terminates once the subscription to the service's block feed is
+// closed by ServiceFeed.Stop. The returned function blocks until the loop has
+// terminated; it must be called before the service's store is closed, since the
+// loop reads from the store.
+func StartENRUpdater(svc *Service, ln *enode.LocalNode) (waitForShutdown func()) {
 	var newHead = make(chan evmcore.ChainHeadNotify, 10)
 	sub := svc.feed.SubscribeNewBlock(newHead)
 
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		defer sub.Unsubscribe()
 		for {
+			// The subscription error channel is checked with priority to make
+			// sure no store access happens after the shutdown was initiated,
+			// even if there are still head events buffered in newHead.
+			select {
+			case <-sub.Err():
+				return
+			default:
+			}
 			select {
 			case head := <-newHead:
 				ln.Set(currentENREntry(
@@ -56,12 +70,12 @@ func StartENRUpdater(svc *Service, ln *enode.LocalNode) {
 					uint64(head.Block.Time.Unix()),
 				))
 			case <-sub.Err():
-				// Would be nice to sync with Stop, but there is no
-				// good way to do that.
 				return
 			}
 		}
 	}()
+
+	return func() { <-done }
 }
 
 // currentENREntry constructs an `eth` ENR entry based on the current state of the chain.
