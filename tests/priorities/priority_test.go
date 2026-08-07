@@ -20,7 +20,6 @@ import (
 	"cmp"
 	"encoding/binary"
 	"math/big"
-	"math/rand/v2"
 	"slices"
 	"testing"
 
@@ -74,15 +73,7 @@ func TestPriorities_TransactionsAreScheduledInPriorityOrder(t *testing.T) {
 				}
 			}
 
-			batch := slices.Concat(ordinary, prioritized)
-			rand.Shuffle(len(batch), func(i, j int) {
-				batch[i], batch[j] = batch[j], batch[i]
-			})
-
-			// Add the whole batch to the pool in a single call so every transaction is
-			// available before the emitter builds its first event.
-			hashes, err := net.SendAllToPool(t.Context(), batch)
-			require.NoError(err)
+			hashes := sendShuffledToPool(t, net, slices.Concat(ordinary, prioritized))
 
 			receipts, err := net.GetReceipts(hashes)
 			require.NoError(err)
@@ -156,10 +147,7 @@ func TestPriorities_PriorityOrderingPreservesNonceOrdering(t *testing.T) {
 				txs[i] = newSignedTx(t, net, sender, uint64(i), value, 21_000, nil)
 			}
 
-			// Add the whole batch to the pool in a single call so every
-			// transaction is available before the emitter builds its first event.
-			hashes, err := net.SendAllToPool(t.Context(), txs)
-			require.NoError(err)
+			hashes := sendShuffledToPool(t, net, txs)
 
 			receipts, err := net.GetReceipts(hashes)
 			require.NoError(err)

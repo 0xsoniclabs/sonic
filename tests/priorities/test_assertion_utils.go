@@ -19,6 +19,8 @@ package priorities
 import (
 	"math"
 	"math/big"
+	"math/rand/v2"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/tests"
@@ -50,22 +52,12 @@ func requirePriorityHasEffect(
 	require.NoError(err)
 	defer client.Close()
 
-	// Pre-build ordinary background traffic (fresh accounts are funded now
-	// so their funding txs don't compete for block space with the actual
-	// test batch).
 	ordinaryTxs := buildOrdinaryTraffic(t, net, 20, 5)
 
 	afterBlock, err := client.BlockNumber(t.Context())
 	require.NoError(err)
 
-	// Add prioritized + ordinary txs to the pool in a single batch so they all
-	// become available before the emitter builds its first event, making their
-	// relative ordering deterministic.
-	batch := append([]*types.Transaction{}, ordinaryTxs...)
-	batch = append(batch, prioritizedTxs...)
-
-	hashes, err := net.SendAllToPool(t.Context(), batch)
-	require.NoError(err)
+	hashes := sendShuffledToPool(t, net, slices.Concat(ordinaryTxs, prioritizedTxs))
 
 	receipts, err := net.GetReceipts(hashes)
 	require.NoError(err)
@@ -97,6 +89,36 @@ func buildOrdinaryTraffic(
 	return txs
 }
 
+// sendShuffledToPool adds all given transactions to the pool in a single batch
+// and in random order, so they all become available before the emitter builds
+// its first event and their relative ordering depends neither on the order they
+// were built in nor on their arrival times in the pool. It returns their hashes
+// in the order given.
+func sendShuffledToPool(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	txs []*types.Transaction,
+) []common.Hash {
+	t.Helper()
+
+	const seed = 7
+	rng := rand.New(rand.NewPCG(seed, seed))
+
+	batch := slices.Clone(txs)
+	rng.Shuffle(len(batch), func(i, j int) {
+		batch[i], batch[j] = batch[j], batch[i]
+	})
+
+	_, err := net.SendAllToPool(t.Context(), batch)
+	require.NoError(t, err)
+
+	hashes := make([]common.Hash, len(txs))
+	for i, tx := range txs {
+		hashes[i] = tx.Hash()
+	}
+	return hashes
+}
+
 // requirePriorityAppliedSince scans the user transactions of every block after
 // `afterBlock`, in block-then-index order, and asserts on the global ordering of
 // prioritized (per `isPrioritized`) vs ordinary transactions. Both classes must
@@ -110,9 +132,10 @@ func buildOrdinaryTraffic(
 //   - expectPrioritized == false: at least one ordinary tx precedes a
 //     prioritized one (proof that no reordering ran).
 //
-// Callers should submit the whole batch via SendAllToPool, so this global
-// ordering is deterministic and does not depend on arrival times of individual
-// transactions in the pool and whether emission ran between those or not.
+// Callers should submit the whole batch via sendShuffledToPool, so the observed
+// ordering is decided by prioritization alone: it depends neither on the order
+// the transactions were built in nor on their arrival times in the pool and
+// whether emission ran between those or not.
 func requirePriorityAppliedSince(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
