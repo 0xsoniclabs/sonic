@@ -38,11 +38,19 @@ func TestPriorities_PriorityOfBundlesIsThePriorityOfTheirEnvelope(t *testing.T) 
 	const txsPerBundle = 2
 
 	cases := map[string]struct {
+		// true => the envelope sender is prioritized
+		// false => the bundle sender is prioritized
 		prioritizeEnvelopeSender bool
 		expectPrioritized        bool
 	}{
-		"prioritized envelope sender": {prioritizeEnvelopeSender: true, expectPrioritized: true},
-		"prioritized bundle senders":  {prioritizeEnvelopeSender: false, expectPrioritized: false},
+		"prioritized envelope sender prioritized all txs in bundle": {
+			prioritizeEnvelopeSender: true,
+			expectPrioritized:        true,
+		},
+		"prioritized bundled txs sender does not prioritize txs in bundle": {
+			prioritizeEnvelopeSender: false,
+			expectPrioritized:        false,
+		},
 	}
 
 	for name, tc := range cases {

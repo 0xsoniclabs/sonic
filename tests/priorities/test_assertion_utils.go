@@ -101,8 +101,11 @@ func sendShuffledToPool(
 ) []common.Hash {
 	t.Helper()
 
+	const seed = 7
+	rng := rand.New(rand.NewPCG(seed, seed))
+
 	batch := slices.Clone(txs)
-	rand.Shuffle(len(batch), func(i, j int) {
+	rng.Shuffle(len(batch), func(i, j int) {
 		batch[i], batch[j] = batch[j], batch[i]
 	})
 
