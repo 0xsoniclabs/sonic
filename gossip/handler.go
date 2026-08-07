@@ -165,8 +165,6 @@ type handler struct {
 	// wait group is used for graceful shutdowns during downloading
 	// and processing
 	loopsWg sync.WaitGroup
-	wg      sync.WaitGroup
-	peerWG  sync.WaitGroup
 	started sync.WaitGroup
 
 	// channels for peer info collection loop
@@ -488,18 +486,21 @@ func (h *handler) Stop() {
 
 	h.msgSemaphore.Terminate()
 	// Quit the sync loop.
-	// After this send has completed, no new peers will be accepted.
 	close(h.quitSync)
 
 	// Disconnect existing sessions.
 	// This also closes the gate for any new registrations on the peer set.
-	// sessions which are already established but not added to h.peers yet
+	// Sessions which are already established but not added to h.peers yet
 	// will exit when they try to register.
+	//
+	// The peer handler goroutines these sessions keep alive belong to the p2p
+	// server, not to the handler; the Service waits for them to return right
+	// after this Stop. That wait must come after Stop: a peer handler parked
+	// on a DataSemaphore is only woken by a Release or a Terminate, never by
+	// its own timeout, and everything it can be parked on is terminated above
+	// -- the events semaphore by dagProcessor.Stop, which also clears the
+	// buffered events holding its weight, and the message semaphore here.
 	h.peers.Close()
-
-	// Wait for all peer handler goroutines to come down.
-	h.wg.Wait()
-	h.peerWG.Wait()
 
 	log.Info("Sonic protocol stopped")
 }
@@ -565,9 +566,6 @@ func (h *handler) handle(p *peer) (err error) {
 	if !p.Peer.Info().Network.Trusted && useless {
 		p.SetUseless()
 	}
-
-	h.peerWG.Add(1)
-	defer h.peerWG.Done()
 
 	// Execute the handshake
 	var (
