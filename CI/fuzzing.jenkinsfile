@@ -1,0 +1,136 @@
+// Copyright 2026 Sonic Operations Ltd
+// This file is part of the Sonic Client
+//
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
+// Fuzzes one Sonic entry point a day, rotating over every `func FuzzXxx(f *testing.F)` this
+// repository has - so a new fuzzer joins the rotation without a change here. The decision and the
+// steps come from LaScala's shared library (fuzzRotation, fuzzer); the schedule and the toolchain
+// are this repository's, because a Jenkins dockerfile agent is resolved against the pipeline's own
+// repository and only a pipeline in Sonic can build on Sonic's CI/Dockerfile.jenkins.
+@Library('shared-library') _
+
+moduleRoot = '.'
+
+def entryPoint
+def fuzzPackage
+def checkedOut
+
+pipeline {
+    agent {
+        dockerfile {
+            filename 'CI/Dockerfile.jenkins'
+            label 'fuzzing-sonic'
+        }
+    }
+
+    options {
+        timestamps()
+        timeout(time: 6, unit: 'HOURS')
+        // Two builds at once would pick the same entry point.
+        disableConcurrentBuilds()
+        // The rotation reads what was fuzzed lately out of these build descriptions, so this history
+        // is its memory: it has to hold far more builds than the repository has entry points.
+        buildDiscarder(logRotator(numToKeepStr: '200'))
+    }
+
+    triggers {
+        cron('@daily')
+    }
+
+    environment {
+        GOMEMLIMIT = goMemLimit()
+        // The corpus lives in $GOCACHE/fuzz and the container is thrown away after every build, so
+        // the cache has to sit in the workspace, which the agent keeps.
+        GOCACHE = "${env.WORKSPACE}/.gocache"
+    }
+
+    parameters {
+        string(
+            name: 'EntryPoint',
+            defaultValue: '',
+            description: 'Fuzzer entry point to run. Empty - which is what the daily run leaves it - ' +
+                'means the one that has gone longest without a turn.'
+        )
+        string(
+            name: 'FuzzTime',
+            defaultValue: '5h',
+            description: 'Time given to the fuzzer, as a Go duration. At most 5h, an hour below the ' +
+                'build timeout. Shorten it (e.g. 30s) to test this pipeline.'
+        )
+    }
+
+    stages {
+        // No build stage: Sonic has no cgo and no submodules, so `go test` compiles what it needs
+        // straight from a clean checkout.
+        stage('prepare') {
+            steps {
+                describeBuild()
+
+                script {
+                    fuzzer.requireSaneTimeout(fuzzTime: params.FuzzTime, timeoutMinutes: 6 * 60)
+                    checkedOut = fuzzer.checkoutInfo()
+                    entryPoint = params.EntryPoint ?: fuzzRotation.pickTarget(root: moduleRoot)
+                    fuzzPackage = fuzzer.resolvePackage(entryPoint: entryPoint, root: moduleRoot)
+                    fuzzer.resetLog()
+                }
+            }
+        }
+
+        stage('fuzzing-test') {
+            steps {
+                script {
+                    fuzzer.fuzz(
+                        root: moduleRoot,
+                        package: fuzzPackage,
+                        entryPoint: entryPoint,
+                        fuzzTime: params.FuzzTime
+                    )
+                }
+            }
+
+            post {
+                // Whatever the fuzzer found: an entry point that crashes must not be picked forever.
+                always {
+                    script {
+                        fuzzRotation.recordTarget(entryPoint)
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                fuzzer.reportProgress(channel: 'sonic-jenkins')
+            }
+        }
+
+        failure {
+            script {
+                // A build that failed before 'prepare' resolved the package has nothing to attach.
+                if (fuzzPackage) {
+                    fuzzer.archiveFindings(
+                        root: moduleRoot,
+                        package: fuzzPackage,
+                        entryPoint: entryPoint,
+                        repository: checkedOut.repository,
+                        version: checkedOut.version
+                    )
+                }
+            }
+        }
+    }
+}
