@@ -51,7 +51,7 @@ func netClientSignerWithPriorities(
 		Upgrades: &upgrades,
 	})
 
-	configureHighPriorityLimits(t, net)
+	setPriorityConfig(t, net, 100_000_000, 1_000)
 
 	client, err := net.GetClient()
 	require.NoError(err)
@@ -59,9 +59,12 @@ func netClientSignerWithPriorities(
 	return net, client, types.LatestSignerForChainID(net.GetChainId())
 }
 
-// configureHighPriorityLimits configures generous priority limits in the
-// priority registry.
-func configureHighPriorityLimits(t *testing.T, net *tests.IntegrationTestNet) {
+// setPriorityConfig sets the per-entity rate limits of the priority registry.
+func setPriorityConfig(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	maxGasPerEntityPerBlock, maxPiggybackTxsPerEntityPerEvent uint64,
+) {
 	t.Helper()
 	require := require.New(t)
 
@@ -73,7 +76,9 @@ func configureHighPriorityLimits(t *testing.T, net *tests.IntegrationTestNet) {
 	require.NoError(err)
 
 	receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-		return reg.SetConfig(opts, big.NewInt(100_000_000), big.NewInt(1_000))
+		return reg.SetConfig(opts,
+			new(big.Int).SetUint64(maxGasPerEntityPerBlock),
+			new(big.Int).SetUint64(maxPiggybackTxsPerEntityPerEvent))
 	})
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
