@@ -18,7 +18,9 @@ package makegenesis
 
 import (
 	"crypto/ecdsa"
+	"io"
 	"math/big"
+	"path/filepath"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/inter"
@@ -26,6 +28,8 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/opera/genesis"
+	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -37,9 +41,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGenesisBuilder_NewGenesisBuilder_ReturnsErrorWhenTmpDirDoesNotExist(t *testing.T) {
+	require := require.New(t)
+
+	missingDir := filepath.Join(t.TempDir(), "does-not-exist")
+	builder, err := NewGenesisBuilder(missingDir)
+
+	require.Error(err)
+	require.Nil(builder)
+	require.Contains(err.Error(), "failed to create temporary dir")
+}
+
 func TestGenesisBuilder_ExecuteGenesisTxs_ExecutesTransactionsAccordingToUpgrades(t *testing.T) {
 	rules := opera.FakeNetRules(opera.GetAllegroUpgrades())
-	builder := NewGenesisBuilder()
+	builder, err := NewGenesisBuilder(t.TempDir())
+	require.NoError(t, err)
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
@@ -56,6 +72,56 @@ func TestGenesisBuilder_ExecuteGenesisTxs_ExecutesTransactionsAccordingToUpgrade
 	// TODO: investigate the suitability of containing log.Crit inside of block processing
 	err = builder.ExecuteGenesisTxs(blockProc, []*types.Transaction{setCodeTx})
 	require.NoError(t, err)
+}
+
+func TestGenesisBuilder_Build_CleansScratchDirAfterDBExport(t *testing.T) {
+	testCases := map[string]struct {
+		runExport func(s *genesisstore.Store) (io.Reader, error)
+		dirName   string
+	}{
+		"live": {
+			runExport: func(s *genesisstore.Store) (io.Reader, error) {
+				return s.FwsLiveSection().GetReader()
+			},
+			dirName: "live-scratch",
+		},
+		"archive": {
+			runExport: func(s *genesisstore.Store) (io.Reader, error) {
+				return s.FwsArchiveSection().GetReader()
+			},
+			dirName: "archive-scratch",
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			tmpDir := t.TempDir()
+			builder, err := NewGenesisBuilder(tmpDir)
+			require.NoError(err)
+			rules := opera.FakeNetRules(opera.GetAllegroUpgrades())
+
+			store, err := builder.Build(genesis.Header{
+				GenesisID:   hash.Zero,
+				NetworkID:   rules.NetworkID,
+				NetworkName: rules.Name,
+			})
+			require.NoError(err)
+
+			scratchDir := filepath.Join(tmpDir, tc.dirName)
+
+			reader, err := tc.runExport(store)
+			require.NoError(err)
+
+			// read a single byte to ensure the reader is used and the export is complete
+			singleByte := make([]byte, 1)
+			n, err := reader.Read(singleByte)
+			require.Equal(n, 1)
+			require.NoError(err)
+
+			require.NoDirExists(scratchDir)
+		})
+	}
 }
 
 func finalizeBlockZero(t *testing.T, builder *GenesisBuilder, rules opera.Rules) {

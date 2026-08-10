@@ -100,7 +100,7 @@ func gfileGenesisImport(ctx *cli.Context) (err error) {
 	})
 }
 
-func jsonGenesisImport(ctx *cli.Context) (err error) {
+func jsonGenesisImport(ctx *cli.Context) (retErr error) {
 	if len(ctx.Args()) < 1 {
 		return fmt.Errorf("this command requires an argument - the genesis file to import")
 	}
@@ -125,7 +125,15 @@ func jsonGenesisImport(ctx *cli.Context) (err error) {
 		return fmt.Errorf("failed to load JSON genesis: %w", err)
 	}
 
-	genesisStore, err := makefakegenesis.ApplyGenesisJson(genesisJson)
+	tmpDir, err := futils.MakeTempDir(dataDir, "genesis-tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary dir for the genesis: %w", err)
+	}
+	defer func() {
+		retErr = errors.Join(retErr, tmpDir.Cleanup())
+	}()
+
+	genesisStore, err := makefakegenesis.ApplyGenesisJson(genesisJson, tmpDir.Path())
 	if err != nil {
 		return fmt.Errorf("failed to prepare JSON genesis: %w", err)
 	}
@@ -141,7 +149,7 @@ func jsonGenesisImport(ctx *cli.Context) (err error) {
 	})
 }
 
-func fakeGenesisImport(ctx *cli.Context) (err error) {
+func fakeGenesisImport(ctx *cli.Context) (retErr error) {
 	if len(ctx.Args()) < 1 {
 		return fmt.Errorf("this command requires an argument - the number of validators in the fake network")
 	}
@@ -178,12 +186,24 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 		return fmt.Errorf("invalid profile %v - must be 'sonic', 'allegro', or 'brio'", upgradesString)
 	}
 
-	genesisStore := makefakegenesis.FakeGenesisStore(
+	tmpDir, err := futils.MakeTempDir(dataDir, "genesis-tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary dir for the genesis: %w", err)
+	}
+	defer func() {
+		retErr = errors.Join(retErr, tmpDir.Cleanup())
+	}()
+
+	genesisStore, err := makefakegenesis.FakeGenesisStore(
 		idx.Validator(validatorsNumber),
 		futils.ToFtmU256(1_000_000_000),
 		futils.ToFtmU256(5_000_000),
 		upgrades,
+		tmpDir.Path(),
 	)
+	if err != nil {
+		return fmt.Errorf("failed to create genesis store: %w", err)
+	}
 	defer caution.CloseAndReportError(&err, genesisStore, "failed to close the genesis store")
 	return genesis.ImportGenesisStore(genesis.ImportParams{
 		GenesisStore:  genesisStore,

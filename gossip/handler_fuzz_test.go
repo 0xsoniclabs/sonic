@@ -104,12 +104,16 @@ func makeFuzzedHandler(t *testing.T) (*handler, error) {
 
 	upgrades := opera.GetSonicUpgrades()
 
-	genStore := makefakegenesis.FakeGenesisStore(
+	genStore, err := makefakegenesis.FakeGenesisStore(
 		genesisStakers,
 		utils.ToFtmU256(genesisBalance),
 		utils.ToFtmU256(genesisStake),
 		upgrades,
+		t.TempDir(),
 	)
+	if err != nil {
+		return nil, err
+	}
 	genesis := genStore.Genesis()
 
 	store, err := NewMemStore(t)
