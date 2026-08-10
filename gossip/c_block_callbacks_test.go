@@ -710,7 +710,7 @@ func TestConsensusCallback_AppliesTransactionPriorities(t *testing.T) {
 			senderPriorityStorageSlot(prioritizedSender): packSenderPriority(1, 0, 1),
 		},
 	})
-	genesisStore, err := makefakegenesis.ApplyGenesisJson(jsonGenesis)
+	genesisStore, err := makefakegenesis.ApplyGenesisJson(jsonGenesis, t.TempDir())
 	require.NoError(err)
 
 	store, err := NewMemStore(t)
