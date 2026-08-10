@@ -1,0 +1,131 @@
+=== RUN   TestPriorities_PriorityRace_ValidatorTargeting
+=== RUN   TestPriorities_PriorityRace_ValidatorTargeting/PrioToLow_OrdinaryToLow
+    wins=2999/3000 winRate=100.0% earlierBlock=1069 sameBlockEarlierTx=1930 later=1 prioMissing=0 ordMissing=0 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_ValidatorTargeting/PrioToHigh_OrdinaryToLow
+    wins=2998/3000 winRate=99.9% earlierBlock=973 sameBlockEarlierTx=2025 later=0 prioMissing=0 ordMissing=0 bothMissing=2
+=== RUN   TestPriorities_PriorityRace_ValidatorTargeting/PrioToLow_OrdinaryToHigh
+    wins=2994/3000 winRate=99.8% earlierBlock=950 sameBlockEarlierTx=2039 later=6 prioMissing=0 ordMissing=5 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_ValidatorTargeting/PrioToHigh_OrdinaryToHigh
+    wins=2996/3000 winRate=99.9% earlierBlock=1138 sameBlockEarlierTx=1855 later=0 prioMissing=0 ordMissing=3 bothMissing=4
+--- PASS: TestPriorities_PriorityRace_ValidatorTargeting (6843.62s)
+    --- PASS: TestPriorities_PriorityRace_ValidatorTargeting/PrioToLow_OrdinaryToLow (1696.54s)
+    --- PASS: TestPriorities_PriorityRace_ValidatorTargeting/PrioToHigh_OrdinaryToLow (1697.10s)
+    --- PASS: TestPriorities_PriorityRace_ValidatorTargeting/PrioToLow_OrdinaryToHigh (1744.97s)
+    --- PASS: TestPriorities_PriorityRace_ValidatorTargeting/PrioToHigh_OrdinaryToHigh (1675.02s)
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/1_validators
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/1_validators/same_validator
+    wins=3000/3000 winRate=100.0% earlierBlock=0 sameBlockEarlierTx=3000 later=0 prioMissing=0 ordMissing=0 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/2_validators
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/2_validators/same_validator
+    wins=3000/3000 winRate=100.0% earlierBlock=1313 sameBlockEarlierTx=1687 later=0 prioMissing=0 ordMissing=0 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/2_validators/different_validators
+    wins=3000/3000 winRate=100.0% earlierBlock=1240 sameBlockEarlierTx=1760 later=0 prioMissing=0 ordMissing=0 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/4_validators
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/4_validators/same_validator
+    wins=2993/3000 winRate=99.8% earlierBlock=742 sameBlockEarlierTx=2251 later=6 prioMissing=0 ordMissing=0 bothMissing=1
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/4_validators/different_validators
+    wins=2999/3000 winRate=100.0% earlierBlock=678 sameBlockEarlierTx=2321 later=1 prioMissing=0 ordMissing=0 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/8_validators
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/8_validators/same_validator
+    wins=2999/3000 winRate=100.0% earlierBlock=1126 sameBlockEarlierTx=1868 later=1 prioMissing=0 ordMissing=5 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/8_validators/different_validators
+    wins=3000/3000 winRate=100.0% earlierBlock=1047 sameBlockEarlierTx=1951 later=0 prioMissing=0 ordMissing=2 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/16_validators
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/16_validators/same_validator
+    wins=3000/3000 winRate=100.0% earlierBlock=690 sameBlockEarlierTx=2308 later=0 prioMissing=0 ordMissing=2 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/16_validators/different_validators
+    wins=3000/3000 winRate=100.0% earlierBlock=1173 sameBlockEarlierTx=1824 later=0 prioMissing=0 ordMissing=3 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/32_validators
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/32_validators/same_validator
+    wins=3000/3000 winRate=100.0% earlierBlock=753 sameBlockEarlierTx=2243 later=0 prioMissing=0 ordMissing=4 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_ValidatorCounts/32_validators/different_validators
+    wins=2995/3000 winRate=99.8% earlierBlock=746 sameBlockEarlierTx=2248 later=1 prioMissing=0 ordMissing=1 bothMissing=4
+--- PASS: TestPriorities_PriorityRace_ValidatorCounts (17726.36s)
+    --- PASS: TestPriorities_PriorityRace_ValidatorCounts/1_validators (1088.35s)
+        --- PASS: TestPriorities_PriorityRace_ValidatorCounts/1_validators/same_validator (546.80s)
+    --- PASS: TestPriorities_PriorityRace_ValidatorCounts/2_validators (2354.36s)
+        --- PASS: TestPriorities_PriorityRace_ValidatorCounts/2_validators/same_validator (564.33s)
+        --- PASS: TestPriorities_PriorityRace_ValidatorCounts/2_validators/different_validators (555.25s)
+    --- PASS: TestPriorities_PriorityRace_ValidatorCounts/4_validators (3120.86s)
+        --- PASS: TestPriorities_PriorityRace_ValidatorCounts/4_validators/same_validator (690.63s)
+        --- PASS: TestPriorities_PriorityRace_ValidatorCounts/4_validators/different_validators (686.93s)
+    --- PASS: TestPriorities_PriorityRace_ValidatorCounts/8_validators (3609.03s)
+        --- PASS: TestPriorities_PriorityRace_ValidatorCounts/8_validators/same_validator (811.16s)
+        --- PASS: TestPriorities_PriorityRace_ValidatorCounts/8_validators/different_validators (845.35s)
+    --- PASS: TestPriorities_PriorityRace_ValidatorCounts/16_validators (3648.08s)
+        --- PASS: TestPriorities_PriorityRace_ValidatorCounts/16_validators/same_validator (895.32s)
+        --- PASS: TestPriorities_PriorityRace_ValidatorCounts/16_validators/different_validators (865.09s)
+    --- PASS: TestPriorities_PriorityRace_ValidatorCounts/32_validators (3905.68s)
+        --- PASS: TestPriorities_PriorityRace_ValidatorCounts/32_validators/same_validator (960.94s)
+        --- PASS: TestPriorities_PriorityRace_ValidatorCounts/32_validators/different_validators (928.69s)
+=== RUN   TestPriorities_PriorityRace_ProposerMode
+=== RUN   TestPriorities_PriorityRace_ProposerMode/legacy
+=== RUN   TestPriorities_PriorityRace_ProposerMode/legacy/same_validator
+    wins=3000/3000 winRate=100.0% earlierBlock=1230 sameBlockEarlierTx=1769 later=0 prioMissing=0 ordMissing=1 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_ProposerMode/legacy/different_validators
+    wins=2999/3000 winRate=100.0% earlierBlock=1161 sameBlockEarlierTx=1831 later=1 prioMissing=0 ordMissing=7 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_ProposerMode/single_proposer
+=== RUN   TestPriorities_PriorityRace_ProposerMode/single_proposer/same_validator
+    wins=2316/3000 winRate=77.2% earlierBlock=2 sameBlockEarlierTx=2310 later=4 prioMissing=6 ordMissing=4 bothMissing=674
+=== RUN   TestPriorities_PriorityRace_ProposerMode/single_proposer/different_validators
+    wins=2484/3000 winRate=82.8% earlierBlock=0 sameBlockEarlierTx=2481 later=0 prioMissing=7 ordMissing=3 bothMissing=509
+--- PASS: TestPriorities_PriorityRace_ProposerMode (7801.10s)
+    --- PASS: TestPriorities_PriorityRace_ProposerMode/legacy (3796.69s)
+        --- PASS: TestPriorities_PriorityRace_ProposerMode/legacy/same_validator (911.45s)
+        --- PASS: TestPriorities_PriorityRace_ProposerMode/legacy/different_validators (893.24s)
+    --- PASS: TestPriorities_PriorityRace_ProposerMode/single_proposer (4004.41s)
+        --- PASS: TestPriorities_PriorityRace_ProposerMode/single_proposer/same_validator (1107.32s)
+        --- PASS: TestPriorities_PriorityRace_ProposerMode/single_proposer/different_validators (1059.87s)
+=== RUN   TestPriorities_PriorityRace_UnderCongestion
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/16_sender
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/16_sender/same_validator
+    wins=9/500 winRate=1.8% earlierBlock=0 sameBlockEarlierTx=1 later=0 prioMissing=0 ordMissing=8 bothMissing=491
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/16_sender/different_validators
+    wins=194/500 winRate=38.8% earlierBlock=0 sameBlockEarlierTx=7 later=0 prioMissing=0 ordMissing=187 bothMissing=306
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/32_sender
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/32_sender/same_validator
+    wins=0/500 winRate=0.0% earlierBlock=0 sameBlockEarlierTx=0 later=0 prioMissing=0 ordMissing=0 bothMissing=500
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/32_sender/different_validators
+    wins=0/500 winRate=0.0% earlierBlock=0 sameBlockEarlierTx=0 later=0 prioMissing=0 ordMissing=0 bothMissing=500
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/1_sender
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/1_sender/same_validator
+    wins=500/500 winRate=100.0% earlierBlock=207 sameBlockEarlierTx=293 later=0 prioMissing=0 ordMissing=0 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/1_sender/different_validators
+    wins=496/500 winRate=99.2% earlierBlock=152 sameBlockEarlierTx=324 later=4 prioMissing=0 ordMissing=20 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/2_sender
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/2_sender/same_validator
+    wins=500/500 winRate=100.0% earlierBlock=184 sameBlockEarlierTx=301 later=0 prioMissing=0 ordMissing=15 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/2_sender/different_validators
+    wins=499/500 winRate=99.8% earlierBlock=133 sameBlockEarlierTx=347 later=0 prioMissing=0 ordMissing=19 bothMissing=1
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/4_sender
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/4_sender/same_validator
+    wins=500/500 winRate=100.0% earlierBlock=118 sameBlockEarlierTx=322 later=0 prioMissing=0 ordMissing=60 bothMissing=0
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/4_sender/different_validators
+    wins=499/500 winRate=99.8% earlierBlock=1 sameBlockEarlierTx=7 later=0 prioMissing=0 ordMissing=491 bothMissing=1
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/8_sender
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/8_sender/same_validator
+    wins=490/500 winRate=98.0% earlierBlock=112 sameBlockEarlierTx=254 later=0 prioMissing=0 ordMissing=124 bothMissing=10
+=== RUN   TestPriorities_PriorityRace_UnderCongestion/8_sender/different_validators
+    wins=492/500 winRate=98.4% earlierBlock=5 sameBlockEarlierTx=11 later=4 prioMissing=0 ordMissing=476 bothMissing=4
+--- PASS: TestPriorities_PriorityRace_UnderCongestion (4507.55s)
+    --- PASS: TestPriorities_PriorityRace_UnderCongestion/16_sender (852.64s)
+        --- PASS: TestPriorities_PriorityRace_UnderCongestion/16_sender/same_validator (255.40s)
+        --- PASS: TestPriorities_PriorityRace_UnderCongestion/16_sender/different_validators (255.12s)
+    --- PASS: TestPriorities_PriorityRace_UnderCongestion/32_sender (835.29s)
+        --- PASS: TestPriorities_PriorityRace_UnderCongestion/32_sender/same_validator (253.25s)
+        --- PASS: TestPriorities_PriorityRace_UnderCongestion/32_sender/different_validators (254.79s)
+    --- PASS: TestPriorities_PriorityRace_UnderCongestion/1_sender (641.57s)
+        --- PASS: TestPriorities_PriorityRace_UnderCongestion/1_sender/same_validator (146.27s)
+        --- PASS: TestPriorities_PriorityRace_UnderCongestion/1_sender/different_validators (153.58s)
+    --- PASS: TestPriorities_PriorityRace_UnderCongestion/2_sender (646.18s)
+        --- PASS: TestPriorities_PriorityRace_UnderCongestion/2_sender/same_validator (153.12s)
+        --- PASS: TestPriorities_PriorityRace_UnderCongestion/2_sender/different_validators (153.03s)
+    --- PASS: TestPriorities_PriorityRace_UnderCongestion/4_sender (774.74s)
+        --- PASS: TestPriorities_PriorityRace_UnderCongestion/4_sender/same_validator (159.15s)
+        --- PASS: TestPriorities_PriorityRace_UnderCongestion/4_sender/different_validators (251.25s)
+    --- PASS: TestPriorities_PriorityRace_UnderCongestion/8_sender (757.12s)
+        --- PASS: TestPriorities_PriorityRace_UnderCongestion/8_sender/same_validator (172.80s)
+        --- PASS: TestPriorities_PriorityRace_UnderCongestion/8_sender/different_validators (250.67s)
+PASS
+ok  	github.com/0xsoniclabs/sonic/tests/priorities	36879.277s
