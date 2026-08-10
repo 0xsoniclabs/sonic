@@ -23,12 +23,39 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
+
+// requirePrioritized calls the registry's `getPriority` method for a
+// transaction with the given `from` and `value`, and checks that it is
+// prioritized iff `expectPrioritized`.
+func requirePrioritized(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	from common.Address,
+	value uint64,
+	expectPrioritized bool,
+) {
+	t.Helper()
+	require := require.New(t)
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	reg, err := registry.NewRegistry(registry.GetAddress(), client)
+	require.NoError(err)
+
+	priority, err := reg.GetPriority(nil,
+		from, common.Address{}, new(big.Int).SetUint64(value), big.NewInt(0), nil, big.NewInt(21_000))
+	require.NoError(err)
+	require.Equal(expectPrioritized, priority.Level > 0)
+}
 
 // requirePriorityHasEffect proves that the currently installed priority
 // classifier is (or isn't, per `expectPrioritized`) consulted on the

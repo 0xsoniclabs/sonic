@@ -76,10 +76,10 @@ func TestPriorities_SwapContract_PrioritizationChanges(t *testing.T) {
 	txHasMagicValue := func(tx *types.Transaction) bool { return tx.Value().Cmp(magicValue) == 0 }
 
 	// --- default registry - prioritization depends only on the sender ---
-	require.True(checkPriority(t, net, registered.Address(), 1))
-	require.True(checkPriority(t, net, registered.Address(), magicValue.Uint64()))
-	require.False(checkPriority(t, net, unregistered.Address(), 1))
-	require.False(checkPriority(t, net, unregistered.Address(), magicValue.Uint64()))
+	requirePrioritized(t, net, registered.Address(), 1, true)
+	requirePrioritized(t, net, registered.Address(), magicValue.Uint64(), true)
+	requirePrioritized(t, net, unregistered.Address(), 1, false)
+	requirePrioritized(t, net, unregistered.Address(), magicValue.Uint64(), false)
 
 	requirePriorityHasEffect(t, net, buildRegisteredSenderTxs(), true, txHasRegisteredSender)
 	requirePriorityHasEffect(t, net, buildMagicValueTxs(), false, txHasMagicValue)
@@ -87,37 +87,13 @@ func TestPriorities_SwapContract_PrioritizationChanges(t *testing.T) {
 	// --- MagicValuePriority registry - prioritization depends only on the tx value ---
 	switchPriorityRegistry(t, net, deployReceipt.ContractAddress)
 
-	require.False(checkPriority(t, net, registered.Address(), 1))
-	require.True(checkPriority(t, net, registered.Address(), magicValue.Uint64()))
-	require.False(checkPriority(t, net, unregistered.Address(), 1))
-	require.True(checkPriority(t, net, unregistered.Address(), magicValue.Uint64()))
+	requirePrioritized(t, net, registered.Address(), 1, false)
+	requirePrioritized(t, net, registered.Address(), magicValue.Uint64(), true)
+	requirePrioritized(t, net, unregistered.Address(), 1, false)
+	requirePrioritized(t, net, unregistered.Address(), magicValue.Uint64(), true)
 
 	requirePriorityHasEffect(t, net, buildRegisteredSenderTxs(), false, txHasRegisteredSender)
 	requirePriorityHasEffect(t, net, buildMagicValueTxs(), true, txHasMagicValue)
-}
-
-// checkPriority calls the registry's `getPriority` method for a transaction
-// with the given `from` and `value`, and returns whether it is prioritized.
-func checkPriority(
-	t *testing.T,
-	net *tests.IntegrationTestNet,
-	from common.Address,
-	value uint64,
-) bool {
-	t.Helper()
-	require := require.New(t)
-
-	client, err := net.GetClient()
-	require.NoError(err)
-	defer client.Close()
-
-	reg, err := registry.NewRegistry(registry.GetAddress(), client)
-	require.NoError(err)
-
-	priority, err := reg.GetPriority(nil,
-		from, common.Address{}, new(big.Int).SetUint64(value), big.NewInt(0), nil, big.NewInt(21_000))
-	require.NoError(err)
-	return priority.Level > 0
 }
 
 // switchPriorityRegistry points the priority-registry proxy at `newImpl`,
