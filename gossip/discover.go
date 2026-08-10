@@ -45,23 +45,22 @@ func StartENRUpdater(svc *Service, ln *enode.LocalNode) {
 	var newHead = make(chan evmcore.ChainHeadNotify, 10)
 	sub := svc.feed.SubscribeNewBlock(newHead)
 
-	go func() {
-		defer sub.Unsubscribe()
-		for {
-			select {
-			case head := <-newHead:
-				ln.Set(currentENREntry(
-					svc,
-					idx.Block(head.Block.Number.Uint64()),
-					uint64(head.Block.Time.Unix()),
-				))
-			case <-sub.Err():
-				// Would be nice to sync with Stop, but there is no
-				// good way to do that.
-				return
+	svc.storeReadersWg.Go(
+		func() {
+			defer sub.Unsubscribe()
+			for {
+				select {
+				case head := <-newHead:
+					ln.Set(currentENREntry(
+						svc,
+						idx.Block(head.Block.Number.Uint64()),
+						uint64(head.Block.Time.Unix()),
+					))
+				case <-sub.Err():
+					return
+				}
 			}
-		}
-	}()
+		})
 }
 
 // currentENREntry constructs an `eth` ENR entry based on the current state of the chain.

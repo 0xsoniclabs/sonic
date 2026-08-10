@@ -245,6 +245,11 @@ type Service struct {
 	blockProcTasksDone chan struct{}
 	blockProcModules   BlockProc
 
+	// storeReadersWg tracks background routines reading from the store. They
+	// must have terminated before Stop returns, since the store is closed
+	// afterwards.
+	storeReadersWg sync.WaitGroup
+
 	blockBusyFlag uint32
 	eventBusyFlag uint32
 
@@ -662,6 +667,8 @@ func (s *Service) Stop() error {
 		s.filterAPI.Stop()
 	}
 	s.feed.Stop()
+	// Feed subscribers are signaled by feed.Stop, wait for them to terminate.
+	s.storeReadersWg.Wait()
 	s.gpo.Stop()
 	// it's safe to stop tflusher only before locking engineMu
 	s.tflusher.Stop()
