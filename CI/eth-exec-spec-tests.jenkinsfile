@@ -1,0 +1,114 @@
+// Copyright 2026 Sonic Operations Ltd
+// This file is part of the Sonic Client
+//
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
+// Runs Ethereum's execution-spec tests (EEST) against this revision of Sonic.
+//
+// This pipeline lives in the Sonic repository so it can run inside the same build image as the PR
+// pipeline (CI/Dockerfile.jenkins) instead of relying on whatever a bare agent happens to have
+// installed. Everything it needs - Go, git, curl - comes from that image.
+//
+// The job is configured as "Pipeline script from SCM" pointing at SonicRepository / SonicVersion,
+// so the checkout Jenkins does for the docker agent IS the revision under test: the build image and
+// the code it tests always come from the same commit. That is why there is no checkout stage here.
+// Those two parameters are still declared below because the job configuration references them and
+// the release-testing coordinator passes them (as pinned commits) when it triggers this job.
+
+@Library('shared-library') _
+
+pipeline {
+    agent {
+        dockerfile {
+            filename 'CI/Dockerfile.jenkins'
+            label params.AgentLabel
+        }
+    }
+
+    options {
+        timestamps()
+        timeout(time: 12, unit: 'HOURS')
+        disableConcurrentBuilds(abortPrevious: false)
+    }
+
+    parameters {
+        string(
+            name: 'AgentLabel',
+            defaultValue: 'x86-8-32-m',
+            description: 'Jenkins agent label to run this job on.'
+        )
+        string(
+            name: 'SonicRepository',
+            defaultValue: 'https://github.com/0xsoniclabs/sonic.git',
+            description: 'Sonic repository url. Consumed by the job\'s SCM configuration, not by this script.'
+        )
+        string(
+            name: 'SonicVersion',
+            defaultValue: 'main',
+            description: 'Branch or commit hash for Sonic. Consumed by the job\'s SCM configuration, not by this script.'
+        )
+        choice(
+            name: 'TargetFork',
+            choices: ['Osaka', 'Prague'],
+            description: 'Target fork determines which set of test cases to run.'
+        )
+    }
+
+    environment {
+        GOMEMLIMIT = goMemLimit()
+    }
+
+    stages {
+        stage('Download') {
+            steps {
+                describeBuild()
+
+                dir('./tests/eth_exec_spec/test_data') {
+                    script {
+                        def EthereumTestsVersion
+                        if (params.TargetFork == 'Osaka') {
+                            // Version v5.4.0 contains test cases up to and including the Osaka revision.
+                            EthereumTestsVersion = 'v5.4.0'
+                        } else if (params.TargetFork == 'Prague') {
+                            // Version v4.5.0 contains test cases up to and including the Prague revision.
+                            EthereumTestsVersion = 'v4.5.0'
+                        } else {
+                            error "Unsupported TargetFork: ${params.TargetFork}"
+                        }
+                        // Get fixtures from Ethereum's execution-spec-tests repository.
+                        // https://github.com/ethereum/execution-spec-tests/releases/tag/<EthereumTestsVersion>
+                        // Test cases older than Istanbul, which are not supported by Sonic, are ignored by the test runner.
+                        // curl rather than wget: it is what the build image ships with.
+                        sh "curl -sSfL -O https://github.com/ethereum/execution-spec-tests/releases/download/${EthereumTestsVersion}/fixtures_develop.tar.gz"
+                        // Drop any fixtures left by a previous build: the workspace is reused, and a
+                        // run with a different TargetFork would otherwise also run the old fork's cases.
+                        sh 'rm -rf fixtures && tar -xf fixtures_develop.tar.gz'
+                    }
+                }
+            }
+        }
+
+        stage('Test State') {
+            steps {
+                sh 'go test -timeout 10h -v -run ^TestBlockProcessing_EthereumExecutionSpecTests$ ./tests/eth_exec_spec -test-data test_data/fixtures'
+            }
+        }
+    }
+
+    post {
+        always {
+            notifySlack(channel: 'sonic-jenkins')
+        }
+    }
+}
