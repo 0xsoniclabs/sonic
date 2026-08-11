@@ -18,6 +18,7 @@ package priorities
 
 import (
 	"encoding/binary"
+	"math"
 	"math/big"
 	"slices"
 	"testing"
@@ -43,7 +44,7 @@ func TestPriorities_PerEntityGasLimitCapsThePrioritizedPrefixOfEveryBlock(t *tes
 	net, client, signer := netClientSignerWithPriorities(t, nil)
 	defer client.Close()
 
-	setPriorityConfig(t, net, txsInBudget*gasPerTx, 1_000)
+	setPriorityConfig(t, net, txsInBudget*gasPerTx, math.MaxUint64)
 
 	// One sender per (entity, weight) with a single transaction each, so the
 	// selection is decided by the gas budget alone and is fully determined: of
@@ -64,15 +65,7 @@ func TestPriorities_PerEntityGasLimitCapsThePrioritizedPrefixOfEveryBlock(t *tes
 	ordinary := buildOrdinaryTraffic(t, net, 20, 5)
 
 	hashes := sendShuffledToPool(t, net, slices.Concat(ordinary, prioritized))
-	receipts, err := net.GetReceipts(hashes)
-	require.NoError(err)
-
-	first, last := receipts[0].BlockNumber.Uint64(), receipts[0].BlockNumber.Uint64()
-	for _, receipt := range receipts {
-		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
-		first = min(first, receipt.BlockNumber.Uint64())
-		last = max(last, receipt.BlockNumber.Uint64())
-	}
+	first, last := blockRange(requireSuccessfulReceipts(t, net, hashes))
 
 	demotedAfterOrdinary := false
 	for number := first; number <= last; number++ {

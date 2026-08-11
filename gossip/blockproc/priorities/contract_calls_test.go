@@ -56,6 +56,20 @@ func TestGetPriority_SenderError_ReportsError(t *testing.T) {
 	require.ErrorContains(t, err, "failed to derive sender")
 }
 
+func TestGetPriority_ValueNotUint256_ReportsError(t *testing.T) {
+	tests := map[string]*big.Int{
+		"negative":        big.NewInt(-1),
+		"exceeds uint256": new(big.Int).Lsh(big.NewInt(1), 256),
+	}
+	for name, value := range tests {
+		t.Run(name, func(t *testing.T) {
+			tx, signer := makeTxWithValue(t, value)
+			_, err := GetPriority(enabledUpgrades(), &fakeVM{}, signer, tx)
+			require.ErrorContains(t, err, "transaction value is not a uint256")
+		})
+	}
+}
+
 func TestGetPriority_CallError_ReportsError(t *testing.T) {
 	tx, signer := makeTx(t)
 	vm := &fakeVM{err: fmt.Errorf("call failed")}
@@ -307,6 +321,11 @@ func enabledUpgrades() opera.Upgrades {
 
 func makeTx(t *testing.T) (*types.Transaction, types.Signer) {
 	t.Helper()
+	return makeTxWithValue(t, big.NewInt(5))
+}
+
+func makeTxWithValue(t *testing.T, value *big.Int) (*types.Transaction, types.Signer) {
+	t.Helper()
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 	chainConfig := opera.CreateTransientEvmChainConfig(
@@ -318,7 +337,7 @@ func makeTx(t *testing.T) (*types.Transaction, types.Signer) {
 		To:    &to,
 		Gas:   21000,
 		Nonce: 7,
-		Value: big.NewInt(5),
+		Value: value,
 		Data:  []byte{0x01, 0x02, 0x03},
 	})
 	return tx, signer
