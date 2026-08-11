@@ -91,8 +91,9 @@ pipeline {
                         // Test cases older than Istanbul, which are not supported by Sonic, are ignored by the test runner.
                         // curl rather than wget: it is what the build image ships with.
                         sh "curl -sSfL -O https://github.com/ethereum/execution-spec-tests/releases/download/${EthereumTestsVersion}/fixtures_develop.tar.gz"
-                        // Drop any fixtures left by a previous build: the workspace is reused, and a
-                        // run with a different TargetFork would otherwise also run the old fork's cases.
+                        // Belt and braces with the cleanup below, for fixtures that survived a build
+                        // which never reached it (an abort, a lost agent): a run with a different
+                        // TargetFork would otherwise also run the previous fork's cases.
                         sh 'rm -rf fixtures && tar -xf fixtures_develop.tar.gz'
                     }
                 }
@@ -109,6 +110,12 @@ pipeline {
     post {
         always {
             notifySlack(channel: 'sonic-jenkins')
+        }
+        // The extracted fixtures are gigabytes, and the tarball next to them is a second copy, so a
+        // few runs of this job would fill the agent's disk. Nothing in the workspace is worth keeping
+        // for diagnosis - which cases failed is in the build log.
+        cleanup {
+            deleteDir()
         }
     }
 }
