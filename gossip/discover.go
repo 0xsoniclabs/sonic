@@ -17,10 +17,12 @@
 package gossip
 
 import (
+	"sync"
+
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/forkid"
-	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/rlp"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -39,13 +41,23 @@ func (e enrEntry) ENRKey() string {
 	return "opera"
 }
 
+// nodeRecord is the part of enode.LocalNode used by the ENR updater.
+type nodeRecord interface {
+	Set(entry enr.Entry)
+}
+
 // StartENRUpdater starts the `opera` ENR updater loop, which listens for chain
 // head events and updates the requested node record whenever a fork is passed.
-func StartENRUpdater(svc *Service, ln *enode.LocalNode) {
+// The returned function stops the loop and waits for it to terminate. It must be
+// called before the store is closed, since the loop reads from the store.
+func StartENRUpdater(svc *Service, ln nodeRecord) (stop func()) {
 	var newHead = make(chan evmcore.ChainHeadNotify, 10)
 	sub := svc.feed.SubscribeNewBlock(newHead)
 
+	quit := make(chan struct{})
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		defer sub.Unsubscribe()
 		for {
 			select {
@@ -55,13 +67,18 @@ func StartENRUpdater(svc *Service, ln *enode.LocalNode) {
 					idx.Block(head.Block.Number.Uint64()),
 					uint64(head.Block.Time.Unix()),
 				))
+			case <-quit:
+				return
 			case <-sub.Err():
-				// Would be nice to sync with Stop, but there is no
-				// good way to do that.
 				return
 			}
 		}
 	}()
+
+	return sync.OnceFunc(func() {
+		close(quit)
+		<-done
+	})
 }
 
 // currentENREntry constructs an `eth` ENR entry based on the current state of the chain.

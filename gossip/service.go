@@ -259,6 +259,9 @@ type Service struct {
 	// filterAPI must be stopped during shutdown before the store is closed.
 	filterAPI *filters.PublicFilterAPI
 
+	// stopENRUpdater must be called during shutdown before the store is closed.
+	stopENRUpdater func()
+
 	procLogger *proclogger.Logger
 
 	stopped   bool
@@ -593,7 +596,7 @@ func (s *Service) Start() error {
 	s.blockProcTasks.Start(1)
 
 	// start p2p
-	StartENRUpdater(s, s.p2pServer.LocalNode())
+	s.stopENRUpdater = StartENRUpdater(s, s.p2pServer.LocalNode())
 	s.handler.Start(s.p2pServer.MaxPeers)
 
 	// start emitters
@@ -634,6 +637,9 @@ func (s *Service) Stop() error {
 	// Must stop before the store is closed to avoid reading from a closed store.
 	if s.filterAPI != nil {
 		s.filterAPI.Stop()
+	}
+	if s.stopENRUpdater != nil {
+		s.stopENRUpdater()
 	}
 	s.feed.Stop()
 	s.gpo.Stop()
