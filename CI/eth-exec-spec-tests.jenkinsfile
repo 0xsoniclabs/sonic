@@ -14,17 +14,10 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-// Runs Ethereum's execution-spec tests (EEST) against this revision of Sonic.
-//
-// This pipeline lives in the Sonic repository so it can run inside the same build image as the PR
-// pipeline (CI/Dockerfile.jenkins) instead of relying on whatever a bare agent happens to have
-// installed. Everything it needs - Go, git, curl - comes from that image.
-//
-// The job is configured as "Pipeline script from SCM" pointing at SonicRepository / SonicVersion,
-// so the checkout Jenkins does for the docker agent IS the revision under test: the build image and
-// the code it tests always come from the same commit. That is why there is no checkout stage here.
-// Those two parameters are still declared below because the job configuration references them and
-// the release-testing coordinator passes them (as pinned commits) when it triggers this job.
+// Ethereum execution-spec tests. Lives here because a dockerfile agent is resolved against the
+// pipeline's own repository, so only a pipeline in Sonic can build on CI/Dockerfile.jenkins. The job
+// is "Pipeline script from SCM" over SonicRepository/SonicVersion: Jenkins' own checkout is the
+// revision under test, hence no checkout stage.
 
 @Library('shared-library') _
 
@@ -51,12 +44,12 @@ pipeline {
         string(
             name: 'SonicRepository',
             defaultValue: 'https://github.com/0xsoniclabs/sonic.git',
-            description: 'Sonic repository url. Consumed by the job\'s SCM configuration, not by this script.'
+            description: 'Sonic repository url. Read by the job\'s SCM configuration.'
         )
         string(
             name: 'SonicVersion',
             defaultValue: 'main',
-            description: 'Branch or commit hash for Sonic. Consumed by the job\'s SCM configuration, not by this script.'
+            description: 'Branch or commit hash for Sonic. Read by the job\'s SCM configuration.'
         )
         choice(
             name: 'TargetFork',
@@ -78,22 +71,14 @@ pipeline {
                     script {
                         def EthereumTestsVersion
                         if (params.TargetFork == 'Osaka') {
-                            // Version v5.4.0 contains test cases up to and including the Osaka revision.
-                            EthereumTestsVersion = 'v5.4.0'
+                            EthereumTestsVersion = 'v5.4.0' // last release including Osaka
                         } else if (params.TargetFork == 'Prague') {
-                            // Version v4.5.0 contains test cases up to and including the Prague revision.
-                            EthereumTestsVersion = 'v4.5.0'
+                            EthereumTestsVersion = 'v4.5.0' // last release including Prague
                         } else {
                             error "Unsupported TargetFork: ${params.TargetFork}"
                         }
-                        // Get fixtures from Ethereum's execution-spec-tests repository.
-                        // https://github.com/ethereum/execution-spec-tests/releases/tag/<EthereumTestsVersion>
-                        // Test cases older than Istanbul, which are not supported by Sonic, are ignored by the test runner.
-                        // curl rather than wget: it is what the build image ships with.
                         sh "curl -sSfL -O https://github.com/ethereum/execution-spec-tests/releases/download/${EthereumTestsVersion}/fixtures_develop.tar.gz"
-                        // Belt and braces with the cleanup below, for fixtures that survived a build
-                        // which never reached it (an abort, a lost agent): a run with a different
-                        // TargetFork would otherwise also run the previous fork's cases.
+                        // Guards against fixtures left by a build that never reached its cleanup.
                         sh 'rm -rf fixtures && tar -xf fixtures_develop.tar.gz'
                     }
                 }
@@ -111,9 +96,7 @@ pipeline {
         always {
             notifySlack(channel: 'sonic-jenkins')
         }
-        // The extracted fixtures are gigabytes, and the tarball next to them is a second copy, so a
-        // few runs of this job would fill the agent's disk. Nothing in the workspace is worth keeping
-        // for diagnosis - which cases failed is in the build log.
+        // The fixtures are gigabytes; a few runs would fill the agent's disk.
         cleanup {
             deleteDir()
         }
