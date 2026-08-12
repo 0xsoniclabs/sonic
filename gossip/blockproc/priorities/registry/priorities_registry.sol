@@ -26,10 +26,6 @@ contract PriorityRegistry {
     // Priority assigned to transactions by sender. Configurable for testing.
     mapping(address => Priority) public senderPriority;
 
-    // Transactions whose gas limit exceeds maxGas are never prioritized.
-    // A value of zero disables the gas filter.
-    uint256 public maxGas;
-
     // Per-entity rate limits. Zero selects the built-in defaults below.
     uint256 private maxGasPerEntityPerBlockValue;
     uint256 private maxPiggybackTxsPerEntityPerEventValue;
@@ -48,10 +44,6 @@ contract PriorityRegistry {
         senderPriority[from] = Priority(level, weight, id);
     }
 
-    function setMaxGas(uint256 g) external {
-        maxGas = g;
-    }
-
     function setConfig(uint256 perBlockGas, uint256 perEvent) external {
         maxGasPerEntityPerBlockValue = perBlockGas;
         maxPiggybackTxsPerEntityPerEventValue = perEvent;
@@ -65,11 +57,8 @@ contract PriorityRegistry {
         uint256 /*value*/,
         uint256 /*nonce*/,
         bytes calldata /*data*/,
-        uint256 gas
+        uint256 /*gas*/
     ) external view returns (uint64 level, uint64 weight, uint128 id) {
-        if (maxGas != 0 && gas > maxGas) {
-            return (0, 0, 0);
-        }
         Priority storage p = senderPriority[from];
         return (p.level, p.weight, p.id);
     }

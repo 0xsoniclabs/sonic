@@ -27,6 +27,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/magic_value_priority"
+	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -74,22 +75,16 @@ func TestPriorities_TransactionsAreScheduledInPriorityOrder(t *testing.T) {
 			}
 
 			hashes := sendShuffledToPool(t, net, slices.Concat(ordinary, prioritized))
-
-			receipts, err := net.GetReceipts(hashes)
-			require.NoError(err)
-
-			first, last := receipts[0].BlockNumber.Uint64(), receipts[0].BlockNumber.Uint64()
-			for _, receipt := range receipts {
-				require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
-				first = min(first, receipt.BlockNumber.Uint64())
-				last = max(last, receipt.BlockNumber.Uint64())
-			}
+			first, last := blockRange(requireSuccessfulReceipts(t, net, hashes))
 
 			scheduled := make([]priorities.Priority, 0, len(prioByHash))
 			for number := first; number <= last; number++ {
 				block, err := client.BlockByNumber(t.Context(), new(big.Int).SetUint64(number))
 				require.NoError(err)
 				for _, tx := range block.Transactions() {
+					if internaltx.IsInternal(tx) {
+						continue
+					}
 					scheduled = append(scheduled, prioByHash[tx.Hash()])
 				}
 			}
@@ -134,6 +129,8 @@ func TestPriorities_PriorityOrderingPreservesNonceOrdering(t *testing.T) {
 			switchPriorityRegistry(t, net, deployReceipt.ContractAddress)
 
 			sender := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+			requirePrioritized(t, net, sender.Address(), 1, false)
+			requirePrioritized(t, net, sender.Address(), magicValue.Uint64(), true)
 
 			// Every odd-nonce transaction outranks its predecessor, so honoring
 			// priorities alone would reverse each pair.
@@ -148,12 +145,7 @@ func TestPriorities_PriorityOrderingPreservesNonceOrdering(t *testing.T) {
 			}
 
 			hashes := sendShuffledToPool(t, net, txs)
-
-			receipts, err := net.GetReceipts(hashes)
-			require.NoError(err)
-			for _, receipt := range receipts {
-				require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
-			}
+			receipts := requireSuccessfulReceipts(t, net, hashes)
 
 			// The receipts are in nonce order, so their positions must be
 			// ascending as well.

@@ -20,12 +20,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/proxy"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/magic_value_priority"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -94,37 +90,4 @@ func TestPriorities_SwapContract_PrioritizationChanges(t *testing.T) {
 
 	requirePriorityHasEffect(t, net, buildRegisteredSenderTxs(), false, txHasRegisteredSender)
 	requirePriorityHasEffect(t, net, buildMagicValueTxs(), true, txHasMagicValue)
-}
-
-// switchPriorityRegistry points the priority-registry proxy at `newImpl`,
-// asserting the proxy's implementation slot changes to that address.
-func switchPriorityRegistry(
-	t *testing.T,
-	net *tests.IntegrationTestNet,
-	newImpl common.Address,
-) {
-	t.Helper()
-	require := require.New(t)
-
-	client, err := net.GetClient()
-	require.NoError(err)
-	defer client.Close()
-
-	oldSlotValue, err := client.StorageAt(t.Context(), registry.GetAddress(),
-		proxy.GetSlotForImplementation(), nil)
-	require.NoError(err)
-	require.NotEqual(newImpl, common.BytesToAddress(oldSlotValue))
-
-	pxy, err := proxy.NewProxy(registry.GetAddress(), client)
-	require.NoError(err)
-	updateReceipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-		return pxy.Update(opts, newImpl)
-	})
-	require.NoError(err)
-	require.Equal(types.ReceiptStatusSuccessful, updateReceipt.Status)
-
-	newSlotValue, err := client.StorageAt(t.Context(), registry.GetAddress(),
-		proxy.GetSlotForImplementation(), nil)
-	require.NoError(err)
-	require.Equal(newImpl, common.BytesToAddress(newSlotValue))
 }
