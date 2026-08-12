@@ -141,7 +141,7 @@ func TestAPI_GetProof(t *testing.T) {
 
 	api := NewPublicBlockChainAPI(mockBackend)
 
-	accountProof, err := api.GetProof(context.Background(), common.Address(addr), keys, blkNr)
+	accountProof, err := api.GetProof(context.Background(), common.Address(addr), keys, &blkNr)
 	require.NoError(t, err, "failed to get account")
 
 	u256Balance := balance.Uint256()
@@ -184,7 +184,7 @@ func TestAPI_GetAccount(t *testing.T) {
 
 	api := NewPublicBlockChainAPI(mockBackend)
 
-	account, err := api.GetAccount(context.Background(), common.Address(addr), blkNr)
+	account, err := api.GetAccount(context.Background(), common.Address(addr), &blkNr)
 	require.NoError(t, err, "failed to get account")
 
 	u256Balance := balance.Uint256()
@@ -459,7 +459,7 @@ func TestBlockStateOverrides(t *testing.T) {
 	// Check block overrides on eth api with eth_call and eth_estimateGas rpc function
 	apiEth := NewPublicBlockChainAPI(mockBackend)
 
-	_, err = apiEth.Call(context.Background(), getTxArgs(t), rpcBlkNr, stateOverrides, blockOverrides)
+	_, err = apiEth.Call(context.Background(), getTxArgs(t), &rpcBlkNr, stateOverrides, blockOverrides)
 	require.NoError(t, err, "debug api must be able to override block number and base fee")
 
 	_, err = apiEth.EstimateGas(context.Background(), getTxArgs(t), &rpcBlkNr, stateOverrides, blockOverrides)
