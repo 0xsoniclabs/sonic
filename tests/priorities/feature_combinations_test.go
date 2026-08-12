@@ -109,13 +109,16 @@ func TestPriorities_PriorityOfBundlesIsThePriorityOfTheirEnvelope(t *testing.T) 
 			afterBlock, err := client.BlockNumber(t.Context())
 			require.NoError(err)
 
-			sendShuffledToPool(t, net, slices.Concat(envelopes, ordinaryTxs))
+			hashes := sendShuffledToPool(t, net, slices.Concat(envelopes, ordinaryTxs))
 
 			infos, err := testbundles.WaitForBundleExecutions(t.Context(), client.Client(), planHashes)
 			require.NoError(err)
 			for _, info := range infos {
 				require.EqualValues(txsPerBundle, info.Count)
 			}
+
+			// Envelopes do not have receipts.
+			requireSuccessfulReceipts(t, net, hashes[len(envelopes):])
 
 			requirePriorityAppliedSince(t, net, afterBlock, tc.expectPrioritized,
 				func(tx *types.Transaction) bool {
@@ -158,11 +161,9 @@ func TestPriorities_PrioritizedSponsoredTransactionsAlsoPrioritizesPaymentTransa
 
 	hashes := sendShuffledToPool(t, net, slices.Concat(sponsoredTxs, ordinaryTxs))
 
-	receipts, err := net.GetReceipts(hashes)
-	require.NoError(err)
+	receipts := requireSuccessfulReceipts(t, net, hashes)
 	receiptByHash := make(map[common.Hash]*types.Receipt, len(receipts))
 	for _, receipt := range receipts {
-		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 		receiptByHash[receipt.TxHash] = receipt
 	}
 

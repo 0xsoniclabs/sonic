@@ -66,7 +66,7 @@ func TestEvmClassifier_Priority_QueryError_RevertsSnapshotAndCountsEachFailure(t
 
 func TestEvmClassifier_Priority_DelegatesToGetPriority(t *testing.T) {
 	tx, signer := makeTx(t)
-	id := [16]byte{0xde, 0xad}
+	id := PriorityID{0xde, 0xad}
 	result := make([]byte, 96)
 	binary.BigEndian.PutUint64(result[24:32], 3)
 	binary.BigEndian.PutUint64(result[56:64], 5)
@@ -80,7 +80,7 @@ func TestEvmClassifier_Priority_DelegatesToGetPriority(t *testing.T) {
 	require.Equal(t, Priority{Level: 3, Weight: 5, ID: id}, p)
 }
 
-func TestTransactionWithPriority_Cmp_ComparesByLevelDescWeightDescHashAsc(t *testing.T) {
+func TestTransactionWithPriority_CmpLevelWeightHash_ComparesByLevelDescWeightDescHashAsc(t *testing.T) {
 	lowHash, highHash := makeTxWithNonce(0), makeTxWithNonce(1)
 	if bytes.Compare(lowHash.Hash().Bytes(), highHash.Hash().Bytes()) > 0 {
 		lowHash, highHash = highHash, lowHash

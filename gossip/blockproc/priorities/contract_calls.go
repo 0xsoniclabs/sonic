@@ -14,10 +14,6 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-// Package priorities implements the transaction-priorities feature: querying an
-// on-chain registry contract to determine, per transaction, a priority level, a
-// weight, and an entity id, and using those to order transactions during block
-// formation.
 package priorities
 
 import (
@@ -142,8 +138,9 @@ func GetConfigOrFallback(upgrades opera.Upgrades, vm VirtualMachine, failures Me
 // getPriority(address from, address to, uint256 value, uint256 nonce,
 // bytes data, uint256 gas).
 func createGetPriorityInput(sender common.Address, tx *types.Transaction) ([]byte, error) {
-	if tx == nil {
-		return nil, fmt.Errorf("nil transaction")
+	value := tx.Value()
+	if value.Sign() < 0 || value.BitLen() > 256 {
+		return nil, fmt.Errorf("transaction value is not a uint256: %v", value)
 	}
 
 	to := common.Address{}
@@ -164,7 +161,7 @@ func createGetPriorityInput(sender common.Address, tx *types.Transaction) ([]byt
 	input = append(input, to[:]...)
 
 	// value
-	input = append(input, tx.Value().FillBytes(make([]byte, 32))...)
+	input = append(input, value.FillBytes(make([]byte, 32))...)
 
 	// nonce
 	input = append(input, uint64Padding[:]...)
@@ -203,7 +200,7 @@ func parseGetPriorityResult(data []byte) (Priority, error) {
 	return Priority{
 		Level:  binary.BigEndian.Uint64(data[24:32]),
 		Weight: binary.BigEndian.Uint64(data[56:64]),
-		ID:     [16]byte(data[80:96]),
+		ID:     PriorityID(data[80:96]),
 	}, nil
 }
 

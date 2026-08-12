@@ -22,6 +22,10 @@ package priorities
 
 import "cmp"
 
+// PriorityID identifies the entity a prioritized transaction belongs to. It is
+// the uint128 the registry returns, in big-endian byte order.
+type PriorityID [16]byte
+
 // Priority is the result of a getPriority query for a single transaction.
 //
 // Level zero means the transaction is not prioritized. A higher level forms an
@@ -53,8 +57,6 @@ func (p Priority) Cmp(other Priority) int {
 	}
 	return cmp.Compare(p.Weight, other.Weight)
 }
-
-type PriorityID [16]byte
 
 // Meter is an abstraction of the metrics.Meter type to facilitate mocking in
 // tests. It is used to report failed registry queries.

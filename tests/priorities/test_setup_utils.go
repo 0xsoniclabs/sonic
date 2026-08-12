@@ -17,10 +17,12 @@
 package priorities
 
 import (
+	"math"
 	"math/big"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/proxy"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -31,10 +33,10 @@ import (
 
 // netClientSignerWithPriorities starts a fresh integration test network with
 // the Brio hard-fork and TransactionPriorities enabled by default but
-// overridable with `configure`. It configures generous priority-registry
-// limits and returns the network together with an open client and a signer
-// bound to the network's chain ID. The caller owns the returned client and is
-// expected to Close it.
+// overridable with `configure`. It configures effectively unlimited
+// priority-registry limits and returns the network together with an open
+// client and a signer bound to the network's chain ID. The caller owns the
+// returned client and is expected to Close it.
 func netClientSignerWithPriorities(
 	t *testing.T,
 	configure func(*opera.Upgrades),
@@ -51,7 +53,7 @@ func netClientSignerWithPriorities(
 		Upgrades: &upgrades,
 	})
 
-	setPriorityConfig(t, net, 100_000_000, 1_000)
+	setPriorityConfig(t, net, math.MaxUint64, math.MaxUint64)
 
 	client, err := net.GetClient()
 	require.NoError(err)
@@ -120,6 +122,39 @@ func setPrioritized(
 	})
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+}
+
+// switchPriorityRegistry points the priority-registry proxy at `newImpl`,
+// asserting the proxy's implementation slot changes to that address.
+func switchPriorityRegistry(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	newImpl common.Address,
+) {
+	t.Helper()
+	require := require.New(t)
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	oldSlotValue, err := client.StorageAt(t.Context(), registry.GetAddress(),
+		proxy.GetSlotForImplementation(), nil)
+	require.NoError(err)
+	require.NotEqual(newImpl, common.BytesToAddress(oldSlotValue))
+
+	pxy, err := proxy.NewProxy(registry.GetAddress(), client)
+	require.NoError(err)
+	updateReceipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		return pxy.Update(opts, newImpl)
+	})
+	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, updateReceipt.Status)
+
+	newSlotValue, err := client.StorageAt(t.Context(), registry.GetAddress(),
+		proxy.GetSlotForImplementation(), nil)
+	require.NoError(err)
+	require.Equal(newImpl, common.BytesToAddress(newSlotValue))
 }
 
 // newSignedTx builds and signs transfer from `account`. If `gasPrice` is nil,

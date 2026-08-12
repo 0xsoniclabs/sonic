@@ -264,12 +264,6 @@ func computePrioritizedTxsPrefix(
 
 	selected := make([]int, 0, len(txsWithPrio))
 	remaining := make(map[PriorityID]uint64)
-	budgetOf := func(id PriorityID) uint64 {
-		if r, ok := remaining[id]; ok {
-			return r
-		}
-		return perEntityBudget
-	}
 	for {
 		idx, ok := frontier.Peek()
 		if !ok {
@@ -277,7 +271,10 @@ func computePrioritizedTxsPrefix(
 		}
 		gas := txsWithPrio[idx].tx.Gas()
 		id := txsWithPrio[idx].priority.ID
-		budget := budgetOf(id)
+		budget, seen := remaining[id]
+		if !seen {
+			budget = perEntityBudget
+		}
 		if gas > budget {
 			frontier.PopSequence() // tx does not fit the budget: sender blocked
 			continue
@@ -292,17 +289,20 @@ func computePrioritizedTxsPrefix(
 // combinePrioritizedPrefixWithRemainder builds the final transaction order:
 // the prioritized entries in prefix order, followed by the remaining entries
 // (demoted + non-prioritized) in their original base order.
-func combinePrioritizedPrefixWithRemainder(entries []transactionWithPriority, prioritizedPrefixIndices []int) types.Transactions {
-	isPrioritized := make([]bool, len(entries))
-	result := make(types.Transactions, 0, len(entries))
+func combinePrioritizedPrefixWithRemainder(
+	txsWithPrio []transactionWithPriority,
+	prioritizedPrefixIndices []int,
+) types.Transactions {
+	isPrioritized := make([]bool, len(txsWithPrio))
+	result := make(types.Transactions, 0, len(txsWithPrio))
 	for _, i := range prioritizedPrefixIndices {
 		isPrioritized[i] = true
-		result = append(result, entries[i].tx)
+		result = append(result, txsWithPrio[i].tx)
 	}
 	// Append the remainder in original base order (demoted + non-prioritized).
-	for i := range entries {
+	for i := range txsWithPrio {
 		if !isPrioritized[i] {
-			result = append(result, entries[i].tx)
+			result = append(result, txsWithPrio[i].tx)
 		}
 	}
 	return result
