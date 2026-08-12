@@ -162,6 +162,28 @@ func TestStartENRUpdater_ShutdownDoesNotBlockIfUpdaterWasNeverStarted(t *testing
 	}
 }
 
+// TestStartENRUpdater_ShutdownCanBeCalledRepeatedly pins a property the
+// shutdown gets for free from ServiceFeed.Stop, which is idempotent: a repeated
+// shutdown must neither panic on the already stopped feed nor block on the wait
+// group of the store readers it terminated the first time.
+func TestStartENRUpdater_ShutdownCanBeCalledRepeatedly(t *testing.T) {
+	require := require.New(t)
+	svc := newENRUpdaterTestService(t)
+
+	record := newBlockingNodeRecord()
+	close(record.release) // < do not block the updater in this test
+	StartENRUpdater(svc, record)
+
+	svc.stopStoreReaders()
+	stopped := runAsync(svc.stopStoreReaders)
+
+	select {
+	case <-stopped:
+	case <-time.After(30 * time.Second):
+		require.Fail("repeated shutdown blocked")
+	}
+}
+
 func runAsync(f func()) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
