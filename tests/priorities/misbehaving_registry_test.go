@@ -34,44 +34,35 @@ const (
 	modeOutOfRange
 	modeTruncated
 	modeReverting
+	modeMutating
 )
 
-func TestPriorities_MisbehavingRegistryLeavesTransactionsUnprioritized(t *testing.T) {
+func TestPriorities_MisbehavingRegistry_LeavesTransactionsUnprioritized(t *testing.T) {
 	cases := map[string]struct {
-		mode              uint8
+		mode, configMode  uint8
 		expectPrioritized bool
 	}{
-		"correct":                            {modeCorrect, true},
-		"needs more gas than it is granted":  {modeOutOfGas, false},
-		"returns values out of range":        {modeOutOfRange, false},
-		"returns fewer values than expected": {modeTruncated, false},
-		"reverts":                            {modeReverting, false},
+		"getPriority and getPriorityConfig correct":            {modeCorrect, modeCorrect, true},
+		"getPriority needs more gas than it is granted":        {modeOutOfGas, modeCorrect, false},
+		"getPriority returns values out of range":              {modeOutOfRange, modeCorrect, false},
+		"getPriority returns fewer values than expected":       {modeTruncated, modeCorrect, false},
+		"getPriority reverts":                                  {modeReverting, modeCorrect, false},
+		"getPriorityConfig needs more gas than it is granted":  {modeCorrect, modeOutOfGas, false},
+		"getPriorityConfig returns values out of range":        {modeCorrect, modeOutOfRange, false},
+		"getPriorityConfig returns fewer values than expected": {modeCorrect, modeTruncated, false},
+		"getPriorityConfig reverts":                            {modeCorrect, modeReverting, false},
 	}
 
 	net, client, _ := netClientSignerWithPriorities(t, nil)
 	defer client.Close()
 
-	_, deployReceipt, err := tests.DeployContract(net,
-		misbehaving_priority_registry.DeployMisbehavingPriorityRegistry)
-	require.NoError(t, err)
-	require.Equal(t, types.ReceiptStatusSuccessful, deployReceipt.Status)
-	switchPriorityRegistry(t, net, deployReceipt.ContractAddress)
-
-	reg, err := misbehaving_priority_registry.NewMisbehavingPriorityRegistry(
-		registry.GetAddress(), client)
-	require.NoError(t, err)
+	reg := installMisbehavingRegistry(t, net, client)
 	magicValue, err := reg.MAGICVALUE(nil)
 	require.NoError(t, err)
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
-
-			receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-				return reg.SetMode(opts, tc.mode)
-			})
-			require.NoError(err)
-			require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+			setModes(t, net, reg, tc.mode, tc.configMode)
 
 			sender := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 			txs := make([]*types.Transaction, 5)
@@ -84,5 +75,84 @@ func TestPriorities_MisbehavingRegistryLeavesTransactionsUnprioritized(t *testin
 			// transactions are executed successfully.
 			requirePriorityHasEffect(t, net, txs, tc.expectPrioritized, txHasMagicValue)
 		})
+	}
+}
+
+func TestPriorities_RegistryMutatesState_ChangesDoNotPersist(t *testing.T) {
+	require := require.New(t)
+
+	net, client, _ := netClientSignerWithPriorities(t, nil)
+	defer client.Close()
+
+	reg := installMisbehavingRegistry(t, net, client)
+	setModes(t, net, reg, modeMutating, modeMutating)
+
+	magicValue, err := reg.MAGICVALUE(nil)
+	require.NoError(err)
+
+	sender := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	txs := make([]*types.Transaction, 5)
+	for i := range txs {
+		txs[i] = newSignedTx(t, net, sender, uint64(i), magicValue.Uint64(), 21_000, nil)
+	}
+
+	txHasMagicValue := func(tx *types.Transaction) bool { return tx.Value().Cmp(magicValue) == 0 }
+	requirePriorityHasEffect(t, net, txs, true, txHasMagicValue)
+
+	// The writes were discarded with the snapshot wrapping each query.
+	mutated, err := reg.Mutated(nil)
+	require.NoError(err)
+	require.False(mutated)
+
+	// Running the very same query as a transaction does persist the write, so
+	// the check above observes the rollback and not a registry that never wrote.
+	receipt, err := net.Apply(reg.GetPriorityConfig)
+	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+	mutated, err = reg.Mutated(nil)
+	require.NoError(err)
+	require.True(mutated)
+}
+
+// installMisbehavingRegistry deploys a MisbehavingPriorityRegistry and points
+// the priority-registry proxy at it, returning a binding to the proxy.
+func installMisbehavingRegistry(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	client *tests.PooledEhtClient,
+) *misbehaving_priority_registry.MisbehavingPriorityRegistry {
+	t.Helper()
+	require := require.New(t)
+
+	_, deployReceipt, err := tests.DeployContract(net,
+		misbehaving_priority_registry.DeployMisbehavingPriorityRegistry)
+	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, deployReceipt.Status)
+	switchPriorityRegistry(t, net, deployReceipt.ContractAddress)
+
+	reg, err := misbehaving_priority_registry.NewMisbehavingPriorityRegistry(
+		registry.GetAddress(), client)
+	require.NoError(err)
+	return reg
+}
+
+// setModes selects how the registry answers the node's getPriority and
+// getPriorityConfig queries.
+func setModes(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	reg *misbehaving_priority_registry.MisbehavingPriorityRegistry,
+	mode, configMode uint8,
+) {
+	t.Helper()
+	require := require.New(t)
+
+	for _, set := range []func(*bind.TransactOpts) (*types.Transaction, error){
+		func(opts *bind.TransactOpts) (*types.Transaction, error) { return reg.SetMode(opts, mode) },
+		func(opts *bind.TransactOpts) (*types.Transaction, error) { return reg.SetConfigMode(opts, configMode) },
+	} {
+		receipt, err := net.Apply(set)
+		require.NoError(err)
+		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 	}
 }
