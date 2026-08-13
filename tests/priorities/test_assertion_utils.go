@@ -85,13 +85,7 @@ func requirePriorityHasEffect(
 	require.NoError(err)
 
 	hashes := sendShuffledToPool(t, net, slices.Concat(ordinaryTxs, prioritizedTxs))
-
-	receipts, err := net.GetReceipts(hashes)
-	require.NoError(err)
-	require.Len(receipts, len(hashes))
-	for _, receipt := range receipts {
-		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
-	}
+	requireSuccessfulReceipts(t, net, hashes)
 
 	requirePriorityAppliedSince(t, net, afterBlock, expectPrioritized, isPrioritized)
 }
@@ -106,7 +100,7 @@ func buildOrdinaryTraffic(
 ) types.Transactions {
 	t.Helper()
 
-	txs := make([]*types.Transaction, 0, numAccounts*int(txsPerAccount))
+	txs := make([]*types.Transaction, 0, numAccounts*txsPerAccount)
 	for i := 0; i < numAccounts; i++ {
 		acc := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 		for n := 0; n < txsPerAccount; n++ {
@@ -144,6 +138,37 @@ func sendShuffledToPool(
 		hashes[i] = tx.Hash()
 	}
 	return hashes
+}
+
+// requireSuccessfulReceipts waits for the receipts of the given transactions and
+// requires every one of them to have succeeded. The receipts are returned in the
+// order of the given hashes.
+func requireSuccessfulReceipts(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	hashes []common.Hash,
+) []*types.Receipt {
+	t.Helper()
+	require := require.New(t)
+
+	receipts, err := net.GetReceipts(hashes)
+	require.NoError(err)
+	require.Len(receipts, len(hashes))
+	for _, receipt := range receipts {
+		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+	}
+	return receipts
+}
+
+// blockRange returns the first and last block the given receipts belong to. For
+// no receipts the returned range is empty (first > last).
+func blockRange(receipts []*types.Receipt) (first, last uint64) {
+	first = math.MaxUint64
+	for _, receipt := range receipts {
+		first = min(first, receipt.BlockNumber.Uint64())
+		last = max(last, receipt.BlockNumber.Uint64())
+	}
+	return first, last
 }
 
 // requirePriorityAppliedSince scans the user transactions of every block after
