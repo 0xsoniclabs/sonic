@@ -245,6 +245,12 @@ type Service struct {
 	blockProcTasksDone chan struct{}
 	blockProcModules   BlockProc
 
+	// storeReadersWg tracks background routines reading from the store. They
+	// must have terminated before Stop returns, since the store is closed
+	// afterwards. Routines may only join this group if they terminate on feed
+	// shutdown.
+	storeReadersWg sync.WaitGroup
+
 	blockBusyFlag uint32
 	eventBusyFlag uint32
 
@@ -641,6 +647,13 @@ func (s *Service) stopPeerHandling() {
 	s.peerRuns.waitForRuns()
 }
 
+// stopStoreReaders stops the feed and waits for the background routines reading
+// from the store to terminate.
+func (s *Service) stopStoreReaders() {
+	s.feed.Stop()
+	s.storeReadersWg.Wait()
+}
+
 // Stop method invoked when the node terminates the service.
 func (s *Service) Stop() error {
 	defer log.Info("Sonic service stopped")
@@ -661,7 +674,7 @@ func (s *Service) Stop() error {
 	if s.filterAPI != nil {
 		s.filterAPI.Stop()
 	}
-	s.feed.Stop()
+	s.stopStoreReaders()
 	s.gpo.Stop()
 	// it's safe to stop tflusher only before locking engineMu
 	s.tflusher.Stop()

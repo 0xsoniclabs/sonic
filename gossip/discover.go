@@ -20,7 +20,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/forkid"
-	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/rlp"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -39,29 +39,36 @@ func (e enrEntry) ENRKey() string {
 	return "opera"
 }
 
+// nodeRecord is the part of enode.LocalNode used by the ENR updater. It is an
+// interface to allow tests to observe and delay node record updates.
+type nodeRecord interface {
+	Set(entry enr.Entry)
+}
+
 // StartENRUpdater starts the `opera` ENR updater loop, which listens for chain
 // head events and updates the requested node record whenever a fork is passed.
-func StartENRUpdater(svc *Service, ln *enode.LocalNode) {
+// The loop reads from the gossip store, so it is registered at the service's
+// store-reader wait group; it terminates when the service's feed is stopped.
+func StartENRUpdater(svc *Service, ln nodeRecord) {
 	var newHead = make(chan evmcore.ChainHeadNotify, 10)
 	sub := svc.feed.SubscribeNewBlock(newHead)
 
-	go func() {
-		defer sub.Unsubscribe()
-		for {
-			select {
-			case head := <-newHead:
-				ln.Set(currentENREntry(
-					svc,
-					idx.Block(head.Block.Number.Uint64()),
-					uint64(head.Block.Time.Unix()),
-				))
-			case <-sub.Err():
-				// Would be nice to sync with Stop, but there is no
-				// good way to do that.
-				return
+	svc.storeReadersWg.Go(
+		func() {
+			defer sub.Unsubscribe()
+			for {
+				select {
+				case head := <-newHead:
+					ln.Set(currentENREntry(
+						svc,
+						idx.Block(head.Block.Number.Uint64()),
+						uint64(head.Block.Time.Unix()),
+					))
+				case <-sub.Err():
+					return
+				}
 			}
-		}
-	}()
+		})
 }
 
 // currentENREntry constructs an `eth` ENR entry based on the current state of the chain.
