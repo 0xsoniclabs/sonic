@@ -37,7 +37,6 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/errlock"
 	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"gopkg.in/urfave/cli.v1"
@@ -133,8 +132,6 @@ func MakeNode(sigCtx context.Context, ctx *cli.Context, cfg *Config) (*node.Node
 		if err := addFakeValidatorKey(ctx, key, valPubkey, valKeystore); err != nil {
 			return nil, nil, nil, err
 		}
-		coinbase := integration.SetAccountKey(stack.AccountManager(), key, "fakepassword")
-		log.Info("Unlocked fake validator account", "address", coinbase.Address.Hex())
 	}
 
 	// unlock validator key
@@ -237,12 +234,6 @@ func MakeNetworkStack(ctx *cli.Context, cfg *node.Config) (*node.Node, error) {
 }
 
 func setAccountManagerBackends(conf *node.Config, am *accounts.Manager, keydir string) error {
-	scryptN := keystore.StandardScryptN
-	scryptP := keystore.StandardScryptP
-	if conf.UseLightweightKDF {
-		scryptN = keystore.LightScryptN
-		scryptP = keystore.LightScryptP
-	}
 
 	// Assemble the supported backends
 	if len(conf.ExternalSigner) > 0 {
@@ -259,7 +250,6 @@ func setAccountManagerBackends(conf *node.Config, am *accounts.Manager, keydir s
 	// If/when we implement some form of lockfile for USB and keystore wallets,
 	// we can have both, but it's very confusing for the user to see the same
 	// accounts in both externally and locally, plus very racey.
-	am.AddBackend(keystore.NewKeyStore(keydir, scryptN, scryptP))
 	if conf.USB {
 		// Start a USB hub for Ledger hardware wallets
 		if ledgerhub, err := usbwallet.NewLedgerHub(); err != nil {
