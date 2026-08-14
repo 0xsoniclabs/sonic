@@ -34,12 +34,15 @@ import (
 // strictly more controllable.
 var AccountBalance = new(big.Int).Exp(big.NewInt(10), big.NewInt(24), nil) // 1e24 wei
 
-// MaxGenesisAccounts caps the pool. This is a workaround, not a considered limit: starting a test net
-// with roughly 1536 or more genesis accounts panics inside Carmen with "unable to store account node
-// with dirty hash", which reproduces in seconds with nothing but StartIntegrationTestNet and that
-// many plain accounts, while 1024 import fine. The cap costs nothing here, since every account is
-// returned after use.
-const MaxGenesisAccounts = 512
+// MaxGenesisAccounts caps the pool. It buys nothing but time at full coverage: every account is
+// returned after use, so the pool cannot run dry, but an account a transaction executed from never
+// becomes untouched again, and the generator draws costs against AccountBalance rather than against
+// what such an account still holds. At roughly one account dirtied every three iterations, this many
+// keeps a run of ten thousand iterations on accounts whose balance the model knows exactly.
+//
+// The ceiling is far higher -- 32768 accounts import in about a second and a half -- since the test
+// net sizes the genesis caches to the accounts it is given.
+const MaxGenesisAccounts = 4096
 
 // AccountPool hands out accounts funded in the genesis block, keeping those still at their genesis
 // nonce apart from those a transaction has executed from and handing the untouched ones out first.

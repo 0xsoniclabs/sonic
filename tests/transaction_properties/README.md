@@ -484,7 +484,7 @@ which is never an account under test.
 
 Endowing accounts per iteration would dominate the runtime — every endowment is a transaction, so
 the per-iteration cost becomes block time rather than RPC time. Instead [core/pool.go](core/pool.go) derives
-512 keys from a fixed seed, funds all of them in the genesis JSON with a constant `1e24` wei, and
+4096 keys from a fixed seed, funds all of them in the genesis JSON with a constant `1e24` wei, and
 hands them out from a pool. Zero transactions, zero blocks, every account at nonce 0.
 
 "Transactions can be arbitrarily expensive" then stops being a funding problem: a transaction whose
@@ -494,9 +494,16 @@ cost distribution just below, at and just above it. Accounts are returned after 
 untouched ones first, so a shrink replay is more likely to see what the original run saw — which is
 why the pool cannot run dry.
 
+The size is about *coverage over time*, not about running out. An account a transaction executed from
+never becomes untouched again, while the generator keeps drawing costs against the constant
+`AccountBalance` — so once a run is handed dirty accounts, the cases straddling the affordability
+boundary no longer straddle anything. At roughly one account dirtied every three iterations, 4096
+keeps a run of ten thousand iterations on accounts whose balance the model knows exactly; the nightly
+5000 stays well inside that. The `account pool:` line at the end of a run says how far it got.
+
 ```text
   genesis (one bulk state write, no blocks)
-    512 accounts × 1e24 wei, all at nonce 0
+    4096 accounts × 1e24 wei, all at nonce 0
         │
         │  Claim(3)                            Release(dirty?)
         v                                            ^
@@ -536,9 +543,12 @@ shortfall, oracle 1 is skipped for a run that hit it, and the run reports what i
 The numbering is stable: a defect keeps its number once it is fixed and its case deleted, so an old log
 still names the same thing.
 
-Separately, `StartIntegrationTestNet` panics inside Carmen (`unable to store account node with
-dirty hash`) at roughly 1536 genesis accounts, while 1024 import fine. That is what caps
-`MaxGenesisAccounts` at 512.
+Separately, and not a defect of the client: a genesis is written as a single block, and Carmen panics
+rather than writing out a node whose hash it has not computed yet, so a genesis carrying more accounts
+than the state caches hold used to bring the process down with `unable to store account node with dirty
+hash` at around 1536 accounts. `StartIntegrationTestNet` now sizes those caches to the accounts it is
+given — the minimum up to about 500, as before, and enough for the trie beyond that — which is what
+lets this pool hold 4096. 32768 import in about a second and a half.
 
 ## Verifying that the oracles actually bite
 
