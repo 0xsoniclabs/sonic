@@ -238,7 +238,11 @@ func GenerateFakeJsonGenesis(
 	return jsonGenesis
 }
 
-func GetGenesisIdFromJson(json *GenesisJson, tmpDir string) (_ common.Hash, retErr error) {
+func GetGenesisIdFromJson(
+	json *GenesisJson,
+	tmpDir string,
+	caches ...makegenesis.CacheSizes,
+) (_ common.Hash, retErr error) {
 	genesisTmpDir, err := utils.MakeTempDir(tmpDir, "sonic-tmp-genesis-json")
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to create temporary dir for genesis; %w", err)
@@ -247,7 +251,7 @@ func GetGenesisIdFromJson(json *GenesisJson, tmpDir string) (_ common.Hash, retE
 		retErr = errors.Join(retErr, genesisTmpDir.Cleanup())
 	}()
 
-	store, err := ApplyGenesisJson(json, genesisTmpDir.Path())
+	store, err := ApplyGenesisJson(json, genesisTmpDir.Path(), caches...)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to apply genesis json; %v", err)
 	}
@@ -255,15 +259,20 @@ func GetGenesisIdFromJson(json *GenesisJson, tmpDir string) (_ common.Hash, retE
 	return common.Hash(store.Genesis().GenesisID), nil
 }
 
-// ApplyGenesisJson builds a genesis store from the given JSON genesis definition. The given
-// tmpDir is used for temporary data produced while reading the resulting store, see
-// makegenesis.NewGenesisBuilder.
-func ApplyGenesisJson(json *GenesisJson, tmpDir string) (*genesisstore.Store, error) {
+// ApplyGenesisJson builds a genesis store from the given JSON genesis definition. The given tmpDir is
+// used for temporary data produced while reading the resulting store, see makegenesis.NewGenesisBuilder.
+// The optional cache sizes have to be raised for a genesis carrying more accounts than the minimum
+// cache holds -- see makegenesis.CacheSizes.
+func ApplyGenesisJson(
+	json *GenesisJson,
+	tmpDir string,
+	caches ...makegenesis.CacheSizes,
+) (*genesisstore.Store, error) {
 	if json.BlockZeroTime.IsZero() {
 		return nil, fmt.Errorf("block zero time must be set")
 	}
 
-	builder, err := makegenesis.NewGenesisBuilder(tmpDir)
+	builder, err := makegenesis.NewGenesisBuilder(tmpDir, caches...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create genesis builder: %v", err)
 	}
