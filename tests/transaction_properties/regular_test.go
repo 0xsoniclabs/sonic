@@ -55,7 +55,7 @@ func TestTransactionProperties_ForcedTransactionsPreserveConsensusInvariants(t *
 
 			rapid.Check(t, runner.Run)
 
-			runner.Report(t, name, upgrades)
+			runner.Report(t, name)
 			runner.VerifyChainReplays(t)
 		})
 	}

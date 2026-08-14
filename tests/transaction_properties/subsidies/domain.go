@@ -141,31 +141,6 @@ func (d *Domain) Batch() *rapid.Generator[[]core.TxSpec] {
 	return Sponsoring(d.Inner.Batch(), d.unsponsorable)
 }
 
-// Skip asks the domain being wrapped: sponsorship changes who pays for a transaction, not which
-// transactions have to be steered around. What this domain must not have sponsored is kept out by the
-// generator instead -- see unsponsorable -- because a transaction paying its own way is worth drawing
-// even where a request of the same shape is not.
-func (d *Domain) Skip(spec core.TxSpec, sender core.SenderState, baseFee *big.Int) string {
-	return d.Inner.Skip(spec, sender, baseFee)
-}
-
-// unsponsorable reports what this domain will not ask to have sponsored.
-func (d *Domain) unsponsorable(spec core.TxSpec) bool {
-	// Known defect [4]: chooseFund packs the value of a request into 32 bytes, which panics on a value
-	// too wide to fit. Such a transaction is still worth injecting, so it is only kept from asking to
-	// be sponsored. See Notes.
-	if spec.Amount().BitLen() > 256 {
-		return true
-	}
-
-	// A registry that sponsors every sender sponsors a stranger too, so a signature recovering to an
-	// address holding nothing executes rather than being refused for want of gas. It then moves an
-	// account nobody here claimed, which is beyond what this harness observes: the accounting watches
-	// the pooled sender the spec names, and the nonce that transaction spends is the stranger's. A
-	// fund-backed registry has no such case -- no fund covers a stranger -- so it keeps them.
-	return d.Mode != ModeFundBacked && spec.SigningMode().RecoversToStranger()
-}
-
 // Pricing prices a sponsorship request from its fund and everything else by the inner domain's rules.
 func (d *Domain) Pricing() core.PricingRules {
 	return d.PricingRules(d.Inner.Pricing())

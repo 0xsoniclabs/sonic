@@ -17,68 +17,30 @@
 package core
 
 import (
-	"strings"
+	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
-func TestWriteSightings_ShowsAFewAndCountsTheRest(t *testing.T) {
-	var out strings.Builder
-	writeSightings(&out, []string{"one", "two", "three", "four", "five"})
-
-	rendered := out.String()
-	require.Contains(t, rendered, "one")
-	require.Contains(t, rendered, "three")
-	require.NotContains(t, rendered, "four", "the report must not bury the run")
-	require.Contains(t, rendered, "... and 2 more")
-}
-
-func TestWriteSightings_CountsNothingExtraWhenEverythingFits(t *testing.T) {
-	var out strings.Builder
-	writeSightings(&out, []string{"one", "two"})
-
-	require.NotContains(t, out.String(), "more")
-}
-
-// TestDefectLog_ReportsANoteNothingCouldHaveReproduced covers the reason notes exist: the run cannot
-// draw the input that provokes the defect, so nothing but the note itself distinguishes this run from
-// one against a client that had been fixed.
-func TestDefectLog_ReportsANoteNothingCouldHaveReproduced(t *testing.T) {
+// TestDefectLog_ReportsWhatItSkippedAndWhatItSaw covers why the log exists: the run cannot draw the
+// input that provokes a skipped defect, so nothing but the note itself distinguishes this run from one
+// against a client that had been fixed. It never fails a test.
+func TestDefectLog_ReportsWhatItSkippedAndWhatItSaw(t *testing.T) {
 	log := &DefectLog{}
 	require.Empty(t, log.Summary("Brio"), "a log with nothing in it says nothing")
 
-	log.Note(DefectNote{
-		Summary:   "something takes the node down",
-		Avoidance: "the node does not survive it",
-		Detail: `
-			stack trace
-			  indented line
-			what to delete once it is fixed`,
-	})
+	log.Note("[9] something takes the node down (somewhere/skip.go)")
+	log.UnreceiptedCharge(common.Address{0xab}, big.NewInt(1234))
 
 	summary := log.Summary("Brio")
-	require.Contains(t, summary, "KNOWN DEFECTS REPRODUCED OR AVOIDED on Brio")
-	require.Contains(t, summary, "something takes the node down")
-	require.Contains(t, summary, "not reproducible by it")
-	require.Contains(t, summary, "because the node does not survive it",
-		"why the input is kept out is the note's to say, since it differs per defect")
-	require.Contains(t, summary, "  indented line", "a stack trace keeps its own indentation")
-	require.Contains(t, summary, "what to delete once it is fixed")
-}
+	require.Contains(t, summary, "known defects on Brio")
+	require.Contains(t, summary, "avoided: [9] something takes the node down")
+	require.Contains(t, summary, "seen [2]: 1 account(s)")
+	require.Contains(t, summary, "paid 1234 wei")
 
-func TestDefectLog_FailsOnANoteUnlessAskedNotTo(t *testing.T) {
-	defer func(previous bool) { FailOnKnownDefects = previous }(FailOnKnownDefects)
-
-	log := &DefectLog{}
-	log.Note(DefectNote{Summary: "something takes the node down"})
-
-	FailOnKnownDefects = true
 	fake := &testing.T{}
-	log.Report(fake, "Brio", opera.GetBrioUpgrades())
-	require.True(t, fake.Failed(), "a defect the harness had to avoid must not pass silently")
-
-	FailOnKnownDefects = false
-	log.Report(t, "Brio", opera.GetBrioUpgrades()) // logged instead, and this test still passes
+	log.Report(fake, "Brio")
+	require.False(t, fake.Failed(), "a known defect must never fail a run")
 }

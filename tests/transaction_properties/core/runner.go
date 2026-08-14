@@ -54,14 +54,10 @@ type Domain interface {
 	// produce blocks, so the base fee is read after it returns.
 	Prepare(rt *rapid.T, ctx context.Context, accounts []PooledAccount, specs []TxSpec) error
 
-	// Skip reports why a drawn transaction must be kept out of the batch, or "" when it may be
-	// injected. This is where a domain names the input provoking a defect it can only avoid rather
-	// than tolerate -- one that would crash the node or leave state no block accounts for -- and the
-	// Notes entry beside it is what keeps the avoidance from outliving the defect.
-	//
-	// It is asked once per transaction, with the sender's state as the chain holds it and the base fee
-	// the batch will be judged against, so a policy may turn on either. A domain that wraps another
-	// passes the question on, since the transactions are the inner domain's. Usually nothing.
+	// Skip reports why a drawn transaction must not be injected, or "" when it may be. It is where a
+	// domain names what provokes a defect the client has not fixed, and it is asked once per drawn
+	// transaction, with the sender's state and the base fee the batch will be judged against. The
+	// policies live in each domain's skip.go; core/skip.go is what applies them.
 	Skip(spec TxSpec, sender SenderState, baseFee *big.Int) string
 
 	// Extra reports transactions that executed without having been injected, so that the accounting
@@ -76,9 +72,9 @@ type Domain interface {
 	// run when it is called.
 	Check(rt *rapid.T, ctx context.Context, obs Observation) error
 
-	// Notes are the defects this domain had to design around rather than tolerate, reported with
-	// every run so that a workaround cannot outlive the defect it was written for. Usually none.
-	Notes() []DefectNote
+	// Notes are one line per defect this domain skips the input for, logged by every run so that a
+	// workaround cannot outlive the defect it was written for. Usually none.
+	Notes() []string
 }
 
 // ExtraExecuted is one transaction that executed without having been injected, and which of the
@@ -246,7 +242,7 @@ func (r *Runner) Run(rt *rapid.T) {
 	baseFee, err := r.baseFee(ctx)
 	require.NoError(rt, err)
 
-	specs = r.keep(specs, before, baseFee)
+	specs = r.dropOffending(specs, before, baseFee) // < core/skip.go
 	if len(specs) == 0 {
 		rt.Skip("every transaction of the batch provokes a defect the domain can only avoid")
 	}
@@ -402,27 +398,11 @@ func (r *Runner) Run(rt *rapid.T) {
 
 // Report logs what the run observed, and reports every known defect it reproduced along with every
 // one the domain under test had to avoid.
-func (r *Runner) Report(t *testing.T, fork string, upgrades opera.Upgrades) {
+func (r *Runner) Report(t *testing.T, fork string) {
 	t.Helper()
 	t.Logf("outcome distribution: %s", r)
 	r.defects.Note(r.Domain.Notes()...)
-	r.defects.Report(t, fork, upgrades)
-}
-
-// keep drops whatever the domain will not have injected, tallying the reason so the run can say how
-// often it stepped around what. It runs before anything is planned: a nonce assigned to a transaction
-// that never reaches a node would leave the rest of that sender's run judged against a sequence
-// position the chain never gets to.
-func (r *Runner) keep(specs []TxSpec, senders []SenderState, baseFee *big.Int) []TxSpec {
-	kept := make([]TxSpec, 0, len(specs))
-	for _, spec := range specs {
-		if reason := r.Domain.Skip(spec, senders[SenderOf(spec, senders)], baseFee); reason != "" {
-			r.skipped[reason]++
-			continue
-		}
-		kept = append(kept, spec)
-	}
-	return kept
+	r.defects.Report(t, fork)
 }
 
 // checkNonceRivalry asserts that no two transactions spent the same nonce, which the accounting
@@ -626,14 +606,10 @@ func Describe(specs []TxSpec, plans []TxPlan) string {
 // client's own default.
 const VerbosityEnv = "SONIC_VERBOSITY"
 
-// ApplyTestFlags prepares a property test's binary: it defines the known-defects flag, silences the
-// nodes unless the environment says otherwise, and raises rapid's default number of checks. It is
-// called from TestMain, because rapid reads its own environment before any test runs and the flag
-// library needs the flag set before it is parsed.
+// ApplyTestFlags prepares a property test's binary: it silences the nodes unless the environment says
+// otherwise, and raises rapid's default number of checks. It is called from TestMain, because rapid
+// reads its own environment before any test runs.
 func ApplyTestFlags(checksPerScenario string) error {
-	if err := KnownDefectsFlag.ApplyWithError(flag.CommandLine); err != nil {
-		return err
-	}
 	if _, set := os.LookupEnv(VerbosityEnv); !set {
 		if err := os.Setenv(VerbosityEnv, "0"); err != nil {
 			return fmt.Errorf("failed to silence the nodes: %w", err)

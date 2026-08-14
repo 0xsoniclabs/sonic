@@ -61,8 +61,7 @@ type Domain struct {
 	// skipped counts the contents the inner domain would not have injected, by reason.
 	skipped map[string]int
 
-	// demoted counts the bundles whose bare root had to become a group, which is the workaround for
-	// the defect Notes describes.
+	// demoted counts the bundles whose bare root had to become a group, working around defect3.
 	demoted int
 
 	// What the run has seen of bundles, so a run that executed none is visible rather than green, and
@@ -120,13 +119,6 @@ func (d *Domain) Batch() *rapid.Generator[[]core.TxSpec] {
 // Pricing prices an envelope by what a bundle does to it and everything else by the inner rules.
 func (d *Domain) Pricing() core.PricingRules {
 	return d.PricingRules(d.Inner.Pricing())
-}
-
-// Skip asks the domain being wrapped, which answers for an envelope too: a carrier is a call to an
-// address with no code and carries no value, so nothing it is asked about applies to one. The same
-// question is put to the contents of every bundle in build, where they are planned.
-func (d *Domain) Skip(spec core.TxSpec, sender core.SenderState, baseFee *big.Int) string {
-	return d.Inner.Skip(spec, sender, baseFee)
 }
 
 // Prepare builds the bundle of every envelope in the batch. Nothing has to be arranged on chain --
@@ -214,18 +206,7 @@ func (d *Domain) build(
 		spec.(core.SignedElsewhere).SetSigning(core.SignCorrect)
 	}
 
-	// Whatever the inner domain will not have injected is kept out of a bundle too, before anything is
-	// planned: the contents are a batch like any other, so a nonce given to a transaction that never
-	// reaches a node would leave the rest of them judged against a sequence position nothing takes.
-	drawable := make([]core.TxSpec, 0, len(envelope.Contents))
-	for _, spec := range envelope.Contents {
-		if reason := d.Inner.Skip(spec, d.stateOf(spec), baseFee); reason != "" {
-			d.skipped[reason]++
-			continue
-		}
-		drawable = append(drawable, spec)
-	}
-	envelope.Contents = drawable
+	envelope.Contents = d.dropOffending(envelope.Contents, baseFee) // < bundles/skip.go
 	if len(envelope.Contents) == 0 {
 		return nil, nil // nothing left to carry, so there is no bundle and no envelope to inject
 	}
@@ -270,9 +251,7 @@ func (d *Domain) build(
 		envelope.Contents, plans = envelope.Contents[:1], plans[:1]
 	}
 	if envelope.Root == RootSingle && !cannotFail(envelope.Contents[0], d.stateOf(envelope.Contents[0]), baseFee) {
-		// Known defect: a bare root whose transaction fails is applied and then not reverted, so the
-		// shape is only drawn where the transaction cannot fail. See Notes.
-		envelope.Root = RootAllOf
+		envelope.Root = RootAllOf // defect3, see bundles/skip.go
 		d.demoted++
 	}
 	if envelope.Root == RootSingle {

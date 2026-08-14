@@ -18,7 +18,6 @@ package regular
 
 import (
 	"context"
-	"math/big"
 
 	"github.com/0xsoniclabs/sonic/tests/transaction_properties/core"
 	"pgregory.net/rapid"
@@ -44,24 +43,6 @@ func (d Domain) Pricing() core.PricingRules {
 
 func (d Domain) Prepare(*rapid.T, context.Context, []core.PooledAccount, []core.TxSpec) error {
 	return nil
-}
-
-// Skip keeps out of the batch a contract creation whose value its sender may not be able to hand
-// over, which is the defect Notes describes. Nothing else needs steering around: a call that cannot
-// cover its value reverts, spends its nonce and pays for its gas, which is what the model expects.
-func (d Domain) Skip(spec core.TxSpec, sender core.SenderState, baseFee *big.Int) string {
-	if !spec.IsCreate() {
-		return ""
-	}
-
-	// What is left of the balance once the gas is bought, priced at the top of the band the base fee
-	// may have moved into: a creation that clearly holds its value never reaches the defect, and one
-	// that clearly does not is judged by nothing but the creation gate.
-	left := new(big.Int).Sub(sender.Balance, core.Affordability(spec, core.Scale(baseFee, 4, 1)))
-	if left.Sign() > 0 && spec.Amount().Cmp(left) <= 0 {
-		return ""
-	}
-	return "a contract creation whose value its sender may not be able to transfer [1]"
 }
 
 func (d Domain) Extra(*rapid.T, context.Context) ([]core.ExtraExecuted, error) {

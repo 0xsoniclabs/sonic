@@ -101,7 +101,7 @@ func TestTransactionProperties_SponsoredTransactionsPreserveConsensusInvariants(
 				}
 
 				t.Logf("%s", domain)
-				runner.Report(t, name, upgrades)
+				runner.Report(t, name)
 				runner.VerifyChainReplays(t)
 			})
 		}

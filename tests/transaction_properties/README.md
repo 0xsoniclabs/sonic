@@ -32,9 +32,10 @@ go test ./tests/transaction_properties/...                    # + the unit tests
 go test ./tests/transaction_properties/ -run Sponsored -v     # the sponsorship scenarios alone
 ```
 
-There is no opt-in flag. A scenario is one network: each of the three forks on its own, and five
-more with gas subsidies enabled. The whole package finishes in a few minutes, and a flag would only
-mean the search happens when somebody remembers to ask for it.
+No flags, and no way to make it fail over something already known: a transaction that provokes a
+defect the client has not fixed is not injected at all — see [Skipping](#skipping). A scenario is one
+network: each of the three forks on its own, five more with gas subsidies enabled, and three carrying
+bundles.
 
 The nodes are silenced, because every batch deliberately made too large for one event is logged at
 ERROR as `Self-event connection failed` — hundreds of times a run, for something the test provokes on
@@ -71,13 +72,11 @@ A domain contributes seven things, and a domain that wraps another passes each o
 | `Skip()` | a creation whose value its sender may not hold — defect [1] | the inner rules; what must not be *sponsored* is dropped in the generator instead | the inner rules, for the batch and for every bundle's contents |
 | `Extra()` | nothing | nothing: a follow-up is an internal transaction | the contents, which reach a block without having been injected |
 | `Check()` | nothing only it can see | the follow-up transaction each mode calls for, and the funds | all-or-nothing, and the record the chain keeps of it |
-| `Notes()` | the defect its `Skip` steers around | its own, and the inner domain's | the defect it found, reported with every run |
+| `Notes()` | one line per defect it skips for | its own, and the inner domain's | its own, and the inner domain's |
 
-`Skip` is where a defect that can only be *avoided* is named: it is asked once per drawn transaction,
-with the sender's state and the base fee, and whatever it names is dropped before any nonce is
-assigned — so a skipped transaction leaves no hole in the sequence the rest of the batch is judged
-against. Each reason needs a `Notes` entry beside it, or a run steps around a defect nobody hears
-about again.
+`Skip` is asked once per drawn transaction, with the sender's state and the base fee, and whatever it
+names is dropped before any nonce is assigned — so a skipped transaction leaves no hole in the sequence
+the rest of the batch is judged against. See [Skipping](#skipping).
 
 That is the whole seam. `core.PredictTx` keeps its flat table of structural rules — signature, nonce,
 intrinsic gas, type-level malformity — and takes the rules deciding whether a transaction can *pay*
@@ -105,9 +104,8 @@ A **contract creation** is deliberately left unsponsored, and dropped from the b
 fee caps — which include zero — made a request of one anyway: production refuses to sponsor one, so
 the ordinary rules already predict what happens to one offering nothing. A transaction whose **value
 is wider than 256 bits** is kept out of the sponsored set the same way, because a request carrying one
-panics the node — known defect [4] below. Both are still injected as ordinary transactions; only the
-request of that shape is dropped, which is what a domain's `unsponsorable` is for and why this is not
-`Skip`.
+panics the node — defect [4]. Both are still injected as ordinary transactions; only the request of
+that shape is dropped, which is what `unsponsorable` is for and why this is not `Skip`.
 
 ### Who pays, and what follows
 
@@ -419,7 +417,7 @@ transaction type above its maximum.
   │  independent Carmen state DB from the same genesis, and requires identical │
   │  state roots, gas used, cumulative gas, receipt hashes and full block      │
   │  hashes, each replayed with the base fee its own header records.           │
-  │  Skipped when the run reproduced known defect [2] — see below.             │
+  │  Skipped when the run reproduced defect [2] — see Skipping.                │
   └───────────────────────────────────────────────────────────────────────────┘
 
   ┌─ LAYER: one block ────────────────────────────────────────────────────────┐
@@ -507,73 +505,34 @@ why the pool cannot run dry.
                      executed
 ```
 
-## Known defects the test reports
+## Skipping
 
-The checks accept a *range* wherever a known defect makes the exact answer unpredictable. Tolerating
-one silently would mean a green run and a finding nobody sees again, so a run that actually
-reproduces one **fails** with a full report. A defect that cannot be tolerated at all, only avoided,
-is reported by **every** run instead — nothing else would distinguish a run that stepped around it
-from a run against a fixed client. Where something else already reports them, this can be turned off
-— the report is then logged instead, and the run passes:
+A transaction that provokes a defect the client has not fixed is dropped before it is injected, so a
+run stays green and says in one line what it stepped around:
 
-```sh
-go test ./tests/transaction_properties/ -v -properties.fail-on-known-defects=false
-
-# For a whole-module run, where a flag this package alone defines would stop every other
-# package's test binary from starting:
-SONIC_TEST_FAIL_ON_KNOWN_DEFECTS=false go test ./... -timeout 30m
+```text
+  12 kept out of their batch: [1] a contract creation whose value its sender cannot transfer keeps its nonce (regular/skip.go)
+  known defects on Allegro:
+      avoided: [1] a contract creation whose value its sender cannot transfer keeps its nonce (regular/skip.go)
 ```
 
-The numbering is stable: a defect keeps its number once it is fixed and removed, so an old failure
-report still names the same thing.
+[core/skip.go](core/skip.go) applies the policies; each one lives in the `skip.go` of the domain it
+belongs to, next to the note explaining the defect and what to delete once it is fixed:
 
-1. **A contract creation whose value its sender cannot transfer executes and gets a receipt without
-   spending its sender's nonce.** Sonic sets `vm.Config.InsufficientBalanceIsNotAnError`, so the check
-   that the sender can hand the value over at all is skipped and a shortfall becomes a revert. For a
-   call that is consistent — the state processor advances the nonce itself before entering the EVM — but
-   a creation's nonce is advanced by `EVM.create`, which tests `CanTransfer` first and gives up before
-   reaching its own `SetNonce` (`core/vm/evm.go:530`). The sender's nonce then sits behind the
-   transactions that executed, and its next transaction is judged against a sequence position the chain
-   never left.
+| | skipped | where |
+| --- | --- | --- |
+| [1] | a contract creation whose value its sender cannot transfer keeps its nonce | [regular/skip.go](regular/skip.go) |
+| [3] | a bundle whose bare root fails keeps what its transaction did | [bundles/skip.go](bundles/skip.go), applied in `Domain.build` |
+| [4] | a sponsorship request whose value exceeds 256 bits panics the node | [subsidies/skip.go](subsidies/skip.go), via `unsponsorable` |
 
-   Reported by every run, as `[-]`: `regular.Domain.Skip` keeps out of every batch a creation whose
-   value its sender may not hold once its gas is bought. Once the creation gate spends the nonce it was
-   given, drop that condition — see [regular/known_defects.go](regular/known_defects.go).
+Defect **[2]** is the one that cannot be skipped: pre-Allegro, a transaction the state processor cannot
+apply keeps the gas it bought although it reaches no block and gets no receipt, because the
+snapshot/revert around `ApplyMessage` is gated on Allegro. Skipping it would mean skipping most of what
+a pre-Allegro run has to say, so it is tolerated instead — the accounting check accepts that much of a
+shortfall, oracle 1 is skipped for a run that hit it, and the run reports what it saw. Allegro fixed it.
 
-2. **Pre-Allegro, a transaction the state processor cannot apply keeps the gas it bought**, although
-   it reaches no block and gets no receipt — the snapshot/revert around `ApplyMessage` is gated on
-   the Allegro upgrade. The chain's state then no longer follows from its blocks, which is why
-   oracle 1 is skipped for a run that hit this. Allegro fixed it.
-
-3. **A bundle whose execution plan is a bare step, and whose transaction fails, keeps what that
-   transaction did while the transaction reaches no block.** Found by the bundles domain, and observed
-   directly: the transaction has no receipt and is in no block, yet its sender's nonce has advanced
-   and its gas has been charged. `runTransactionBundleInternal` takes no snapshot of its own — the
-   only reverts are the ones a group takes around itself, so a plan whose root is a bare step has
-   nothing to roll it back (`evmcore/state_processor.go:562`). The chain's state then no longer
-   follows from its blocks, the same shape as defect 2, and not fixed by Allegro. A bare root is
-   reachable from the public API: `sonic_submitBundle` drops the group around a single unflagged step
-   (`api/sonicapi/execution_plan.go:154`), and every existing test wraps its root in a group, so
-   nothing covered this shape.
-
-   Reported by every bundled run, as `[-]`: the harness draws a bare root only where the model can
-   promise the transaction cannot revert, and turns the plan into a group anywhere else. Once the
-   block processor reverts a failed bare root, drop that condition in `bundles/domain.go` — see
-   [bundles/known_defects.go](bundles/known_defects.go).
-
-4. **A sponsorship request whose value does not fit in 256 bits panics the node** while the block is
-   being formed. `createChooseFundInput` assembles the call by hand and writes the value with
-   `tx.Value().FillBytes(make([]byte, 32))`, which panics on anything wider
-   (`gossip/blockproc/subsidies/subsidies.go:454`); the fee beside it is range-checked, the value is
-   not. Such a value is not exotic — a legacy, access-list or dynamic-fee transaction holds it as a
-   `big.Int` — and although `ValidateTxStatic` drops the transaction from Brio onwards, the block
-   formation filter has already asked the registry who would pay for it by then. So the node building
-   the block dies over a transaction nothing would have executed.
-
-   Reported by every sponsored run, as `[-]`: such a transaction is kept from asking to be sponsored
-   rather than out of the batch, so the value range is still exercised everywhere else. Once the value
-   is range-checked like the fee, drop that condition — see
-   [subsidies/known_defects.go](subsidies/known_defects.go).
+The numbering is stable: a defect keeps its number once it is fixed and its case deleted, so an old log
+still names the same thing.
 
 Separately, `StartIntegrationTestNet` panics inside Carmen (`unable to store account node with
 dirty hash`) at roughly 1536 genesis accounts, while 1024 import fine. That is what caps
