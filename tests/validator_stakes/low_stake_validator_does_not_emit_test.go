@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -29,6 +30,16 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/stretchr/testify/require"
 )
+
+// emitInterval is the interval each validator waits between two events.
+// The integration test network defaults to 1ms, which is far below the 11ms
+// period in which an emitter checks whether to emit. The emission rate is then
+// bound by how often each node's emitter gets to run rather than by the
+// interval, and on a busy machine the two validators drift apart by more than
+// the tolerance asserted below. An interval well above the check period makes
+// both of them emit at the same, clock-bound rate, while still being short
+// enough to keep the test fast.
+const emitInterval = 50 * time.Millisecond
 
 func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottlerIsEnabled(t *testing.T) {
 	// this test checks that when event throttler is enabled,
@@ -53,6 +64,10 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 			net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 				ValidatorsStake:      initialStake,
 				ClientExtraArguments: extraArguments,
+				ModifyConfig: func(config *config.Config) {
+					config.Emitter.EmitIntervals.Min = emitInterval
+					config.Emitter.EmitIntervals.Confirming = emitInterval
+				},
 			})
 
 			net.AdvanceEpoch(t, 1)
@@ -60,13 +75,15 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 			// Poll until enough events are collected for statistical stability.
 			// Only events created once every validator has resumed emitting in
 			// the new epoch are considered, see eventsAfterAllValidatorsResumed.
+			// Each poll fetches the full epoch DAG event by event, so it must
+			// not run so often that it slows down the node it measures.
 			const minEvents = 120
 			var eventsInWindow eventMap
 			require.Eventually(t, func() bool {
 				eventsInWindow = eventsAfterAllValidatorsResumed(
 					getEventsInEpoch(t, net), len(initialStake))
 				return len(eventsInWindow) >= minEvents
-			}, 100*time.Second, 50*time.Millisecond,
+			}, 100*time.Second, 250*time.Millisecond,
 				"timed out waiting for at least %d events created while all validators were emitting", minEvents)
 
 			percentages := calculateValidatorEmissionPercentages(eventsInWindow)
@@ -100,11 +117,11 @@ type testEvent struct {
 // of the epoch.
 //
 // After an epoch change validators do not resume emitting at the same instant;
-// one of them can be several hundred milliseconds ahead of the others. Since
-// the integration test network is configured with an emitter interval of one
-// millisecond, such a delay accounts for hundreds of events and would dominate
-// any measurement of the relative emission rates. The events created before all
-// validators are back are therefore not representative and get discarded.
+// one of them can be several hundred milliseconds ahead of the others. At an
+// emitInterval of 50ms such a delay is worth a dozen events, a tenth of the
+// events this test samples, and would distort any measurement of the relative
+// emission rates. The events created before all validators are back are
+// therefore not representative and get discarded.
 //
 // An empty map is returned while some validator has not emitted any event yet.
 func eventsAfterAllValidatorsResumed(events eventMap, numValidators int) eventMap {
