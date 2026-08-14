@@ -29,7 +29,7 @@ func UpdateRules(src Rules, diff []byte) (Rules, error) {
 	changed.Name = src.Name
 
 	// check validity of the new rules for all hardforks starting from Allegro
-	if changed.Upgrades.Allegro || changed.Upgrades.Brio {
+	if changed.Upgrades.Allegro || changed.Upgrades.Brio || changed.Upgrades.Canto {
 		if err := changed.Validate(src); err != nil {
 			return Rules{}, err
 		}

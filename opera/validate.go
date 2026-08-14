@@ -287,6 +287,16 @@ func validateUpgrades(old, new Upgrades) error {
 		issues = append(issues, errors.New("Brio upgrade cannot be disabled"))
 	}
 
+	if new.Canto && !new.Brio {
+		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
+		issues = append(issues, errors.New("Canto upgrade requires Brio"))
+	}
+
+	if old.Canto && !new.Canto {
+		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
+		issues = append(issues, errors.New("Canto upgrade cannot be disabled"))
+	}
+
 	// The GasSubsidies feature can be freely modified.
 
 	// The TransactionPriorities feature can be freely modified.
