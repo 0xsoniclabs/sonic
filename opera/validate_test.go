@@ -533,6 +533,19 @@ func TestUpgradesValidation_DetectsIssues(t *testing.T) {
 			upgrade: Upgrades{Brio: false},
 			issue:   "Brio upgrade cannot be disabled",
 		},
+		"Canto upgrade requires Brio": {
+			upgrade: Upgrades{Canto: true},
+			issue:   "Canto upgrade requires Brio",
+		},
+		"Canto upgrade cannot be disabled": {
+			previous: Upgrades{
+				Allegro: true,
+				Brio:    true,
+				Canto:   true,
+			},
+			upgrade: Upgrades{Brio: true, Canto: false},
+			issue:   "Canto upgrade cannot be disabled",
+		},
 	}
 
 	for name, test := range issues {

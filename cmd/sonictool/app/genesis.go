@@ -182,8 +182,10 @@ func fakeGenesisImport(ctx *cli.Context) (retErr error) {
 		upgrades = opera.GetAllegroUpgrades()
 	case "brio":
 		upgrades = opera.GetBrioUpgrades()
+	case "canto":
+		upgrades = opera.GetCantoUpgrades()
 	default:
-		return fmt.Errorf("invalid profile %v - must be 'sonic', 'allegro', or 'brio'", upgradesString)
+		return fmt.Errorf("invalid profile %v - must be 'sonic', 'allegro', 'brio', or 'canto'", upgradesString)
 	}
 
 	tmpDir, err := futils.MakeTempDir(dataDir, "genesis-tmp")

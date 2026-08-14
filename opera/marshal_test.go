@@ -145,6 +145,7 @@ func TestUpgradesRLP_CanBeEncodedAndDecoded(t *testing.T) {
 		func(u *Upgrades) { u.Allegro = true },
 		func(u *Upgrades) { u.SingleProposerBlockFormation = true },
 		func(u *Upgrades) { u.Brio = true },
+		func(u *Upgrades) { u.Canto = true },
 		func(u *Upgrades) { u.GasSubsidies = true },
 		func(u *Upgrades) { u.TransactionBundles = true },
 		func(u *Upgrades) { u.TransactionPriorities = true },
