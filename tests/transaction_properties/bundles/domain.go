@@ -213,8 +213,10 @@ func (d *Domain) build(
 
 	// The contents are planned as the batch they are, by the model that plans every other batch: that
 	// is what gives each one its nonce and decides, with the whole set in view, which of them the
-	// sender's sequence admits.
-	plans, refused, reason := core.PlanBatch(envelope.Contents, d.inner, baseFee, d.pricingCfg())
+	// sender's sequence admits. In the order the plan references them, though, and not in nonce order:
+	// nothing scrambles the inside of a bundle, so a sender's nonces have to ascend as written.
+	plans, refused, reason := core.PlanBatchInGivenOrder(
+		envelope.Contents, d.inner, baseFee, d.pricingCfg())
 	if refused {
 		d.refused[reason]++
 	}

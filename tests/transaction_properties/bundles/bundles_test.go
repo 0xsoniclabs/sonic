@@ -324,3 +324,28 @@ func TestBlocksBeyondReach_IsBeyondWhatAnIterationProduces(t *testing.T) {
 	require.Greater(t, uint64(blocksBeyondReach), uint64(core.ConfirmationBlocks)*10)
 	require.Less(t, uint64(blocksBeyondReach), bundle.MaxBlockRangeLength)
 }
+
+// TestMarkerPushesCostOver256Bits_JudgesTheTransactionAsBuilt covers what the drawn spec does not say:
+// Cost is priced off the gas limit, and the builder raises that by the marker's own cost on every
+// transaction of a bundle, so a fee cap with less headroom than that under the bound is over it once
+// the bundle is built.
+func TestMarkerPushesCostOver256Bits_JudgesTheTransactionAsBuilt(t *testing.T) {
+	const gas = 63_900
+	bound := new(big.Int).Lsh(big.NewInt(1), 256)
+
+	// The largest fee cap whose cost fits as drawn: (2^256 - 1) / gas.
+	fits := new(big.Int).Div(new(big.Int).Sub(bound, big.NewInt(1)), big.NewInt(gas))
+	spec := &testSpec{
+		Envelope:          core.Envelope{GasLimit: gas},
+		OptionalRecipient: core.OptionalRecipient{To: core.ToOther},
+		WideValue:         core.WideValue{Value: big.NewInt(0)},
+		SinglePrice:       core.SinglePrice{GasPrice: fits},
+	}
+	require.LessOrEqual(t, core.DeclaredCost(spec).BitLen(), 256, "the spec as drawn fits")
+	require.True(t, markerPushesCostOver256Bits(spec), "but the transaction built from it does not")
+
+	// The same fee cap on a limit the marker's cost still leaves room under.
+	room := *spec
+	room.Envelope.GasLimit = gas - markerGas
+	require.False(t, markerPushesCostOver256Bits(&room))
+}

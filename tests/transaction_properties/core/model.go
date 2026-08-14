@@ -99,11 +99,39 @@ type SenderState struct {
 // this sees the whole batch, and the batch verdict is separate because event validation is
 // all-or-nothing: one malformed transaction must stop every other transaction in its batch from
 // having any effect.
+//
+// The batch is taken to be reorderable, which an injected one is: the scrambler puts one sender's
+// transactions in nonce order whatever order they arrived in. Use PlanBatchInGivenOrder for a batch
+// that executes in the order it is written.
 func PlanBatch(
 	specs []TxSpec,
 	senders []SenderState,
 	baseFee *big.Int,
 	cfg NetworkConfig,
+) (plans []TxPlan, batchRejected bool, reason string) {
+	return planBatch(specs, senders, baseFee, cfg, true)
+}
+
+// PlanBatchInGivenOrder is PlanBatch for a batch nothing reorders, where a sender's nonces have to
+// ascend in the order the batch itself gives rather than merely all be present. A bundle is that: its
+// steps are executed in the order its execution plan references them, and they reach the block in that
+// order too, so a run of nonces given back to front executes in an ordinary batch and fails in a
+// bundle.
+func PlanBatchInGivenOrder(
+	specs []TxSpec,
+	senders []SenderState,
+	baseFee *big.Int,
+	cfg NetworkConfig,
+) (plans []TxPlan, batchRejected bool, reason string) {
+	return planBatch(specs, senders, baseFee, cfg, false)
+}
+
+func planBatch(
+	specs []TxSpec,
+	senders []SenderState,
+	baseFee *big.Int,
+	cfg NetworkConfig,
+	reorderable bool,
 ) (plans []TxPlan, batchRejected bool, reason string) {
 
 	totalGas := uint64(0)
@@ -128,7 +156,7 @@ func PlanBatch(
 		}
 	}
 
-	ResolveNonceOrder(specs, senders, baseFee, plans)
+	ResolveNonceOrder(specs, senders, baseFee, plans, reorderable)
 	return plans, false, ""
 }
 
@@ -166,11 +194,20 @@ func AssignNonces(specs []TxSpec, senders []SenderState) []uint64 {
 	return nonces
 }
 
-// ResolveNonceOrder decides, per sender, which transactions the nonce sequence admits, walking them
-// in ascending nonce order rather than in the order they were injected: the scrambler reorders a
-// block's transactions and guarantees one sender's run in nonce order, so a batch carrying nonces
-// 0, 3, 1, 2 executes all four, and judging them as injected would wrongly call 3 a gap.
-func ResolveNonceOrder(specs []TxSpec, senders []SenderState, baseFee *big.Int, plans []TxPlan) {
+// ResolveNonceOrder decides, per sender, which transactions the nonce sequence admits.
+//
+// A reorderable batch is walked in ascending nonce order rather than in the order it was injected: the
+// scrambler reorders a block's transactions and guarantees one sender's run in nonce order, so a batch
+// carrying nonces 0, 3, 1, 2 executes all four, and judging them as injected would wrongly call 3 a
+// gap. A batch nothing reorders is walked as written, where those same nonces leave everything after
+// the 3 behind a hole.
+func ResolveNonceOrder(
+	specs []TxSpec,
+	senders []SenderState,
+	baseFee *big.Int,
+	plans []TxPlan,
+	reorderable bool,
+) {
 	for index := range senders {
 		order := make([]int, 0, len(specs))
 		for i, spec := range specs {
@@ -178,9 +215,11 @@ func ResolveNonceOrder(specs []TxSpec, senders []SenderState, baseFee *big.Int, 
 				order = append(order, i)
 			}
 		}
-		slices.SortStableFunc(order, func(a, b int) int {
-			return cmp.Compare(plans[a].Nonce, plans[b].Nonce)
-		})
+		if reorderable {
+			slices.SortStableFunc(order, func(a, b int) int {
+				return cmp.Compare(plans[a].Nonce, plans[b].Nonce)
+			})
+		}
 
 		rivals := map[uint64]int{}
 		for _, i := range order {

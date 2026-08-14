@@ -131,6 +131,10 @@ func (d *Domain) Expect(envelope *Envelope, baseFee *big.Int) Expectation {
 		prediction := envelope.Built.Plans[i].Prediction
 
 		switch {
+		case markerPushesCostOver256Bits(spec):
+			return Expectation{Fate: FateSkipped,
+				Reason: "the marker's gas pushes a transaction's declared cost over 256 bits, which " +
+					"ValidateTxStatic refuses"}
 		case nearAGasBoundary(spec):
 			uncertain = "a transaction of the bundle has a gas limit within the marker's own cost of " +
 				"a gas boundary, so the marker may put it on either side"
@@ -215,6 +219,17 @@ func (d *Domain) pricingCfg() core.NetworkConfig {
 	cfg := d.cfg
 	cfg.Pricing = d.Inner.Pricing()
 	return cfg
+}
+
+// markerPushesCostOver256Bits reports whether the transaction the builder makes of this spec declares a
+// cost too wide for ValidateTxStatic, although the spec as drawn does not. Cost is priced off the gas
+// limit, and the builder raises the gas limit of every transaction of a bundle by the marker's own
+// cost, so a fee cap that leaves less than that much headroom under the bound is over it once the
+// marker is on. Certain rather than uncertain: the marker is on every one of them.
+func markerPushesCostOver256Bits(spec core.TxSpec) bool {
+	gas := core.SaturatingAdd(core.SaturatingAdd(spec.Gas(), markerGas), core.BlobGasUsed(spec))
+	cost := new(big.Int).Mul(spec.FeeCap(), new(big.Int).SetUint64(gas))
+	return cost.Add(cost, spec.Amount()).BitLen() > 256
 }
 
 // nearAGasBoundary reports whether the marker's cost could move a transaction across one of the gas

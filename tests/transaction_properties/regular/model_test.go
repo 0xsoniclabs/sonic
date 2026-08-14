@@ -517,3 +517,32 @@ func TestEventLevelFailure_ObjectsOnlyToTheTransactionType(t *testing.T) {
 	// with further down.
 	require.Empty(t, core.EventLevelFailure(&legacyTx{Envelope: core.Envelope{GasLimit: math.MaxUint64}}, cfg))
 }
+
+// TestPlanBatchInGivenOrder_AdmitsNoRunGivenOutOfOrder is the difference a bundle makes: an injected
+// batch is put in nonce order by the scrambler, while a bundle's steps execute in the order its plan
+// references them, so the same two transactions execute in one and fail in the other.
+func TestPlanBatchInGivenOrder_AdmitsNoRunGivenOutOfOrder(t *testing.T) {
+	senders := []core.SenderState{{Nonce: 1, Balance: new(big.Int).Set(core.AccountBalance)}}
+	batch := func() []core.TxSpec {
+		ahead := affordableSpec(0, core.NonceGap)
+		ahead.NonceGapSize = 1 // nonce 2, one beyond the sender's next
+		return []core.TxSpec{ahead, affordableSpec(0, core.NonceCorrect)}
+	}
+	cfg := testNetwork(opera.GetAllegroUpgrades())
+
+	reordered, rejected, _ := core.PlanBatch(batch(), senders, big.NewInt(1), cfg)
+	require.False(t, rejected)
+	require.Equal(t, []uint64{2, 1}, []uint64{reordered[0].Nonce, reordered[1].Nonce})
+	for i, plan := range reordered {
+		require.True(t, plan.Prediction.Permits(core.OutcomeExecuted),
+			"transaction %d is admitted by the sequence once reordered: %s", i, plan.Prediction)
+	}
+
+	asWritten, rejected, _ := core.PlanBatchInGivenOrder(batch(), senders, big.NewInt(1), cfg)
+	require.False(t, rejected)
+	require.False(t, asWritten[0].Prediction.Permits(core.OutcomeExecuted),
+		"the first one is ahead of the sender's sequence and nothing will reorder it: %s",
+		asWritten[0].Prediction)
+	require.True(t, asWritten[1].Prediction.Permits(core.OutcomeExecuted),
+		"%s", asWritten[1].Prediction)
+}
