@@ -509,3 +509,45 @@ func BenchmarkIntegrationTestNet_StartAndStop(b *testing.B) {
 		net.Stop()
 	}
 }
+
+func TestIntegrationTestNet_CacheSizes_GrowWithTheGenesisAndAreOverridable(t *testing.T) {
+	accounts := func(n int) []makefakegenesis.Account {
+		return make([]makefakegenesis.Account, n)
+	}
+
+	tests := map[string]struct {
+		options                 IntegrationTestNetOptions
+		live, archive, elements int64
+	}{
+		"a genesis the minimum cache holds is run with the minimum": {
+			options: IntegrationTestNetOptions{Accounts: accounts(500)},
+			live:    1, archive: 1, elements: 1024,
+		},
+		"no accounts at all is the same": {
+			options: IntegrationTestNetOptions{},
+			live:    1, archive: 1, elements: 1024,
+		},
+		"a bigger genesis is given a cache that holds it": {
+			options: IntegrationTestNetOptions{Accounts: accounts(4096)},
+			live:    4096 * 4 * 1200, archive: 4096 * 4 * 1200, elements: 4096 * 4,
+		},
+		"an explicit size wins": {
+			options: IntegrationTestNetOptions{
+				Accounts:         accounts(4096),
+				LiveCacheSize:    AsPointer(7),
+				ArchiveCacheSize: AsPointer(8),
+				CacheSize:        AsPointer(9),
+			},
+			live: 7, archive: 8, elements: 9,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			live, archive, elements := test.options.cacheSizes()
+			require.Equal(t, test.live, live)
+			require.Equal(t, test.archive, archive)
+			require.Equal(t, test.elements, int64(elements))
+		})
+	}
+}
