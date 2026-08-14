@@ -603,7 +603,7 @@ func (r *transactionRunner) runTransactionBundleInternal(
 		trueTxOffset: trueTxOffset,
 		sizeLimit:    sizeLimit,
 	}
-	if !bundle.RunBundle(txBundle, &runner) {
+	if !bundle.RunBundle(txBundle, &runner, ctxt.upgrades) {
 		// Mark the execution plan as processed in the StateDB to prevent processing
 		// another bundle with the same execution plan in the same block. Also keep
 		// track of the position of the bundle in the block.

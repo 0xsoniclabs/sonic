@@ -18,6 +18,7 @@ package bundle
 
 import (
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -27,13 +28,26 @@ import (
 // TransactionRunner. It returns true if the bundle execution is considered
 // successful, and false otherwise.
 //
+// Only groups snapshot and revert their steps. Starting with Canto, a failed
+// bundle is rolled back as a whole, which also covers an execution plan whose
+// root is a single transaction step and thus has no group to revert it.
+//
 // This is the canonical implementation of the bundle execution logic, which
 // defines the semantic of the execution flags.
 func RunBundle(
 	bundle *TransactionBundle,
 	runner TransactionRunner,
+	upgrades opera.Upgrades,
 ) bool {
-	return runStep(bundle.Plan.Root, bundle.Transactions, runner)
+	if !upgrades.Canto {
+		return runStep(bundle.Plan.Root, bundle.Transactions, runner)
+	}
+	snapshot := runner.CreateSnapshot()
+	if !runStep(bundle.Plan.Root, bundle.Transactions, runner) {
+		runner.RevertToSnapshot(snapshot)
+		return false
+	}
+	return true
 }
 
 // TransactionRunner defines an interface for running individual transactions
