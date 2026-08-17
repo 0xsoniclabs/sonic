@@ -14,7 +14,9 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package opera
+// The external test package avoids an import cycle: this file needs the
+// state-DB mock, and inter/state transitively depends on opera.
+package opera_test
 
 import (
 	"fmt"
@@ -23,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
@@ -33,13 +36,13 @@ func TestGetVmConfig_SingleProposerModeDisablesExcessGasCharging(t *testing.T) {
 	for _, singleProposerMode := range []bool{true, false} {
 		t.Run(fmt.Sprintf("SingleProposerModeEnabled=%t", singleProposerMode), func(t *testing.T) {
 			require := require.New(t)
-			rules := Rules{
-				Upgrades: Upgrades{
+			rules := opera.Rules{
+				Upgrades: opera.Upgrades{
 					SingleProposerBlockFormation: singleProposerMode,
 				},
 			}
 
-			vmConfig := GetVmConfig(rules)
+			vmConfig := opera.GetVmConfig(rules)
 
 			require.NotEqual(singleProposerMode, vmConfig.ChargeExcessGas)
 		})
@@ -48,31 +51,31 @@ func TestGetVmConfig_SingleProposerModeDisablesExcessGasCharging(t *testing.T) {
 
 func TestGetVmConfig_NonBrioUpgrade_DoesNotSetMaxTxGas(t *testing.T) {
 
-	rules := Rules{
-		Upgrades: Upgrades{
+	rules := opera.Rules{
+		Upgrades: opera.Upgrades{
 			Brio: false,
 		},
 	}
 
-	vmConfig := GetVmConfig(rules)
+	vmConfig := opera.GetVmConfig(rules)
 
 	require.Nil(t, vmConfig.MaxTxGas)
 }
 
 func TestGetVmConfig_BrioUpgrade_CopiesMaxEventGasValue(t *testing.T) {
 	want := uint64(123456)
-	rules := Rules{
-		Upgrades: Upgrades{
+	rules := opera.Rules{
+		Upgrades: opera.Upgrades{
 			Brio: true,
 		},
-		Economy: EconomyRules{
-			Gas: GasRules{
+		Economy: opera.EconomyRules{
+			Gas: opera.GasRules{
 				MaxEventGas: want,
 			},
 		},
 	}
 
-	vmConfig := GetVmConfig(rules)
+	vmConfig := opera.GetVmConfig(rules)
 
 	require.NotNil(t, vmConfig.MaxTxGas)
 	require.Equal(t, want, *vmConfig.MaxTxGas)
@@ -89,15 +92,15 @@ func TestGetVmConfig_BrioUpgradeFromLfvmToSfvmInterpreter(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			rules := Rules{
-				Upgrades: Upgrades{
+			rules := opera.Rules{
+				Upgrades: opera.Upgrades{
 					Sonic:   true,
 					Allegro: true,
 					Brio:    test.brioEnabled,
 				},
 			}
 
-			vmConfig := GetVmConfig(rules)
+			vmConfig := opera.GetVmConfig(rules)
 			require.NotNil(t, vmConfig.Interpreter)
 
 			// create a contract with code size exceeding the LFVM code size limit
@@ -149,21 +152,21 @@ func TestCodeSizeLimits_BrioSetsCustomCodeSizeLimits(t *testing.T) {
 
 	for name, brioEnabled := range tests {
 		t.Run(name, func(t *testing.T) {
-			rules := Rules{
-				Upgrades: Upgrades{
+			rules := opera.Rules{
+				Upgrades: opera.Upgrades{
 					Sonic:   true,
 					Allegro: true,
 					Brio:    brioEnabled,
 				},
 			}
 
-			vmConfig := GetVmConfig(rules)
+			vmConfig := opera.GetVmConfig(rules)
 
 			if brioEnabled {
 				require.NotNil(t, vmConfig.MaxCodeSize)
 				require.NotNil(t, vmConfig.MaxInitCodeSize)
-				require.Equal(t, SonicPostAllegroMaxCodeSize, *vmConfig.MaxCodeSize)
-				require.Equal(t, SonicPostAllegroMaxInitCodeSize, *vmConfig.MaxInitCodeSize)
+				require.Equal(t, opera.SonicPostAllegroMaxCodeSize, *vmConfig.MaxCodeSize)
+				require.Equal(t, opera.SonicPostAllegroMaxInitCodeSize, *vmConfig.MaxInitCodeSize)
 			} else {
 				require.Nil(t, vmConfig.MaxCodeSize)
 				require.Nil(t, vmConfig.MaxInitCodeSize)

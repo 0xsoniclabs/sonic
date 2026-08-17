@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -81,7 +82,45 @@ func TestRunBundle_DelegatesToRunStep(t *testing.T) {
 		// third branch should not be executed since one of the branches already succeeded
 	)
 
-	require.True(t, RunBundle(bundle, runner))
+	require.True(t, RunBundle(bundle, runner, opera.GetBrioUpgrades()))
+}
+
+func TestRunBundle_FailedBundleWithBareRootStepIsRevertedStartingWithCanto(t *testing.T) {
+	tests := map[string]struct {
+		upgrades opera.Upgrades
+		revert   bool
+	}{
+		"pre-Canto":  {upgrades: opera.GetBrioUpgrades(), revert: false},
+		"post-Canto": {upgrades: opera.GetCantoUpgrades(), revert: true},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMockTransactionRunner(ctrl)
+
+			ref := TxReference{From: common.Address{1}}
+			tx := types.NewTx(&types.LegacyTx{})
+
+			// A bare root step has no group that would revert it.
+			bundle := &TransactionBundle{
+				Transactions: map[TxReference]*types.Transaction{ref: tx},
+				Plan:         ExecutionPlan{Root: NewTxStep(ref)},
+			}
+
+			if test.revert {
+				gomock.InOrder(
+					runner.EXPECT().CreateSnapshot().Return(1),
+					runner.EXPECT().Run(tx).Return(core_types.TransactionResultFailed),
+					runner.EXPECT().RevertToSnapshot(1),
+				)
+			} else {
+				runner.EXPECT().Run(tx).Return(core_types.TransactionResultFailed)
+			}
+
+			require.False(t, RunBundle(bundle, runner, test.upgrades))
+		})
+	}
 }
 
 func Test_runStep_DispatchesToCorrectExecutionMode(t *testing.T) {

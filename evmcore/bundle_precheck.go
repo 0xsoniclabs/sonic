@@ -25,6 +25,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/ethereum/go-ethereum/common"
@@ -147,7 +148,7 @@ func getBundleState(
 	// Next, check whether there are any nonce conflicts in the execution of
 	// the bundle. This is a quicker check than actually running the bundle in
 	// full to determine whether it can succeed or not.
-	state := checkForNonceConflicts(bundle, signer, stateDb)
+	state := checkForNonceConflicts(bundle, signer, stateDb, chain.GetCurrentNetworkRules().Upgrades)
 	if !state.Executable {
 		return state
 	}
@@ -199,6 +200,7 @@ func checkForNonceConflicts(
 	txBundle *bundle.TransactionBundle,
 	signer types.Signer,
 	nonceSource NonceSource,
+	upgrades opera.Upgrades,
 ) BundleState {
 
 	// Step 1: run with current nonces to check whether the bundle is ready to
@@ -206,8 +208,9 @@ func checkForNonceConflicts(
 	strictRunner := &dryRunner{
 		signer:       signer,
 		nonceTracker: &nonceTracker{source: nonceSource},
+		upgrades:     upgrades,
 	}
-	if bundle.RunBundle(txBundle, strictRunner) {
+	if bundle.RunBundle(txBundle, strictRunner, upgrades) {
 		return makeRunnableState(nil)
 	}
 
@@ -217,8 +220,9 @@ func checkForNonceConflicts(
 		signer:       signer,
 		nonceTracker: &nonceTracker{source: nonceSource},
 		allowGaps:    true, // for each account, a future nonce may be chosen once
+		upgrades:     upgrades,
 	}
-	if bundle.RunBundle(txBundle, looseRunner) {
+	if bundle.RunBundle(txBundle, looseRunner, upgrades) {
 		return makeTemporaryBlockedState("gapped nonce")
 	}
 
@@ -241,6 +245,7 @@ type dryRunner struct {
 	allowGaps    bool
 	nonceLocked  map[common.Address]struct{}
 	undo         []func()
+	upgrades     opera.Upgrades
 }
 
 func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
@@ -251,7 +256,7 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 			return core_types.TransactionResultInvalid
 		}
 
-		if bundle.RunBundle(&txBundle, r) {
+		if bundle.RunBundle(&txBundle, r, r.upgrades) {
 			return core_types.TransactionResultSuccessful
 		}
 
