@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/config"
+	"github.com/0xsoniclabs/sonic/evmcore"
 	emitter "github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
@@ -395,7 +396,7 @@ func tryGetReceipt(
 
 // congestionThreshold is the number of pending transactions in a pool for it
 // to be considered congested. The threshold is set to 90% of the pool capacity.
-const congestionThreshold = 1280 * 90 / 100
+var congestionThreshold = evmcore.DefaultTxPoolConfig.GlobalSlots * 90 / 100
 
 // startCongestion floods the network with ordinary transactions from
 // `numSenders` fresh accounts spread over all nodes, until the returned stop
