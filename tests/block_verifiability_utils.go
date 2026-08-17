@@ -38,22 +38,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// VerifyBlocksOptions adjusts how a chain is replayed.
-type VerifyBlocksOptions struct {
-	// UseBlockBaseFee replays each block with the base fee recorded in its own
-	// header, instead of with a base fee of zero.
-	//
-	// Replaying with zero lets sponsored transactions through checks they would
-	// otherwise fail, which is why it is the default. It is not faithful for
-	// transactions whose effective gas price depends on the base fee, though:
-	// TransactionToMessage prices a dynamic-fee transaction at
-	// min(tip + baseFee, feeCap), so with a base fee of zero the replay charges the
-	// tip alone, the sender is left with a different balance than the node computed
-	// and the state roots diverge. Set this when the chain under test contains
-	// dynamic-fee, blob or set-code transactions and no sponsored ones.
-	UseBlockBaseFee bool
-}
-
 // VerifyBlocks verifies the entire chain of blocks starting from the given
 // genesis. It processes each block in sequence, applying all transactions and
 // ensuring that the resulting block hashes match the expected values.
@@ -61,17 +45,6 @@ func VerifyBlocks(
 	t *testing.T,
 	genesis *makefakegenesis.GenesisJson,
 	blocks []*types.Block,
-) {
-	VerifyBlocksWithOptions(t, genesis, blocks, VerifyBlocksOptions{})
-}
-
-// VerifyBlocksWithOptions is VerifyBlocks with control over how the replay is
-// configured.
-func VerifyBlocksWithOptions(
-	t *testing.T,
-	genesis *makefakegenesis.GenesisJson,
-	blocks []*types.Block,
-	options VerifyBlocksOptions,
 ) {
 	require := require.New(t)
 	require.NotEmpty(blocks)
@@ -93,7 +66,6 @@ func VerifyBlocksWithOptions(
 		receipts, err := state.ApplyBlock(
 			genesis.Rules,
 			block,
-			options,
 		)
 		require.NoError(err, "failed to apply block %d", block.NumberU64())
 		require.Equal(len(block.Transactions()), len(receipts))
@@ -242,7 +214,6 @@ func (s *State) ApplyGenesis(genesis *makefakegenesis.GenesisJson) error {
 func (s *State) ApplyBlock(
 	rules opera.Rules,
 	block *types.Block,
-	options VerifyBlocksOptions,
 ) (types.Receipts, error) {
 
 	chainConfig := opera.CreateTransientEvmChainConfig(
@@ -257,11 +228,6 @@ func (s *State) ApplyBlock(
 		rules.Upgrades,
 	)
 
-	baseFee := big.NewInt(0) // < zero, to circumvent base-fee limits for sponsored txs
-	if options.UseBlockBaseFee && block.BaseFee() != nil {
-		baseFee = new(big.Int).Set(block.BaseFee())
-	}
-
 	evmBlock := &evmcore.EvmBlock{
 		EvmHeader: evmcore.EvmHeader{
 			Number:      block.Number(),
@@ -269,7 +235,7 @@ func (s *State) ApplyBlock(
 			Time:        inter.Timestamp(block.Time() * 1e9),
 			GasLimit:    block.GasLimit(),
 			PrevRandao:  block.Header().MixDigest,
-			BaseFee:     baseFee,
+			BaseFee:     block.BaseFee(),
 			BlobBaseFee: big.NewInt(1),
 		},
 		Transactions: block.Transactions(),
