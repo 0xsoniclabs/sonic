@@ -235,7 +235,7 @@ func (s *State) ApplyBlock(
 			Time:        inter.Timestamp(block.Time() * 1e9),
 			GasLimit:    block.GasLimit(),
 			PrevRandao:  block.Header().MixDigest,
-			BaseFee:     big.NewInt(0), // < zero, to circumvent base-fee limits for sponsored txs
+			BaseFee:     block.BaseFee(),
 			BlobBaseFee: big.NewInt(1),
 		},
 		Transactions: block.Transactions(),
