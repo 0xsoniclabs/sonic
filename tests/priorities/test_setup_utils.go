@@ -19,6 +19,7 @@ package priorities
 import (
 	"math"
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
@@ -155,6 +156,101 @@ func switchPriorityRegistry(
 		proxy.GetSlotForImplementation(), nil)
 	require.NoError(err)
 	require.Equal(newImpl, common.BytesToAddress(newSlotValue))
+}
+
+// fundingBatchSize bounds how many transactions are awaited in one batch. The
+// harness grants a batch 100 s for all of its receipts, which is not enough for
+// an arbitrary number of transactions at the emission rates of a real network.
+const fundingBatchSize = 250
+
+// newFundedPrioritizedAccounts creates `count` accounts, endows each with
+// `balance` and registers them in the priority registry with
+// (level, weight, id), waiting until all of that is visible on `client`.
+func newFundedPrioritizedAccounts(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	client *tests.PooledEhtClient,
+	count int,
+	balance *big.Int,
+	level, weight, id uint64,
+) []*tests.Account {
+	t.Helper()
+	require := require.New(t)
+
+	accounts := newFundedAccounts(t, net, client, count, balance)
+
+	reg, err := registry.NewRegistry(registry.GetAddress(), client)
+	require.NoError(err)
+
+	// The registrations are signed up front and submitted in batches.
+	opts, err := net.GetTransactOptions(net.GetSessionSponsor())
+	require.NoError(err)
+	opts.NoSend = true
+	// A validator's gas power is charged the gas limit, not the gas used, so a
+	// generous limit would throttle the emission of large registration batches.
+	opts.GasLimit = 250_000
+
+	txs := make([]*types.Transaction, count)
+	for i, account := range accounts {
+		txs[i], err = reg.SetSenderPriority(opts,
+			account.Address(), level, weight, new(big.Int).SetUint64(id))
+		require.NoError(err)
+		opts.Nonce = new(big.Int).Add(opts.Nonce, big.NewInt(1))
+	}
+
+	for batch := range slices.Chunk(txs, fundingBatchSize) {
+		receipts, err := net.RunAll(batch)
+		require.NoError(err)
+		waitForReceipts(t, client, receipts)
+	}
+
+	return accounts
+}
+
+// newFundedAccounts creates `count` accounts, endows each with `balance` in
+// batches and waits until the endowments are visible on `client`.
+func newFundedAccounts(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	client *tests.PooledEhtClient,
+	count int,
+	balance *big.Int,
+) []*tests.Account {
+	t.Helper()
+	require := require.New(t)
+
+	accounts := make([]*tests.Account, count)
+	addresses := make([]common.Address, count)
+	for i := range accounts {
+		accounts[i] = tests.NewAccount()
+		addresses[i] = accounts[i].Address()
+	}
+
+	for batch := range slices.Chunk(addresses, fundingBatchSize) {
+		receipts, err := net.EndowAccounts(batch, balance)
+		require.NoError(err)
+		waitForReceipts(t, client, receipts)
+	}
+
+	return accounts
+}
+
+// waitForReceipts requires all `receipts` to report success and waits until the
+// blocks containing them are visible on `client`.
+func waitForReceipts(
+	t *testing.T,
+	client *tests.PooledEhtClient,
+	receipts []*types.Receipt,
+) {
+	t.Helper()
+	require := require.New(t)
+
+	block := 0
+	for _, receipt := range receipts {
+		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+		block = max(block, int(receipt.BlockNumber.Int64()))
+	}
+	tests.WaitForBlock(t, client, block)
 }
 
 // newSignedTx builds and signs transfer from `account`. If `gasPrice` is nil,
