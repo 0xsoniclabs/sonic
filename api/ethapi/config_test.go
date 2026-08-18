@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"maps"
+	"math"
 	"math/big"
 	"testing"
 
@@ -258,7 +259,10 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 			backend.EXPECT().ChainConfig(gomock.Any()).Return(chainCfg)
 			backend.EXPECT().GetGenesisID().Return(common.Hash{0x42})
 			backend.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(int64(test.upgradeHeight.Height))).
-				Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Time: inter.Timestamp(1)}}, nil)
+				Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{
+					Number: new(big.Int).SetUint64(uint64(test.upgradeHeight.Height)),
+					Time:   inter.Timestamp(1),
+				}}, nil)
 
 			result, err := makeConfigFromUpgrade(context.Background(), backend, test.upgradeHeight)
 			require.NoError(t, err, "unexpected error from makeConfigFromUpgrade")
@@ -309,6 +313,50 @@ func TestMakeConfigFromUpgrade_ReportsError_WhenBlockByNumberReturnsNilBlock(t *
 
 	_, err := makeConfigFromUpgrade(t.Context(), backend, opera.UpgradeHeight{})
 	require.ErrorContains(t, err, "block 0 not found")
+}
+
+func TestMakeConfigFromUpgrade_ReportsError_WhenBlockCarriesNoNumber(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+
+	chainId := big.NewInt(250)
+	backend.EXPECT().ChainID().Return(chainId)
+	chainCfg := opera.CreateTransientEvmChainConfig(
+		chainId.Uint64(),
+		[]opera.UpgradeHeight{{}},
+		0,
+	)
+	backend.EXPECT().ChainConfig(gomock.Any()).Return(chainCfg)
+	backend.EXPECT().GetGenesisID().Return(common.Hash{0x42})
+
+	backend.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(int64(0))).
+		Return(&evmcore.EvmBlock{}, nil)
+
+	_, err := makeConfigFromUpgrade(t.Context(), backend, opera.UpgradeHeight{})
+	require.ErrorContains(t, err, "block 0 carries no number")
+}
+
+func TestMakeConfigFromUpgrade_ReportsError_WhenUpgradeHeightExceedsMaxInt64(t *testing.T) {
+	// rpc.BlockNumber is signed and its negative values name the block tags, so a
+	// height beyond MaxInt64 must be rejected rather than wrapped into a tag.
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+
+	chainId := big.NewInt(250)
+	backend.EXPECT().ChainID().Return(chainId)
+	chainCfg := opera.CreateTransientEvmChainConfig(
+		chainId.Uint64(),
+		[]opera.UpgradeHeight{{}},
+		0,
+	)
+	backend.EXPECT().ChainConfig(gomock.Any()).Return(chainCfg)
+	backend.EXPECT().GetGenesisID().Return(common.Hash{0x42})
+
+	// No BlockByNumber call is expected: the height never reaches the backend.
+	upgradeHeight := opera.UpgradeHeight{Height: idx.Block(math.MaxInt64) + 1}
+
+	_, err := makeConfigFromUpgrade(t.Context(), backend, upgradeHeight)
+	require.ErrorContains(t, err, "exceeds the largest addressable block number")
 }
 
 func TestEIP7910_Config_ReportsErrors(t *testing.T) {
@@ -410,6 +458,7 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 				sonicId, err := MakeForkId(opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1), common.Hash{0x42})
 				require.NoError(t, err, "makeForkId failed for sonic upgrades")
 				return configResponse{Current: &config{
+					BlockHeight:     (*hexutil.Big)(big.NewInt(1)),
 					ChainId:         (*hexutil.Big)(chainId),
 					ForkId:          sonicId[:],
 					Precompiles:     sonicPrecompiled,
@@ -455,12 +504,14 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 
 				return configResponse{
 					Current: &config{
+						BlockHeight:     (*hexutil.Big)(big.NewInt(5)),
 						ChainId:         (*hexutil.Big)(chainId),
 						ForkId:          allegroId[:],
 						Precompiles:     allegroPrecompiled,
 						SystemContracts: activeSystemContracts(opera.GetAllegroUpgrades()),
 					},
 					Last: &config{
+						BlockHeight:     (*hexutil.Big)(big.NewInt(1)),
 						ChainId:         (*hexutil.Big)(chainId),
 						ForkId:          sonicId[:],
 						Precompiles:     sonicPrecompiled,
@@ -478,8 +529,16 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 			backend.EXPECT().ChainID().Return(chainId).AnyTimes()
 			// could be called once or twice depending on the test case.
 			backend.EXPECT().GetGenesisID().Return(common.Hash{0x42}).AnyTimes()
+			// The block a request resolves to is the one at the requested height, so
+			// the stub echoes the number back: makeConfigFromUpgrade reads it to
+			// resolve the height-gated upgrades.
 			backend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).
-				Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Time: inter.Timestamp(1)}}, nil).AnyTimes()
+				DoAndReturn(func(_ context.Context, number rpc.BlockNumber) (*evmcore.EvmBlock, error) {
+					return &evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{
+						Number: big.NewInt(number.Int64()),
+						Time:   inter.Timestamp(1),
+					}}, nil
+				}).AnyTimes()
 
 			test.backendSetup(backend)
 
@@ -490,4 +549,58 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 			require.Equal(t, test.wantConfig, *gotConfig)
 		})
 	}
+}
+
+func TestEIP7910_Config_ResolvesTimeGatedForksWithTheBlockTime(t *testing.T) {
+	// A chain config whose forks are gated on real timestamps -- a foreign chain
+	// replayed through the backend, unlike Sonic's own transient config, which
+	// places every time-gated fork at timestamp 0. The precompile set must follow
+	// the block's time, not a zero one.
+	forkTime := uint64(480)
+	blockTime := forkTime + 60
+
+	chainId := big.NewInt(250)
+	upgradeHeights := []opera.UpgradeHeight{{
+		Upgrades: opera.GetBrioUpgrades(),
+		Height:   idx.Block(5),
+	}}
+	chainConfig := &params.ChainConfig{
+		ChainID:        chainId,
+		HomesteadBlock: big.NewInt(0),
+		EIP150Block:    big.NewInt(0),
+		EIP155Block:    big.NewInt(0),
+		EIP158Block:    big.NewInt(0),
+		ByzantiumBlock: big.NewInt(0),
+		BerlinBlock:    big.NewInt(0),
+		LondonBlock:    big.NewInt(0),
+		ShanghaiTime:   &forkTime,
+		CancunTime:     &forkTime,
+		PragueTime:     &forkTime,
+		OsakaTime:      &forkTime,
+	}
+
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+	backend.EXPECT().ChainID().Return(chainId).AnyTimes()
+	backend.EXPECT().GetGenesisID().Return(common.Hash{0x42}).AnyTimes()
+	backend.EXPECT().CurrentBlock().Return(&evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{Number: big.NewInt(5)},
+	})
+	backend.EXPECT().GetUpgradeHeights().Return(upgradeHeights)
+	backend.EXPECT().ChainConfig(gomock.Any()).Return(chainConfig)
+	backend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(&evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			Number: big.NewInt(5),
+			Time:   inter.FromUnix(int64(blockTime)),
+		},
+	}, nil)
+
+	gotConfig, err := NewPublicBlockChainAPI(backend).Config(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, blockTime, gotConfig.Current.ActivationTime)
+
+	// The Osaka precompile set: everything Prague has, plus P256VERIFY.
+	require.Contains(t, gotConfig.Current.Precompiles, "P256VERIFY")
+	require.Contains(t, gotConfig.Current.Precompiles, "KZG_POINT_EVALUATION")
+	require.Contains(t, gotConfig.Current.Precompiles, "BLS12_PAIRING_CHECK")
 }
