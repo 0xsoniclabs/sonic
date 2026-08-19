@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -80,7 +81,8 @@ func TestChecker_IntrinsicGas_LegacyCalculationDoesNotAccountForInitDataOrAuthLi
 
 			// in sonic, Homestead, Istanbul and Shanghai are always active
 			costNew, err := core.IntrinsicGas(tx.Data(), tx.AccessList(),
-				tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
+				tx.SetCodeAuthorizations(), common.Address{}, tx.To(), uint256.NewInt(0),
+				params.Rules{IsHomestead: true, IsIstanbul: true, IsShanghai: true})
 			require.NoError(t, err)
 			require.Greater(t, costNew, costLegacy)
 		})
@@ -99,7 +101,9 @@ func TestChecker_IntrinsicGas_LegacyIsCheaperOrSameForAllRevisionCombinations(t 
 					costLegacy, err := intrinsicGasLegacy([]byte("test"), nil, false)
 					require.NoError(t, err)
 
-					costNew, err := core.IntrinsicGas([]byte("test"), nil, nil, false, homestead, istanbul, shanghai)
+					costNew, err := core.IntrinsicGas([]byte("test"), nil, nil,
+						common.Address{}, &common.Address{}, uint256.NewInt(0),
+						params.Rules{IsHomestead: homestead, IsIstanbul: istanbul, IsShanghai: shanghai})
 					require.NoError(t, err)
 
 					require.GreaterOrEqual(t, costNew, costLegacy)

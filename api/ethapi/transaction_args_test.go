@@ -136,10 +136,10 @@ func TestTransactionArgs_ToMessage_Empty(t *testing.T) {
 	require.NotNil(t, msg)
 	require.Nil(t, msg.To)
 	require.Equal(t, gasCap, msg.GasLimit)
-	require.Equal(t, big.NewInt(0), msg.GasPrice)
-	require.Equal(t, big.NewInt(0), msg.Value)
+	require.Equal(t, uint256.NewInt(0), msg.GasPrice)
+	require.Equal(t, uint256.NewInt(0), msg.Value)
 	require.Nil(t, msg.BlobGasFeeCap)
-	require.Equal(t, big.NewInt(0), msg.GasTipCap)
+	require.Equal(t, uint256.NewInt(0), msg.GasTipCap)
 	require.Equal(t, uint64(0), msg.Nonce)
 }
 
@@ -180,15 +180,15 @@ func TestTransactionArgs_ToMessage_TrivialFieldsAreCopied(t *testing.T) {
 	msg, err := txArgs.ToMessage(0x4321, big.NewInt(100), nil)
 	require.NoError(t, err)
 
-	require.Equal(t, core.Message{
+	require.Equal(t, (&core.Message{
 		To:       &common.Address{0x1},
 		Nonce:    msg.Nonce,
-		Value:    big.NewInt(0x3),
+		Value:    uint256.NewInt(0x3),
 		GasLimit: 0x5,
 
-		GasPrice:  big.NewInt(0), // not set, so it defaults to 0
-		GasFeeCap: big.NewInt(0), // not set, so it defaults to 0
-		GasTipCap: big.NewInt(0), // not set, so it defaults to 0
+		GasPrice:  uint256.NewInt(0), // not set, so it defaults to 0
+		GasFeeCap: uint256.NewInt(0), // not set, so it defaults to 0
+		GasTipCap: uint256.NewInt(0), // not set, so it defaults to 0
 
 		Data: []byte{0x4},
 		AccessList: types.AccessList{
@@ -200,7 +200,7 @@ func TestTransactionArgs_ToMessage_TrivialFieldsAreCopied(t *testing.T) {
 				},
 			},
 		},
-		BlobGasFeeCap: big.NewInt(0x6),
+		BlobGasFeeCap: uint256.NewInt(0x6),
 		BlobHashes: []common.Hash{
 			common.HexToHash("0x7"),
 		},
@@ -211,11 +211,7 @@ func TestTransactionArgs_ToMessage_TrivialFieldsAreCopied(t *testing.T) {
 				ChainID: *uint256.NewInt(0x3),
 			},
 		},
-
-		// Hardcoded values
-		SkipNonceChecks:       true,
-		SkipTransactionChecks: true,
-	}, *msg)
+	}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck(), msg)
 }
 
 func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
@@ -230,30 +226,22 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 			args: TransactionArgs{},
 			expectedMsg: core.Message{
 				GasLimit: math.MaxInt64,
-				Value:    big.NewInt(0),
+				Value:    uint256.NewInt(0),
 
-				GasPrice:  big.NewInt(0),
-				GasFeeCap: big.NewInt(0),
-				GasTipCap: big.NewInt(0),
-
-				// Hardcoded values
-				SkipNonceChecks:       true,
-				SkipTransactionChecks: true,
+				GasPrice:  uint256.NewInt(0),
+				GasFeeCap: uint256.NewInt(0),
+				GasTipCap: uint256.NewInt(0),
 			},
 		},
 		"zero initialized and basefee uses eip1559 rules": {
 			args: TransactionArgs{},
 			expectedMsg: core.Message{
 				GasLimit: math.MaxInt64,
-				Value:    big.NewInt(0),
+				Value:    uint256.NewInt(0),
 
-				GasPrice:  big.NewInt(0),
-				GasFeeCap: big.NewInt(0),
-				GasTipCap: big.NewInt(0),
-
-				// Hardcoded values
-				SkipNonceChecks:       true,
-				SkipTransactionChecks: true,
+				GasPrice:  uint256.NewInt(0),
+				GasFeeCap: uint256.NewInt(0),
+				GasTipCap: uint256.NewInt(0),
 			},
 			baseFee: big.NewInt(77),
 		},
@@ -263,14 +251,11 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 			},
 			expectedMsg: core.Message{
 				GasLimit: math.MaxInt64,
-				Value:    big.NewInt(0),
+				Value:    uint256.NewInt(0),
 
-				GasPrice:  big.NewInt(10000000),
-				GasFeeCap: big.NewInt(10000000),
-				GasTipCap: big.NewInt(10000000),
-				// Hardcoded values
-				SkipNonceChecks:       true,
-				SkipTransactionChecks: true,
+				GasPrice:  uint256.NewInt(10000000),
+				GasFeeCap: uint256.NewInt(10000000),
+				GasTipCap: uint256.NewInt(10000000),
 			},
 			baseFee: big.NewInt(77),
 		},
@@ -280,14 +265,11 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 			},
 			expectedMsg: core.Message{
 				GasLimit: math.MaxInt64,
-				Value:    big.NewInt(0),
+				Value:    uint256.NewInt(0),
 
-				GasPrice:  big.NewInt(10000000),
-				GasFeeCap: big.NewInt(10000000),
-				GasTipCap: big.NewInt(10000000),
-				// Hardcoded values
-				SkipNonceChecks:       true,
-				SkipTransactionChecks: true,
+				GasPrice:  uint256.NewInt(10000000),
+				GasFeeCap: uint256.NewInt(10000000),
+				GasTipCap: uint256.NewInt(10000000),
 			},
 		},
 		"maxFeePerGas and no basefee uses pre-eip1559 rules": {
@@ -296,15 +278,11 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 			},
 			expectedMsg: core.Message{
 				GasLimit: math.MaxInt64,
-				Value:    big.NewInt(0),
+				Value:    uint256.NewInt(0),
 
-				GasPrice:  big.NewInt(0),
-				GasFeeCap: big.NewInt(0),
-				GasTipCap: big.NewInt(0),
-
-				// Hardcoded values
-				SkipNonceChecks:       true,
-				SkipTransactionChecks: true,
+				GasPrice:  uint256.NewInt(0),
+				GasFeeCap: uint256.NewInt(0),
+				GasTipCap: uint256.NewInt(0),
 			},
 		},
 		"maxFeePerGas and basefee uses eip1559 rules": {
@@ -313,15 +291,11 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 			},
 			expectedMsg: core.Message{
 				GasLimit: math.MaxInt64,
-				Value:    big.NewInt(0),
+				Value:    uint256.NewInt(0),
 
-				GasPrice:  big.NewInt(77),
-				GasFeeCap: big.NewInt(1234),
-				GasTipCap: big.NewInt(0),
-
-				// Hardcoded values
-				SkipNonceChecks:       true,
-				SkipTransactionChecks: true,
+				GasPrice:  uint256.NewInt(77),
+				GasFeeCap: uint256.NewInt(1234),
+				GasTipCap: uint256.NewInt(0),
 			},
 			baseFee: big.NewInt(77),
 		},
@@ -331,15 +305,11 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 			},
 			expectedMsg: core.Message{
 				GasLimit: math.MaxInt64,
-				Value:    big.NewInt(0),
+				Value:    uint256.NewInt(0),
 
-				GasPrice:  big.NewInt(0),
-				GasFeeCap: big.NewInt(0),
-				GasTipCap: big.NewInt(0),
-
-				// Hardcoded values
-				SkipNonceChecks:       true,
-				SkipTransactionChecks: true,
+				GasPrice:  uint256.NewInt(0),
+				GasFeeCap: uint256.NewInt(0),
+				GasTipCap: uint256.NewInt(0),
 			},
 		},
 		"maxPriorityFeePerGas and basefee uses eip1559 rules": {
@@ -348,15 +318,11 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 			},
 			expectedMsg: core.Message{
 				GasLimit: math.MaxInt64,
-				Value:    big.NewInt(0),
+				Value:    uint256.NewInt(0),
 
-				GasPrice:  big.NewInt(0),
-				GasFeeCap: big.NewInt(0),
-				GasTipCap: big.NewInt(1234),
-
-				// Hardcoded values
-				SkipNonceChecks:       true,
-				SkipTransactionChecks: true,
+				GasPrice:  uint256.NewInt(0),
+				GasFeeCap: uint256.NewInt(0),
+				GasTipCap: uint256.NewInt(1234),
 			},
 			baseFee: big.NewInt(77),
 		},
@@ -367,15 +333,11 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 			},
 			expectedMsg: core.Message{
 				GasLimit: math.MaxInt64,
-				Value:    big.NewInt(0),
+				Value:    uint256.NewInt(0),
 
-				GasPrice:  big.NewInt(0),
-				GasFeeCap: big.NewInt(0),
-				GasTipCap: big.NewInt(0),
-
-				// Hardcoded values
-				SkipNonceChecks:       true,
-				SkipTransactionChecks: true,
+				GasPrice:  uint256.NewInt(0),
+				GasFeeCap: uint256.NewInt(0),
+				GasTipCap: uint256.NewInt(0),
 			},
 		},
 		"maxFeePerGas, maxPriorityFeePerGas and basefee uses eip1559 rules": {
@@ -385,15 +347,11 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 			},
 			expectedMsg: core.Message{
 				GasLimit: math.MaxInt64,
-				Value:    big.NewInt(0),
+				Value:    uint256.NewInt(0),
 
-				GasPrice:  big.NewInt(1234),
-				GasFeeCap: big.NewInt(1234),
-				GasTipCap: big.NewInt(5678),
-
-				// Hardcoded values
-				SkipNonceChecks:       true,
-				SkipTransactionChecks: true,
+				GasPrice:  uint256.NewInt(1234),
+				GasFeeCap: uint256.NewInt(1234),
+				GasTipCap: uint256.NewInt(5678),
 			},
 			baseFee: big.NewInt(77),
 		},
@@ -406,6 +364,7 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 			msg, err := test.args.ToMessage(0, test.baseFee, nil)
 			require.NoError(t, err, "Failed to convert TransactionArgs to message")
 
+			test.expectedMsg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
 			require.Equal(t, test.expectedMsg, *msg)
 		})
 	}
@@ -1065,8 +1024,7 @@ func TestTransactionArgs_ToMessageIsEquivalentToEvmcoreToMessage(t *testing.T) {
 			require.NoError(t, err)
 
 			// RPC messages usually skip checks; normalize to compare payload fields.
-			directMsg.SkipNonceChecks = false
-			directMsg.SkipTransactionChecks = false
+			msgFromTx.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
 
 			require.Equal(t, directMsg, msgFromTx)
 		})

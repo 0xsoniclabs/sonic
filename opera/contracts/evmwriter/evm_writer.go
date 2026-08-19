@@ -72,22 +72,21 @@ func init() {
 
 type PreCompiledContract struct{}
 
-func (PreCompiledContract) Run(stateDB vm.StateDB, _ vm.BlockContext, txCtx vm.TxContext, caller common.Address, input []byte, suppliedGas uint64) ([]byte, uint64, error) {
+func (PreCompiledContract) Run(stateDB vm.StateDB, _ vm.BlockContext, txCtx vm.TxContext, caller common.Address, input []byte, suppliedGas vm.GasBudget) ([]byte, vm.GasBudget, error) {
 	if caller != driver.ContractAddress {
-		return nil, 0, vm.ErrExecutionReverted
+		return revert(suppliedGas)
 	}
 	if len(input) < 4 {
-		return nil, 0, vm.ErrExecutionReverted
+		return revert(suppliedGas)
 	}
 	if bytes.Equal(input[:4], setBalanceMethodID) {
 		input = input[4:]
 		// setBalance
-		if suppliedGas < params.CallValueTransferGas {
-			return nil, 0, vm.ErrOutOfGas
+		if _, ok := suppliedGas.ChargeExecution(params.CallValueTransferGas); !ok {
+			return nil, suppliedGas, vm.ErrOutOfGas
 		}
-		suppliedGas -= params.CallValueTransferGas
 		if len(input) != 64 {
-			return nil, 0, vm.ErrExecutionReverted
+			return revert(suppliedGas)
 		}
 
 		acc := common.BytesToAddress(input[12:32])
@@ -96,7 +95,7 @@ func (PreCompiledContract) Run(stateDB vm.StateDB, _ vm.BlockContext, txCtx vm.T
 
 		if acc == txCtx.Origin {
 			// Origin balance shouldn't decrease during his transaction
-			return nil, 0, vm.ErrExecutionReverted
+			return revert(suppliedGas)
 		}
 
 		balance := stateDB.GetBalance(acc)
@@ -110,12 +109,11 @@ func (PreCompiledContract) Run(stateDB vm.StateDB, _ vm.BlockContext, txCtx vm.T
 	} else if bytes.Equal(input[:4], copyCodeMethodID) {
 		input = input[4:]
 		// copyCode
-		if suppliedGas < params.CreateGas {
-			return nil, 0, vm.ErrOutOfGas
+		if _, ok := suppliedGas.ChargeExecution(params.CreateGas); !ok {
+			return nil, suppliedGas, vm.ErrOutOfGas
 		}
-		suppliedGas -= params.CreateGas
 		if len(input) != 64 {
-			return nil, 0, vm.ErrExecutionReverted
+			return revert(suppliedGas)
 		}
 
 		accTo := common.BytesToAddress(input[12:32])
@@ -127,23 +125,20 @@ func (PreCompiledContract) Run(stateDB vm.StateDB, _ vm.BlockContext, txCtx vm.T
 			code = []byte{}
 		}
 		cost := uint64(len(code)) * (params.CreateDataGas + params.MemoryGas)
-		if suppliedGas < cost {
-			return nil, 0, vm.ErrOutOfGas
+		if _, ok := suppliedGas.ChargeExecution(cost); !ok {
+			return nil, suppliedGas, vm.ErrOutOfGas
 		}
-		suppliedGas -= cost
 		if accTo != accFrom {
 			stateDB.SetCode(accTo, code, tracing.CodeChangeUnspecified)
 		}
 	} else if bytes.Equal(input[:4], swapCodeMethodID) {
 		input = input[4:]
 		// swapCode
-		cost := 2 * params.CreateGas
-		if suppliedGas < cost {
-			return nil, 0, vm.ErrOutOfGas
+		if _, ok := suppliedGas.ChargeExecution(2 * params.CreateGas); !ok {
+			return nil, suppliedGas, vm.ErrOutOfGas
 		}
-		suppliedGas -= cost
 		if len(input) != 64 {
-			return nil, 0, vm.ErrExecutionReverted
+			return revert(suppliedGas)
 		}
 
 		acc0 := common.BytesToAddress(input[12:32])
@@ -159,11 +154,10 @@ func (PreCompiledContract) Run(stateDB vm.StateDB, _ vm.BlockContext, txCtx vm.T
 		}
 		cost0 := uint64(len(code0)) * (params.CreateDataGas + params.MemoryGas)
 		cost1 := uint64(len(code1)) * (params.CreateDataGas + params.MemoryGas)
-		cost = (cost0 + cost1) / 2 // 50% discount because trie size won't increase after pruning
-		if suppliedGas < cost {
-			return nil, 0, vm.ErrOutOfGas
+		cost := (cost0 + cost1) / 2 // 50% discount because trie size won't increase after pruning
+		if _, ok := suppliedGas.ChargeExecution(cost); !ok {
+			return nil, suppliedGas, vm.ErrOutOfGas
 		}
-		suppliedGas -= cost
 		if acc0 != acc1 {
 			stateDB.SetCode(acc0, code1, tracing.CodeChangeUnspecified)
 			stateDB.SetCode(acc1, code0, tracing.CodeChangeUnspecified)
@@ -171,12 +165,11 @@ func (PreCompiledContract) Run(stateDB vm.StateDB, _ vm.BlockContext, txCtx vm.T
 	} else if bytes.Equal(input[:4], setStorageMethodID) {
 		input = input[4:]
 		// setStorage
-		if suppliedGas < params.SstoreSetGasEIP2200 {
-			return nil, 0, vm.ErrOutOfGas
+		if _, ok := suppliedGas.ChargeExecution(params.SstoreSetGasEIP2200); !ok {
+			return nil, suppliedGas, vm.ErrOutOfGas
 		}
-		suppliedGas -= params.SstoreSetGasEIP2200
 		if len(input) != 96 {
-			return nil, 0, vm.ErrExecutionReverted
+			return revert(suppliedGas)
 		}
 		acc := common.BytesToAddress(input[12:32])
 		input = input[32:]
@@ -188,12 +181,11 @@ func (PreCompiledContract) Run(stateDB vm.StateDB, _ vm.BlockContext, txCtx vm.T
 	} else if bytes.Equal(input[:4], incNonceMethodID) {
 		input = input[4:]
 		// incNonce
-		if suppliedGas < params.CallValueTransferGas {
-			return nil, 0, vm.ErrOutOfGas
+		if _, ok := suppliedGas.ChargeExecution(params.CallValueTransferGas); !ok {
+			return nil, suppliedGas, vm.ErrOutOfGas
 		}
-		suppliedGas -= params.CallValueTransferGas
 		if len(input) != 64 {
-			return nil, 0, vm.ErrExecutionReverted
+			return revert(suppliedGas)
 		}
 
 		acc := common.BytesToAddress(input[12:32])
@@ -202,20 +194,27 @@ func (PreCompiledContract) Run(stateDB vm.StateDB, _ vm.BlockContext, txCtx vm.T
 
 		if acc == txCtx.Origin {
 			// Origin nonce shouldn't change during his transaction
-			return nil, 0, vm.ErrExecutionReverted
+			return revert(suppliedGas)
 		}
 
 		if value.Cmp(common.Big256) >= 0 {
 			// Don't allow large nonce increasing to prevent a nonce overflow
-			return nil, 0, vm.ErrExecutionReverted
+			return revert(suppliedGas)
 		}
 		if value.Sign() <= 0 {
-			return nil, 0, vm.ErrExecutionReverted
+			return revert(suppliedGas)
 		}
 
 		stateDB.SetNonce(acc, stateDB.GetNonce(acc)+value.Uint64(), tracing.NonceChangeUnspecified)
 	} else {
-		return nil, 0, vm.ErrExecutionReverted
+		return revert(suppliedGas)
 	}
 	return nil, suppliedGas, nil
+}
+
+// revert burns the remaining execution gas, as reverted calls of this contract
+// always did. The state-gas reservoir is handed back.
+func revert(gas vm.GasBudget) ([]byte, vm.GasBudget, error) {
+	gas.DrainExecution()
+	return nil, gas, vm.ErrExecutionReverted
 }

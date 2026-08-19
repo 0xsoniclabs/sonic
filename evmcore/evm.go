@@ -95,19 +95,20 @@ func NewEVMBlockContextWithDifficulty(
 		GasLimit:    header.GasLimit,
 		Random:      random,
 		BlobBaseFee: blobBaseFee,
+
+		CostPerStateByte: params.CostPerStateByte,
 	}
 }
 
 // NewEVMTxContext creates a new transaction context for a single transaction.
-// This is a wrapper around core.NewEVMTxContext to ensure that the gas price is
-// valid. If the gas price is invalid, an error is returned.
+// This is a wrapper around core.NewEVMTxContext rejecting messages that cannot
+// be turned into a valid context.
 func NewEVMTxContext(msg *core.Message) (vm.TxContext, error) {
 	if msg == nil {
 		return vm.TxContext{}, fmt.Errorf("message cannot be nil")
 	}
-	_, overflow := uint256.FromBig(msg.GasPrice)
-	if msg.GasPrice.Sign() < 0 || overflow {
-		return vm.TxContext{}, fmt.Errorf("invalid gas price %v", msg.GasPrice)
+	if msg.GasPrice == nil {
+		return vm.TxContext{}, fmt.Errorf("message gas price cannot be nil")
 	}
 	return core.NewEVMTxContext(msg), nil
 }

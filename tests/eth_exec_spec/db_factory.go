@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/tests"
 	"github.com/holiman/uint256"
 )
@@ -85,7 +86,7 @@ func (c *carmenStateDB) SetBalance(addr common.Address, amount *uint256.Int, rea
 // IntermediateRoot is not supported by Carmen, but for ethereum tests it is only
 // required for failing transaction. Rather than calculating the intermediate root,
 // we can just end the transaction and block, and return the resulting state root.
-func (c *carmenStateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
+func (c *carmenStateDB) IntermediateRoot(params.Rules) common.Hash {
 	c.EndTransaction()
 	if err := evmstore.EndBlockAndCommit(c.CarmenStateDB, 0); err != nil {
 		panic(fmt.Sprintf("failed to commit block: %v", err))
@@ -94,7 +95,7 @@ func (c *carmenStateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 }
 
 // Commit ends transaction, ends block, and returns the state hash.
-func (c *carmenStateDB) Commit(block uint64, deleteEmptyObjects bool, noStorageWiping bool) (common.Hash, error) {
+func (c *carmenStateDB) Commit(_ params.Rules, block uint64) (common.Hash, error) {
 	c.logs = c.CarmenStateDB.Logs() // backup logs, they are deleted on committing a tx/block
 	c.EndTransaction()
 	if err := evmstore.EndBlockAndCommit(c.CarmenStateDB, block); err != nil {

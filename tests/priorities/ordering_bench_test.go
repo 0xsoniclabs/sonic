@@ -302,7 +302,7 @@ func setupBenchEnv(b *testing.B, numAccounts, numPrioritized int) *benchEnv {
 	callRegistry := func(method string, args ...any) {
 		input, err := regABI.Pack(method, args...)
 		require.NoError(err)
-		_, _, err = evm.Call(common.Address{}, priorityregistry.GetAddress(), input, 5_000_000, uint256.NewInt(0))
+		_, _, err = evm.Call(common.Address{}, priorityregistry.GetAddress(), input, vm.NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		require.NoError(err)
 	}
 

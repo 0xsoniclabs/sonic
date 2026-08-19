@@ -412,7 +412,6 @@ func stateExpectCalls(state *state.MockStateDB) {
 	state.EXPECT().GetNonce(any).Return(uint64(1)).AnyTimes()
 	state.EXPECT().GetRefund().Return(uint64(0)).AnyTimes()
 	state.EXPECT().GetState(any, any).Return(common.Hash{}).AnyTimes()
-	state.EXPECT().GetStorageRoot(any).Return(types.EmptyRootHash).AnyTimes()
 
 	state.EXPECT().HasSelfDestructed(any).Return(false).AnyTimes()
 	state.EXPECT().SelfDestruct(any).AnyTimes()
