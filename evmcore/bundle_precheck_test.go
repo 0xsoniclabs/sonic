@@ -620,7 +620,8 @@ func Test_trialRunBundle_DoesRunTransactionsThroughEVMAndReturnsIfTransactionsGo
 				BaseFee: new(big.Int),
 			}).AnyTimes()
 			chainState.EXPECT().GetCurrentChainConfig().Return(&params.ChainConfig{
-				ChainID: big.NewInt(1),
+				ChainID:     big.NewInt(1),
+				BerlinBlock: big.NewInt(0),
 			}).AnyTimes()
 			chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
 				Upgrades: opera.Upgrades{Brio: true, TransactionBundles: true},
@@ -635,7 +636,7 @@ func Test_trialRunBundle_DoesRunTransactionsThroughEVMAndReturnsIfTransactionsGo
 			stateDb.EXPECT().RevertToInterTxSnapshot(any).AnyTimes()
 			stateDb.EXPECT().AddProcessedBundle(any, any)
 			stateDb.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
-			stateDb.EXPECT().SetTxContext(any, any).AnyTimes()
+			stateDb.EXPECT().SetTxContext(any, any, any).AnyTimes()
 			stateDb.EXPECT().GetNonce(any).AnyTimes()
 			stateDb.EXPECT().SetNonce(any, any, any).AnyTimes()
 			stateDb.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
@@ -789,7 +790,7 @@ func Test_trialRunBundle_UsesRandomPrevRandaoValue(t *testing.T) {
 	db.EXPECT().InterTxSnapshot().AnyTimes()
 	db.EXPECT().RevertToInterTxSnapshot(any).AnyTimes()
 	db.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
-	db.EXPECT().SetTxContext(any, any).AnyTimes()
+	db.EXPECT().SetTxContext(any, any, any).AnyTimes()
 	db.EXPECT().GetNonce(any).AnyTimes()
 	db.EXPECT().SetNonce(any, any, any).AnyTimes()
 	db.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
@@ -835,6 +836,7 @@ func Test_trialRunBundle_UsesRandomPrevRandaoValue(t *testing.T) {
 	}).AnyTimes()
 	chainState.EXPECT().GetCurrentChainConfig().Return(&params.ChainConfig{
 		ChainID:            big.NewInt(1),
+		BerlinBlock:        new(big.Int).SetUint64(0),
 		LondonBlock:        new(big.Int).SetUint64(0),
 		MergeNetsplitBlock: new(big.Int).SetUint64(0),
 		ShanghaiTime:       new(uint64),

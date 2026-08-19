@@ -580,11 +580,12 @@ func TestBlockStateOverrides(t *testing.T) {
 	setExpectedStateCalls(mockState)
 
 	expectedBlockCtx := &vm.BlockContext{
-		BlockNumber: big.NewInt(5),
-		Time:        0,
-		Difficulty:  big.NewInt(1),
-		BaseFee:     big.NewInt(1234),
-		BlobBaseFee: big.NewInt(1),
+		BlockNumber:      big.NewInt(5),
+		Time:             0,
+		Difficulty:       big.NewInt(1),
+		BaseFee:          big.NewInt(1234),
+		BlobBaseFee:      big.NewInt(1),
+		CostPerStateByte: params.CostPerStateByte,
 	}
 
 	// Check that the correct block context is used when creating EVM instance
@@ -840,7 +841,7 @@ func setExpectedStateCalls(mockState *state.MockStateDB) {
 	mockState.EXPECT().SetNonce(any, any, any).AnyTimes()
 	mockState.EXPECT().Snapshot().AnyTimes()
 	mockState.EXPECT().Exist(any).Return(true).AnyTimes()
-	mockState.EXPECT().SetTxContext(any, any).AnyTimes()
+	mockState.EXPECT().SetTxContext(any, any, any).AnyTimes()
 	mockState.EXPECT().Release().AnyTimes()
 	mockState.EXPECT().GetCode(any).Return(nil).AnyTimes()
 	mockState.EXPECT().Witness().AnyTimes()
@@ -1165,17 +1166,17 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		mockState.EXPECT().SubRefund(gomock.Any())
 		mockState.EXPECT().Exist(params.HistoryStorageAddress).Return(true)
 		mockState.EXPECT().GetRefund().Return(uint64(0))
-		mockState.EXPECT().Finalise(true)
+		mockState.EXPECT().Finalise(gomock.Any())
 		mockState.EXPECT().EndTransaction()
 	}
 
 	expectedTraceReplayBlock := func(mockState *state.MockStateDB) {
-		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any(), gomock.Any())
 		mockState.EXPECT().GetCode(sender).Return([]byte{})
 		mockState.EXPECT().GetNonce(sender).Return(uint64(0))
 		mockState.EXPECT().EndTransaction()
 
-		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any(), gomock.Any())
 		mockState.EXPECT().GetNonce(sender).Return(uint64(1)).Times(2)
 		mockState.EXPECT().GetCode(sender).Return([]byte{})
 		mockState.EXPECT().GetBalance(sender).Return(uint256.NewInt(1e18))
@@ -1210,7 +1211,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		"StateAtTransaction sonic": {
 			upgrades: opera.GetSonicUpgrades(),
 			setupStateDb: func(mockState *state.MockStateDB) {
-				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any(), gomock.Any())
 				mockState.EXPECT().GetCode(sender).Return([]byte{})
 				mockState.EXPECT().GetNonce(sender).Return(uint64(0))
 				mockState.EXPECT().EndTransaction()
@@ -1222,7 +1223,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		"StateAtTransaction allegro": {
 			upgrades: opera.GetAllegroUpgrades(),
 			setupStateDb: func(mockState *state.MockStateDB) {
-				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any(), gomock.Any())
 				mockState.EXPECT().GetCode(sender).Return([]byte{})
 				mockState.EXPECT().GetNonce(sender).Return(uint64(0))
 				mockState.EXPECT().EndTransaction()
@@ -1725,6 +1726,7 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 		zero := uint64(0)
 		chainConfig := &params.ChainConfig{
 			ChainID:     chainId,
+			BerlinBlock: big.NewInt(0),
 			LondonBlock: big.NewInt(0),
 			CancunTime:  &zero,
 		}
@@ -1732,6 +1734,7 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 			BlockNumber: block.Number,
 			BaseFee:     big.NewInt(1_000),
 			BlobBaseFee: big.NewInt(1_000),
+			Random:      &common.Hash{},
 			Transfer:    vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int, _ *params.Rules) {}),
 			CanTransfer: vm.CanTransferFunc(func(sd vm.StateDB, a1 common.Address, i *uint256.Int) bool { return true }),
 		}
@@ -2288,7 +2291,7 @@ func TestAccessList_StopsWhenContextIsCancelled(t *testing.T) {
 	infiniteLoop := []byte{byte(vm.JUMPDEST), byte(vm.PUSH1), 0, byte(vm.JUMP)}
 	gasCap := uint64(math.MaxInt64)
 
-	chainConfig := &params.ChainConfig{ChainID: big.NewInt(1), LondonBlock: big.NewInt(0)}
+	chainConfig := &params.ChainConfig{ChainID: big.NewInt(1), BerlinBlock: big.NewInt(0), LondonBlock: big.NewInt(0)}
 	blockCtx := vm.BlockContext{
 		BlockNumber: block.Number,
 		BaseFee:     big.NewInt(0),

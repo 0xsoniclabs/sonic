@@ -176,8 +176,14 @@ func doTestEstimate(
 				tmpTx.Data(),
 				tmpTx.AccessList(),
 				tmpTx.SetCodeAuthorizations(),
-				tmpTx.To() == nil,
-				true, true, netUpgrades.Allegro)
+				account.Address(),
+				tmpTx.To(),
+				uint256.MustFromBig(tmpTx.Value()),
+				params.Rules{
+					IsHomestead: true,
+					IsIstanbul:  true,
+					IsShanghai:  netUpgrades.Allegro,
+				})
 			require.NoError(t, err, "Failed to calculate intrinsic gas")
 
 			// estimate gas used by the message

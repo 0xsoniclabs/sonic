@@ -59,6 +59,8 @@ var (
 		"ConstantinopleFix": {},
 		"Constantinople":    {},
 		"Byzantium":         {},
+		"SpuriousDragon":    {},
+		"TangerineWhistle":  {},
 		"Frontier":          {},
 		"Homestead":         {},
 	}

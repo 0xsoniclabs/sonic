@@ -365,14 +365,15 @@ func (sim *simulator) processBlock(
 		senders[txHash] = call.from()
 
 		tracer.reset(txHash, uint(i))
-		activeState.SetTxContext(txHash, i)
+		activeState.SetTxContext(txHash, i, uint32(i+1))
 
-		msg, err := call.ToMessage(sim.gp.Gas(), header.BaseFee, log.Root())
+		msg, err := call.toMessage(sim.gp.Available(evm.GetRules().IsAmsterdam), header.BaseFee, log.Root())
 		if err != nil {
 			return nil, nil, nil, nil, simTxValidationError(err)
 		}
-		msg.SkipNonceChecks = !sim.validate
-		msg.SkipTransactionChecks = !sim.validate
+		if !sim.validate {
+			msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
+		}
 
 		result, applyErr := applySimMessage(ctx, evm, msg, timeout, sim.gp)
 		if applyErr != nil {
@@ -495,7 +496,7 @@ func (sim *simulator) applyStateOverrides(overrides *StateOverride, precompiles 
 		}
 	}
 	// Finalise the overrides as if they were a transaction.
-	state.Finalise(false)
+	state.Finalise(params.Rules{})
 	return nil
 }
 

@@ -316,7 +316,7 @@ func (s *PublicTxTraceAPI) traceCallExec(
 	}
 	defer cancel()
 
-	tracedEVM.activeState.SetTxContext(tx.Hash(), int(index))
+	tracedEVM.activeState.SetTxContext(tx.Hash(), int(index), uint32(index+1))
 
 	// Call OnTxStart manually before execution so the trace logger can initialize.
 	if tracedEVM.tracer != nil && tracedEVM.tracer.OnTxStart != nil {
@@ -505,7 +505,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 				return nil, fmt.Errorf("cannot get message from transaction %s, error %s", tx.Hash().String(), err)
 			}
 
-			state.SetTxContext(tx.Hash(), i)
+			state.SetTxContext(tx.Hash(), i, uint32(i+1))
 			vmConfig, err := GetVmConfig(ctx, s.b, idx.Block(block.NumberU64()))
 			if err != nil {
 				return nil, fmt.Errorf("cannot get vm config for block %d, error: %w", block.NumberU64(), err)
@@ -568,7 +568,7 @@ func (s *PublicTxTraceAPI) traceTx(
 	}
 	defer cancel()
 
-	statedb.SetTxContext(tx.Hash(), int(index))
+	statedb.SetTxContext(tx.Hash(), int(index), uint32(index+1))
 	chainConfig := s.b.ChainConfig(idx.Block(block.Number.Uint64()))
 	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, core.NewGasPool(msg.GasLimit), statedb, block.Number, block.Hash, tx, &index, tracedEVM.vmenv)
 
