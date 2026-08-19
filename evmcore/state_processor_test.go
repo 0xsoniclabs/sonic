@@ -162,7 +162,7 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 					Logs: []*types.Log{logMsg0},
 				}),
 				Logs:              []*types.Log{logMsg0},
-				EffectiveGasPrice: big.NewInt(0),
+				EffectiveGasPrice: uint256.NewInt(0).ToBig(),
 			}, processed[0].Receipt)
 
 			require.Nil(processed[1].Receipt)
@@ -179,7 +179,7 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 					Logs: []*types.Log{logMsg1},
 				}),
 				Logs:              []*types.Log{logMsg1},
-				EffectiveGasPrice: big.NewInt(0),
+				EffectiveGasPrice: uint256.NewInt(0).ToBig(),
 			}, processed[2].Receipt)
 
 			require.Nil(processed[3].Receipt)
@@ -261,7 +261,7 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 					Logs: []*types.Log{logMsg0},
 				}),
 				Logs:              []*types.Log{logMsg0},
-				EffectiveGasPrice: big.NewInt(0),
+				EffectiveGasPrice: uint256.NewInt(0).ToBig(),
 			}, processed[1].Receipt)
 		})
 	}
@@ -358,7 +358,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 
 	// Mock the state database interactions for passing transaction.
 	any := gomock.Any()
-	state.EXPECT().SetTxContext(any, any).Times(1)
+	state.EXPECT().SetTxContext(any, any, any).Times(1)
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(1000000)).Times(1)
 	state.EXPECT().SubBalance(any, any, any).Times(2)
 	state.EXPECT().Prepare(any, any, any, any, any, any).Times(1)
@@ -367,7 +367,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	state.EXPECT().GetCode(any).Return(nil).Times(2)
 	state.EXPECT().Snapshot().Return(0).Times(1)
 	state.EXPECT().Exist(any).Return(true).Times(1)
-	state.EXPECT().AddBalance(any, any, any).Times(3)
+	state.EXPECT().AddBalance(any, any, any).Times(2)
 	state.EXPECT().GetRefund().Return(uint64(0)).Times(2)
 	state.EXPECT().GetLogs(any, any).Return([]*types.Log{})
 	state.EXPECT().EndTransaction().Times(1)
@@ -383,6 +383,50 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	require.Nil(t, processed[0].Receipt)
 	require.Equal(t, processed[1].Transaction, block.Transactions[1])
 	require.NotNil(t, processed[1].Receipt)
+}
+
+func TestProcess_OversizedInitCodeTakesGasFromThePoolBeforeCanto(t *testing.T) {
+	tests := map[string]struct {
+		upgrades     opera.Upgrades
+		callIncluded bool
+	}{
+		"before Canto": {upgrades: opera.Upgrades{}},
+		"Canto":        {upgrades: opera.Upgrades{Canto: true}, callIncluded: true},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			ctrl := gomock.NewController(t)
+			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, NewMockDummyChain(ctrl), test.upgrades, nil)
+
+			key, err := crypto.GenerateKey()
+			require.NoError(err)
+			signer := types.LatestSignerForChainID(nil)
+			const creationGas = 1_000_000
+			creation := types.MustSignNewTx(key, signer, &types.LegacyTx{
+				Gas: creationGas, Data: make([]byte, opera.SonicBrioMaxInitCodeSize+1),
+			})
+			call := types.MustSignNewTx(key, signer, &types.LegacyTx{
+				To: &common.Address{1}, Gas: params.TxGas,
+			})
+			transactions := []*types.Transaction{creation, call}
+			state := getStateDbMockForTransactions(ctrl, transactions)
+
+			block := &EvmBlock{
+				EvmHeader:    EvmHeader{Number: big.NewInt(1), GasLimit: math.MaxUint64},
+				Transactions: transactions,
+			}
+			maxInitCodeSize := opera.SonicBrioMaxInitCodeSize
+			vmConfig := vm.Config{MaxInitCodeSize: &maxInitCodeSize}
+
+			// The pool only holds the creation's gas limit, so the call fits only if
+			// the skipped creation did not take it.
+			processed := processor.Process(block, state, vmConfig, creationGas, new(uint64), 0, nil, math.MaxUint64).ProcessedTransactions
+			require.Len(processed, 2)
+			require.Nil(processed[0].Receipt)
+			require.Equal(test.callIncluded, processed[1].Receipt != nil)
+		})
+	}
 }
 
 func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
@@ -619,7 +663,7 @@ func TestProcessWithDifficulty_onNewLog_CollectsLogsAccordingToLogsProduced(t *t
 			ctrl := gomock.NewController(t)
 
 			stateDb := state.NewMockStateDB(ctrl)
-			stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+			stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 			stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
 
 			for _, tx := range test.transactions {
@@ -693,7 +737,7 @@ func TestProcessWithDifficulty_onNewLog_ReportsLogsInOrder(t *testing.T) {
 	}
 
 	stateDb := state.NewMockStateDB(ctrl)
-	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
 
 	getLogs := func(txHash, _ common.Hash) []*types.Log {
@@ -753,7 +797,7 @@ func TestProcessWithDifficulty_onNewLog_SkipsCallbackWhenNil(t *testing.T) {
 	require.NoError(t, err)
 
 	stateDb := state.NewMockStateDB(ctrl)
-	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
 	stateDb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).
 		Return([]*types.Log{{Address: common.Address{1}}}).MinTimes(1)
@@ -810,7 +854,7 @@ func TestProcessWithDifficulty_onNewLog_DoesNotLogRolledBackTransactions(t *test
 	successfulTxHash := bundle.GetTransactionsInReferencedOrder()[0].Hash()
 
 	stateDb := state.NewMockStateDB(ctrl)
-	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+	stateDb.EXPECT().SetTxContext(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
 
 	// Transaction is expected to produce logs,
@@ -827,6 +871,7 @@ func TestProcessWithDifficulty_onNewLog_DoesNotLogRolledBackTransactions(t *test
 	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(false)
 	stateDb.EXPECT().InterTxSnapshot().AnyTimes()
 	stateDb.EXPECT().RevertToInterTxSnapshot(0).MinTimes(1)
+	stateDb.EXPECT().AddAddressToAccessList(any).AnyTimes()
 	stateDb.EXPECT().CreateContract(any)
 	stateDb.EXPECT().AddProcessedBundle(any, any)
 
@@ -835,7 +880,7 @@ func TestProcessWithDifficulty_onNewLog_DoesNotLogRolledBackTransactions(t *test
 		TransactionBundles: true,
 	}
 
-	processor := NewStateProcessorForHeadState(&params.ChainConfig{ChainID: chainId}, nil, upgrades, nil)
+	processor := NewStateProcessorForHeadState(&params.ChainConfig{ChainID: chainId, BerlinBlock: big.NewInt(0)}, nil, upgrades, nil)
 	block := &EvmBlock{
 		EvmHeader: EvmHeader{
 			Number:   big.NewInt(1),
@@ -886,7 +931,7 @@ func createScenarioWithTxCheckingDifficulty(
 	// Create a state mock that is able to run a full transaction.
 	any := gomock.Any()
 	state := state.NewMockStateDB(ctrl)
-	state.EXPECT().SetTxContext(any, any).AnyTimes()
+	state.EXPECT().SetTxContext(any, any, any).AnyTimes()
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
 	state.EXPECT().SubBalance(any, any, any).AnyTimes()
 	state.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
@@ -978,7 +1023,7 @@ func TestProcess_ForwardsCorrectIndexToTransactionProcessor(t *testing.T) {
 
 			// The legacyTxIndex always starts counting at 0 for every call and
 			// it is used to set up the transaction context in the StateDB.
-			state.EXPECT().SetTxContext(any, 0).AnyTimes()
+			state.EXPECT().SetTxContext(any, 0, any).AnyTimes()
 
 			// The trueTxIndex is the one that is passed to the function and
 			// used to get the offset of the bundle in the block.
@@ -1042,15 +1087,21 @@ func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 			evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{}, vm.Config{})
 			gp := core.NewGasPool(1000000)
 
+			tx := getRegularTransaction(t)
+			msg := &core.Message{
+				GasPrice: uint256.NewInt(0),
+				Value:    uint256.NewInt(0),
+			}
+			if internal {
+				tx = types.NewTx(&types.LegacyTx{})
+				msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
+			}
+
 			// The transaction will fail for various reasons, but for this test
 			// this is not relevant. We just want to check if the base fee
-			// configuration flag is updated to match the SkipAccountChecks flag.
-			_, _, err := applyTransaction(&core.Message{
-				SkipNonceChecks:       internal,
-				SkipTransactionChecks: internal,
-				GasPrice:              big.NewInt(0),
-				Value:                 big.NewInt(0),
-			}, gp, state, nil, nil, nil, evm)
+			// configuration flag is updated to match whether the transaction
+			// is internal.
+			_, _, err := applyTransaction(msg, gp, state, nil, tx, nil, evm, opera.Upgrades{})
 			if err == nil {
 				t.Errorf("expected transaction to fail")
 			}
@@ -1062,15 +1113,12 @@ func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 	}
 }
 
-func TestApplyTransaction_FailsForTransactionWithInvalidGasPrice(t *testing.T) {
+func TestApplyTransaction_FailsForTransactionWithMissingGasPrice(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	stateDb := state.NewMockStateDB(ctrl)
 	stateDb.EXPECT().EndTransaction()
 
-	msg := &core.Message{
-		GasPrice: big.NewInt(-1),
-	}
-	_, _, err := applyTransaction(msg, nil, stateDb, nil, nil, nil, nil)
+	_, _, err := applyTransaction(&core.Message{}, nil, stateDb, nil, nil, nil, nil, opera.Upgrades{})
 	require.ErrorContains(t, err, "failed to create EVM transaction context")
 }
 
@@ -1088,10 +1136,15 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 				pragueTime = 0
 				callToSnapshot = 1
 			}
-			any := gomock.Any()
 			ctrl := gomock.NewController(t)
 			state := state.NewMockStateDB(ctrl)
-			evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{
+			blockNumber := big.NewInt(100)
+			blockContext := vm.BlockContext{
+				Random:      &common.Hash{0x01}, // triggers isMerge
+				BlockNumber: blockNumber,        // triggers isMerge
+				Time:        100,                // triggers IsPrague
+			}
+			evm := vm.NewEVM(blockContext, state, &params.ChainConfig{
 				LondonBlock:        new(big.Int).SetUint64(0),
 				MergeNetsplitBlock: new(big.Int).SetUint64(0),
 				ShanghaiTime:       new(uint64),
@@ -1100,35 +1153,27 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 			}, vm.Config{})
 			gp := core.NewGasPool(1000000)
 
-			blockNumber := big.NewInt(100)
-			evm.Context.Random = &common.Hash{0x01} // triggers isMerge
-			evm.Context.BlockNumber = blockNumber   // triggers isMerge
-			evm.Context.Time = 100                  // triggers IsPrague
-
 			initCode := make([]byte, 50000) // large init code to trigger error
-			msg := &core.Message{
-				From:                  common.Address{1},
-				To:                    nil, // contract creation
-				GasLimit:              1000000,
-				GasPrice:              big.NewInt(1),
-				GasFeeCap:             big.NewInt(0),
-				GasTipCap:             big.NewInt(0),
-				Value:                 big.NewInt(0),
-				Data:                  initCode,
-				SkipNonceChecks:       true,
-				SkipTransactionChecks: true,
-			}
+			msg := (&core.Message{
+				From:      common.Address{1},
+				To:        nil, // contract creation
+				GasLimit:  1000000,
+				GasPrice:  uint256.NewInt(1),
+				GasFeeCap: uint256.NewInt(0),
+				GasTipCap: uint256.NewInt(0),
+				Value:     uint256.NewInt(0),
+				Data:      initCode,
+			}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
 
 			gomock.InOrder(
 				state.EXPECT().Snapshot().Return(42).Times(callToSnapshot),
-				state.EXPECT().GetBalance(msg.From).Return(uint256.NewInt(1000000)),
-				state.EXPECT().SubBalance(any, any, any),
 				state.EXPECT().RevertToSnapshot(42).Times(callToSnapshot),
+				state.EXPECT().GetBalance(msg.From).Return(uint256.NewInt(1000000)),
 				state.EXPECT().EndTransaction(),
 			)
 
 			receipt, gasUsed, err :=
-				applyTransaction(msg, gp, state, blockNumber, nil, new(uint64), evm)
+				applyTransaction(msg, gp, state, blockNumber, types.NewTx(&types.LegacyTx{}), new(uint64), evm, opera.Upgrades{})
 			require.ErrorContains(t, err, "max initcode size exceeded")
 			require.Nil(t, receipt)
 			require.Equal(t, uint64(0), gasUsed)
@@ -1136,12 +1181,73 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 	}
 }
 
+func TestApplyTransaction_SkippedTransaction_ChargesGasPoolOnlyAfterBalanceCheck(t *testing.T) {
+	call := &common.Address{1}
+	tests := map[string]struct {
+		to          *common.Address
+		balance     uint64
+		pool        uint64
+		upgrades    opera.Upgrades
+		err         error
+		gasBought   bool
+		poolCharged bool
+	}{
+		"insufficient funds": {to: call, balance: 0, pool: 1_000_000, err: core.ErrInsufficientFunds},
+		"intrinsic gas too low": {
+			to: call, balance: 1_000_000, pool: 1_000_000, err: core.ErrIntrinsicGas, gasBought: true, poolCharged: true,
+		},
+		"oversized init code": {
+			balance: 1_000_000, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded, poolCharged: true,
+		},
+		"oversized init code, insufficient funds": {
+			balance: 999, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded,
+		},
+		"oversized init code, exhausted pool": {
+			balance: 1_000_000, pool: 999, err: vm.ErrMaxInitCodeSizeExceeded,
+		},
+		"oversized init code from Canto": {
+			balance: 1_000_000, pool: 1_000_000, upgrades: opera.Upgrades{Canto: true}, err: vm.ErrMaxInitCodeSizeExceeded,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(test.balance)).MaxTimes(1)
+			if test.gasBought {
+				state.EXPECT().SubBalance(gomock.Any(), gomock.Any(), gomock.Any())
+			}
+			state.EXPECT().EndTransaction()
+
+			maxInitCodeSize := 0
+			evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{}, vm.Config{MaxInitCodeSize: &maxInitCodeSize})
+			gp := core.NewGasPool(test.pool)
+			msg := (&core.Message{
+				To:       test.to,
+				GasLimit: 1_000,
+				GasPrice: uint256.NewInt(1),
+				Value:    uint256.NewInt(0),
+				Data:     []byte{0},
+			}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
+
+			_, _, err := applyTransaction(msg, gp, state, nil, types.NewTx(&types.LegacyTx{}), new(uint64), evm, test.upgrades)
+			require.ErrorIs(t, err, test.err)
+
+			want := test.pool
+			if test.poolCharged {
+				want -= msg.GasLimit
+			}
+			require.Equal(t, want, gp.Available(false, params.MaxTxGas))
+		})
+	}
+}
+
 func TestApplyTransaction_SetsEffectiveGasPriceInReceipt(t *testing.T) {
-	gasPrices := []*big.Int{
-		big.NewInt(0),
-		big.NewInt(100),
-		big.NewInt(math.MaxInt64),
-		new(big.Int).Lsh(big.NewInt(1), 200),
+	gasPrices := []*uint256.Int{
+		uint256.NewInt(0),
+		uint256.NewInt(100),
+		uint256.NewInt(math.MaxInt64),
+		new(uint256.Int).Lsh(uint256.NewInt(1), 200),
 	}
 
 	for _, price := range gasPrices {
@@ -1202,17 +1308,17 @@ func TestApplyTransaction_SetsEffectiveGasPriceInReceipt(t *testing.T) {
 			// message is stored in the receipt.
 			msg := &core.Message{
 				GasPrice:  price,
-				GasFeeCap: new(big.Int).Add(price, big.NewInt(1000)),
-				GasTipCap: big.NewInt(100),
+				GasFeeCap: new(uint256.Int).Add(price, uint256.NewInt(1000)),
+				GasTipCap: uint256.NewInt(100),
 				To:        &common.Address{},
-				Value:     big.NewInt(0),
+				Value:     uint256.NewInt(0),
 				GasLimit:  21_000,
 			}
 
-			receipt, _, err := applyTransaction(msg, gp, state, blockNum, tx, &usedGas, evm)
+			receipt, _, err := applyTransaction(msg, gp, state, blockNum, tx, &usedGas, evm, opera.Upgrades{})
 			require.NoError(err)
 
-			require.Equal(price, receipt.EffectiveGasPrice)
+			require.Equal(price.ToBig(), receipt.EffectiveGasPrice)
 		})
 	}
 }
@@ -1258,18 +1364,16 @@ func TestApplyTransaction_CollectsLogsFromStateDbIntoReceipt(t *testing.T) {
 
 	gp := core.NewGasPool(1_000_000)
 	var usedGas uint64
-	msg := &core.Message{
-		To:                    &common.Address{2},
-		GasLimit:              21_000,
-		GasPrice:              big.NewInt(0),
-		GasFeeCap:             big.NewInt(0),
-		GasTipCap:             big.NewInt(0),
-		Value:                 big.NewInt(0),
-		SkipNonceChecks:       true,
-		SkipTransactionChecks: true,
-	}
+	msg := (&core.Message{
+		To:        &common.Address{2},
+		GasLimit:  21_000,
+		GasPrice:  uint256.NewInt(0),
+		GasFeeCap: uint256.NewInt(0),
+		GasTipCap: uint256.NewInt(0),
+		Value:     uint256.NewInt(0),
+	}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
 
-	receipt, _, err := applyTransaction(msg, gp, stateDb, big.NewInt(1), tx, &usedGas, evmInstance)
+	receipt, _, err := applyTransaction(msg, gp, stateDb, big.NewInt(1), tx, &usedGas, evmInstance, opera.Upgrades{})
 	require.NoError(t, err)
 	require.Equal(t, expectedLogs, receipt.Logs)
 }
@@ -1296,8 +1400,8 @@ func getStateDbMockForTransactions(
 	state := state.NewMockStateDB(ctrl)
 	txIndex := new(int)
 	for _, tx := range transactions {
-		state.EXPECT().SetTxContext(tx.Hash(), gomock.Any()).Do(
-			func(hash common.Hash, index int) {
+		state.EXPECT().SetTxContext(tx.Hash(), gomock.Any(), gomock.Any()).Do(
+			func(hash common.Hash, index int, _ uint32) {
 				*txIndex = index
 			},
 		).AnyTimes()
@@ -1329,7 +1433,6 @@ func getStateDbMockForTransactions(
 	state.EXPECT().SetNonce(any, any, any).AnyTimes()
 	state.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
 	state.EXPECT().GetCode(any).AnyTimes()
-	state.EXPECT().GetStorageRoot(any).Return(types.EmptyRootHash).AnyTimes()
 	state.EXPECT().Snapshot().AnyTimes()
 	state.EXPECT().Exist(any).Return(true).AnyTimes()
 	state.EXPECT().GetRefund().AnyTimes()
@@ -1898,11 +2001,11 @@ func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) 
 			result := make([]byte, 3*32)
 			binary.BigEndian.PutUint64(result[88:], overhead)
 			evm.EXPECT().Call(any, any, any, any, any).
-				Return(result, uint64(0), nil)
+				Return(result, vm.GasBudget{}, nil)
 
 			// Call made by IsCovered
 			evm.EXPECT().Call(any, any, any, any, any).
-				Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+				Return([]byte{31: 1}, vm.GasBudget{}, nil) // indicates "covered"
 
 			if !test.shouldSkip {
 
@@ -1997,7 +2100,7 @@ func TestRunSponsoredTransaction_SponsorshipCoverageCheckFails_ReturnsASkippedTr
 	// Call made by IsCovered fails.
 	any := gomock.Any()
 	issue := fmt.Errorf("sponsorship check failed")
-	evm.EXPECT().Call(any, any, any, any, any).Return(nil, uint64(0), issue)
+	evm.EXPECT().Call(any, any, any, any, any).Return(nil, vm.GasBudget{}, issue)
 
 	gasPool := core.NewGasPool(1_000_000)
 	context := &runContext{
@@ -2033,9 +2136,9 @@ func TestRunSponsoredTransaction_SponsoredTransactionIsSkipped_NoFeeDeductionTxI
 	// Let the IsCovered call indicate that the transaction is covered,
 	any := gomock.Any()
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+		Return([]byte{95: 0}, vm.GasBudget{}, nil) // results of getGasConfig
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+		Return([]byte{31: 1}, vm.GasBudget{}, nil) // indicates "covered"
 
 	// Let the sponsored transaction be processed, but result in a skipped
 	// transaction (e.g. due to a wrong nonce).
@@ -2083,9 +2186,9 @@ func TestRunSponsoredTransaction_FailingCreationOfFeeDeduction_TransactionIsAcce
 	// Let the IsCovered call indicate that the transaction is covered,
 	any := gomock.Any()
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{95: overhead}, uint64(0), nil) // results of getGasConfig
+		Return([]byte{95: overhead}, vm.GasBudget{}, nil) // results of getGasConfig
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+		Return([]byte{31: 1}, vm.GasBudget{}, nil) // indicates "covered"
 
 	// Simulate huge gas prices, that are still ok for the sponsored transaction
 	// but that cause an overflow when the overhead gas is added.
@@ -2148,9 +2251,9 @@ func TestRunSponsoredTransaction_FeeDeductionTxIsSkipped_TransactionIsAcceptedWi
 	// Let the IsCovered call indicate that the transaction is covered,
 	any := gomock.Any()
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+		Return([]byte{95: 0}, vm.GasBudget{}, nil) // results of getGasConfig
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+		Return([]byte{31: 1}, vm.GasBudget{}, nil) // indicates "covered"
 
 	// Expect the sponsored transaction to be processed successfully.
 	processedSponsoredTransaction := ProcessedTransaction{
@@ -2206,9 +2309,9 @@ func TestRunSponsoredTransaction_FeeDeductionTxFails_TransactionIsAcceptedWithou
 	// Let the IsCovered call indicate that the transaction is covered,
 	any := gomock.Any()
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+		Return([]byte{95: 0}, vm.GasBudget{}, nil) // results of getGasConfig
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+		Return([]byte{31: 1}, vm.GasBudget{}, nil) // indicates "covered"
 
 	// Expect the sponsored transaction to be processed successfully.
 	processedSponsoredTransaction := ProcessedTransaction{
@@ -2263,9 +2366,9 @@ func TestRunSponsoredTransaction_TxIsNetworkSponsored_TransactionIsAcceptedWitho
 	// network sponsorship without tracking.
 	any := gomock.Any()
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+		Return([]byte{95: 0}, vm.GasBudget{}, nil) // results of getGasConfig
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{31: 2, 63: 0}, uint64(0), nil) // indicates "network covered"
+		Return([]byte{31: 2, 63: 0}, vm.GasBudget{}, nil) // indicates "network covered"
 
 	// Expect the sponsored transaction to be processed successfully.
 	processedSponsoredTransaction := ProcessedTransaction{
@@ -2314,9 +2417,9 @@ func TestRunSponsoredTransaction_TxIsNetworkSponsoredWithTracking_TransactionIsA
 	// Let the IsCovered call indicate that the transaction is covered,
 	any := gomock.Any()
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+		Return([]byte{95: 0}, vm.GasBudget{}, nil) // results of getGasConfig
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{31: 3, 63: 12}, uint64(0), nil) // indicates network-sponsored with tracking
+		Return([]byte{31: 3, 63: 12}, vm.GasBudget{}, nil) // indicates network-sponsored with tracking
 
 	// Expect the sponsored transaction to be processed successfully.
 	processedSponsoredTransaction := ProcessedTransaction{
@@ -2386,9 +2489,9 @@ func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testin
 
 	any := gomock.Any()
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+		Return([]byte{95: 0}, vm.GasBudget{}, nil) // results of getGasConfig
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+		Return([]byte{31: 1}, vm.GasBudget{}, nil) // indicates "covered"
 
 	txIndex := 7
 	evm.EXPECT().runWithoutBaseFeeCheck(any, tx, txIndex).
@@ -2436,9 +2539,9 @@ func TestRunSponsoredTransaction_ForReplay_SkipsPostTransactions(t *testing.T) {
 
 	any := gomock.Any()
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+		Return([]byte{95: 0}, vm.GasBudget{}, nil) // results of getGasConfig
 	evm.EXPECT().Call(any, any, any, any, any).
-		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+		Return([]byte{31: 1}, vm.GasBudget{}, nil) // indicates "covered"
 
 	txIndex := 7
 	evm.EXPECT().runWithoutBaseFeeCheck(any, tx, txIndex).
@@ -2568,9 +2671,9 @@ func TestRunSponsoredTransaction_ProcessesAllPostTransactionsInOrder(t *testing.
 
 			any := gomock.Any()
 			evm.EXPECT().Call(any, any, any, any, any).
-				Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+				Return([]byte{95: 0}, vm.GasBudget{}, nil) // results of getGasConfig
 			evm.EXPECT().Call(any, any, any, any, any).
-				Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+				Return([]byte{31: 1}, vm.GasBudget{}, nil) // indicates "covered"
 
 			// Run of the sponsored transaction.
 			txIndex := 7
@@ -2654,8 +2757,8 @@ func TestRunSponsoredTransaction_PostTxOutcome_DeterminesRollbackUnderBrio(t *te
 
 			stateDb.EXPECT().Snapshot().Return(1)
 			stateDb.EXPECT().RevertToSnapshot(1)
-			mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{95: 0}, uint64(0), nil) // getGasConfig
-			mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{31: 1}, uint64(0), nil) // chooseFund → mode 1
+			mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{95: 0}, vm.GasBudget{}, nil) // getGasConfig
+			mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{31: 1}, vm.GasBudget{}, nil) // chooseFund → mode 1
 
 			const snapshotId = 42
 			if test.brio {
@@ -2675,7 +2778,7 @@ func TestRunSponsoredTransaction_PostTxOutcome_DeterminesRollbackUnderBrio(t *te
 			}
 			mockEvm.EXPECT().runWithoutBaseFeeCheck(any, tx, any).
 				DoAndReturn(func(ctxt *runContext, _ *types.Transaction, _ int) ProcessedTransaction {
-					_ = ctxt.gasPool.SubGas(21_000)
+					_ = ctxt.gasPool.CheckGasLegacy(21_000)
 					*ctxt.usedGas += 21_000
 					return processedSponsored
 				})
@@ -2683,7 +2786,7 @@ func TestRunSponsoredTransaction_PostTxOutcome_DeterminesRollbackUnderBrio(t *te
 			processedPost := ProcessedTransaction{Transaction: postTx, Receipt: test.postTxReceipt}
 			mockEvm.EXPECT().runWithoutBaseFeeCheck(any, postTx, any).
 				DoAndReturn(func(ctxt *runContext, _ *types.Transaction, _ int) ProcessedTransaction {
-					_ = ctxt.gasPool.SubGas(1_000)
+					_ = ctxt.gasPool.CheckGasLegacy(1_000)
 					*ctxt.usedGas += 1_000
 					return processedPost
 				})
@@ -2707,7 +2810,7 @@ func TestRunSponsoredTransaction_PostTxOutcome_DeterminesRollbackUnderBrio(t *te
 			if test.wantRollback {
 				require.Equal(t, core_types.TransactionResultInvalid, status)
 				require.Equal(t, []ProcessedTransaction{{Transaction: tx}}, got)
-				require.Equal(t, initialGasInPool, gasPool.Gas(), "gas pool must be restored")
+				require.Equal(t, initialGasInPool, gasPool.Available(false, params.MaxTxGas), "gas pool must be restored")
 				require.Equal(t, uint64(50_000), usedGas, "usedGas must be restored")
 			} else {
 				require.Equal(t, core_types.TransactionResultSuccessful, status)
@@ -2741,8 +2844,8 @@ func TestRunSponsoredTransaction_PostTxBuildError_DeterminesRollbackUnderBrio(t 
 
 			stateDb.EXPECT().Snapshot().Return(1)
 			stateDb.EXPECT().RevertToSnapshot(1)
-			mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{95: 0}, uint64(0), nil)
-			mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{31: 1}, uint64(0), nil)
+			mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{95: 0}, vm.GasBudget{}, nil)
+			mockEvm.EXPECT().Call(any, any, any, any, any).Return([]byte{31: 1}, vm.GasBudget{}, nil)
 
 			const snapshotId = 42
 			if test.brio {
@@ -2832,7 +2935,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 		state.EXPECT().RevertToSnapshot(1),
 
 		// --- The effects of the sponsored transaction itself ---
-		state.EXPECT().SetTxContext(tx.Hash(), txIndex),
+		state.EXPECT().SetTxContext(tx.Hash(), txIndex, gomock.Any()),
 		state.EXPECT().SetNonce(sender, uint64(1), tracing.NonceChangeEoACall),
 		state.EXPECT().Snapshot().Return(4), // < for the transaction processing
 		state.EXPECT().EndTransaction(),
@@ -2842,7 +2945,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 		state.EXPECT().GetNonce(zeroAddress).Return(uint64(123)),
 
 		// --- The effects of the fee deduction transaction ---
-		state.EXPECT().SetTxContext(any, txIndex+1),
+		state.EXPECT().SetTxContext(any, txIndex+1, any),
 		state.EXPECT().SetNonce(zeroAddress, uint64(124), tracing.NonceChangeEoACall),
 		state.EXPECT().Snapshot().Return(5),                           // < for the deductFees call
 		state.EXPECT().Snapshot().Return(6),                           // < for the nested burnNativeToken call to SFC
@@ -3054,13 +3157,13 @@ func TestRunSponsoredTransaction_MatchesCoveredAndReceiptToStatus(t *testing.T) 
 			if !test.subsidyRequestFail {
 				any := gomock.Any()
 				evm.EXPECT().Call(any, any, any, any, any).
-					Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+					Return([]byte{95: 0}, vm.GasBudget{}, nil) // results of getGasConfig
 				if test.covered {
 					evm.EXPECT().Call(any, any, any, any, any).
-						Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+						Return([]byte{31: 1}, vm.GasBudget{}, nil) // indicates "covered"
 				} else {
 					evm.EXPECT().Call(any, any, any, any, any).
-						Return([]byte{}, uint64(0), nil) // indicates "not covered"
+						Return([]byte{}, vm.GasBudget{}, nil) // indicates "not covered"
 				}
 
 				if test.covered && !test.poolNotEnough {
@@ -3470,7 +3573,7 @@ func TestRunRegularTransaction_InternalTransactions_SkipsTransactionChecksTrue(t
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
 	any := gomock.Any()
-	state.EXPECT().SetTxContext(any, any).Times(2)
+	state.EXPECT().SetTxContext(any, any, any).Times(2)
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64))
 	state.EXPECT().EndTransaction().Times(2)
 	state.EXPECT().SubBalance(any, any, any)
@@ -3563,7 +3666,7 @@ func TestRunRegularTransaction_RegularTransaction(t *testing.T) {
 			rules: opera.FakeNetRules(opera.GetBrioUpgrades()),
 			stateSetup: func(state *state.MockStateDB) {
 				any := gomock.Any()
-				state.EXPECT().SetTxContext(any, any)
+				state.EXPECT().SetTxContext(any, any, any)
 				state.EXPECT().EndTransaction()
 				state.EXPECT().GetNonce(any).Return(uint64(0)).Times(1)
 			},
@@ -3576,7 +3679,7 @@ func TestRunRegularTransaction_RegularTransaction(t *testing.T) {
 			rules: opera.FakeNetRules(opera.GetAllegroUpgrades()),
 			stateSetup: func(state *state.MockStateDB) {
 				any := gomock.Any()
-				state.EXPECT().SetTxContext(any, any)
+				state.EXPECT().SetTxContext(any, any, any)
 				state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64))
 				state.EXPECT().EndTransaction()
 				state.EXPECT().SubBalance(any, any, any)
@@ -3855,7 +3958,7 @@ func TestBundleTransactionRunner_CreateSnapshot_CallsInterTxSnapshotOnStateDbAnd
 	require.Equal(t, 0, snapshotId)
 	require.Len(t, bundleTransactionRunner.snapshots, 1)
 	require.Equal(t, 123, bundleTransactionRunner.snapshots[0].stateDbSnapshot)
-	require.EqualValues(t, 10, bundleTransactionRunner.snapshots[0].gasPool.Gas())
+	require.EqualValues(t, 10, bundleTransactionRunner.snapshots[0].gasPool.Available(false, params.MaxTxGas))
 	require.EqualValues(t, 11, bundleTransactionRunner.snapshots[0].usedGas)
 	require.Equal(t, 13, bundleTransactionRunner.snapshots[0].trueTxOffset)
 	require.Equal(t, 14, bundleTransactionRunner.snapshots[0].processedTransactionListLength)
@@ -3893,7 +3996,7 @@ func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOn
 	require.Equal(t, 15, bundleTransactionRunner.trueTxOffset)
 	require.Len(t, bundleTransactionRunner.processedTransactions, 5)
 	require.EqualValues(t, 6, *ctxt.usedGas)
-	require.EqualValues(t, 7, ctxt.gasPool.Gas())
+	require.EqualValues(t, 7, ctxt.gasPool.Available(false, params.MaxTxGas))
 	require.EqualValues(t, 42, bundleTransactionRunner.sizeLimit)
 }
 
@@ -4592,7 +4695,7 @@ func TestNewTransactionProcessorForBlock_ConfiguresTransactionProcessorWithValue
 
 	require.Equal(block.Number, processor.blockNumber)
 	require.NotNil(processor.gp)
-	require.Equal(uint64(math.MaxUint64), processor.gp.Gas())
+	require.Equal(uint64(math.MaxUint64), processor.gp.Available(false, params.MaxTxGas))
 	require.Equal(block.Header(), processor.header)
 	require.Equal(types.LatestSignerForChainID(chainCfg.ChainID), processor.signer)
 	require.Equal(state, processor.stateDb)
@@ -4868,9 +4971,9 @@ func TestRunSponsoredTransaction_SkipsTransactionExceedingSizeLimit(t *testing.T
 			fundIdResponse := [32]byte{0x01}                                        // non-zero fundId → mode 1
 			gomock.InOrder(
 				evm.EXPECT().Call(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(gasConfigResponse, uint64(0), nil),
+					Return(gasConfigResponse, vm.GasBudget{}, nil),
 				evm.EXPECT().Call(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(fundIdResponse[:], uint64(0), nil),
+					Return(fundIdResponse[:], vm.GasBudget{}, nil),
 			)
 
 			ctxt := &runContext{
@@ -5657,9 +5760,40 @@ func TestTxAsMessage_ConvertsInternalTransactionToMessage(t *testing.T) {
 	require.Equal(t, common.Address{}, msg.From)
 	require.Equal(t, tx.To(), msg.To)
 	require.Equal(t, tx.Gas(), msg.GasLimit)
-	require.Equal(t, tx.GasPrice(), msg.GasPrice)
-	require.Equal(t, tx.Value(), msg.Value)
+	require.Equal(t, uint256.MustFromBig(tx.GasPrice()), msg.GasPrice)
+	require.Equal(t, uint256.MustFromBig(tx.Value()), msg.Value)
 	require.Equal(t, tx.Data(), msg.Data)
+}
+
+func TestTxAsMessage_RejectsInternalTransactionsWithValuesNotFittingIntoUint256(t *testing.T) {
+	tests := map[string]struct {
+		tx      *types.LegacyTx
+		wantErr string
+	}{
+		"negative value": {
+			tx:      &types.LegacyTx{GasPrice: big.NewInt(1), Value: big.NewInt(-1)},
+			wantErr: "invalid internal transaction value",
+		},
+		"too large value": {
+			tx:      &types.LegacyTx{GasPrice: big.NewInt(1), Value: new(big.Int).Lsh(big.NewInt(1), 256)},
+			wantErr: "invalid internal transaction value",
+		},
+		"negative gas price": {
+			tx:      &types.LegacyTx{GasPrice: big.NewInt(-1), Value: big.NewInt(1)},
+			wantErr: "invalid internal transaction gas price",
+		},
+		"too large gas price": {
+			tx:      &types.LegacyTx{GasPrice: new(big.Int).Lsh(big.NewInt(1), 256), Value: big.NewInt(1)},
+			wantErr: "invalid internal transaction gas price",
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			msg, err := TxAsMessage(types.NewTx(test.tx), nil, big.NewInt(1))
+			require.Nil(t, msg)
+			require.ErrorContains(t, err, test.wantErr)
+		})
+	}
 }
 
 func TestTxAsMessage_ConvertsUserTransactionsToMessage(t *testing.T) {
@@ -5723,8 +5857,8 @@ func TestTxAsMessage_ConvertsUserTransactionsToMessage(t *testing.T) {
 				AccessList: accessList,
 			},
 			expectations: func(t *testing.T, msg core.Message) {
-				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
-				require.Equal(t, big.NewInt(2), msg.GasTipCap)
+				require.Equal(t, uint256.NewInt(1), msg.GasFeeCap)
+				require.Equal(t, uint256.NewInt(2), msg.GasTipCap)
 				require.Equal(t, accessList, msg.AccessList)
 			},
 		},
@@ -5743,8 +5877,8 @@ func TestTxAsMessage_ConvertsUserTransactionsToMessage(t *testing.T) {
 				},
 			},
 			expectations: func(t *testing.T, msg core.Message) {
-				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
-				require.Equal(t, big.NewInt(2), msg.GasTipCap)
+				require.Equal(t, uint256.NewInt(1), msg.GasFeeCap)
+				require.Equal(t, uint256.NewInt(2), msg.GasTipCap)
 				require.Equal(t, accessList, msg.AccessList)
 				require.Equal(t, msg.BlobHashes, []common.Hash{{1}, {2}},
 					"Sonic rejects blobTxs with non-empty blob hashes, but this layer allows them for history replays")
@@ -5762,8 +5896,8 @@ func TestTxAsMessage_ConvertsUserTransactionsToMessage(t *testing.T) {
 				Data:       []byte{0x01, 0x02},
 			},
 			expectations: func(t *testing.T, msg core.Message) {
-				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
-				require.Equal(t, big.NewInt(2), msg.GasTipCap)
+				require.Equal(t, uint256.NewInt(1), msg.GasFeeCap)
+				require.Equal(t, uint256.NewInt(2), msg.GasTipCap)
 				require.Equal(t, accessList, msg.AccessList)
 				require.Nil(t, msg.BlobHashes, "Sonic allows empty blob txs, go-ethereum allows processing nil")
 			},
@@ -5781,8 +5915,8 @@ func TestTxAsMessage_ConvertsUserTransactionsToMessage(t *testing.T) {
 				BlobHashes: []common.Hash{},
 			},
 			expectations: func(t *testing.T, msg core.Message) {
-				require.Equal(t, big.NewInt(1), msg.GasFeeCap)
-				require.Equal(t, big.NewInt(2), msg.GasTipCap)
+				require.Equal(t, uint256.NewInt(1), msg.GasFeeCap)
+				require.Equal(t, uint256.NewInt(2), msg.GasTipCap)
 				require.Equal(t, accessList, msg.AccessList)
 				require.Nil(t, msg.BlobHashes, "Sonic allows empty blob txs, go-ethereum allows processing nil")
 			},
@@ -5830,10 +5964,10 @@ func TestTxAsMessage_ConvertsUserTransactionsToMessage(t *testing.T) {
 
 			require.Equal(t, sender, msg.From)
 			require.Equal(t, tx.To(), msg.To)
-			require.Equal(t, tx.GasPrice(), msg.GasPrice)
-			require.Equal(t, tx.GasFeeCap(), msg.GasFeeCap)
-			require.Equal(t, tx.GasTipCap(), msg.GasTipCap)
-			require.Equal(t, tx.Value(), msg.Value)
+			require.Equal(t, uint256.MustFromBig(tx.GasPrice()), msg.GasPrice)
+			require.Equal(t, uint256.MustFromBig(tx.GasFeeCap()), msg.GasFeeCap)
+			require.Equal(t, uint256.MustFromBig(tx.GasTipCap()), msg.GasTipCap)
+			require.Equal(t, uint256.MustFromBig(tx.Value()), msg.Value)
 			require.Equal(t, tx.Gas(), msg.GasLimit)
 			require.Equal(t, tx.Data(), msg.Data)
 
@@ -5854,7 +5988,6 @@ func mockStateDbTransactionExecution(stateDb *state.MockStateDB) {
 	stateDb.EXPECT().SetNonce(any, any, any).AnyTimes()
 	stateDb.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
 	stateDb.EXPECT().GetCode(any).AnyTimes()
-	stateDb.EXPECT().GetStorageRoot(any).Return(types.EmptyRootHash).AnyTimes()
 	stateDb.EXPECT().Snapshot().AnyTimes()
 	stateDb.EXPECT().Exist(any).Return(true).AnyTimes()
 	stateDb.EXPECT().GetRefund().AnyTimes()

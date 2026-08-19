@@ -52,26 +52,15 @@ func TestNewEVMTxContext_ReturnsErrorForNilMessage(t *testing.T) {
 	require.ErrorContains(t, err, "message cannot be nil")
 }
 
-func TestNewEVMTxContext_ReturnsErrorForInvalidGasPrice(t *testing.T) {
-	tests := map[string]*big.Int{
-		"negative":  big.NewInt(-1),
-		"too large": new(big.Int).Lsh(big.NewInt(1), 256),
-	}
-	for name, gasPrice := range tests {
-		t.Run(name, func(t *testing.T) {
-			msg := &core.Message{
-				GasPrice: gasPrice,
-			}
-			_, err := NewEVMTxContext(msg)
-			require.ErrorContains(t, err, "invalid gas price")
-		})
-	}
+func TestNewEVMTxContext_ReturnsErrorForMissingGasPrice(t *testing.T) {
+	_, err := NewEVMTxContext(&core.Message{})
+	require.ErrorContains(t, err, "message gas price cannot be nil")
 }
 
 func TestNewEVMTxContext_UsesEthereumCoreConversion(t *testing.T) {
 	msg := &core.Message{
 		From:     common.Address{1, 2, 3},
-		GasPrice: big.NewInt(100),
+		GasPrice: uint256.NewInt(100),
 		BlobHashes: []common.Hash{
 			{4, 5, 6},
 			{7, 8},
@@ -90,11 +79,11 @@ func TestNewEVMTxContext_OnlyCoversKnownFields(t *testing.T) {
 	msg := &core.Message{
 		From:      common.Address{1, 2, 3},
 		To:        &common.Address{4, 5, 6},
-		Value:     big.NewInt(1000),
+		Value:     uint256.NewInt(1000),
 		GasLimit:  21000,
-		GasPrice:  big.NewInt(100),
-		GasFeeCap: big.NewInt(200),
-		GasTipCap: big.NewInt(50),
+		GasPrice:  uint256.NewInt(100),
+		GasFeeCap: uint256.NewInt(200),
+		GasTipCap: uint256.NewInt(50),
 		Data:      []byte{0x1, 0x2},
 		AccessList: types.AccessList{
 			{
@@ -102,7 +91,7 @@ func TestNewEVMTxContext_OnlyCoversKnownFields(t *testing.T) {
 				StorageKeys: []common.Hash{{11}, {12}},
 			},
 		},
-		BlobGasFeeCap: big.NewInt(300),
+		BlobGasFeeCap: uint256.NewInt(300),
 		BlobHashes: []common.Hash{
 			{4, 5, 6},
 			{7, 8},
@@ -117,20 +106,17 @@ func TestNewEVMTxContext_OnlyCoversKnownFields(t *testing.T) {
 
 	expected := vm.TxContext{
 		Origin:     msg.From,
-		GasPrice:   uint256.MustFromBig(msg.GasPrice),
+		GasPrice:   msg.GasPrice,
 		BlobHashes: msg.BlobHashes,
 	}
 	require.Equal(t, expected, txContext)
 }
 
-func TestMustNewEVMTxContext_PanicsOnInvalidGasPrice(t *testing.T) {
-	msg := &core.Message{
-		GasPrice: big.NewInt(-1),
-	}
+func TestMustNewEVMTxContext_PanicsOnMissingGasPrice(t *testing.T) {
 	require.PanicsWithValue(
 		t,
-		"failed to create EVM transaction context: invalid gas price -1",
-		func() { MustNewEVMTxContext(msg) },
+		"failed to create EVM transaction context: message gas price cannot be nil",
+		func() { MustNewEVMTxContext(&core.Message{}) },
 	)
 }
 

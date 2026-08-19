@@ -33,7 +33,7 @@ type priorityContext struct {
 	cache      *evmcore.PriorityCache
 	classifier priorities.Classifier
 	config     priorities.Config
-	releaseDB  func()
+	releaseAll func()
 }
 
 // newPriorityContext builds the priority context for the current head block, or
@@ -74,14 +74,17 @@ func (em *Emitter) newPriorityContext() *priorityContext {
 		cache:      em.priorityCache,
 		classifier: priorities.NewEvmClassifier(rules.Upgrades, evm, em.world.TransactionSigner, statedb, priorityTxFailures),
 		config:     config,
-		releaseDB:  statedb.Release,
+		releaseAll: func() {
+			evm.Release()
+			statedb.Release()
+		},
 	}
 }
 
-// release releases the state db when the context is not nil.
+// release releases the EVM and the state db when the context is not nil.
 func (c *priorityContext) release() {
 	if c != nil {
-		c.releaseDB()
+		c.releaseAll()
 	}
 }
 
