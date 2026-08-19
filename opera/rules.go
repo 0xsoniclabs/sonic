@@ -366,6 +366,10 @@ func CreateTransientEvmChainConfig(
 				cfg.OsakaTime = &timestampInThePast
 			}
 
+			if upgrade.Canto {
+				cfg.AmsterdamTime = &timestampInThePast
+			}
+
 			break
 		}
 	}

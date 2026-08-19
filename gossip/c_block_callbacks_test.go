@@ -112,8 +112,18 @@ func testConsensusCallback(t *testing.T, upgrades opera.Upgrades) {
 		}
 		rr, err := env.ApplyTxs(tm, txs...)
 		require.NoError(err)
-		// subtract fees
-		for i, r := range rr {
+		// Subtract fees. Receipts are returned in block order, which need not
+		// match the order the transactions were handed in, so each receipt is
+		// matched to its transaction by hash. Since EIP-2780 the transactions no
+		// longer all cost the same: the self-transfer of txs[0] is charged
+		// neither for touching the recipient nor for the transfer itself.
+		senderOf := make(map[common.Hash]int, len(txs))
+		for i, tx := range txs {
+			senderOf[tx.Hash()] = i
+		}
+		for _, r := range rr {
+			i, found := senderOf[r.TxHash]
+			require.True(found, "receipt for an unknown transaction")
 			fee := uint256.NewInt(0).Mul(new(uint256.Int).SetUint64(r.GasUsed), utils.BigIntToUint256Clamped(txs[i].GasPrice()))
 			balances[i] = uint256.NewInt(0).Sub(balances[i], fee)
 		}

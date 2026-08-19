@@ -102,5 +102,11 @@ func GetVmConfig(rules Rules) vm.Config {
 		res.MaxInitCodeSize = &maxInitCodeSize
 	}
 
+	if rules.Upgrades.Canto {
+		// Amsterdam increases the max code and init code size further.
+		res.MaxCodeSize = nil
+		res.MaxInitCodeSize = nil
+	}
+
 	return res
 }
