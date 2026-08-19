@@ -40,6 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -290,7 +291,8 @@ func TestIntegrationTestNet_CanStartWithCustomConfig(t *testing.T) {
 	gp, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err)
 
-	gas, err := core.IntrinsicGas(nil, nil, nil, true, true, true, true)
+	gas, err := core.IntrinsicGas(nil, nil, nil, common.Address{}, nil, nil,
+		params.Rules{IsHomestead: true, IsIstanbul: true, IsShanghai: true})
 	require.NoError(t, err)
 
 	tx := SignTransaction(t, chainId, &types.DynamicFeeTx{

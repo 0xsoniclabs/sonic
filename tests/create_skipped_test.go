@@ -100,12 +100,7 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 			postBalance, err := client.BalanceAt(t.Context(), sender.Address(), receipt.BlockNumber)
 			require.NoError(t, err)
 
-			if version == opera.GetSonicUpgrades() {
-				require.Less(t, postBalance.Uint64(), preBalance.Uint64(), "balance should decrease after failed contract creation")
-			}
-			if version == opera.GetAllegroUpgrades() {
-				require.Equal(t, preBalance, postBalance, "balance should not change after failed contract creation")
-			}
+			require.Equal(t, preBalance, postBalance, "balance should not change after skipped contract creation")
 		})
 	}
 }

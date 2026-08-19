@@ -18,11 +18,11 @@ package tests
 
 import (
 	"math/big"
-	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -138,12 +138,14 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 	require.NoError(t, err)
 
 	for tx, blockNumber := range executedIn {
-		block, err := client.BlockByNumber(t.Context(), blockNumber)
+		// Only the hashes are read, since go-ethereum's transaction decoder
+		// rejects the blob transaction for having no blob hashes.
+		var block struct {
+			Transactions []common.Hash
+		}
+		err := client.Client().Call(&block, "eth_getBlockByNumber", hexutil.EncodeBig(blockNumber), false)
 		require.NoError(t, err, "failed to get block %v", blockNumber)
 
-		require.True(t,
-			slices.ContainsFunc(block.Transactions(), func(received *types.Transaction) bool {
-				return received.Hash() == tx.Hash()
-			}))
+		require.Contains(t, block.Transactions, tx.Hash())
 	}
 }

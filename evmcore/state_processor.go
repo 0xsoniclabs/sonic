@@ -17,6 +17,7 @@
 package evmcore
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -28,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -35,6 +37,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 )
 
@@ -164,6 +167,7 @@ func (p *StateProcessor) ProcessWithDifficulty(
 		blockNumber  = block.Number
 		signer       = types.LatestSignerForChainID(p.config.ChainID)
 	)
+	defer vmenv.Release()
 
 	// execute EIP-2935 HistoryStorage contract.
 	if p.config.IsPrague(blockNumber, time) {
@@ -459,7 +463,7 @@ func (r *transactionRunner) runSponsoredTransactionInternal(
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
 
-	available := ctxt.gasPool.Gas()
+	available := ctxt.gasPool.Available(false, 0)
 	needed := tx.Gas() + overhead.Gas
 	if available < needed {
 		log.Debug("Not enough gas left in block for sponsored transaction",
@@ -748,10 +752,10 @@ func (e evm) _runTransaction(
 	}
 
 	e.Config.NoBaseFee = !checkBaseFee
-	ctxt.statedb.SetTxContext(tx.Hash(), txIndex)
+	ctxt.statedb.SetTxContext(tx.Hash(), txIndex, uint32(txIndex+1))
 	receipt, _, err := applyTransaction(
 		msg, ctxt.gasPool, ctxt.statedb, ctxt.blockNumber, tx,
-		ctxt.usedGas, e.EVM,
+		ctxt.usedGas, e.EVM, ctxt.upgrades,
 	)
 	if err != nil {
 		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
@@ -868,6 +872,12 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary
 	), []*types.Transaction{tx}, i, math.MaxUint64)
 }
 
+// Release returns the EVM's resources for reuse. The processor must not be
+// used afterwards.
+func (tp *TransactionProcessor) Release() {
+	tp.vmEnvironment.Release()
+}
+
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
 // and uses the input parameters for its environment similar to ApplyTransaction. However,
 // this method takes an already created EVM instance as input.
@@ -948,12 +958,13 @@ func ApplyTransactionWithEVM(
 // ProcessParentBlockHash stores the parent block hash in the history storage contract
 // as per EIP-2935.
 func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM, stateDb state.StateDB) {
+	const systemCallGasLimit = 30_000_000
 	msg := &core.Message{
 		From:      params.SystemAddress,
-		GasLimit:  30_000_000,
-		GasPrice:  common.Big0,
-		GasFeeCap: common.Big0,
-		GasTipCap: common.Big0,
+		GasLimit:  systemCallGasLimit,
+		GasPrice:  common.U2560,
+		GasFeeCap: common.U2560,
+		GasTipCap: common.U2560,
 		To:        &params.HistoryStorageAddress,
 		Data:      prevHash.Bytes(),
 	}
@@ -962,8 +973,8 @@ func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM, stateDb state.Sta
 	evm.SetTxContext(MustNewEVMTxContext(msg))
 
 	stateDb.AddAddressToAccessList(params.HistoryStorageAddress)
-	_, _, _ = evm.Call(msg.From, *msg.To, msg.Data, 30_000_000, common.U2560)
-	stateDb.Finalise(true)
+	_, _, _ = evm.Call(msg.From, *msg.To, msg.Data, vm.NewGasBudget(systemCallGasLimit, 0), common.U2560)
+	stateDb.Finalise(evm.GetRules())
 	stateDb.EndTransaction()
 }
 
@@ -979,6 +990,7 @@ func applyTransaction(
 	tx *types.Transaction,
 	usedGas *uint64,
 	evm *vm.EVM,
+	upgrades opera.Upgrades,
 ) (
 	*types.Receipt,
 	uint64,
@@ -993,18 +1005,34 @@ func applyTransaction(
 	evm.SetTxContext(txContext)
 
 	// Skip checking of base fee limits for internal transactions.
-	evm.Config.NoBaseFee = evm.Config.NoBaseFee || msg.SkipNonceChecks
+	evm.Config.NoBaseFee = evm.Config.NoBaseFee || internaltx.IsInternal(tx)
 
 	isAllegro := evm.ChainConfig().IsPrague(blockNumber, evm.Context.Time)
 	var snapshot int
 	if isAllegro {
 		snapshot = statedb.Snapshot()
 	}
+	gasPool := gp.Snapshot()
 	// Apply the transaction to the current state (included in the env).
 	result, err := core.ApplyMessage(evm, msg, gp)
 	if err != nil {
 		if isAllegro {
 			statedb.RevertToSnapshot(snapshot)
+		}
+		// Skipped transactions are not in the block, but the gas they take from
+		// the pool is. go-ethereum charges the pool before checking the sender's
+		// balance since 1.17.8; Sonic keeps charging it only after that check.
+		if errors.Is(err, core.ErrInsufficientFunds) {
+			gp.Set(gasPool)
+		}
+		// go-ethereum checks the init code size before that balance check since
+		// 1.17.10; until Canto, Sonic keeps charging the pool for creations whose
+		// sender can pay for the gas limit.
+		if !upgrades.Canto && errors.Is(err, vm.ErrMaxInitCodeSizeExceeded) {
+			cost, overflow := new(uint256.Int).MulOverflow(uint256.NewInt(msg.GasLimit), msg.GasPrice)
+			if !overflow && !statedb.GetBalance(msg.From).Lt(cost) {
+				_ = gp.CheckGasLegacy(msg.GasLimit)
+			}
 		}
 		statedb.EndTransaction()
 		return nil, 0, err
@@ -1045,30 +1073,40 @@ func applyTransaction(
 	// Set the effective gas price in the receipt. By registering it here, at
 	// the source, down-stream consumers of the receipts do not have to
 	// replicate the code for computing effective gas prices.
-	receipt.EffectiveGasPrice = msg.GasPrice
+	receipt.EffectiveGasPrice = msg.GasPrice.ToBig()
 
 	return receipt, result.UsedGas, nil
 }
 
 func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (*core.Message, error) {
 	if internaltx.IsInternal(tx) {
+		var conversionErr error
+		toUint256 := func(name string, value *big.Int) *uint256.Int {
+			converted, err := utils.BigIntToUint256(value)
+			if err != nil && conversionErr == nil {
+				conversionErr = fmt.Errorf("invalid internal transaction %s: %w", name, err)
+			}
+			return converted
+		}
 
-		return &core.Message{ // internal tx - no signature checking
-			From:                  internaltx.InternalSender(tx),
-			To:                    tx.To(),
-			Nonce:                 tx.Nonce(),
-			Value:                 tx.Value(),
-			GasLimit:              tx.Gas(),
-			GasPrice:              tx.GasPrice(),
-			GasFeeCap:             tx.GasFeeCap(),
-			GasTipCap:             tx.GasTipCap(),
-			Data:                  tx.Data(),
-			AccessList:            tx.AccessList(),
-			BlobGasFeeCap:         tx.BlobGasFeeCap(),
-			BlobHashes:            tx.BlobHashes(),
-			SkipNonceChecks:       true, // don't check sender nonce and being EOA
-			SkipTransactionChecks: true,
-		}, nil
+		msg := (&core.Message{ // internal tx - no signature checking
+			From:          internaltx.InternalSender(tx),
+			To:            tx.To(),
+			Nonce:         tx.Nonce(),
+			Value:         toUint256("value", tx.Value()),
+			GasLimit:      tx.Gas(),
+			GasPrice:      toUint256("gas price", tx.GasPrice()),
+			GasFeeCap:     toUint256("gas fee cap", tx.GasFeeCap()),
+			GasTipCap:     toUint256("gas tip cap", tx.GasTipCap()),
+			Data:          tx.Data(),
+			AccessList:    tx.AccessList(),
+			BlobGasFeeCap: toUint256("blob gas fee cap", tx.BlobGasFeeCap()),
+			BlobHashes:    tx.BlobHashes(),
+		}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
+		if conversionErr != nil {
+			return nil, conversionErr
+		}
+		return msg, nil
 	}
 
 	msg, err := core.TransactionToMessage(tx, signer, baseFee)

@@ -26,6 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -51,12 +52,12 @@ func Fund(
 	ok, fundId, err := registry.AccountSponsorshipFundId(nil, sponsee)
 	require.NoError(t, err)
 
-	latestBlock, err := client.BlockByNumber(t.Context(), nil)
+	latestHeader, err := client.HeaderByNumber(t.Context(), nil)
 	require.NoError(t, err)
 
-	tests.WaitForProofOf(t, client, int(latestBlock.NumberU64()))
+	tests.WaitForProofOf(t, client, int(latestHeader.Number.Uint64()))
 
-	sponsorshipBefore, err := registry.Sponsorships(&bind.CallOpts{BlockNumber: latestBlock.Number()}, fundId)
+	sponsorshipBefore, err := registry.Sponsorships(&bind.CallOpts{BlockNumber: latestHeader.Number}, fundId)
 	require.NoError(t, err)
 
 	receipt, err := session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
@@ -96,7 +97,15 @@ func validateSponsoredTxInBlock(
 	receipt, err := session.GetReceipt(txHash)
 	require.NoError(err)
 
-	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
+	// Only the hashes are read, since go-ethereum's transaction decoder
+	// rejects blob transactions without blob hashes.
+	var block struct {
+		Transactions []common.Hash
+	}
+	err = client.Client().Call(&block, "eth_getBlockByNumber", hexutil.EncodeBig(receipt.BlockNumber), false)
+	require.NoError(err)
+
+	header, err := client.HeaderByNumber(t.Context(), receipt.BlockNumber)
 	require.NoError(err)
 
 	registry, err := registry.NewRegistry(registry.GetAddress(), client)
@@ -108,18 +117,19 @@ func validateSponsoredTxInBlock(
 	// Check that the payment transaction is included right after the sponsored
 	// transaction and that it was successful and has a non-zero value.
 	found := false
-	for i, tx := range block.Transactions() {
-		if tx.Hash() == receipt.TxHash {
+	for i, hash := range block.Transactions {
+		if hash == receipt.TxHash {
 			// check that the next transaction is an internal payment transaction
-			require.Less(i+1, len(block.Transactions()), "sponsored transaction must not be last, it is last")
-			payment := block.Transactions()[i+1]
+			require.Less(i+1, len(block.Transactions), "sponsored transaction must not be last, it is last")
+			payment, _, err := client.TransactionByHash(t.Context(), block.Transactions[i+1])
+			require.NoError(err)
 			require.True(internaltx.IsInternal(payment), "payment transaction must be internal, but it is not")
 			substractReceipt, err := session.GetReceipt(payment.Hash())
 			require.NoError(err)
 			require.Equal(types.ReceiptStatusSuccessful, substractReceipt.Status)
 
 			// check that the deduced amount matches the (gas used + overhead) * market price
-			feeCharged := (receipt.GasUsed + config.OverheadChargeForFundBackedSponsorships.Uint64()) * block.BaseFee().Uint64()
+			feeCharged := (receipt.GasUsed + config.OverheadChargeForFundBackedSponsorships.Uint64()) * header.BaseFee.Uint64()
 			require.Len(substractReceipt.Logs, 1, "no logs found in the payment transaction receipt")
 			log := substractReceipt.Logs[0]
 			reportedCharge := new(big.Int).SetBytes(log.Data)

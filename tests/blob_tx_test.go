@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/blobbasefee"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -31,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -282,19 +284,28 @@ func createTestBlobTransactionWithNilSidecar(t *testing.T, session IntegrationTe
 
 func checkBlocksSanity(t *testing.T, session IntegrationTestNetSession) {
 	// This check is a regression from an issue found while fetching a block by
-	// number where the last block was not correctly serialized
+	// number where the last block was not correctly serialized. Blocks are
+	// decoded into Sonic's RPC types, since go-ethereum's transaction decoder
+	// rejects blob transactions without blob hashes, the only ones Sonic accepts.
 	require := require.New(t)
 
 	client, err := session.GetClient()
 	require.NoError(err, "failed to get client")
 	defer client.Close()
 
-	lastBlock, err := client.BlockByNumber(t.Context(), nil)
-	require.NoError(err)
+	getBlock := func(number rpc.BlockNumber) hexutil.Uint64 {
+		var block *struct {
+			Number       hexutil.Uint64
+			Transactions []*ethapi.RPCTransaction
+		}
+		require.NoError(client.Client().Call(&block, "eth_getBlockByNumber", number, true))
+		require.NotNil(block, "block %v not found", number)
+		return block.Number
+	}
 
-	for i := uint64(0); i < lastBlock.Number().Uint64(); i++ {
-		_, err := client.BlockByNumber(t.Context(), big.NewInt(int64(i)))
-		require.NoError(err)
+	lastBlock := getBlock(rpc.LatestBlockNumber)
+	for i := rpc.BlockNumber(0); i < rpc.BlockNumber(lastBlock); i++ {
+		getBlock(i)
 	}
 }
 
