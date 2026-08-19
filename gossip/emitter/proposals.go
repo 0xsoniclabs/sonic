@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
@@ -129,14 +130,15 @@ func createPayload(
 	// Make a new proposal. For the time of the block we use the median time,
 	// which is the median of all creation times of the events seen from all
 	// validators.
+	rules := world.GetRules()
 	proposal, err := makeProposal(
-		world.GetRules(),
+		rules,
 		incomingState,
 		latest,
 		event.MedianTime(), // < time of the new block
 		currentFrame,
 		transactionScheduler,
-		&transactionPriorityAdapter{sorted},
+		&transactionPriorityAdapter{sorted: sorted, rules: rules},
 		randaoMixer,
 		durationMetric,
 		timeoutMetric,
@@ -316,17 +318,27 @@ type counterMetric interface {
 }
 
 // transactionPriorityAdapter is an adapter between the transaction ordering heap
-// and the scheduler's PrioritizedTransactions interface.
+// and the scheduler's PrioritizedTransactions interface. It drops transactions
+// the event checks would reject under the given rules, as a proposal carrying
+// one of them would invalidate the whole event.
 type transactionPriorityAdapter struct {
 	sorted transactionIndex
+	rules  opera.Rules
 }
 
 func (a *transactionPriorityAdapter) Current() *types.Transaction {
-	entry, ok := a.sorted.Peek()
-	if !ok {
-		return nil
+	for {
+		entry, ok := a.sorted.Peek()
+		if !ok {
+			return nil
+		}
+		tx := entry.tx.Resolve()
+		if tx == nil || epochcheck.CheckTxs(types.Transactions{tx}, a.rules) == nil {
+			return tx
+		}
+		txsSkippedEpochRules.Inc(1)
+		a.sorted.PopSequence()
 	}
-	return entry.tx.Resolve()
 }
 
 func (a *transactionPriorityAdapter) Accept() {

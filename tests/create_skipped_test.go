@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -32,12 +33,11 @@ import (
 func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *testing.T) {
 
 	testSizes := map[string]int{
-		"Sonic":   50000,
-		"Allegro": 50000,
-		// From Brio onwards, the limit is doubled
-		"Brio":  50000 * 2,
-		"Canto": 50000 * 2,
-		"Dolce": 50000 * 2,
+		"Sonic":   params.MaxInitCodeSize + 1,
+		"Allegro": params.MaxInitCodeSize + 1,
+		"Brio":    opera.SonicBrioMaxInitCodeSize + 1,
+		"Canto":   params.MaxInitCodeSizeAmsterdam + 1,
+		"Dolce":   params.MaxInitCodeSizeAmsterdam + 1,
 	}
 
 	for name, version := range opera.GetAllHardForksInOrder() {

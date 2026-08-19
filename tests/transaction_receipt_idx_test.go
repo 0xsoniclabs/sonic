@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 )
 
@@ -242,6 +243,9 @@ func testSkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t *testin
 	initCode := make([]byte, 50000)
 	if upgrades.Brio {
 		initCode = make([]byte, 50000*2)
+	}
+	if upgrades.Canto {
+		initCode = make([]byte, params.MaxInitCodeSizeAmsterdam+1)
 	}
 	txData := &types.LegacyTx{
 		Nonce:    uint64(0),

@@ -231,6 +231,8 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 	eagerTxs := int64(0)
 
 	for entry, ok := sorted.Peek(); ok; entry, ok = sorted.Peek() {
+		txGas := epochcheck.TxGasPowerUsed(entry.tx.Gas, rules)
+
 		// Another validator's turn: admit eagerly only if the transaction is
 		// prioritized and the eager limits are not yet exhausted.
 		if !entry.myTurn {
@@ -241,7 +243,7 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 				continue
 			}
 			if piggybackTxs[priority.ID] >= maxPiggybackTxs ||
-				piggybackGas+entry.tx.Gas > maxPiggybackGas {
+				piggybackGas+txGas > maxPiggybackGas {
 				txsSkippedPiggybackLimit.Inc(1)
 				sorted.PopSequence()
 				continue
@@ -260,14 +262,14 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 		}
 
 		sender, _ := types.Sender(em.world.TransactionSigner, resolvedTx)
-		// check transaction epoch rules (tx type, gas price)
+		// check transaction epoch rules (tx type, intrinsic gas)
 		if epochcheck.CheckTxs(types.Transactions{resolvedTx}, rules) != nil {
 			txsSkippedEpochRules.Inc(1)
 			sorted.PopSequence()
 			continue
 		}
 		// check there's enough gas power to originate the transaction
-		if tx.Gas >= e.GasPowerLeft().Min() || e.GasPowerUsed()+tx.Gas >= maxGasUsed {
+		if txGas >= e.GasPowerLeft().Min() || e.GasPowerUsed()+txGas >= maxGasUsed {
 			txsSkippedNoValidatorGas.Inc(1)
 			if params.TxGas >= e.GasPowerLeft().Min() || e.GasPowerUsed()+params.TxGas >= maxGasUsed {
 				// stop if cannot originate even an empty transaction
@@ -295,14 +297,14 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 		}
 
 		// add
-		e.SetGasPowerUsed(e.GasPowerUsed() + tx.Gas)
-		e.SetGasPowerLeft(e.GasPowerLeft().Sub(tx.Gas))
+		e.SetGasPowerUsed(e.GasPowerUsed() + txGas)
+		e.SetGasPowerLeft(e.GasPowerLeft().Sub(txGas))
 		e.SetTxs(append(e.Transactions(), resolvedTx))
 		totalTxSizeInBytes += txSize
 		if entry.myTurn {
 			ownTxs = true
 		} else {
-			piggybackGas += tx.Gas
+			piggybackGas += txGas
 			piggybackTxs[entry.priority.ID]++
 			eagerTxs++
 		}

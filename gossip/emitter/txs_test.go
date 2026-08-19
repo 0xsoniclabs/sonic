@@ -488,6 +488,77 @@ func hashes(txs types.Transactions) []common.Hash {
 // addTxsFixture builds a minimal Emitter ready to exercise addTxs. Its
 // cache.priorityConfig carries the rate limits an ordering build would have read
 // from the registry, zero by default, which admits nothing eagerly.
+// TestEmitter_addTxs_SkipsTransactionsBelowTheIntrinsicGasOfTheEpoch checks
+// that the emitter never adds a transaction its own event checks reject, as
+// the event would be dropped. From Canto on, EIP-2780 prices a zero-value call
+// below the legacy 21000.
+func TestEmitter_addTxs_SkipsTransactionsBelowTheIntrinsicGasOfTheEpoch(t *testing.T) {
+	tests := map[string]struct {
+		upgrades opera.Upgrades
+		added    bool
+	}{
+		"Brio":  {upgrades: opera.GetBrioUpgrades()},
+		"Canto": {upgrades: opera.GetCantoUpgrades(), added: true},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			f := newAddTxsFixture(t, ctrl)
+			rules := f.em.world.GetRules()
+			rules.Upgrades = test.upgrades
+			external := NewMockExternal(ctrl)
+			external.EXPECT().GetRules().Return(rules).AnyTimes()
+			f.em.world.External = external
+
+			call := f.makeTxs(t, 15_000, 0)[0]
+			event := f.makeEvent()
+			f.em.addTxs(event, f.makeSorted(t, nil, myTurnFor(call), call))
+
+			if test.added {
+				require.Equal(t, []common.Hash{call.Hash()}, hashes(event.Transactions()))
+			} else {
+				require.Empty(t, event.Transactions())
+			}
+		})
+	}
+}
+
+func TestEmitter_addTxs_FromCantoChargesOnlyTheExecutionGasOfATransaction(t *testing.T) {
+	tests := map[string]struct {
+		upgrades opera.Upgrades
+		added    bool
+	}{
+		"Brio":  {upgrades: opera.GetBrioUpgrades()},
+		"Canto": {upgrades: opera.GetCantoUpgrades(), added: true},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			f := newAddTxsFixture(t, ctrl)
+			rules := f.em.world.GetRules()
+			rules.Upgrades = test.upgrades
+			rules.Economy.Gas.MaxEventGas = 1_000_000
+			rules.Economy.Gas.EventGas = 1_000
+			external := NewMockExternal(ctrl)
+			external.EXPECT().GetRules().Return(rules).AnyTimes()
+			f.em.world.External = external
+
+			tx := f.makeTxs(t, 50_000_000, 0)[0]
+			event := f.makeEvent()
+			f.em.addTxs(event, f.makeSorted(t, nil, myTurnFor(tx), tx))
+
+			if test.added {
+				require.Equal(t, []common.Hash{tx.Hash()}, hashes(event.Transactions()))
+				require.Equal(t, rules.MaxTxExecutionGas(), event.GasPowerUsed())
+			} else {
+				require.Empty(t, event.Transactions())
+			}
+		})
+	}
+}
+
 type addTxsFixture struct {
 	em     *Emitter
 	signer types.Signer

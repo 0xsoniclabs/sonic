@@ -17,6 +17,7 @@
 package evmcore
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -322,6 +323,18 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 			})
 		}
 	}
+}
+
+// callBudgetRecorder is a vm.CallContextInterceptor that records the gas budget
+// of the first EVM call it sees and skips the actual execution.
+type callBudgetRecorder struct {
+	vm.CallContextInterceptor
+	budget vm.GasBudget
+}
+
+func (r *callBudgetRecorder) Call(_ *vm.EVM, _ common.Address, _ common.Address, _ []byte, gas vm.GasBudget, _ *uint256.Int) ([]byte, vm.GasBudget, error) {
+	r.budget = gas
+	return nil, gas, nil
 }
 
 func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testing.T) {
@@ -3652,6 +3665,65 @@ func TestRunRegularTransaction_InternalTransactions_SkipsTransactionChecksTrue(t
 	require.Equal(t, core_types.TransactionResultInvalid, status)
 	require.Equal(t, regularTx, got.Transaction)
 	require.Nil(t, got.Receipt)
+}
+
+func TestRunRegularTransaction_InternalTransactions_ExecuteWithTheirWholeGasLimit(t *testing.T) {
+	const maxTxGas = 1_500_000
+	tests := map[string]opera.Upgrades{
+		"Brio":  opera.GetBrioUpgrades(),
+		"Canto": opera.GetCantoUpgrades(),
+	}
+
+	for name, upgrades := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			ctrl := gomock.NewController(t)
+
+			rules := opera.FakeNetRules(upgrades)
+			rules.Economy.Gas.MaxEventGas = maxTxGas
+			chainConfig := opera.CreateTransientEvmChainConfig(
+				rules.NetworkID,
+				[]opera.UpgradeHeight{{Upgrades: rules.Upgrades}},
+				1,
+			)
+
+			// The calldata alone costs more than the cap, as the calldata of
+			// epoch sealing grows with the validator set.
+			tx := types.NewTx(&types.LegacyTx{
+				To:   &common.Address{1},
+				Gas:  100 * maxTxGas,
+				Data: bytes.Repeat([]byte{1}, int(maxTxGas/params.TxDataNonZeroGasEIP2028)+1),
+			})
+			require.True(internaltx.IsInternal(tx))
+
+			state := getStateDbMockForTransactions(ctrl, []*types.Transaction{tx})
+			blockContext := vm.BlockContext{
+				BlockNumber: big.NewInt(1),
+				BaseFee:     big.NewInt(1),
+				Random:      &common.Hash{},
+			}
+			evmInstance := vm.NewEVM(blockContext, state, chainConfig, opera.GetVmConfig(rules))
+			recorder := &callBudgetRecorder{}
+			evmInstance.CallInterceptor = recorder
+
+			ctxt := &runContext{
+				signer:   types.LatestSignerForChainID(nil),
+				baseFee:  blockContext.BaseFee,
+				statedb:  state,
+				gasPool:  core.NewGasPool(rules.Blocks.MaxBlockGas),
+				usedGas:  new(uint64),
+				upgrades: rules.Upgrades,
+			}
+			got, status := (&transactionRunner{evm{evmInstance}}).runRegularTransaction(ctxt, tx, 0, math.MaxUint64)
+			require.Equal(core_types.TransactionResultSuccessful, status)
+			require.NotNil(got.Receipt)
+
+			intrinsicGas, err := core.IntrinsicGas(tx.Data(), nil, nil, common.Address{}, tx.To(), uint256.NewInt(0), evmInstance.GetRules())
+			require.NoError(err)
+			require.Greater(intrinsicGas, uint64(maxTxGas))
+			require.Equal(vm.NewGasBudget(tx.Gas()-intrinsicGas, 0), recorder.budget)
+		})
+	}
 }
 
 func TestRunRegularTransaction_RegularTransaction(t *testing.T) {

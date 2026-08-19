@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -231,4 +232,14 @@ func TestNewEVMBlockContextWithDifficulty_UsesHeaderParametersIfDefinedOrSonicDe
 			test.expectation(t, ctx)
 		})
 	}
+}
+
+func TestMaxTxGas_DefaultsToProtocolCap(t *testing.T) {
+	require.Equal(t, params.MaxTxGas, MaxTxGas(&vm.EVM{}))
+}
+
+func TestMaxTxGas_UsesConfiguredCap(t *testing.T) {
+	maxTxGas := uint64(123)
+	evm := &vm.EVM{Config: vm.Config{MaxTxGas: &maxTxGas}}
+	require.Equal(t, maxTxGas, MaxTxGas(evm))
 }

@@ -26,9 +26,9 @@ import (
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 )
 
@@ -176,7 +176,17 @@ func testLargeTransactionLoadTest(
 	// Create a list of large transactions to flood the network.
 	transactions := []*types.Transaction{}
 	data := make([]byte, 125_000)
-	gas := uint64(len(data))*params.TxCostFloorPerToken + 21_000
+	// The calldata floor dominates the gas of these transactions, and its price
+	// depends on the revision (EIP-7623, EIP-7976).
+	client, err := net.GetClient()
+	require.NoError(err)
+	gas, err := client.EstimateGas(t.Context(), ethereum.CallMsg{
+		From: accounts[0].Address(),
+		To:   &common.Address{0x42},
+		Data: data,
+	})
+	client.Close()
+	require.NoError(err)
 	for nonce := range uint64(numRounds) {
 		for i := range accounts {
 			tx := types.MustSignNewTx(

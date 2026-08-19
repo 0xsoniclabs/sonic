@@ -20,8 +20,11 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 )
 
@@ -132,6 +135,97 @@ func TestCodeSizeLimits_MaxContractCodeSizeIsUpdatedWithBrio(t *testing.T) {
 			receipt, err := session.Run(signedTx)
 			require.NoError(t, err)
 			require.Equal(t, test.receiptStatus, receipt.Status)
+		})
+	}
+}
+
+func TestCodeSizeLimits_FailedDeploymentsReportTheFirstFailingCheck(t *testing.T) {
+	// The 0xEF prefix is checked first. Before Canto, the code deposit is
+	// charged before the code size is checked; from Canto on, the size is
+	// checked first.
+	const brioSize = opera.SonicBrioMaxCodeSize + 1
+	const cantoSize = params.MaxCodeSizeAmsterdam + 1
+	tests := map[string]struct {
+		upgrades opera.Upgrades
+		codeSize uint64
+		prefixEF bool
+		gas      uint64
+		want     error
+	}{
+		"Brio oversized code starting with 0xEF": {
+			upgrades: opera.GetBrioUpgrades(),
+			codeSize: brioSize,
+			prefixEF: true,
+			gas:      20_000_000,
+			want:     vm.ErrInvalidCode,
+		},
+		"Brio oversized code with unpayable deposit": {
+			upgrades: opera.GetBrioUpgrades(),
+			codeSize: brioSize,
+			gas:      1_000_000,
+			want:     vm.ErrCodeStoreOutOfGas,
+		},
+		"Brio oversized code with payable deposit": {
+			upgrades: opera.GetBrioUpgrades(),
+			codeSize: brioSize,
+			gas:      20_000_000,
+			want:     vm.ErrMaxCodeSizeExceeded,
+		},
+		"Canto oversized code starting with 0xEF": {
+			upgrades: opera.GetCantoUpgrades(),
+			codeSize: cantoSize,
+			prefixEF: true,
+			gas:      20_000_000,
+			want:     vm.ErrInvalidCode,
+		},
+		"Canto oversized code with unpayable deposit": {
+			upgrades: opera.GetCantoUpgrades(),
+			codeSize: cantoSize,
+			gas:      1_000_000,
+			want:     vm.ErrMaxCodeSizeExceeded,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			session := getIntegrationTestNetSession(t, test.upgrades)
+			client, err := session.GetClient()
+			require.NoError(t, err)
+			defer client.Close()
+
+			var initCode []byte
+			if test.prefixEF {
+				initCode = []byte{
+					byte(vm.PUSH1), 0xEF, // push prefix
+					byte(vm.PUSH1), 0x00, // push memory offset
+					byte(vm.MSTORE8), // store prefix
+				}
+			}
+			initCode = append(initCode,
+				byte(vm.PUSH3), byte(test.codeSize>>16), // push code size
+				byte(test.codeSize>>8), byte(test.codeSize), // push code size
+				byte(vm.PUSH1), 0x00, // push memory offset
+				byte(vm.RETURN), // return
+			)
+
+			_, err = client.CallContract(t.Context(), ethereum.CallMsg{
+				Gas:  test.gas,
+				Data: initCode,
+			}, nil)
+			require.ErrorContains(t, err, test.want.Error())
+
+			var trace struct {
+				Error string `json:"error"`
+			}
+			err = client.Client().Call(&trace, "debug_traceCall",
+				map[string]any{
+					"gas":  hexutil.Uint64(test.gas),
+					"data": hexutil.Bytes(initCode),
+				},
+				"latest",
+				map[string]any{"tracer": "callTracer"},
+			)
+			require.NoError(t, err)
+			require.Contains(t, trace.Error, test.want.Error())
 		})
 	}
 }

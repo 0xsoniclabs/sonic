@@ -14,15 +14,43 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package basiccheck
+package epochcheck
 
 import (
 	"math"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
+
+	"github.com/0xsoniclabs/sonic/opera"
 )
+
+// cantoGasRules are the go-ethereum revision flags of Canto consulted by the
+// intrinsic gas computation.
+var cantoGasRules = params.Rules{
+	IsHomestead: true,
+	IsIstanbul:  true,
+	IsShanghai:  true,
+	IsAmsterdam: true,
+}
+
+// minIntrinsicGas returns a lower bound of the intrinsic gas of the given
+// transaction, whoever sent it. From Canto on, EIP-2780 prices the base cost
+// by sender and value, which are not known here, so the cheapest case, a
+// transfer to self, is assumed.
+func minIntrinsicGas(tx *types.Transaction, rules opera.Rules) (uint64, error) {
+	if !rules.Upgrades.Canto {
+		return intrinsicGasLegacy(tx.Data(), tx.AccessList(), tx.To() == nil)
+	}
+	var from common.Address
+	if to := tx.To(); to != nil {
+		from = *to
+	}
+	return core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), from, tx.To(), nil, cantoGasRules)
+}
 
 // intrinsicGasLegacy computes the 'intrinsic gas' for a message with the given data.
 // This is an outdated version of

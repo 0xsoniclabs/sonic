@@ -38,6 +38,7 @@ var (
 	ErrTooBigExtra       = errors.New("event extra data is too large")
 	ErrWrongVersion      = errors.New("event has wrong version")
 	ErrUnsupportedTxType = errors.New("unsupported tx type")
+	ErrIntrinsicGas      = errors.New("intrinsic gas too low")
 	ErrNotRelevant       = base.ErrNotRelevant
 	ErrAuth              = base.ErrAuth
 )
@@ -61,6 +62,16 @@ func New(reader Reader) *Checker {
 	}
 }
 
+// TxGasPowerUsed returns the gas power a transaction with the given gas limit
+// takes from its event. From Canto on, only the execution gas counts, since the
+// rest of the gas limit funds the EIP-8037 state-gas reservoir.
+func TxGasPowerUsed(gasLimit uint64, rules opera.Rules) uint64 {
+	if rules.Upgrades.Canto {
+		return min(gasLimit, rules.MaxTxExecutionGas())
+	}
+	return gasLimit
+}
+
 func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) (uint64, error) {
 	gasCfg := rules.Economy.Gas
 
@@ -72,7 +83,7 @@ func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) (uint64, error) 
 		// to be able to create proposals with the full gas limit. Thus, only the
 		// transactions being part of the distributed proposal protocol are counted.
 		for _, tx := range e.TransactionsToMeter() {
-			if txsGas, overflow = ethmath.SafeAdd(txsGas, tx.Gas()); overflow {
+			if txsGas, overflow = ethmath.SafeAdd(txsGas, TxGasPowerUsed(tx.Gas(), rules)); overflow {
 				return 0, ErrTooBigGasUsed
 			}
 		}
@@ -181,6 +192,13 @@ func CheckTxs(txs types.Transactions, rules opera.Rules) error {
 	for _, tx := range txs {
 		if tx.Type() > maxType {
 			return ErrUnsupportedTxType
+		}
+		intrGas, err := minIntrinsicGas(tx, rules)
+		if err != nil {
+			return err
+		}
+		if tx.Gas() < intrGas {
+			return ErrIntrinsicGas
 		}
 	}
 	return nil

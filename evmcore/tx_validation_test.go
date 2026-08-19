@@ -17,6 +17,7 @@
 package evmcore
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"math/big"
@@ -704,6 +705,55 @@ func TestValidateTxForNetwork_GasLimitIsCheckedAfterOsaka(t *testing.T) {
 	}
 }
 
+func TestValidateTxForNetwork_FromAmsterdamOnlyIntrinsicAndFloorGasAreCapped(t *testing.T) {
+	rules := opera.Rules{Economy: opera.EconomyRules{Gas: opera.GasRules{MaxEventGas: 100_000}}}
+	maxExecutionGas := rules.MaxTxExecutionGas()
+
+	tests := map[string]struct {
+		data    []byte
+		wantErr error
+	}{
+		"gas limit above the cap": {},
+		"calldata above the cap":  {data: bytes.Repeat([]byte{1}, int(maxExecutionGas)), wantErr: ErrFloorDataGas},
+		"calldata within the cap": {data: []byte{1}},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+			chain.EXPECT().CurrentMaxGasLimit().Return(uint64(math.MaxUint64)).AnyTimes()
+			chain.EXPECT().CurrentRules().Return(rules).AnyTimes()
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
+			signer.EXPECT().Equal(gomock.Any()).Return(true).AnyTimes()
+
+			tx := types.NewTx(&types.LegacyTx{
+				To:    &common.Address{42},
+				Gas:   100 * maxExecutionGas,
+				Value: big.NewInt(0),
+				Data:  test.data,
+			})
+			networkRules := NetworkRules{
+				istanbul:  true,
+				shanghai:  true,
+				osaka:     true,
+				amsterdam: true,
+				eip2718:   true,
+				eip1559:   true,
+				eip4844:   true,
+				eip7623:   true,
+				eip7702:   true,
+			}
+			err := ValidateTxForNetwork(tx, networkRules, chain, signer)
+			if test.wantErr == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, test.wantErr)
+			}
+		})
+	}
+}
+
 func TestValidateTxForNetwork_InitCodeTooLarge_ReturnsError(t *testing.T) {
 
 	data := make([]byte, params.MaxInitCodeSize+1)
@@ -851,27 +901,37 @@ func TestValidateTxForNetwork_AcceptsTransactions(t *testing.T) {
 
 func TestValidateTxForNetwork_CustomSonicCodeSizeLimitIsEnforced(t *testing.T) {
 	tests := map[string]struct {
-		customSize   bool
+		brio         bool
+		amsterdam    bool
 		initCodeSize uint64
 		errorMessage string
 	}{
 		"Allegro below limit": {
-			customSize:   false,
 			initCodeSize: params.MaxInitCodeSize,
 		},
 		"Allegro above limit": {
-			customSize:   false,
 			initCodeSize: params.MaxInitCodeSize + 1,
 			errorMessage: "max initcode size exceeded: code size 49153, limit 49152",
 		},
 		"Brio below limit": {
-			customSize:   true,
+			brio:         true,
 			initCodeSize: opera.SonicBrioMaxInitCodeSize,
 		},
 		"Brio above limit": {
-			customSize:   true,
+			brio:         true,
 			initCodeSize: opera.SonicBrioMaxInitCodeSize + 1,
 			errorMessage: "max initcode size exceeded: code size 98305, limit 98304",
+		},
+		"Canto below limit": {
+			brio:         true,
+			amsterdam:    true,
+			initCodeSize: params.MaxInitCodeSizeAmsterdam,
+		},
+		"Canto above limit": {
+			brio:         true,
+			amsterdam:    true,
+			initCodeSize: params.MaxInitCodeSizeAmsterdam + 1,
+			errorMessage: "max initcode size exceeded: code size 131073, limit 131072",
 		},
 	}
 	for name, test := range tests {
@@ -880,18 +940,20 @@ func TestValidateTxForNetwork_CustomSonicCodeSizeLimitIsEnforced(t *testing.T) {
 			chain := NewMockStateReader(ctrl)
 			signer := NewMockSigner(ctrl)
 			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
+			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
 			rules := NetworkRules{
-				eip2718:  true,
-				eip1559:  true,
-				eip4844:  true,
-				eip7702:  true,
-				shanghai: true,
-				brio:     test.customSize,
+				eip2718:   true,
+				eip1559:   true,
+				eip4844:   true,
+				eip7702:   true,
+				shanghai:  true,
+				amsterdam: test.amsterdam,
+				brio:      test.brio,
 			}
 
 			data := make([]byte, test.initCodeSize)
-			gas, err := core.IntrinsicGas(data, nil, nil, common.Address{}, nil, nil,
-				params.Rules{IsHomestead: true, IsIstanbul: true, IsShanghai: true})
+			gas, err := core.IntrinsicGas(data, nil, nil, common.Address{42}, nil, nil,
+				rules.forGasComputation())
 			require.NoError(t, err)
 
 			chain.EXPECT().CurrentMaxGasLimit().Return(gas).AnyTimes()

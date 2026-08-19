@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -497,10 +498,10 @@ func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		index := NewMocktransactionIndex(ctrl)
 
-		tx := types.NewTx(&types.LegacyTx{Nonce: 1})
+		tx := types.NewTx(&types.LegacyTx{Nonce: 1, To: &common.Address{}, Gas: params.TxGas})
 		index.EXPECT().Peek().Return(&txWithMetadata{tx: &txpool.LazyTransaction{Tx: tx}}, true)
 
-		adapter := transactionPriorityAdapter{index}
+		adapter := transactionPriorityAdapter{sorted: index}
 		got := adapter.Current()
 		require.Equal(t, tx, got)
 	})
@@ -509,7 +510,7 @@ func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		index := NewMocktransactionIndex(ctrl)
 		index.EXPECT().Peek().Return(nil, false)
-		adapter := transactionPriorityAdapter{index}
+		adapter := transactionPriorityAdapter{sorted: index}
 		got := adapter.Current()
 		require.Nil(t, got)
 	})
@@ -518,7 +519,7 @@ func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		index := NewMocktransactionIndex(ctrl)
 		index.EXPECT().Shift()
-		adapter := transactionPriorityAdapter{index}
+		adapter := transactionPriorityAdapter{sorted: index}
 		adapter.Accept()
 	})
 
@@ -526,9 +527,38 @@ func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		index := NewMocktransactionIndex(ctrl)
 		index.EXPECT().PopSequence()
-		adapter := transactionPriorityAdapter{index}
+		adapter := transactionPriorityAdapter{sorted: index}
 		adapter.Skip()
 	})
+}
+
+func TestTransactionPriorityAdapter_Current_SkipsTransactionsTheEventChecksReject(t *testing.T) {
+	// A zero-value call to another account costs 15000 gas from Canto on.
+	cheapCall := types.NewTx(&types.LegacyTx{Nonce: 1, To: &common.Address{1}, Gas: 15_000})
+	next := types.NewTx(&types.LegacyTx{Nonce: 2, To: &common.Address{1}, Gas: params.TxGas})
+
+	tests := map[string]struct {
+		upgrades opera.Upgrades
+		want     *types.Transaction
+	}{
+		"Brio":  {upgrades: opera.GetBrioUpgrades(), want: next},
+		"Canto": {upgrades: opera.GetCantoUpgrades(), want: cheapCall},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			index := NewMocktransactionIndex(ctrl)
+			gomock.InOrder(
+				index.EXPECT().Peek().Return(&txWithMetadata{tx: &txpool.LazyTransaction{Tx: cheapCall}}, true),
+				index.EXPECT().PopSequence().MaxTimes(1),
+				index.EXPECT().Peek().Return(&txWithMetadata{tx: &txpool.LazyTransaction{Tx: next}}, true).MaxTimes(1),
+			)
+
+			adapter := transactionPriorityAdapter{sorted: index, rules: opera.Rules{Upgrades: test.upgrades}}
+			require.Equal(t, test.want, adapter.Current())
+		})
+	}
 }
 
 func TestMakeProposal_SkipsProposalOnRandaoRevealError(t *testing.T) {

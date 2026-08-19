@@ -88,6 +88,16 @@ func TestGetVmConfig_BrioUpgrade_CopiesMaxEventGasValue(t *testing.T) {
 	require.False(t, &rules.Economy.Gas.MaxEventGas == vmConfig.MaxTxGas)
 }
 
+func TestGetVmConfig_CantoUpgrade_CapsTheExecutionGasAtWhatAnEventCanCarry(t *testing.T) {
+	rules := opera.FakeNetRules(opera.GetCantoUpgrades())
+
+	vmConfig := opera.GetVmConfig(rules)
+
+	require.NotNil(t, vmConfig.MaxTxGas)
+	require.Equal(t, rules.MaxTxExecutionGas(), *vmConfig.MaxTxGas)
+	require.Less(t, *vmConfig.MaxTxGas, rules.Economy.Gas.MaxEventGas)
+}
+
 func TestCodeSizeLimits_BrioSetsCustomCodeSizeLimits(t *testing.T) {
 	tests := map[string]bool{
 		"Allegro": false,
