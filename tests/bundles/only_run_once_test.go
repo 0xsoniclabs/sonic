@@ -57,6 +57,7 @@ func TestBundle_RunOnlyOnce_ExecutionPlanSubmittedMultipleTimesInDifferentEnvelo
 	// none for B.
 	b := bundle.NewBuilder().
 		WithSigner(signer).
+		WithUpgrades(net.GetUpgrades()).
 		OneOf(
 			Step(t, net, senders[0], &types.AccessListTx{}),
 			Step(t, net, senders[1], &types.AccessListTx{}),
@@ -65,7 +66,7 @@ func TestBundle_RunOnlyOnce_ExecutionPlanSubmittedMultipleTimesInDifferentEnvelo
 	// Pack the same bundle into multiple envelopes.
 	envelopes := []*types.Transaction{}
 	for range 100 {
-		envelopes = append(envelopes, bundle.MustWrapIntoEnvelope(signer, &b))
+		envelopes = append(envelopes, bundle.MustWrapIntoEnvelope(signer, &b, net.GetUpgrades()))
 	}
 
 	// Submit the same bundle multiple times using different envelopes.

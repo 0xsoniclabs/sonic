@@ -341,7 +341,9 @@ func (em *Emitter) isRunnableBundleTxInternal(
 	}
 
 	// Ignore if it is not a valid bundle transaction.
-	_, plan, err := bundle.ValidateEnvelope(em.world.TransactionSigner, tx)
+	_, plan, err := bundle.ValidateEnvelope(
+		em.world.TransactionSigner, tx, em.world.GetRules().Upgrades,
+	)
 	if err != nil {
 		return false
 	}
