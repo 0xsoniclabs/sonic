@@ -461,7 +461,7 @@ func (r *transactionRunner) runSponsoredTransactionInternal(
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
 
-	available := ctxt.gasPool.Available(false)
+	available := ctxt.gasPool.Available(ctxt.upgrades.Canto)
 	needed := tx.Gas() + overhead.Gas
 	if available < needed {
 		log.Debug("Not enough gas left in block for sponsored transaction",

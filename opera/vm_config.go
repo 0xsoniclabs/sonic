@@ -87,10 +87,14 @@ func GetVmConfig(rules Rules) vm.Config {
 		res.MaxInitCodeSize = &maxInitCodeSize
 	}
 
-	// Starting from Canto, transactions whose sender cannot cover the
-	// transferred value are skipped instead of being charged as failed.
 	if rules.Upgrades.Canto {
+		// Starting from Canto, transactions whose sender cannot cover the
+		// transferred value are skipped instead of being charged as failed.
 		res.InsufficientBalanceIsNotAnError = false
+
+		// Amsterdam increases the max code and init code size further.
+		res.MaxCodeSize = nil
+		res.MaxInitCodeSize = nil
 	}
 
 	return res
