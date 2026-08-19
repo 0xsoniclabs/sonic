@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/holiman/uint256"
 
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -274,23 +275,36 @@ func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int, lo
 		blobHashes = nil
 	}
 
-	return &core.Message{
+	var conversionErr error
+	toUint256 := func(name string, value *big.Int) *uint256.Int {
+		converted, overflow := uint256.FromBig(value)
+		if overflow && conversionErr == nil {
+			conversionErr = fmt.Errorf("%s exceeds 256 bits", name)
+		}
+		return converted
+	}
+
+	msg := &core.Message{
 		From:                  addr,
 		To:                    args.To,
 		Nonce:                 nonce,
-		Value:                 value,
+		Value:                 toUint256("value", value),
 		GasLimit:              gas,
-		GasPrice:              gasPrice,
-		GasFeeCap:             gasFeeCap,
-		GasTipCap:             gasTipCap,
+		GasPrice:              toUint256("gas price", gasPrice),
+		GasFeeCap:             toUint256("maxFeePerGas", gasFeeCap),
+		GasTipCap:             toUint256("maxPriorityFeePerGas", gasTipCap),
 		Data:                  data,
 		AccessList:            accessList,
-		BlobGasFeeCap:         blobGasFeeCap,
+		BlobGasFeeCap:         toUint256("maxFeePerBlobGas", blobGasFeeCap),
 		BlobHashes:            blobHashes,
 		SetCodeAuthorizations: args.AuthorizationList,
 		SkipNonceChecks:       true,
 		SkipTransactionChecks: true,
-	}, nil
+	}
+	if conversionErr != nil {
+		return nil, conversionErr
+	}
+	return msg, nil
 }
 
 // ToTransaction converts the arguments to an unsigned `types.transaction`.

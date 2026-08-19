@@ -459,7 +459,7 @@ func TestComputeEffectiveFee_FailedFeeChargeTransaction_ReturnsZeroFee(t *testin
 	// If the fee charge failed, no fees have been actually charged.
 	receipt := &types.Receipt{
 		Status:            types.ReceiptStatusFailed,
-		EffectiveGasPrice: big.NewInt(0),
+		EffectiveGasPrice: uint256.NewInt(0).ToBig(),
 	}
 	fee, err := ComputeEffectiveFee(tx, receipt)
 	require.NoError(t, err)
@@ -485,7 +485,7 @@ func TestComputeEffectiveFee_MissingEffectiveGasPrice_ReportsError(t *testing.T)
 
 func TestComputeEffectiveFee_MissingBlobGasPrice_ReportsIfBlobGasIsUsed(t *testing.T) {
 	receipt := &types.Receipt{
-		EffectiveGasPrice: big.NewInt(0),
+		EffectiveGasPrice: uint256.NewInt(0).ToBig(),
 	}
 
 	// without blob gas usage no error is reported

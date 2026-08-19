@@ -359,7 +359,7 @@ func (sim *simulator) processBlock(
 		senders[txHash] = call.from()
 
 		tracer.reset(txHash, uint(i))
-		activeState.SetTxContext(txHash, i)
+		activeState.SetTxContext(txHash, i, uint32(i+1))
 
 		msg, err := call.ToMessage(sim.gp.Gas(), header.BaseFee, log.Root())
 		if err != nil {

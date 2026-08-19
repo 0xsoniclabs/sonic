@@ -422,11 +422,12 @@ func TestBlockStateOverrides(t *testing.T) {
 	setExpectedStateCalls(mockState)
 
 	expectedBlockCtx := &vm.BlockContext{
-		BlockNumber: big.NewInt(5),
-		Time:        0,
-		Difficulty:  big.NewInt(1),
-		BaseFee:     big.NewInt(1234),
-		BlobBaseFee: big.NewInt(1),
+		BlockNumber:      big.NewInt(5),
+		Time:             0,
+		Difficulty:       big.NewInt(1),
+		BaseFee:          big.NewInt(1234),
+		BlobBaseFee:      big.NewInt(1),
+		CostPerStateByte: params.CostPerStateByte,
 	}
 
 	// Check that the correct block context is used when creating EVM instance
@@ -682,7 +683,7 @@ func setExpectedStateCalls(mockState *state.MockStateDB) {
 	mockState.EXPECT().SetNonce(any, any, any).AnyTimes()
 	mockState.EXPECT().Snapshot().AnyTimes()
 	mockState.EXPECT().Exist(any).Return(true).AnyTimes()
-	mockState.EXPECT().SetTxContext(any, any).AnyTimes()
+	mockState.EXPECT().SetTxContext(any, any, any).AnyTimes()
 	mockState.EXPECT().Release().AnyTimes()
 	mockState.EXPECT().GetCode(any).Return(nil).AnyTimes()
 	mockState.EXPECT().Witness().AnyTimes()
@@ -1012,12 +1013,12 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 	}
 
 	expectedTraceReplayBlock := func(mockState *state.MockStateDB) {
-		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any(), gomock.Any())
 		mockState.EXPECT().GetCode(sender).Return([]byte{})
 		mockState.EXPECT().GetNonce(sender).Return(uint64(0))
 		mockState.EXPECT().EndTransaction()
 
-		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any(), gomock.Any())
 		mockState.EXPECT().GetNonce(sender).Return(uint64(1)).Times(2)
 		mockState.EXPECT().GetCode(sender).Return([]byte{})
 		mockState.EXPECT().GetBalance(sender).Return(uint256.NewInt(1e18))
@@ -1055,7 +1056,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		"StateAtTransaction sonic": {
 			upgrades: opera.GetSonicUpgrades(),
 			setupStateDb: func(mockState *state.MockStateDB) {
-				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any(), gomock.Any())
 				mockState.EXPECT().GetCode(sender).Return([]byte{})
 				mockState.EXPECT().GetNonce(sender).Return(uint64(0))
 				mockState.EXPECT().EndTransaction()
@@ -1067,7 +1068,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		"StateAtTransaction allegro": {
 			upgrades: opera.GetAllegroUpgrades(),
 			setupStateDb: func(mockState *state.MockStateDB) {
-				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any(), gomock.Any())
 				mockState.EXPECT().GetCode(sender).Return([]byte{})
 				mockState.EXPECT().GetNonce(sender).Return(uint64(0))
 				mockState.EXPECT().EndTransaction()

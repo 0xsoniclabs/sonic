@@ -558,6 +558,12 @@ func (env *testEnv) SendTransaction(ctx context.Context, tx *types.Transaction) 
 	return nil
 }
 
+// TransactionByHash retrieves a transaction from the pending pool. Since
+// SendTransaction never enqueues anything, no transaction is ever found.
+func (env *testEnv) TransactionByHash(ctx context.Context, hash common.Hash) (*types.Transaction, bool, error) {
+	return nil, false, ethereum.NotFound
+}
+
 /*
  *  bind.ContractFilterer interface
  */
@@ -579,11 +585,11 @@ func CallMsgToMessage(msg ethereum.CallMsg) *core.Message {
 	return &core.Message{
 		From:                  msg.From,
 		To:                    msg.To,
-		GasPrice:              msg.GasPrice,
-		GasTipCap:             msg.GasTipCap,
-		GasFeeCap:             msg.GasFeeCap,
+		GasPrice:              uint256.MustFromBig(msg.GasPrice),
+		GasTipCap:             uint256.MustFromBig(msg.GasTipCap),
+		GasFeeCap:             uint256.MustFromBig(msg.GasFeeCap),
 		GasLimit:              msg.Gas,
-		Value:                 msg.Value,
+		Value:                 uint256.MustFromBig(msg.Value),
 		Nonce:                 0,
 		SkipNonceChecks:       true,
 		SkipTransactionChecks: true,

@@ -308,9 +308,9 @@ type fakeVM struct {
 	gotIn  []byte
 }
 
-func (f *fakeVM) Call(_, _ common.Address, input []byte, _ uint64, _ *uint256.Int) ([]byte, uint64, error) {
+func (f *fakeVM) Call(_, _ common.Address, input []byte, _ vm.GasBudget, _ *uint256.Int) ([]byte, vm.GasBudget, error) {
 	f.gotIn = input
-	return f.result, 0, f.err
+	return f.result, vm.GasBudget{}, f.err
 }
 
 func enabledUpgrades() opera.Upgrades {

@@ -1720,7 +1720,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 	statedb := state.NewMockStateDB(ctrl)
 
 	statedb.EXPECT().BeginBlock(gomock.Any())
-	statedb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().SetTxContext(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	statedb.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
 	statedb.EXPECT().SubBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	statedb.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
@@ -1776,7 +1776,7 @@ func TestProcessUserTransactions_MetricsAreForwardedToStateProcessor(t *testing.
 	mockMetrics := evmcore.NewMockBlockExecutionMetrics(ctrl)
 
 	statedb.EXPECT().BeginBlock(gomock.Any())
-	statedb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().SetTxContext(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	statedb.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
 	statedb.EXPECT().SubBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	statedb.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()

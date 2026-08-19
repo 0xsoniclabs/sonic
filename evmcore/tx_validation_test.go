@@ -603,7 +603,7 @@ func TestValidateTxForNetwork_Gas_RejectsTx_IntrinsicGasTooLow(t *testing.T) {
 func TestValidateTxForNetwork_Gas_RejectsTx_GasLowerThanFloorDataGas(t *testing.T) {
 
 	someData := make([]byte, 1024)
-	floorDataGas, err := core.FloorDataGas(someData)
+	floorDataGas, err := core.FloorDataGas(params.Rules{}, common.Address{}, nil, nil, someData, nil)
 	require.NoError(t, err)
 
 	// 0 gas is always lower than any required intrinsic gas
@@ -707,7 +707,8 @@ func TestValidateTxForNetwork_GasLimitIsCheckedAfterOsaka(t *testing.T) {
 func TestValidateTxForNetwork_InitCodeTooLarge_ReturnsError(t *testing.T) {
 
 	data := make([]byte, params.MaxInitCodeSize+1)
-	gas, err := core.IntrinsicGas(data, nil, nil, true, true, true, true)
+	gas, err := core.IntrinsicGas(data, nil, nil, common.Address{}, nil, nil,
+		params.Rules{IsHomestead: true, IsIstanbul: true, IsShanghai: true})
 	require.NoError(t, err)
 
 	tests := []types.TxData{
@@ -889,7 +890,8 @@ func TestValidateTxForNetwork_CustomSonicCodeSizeLimitIsEnforced(t *testing.T) {
 			}
 
 			data := make([]byte, test.initCodeSize)
-			gas, err := core.IntrinsicGas(data, nil, nil, true, true, true, true)
+			gas, err := core.IntrinsicGas(data, nil, nil, common.Address{}, nil, nil,
+				params.Rules{IsHomestead: true, IsIstanbul: true, IsShanghai: true})
 			require.NoError(t, err)
 
 			chain.EXPECT().CurrentMaxGasLimit().Return(gas).AnyTimes()

@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/stateless"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -85,10 +86,6 @@ type CarmenStateDB struct {
 type processedExecPlan struct {
 	execPlanHash common.Hash
 	position     bundle.PositionInBlock
-}
-
-func (c *CarmenStateDB) EmitLogsForBurnAccounts() {
-	// TODO: implement eip-7708 for Amsterdam hard fork.
 }
 
 func (c *CarmenStateDB) Error() error {
@@ -165,6 +162,11 @@ func (c *CarmenStateDB) SubRefund(gas uint64) {
 	c.db.SubRefund(gas)
 }
 
+// Touch accesses the given account without reporting anything about it.
+func (c *CarmenStateDB) Touch(addr common.Address) {
+	c.db.Exist(cc.Address(addr))
+}
+
 func (c *CarmenStateDB) Exist(addr common.Address) bool {
 	return c.db.Exist(cc.Address(addr))
 }
@@ -216,20 +218,6 @@ func (c *CarmenStateDB) GetProof(addr common.Address, keys []common.Hash) (witne
 	} else {
 		panic("unable get proof from not a NonCommittableStateDB")
 	}
-}
-
-func (c *CarmenStateDB) GetStorageRoot(addr common.Address) common.Hash {
-	empty := c.db.HasEmptyStorage(cc.Address(addr))
-	var h common.Hash
-	if !empty {
-		// Carmen does not provide a method to get the storage root for performance reasons
-		// as getting a storage root needs computation of hashes in the trie.
-		// In practice, the method GetStorageRoot here is used in the EVM only to assess
-		// if the storage is empty. For this reason, this method returns a dummy hash here just
-		// not to equal to the empty hash when the storage is not empty.
-		h[0] = 1
-	}
-	return h
 }
 
 func (c *CarmenStateDB) GetStateAndCommittedState(addr common.Address, hash common.Hash) (common.Hash, common.Hash) {
@@ -374,13 +362,15 @@ func (c *CarmenStateDB) RevertToInterTxSnapshot(id int) {
 	c.interTxSnapshots = c.interTxSnapshots[:id]
 }
 
-func (c *CarmenStateDB) Finalise(bool) {
-	// ignored
+// Finalise is a no-op for Carmen, which does not construct block access lists.
+func (c *CarmenStateDB) Finalise(bool) *bal.ConstructionBlockAccessList {
+	return nil
 }
 
 // SetTxContext sets the current transaction hash and index which are
-// used when the EVM emits new state logs.
-func (c *CarmenStateDB) SetTxContext(txHash common.Hash, txIndex int) {
+// used when the EVM emits new state logs. The block access index is ignored
+// since Carmen does not construct block access lists.
+func (c *CarmenStateDB) SetTxContext(txHash common.Hash, txIndex int, _ uint32) {
 	c.txHash = txHash
 	c.txIndex = txIndex
 	c.db.ClearAccessList()

@@ -300,14 +300,15 @@ type TxPool struct {
 	signer      types.Signer
 	mu          sync.RWMutex
 
-	istanbul bool // Fork indicator whether we are in the istanbul stage.
-	shanghai bool // Fork indicator whether we are in the shanghai stage.
-	osaka    bool // Fork indicator whether we are in the osaka stage.
-	eip2718  bool // Fork indicator whether we are using EIP-2718 type transactions.
-	eip1559  bool // Fork indicator whether we are using EIP-1559 type transactions.
-	eip4844  bool // Fork indicator whether we are using EIP-4844 type transactions.
-	eip7623  bool // Fork indicator whether we are using EIP-7623 floor gas validation.
-	eip7702  bool // Fork indicator whether we are using EIP-7702 type transactions.
+	istanbul  bool // Fork indicator whether we are in the istanbul stage.
+	shanghai  bool // Fork indicator whether we are in the shanghai stage.
+	osaka     bool // Fork indicator whether we are in the osaka stage.
+	amsterdam bool // Fork indicator whether we are in the amsterdam stage.
+	eip2718   bool // Fork indicator whether we are using EIP-2718 type transactions.
+	eip1559   bool // Fork indicator whether we are using EIP-1559 type transactions.
+	eip4844   bool // Fork indicator whether we are using EIP-4844 type transactions.
+	eip7623   bool // Fork indicator whether we are using EIP-7623 floor gas validation.
+	eip7702   bool // Fork indicator whether we are using EIP-7702 type transactions.
 
 	currentState  state.StateDB // Current state in the blockchain head
 	pendingNonces *txNoncer     // Pending state tracking virtual nonces
@@ -729,14 +730,15 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		isLocal: local,
 	}
 	netRules := NetworkRules{
-		istanbul: pool.istanbul,
-		shanghai: pool.shanghai,
-		osaka:    pool.osaka,
-		eip1559:  pool.eip1559,
-		eip2718:  pool.eip2718,
-		eip4844:  pool.eip4844,
-		eip7623:  pool.eip7623,
-		eip7702:  pool.eip7702,
+		istanbul:  pool.istanbul,
+		shanghai:  pool.shanghai,
+		osaka:     pool.osaka,
+		amsterdam: pool.amsterdam,
+		eip1559:   pool.eip1559,
+		eip2718:   pool.eip2718,
+		eip4844:   pool.eip4844,
+		eip7623:   pool.eip7623,
+		eip7702:   pool.eip7702,
 
 		gasSubsidies:       pool.chain.CurrentRules().Upgrades.GasSubsidies,
 		brio:               pool.chain.CurrentRules().Upgrades.Brio,
@@ -1515,6 +1517,7 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	pool.eip7623 = pool.chainconfig.IsPrague(next, uint64(newHead.Time.Unix()))
 	pool.eip7702 = pool.chainconfig.IsPrague(next, uint64(newHead.Time.Unix()))
 	pool.osaka = pool.chainconfig.IsOsaka(next, uint64(newHead.Time.Unix()))
+	pool.amsterdam = pool.chainconfig.IsAmsterdam(next, uint64(newHead.Time.Unix()))
 }
 
 // promoteExecutables moves transactions that have become processable from the

@@ -19,6 +19,7 @@ import (
 	stateless "github.com/ethereum/go-ethereum/core/stateless"
 	tracing "github.com/ethereum/go-ethereum/core/tracing"
 	types "github.com/ethereum/go-ethereum/core/types"
+	bal "github.com/ethereum/go-ethereum/core/types/bal"
 	params "github.com/ethereum/go-ethereum/params"
 	uint256 "github.com/holiman/uint256"
 	gomock "go.uber.org/mock/gomock"
@@ -212,18 +213,6 @@ func (mr *MockStateDBMockRecorder) CreateContract(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateContract", reflect.TypeOf((*MockStateDB)(nil).CreateContract), arg0)
 }
 
-// EmitLogsForBurnAccounts mocks base method.
-func (m *MockStateDB) EmitLogsForBurnAccounts() {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "EmitLogsForBurnAccounts")
-}
-
-// EmitLogsForBurnAccounts indicates an expected call of EmitLogsForBurnAccounts.
-func (mr *MockStateDBMockRecorder) EmitLogsForBurnAccounts() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EmitLogsForBurnAccounts", reflect.TypeOf((*MockStateDB)(nil).EmitLogsForBurnAccounts))
-}
-
 // Empty mocks base method.
 func (m *MockStateDB) Empty(arg0 common.Address) bool {
 	m.ctrl.T.Helper()
@@ -293,9 +282,11 @@ func (mr *MockStateDBMockRecorder) Exist(arg0 any) *gomock.Call {
 }
 
 // Finalise mocks base method.
-func (m *MockStateDB) Finalise(arg0 bool) {
+func (m *MockStateDB) Finalise(arg0 bool) *bal.ConstructionBlockAccessList {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Finalise", arg0)
+	ret := m.ctrl.Call(m, "Finalise", arg0)
+	ret0, _ := ret[0].(*bal.ConstructionBlockAccessList)
+	return ret0
 }
 
 // Finalise indicates an expected call of Finalise.
@@ -458,20 +449,6 @@ func (m *MockStateDB) GetStateHash() common.Hash {
 func (mr *MockStateDBMockRecorder) GetStateHash() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStateHash", reflect.TypeOf((*MockStateDB)(nil).GetStateHash))
-}
-
-// GetStorageRoot mocks base method.
-func (m *MockStateDB) GetStorageRoot(addr common.Address) common.Hash {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetStorageRoot", addr)
-	ret0, _ := ret[0].(common.Hash)
-	return ret0
-}
-
-// GetStorageRoot indicates an expected call of GetStorageRoot.
-func (mr *MockStateDBMockRecorder) GetStorageRoot(addr any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStorageRoot", reflect.TypeOf((*MockStateDB)(nil).GetStorageRoot), addr)
 }
 
 // GetTransientState mocks base method.
@@ -681,15 +658,15 @@ func (mr *MockStateDBMockRecorder) SetTransientState(addr, key, value any) *gomo
 }
 
 // SetTxContext mocks base method.
-func (m *MockStateDB) SetTxContext(thash common.Hash, ti int) {
+func (m *MockStateDB) SetTxContext(thash common.Hash, ti int, blockAccessIndex uint32) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetTxContext", thash, ti)
+	m.ctrl.Call(m, "SetTxContext", thash, ti, blockAccessIndex)
 }
 
 // SetTxContext indicates an expected call of SetTxContext.
-func (mr *MockStateDBMockRecorder) SetTxContext(thash, ti any) *gomock.Call {
+func (mr *MockStateDBMockRecorder) SetTxContext(thash, ti, blockAccessIndex any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetTxContext", reflect.TypeOf((*MockStateDB)(nil).SetTxContext), thash, ti)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetTxContext", reflect.TypeOf((*MockStateDB)(nil).SetTxContext), thash, ti, blockAccessIndex)
 }
 
 // SlotInAccessList mocks base method.
@@ -745,6 +722,18 @@ func (m *MockStateDB) SubRefund(arg0 uint64) {
 func (mr *MockStateDBMockRecorder) SubRefund(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubRefund", reflect.TypeOf((*MockStateDB)(nil).SubRefund), arg0)
+}
+
+// Touch mocks base method.
+func (m *MockStateDB) Touch(arg0 common.Address) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Touch", arg0)
+}
+
+// Touch indicates an expected call of Touch.
+func (mr *MockStateDBMockRecorder) Touch(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Touch", reflect.TypeOf((*MockStateDB)(nil).Touch), arg0)
 }
 
 // TxIndex mocks base method.

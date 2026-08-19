@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 )
 
 //go:generate mockgen -source=tx_validation.go -destination=tx_validation_mock.go -package=evmcore
@@ -52,9 +53,10 @@ type poolOptions struct {
 // not from opera.Rules because the pool is not aware of opera.Rules and
 // tx_pool_test.go heavily relies on chainConfig to set up the network rules.
 type NetworkRules struct {
-	istanbul bool // Fork indicator whether we are in the istanbul revision.
-	shanghai bool // Fork indicator whether we are in the shanghai revision.
-	osaka    bool // Fork indicator whether we are in the osaka revision.
+	istanbul  bool // Fork indicator whether we are in the istanbul revision.
+	shanghai  bool // Fork indicator whether we are in the shanghai revision.
+	osaka     bool // Fork indicator whether we are in the osaka revision.
+	amsterdam bool // Fork indicator whether we are in the amsterdam revision.
 
 	eip2718 bool // Fork indicator whether we are using EIP-2718 type transactions.
 	eip1559 bool // Fork indicator whether we are using EIP-1559 type transactions.
@@ -171,15 +173,32 @@ func ValidateTxForNetwork(tx *types.Transaction, rules NetworkRules, chain State
 		}
 	}
 
+	// From Amsterdam on, EIP-2780 prices the transaction's base cost per
+	// resource, which requires knowing the sender and the transferred value.
+	// Earlier revisions ignore both.
+	var sender common.Address
+	value := new(uint256.Int)
+	if rules.amsterdam {
+		var err error
+		if sender, err = types.Sender(signer, tx); err != nil {
+			return ErrInvalidSender
+		}
+		var overflow bool
+		if value, overflow = uint256.FromBig(tx.Value()); overflow {
+			return ErrValueTooHigh
+		}
+	}
+	gasRules := rules.forGasComputation()
+
 	// Ensure the transaction has more gas than the basic tx fee.
 	intrGas, err := core.IntrinsicGas(
 		tx.Data(),
 		tx.AccessList(),
 		tx.SetCodeAuthorizations(),
-		tx.To() == nil, // is contract creation
-		true,           // is homestead
-		rules.istanbul, // is eip-2028 (transactional data gas cost reduction)
-		rules.shanghai, // is eip-3860 (limit and meter init-code )
+		sender,
+		tx.To(),
+		value,
+		gasRules,
 	)
 	if err != nil {
 		return err
@@ -191,7 +210,7 @@ func ValidateTxForNetwork(tx *types.Transaction, rules NetworkRules, chain State
 	// EIP-7623 part of Prague revision: Floor data gas
 	// see: https://eips.ethereum.org/EIPS/eip-7623
 	if rules.eip7623 {
-		floorDataGas, err := core.FloorDataGas(tx.Data())
+		floorDataGas, err := core.FloorDataGas(gasRules, sender, tx.To(), value, tx.Data(), tx.AccessList())
 		if err != nil {
 			return err
 		}
@@ -209,6 +228,17 @@ func ValidateTxForNetwork(tx *types.Transaction, rules NetworkRules, chain State
 	}
 
 	return nil
+}
+
+// forGasComputation reduces the network rules to the Ethereum revision flags
+// consulted by go-ethereum's intrinsic and floor data gas computations.
+func (r NetworkRules) forGasComputation() params.Rules {
+	return params.Rules{
+		IsHomestead: true,
+		IsIstanbul:  r.istanbul,
+		IsShanghai:  r.shanghai,
+		IsAmsterdam: r.amsterdam,
+	}
 }
 
 // ValidateTxStatic runs a set of verification independent from any context with

@@ -246,9 +246,9 @@ func TestIsCovered_ConsultsSubsidiesRegistry(t *testing.T) {
 			}
 
 			vmConfig := opera.GetVmConfig(rules)
-			vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
+			evm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
 
-			result, err := IsCovered(upgrades, vm, signer, tx, baseFee)
+			result, err := IsCovered(upgrades, evm, signer, tx, baseFee)
 			require.NoError(err)
 			require.Equal(test.expectCovered, result.IsSponsored())
 			if test.expectCovered {
@@ -310,27 +310,27 @@ func TestIsCovered_RegistryNotAvailable_ReturnsError(t *testing.T) {
 	}
 
 	vmConfig := opera.GetVmConfig(rules)
-	vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
+	evm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
 
-	_, err = IsCovered(upgrades, vm, signer, tx, baseFee)
+	_, err = IsCovered(upgrades, evm, signer, tx, baseFee)
 	require.ErrorContains(err, "subsidies registry contract not found")
 }
 
 func TestIsCovered_GasSubsidiesDisabled_ReturnsNotSponsored(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	vm := NewMockVirtualMachine(ctrl)
+	evm := NewMockVirtualMachine(ctrl)
 
 	selectedFundId := Identifier{1, 2, 3}
 	any := gomock.Any()
 
 	// GetGasConfig is always called first to get the gas config.
-	vm.EXPECT().Call(any, any, any, any, any).
-		Return(make([]byte, 3*32), uint64(0), nil)
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return(make([]byte, 3*32), vm.GasBudget{}, nil)
 
 	// ChooseFund is called next to select a fund.
-	vm.EXPECT().Call(any, any, any, any, any).
-		Return(selectedFundId[:], uint64(0), nil)
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return(selectedFundId[:], vm.GasBudget{}, nil)
 
 	upgrades := opera.Upgrades{}
 
@@ -342,13 +342,13 @@ func TestIsCovered_GasSubsidiesDisabled_ReturnsNotSponsored(t *testing.T) {
 	})
 	require.True(IsSponsorshipRequest(tx))
 
-	result, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	result, err := IsCovered(upgrades, evm, signer, tx, big.NewInt(1))
 	require.NoError(err)
 	require.False(result.IsSponsored())
 	require.Zero(result.id)
 
 	upgrades.GasSubsidies = true
-	result, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	result, err = IsCovered(upgrades, evm, signer, tx, big.NewInt(1))
 	require.NoError(err)
 	require.True(result.IsSponsored())
 	require.Equal(selectedFundId, result.id)
@@ -357,14 +357,14 @@ func TestIsCovered_GasSubsidiesDisabled_ReturnsNotSponsored(t *testing.T) {
 func TestIsCovered_NotASponsorshipRequest_ReturnsNotSponsored(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	vm := NewMockVirtualMachine(ctrl)
+	evm := NewMockVirtualMachine(ctrl)
 
 	any := gomock.Any()
 	selectedFundId := Identifier{1, 2, 3}
-	vm.EXPECT().Call(any, any, any, any, any).
-		Return(make([]byte, 3*32), uint64(0), nil)
-	vm.EXPECT().Call(any, any, any, any, any).
-		Return(selectedFundId[:], uint64(0), nil)
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return(make([]byte, 3*32), vm.GasBudget{}, nil)
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return(selectedFundId[:], vm.GasBudget{}, nil)
 
 	upgrades := opera.Upgrades{
 		GasSubsidies: true,
@@ -377,7 +377,7 @@ func TestIsCovered_NotASponsorshipRequest_ReturnsNotSponsored(t *testing.T) {
 	// Non-Sponsorship request (no recipient) is rejected.
 	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{})
 	require.False(IsSponsorshipRequest(tx))
-	result, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	result, err := IsCovered(upgrades, evm, signer, tx, big.NewInt(1))
 	require.NoError(err)
 	require.False(result.IsSponsored())
 
@@ -386,7 +386,7 @@ func TestIsCovered_NotASponsorshipRequest_ReturnsNotSponsored(t *testing.T) {
 		To: &common.Address{},
 	})
 	require.True(IsSponsorshipRequest(tx))
-	result, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	result, err = IsCovered(upgrades, evm, signer, tx, big.NewInt(1))
 	require.NoError(err)
 	require.True(result.IsSponsored())
 	require.Equal(selectedFundId, result.id)
@@ -395,7 +395,7 @@ func TestIsCovered_NotASponsorshipRequest_ReturnsNotSponsored(t *testing.T) {
 func TestIsCovered_NotCoveredByFunds_ReturnsNotSponsored(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	vm := NewMockVirtualMachine(ctrl)
+	evm := NewMockVirtualMachine(ctrl)
 
 	upgrades := opera.Upgrades{
 		GasSubsidies: true,
@@ -412,18 +412,18 @@ func TestIsCovered_NotCoveredByFunds_ReturnsNotSponsored(t *testing.T) {
 	// If the query returns the 0-fund ID, IsCovered returns mode 0 (not covered).
 	any := gomock.Any()
 	selectedFundId := Identifier{}
-	vm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 3*32), uint64(0), nil)
-	vm.EXPECT().Call(any, any, any, any, any).Return(selectedFundId[:], uint64(0), nil)
-	result, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	evm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 3*32), vm.GasBudget{}, nil)
+	evm.EXPECT().Call(any, any, any, any, any).Return(selectedFundId[:], vm.GasBudget{}, nil)
+	result, err := IsCovered(upgrades, evm, signer, tx, big.NewInt(1))
 	require.NoError(err)
 	require.False(result.IsSponsored())
 	require.Zero(result.id)
 
 	// If the query returns a non-zero fund ID, IsCovered returns mode 1 (fund-backed).
 	selectedFundId = Identifier{1, 2, 3}
-	vm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 3*32), uint64(0), nil)
-	vm.EXPECT().Call(any, any, any, any, any).Return(selectedFundId[:], uint64(0), nil)
-	result, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	evm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 3*32), vm.GasBudget{}, nil)
+	evm.EXPECT().Call(any, any, any, any, any).Return(selectedFundId[:], vm.GasBudget{}, nil)
+	result, err = IsCovered(upgrades, evm, signer, tx, big.NewInt(1))
 	require.NoError(err)
 	require.True(result.IsSponsored())
 	require.Equal(selectedFundId, result.id)
@@ -454,7 +454,7 @@ func TestIsCovered_SenderReaderFails_ReturnsError(t *testing.T) {
 func TestIsCovered_createChooseFundInputFails_ReturnsError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	vm := NewMockVirtualMachine(ctrl)
+	evm := NewMockVirtualMachine(ctrl)
 	signer := NewMocksigner(ctrl)
 
 	upgrades := opera.Upgrades{
@@ -471,19 +471,19 @@ func TestIsCovered_createChooseFundInputFails_ReturnsError(t *testing.T) {
 
 	// Allow the getGasConfig EVM call to succeed.
 	any := gomock.Any()
-	vm.EXPECT().Call(any, any, any, any, any).
-		Return(make([]byte, 3*32), uint64(0), nil)
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return(make([]byte, 3*32), vm.GasBudget{}, nil)
 
 	// A huge base fee causes createChooseFundInput to fail.
 	baseFee := new(big.Int).Lsh(big.NewInt(1), 256) // 2^256
-	_, err := IsCovered(upgrades, vm, signer, tx, baseFee)
+	_, err := IsCovered(upgrades, evm, signer, tx, baseFee)
 	require.ErrorContains(err, "fee does not fit into 32 bytes")
 }
 
 func TestIsCovered_EvmCallFails_ReturnsError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	vm := NewMockVirtualMachine(ctrl)
+	evm := NewMockVirtualMachine(ctrl)
 
 	upgrades := opera.Upgrades{
 		GasSubsidies: true,
@@ -500,16 +500,16 @@ func TestIsCovered_EvmCallFails_ReturnsError(t *testing.T) {
 	// If the getGasConfig EVM returns an issue, IsCovered returns that issue.
 	any := gomock.Any()
 	issue := fmt.Errorf("injected getGasConfig issue")
-	vm.EXPECT().Call(any, any, any, any, any).Return(nil, uint64(0), issue)
-	_, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	evm.EXPECT().Call(any, any, any, any, any).Return(nil, vm.GasBudget{}, issue)
+	_, err = IsCovered(upgrades, evm, signer, tx, big.NewInt(1))
 	require.ErrorContains(err, "EVM call failed")
 	require.ErrorIs(err, issue)
 
 	// If the chooseFund EVM call fails, IsCovered returns an error.
 	issue = fmt.Errorf("injected chooseFund issue")
-	vm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 3*32), uint64(0), nil)
-	vm.EXPECT().Call(any, any, any, any, any).Return(nil, uint64(0), issue)
-	_, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	evm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 3*32), vm.GasBudget{}, nil)
+	evm.EXPECT().Call(any, any, any, any, any).Return(nil, vm.GasBudget{}, issue)
+	_, err = IsCovered(upgrades, evm, signer, tx, big.NewInt(1))
 	require.ErrorContains(err, "EVM call failed")
 	require.ErrorIs(err, issue)
 }
@@ -517,7 +517,7 @@ func TestIsCovered_EvmCallFails_ReturnsError(t *testing.T) {
 func TestIsCovered_EmptyResultFromChooseFund_ReportsMissingContract(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	vm := NewMockVirtualMachine(ctrl)
+	evm := NewMockVirtualMachine(ctrl)
 
 	upgrades := opera.Upgrades{
 		GasSubsidies: true,
@@ -533,16 +533,16 @@ func TestIsCovered_EmptyResultFromChooseFund_ReportsMissingContract(t *testing.T
 
 	// If the EVM returns no data, IsCovered returns an error.
 	any := gomock.Any()
-	vm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 3*32), uint64(0), nil)
-	vm.EXPECT().Call(any, any, any, any, any).Return(nil, uint64(0), nil)
-	_, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	evm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 3*32), vm.GasBudget{}, nil)
+	evm.EXPECT().Call(any, any, any, any, any).Return(nil, vm.GasBudget{}, nil)
+	_, err = IsCovered(upgrades, evm, signer, tx, big.NewInt(1))
 	require.ErrorContains(err, "subsidies registry contract not found")
 }
 
 func TestIsCovered_InvalidReturnFromEvm_ReturnsError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	vm := NewMockVirtualMachine(ctrl)
+	evm := NewMockVirtualMachine(ctrl)
 
 	upgrades := opera.Upgrades{
 		GasSubsidies: true,
@@ -558,9 +558,9 @@ func TestIsCovered_InvalidReturnFromEvm_ReturnsError(t *testing.T) {
 
 	// If the EVM returns invalid data, IsCovered returns an error.
 	any := gomock.Any()
-	vm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 3*32), uint64(0), nil)
-	vm.EXPECT().Call(any, any, any, any, any).Return([]byte{0x01}, uint64(0), nil)
-	_, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+	evm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 3*32), vm.GasBudget{}, nil)
+	evm.EXPECT().Call(any, any, any, any, any).Return([]byte{0x01}, vm.GasBudget{}, nil)
+	_, err = IsCovered(upgrades, evm, signer, tx, big.NewInt(1))
 	require.ErrorContains(err, "failed to parse result of subsidies registry call")
 }
 
@@ -583,7 +583,7 @@ func TestIsCovered_CallsChooseFundWithFeeConsideringMaxOverheadCharge(t *testing
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			ctrl := gomock.NewController(t)
-			vm := NewMockVirtualMachine(ctrl)
+			evm := NewMockVirtualMachine(ctrl)
 
 			upgrades := opera.Upgrades{
 				GasSubsidies: true,
@@ -602,22 +602,22 @@ func TestIsCovered_CallsChooseFundWithFeeConsideringMaxOverheadCharge(t *testing
 			binary.BigEndian.PutUint64(gasConfig[3*32+24:], test.fundBackedOverhead)
 			binary.BigEndian.PutUint64(gasConfig[4*32+24:], test.networkTrackedOverhead)
 			any := gomock.Any()
-			vm.EXPECT().Call(any, any, any, any, any).Return(gasConfig, uint64(0), nil)
+			evm.EXPECT().Call(any, any, any, any, any).Return(gasConfig, vm.GasBudget{}, nil)
 
 			// The chooseFund call should be made with a fee that considers the maximum of the two overheads.
 			expectedFee := uint256.NewInt(test.fundBackedOverhead)
 			if test.networkTrackedOverhead > test.fundBackedOverhead {
 				expectedFee = uint256.NewInt(test.networkTrackedOverhead)
 			}
-			vm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 2*32), uint64(0), nil).
-				Do(func(_ common.Address, _ common.Address, input []byte, _ uint64, _ *uint256.Int) {
+			evm.EXPECT().Call(any, any, any, any, any).Return(make([]byte, 2*32), vm.GasBudget{}, nil).
+				Do(func(_ common.Address, _ common.Address, input []byte, _ vm.GasBudget, _ *uint256.Int) {
 					// The fee is the 6th argument of the call.
 					feeBytes := input[4+5*32 : 4+6*32]
 					fee := new(big.Int).SetBytes(feeBytes)
 					require.Equal(expectedFee.ToBig(), fee)
 				})
 
-			_, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+			_, err = IsCovered(upgrades, evm, signer, tx, big.NewInt(1))
 			require.NoError(err)
 		})
 	}
@@ -628,7 +628,7 @@ func TestIsCovered_ReportsTheCorrectMode(t *testing.T) {
 		t.Run(fmt.Sprintf("mode=%d", mode), func(t *testing.T) {
 			require := require.New(t)
 			ctrl := gomock.NewController(t)
-			vm := NewMockVirtualMachine(ctrl)
+			evm := NewMockVirtualMachine(ctrl)
 
 			upgrades := opera.Upgrades{
 				GasSubsidies: true,
@@ -645,14 +645,14 @@ func TestIsCovered_ReportsTheCorrectMode(t *testing.T) {
 			// The gas config call returns just zeros for this test.
 			gasConfigResult := make([]byte, 5*32)
 			any := gomock.Any()
-			vm.EXPECT().Call(any, any, any, any, any).Return(gasConfigResult, uint64(0), nil)
+			evm.EXPECT().Call(any, any, any, any, any).Return(gasConfigResult, vm.GasBudget{}, nil)
 
 			// The chooseFund call returns the mode specified.
 			chooseFundResult := make([]byte, 2*32)
 			binary.BigEndian.PutUint64(chooseFundResult[24:], uint64(mode))
-			vm.EXPECT().Call(any, any, any, any, any).Return(chooseFundResult, uint64(0), nil)
+			evm.EXPECT().Call(any, any, any, any, any).Return(chooseFundResult, vm.GasBudget{}, nil)
 
-			result, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+			result, err := IsCovered(upgrades, evm, signer, tx, big.NewInt(1))
 			require.NoError(err)
 			require.Equal(mode, result.mode)
 		})
@@ -664,7 +664,7 @@ func TestIsCovered_ReportsThePayloadId(t *testing.T) {
 		t.Run(fmt.Sprintf("id=%v", id), func(t *testing.T) {
 			require := require.New(t)
 			ctrl := gomock.NewController(t)
-			vm := NewMockVirtualMachine(ctrl)
+			evm := NewMockVirtualMachine(ctrl)
 
 			upgrades := opera.Upgrades{
 				GasSubsidies: true,
@@ -681,15 +681,15 @@ func TestIsCovered_ReportsThePayloadId(t *testing.T) {
 			// The gas config call returns just zeros for this test.
 			gasConfigResult := make([]byte, 5*32)
 			any := gomock.Any()
-			vm.EXPECT().Call(any, any, any, any, any).Return(gasConfigResult, uint64(0), nil)
+			evm.EXPECT().Call(any, any, any, any, any).Return(gasConfigResult, vm.GasBudget{}, nil)
 
 			// The chooseFund call returns the mode specified.
 			chooseFundResult := make([]byte, 2*32)
 			binary.BigEndian.PutUint64(chooseFundResult[24:], uint64(sponsorshipModeFundBacked))
 			copy(chooseFundResult[32:], id[:])
-			vm.EXPECT().Call(any, any, any, any, any).Return(chooseFundResult, uint64(0), nil)
+			evm.EXPECT().Call(any, any, any, any, any).Return(chooseFundResult, vm.GasBudget{}, nil)
 
-			result, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+			result, err := IsCovered(upgrades, evm, signer, tx, big.NewInt(1))
 			require.NoError(err)
 			require.Equal(id, result.id)
 		})
@@ -718,7 +718,7 @@ func TestIsCovered_ReportsTheGasPriceConfig(t *testing.T) {
 		t.Run(fmt.Sprintf("config=%v", config), func(t *testing.T) {
 			require := require.New(t)
 			ctrl := gomock.NewController(t)
-			vm := NewMockVirtualMachine(ctrl)
+			evm := NewMockVirtualMachine(ctrl)
 
 			upgrades := opera.Upgrades{
 				GasSubsidies: true,
@@ -740,13 +740,13 @@ func TestIsCovered_ReportsTheGasPriceConfig(t *testing.T) {
 			binary.BigEndian.PutUint64(gasConfigResult[3*32+24:], config.overheadFundBackedSponsoring)
 			binary.BigEndian.PutUint64(gasConfigResult[4*32+24:], config.overheadNetworkTrackedSponsoring)
 			any := gomock.Any()
-			vm.EXPECT().Call(any, any, any, any, any).Return(gasConfigResult, uint64(0), nil)
+			evm.EXPECT().Call(any, any, any, any, any).Return(gasConfigResult, vm.GasBudget{}, nil)
 
 			// The chooseFund call returns the mode specified.
 			chooseFundResult := make([]byte, 2*32)
-			vm.EXPECT().Call(any, any, any, any, any).Return(chooseFundResult, uint64(0), nil)
+			evm.EXPECT().Call(any, any, any, any, any).Return(chooseFundResult, vm.GasBudget{}, nil)
 
-			result, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
+			result, err := IsCovered(upgrades, evm, signer, tx, big.NewInt(1))
 			require.NoError(err)
 			require.Equal(config, result.config)
 		})
@@ -1168,24 +1168,24 @@ func TestGetGasConfig_ValidLegacyFormat_ReturnsExpectedConfig(t *testing.T) {
 		t.Run(fmt.Sprintf("choose=%d/deduct=%d/overhead=%d", c.gasLimitForChooseFund, c.gasLimitForDeductFees, c.overheadFundBackedSponsoring), func(t *testing.T) {
 			require := require.New(t)
 			ctrl := gomock.NewController(t)
-			vm := NewMockVirtualMachine(ctrl)
+			evm := NewMockVirtualMachine(ctrl)
 
 			any := gomock.Any()
 			caller := common.Address{}
 			target := registry.GetAddress()
 			input := make([]byte, 4) // < function selector only
 			binary.BigEndian.PutUint32(input, registry.GetGasConfigFunctionSelector)
-			gas := uint64(registry.GasLimitForGetGasConfig)
+			gas := vm.NewGasBudget(registry.GasLimitForGetGasConfig, 0)
 
 			result := make([]byte, 3*32)
 			binary.BigEndian.PutUint64(result[32*0+24:32*0+32], c.gasLimitForChooseFund)
 			binary.BigEndian.PutUint64(result[32*1+24:32*1+32], c.gasLimitForDeductFees)
 			binary.BigEndian.PutUint64(result[32*2+24:32*2+32], c.overheadFundBackedSponsoring)
 
-			vm.EXPECT().Call(caller, target, input, gas, any).
-				Return(result, uint64(0), nil)
+			evm.EXPECT().Call(caller, target, input, gas, any).
+				Return(result, vm.GasBudget{}, nil)
 
-			config, err := getGasConfig(vm)
+			config, err := getGasConfig(evm)
 			require.NoError(err)
 
 			require.Equal(c.gasLimitForChooseFund, config.gasLimitForChooseFund)
@@ -1223,14 +1223,14 @@ func TestGetGasConfig_ValidConfiguration_ReturnsExpectedConfig(t *testing.T) {
 		t.Run(fmt.Sprintf("choose=%d/deduct=%d/track=%d/fundBacked=%d/networkTracked=%d", c.gasLimitForChooseFund, c.gasLimitForDeductFees, c.gasLimitForTrack, c.overheadFundBackedSponsoring, c.overheadNetworkTrackedSponsoring), func(t *testing.T) {
 			require := require.New(t)
 			ctrl := gomock.NewController(t)
-			vm := NewMockVirtualMachine(ctrl)
+			evm := NewMockVirtualMachine(ctrl)
 
 			any := gomock.Any()
 			caller := common.Address{}
 			target := registry.GetAddress()
 			input := make([]byte, 4) // < function selector only
 			binary.BigEndian.PutUint32(input, registry.GetGasConfigFunctionSelector)
-			gas := uint64(registry.GasLimitForGetGasConfig)
+			gas := vm.NewGasBudget(registry.GasLimitForGetGasConfig, 0)
 
 			result := make([]byte, 5*32)
 			binary.BigEndian.PutUint64(result[32*0+24:32*0+32], c.gasLimitForChooseFund)
@@ -1239,10 +1239,10 @@ func TestGetGasConfig_ValidConfiguration_ReturnsExpectedConfig(t *testing.T) {
 			binary.BigEndian.PutUint64(result[32*3+24:32*3+32], c.overheadFundBackedSponsoring)
 			binary.BigEndian.PutUint64(result[32*4+24:32*4+32], c.overheadNetworkTrackedSponsoring)
 
-			vm.EXPECT().Call(caller, target, input, gas, any).
-				Return(result, uint64(0), nil)
+			evm.EXPECT().Call(caller, target, input, gas, any).
+				Return(result, vm.GasBudget{}, nil)
 
-			config, err := getGasConfig(vm)
+			config, err := getGasConfig(evm)
 			require.NoError(err)
 
 			require.Equal(c.gasLimitForChooseFund, config.gasLimitForChooseFund)
@@ -1257,14 +1257,14 @@ func TestGetGasConfig_ValidConfiguration_ReturnsExpectedConfig(t *testing.T) {
 func TestGetGasConfig_VmFailing_ReturnsVmError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	vm := NewMockVirtualMachine(ctrl)
+	evm := NewMockVirtualMachine(ctrl)
 
 	any := gomock.Any()
 	issue := fmt.Errorf("injected issue")
-	vm.EXPECT().Call(any, any, any, any, any).
-		Return(nil, uint64(0), issue)
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return(nil, vm.GasBudget{}, issue)
 
-	_, err := getGasConfig(vm)
+	_, err := getGasConfig(evm)
 	require.ErrorIs(err, issue)
 }
 
@@ -1300,13 +1300,13 @@ func TestGetGasConfig_InvalidVmResult_ReturnsIssue(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			ctrl := gomock.NewController(t)
-			vm := NewMockVirtualMachine(ctrl)
+			evm := NewMockVirtualMachine(ctrl)
 
 			any := gomock.Any()
-			vm.EXPECT().Call(any, any, any, any, any).
-				Return(test.result, uint64(0), nil)
+			evm.EXPECT().Call(any, any, any, any, any).
+				Return(test.result, vm.GasBudget{}, nil)
 
-			_, err := getGasConfig(vm)
+			_, err := getGasConfig(evm)
 			require.ErrorContains(err, test.issue)
 		})
 	}
@@ -1324,16 +1324,16 @@ func TestGetGasConfig_GasLimitOverflow_ReportsOverflow(t *testing.T) {
 				t.Run(fmt.Sprintf("index=%d", i), func(t *testing.T) {
 					require := require.New(t)
 					ctrl := gomock.NewController(t)
-					vm := NewMockVirtualMachine(ctrl)
+					evm := NewMockVirtualMachine(ctrl)
 
 					result := make([]byte, 3*32)
 					result[i] = 1
 
 					any := gomock.Any()
-					vm.EXPECT().Call(any, any, any, any, any).
-						Return(result, uint64(0), nil)
+					evm.EXPECT().Call(any, any, any, any, any).
+						Return(result, vm.GasBudget{}, nil)
 
-					_, err := getGasConfig(vm)
+					_, err := getGasConfig(evm)
 					require.ErrorContains(err, "values do not fit into uint64")
 				})
 			}
@@ -1354,16 +1354,16 @@ func TestGetGasConfig_GasLimitOverflow_ReportsOverflow(t *testing.T) {
 				t.Run(fmt.Sprintf("index=%d", i), func(t *testing.T) {
 					require := require.New(t)
 					ctrl := gomock.NewController(t)
-					vm := NewMockVirtualMachine(ctrl)
+					evm := NewMockVirtualMachine(ctrl)
 
 					result := make([]byte, 5*32)
 					result[i] = 1
 
 					any := gomock.Any()
-					vm.EXPECT().Call(any, any, any, any, any).
-						Return(result, uint64(0), nil)
+					evm.EXPECT().Call(any, any, any, any, any).
+						Return(result, vm.GasBudget{}, nil)
 
-					_, err := getGasConfig(vm)
+					_, err := getGasConfig(evm)
 					require.ErrorContains(err, "values do not fit into uint64")
 				})
 			}

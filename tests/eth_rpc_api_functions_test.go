@@ -50,6 +50,12 @@ var (
 	knownMissingAPIs = namespaceMap{
 		"eth": {
 			"GetStorageValues": struct{}{},
+			// Sonic reports base fees through block headers, eth_gasPrice and
+			// eth_feeHistory; it does not serve eth_baseFee yet.
+			"BaseFee": struct{}{},
+			// eth_capabilities describes the history range a node can serve,
+			// which Sonic does not model the way go-ethereum does.
+			"Capabilities": struct{}{},
 		},
 		"debug": {
 			"DbAncient":                   struct{}{},

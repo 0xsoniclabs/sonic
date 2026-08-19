@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -172,8 +173,14 @@ func doTestEstimate(
 				tmpTx.Data(),
 				tmpTx.AccessList(),
 				tmpTx.SetCodeAuthorizations(),
-				tmpTx.To() == nil,
-				true, true, netUpgrades.Allegro)
+				account.Address(),
+				tmpTx.To(),
+				uint256.MustFromBig(tmpTx.Value()),
+				params.Rules{
+					IsHomestead: true,
+					IsIstanbul:  true,
+					IsShanghai:  netUpgrades.Allegro,
+				})
 			require.NoError(t, err, "Failed to calculate intrinsic gas")
 
 			// estimate gas used by the message

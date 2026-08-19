@@ -25,7 +25,7 @@ import (
 	"unicode"
 
 	"github.com/0xsoniclabs/sonic/config/flags"
-	"github.com/ethereum/go-ethereum/ethdb/pebble"
+	"github.com/cockroachdb/pebble"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -66,8 +66,12 @@ func analyzeDbs(ctx *cli.Context) error {
 	return nil
 }
 
+// analyzeDb reads the given database and reports per-key-prefix statistics. The
+// database is opened with the same Pebble version the node writes with, since
+// go-ethereum's ethdb/pebble wrapper has moved on to Pebble v2 and can no
+// longer read the format the node produces.
 func analyzeDb(path string) (res map[string]*prefixStats, err error) {
-	db, err := pebble.New(path, 0, 0, "pebble", true)
+	db, err := pebble.Open(path, &pebble.Options{ReadOnly: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open DB: %v", err)
 	}
@@ -79,8 +83,11 @@ func analyzeDb(path string) (res map[string]*prefixStats, err error) {
 
 	foundPrefixes := make(map[string]*prefixStats)
 
-	iter := db.NewIterator(nil, nil)
-	for iter.Next() {
+	iter, err := db.NewIter(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create DB iterator: %v", err)
+	}
+	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
 		val := iter.Value()
 		if len(key) > 0 {
@@ -95,7 +102,9 @@ func analyzeDb(path string) (res map[string]*prefixStats, err error) {
 			stats.valLenSum += len(val)
 		}
 	}
-	iter.Release()
+	if err := iter.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close DB iterator: %v", err)
+	}
 
 	return foundPrefixes, nil
 }

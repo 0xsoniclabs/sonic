@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -53,10 +54,10 @@ func traceTestMessage(from, to common.Address) *core.Message {
 		From:      from,
 		To:        &to,
 		GasLimit:  21000,
-		GasPrice:  new(big.Int),
-		GasFeeCap: new(big.Int),
-		GasTipCap: new(big.Int),
-		Value:     new(big.Int),
+		GasPrice:  new(uint256.Int),
+		GasFeeCap: new(uint256.Int),
+		GasTipCap: new(uint256.Int),
+		Value:     new(uint256.Int),
 	}
 }
 
@@ -414,39 +415,26 @@ func TestTraceCallExec_AllTypes(t *testing.T) {
 	require.NotNil(t, result.VmTrace, "vmTrace must be non-nil when requested")
 }
 
-func TestTraceCallExec_InvalidGasPrice_ReturnsError(t *testing.T) {
-	tests := map[string]*core.Message{
-		"negative gas price": {
-			GasPrice: big.NewInt(-1),
-		},
-		"excessively large gas price": {
-			GasPrice: new(big.Int).Lsh(big.NewInt(1), 256),
-		},
-	}
+func TestTraceCallExec_MissingGasPrice_ReturnsError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+	backend := setupBackendForTracing(ctrl, mockState)
 
-	for name, msg := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			mockState := state.NewMockStateDB(ctrl)
-			backend := setupBackendForTracing(ctrl, mockState)
+	mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any(), gomock.Any())
 
-			mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+	api := &PublicTxTraceAPI{b: backend}
+	result, err := api.traceCallExec(
+		t.Context(),
+		traceTestBlock(),
+		&core.Message{},
+		mockState,
+		traceTestTx(),
+		0,
+		TraceOptions{Trace: true},
+	)
 
-			api := &PublicTxTraceAPI{b: backend}
-			result, err := api.traceCallExec(
-				t.Context(),
-				traceTestBlock(),
-				msg,
-				mockState,
-				traceTestTx(),
-				0,
-				TraceOptions{Trace: true},
-			)
-
-			require.ErrorContains(t, err, "invalid gas price")
-			require.Nil(t, result, "result must be nil on error")
-		})
-	}
+	require.ErrorContains(t, err, "message gas price cannot be nil")
+	require.Nil(t, result, "result must be nil on error")
 }
 
 // setupBackendForCallMany returns a MockBackend pre-configured with all expectations

@@ -59,7 +59,7 @@ func Test_calculateEnvelopeGas_ComputesGasBasedOnProvidedParameters(t *testing.T
 		"payload dominating gas requirements": {
 			payload: largePayload,
 			expected: func() uint64 {
-				res, err := core.FloorDataGas(largePayload)
+				res, err := core.FloorDataGas(params.Rules{}, common.Address{}, nil, nil, largePayload, nil)
 				require.NoError(t, err)
 				return res
 			}(),
@@ -372,10 +372,10 @@ func Test_calculateIntrinsicGas_MatchesGethImplementation(t *testing.T) {
 				tc.data,
 				tc.accessList,
 				tc.authList,
-				false, // envelopes are not a contract creations
-				true,  // is homestead
-				true,  // is istanbul
-				true,  // is shanghai
+				common.Address{},
+				&common.Address{}, // envelopes are not a contract creations
+				nil,
+				params.Rules{IsHomestead: true, IsIstanbul: true, IsShanghai: true},
 			)
 			require.NoError(err)
 
@@ -477,7 +477,7 @@ func Test_calculateFloorDataGas_MatchesGethImplementation(t *testing.T) {
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			want, err := core.FloorDataGas(data)
+			want, err := core.FloorDataGas(params.Rules{}, common.Address{}, nil, nil, data, nil)
 			require.NoError(err)
 
 			zeros := bytes.Count(data, []byte{0})
