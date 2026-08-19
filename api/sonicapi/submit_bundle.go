@@ -23,6 +23,7 @@ import (
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -104,8 +105,20 @@ func (a *PublicBundleAPI) SubmitBundle(
 		return common.Hash{}, fmt.Errorf("failed to generate single use signing key: %w", err)
 	}
 
-	// Calculate the gas limit for the bundle transaction
-	gas, err := bundle.CalculateEnvelopeGas(txBundle, data, nil, nil)
+	// Calculate the gas limit for the bundle transaction. The gas schedule the
+	// envelope is priced with depends on the active network upgrades.
+	rules, err := a.b.GetNetworkRules(ctx, idx.Block(currentBlock.NumberU64()))
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to retrieve network rules: %w", err)
+	}
+	if rules == nil {
+		return common.Hash{}, fmt.Errorf("no network rules found for block %d", currentBlock.NumberU64())
+	}
+
+	// The envelope created below carries no value.
+	gas, err := bundle.CalculateEnvelopeGas(
+		txBundle, data, nil, nil, nil, rules.Upgrades,
+	)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to calculate envelope gas: %w", err)
 	}
