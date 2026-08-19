@@ -20,8 +20,10 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 )
 
 const (
@@ -67,13 +69,15 @@ const (
 func ValidateEnvelope(
 	signer types.Signer,
 	envelopeTx *types.Transaction,
+	upgrades opera.Upgrades,
 ) (*TransactionBundle, *ExecutionPlan, error) {
-	return validateEnvelopeInternal(signer, envelopeTx, 0)
+	return validateEnvelopeInternal(signer, envelopeTx, upgrades, 0)
 }
 
 func validateEnvelopeInternal(
 	signer types.Signer,
 	envelopeTx *types.Transaction,
+	upgrades opera.Upgrades,
 	depth int,
 ) (*TransactionBundle, *ExecutionPlan, error) {
 	if depth > MaxBundleNestingDepth {
@@ -108,13 +112,21 @@ func validateEnvelopeInternal(
 		return nil, nil, fmt.Errorf("envelope signed for wrong chain ID")
 	}
 
-	// Check that the bundle's gas limit matches the required gas limit.
+	// Check that the bundle's gas limit matches the required gas limit. Since
+	// EIP-2780 the envelope's value contributes to its intrinsic gas costs.
+	value, overflow := uint256.FromBig(envelopeTx.Value())
+	if overflow {
+		return nil, nil, fmt.Errorf("envelope value out of range")
+	}
+
 	have := envelopeTx.Gas()
 	want, err := CalculateEnvelopeGas(
 		bundle,
 		envelopeTx.Data(),
 		envelopeTx.AccessList(),
 		envelopeTx.SetCodeAuthorizations(),
+		value,
+		upgrades,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid gas limit: %w", err)
@@ -126,7 +138,7 @@ func validateEnvelopeInternal(
 	// Check that nested envelopes are fine.
 	for _, tx := range bundle.Transactions {
 		if IsEnvelope(tx) {
-			if _, _, err := validateEnvelopeInternal(signer, tx, depth+1); err != nil {
+			if _, _, err := validateEnvelopeInternal(signer, tx, upgrades, depth+1); err != nil {
 				return nil, nil, fmt.Errorf("invalid nested envelope: %w", err)
 			}
 		}

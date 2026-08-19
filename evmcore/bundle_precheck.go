@@ -117,7 +117,9 @@ func getBundleState(
 	}
 
 	// Verify that the bundle is valid.
-	bundle, _, err := bundle.ValidateEnvelope(signer, envelope)
+	bundle, _, err := bundle.ValidateEnvelope(
+		signer, envelope, chain.GetCurrentNetworkRules().Upgrades,
+	)
 	if err != nil {
 		return makePermanentlyBlockedState(fmt.Sprintf("invalid bundle: %v", err))
 	}

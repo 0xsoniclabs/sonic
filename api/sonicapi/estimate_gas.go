@@ -21,8 +21,11 @@ import (
 	"fmt"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -98,6 +101,29 @@ func (e *estimator) EstimateGas(args ethapi.TransactionArgs, preArgs []ethapi.Tr
 	return gas, nil
 }
 
+// bundleOnlyMarkerGas returns the intrinsic gas of the bundle-only marker, the
+// bundle-only address with the execution plan hash in a transaction's access
+// list, under the rules of the block the estimate is based on.
+func (e *estimator) bundleOnlyMarkerGas() (uint64, error) {
+	rules, err := ethapi.ChainRules(e.ctx, e.b, e.blockNrOrHash, e.blockOverrides)
+	if err != nil {
+		return 0, err
+	}
+	marker := types.AccessList{{
+		Address:     bundle.BundleOnly,
+		StorageKeys: []common.Hash{{}},
+	}}
+	withMarker, err := core.IntrinsicGas(nil, marker, nil, common.Address{}, &bundle.BundleOnly, nil, rules)
+	if err != nil {
+		return 0, err
+	}
+	withoutMarker, err := core.IntrinsicGas(nil, nil, nil, common.Address{}, &bundle.BundleOnly, nil, rules)
+	if err != nil {
+		return 0, err
+	}
+	return withMarker - withoutMarker, nil
+}
+
 // doEstimateGasForTransactions estimates the gas for a list of transactions using the provided gas estimator.
 // It applies the state changes from each transaction to the subsequent ones when estimating gas.
 func doEstimateGasForTransactions(
@@ -115,9 +141,18 @@ func doEstimateGasForTransactions(
 		preArgs = append(preArgs, arg)
 		preArgs[len(preArgs)-1].Gas = (*hexutil.Uint64)(&gas)
 
-		gasLimits[i] = gas +
-			hexutil.Uint64(params.TxAccessListAddressGas) + // add gas for bundle only address
-			hexutil.Uint64(params.TxAccessListStorageKeyGas) // add gas for execution plan hash
+		gasLimits[i] = gas
+	}
+	if len(args) == 0 {
+		return gasLimits, nil
+	}
+
+	markerGas, err := eval.bundleOnlyMarkerGas()
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute the bundle-only marker gas: %w", err)
+	}
+	for i := range gasLimits {
+		gasLimits[i] += hexutil.Uint64(markerGas)
 	}
 	return gasLimits, nil
 }

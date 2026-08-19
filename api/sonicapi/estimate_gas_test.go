@@ -32,7 +32,7 @@ import (
 )
 
 // bundleGasOverhead is the extra gas added per transaction in the bundle
-// to account for the execution plan entries in the access list.
+// before Canto to account for the execution plan entries in the access list.
 const bundleGasOverhead = params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
 
 func Test_EstimateGasForTransactions_NilArgs(t *testing.T) {
@@ -299,4 +299,58 @@ func Test_EstimateGasForTransactions_WithBlockOverrides(t *testing.T) {
 	require.Len(t, overrideResult.GasLimits, 1)
 	require.Equal(t, uint64(sonicResult.GasLimits[0]), uint64(overrideResult.GasLimits[0]),
 		"block override to Sonic upgrade should give the same gas as explicit Sonic block")
+}
+
+func Test_EstimateGasForTransactions_MarkerGasFollowsCanto(t *testing.T) {
+	addr1, _, args := getTestDefaults()
+
+	// EIP-7981 also charges for the marker's address and storage key as data.
+	const cantoMarkerGas = params.TxAccessListAddressGasAmsterdam +
+		params.TxAccessListStorageKeyGasAmsterdam +
+		(common.AddressLength+common.HashLength)*params.TxCostFloorPerToken7976*params.TxTokenPerNonZeroByte
+
+	prevRandao := common.Hash{1}
+	be := rpctest.NewBackendBuilder(t).
+		WithBlockHistory([]rpctest.Block{
+			{Number: 1, Hash: common.HexToHash("0x1"), PrevRandao: prevRandao},
+			{Number: 10, Hash: common.HexToHash("0xa"), PrevRandao: prevRandao},
+		}).
+		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+		WithUpgrade(0, opera.GetBrioUpgrades()).
+		WithUpgrade(10, opera.GetCantoUpgrades()).
+		Build()
+
+	api := NewPublicBundleAPI(be)
+
+	tests := map[string]struct {
+		block          rpc.BlockNumber
+		blockOverrides *ethapi.BlockOverrides
+		markerGas      uint64
+	}{
+		"Brio": {
+			block:     1,
+			markerGas: bundleGasOverhead,
+		},
+		"Canto": {
+			block:     10,
+			markerGas: cantoMarkerGas,
+		},
+		"Canto through block override": {
+			block:          1,
+			blockOverrides: &ethapi.BlockOverrides{Number: (*hexutil.Big)(big.NewInt(10))},
+			markerGas:      cantoMarkerGas,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			blockNr := rpc.BlockNumberOrHashWithNumber(test.block)
+			gas, err := ethapi.DoEstimateGas(t.Context(), be, args[0], blockNr, nil, test.blockOverrides, be.RPCGasCap(), nil)
+			require.NoError(t, err)
+
+			result, err := api.EstimateGasForTransactions(t.Context(), args, &blockNr, nil, test.blockOverrides)
+			require.NoError(t, err)
+			require.Equal(t, []hexutil.Uint64{gas + hexutil.Uint64(test.markerGas)}, result.GasLimits)
+		})
+	}
 }
