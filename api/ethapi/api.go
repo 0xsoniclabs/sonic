@@ -1543,9 +1543,25 @@ func isOsaka(
 	blockNrOrHash rpc.BlockNumberOrHash,
 	blockOverrides *BlockOverrides,
 ) (bool, error) {
-	blockNumber, blockTime, err := getNumberAndTime(ctx, b, blockNrOrHash)
+	rules, err := ChainRules(ctx, b, blockNrOrHash, blockOverrides)
 	if err != nil {
 		return false, err
+	}
+	return rules.IsOsaka, nil
+}
+
+// ChainRules returns the go-ethereum rules of the given block number or hash.
+// The block number or its timestamp may be overridden by the given block
+// overrides.
+func ChainRules(
+	ctx context.Context,
+	b Backend,
+	blockNrOrHash rpc.BlockNumberOrHash,
+	blockOverrides *BlockOverrides,
+) (params.Rules, error) {
+	blockNumber, blockTime, err := getNumberAndTime(ctx, b, blockNrOrHash)
+	if err != nil {
+		return params.Rules{}, err
 	}
 
 	// check overrides
@@ -1558,8 +1574,8 @@ func isOsaka(
 		}
 	}
 
-	// use Osaka gas limit rule
-	return b.ChainConfig(idx.Block(blockNumber)).IsOsaka(big.NewInt(int64(blockNumber)), blockTime), nil
+	config := b.ChainConfig(idx.Block(blockNumber))
+	return config.Rules(big.NewInt(int64(blockNumber)), true, blockTime), nil
 }
 
 // getNumberAndTime returns the block number and time for the given block number or hash,

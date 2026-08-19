@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
@@ -60,7 +61,7 @@ func TestBundleBuilder_Build_AllowsToBuildBundleAsSpecified(t *testing.T) {
 		SetEnvelopeSenderKey(keyE).
 		Build()
 
-	bundle, plan, err := ValidateEnvelope(signer, tx)
+	bundle, plan, err := ValidateEnvelope(signer, tx, opera.Upgrades{})
 	require.NoError(err)
 
 	// Check the block range.
@@ -123,7 +124,7 @@ func TestBundleBuilder_BuildComposedBundles(t *testing.T) {
 			AllOf(B, C),
 		).Build()
 
-	bundle, _, err := ValidateEnvelope(signer, envelope)
+	bundle, _, err := ValidateEnvelope(signer, envelope, opera.Upgrades{})
 	require.NoError(t, err)
 
 	require.Len(t, bundle.Transactions, 3)
@@ -371,7 +372,7 @@ func TestBundleBuilder_AllOf_BuildEmptyBundle(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	tx := AllOf().Build()
 
-	_, _, err := ValidateEnvelope(signer, tx)
+	_, _, err := ValidateEnvelope(signer, tx, opera.Upgrades{})
 	require.NoError(t, err)
 }
 
@@ -393,7 +394,7 @@ func TestBundleBuilder_AllOf_BuildBundle(t *testing.T) {
 		}),
 	).Build()
 
-	_, _, err = ValidateEnvelope(signer, tx)
+	_, _, err = ValidateEnvelope(signer, tx, opera.Upgrades{})
 	require.NoError(t, err)
 }
 
@@ -415,7 +416,7 @@ func TestBundleBuilder_OneOf_BuildBundle(t *testing.T) {
 		}),
 	).Build()
 
-	_, _, err = ValidateEnvelope(signer, tx)
+	_, _, err = ValidateEnvelope(signer, tx, opera.Upgrades{})
 	require.NoError(t, err)
 }
 
@@ -423,7 +424,7 @@ func TestBundleBuilder_OneOf_EmptyBundle(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	tx := OneOf().Build()
 
-	_, _, err := ValidateEnvelope(signer, tx)
+	_, _, err := ValidateEnvelope(signer, tx, opera.Upgrades{})
 	require.NoError(t, err)
 }
 
@@ -455,10 +456,10 @@ func TestBundleBuilder_Builder_NewNestedBundle(t *testing.T) {
 		}),
 	).Build()
 
-	_, _, err = ValidateEnvelope(signer, inner)
+	_, _, err = ValidateEnvelope(signer, inner, opera.Upgrades{})
 	require.NoError(t, err)
 
-	_, _, err = ValidateEnvelope(signer, outer)
+	_, _, err = ValidateEnvelope(signer, outer, opera.Upgrades{})
 	require.NoError(t, err)
 
 	// all combined in one
@@ -473,7 +474,7 @@ func TestBundleBuilder_Builder_NewNestedBundle(t *testing.T) {
 		).Build()),
 	).Build()
 
-	_, _, err = ValidateEnvelope(signer, combined)
+	_, _, err = ValidateEnvelope(signer, combined, opera.Upgrades{})
 	require.NoError(t, err)
 }
 
@@ -525,11 +526,11 @@ func TestBundleBuilder_AdjustsNestedEnvelopeGasToPassValidation(t *testing.T) {
 	).Build()
 
 	signer := NewBuilder().GetSigner()
-	bundle, _, err := ValidateEnvelope(signer, outer)
+	bundle, _, err := ValidateEnvelope(signer, outer, opera.Upgrades{})
 	require.NoError(t, err)
 
 	txs := bundle.GetTransactionsInReferencedOrder()
-	_, _, err = ValidateEnvelope(signer, txs[0])
+	_, _, err = ValidateEnvelope(signer, txs[0], opera.Upgrades{})
 	require.NoError(t, err)
 }
 
@@ -559,7 +560,7 @@ func TestBundleBuilder_DefaultsSignerIfUnspecified(t *testing.T) {
 		Build()
 
 	signer := NewBuilder().GetSigner()
-	_, _, err = ValidateEnvelope(signer, tx)
+	_, _, err = ValidateEnvelope(signer, tx, opera.Upgrades{})
 	require.NoError(t, err)
 }
 
@@ -579,7 +580,7 @@ func TestBundleBuilder_CanSetGasPrice(t *testing.T) {
 				Build()
 
 			signer := NewBuilder().GetSigner()
-			_, _, err = ValidateEnvelope(signer, tx)
+			_, _, err = ValidateEnvelope(signer, tx, opera.Upgrades{})
 			require.NoError(t, err)
 
 			if price != nil {
@@ -604,7 +605,7 @@ func TestBundleBuilder_DefaultsGasPriceToZero(t *testing.T) {
 		Build()
 
 	signer := NewBuilder().GetSigner()
-	_, _, err = ValidateEnvelope(signer, tx)
+	_, _, err = ValidateEnvelope(signer, tx, opera.Upgrades{})
 	require.NoError(t, err)
 
 	require.Equal(t, 0, tx.GasPrice().Cmp(big.NewInt(0)))
@@ -624,7 +625,7 @@ func TestBundleBuilder_SetEnvelopeNonce_SetsNonce(t *testing.T) {
 		Build()
 
 	signer := NewBuilder().GetSigner()
-	_, _, err = ValidateEnvelope(signer, tx)
+	_, _, err = ValidateEnvelope(signer, tx, opera.Upgrades{})
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(123), tx.Nonce())
@@ -644,8 +645,52 @@ func TestBundleBuilder_SetEnvelopeSenderKey_DefaultsNonceWhenUnset(t *testing.T)
 		Build()
 
 	signer := NewBuilder().GetSigner()
-	_, _, err = ValidateEnvelope(signer, tx)
+	_, _, err = ValidateEnvelope(signer, tx, opera.Upgrades{})
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(0), tx.Nonce())
+}
+
+func TestBuilderStep_Clone_DoesNotMutateTheOriginalStep(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	original := AllOf(
+		Step(key, types.AccessListTx{Gas: 100}),
+		Step(key, types.AccessListTx{Gas: 200}),
+	)
+
+	want := make([]*txReference, len(original.steps))
+	for i, step := range original.steps {
+		want[i] = step.txRef
+	}
+
+	original.Clone()
+
+	for i, step := range original.steps {
+		require.Same(t, want[i], step.txRef, "step %d was replaced by Clone", i)
+	}
+}
+
+func TestBuilder_RepeatedBuildsYieldEquivalentBundles(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	builder := NewBuilder().
+		WithSigner(signer).
+		AllOf(Step(key, types.AccessListTx{Gas: 100_000}))
+
+	first := builder.BuildBundle()
+	second := builder.BuildBundle()
+
+	require.Equal(t, first.Plan, second.Plan)
+
+	firstTxs := first.GetTransactionsInReferencedOrder()
+	secondTxs := second.GetTransactionsInReferencedOrder()
+	require.Len(t, secondTxs, len(firstTxs))
+	for i, tx := range firstTxs {
+		require.Equal(t, tx.Gas(), secondTxs[i].Gas())
+		require.Equal(t, tx.Hash(), secondTxs[i].Hash())
+	}
 }

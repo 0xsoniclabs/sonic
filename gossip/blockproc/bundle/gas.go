@@ -17,65 +17,61 @@
 package bundle
 
 import (
-	"bytes"
 	"fmt"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/checked"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 )
 
+// envelopeSender is the nominal sender used when computing the intrinsic and
+// floor data gas of an envelope. Since EIP-2780 the sender influences those
+// costs in a single way: a transaction sending value to itself pays neither for
+// touching the recipient nor for the transfer. An envelope can never be such a
+// self-transfer, since it is addressed to BundleProcessor, a system address no
+// key can sign for. Any address other than BundleProcessor thus yields the
+// correct result, independent of who actually signed the envelope.
+var envelopeSender = common.Address{}
+
 // CalculateEnvelopeGas calculates the gas limit for an envelope transaction
-// based on the given payload and access list.
+// carrying the given bundle. The envelope must declare enough gas to cover its
+// own costs as a transaction - the intrinsic gas of its payload, access list
+// and authorization list, and the floor data gas of EIP-7623 - as well as the
+// combined gas limits of the transactions it delivers.
+//
+// The envelope's own costs are computed by go-ethereum, so that this function
+// agrees with the intrinsic and floor data gas checks a validating node applies
+// to the envelope, across all gas schedule revisions.
 func CalculateEnvelopeGas(
 	bundle TransactionBundle,
 	payload []byte,
 	accessList types.AccessList,
 	authList []types.SetCodeAuthorization,
+	value *uint256.Int,
+	upgrades opera.Upgrades,
 ) (uint64, error) {
-	dataSize := uint64(len(payload))
-	z := uint64(bytes.Count(payload, []byte{0}))
-	nz := dataSize - z
-	return calculateEnvelopeGasInternal(
-		bundle.GetTransactionsInReferencedOrder(),
-		z, nz,
-		uint64(len(accessList)),
-		uint64(accessList.StorageKeys()),
-		uint64(len(authList)),
-	)
-}
+	rules := envelopeGasRules(upgrades)
 
-// calculateEnvelopeGasInternal is the internal implementation of
-// CalculateEnvelopeGas that takes pre-calculated values object sizes instead
-// of the actual objects. This allows for testing the gas calculation logic
-// without needing to construct large objects in memory.
-func calculateEnvelopeGasInternal(
-	transactions []*types.Transaction,
-	numZeroBytesInData uint64,
-	numNonZeroBytesInData uint64,
-	numAccessListAddresses uint64,
-	numAccessListSlots uint64,
-	numSetCodeAuthorizations uint64,
-) (uint64, error) {
-	intrinsic, err := calculateIntrinsicGas(
-		numZeroBytesInData,
-		numNonZeroBytesInData,
-		numAccessListAddresses,
-		numAccessListSlots,
-		numSetCodeAuthorizations,
+	intrinsic, err := core.IntrinsicGas(
+		payload, accessList, authList,
+		envelopeSender, &BundleProcessor, value, rules,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("failed intrinsic gas calculation: %w", err)
 	}
 
-	floorDataGas, err := calculateFloorDataGas(
-		numZeroBytesInData, numNonZeroBytesInData,
+	floorDataGas, err := core.FloorDataGas(
+		rules, envelopeSender, &BundleProcessor, value, payload, accessList,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("failed floor data gas calculation: %w", err)
 	}
 
-	txGas, err := calculateTxGasSum(transactions)
+	txGas, err := calculateTxGasSum(bundle.GetTransactionsInReferencedOrder())
 	if err != nil {
 		return 0, fmt.Errorf("failed transaction gas sum calculation: %w", err)
 	}
@@ -83,54 +79,38 @@ func calculateEnvelopeGasInternal(
 	return max(intrinsic, floorDataGas, txGas), nil
 }
 
-// calculateIntrinsicGas calculates the intrinsic gas costs of a transaction
-// with the given properties. This is a testable version of the
-// core.IntrinsicGas function that doesn't require actual data leading to
-// overflows to be constructed in memory for tests (which is not possible).
-func calculateIntrinsicGas(
-	numZeroBytesInData uint64,
-	numNonZeroBytesInData uint64,
-	numAccessListAddresses uint64,
-	numAccessListSlots uint64,
-	numSetCodeAuthorizations uint64,
-) (uint64, error) {
-	// Set the starting gas for the raw transaction
-	gas := checked.Uint64(params.TxGas)
-
-	// Add costs for non-zero data bytes.
-	gas = checked.Add(gas, checked.Mul(numNonZeroBytesInData, params.TxDataNonZeroGasEIP2028))
-
-	// Add costs for zero data bytes.
-	gas = checked.Add(gas, checked.Mul(numZeroBytesInData, params.TxDataZeroGas))
-
-	// Add costs for access list entries.
-	gas = checked.Add(gas, checked.Mul(numAccessListAddresses, params.TxAccessListAddressGas))
-	gas = checked.Add(gas, checked.Mul(numAccessListSlots, params.TxAccessListStorageKeyGas))
-
-	// Add costs for authorization list entries.
-	gas = checked.Add(gas, checked.Mul(numSetCodeAuthorizations, params.CallNewAccountGas))
-
-	return gas.Unwrap()
+// envelopeGasRules reduces the given network upgrades to the Ethereum revision
+// flags consulted by go-ethereum when pricing an envelope transaction.
+// Transaction bundles require Brio, which succeeds both Istanbul and Shanghai,
+// so those revisions are always active. Canto activates the Amsterdam gas
+// schedule, which reprices the transaction base cost (EIP-2780), calldata
+// (EIP-7976) and access list entries (EIP-7981).
+func envelopeGasRules(upgrades opera.Upgrades) params.Rules {
+	return params.Rules{
+		IsHomestead: true,
+		IsIstanbul:  true,
+		IsShanghai:  true,
+		IsAmsterdam: upgrades.Canto,
+	}
 }
 
-// calculateFloorDataGas calculates the floor data gas costs for a payload with
-// the given number of zero and non-zero bytes. This is a testable version of
-// the core.FloorDataGas function that doesn't require actual data leading to
-// overflows to be constructed in memory for tests (which is not possible).
-func calculateFloorDataGas(
-	numZeroBytesInData uint64,
-	numNonZeroBytesInData uint64,
-) (uint64, error) {
-	tokens := checked.Add(
-		checked.Mul(numNonZeroBytesInData, params.TxTokenPerNonZeroByte),
-		numZeroBytesInData,
-	)
-
-	// Minimum gas required for a transaction based on its data tokens (EIP-7623).
-	return checked.Add(
-		params.TxGas, // basic costs
-		checked.Mul(tokens, params.TxCostFloorPerToken), // costs per token
-	).Unwrap()
+// bundleOnlyMarkerGas returns the extra intrinsic gas a transaction requires
+// once the bundle-only marker is appended to its access list. The marker adds
+// one address and one storage key.
+//
+// The values below mirror the access list charges of go-ethereum's
+// core.IntrinsicGas; Test_bundleOnlyMarkerGas_MatchesGethAccessListCharge keeps
+// them in sync.
+func bundleOnlyMarkerGas(upgrades opera.Upgrades) uint64 {
+	if !upgrades.Canto {
+		return params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
+	}
+	// EIP-7981 charges the access list entry's data on top of the base cost.
+	const dataCost = (common.AddressLength + common.HashLength) *
+		params.TxCostFloorPerToken7976 * params.TxTokenPerNonZeroByte
+	return params.TxAccessListAddressGasAmsterdam +
+		params.TxAccessListStorageKeyGasAmsterdam +
+		dataCost
 }
 
 // calculateTxGasSum sums up the gas limits of the given transactions. An

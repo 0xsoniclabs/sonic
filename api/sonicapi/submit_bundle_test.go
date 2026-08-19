@@ -22,6 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/api/rpctest"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -79,7 +80,7 @@ func Test_SubmitBundle_ValidBundle_ReturnsExecutionPlanHash(t *testing.T) {
 			require.True(t, bundle.IsEnvelope(submitted))
 
 			// Returned hash must match the execution plan extracted from the submitted envelope.
-			_, submittedPlan, err := bundle.ValidateEnvelope(signer, submitted)
+			_, submittedPlan, err := bundle.ValidateEnvelope(signer, submitted, opera.Upgrades{})
 			require.NoError(t, err)
 			require.Equal(t, submittedPlan.Hash(), hash)
 

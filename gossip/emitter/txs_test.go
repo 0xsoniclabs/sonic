@@ -226,7 +226,7 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 
 			tx := bundle.NewBuilder().SetEarliest(50).SetRangeLength(100).WithSigner(signer).Build()
 
-			_, _, err := bundle.ValidateEnvelope(signer, tx)
+			_, _, err := bundle.ValidateEnvelope(signer, tx, opera.Upgrades{})
 			require.NoError(err)
 
 			bundleEvaluator := evmcore.NewMockBundleEvaluator(ctrl)
@@ -314,7 +314,7 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 
 			tx := bundle.NewBuilder().SetEarliest(50).SetRangeLength(100).Build()
 
-			_, _, err := bundle.ValidateEnvelope(signer, tx)
+			_, _, err := bundle.ValidateEnvelope(signer, tx, opera.Upgrades{})
 			require.NoError(t, err)
 
 			bundleEvaluator := evmcore.NewMockBundleEvaluator(ctrl)

@@ -50,7 +50,7 @@ func Test_GetBundleState_BundlesDisabled_ReturnsNonExecutable(t *testing.T) {
 	}).AnyTimes()
 
 	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleProcessor})
-	_, _, err := bundle.ValidateEnvelope(nil, invalidBundle)
+	_, _, err := bundle.ValidateEnvelope(nil, invalidBundle, opera.Upgrades{})
 	require.Error(t, err)
 
 	state := GetBundleState(chainState, nil, invalidBundle)
@@ -67,7 +67,7 @@ func Test_GetBundleState_InvalidBundle_ReturnsNonExecutable(t *testing.T) {
 	}).AnyTimes()
 
 	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleProcessor})
-	_, _, err := bundle.ValidateEnvelope(signer, invalidBundle)
+	_, _, err := bundle.ValidateEnvelope(signer, invalidBundle, opera.Upgrades{})
 	require.Error(t, err)
 
 	state := GetBundleState(chainState, nil, invalidBundle)
@@ -92,7 +92,7 @@ func Test_GetBundleState_OutdatedBundle_ReturnsNonExecutable(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	envelope := bundle.NewBuilder().SetEarliest(currentBlock - 1).SetRangeLength(1).Build()
 
-	_, _, err := bundle.ValidateEnvelope(signer, envelope)
+	_, _, err := bundle.ValidateEnvelope(signer, envelope, opera.Upgrades{})
 	require.NoError(t, err)
 
 	state := GetBundleState(chainState, nil, envelope)
@@ -120,7 +120,7 @@ func Test_GetBundleState_FutureBundle_ReturnsTemporaryBlocked(t *testing.T) {
 		SetRangeLength(10).
 		Build()
 
-	_, _, err := bundle.ValidateEnvelope(signer, envelop)
+	_, _, err := bundle.ValidateEnvelope(signer, envelop, opera.Upgrades{})
 	require.NoError(t, err)
 
 	state := GetBundleState(chainState, nil, envelop)
@@ -150,7 +150,7 @@ func Test_GetBundleState_TooLateForTimePeriod_ReturnsNonExecutable(t *testing.T)
 		SetPeriodDuration(50).
 		Build()
 
-	_, _, err := bundle.ValidateEnvelope(signer, envelope)
+	_, _, err := bundle.ValidateEnvelope(signer, envelope, opera.Upgrades{})
 	require.NoError(t, err)
 
 	state := GetBundleState(chainState, nil, envelope)
@@ -180,7 +180,7 @@ func Test_GetBundleState_ToEarlyForTimePeriod_ReturnsTemporaryBlocked(t *testing
 		SetPeriodDuration(50).
 		Build()
 
-	_, _, err := bundle.ValidateEnvelope(signer, envelope)
+	_, _, err := bundle.ValidateEnvelope(signer, envelope, opera.Upgrades{})
 	require.NoError(t, err)
 
 	state := GetBundleState(chainState, nil, envelope)
@@ -204,7 +204,7 @@ func Test_GetBundleState_BundleHasAlreadyBeenProcessed_ReturnsPermanentlyBlocked
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	envelope := bundle.NewBuilder().Build()
 
-	_, _, err := bundle.ValidateEnvelope(signer, envelope)
+	_, _, err := bundle.ValidateEnvelope(signer, envelope, opera.Upgrades{})
 	require.NoError(t, err)
 
 	db := state.NewMockStateDB(ctrl)
@@ -340,7 +340,7 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 			signer := types.LatestSignerForChainID(chainId)
 
 			envelope := test.bundle.toBundle(keys)
-			_, _, err := bundle.ValidateEnvelope(signer, envelope)
+			_, _, err := bundle.ValidateEnvelope(signer, envelope, opera.Upgrades{})
 			require.NoError(t, err)
 
 			acceptEverything := func(*types.Transaction, ChainStateForBundleEval, state.StateDB) (*float64, bool) {
@@ -497,7 +497,7 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 			}
 
 			envelope := test.bundle.toBundle(keys)
-			bundle, _, err := bundle.ValidateEnvelope(signer, envelope)
+			bundle, _, err := bundle.ValidateEnvelope(signer, envelope, opera.Upgrades{})
 			require.NoError(t, err)
 
 			got := checkForNonceConflicts(bundle, signer, source, opera.GetCantoUpgrades())
