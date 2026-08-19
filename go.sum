@@ -2,8 +2,8 @@ github.com/0xsoniclabs/carmen/go v0.0.0-20260925152836-62f625a466a9 h1:WYwujM8CA
 github.com/0xsoniclabs/carmen/go v0.0.0-20260925152836-62f625a466a9/go.mod h1:hqRaE66FNXefSgAj5VU/8Lmr2YCq00/c6N7sF5HJD20=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20261118192104-b24f07ee2441 h1:TtRJtqYDoqwROWQf9+2HSKJe8XciW+F0Ez6Od4iolok=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20261118192104-b24f07ee2441/go.mod h1:UgurD1+WJErJiVUBGQM9Q2wP+BwxsY7c15uAveKQ2YE=
-github.com/0xsoniclabs/tosca v0.0.0-20261118201722-25e39711b3aa h1:sKP30+BEjFnMn7D8s0zCP9uzyH6L5RmSDn/SxkWkSts=
-github.com/0xsoniclabs/tosca v0.0.0-20261118201722-25e39711b3aa/go.mod h1:103XXMaO/gQ3xJy98El7nCz8NB+G2MbsUtq3RtHnyZ8=
+github.com/0xsoniclabs/tosca v0.0.0-20261118201747-277f3453d31e h1:QNLG/rQn6MHXIyNlGTHf7ttNpa9mjSReT44aAPaVEMk=
+github.com/0xsoniclabs/tosca v0.0.0-20261118201747-277f3453d31e/go.mod h1:103XXMaO/gQ3xJy98El7nCz8NB+G2MbsUtq3RtHnyZ8=
 github.com/0xsoniclabs/tracy v0.0.0-20251027125423-00a5ab7968fb h1:mb6rPN+DpA/N2QWrQrLQEG2uzrYgy061PPauifstXNM=
 github.com/0xsoniclabs/tracy v0.0.0-20251027125423-00a5ab7968fb/go.mod h1:KUPXHA9bbj/EFrzSd/7i4XIh2SOxDljWCRBmpOpAVxE=
 github.com/DataDog/zstd v1.5.7 h1:ybO8RBeh29qrxIhCA9E8gKY6xfONU9T6G6aP9DTKfLE=

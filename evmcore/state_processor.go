@@ -178,7 +178,7 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	// Iterate over and process the individual transactions
 	summary := runTransactions(newRunContext(
 		signer, header.BaseFee, statedb, gp, blockNumber, block.Time, usedGas,
-		p.upgrades, &transactionRunner{evm{vmenv}}, p.forReplay, p.metrics,
+		p.upgrades, MaxTxGas(vmenv), &transactionRunner{evm{vmenv}}, p.forReplay, p.metrics,
 	),
 		block.Transactions, trueTxOffset, remainingSize)
 
@@ -209,6 +209,7 @@ type runContext struct {
 	blockTime   inter.Timestamp
 	usedGas     *uint64
 	upgrades    opera.Upgrades
+	maxTxGas    uint64
 	runner      _transactionRunner
 	forReplay   bool // Whether the context is used for replaying transactions or for head state processing.
 	metrics     BlockExecutionMetrics
@@ -227,6 +228,7 @@ func newRunContext(
 	blockTime inter.Timestamp,
 	usedGas *uint64,
 	upgrades opera.Upgrades,
+	maxTxGas uint64,
 	runner _transactionRunner,
 	isReplay bool,
 	metrics BlockExecutionMetrics,
@@ -240,6 +242,7 @@ func newRunContext(
 		blockTime:   blockTime,
 		usedGas:     usedGas,
 		upgrades:    upgrades,
+		maxTxGas:    maxTxGas,
 		runner:      runner,
 		forReplay:   isReplay,
 		metrics:     metrics,
@@ -464,7 +467,7 @@ func (r *transactionRunner) runSponsoredTransactionInternal(
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
 
-	available := ctxt.gasPool.Available(false, 0)
+	available := ctxt.gasPool.Available(ctxt.upgrades.Canto, ctxt.maxTxGas)
 	needed := tx.Gas() + overhead.Gas
 	if available < needed {
 		log.Debug("Not enough gas left in block for sponsored transaction",
@@ -874,7 +877,7 @@ type TransactionProcessor struct {
 func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary {
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber, tp.blockTime,
-		&tp.usedGas, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
+		&tp.usedGas, tp.upgrades, MaxTxGas(tp.vmEnvironment), &transactionRunner{evm{tp.vmEnvironment}},
 		false, tp.metrics,
 	), []*types.Transaction{tx}, i, math.MaxUint64)
 }
@@ -1161,7 +1164,7 @@ func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (
 			AccessList:    tx.AccessList(),
 			BlobGasFeeCap: converter.Convert("blob gas fee cap", tx.BlobGasFeeCap()),
 			BlobHashes:    tx.BlobHashes(),
-		}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
+		}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck().SkipExecutionGasCapCheck()
 		if converter.Err != nil {
 			return nil, fmt.Errorf("invalid internal transaction: %w", converter.Err)
 		}

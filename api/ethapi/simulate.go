@@ -368,12 +368,12 @@ func (sim *simulator) processBlock(
 		tracer.reset(txHash, uint(i))
 		activeState.SetTxContext(txHash, i, uint32(i+1))
 
-		msg, err := call.toMessage(sim.gp.Available(false, 0), header.BaseFee, log.Root())
+		msg, err := call.toMessage(sim.gp.Available(evm.GetRules().IsAmsterdam, evmcore.MaxTxGas(evm)), header.BaseFee, log.Root())
 		if err != nil {
 			return nil, nil, nil, nil, simTxValidationError(err)
 		}
 		if !sim.validate {
-			msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
+			msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck().SkipExecutionGasCapCheck()
 		}
 
 		result, applyErr := applySimMessage(ctx, evm, msg, timeout, sim.gp)

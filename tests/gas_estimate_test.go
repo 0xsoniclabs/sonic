@@ -183,6 +183,7 @@ func doTestEstimate(
 					IsHomestead: true,
 					IsIstanbul:  true,
 					IsShanghai:  netUpgrades.Allegro,
+					IsAmsterdam: netUpgrades.Canto,
 				})
 			require.NoError(t, err, "Failed to calculate intrinsic gas")
 
@@ -191,6 +192,7 @@ func doTestEstimate(
 				ethereum.CallMsg{
 					From:              account.Address(),
 					To:                tmpTx.To(),
+					Value:             tmpTx.Value(),
 					Data:              tmpTx.Data(),
 					AccessList:        tmpTx.AccessList(),
 					AuthorizationList: tmpTx.SetCodeAuthorizations(),
@@ -255,6 +257,12 @@ func TestEstimateGas_StateOverridesAreCommittedBeforeTheCall(t *testing.T) {
 
 			// Overwriting a committed non-zero slot is charged a full storage reset.
 			want := params.TxGas + 2*vm.GasFastestStep + params.SstoreResetGasEIP2200
+			if upgrade.Canto {
+				// EIP-2780 prices the call to an existing account, EIP-8038 the
+				// cold write of an existing slot.
+				want = params.TxBaseCost2780 + params.ColdAccountAccessAmsterdam + 2*vm.GasFastestStep +
+					params.ColdStorageAccessAmsterdam + params.StorageWriteAmsterdam
+			}
 
 			overrides := map[string]ethapi.OverrideAccount{
 				"state":     {Code: &code, State: &storage},

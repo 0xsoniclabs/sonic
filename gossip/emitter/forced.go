@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -154,8 +155,9 @@ func (em *Emitter) createForcedEventForTesting(
 
 		// Fix gas power usage.
 		for _, tx := range txs {
-			mutEvent.SetGasPowerUsed(mutEvent.GasPowerUsed() + tx.Gas())
-			mutEvent.SetGasPowerLeft(mutEvent.GasPowerLeft().Sub(tx.Gas()))
+			txGas := epochcheck.TxGasPowerUsed(tx.Gas(), em.world.GetRules())
+			mutEvent.SetGasPowerUsed(mutEvent.GasPowerUsed() + txGas)
+			mutEvent.SetGasPowerLeft(mutEvent.GasPowerLeft().Sub(txGas))
 		}
 
 		// calc Payload hash

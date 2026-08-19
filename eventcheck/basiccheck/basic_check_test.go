@@ -22,10 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -57,73 +54,4 @@ func TestChecker_checkTxs_DetectsIssuesInTransactions(t *testing.T) {
 
 	err := New().checkTxs(event)
 	require.Error(t, err)
-}
-
-func TestChecker_IntrinsicGas_LegacyCalculationDoesNotAccountForInitDataOrAuthList(t *testing.T) {
-
-	tests := map[string]*types.Transaction{
-		"legacyTx": types.NewTx(&types.LegacyTx{
-			To:  nil,
-			Gas: 21_000,
-			// some data that takes
-			Data: make([]byte, params.MaxInitCodeSize),
-		}),
-		"setCodeTx": types.NewTx(&types.SetCodeTx{
-			To:       common.Address{},
-			Gas:      21_000,
-			AuthList: []types.SetCodeAuthorization{{}}}),
-	}
-
-	for name, tx := range tests {
-		t.Run(name, func(t *testing.T) {
-			costLegacy, err := intrinsicGasLegacy(tx.Data(), tx.AccessList(), tx.To() == nil)
-			require.NoError(t, err)
-
-			// in sonic, Homestead, Istanbul and Shanghai are always active
-			costNew, err := core.IntrinsicGas(tx.Data(), tx.AccessList(),
-				tx.SetCodeAuthorizations(), common.Address{}, tx.To(), uint256.NewInt(0),
-				params.Rules{IsHomestead: true, IsIstanbul: true, IsShanghai: true})
-			require.NoError(t, err)
-			require.Greater(t, costNew, costLegacy)
-		})
-	}
-}
-
-func TestChecker_IntrinsicGas_LegacyIsCheaperOrSameForAllRevisionCombinations(t *testing.T) {
-
-	trueFalse := []bool{true, false}
-
-	for _, homestead := range trueFalse {
-		for _, istanbul := range trueFalse {
-			for _, shanghai := range trueFalse {
-				t.Run(makeTestName(homestead, istanbul, shanghai), func(t *testing.T) {
-
-					costLegacy, err := intrinsicGasLegacy([]byte("test"), nil, false)
-					require.NoError(t, err)
-
-					costNew, err := core.IntrinsicGas([]byte("test"), nil, nil,
-						common.Address{}, &common.Address{}, uint256.NewInt(0),
-						params.Rules{IsHomestead: homestead, IsIstanbul: istanbul, IsShanghai: shanghai})
-					require.NoError(t, err)
-
-					require.GreaterOrEqual(t, costNew, costLegacy)
-
-				})
-			}
-		}
-	}
-}
-
-func makeTestName(homestead, istanbul, shanghai bool) string {
-	name := ""
-	withWithout := func(fork bool) string {
-		if fork {
-			return "With"
-		}
-		return "Without"
-	}
-	name += withWithout(homestead) + "Homestead"
-	name += withWithout(istanbul) + "Istanbul"
-	name += withWithout(shanghai) + "Shanghai"
-	return name
 }

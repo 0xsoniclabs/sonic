@@ -85,6 +85,25 @@ func TestChecker_Validate_SingleProposerIntroducesNewFormat(t *testing.T) {
 	}
 }
 
+func TestTxGasPowerUsed_CountsOnlyTheExecutionGasFromCanto(t *testing.T) {
+	brio := opera.Rules{
+		Economy:  opera.EconomyRules{Gas: opera.GasRules{MaxEventGas: 10_000}},
+		Upgrades: opera.Upgrades{Brio: true},
+	}
+	canto := brio
+	canto.Upgrades.Canto = true
+	maxExecutionGas := canto.MaxTxExecutionGas()
+
+	require.Equal(t, 2*maxExecutionGas, TxGasPowerUsed(2*maxExecutionGas, brio))
+	require.Equal(t, maxExecutionGas-1, TxGasPowerUsed(maxExecutionGas-1, canto))
+	require.Equal(t, maxExecutionGas, TxGasPowerUsed(2*maxExecutionGas, canto))
+
+	e := newTestEvent(types.Transactions{txWithGas(math.MaxUint64)}, 0, 0, 0, 0, false)
+	gas, err := CalcGasPowerUsed(e, canto)
+	require.NoError(t, err)
+	require.Equal(t, maxExecutionGas, gas)
+}
+
 func TestCalcGasPowerUsed(t *testing.T) {
 	preBrio := opera.Rules{
 		Economy: opera.EconomyRules{Gas: opera.GasRules{

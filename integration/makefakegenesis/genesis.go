@@ -189,10 +189,18 @@ func FakeGenesisStoreWithRulesAndStart(
 	})
 }
 
+// genesisTxGasLimit is the gas limit given to each genesis transaction. The
+// network initialization transaction is by far the most expensive one, needing
+// about 7.8M gas since Amsterdam, where EIP-8037 charges state gas for depositing
+// contract code and for creating storage slots. The limit stays below the default
+// MaxEventGas, so that it is not rejected for exceeding the per-transaction gas
+// cap before Amsterdam (EIP-7825).
+const genesisTxGasLimit = 10_000_000
+
 func txBuilder() func(calldata []byte, addr common.Address) *types.Transaction {
 	nonce := uint64(0)
 	return func(calldata []byte, addr common.Address) *types.Transaction {
-		tx := types.NewTransaction(nonce, addr, common.Big0, 3e6, common.Big0, calldata)
+		tx := types.NewTransaction(nonce, addr, common.Big0, genesisTxGasLimit, common.Big0, calldata)
 		nonce++
 		return tx
 	}

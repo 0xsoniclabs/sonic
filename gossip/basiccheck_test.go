@@ -174,30 +174,6 @@ func TestBasicCheckValidate(t *testing.T) {
 			},
 			expectedErr: basiccheck.ErrNegativeValue,
 		},
-		"Validate checkTxs validateTx ErrIntrinsicGas": {
-			prepareTest: func(payload *inter.MutableEventPayload) {
-				payload.SetSeq(idx.Event(1))
-				payload.SetEpoch(idx.Epoch(1))
-				payload.SetFrame(idx.Frame(1))
-				payload.SetLamport(idx.Lamport(1))
-				h := hash.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
-				tx1 := types.NewTx(&types.LegacyTx{
-					Nonce:    math.MaxUint64,
-					GasPrice: h.Big(),
-					Gas:      0,
-					To:       nil,
-					Value:    h.Big(),
-					Data:     []byte{},
-					V:        big.NewInt(0xff),
-					R:        h.Big(),
-					S:        h.Big(),
-				})
-				txs := types.Transactions{}
-				txs = append(txs, tx1)
-				payload.SetTxs(txs)
-			},
-			expectedErr: basiccheck.ErrIntrinsicGas,
-		},
 		"Validate checkTxs validateTx ErrTipAboveFeeCap": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
 				payload.SetSeq(idx.Event(1))

@@ -78,6 +78,11 @@ func GetVmConfig(rules Rules) vm.Config {
 	if rules.Upgrades.Brio {
 		// make a copy of the rules value to avoid changing the original
 		rulesMaxTxGas := rules.Economy.Gas.MaxEventGas
+		// From Canto on, the cap only bounds the execution gas, which events
+		// meter, while the rest of the gas limit funds the state-gas reservoir.
+		if rules.Upgrades.Canto {
+			rulesMaxTxGas = rules.MaxTxExecutionGas()
+		}
 		res.MaxTxGas = &rulesMaxTxGas
 
 		// Starting from Brio, sonic enforces its own code size limits.
@@ -87,10 +92,14 @@ func GetVmConfig(rules Rules) vm.Config {
 		res.MaxInitCodeSize = &maxInitCodeSize
 	}
 
-	// Starting from Canto, transactions whose sender cannot cover the
-	// transferred value are skipped instead of being charged as failed.
 	if rules.Upgrades.Canto {
+		// Starting from Canto, transactions whose sender cannot cover the
+		// transferred value are skipped instead of being charged as failed.
 		res.InsufficientBalanceIsNotAnError = false
+
+		// Amsterdam increases the max code and init code size further.
+		res.MaxCodeSize = nil
+		res.MaxInitCodeSize = nil
 	}
 
 	return res

@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -27,11 +28,14 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
@@ -148,6 +152,60 @@ func TestSimulateV1_SingleCall_ReturnsFullTxResult(t *testing.T) {
 	var blockJson map[string]interface{}
 	require.NoError(t, json.Unmarshal(blockBytes, &blockJson))
 	require.Equal(t, from, common.HexToAddress(blockJson["transactions"].([]interface{})[0].(map[string]interface{})["from"].(string)))
+}
+
+func TestSimulateV1_CapsTheExecutionGasFromCantoOnOnlyWithValidation(t *testing.T) {
+	const gasCap = 50_000_000
+	gasLeftCode := []byte{
+		byte(vm.GAS), byte(vm.PUSH1), 0, byte(vm.MSTORE),
+		byte(vm.PUSH1), 32, byte(vm.PUSH1), 0, byte(vm.RETURN),
+	}
+
+	for _, validation := range []bool{false, true} {
+		t.Run(fmt.Sprintf("validation=%t", validation), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			backend := NewMockBackend(ctrl)
+			mockState := state.NewMockStateDB(ctrl)
+
+			base := &evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{
+				Number:     big.NewInt(baseBlockNumber),
+				GasLimit:   gasCap,
+				PrevRandao: common.Hash{1},
+			}}
+			blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+			backend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), blkNr).Return(mockState, base, nil)
+			backend.EXPECT().RPCGasCap().Return(uint64(gasCap))
+			backend.EXPECT().ChainConfig(idx.Block(baseBlockNumber)).Return(opera.CreateTransientEvmChainConfig(
+				opera.FakeNetworkID, []opera.UpgradeHeight{{Upgrades: opera.GetCantoUpgrades()}}, baseBlockNumber,
+			))
+			backend.EXPECT().RPCEVMTimeout().Return(time.Duration(0))
+
+			contract := common.Address{0x42}
+			mockState.EXPECT().GetCode(contract).Return(gasLeftCode).AnyTimes()
+			mockState.EXPECT().GetCodeHash(contract).Return(crypto.Keccak256Hash(gasLeftCode)).AnyTimes()
+			setExpectedStateCalls(mockState)
+			mockState.EXPECT().AddAddressToAccessList(gomock.Any()).AnyTimes()
+			mockState.EXPECT().Finalise(gomock.Any()).AnyTimes()
+			mockState.EXPECT().GetStateHash().Return(common.Hash{})
+
+			gas := hexutil.Uint64(gasCap)
+			opts := simOpts{
+				BlockStateCalls: []simBlock{{Calls: []TransactionArgs{{To: &contract, Gas: &gas}}}},
+				Validation:      validation,
+			}
+			results, err := NewPublicBlockChainAPI(backend).SimulateV1(t.Context(), opts, &blkNr)
+			require.NoError(t, err)
+			require.Len(t, results, 1)
+			require.Len(t, results[0].calls, 1)
+
+			gasLeft := new(big.Int).SetBytes(results[0].calls[0].ReturnValue).Uint64()
+			if validation {
+				require.Less(t, gasLeft, params.MaxTxGas)
+			} else {
+				require.Greater(t, gasLeft, params.MaxTxGas)
+			}
+		})
+	}
 }
 
 // newSimTestBase constructs a minimal EvmBlock suitable as a simulation base block.

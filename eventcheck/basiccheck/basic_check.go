@@ -30,7 +30,6 @@ var (
 	ErrWrongNetForkID = errors.New("wrong network fork ID")
 	ErrZeroTime       = errors.New("event has zero timestamp")
 	ErrNegativeValue  = errors.New("negative value")
-	ErrIntrinsicGas   = errors.New("intrinsic gas too low")
 	// ErrTipAboveFeeCap is a sanity error to ensure no one is able to specify a
 	// transaction with a tip higher than the total fee cap.
 	ErrTipAboveFeeCap = errors.New("max priority fee per gas higher than max fee per gas")
@@ -55,15 +54,6 @@ func validateTx(tx *types.Transaction) error {
 	if tx.Value().Sign() < 0 || tx.GasPrice().Sign() < 0 {
 		return ErrNegativeValue
 	}
-	// Ensure the transaction has more gas than the basic tx fee.
-	intrGas, err := intrinsicGasLegacy(tx.Data(), tx.AccessList(), tx.To() == nil)
-	if err != nil {
-		return err
-	}
-	if tx.Gas() < intrGas {
-		return ErrIntrinsicGas
-	}
-
 	if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
 		return ErrTipAboveFeeCap
 	}

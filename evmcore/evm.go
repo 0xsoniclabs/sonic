@@ -95,6 +95,8 @@ func NewEVMBlockContextWithDifficulty(
 		GasLimit:    header.GasLimit,
 		Random:      random,
 		BlobBaseFee: blobBaseFee,
+
+		CostPerStateByte: params.CostPerStateByte,
 	}
 }
 
@@ -160,6 +162,15 @@ func GetHashFn(ref *EvmHeader, chain DummyChain) func(n uint64) common.Hash {
 // This does not take the necessary gas in to account to make the transfer valid.
 func CanTransfer(db vm.StateDB, addr common.Address, amount *uint256.Int) bool {
 	return db.GetBalance(addr).Cmp(amount) >= 0
+}
+
+// MaxTxGas returns the per-transaction gas cap the state transition applies
+// for the given EVM, which is its configured MaxTxGas or the protocol default.
+func MaxTxGas(evm *vm.EVM) uint64 {
+	if evm.Config.MaxTxGas != nil {
+		return *evm.Config.MaxTxGas
+	}
+	return params.MaxTxGas
 }
 
 // Transfer subtracts amount from sender and adds amount to recipient using the given Db

@@ -65,10 +65,10 @@ import (
 )
 
 const (
-	gasLimit       = uint64(21000)
-	maxGasLimit    = uint64(6000000)
-	genesisBalance = 1e18
-	genesisStake   = 2 * 4e6
+	gasLimit            = uint64(21000)
+	contractCreationGas = uint64(50_000_000)
+	genesisBalance      = 1e18
+	genesisStake        = 2 * 4e6
 
 	maxEpochDuration = time.Hour
 	sameEpoch        = maxEpochDuration / 1000
@@ -372,7 +372,8 @@ func (env *testEnv) Contract(from idx.ValidatorID, amount *big.Int, hex string) 
 	key := env.privateKey(from)
 	gp := new(big.Int).SetUint64(1e12)
 	data := hexutil.MustDecode(hex)
-	tx := types.NewContractCreation(nonce, amount, maxGasLimit, gp, data)
+	gas := min(contractCreationGas, env.store.GetRules().MaxTxGasLimit())
+	tx := types.NewContractCreation(nonce, amount, gas, gp, data)
 	tx, err := types.SignTx(tx, env.EthAPI.signer, key)
 	if err != nil {
 		panic(err)

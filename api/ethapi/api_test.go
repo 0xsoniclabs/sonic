@@ -580,11 +580,12 @@ func TestBlockStateOverrides(t *testing.T) {
 	setExpectedStateCalls(mockState)
 
 	expectedBlockCtx := &vm.BlockContext{
-		BlockNumber: big.NewInt(5),
-		Time:        0,
-		Difficulty:  big.NewInt(1),
-		BaseFee:     big.NewInt(1234),
-		BlobBaseFee: big.NewInt(1),
+		BlockNumber:      big.NewInt(5),
+		Time:             0,
+		Difficulty:       big.NewInt(1),
+		BaseFee:          big.NewInt(1234),
+		BlobBaseFee:      big.NewInt(1),
+		CostPerStateByte: params.CostPerStateByte,
 	}
 
 	// Check that the correct block context is used when creating EVM instance
@@ -1078,7 +1079,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		timeout := time.Duration(time.Second)
 		gasCap := uint64(10000000)
 
-		result, err := DoCall(t.Context(), backend, txArgs, blockNrOrHash, stateOverrides, blockOverrides, timeout, gasCap, nil)
+		result, err := DoCall(t.Context(), backend, txArgs, blockNrOrHash, stateOverrides, blockOverrides, timeout, gasCap, nil, true)
 		require.NoError(t, err)
 		require.False(t, result.Failed())
 	}
