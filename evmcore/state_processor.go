@@ -572,7 +572,7 @@ func (r *transactionRunner) runTransactionBundleInternal(
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid, 0
 	}
 
-	txBundle, plan, err := bundle.ValidateEnvelope(ctxt.signer, tx)
+	txBundle, plan, err := bundle.ValidateEnvelope(ctxt.signer, tx, ctxt.upgrades)
 	if err != nil {
 		log.Warn("Invalid bundle skipped", "tx", tx.Hash().Hex(), "err", err)
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid, 0

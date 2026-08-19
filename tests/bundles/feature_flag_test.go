@@ -106,11 +106,14 @@ func TestBundle_EnvelopeAndBundleOnly_SemanticsEnabledByBrio_ExecutionEnabledByB
 
 					txBundle := bundle.NewBuilder().
 						WithSigner(signer).
+						WithUpgrades(upgrades).
 						AllOf(Step(t, net, sender, &types.AccessListTx{})).
 						BuildBundle()
 					gasPrice, err := client.SuggestGasPrice(t.Context())
 					require.NoError(t, err)
-					envelope := bundle.NewEnvelope(signer, sender.PrivateKey, 0, gasPrice, &txBundle)
+					envelope := bundle.NewEnvelope(
+						signer, sender.PrivateKey, 0, gasPrice, &txBundle, upgrades,
+					)
 					innerTx := txBundle.GetTransactionsInReferencedOrder()[0]
 
 					// Submit the transaction.

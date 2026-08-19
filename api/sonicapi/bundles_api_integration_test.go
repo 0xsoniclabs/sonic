@@ -25,6 +25,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/api/rpctest"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -247,7 +248,7 @@ func Test_bundlesRPC_PrepareAndSubmit_PoolsValidBundles(t *testing.T) {
 			}
 
 			pool.EXPECT().AddLocal(isAnEnvelope{}).Do(func(tx *types.Transaction) {
-				_, extractedPlan, err := bundle.ValidateEnvelope(signer, tx)
+				_, extractedPlan, err := bundle.ValidateEnvelope(signer, tx, opera.Upgrades{})
 				require.NoError(t, err)
 				require.Equal(t, reconstructedPlan.Hash(), extractedPlan.Hash())
 			})

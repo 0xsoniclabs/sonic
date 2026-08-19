@@ -25,10 +25,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -69,24 +71,30 @@ func TestValidateEnvelope_ValidEnvelopes_AreAcceptedAndReturnsBundleAndPlan(t *t
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
-			signer := types.LatestSignerForChainID(big.NewInt(1))
-			envelope, wantBundle, wantPlan := tc.WithSigner(signer).
-				BuildEnvelopeBundleAndPlan()
+			for revision, upgrades := range gasRevisions {
+				t.Run(revision, func(t *testing.T) {
+					require := require.New(t)
+					signer := types.LatestSignerForChainID(big.NewInt(1))
+					envelope, wantBundle, wantPlan := tc.
+						WithSigner(signer).
+						WithUpgrades(upgrades).
+						BuildEnvelopeBundleAndPlan()
 
-			bundle, plan, err := ValidateEnvelope(signer, envelope)
-			require.NoError(err)
+					bundle, plan, err := ValidateEnvelope(signer, envelope, upgrades)
+					require.NoError(err)
 
-			require.Equal(wantPlan, bundle.Plan)
-			require.Equal(wantPlan, *plan)
+					require.Equal(wantPlan, bundle.Plan)
+					require.Equal(wantPlan, *plan)
 
-			// transactions can not be compared directly, so we compare their
-			// hashes to make sure the same transactions are present
-			require.Equal(len(wantBundle.Transactions), len(bundle.Transactions))
-			for ref, tx := range wantBundle.Transactions {
-				bundleTx, found := bundle.Transactions[ref]
-				require.True(found)
-				require.Equal(tx.Hash(), bundleTx.Hash())
+					// transactions can not be compared directly, so we compare their
+					// hashes to make sure the same transactions are present
+					require.Equal(len(wantBundle.Transactions), len(bundle.Transactions))
+					for ref, tx := range wantBundle.Transactions {
+						bundleTx, found := bundle.Transactions[ref]
+						require.True(found)
+						require.Equal(tx.Hash(), bundleTx.Hash())
+					}
+				})
 			}
 		})
 	}
@@ -98,14 +106,14 @@ func TestValidateEnvelope_RegularTransaction_RejectedAsNotBeingAnEnvelope(t *tes
 		Data: []byte("this is a regular transaction, not an envelope"),
 	})
 
-	bundle, plan, err := ValidateEnvelope(nil, regularTx)
+	bundle, plan, err := ValidateEnvelope(nil, regularTx, opera.Upgrades{})
 	require.ErrorContains(t, err, "not an envelope transaction")
 	require.Nil(t, bundle, "expected no bundle to be returned")
 	require.Nil(t, plan, "expected no execution plan to be returned")
 }
 
 func TestValidateEnvelope_NilTransaction_RejectedAsNotBeingAnEnvelope(t *testing.T) {
-	bundle, plan, err := ValidateEnvelope(nil, nil)
+	bundle, plan, err := ValidateEnvelope(nil, nil, opera.Upgrades{})
 	require.ErrorContains(t, err, "not an envelope transaction")
 	require.Nil(t, bundle, "expected no bundle to be returned")
 	require.Nil(t, plan, "expected no execution plan to be returned")
@@ -113,7 +121,7 @@ func TestValidateEnvelope_NilTransaction_RejectedAsNotBeingAnEnvelope(t *testing
 
 func TestValidateEnvelope_SignerNil_ReturnsError(t *testing.T) {
 	envelope := AllOf().Build()
-	_, _, err := ValidateEnvelope(nil, envelope)
+	_, _, err := ValidateEnvelope(nil, envelope, opera.Upgrades{})
 	require.ErrorContains(t, err, "signer is nil")
 }
 
@@ -124,7 +132,7 @@ func TestValidateEnvelope_InvalidEncoding_ReturnsError(t *testing.T) {
 		Data: []byte("this is not a valid bundle encoding"),
 	})
 
-	_, _, err := ValidateEnvelope(signer, envelope)
+	_, _, err := ValidateEnvelope(signer, envelope, opera.Upgrades{})
 	require.ErrorContains(t, err, "invalid bundle encoding")
 }
 
@@ -164,7 +172,7 @@ func TestValidateEnvelope_InvalidBundle_IsRejected(t *testing.T) {
 				Data: encoded,
 			})
 
-			_, _, err = ValidateEnvelope(signer, envelope)
+			_, _, err = ValidateEnvelope(signer, envelope, opera.Upgrades{})
 			require.ErrorContains(err, "invalid bundle")
 			require.ErrorContains(err, issue.Error())
 		})
@@ -182,7 +190,7 @@ func TestValidateEnvelope_WrongChainId_IsRejected(t *testing.T) {
 		Step(key, &types.AccessListTx{}),
 	).WithSigner(signer).Build()
 
-	_, _, err = ValidateEnvelope(signer, valid)
+	_, _, err = ValidateEnvelope(signer, valid, opera.Upgrades{})
 	require.NoError(err)
 
 	wrongChainIdSigner := types.LatestSignerForChainID(big.NewInt(123))
@@ -191,33 +199,91 @@ func TestValidateEnvelope_WrongChainId_IsRejected(t *testing.T) {
 		Data: valid.Data(),
 	})
 
-	_, _, err = ValidateEnvelope(signer, repacked)
+	_, _, err = ValidateEnvelope(signer, repacked, opera.Upgrades{})
 	require.ErrorContains(err, "envelope signed for wrong chain ID")
 }
 
 func TestValidateEnvelope_InvalidEnvelopeGasLimit_IsRejected(t *testing.T) {
 	for _, delta := range []int{-10, -1, 1, 10} {
 		t.Run(fmt.Sprintf("delta=%d", delta), func(t *testing.T) {
+			for revision, upgrades := range gasRevisions {
+				t.Run(revision, func(t *testing.T) {
+					require := require.New(t)
+					signer := types.LatestSignerForChainID(big.NewInt(1))
+
+					validEnvelope := NewBuilder().AllOf().
+						WithSigner(signer).
+						WithUpgrades(upgrades).
+						Build()
+					_, _, err := ValidateEnvelope(signer, validEnvelope, upgrades)
+					require.NoError(err)
+
+					key, err := crypto.GenerateKey()
+					require.NoError(err)
+
+					invalidGasEnvelope := types.MustSignNewTx(key, signer,
+						&types.AccessListTx{
+							To:   validEnvelope.To(),
+							Data: validEnvelope.Data(),
+							Gas:  uint64(int(validEnvelope.Gas()) + delta),
+						},
+					)
+
+					_, _, err = ValidateEnvelope(signer, invalidGasEnvelope, upgrades)
+					require.ErrorContains(err, "invalid gas limit")
+				})
+			}
+		})
+	}
+}
+
+func TestValidateEnvelope_GasLimitAccountsForEnvelopeValue(t *testing.T) {
+	// Since EIP-2780 an envelope paying value is charged for the transfer log
+	// and the recipient's balance write, so it needs a higher gas limit than an
+	// otherwise identical zero-value envelope.
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	value := uint256.NewInt(42)
+
+	for revision, upgrades := range gasRevisions {
+		t.Run(revision, func(t *testing.T) {
 			require := require.New(t)
-			signer := types.LatestSignerForChainID(big.NewInt(1))
 
-			validEnvelope := NewBuilder().AllOf().WithSigner(signer).Build()
-			_, _, err := ValidateEnvelope(signer, validEnvelope)
+			// An empty bundle keeps the envelope's own costs decisive.
+			txBundle := NewBuilder().
+				WithSigner(signer).
+				WithUpgrades(upgrades).
+				BuildBundle()
+
+			payload, err := txBundle.Encode()
 			require.NoError(err)
 
-			key, err := crypto.GenerateKey()
-			require.NoError(err)
-
-			invalidGasEnvelope := types.MustSignNewTx(key, signer,
-				&types.AccessListTx{
-					To:   validEnvelope.To(),
-					Data: validEnvelope.Data(),
-					Gas:  uint64(int(validEnvelope.Gas()) + delta),
-				},
+			withoutValue, err := CalculateEnvelopeGas(
+				txBundle, payload, nil, nil, nil, upgrades,
 			)
+			require.NoError(err)
 
-			_, _, err = ValidateEnvelope(signer, invalidGasEnvelope)
-			require.ErrorContains(err, "invalid gas limit")
+			withValue, err := CalculateEnvelopeGas(
+				txBundle, payload, nil, nil, value, upgrades,
+			)
+			require.NoError(err)
+
+			if upgrades.Canto {
+				require.Equal(withoutValue+amsterdamValueGas, withValue)
+			} else {
+				require.Equal(withoutValue, withValue)
+			}
+
+			// An envelope declaring that gas limit is accepted.
+			envelope := types.MustSignNewTx(key, signer, &types.AccessListTx{
+				To:    &BundleProcessor,
+				Data:  payload,
+				Gas:   withValue,
+				Value: value.ToBig(),
+			})
+			_, _, err = ValidateEnvelope(signer, envelope, upgrades)
+			require.NoError(err)
 		})
 	}
 }
@@ -242,7 +308,7 @@ func TestValidateEnvelope_OverflowInGasLimit_IsDetected(t *testing.T) {
 		Data: encoded,
 	})
 
-	_, _, err = ValidateEnvelope(signer, envelope)
+	_, _, err = ValidateEnvelope(signer, envelope, opera.Upgrades{})
 	require.ErrorContains(err, "invalid gas limit: failed transaction gas sum calculation")
 }
 
@@ -261,10 +327,10 @@ func TestValidateEnvelope_NestedInvalidEnvelope_IsRejected(t *testing.T) {
 		Step(key, invalidInner),
 	).WithSigner(signer).Build()
 
-	_, _, innerErr := ValidateEnvelope(signer, invalidInner)
+	_, _, innerErr := ValidateEnvelope(signer, invalidInner, opera.Upgrades{})
 	require.Error(innerErr)
 
-	_, _, outerErr := ValidateEnvelope(signer, outer)
+	_, _, outerErr := ValidateEnvelope(signer, outer, opera.Upgrades{})
 	require.ErrorContains(outerErr, "invalid nested envelope")
 	require.ErrorContains(outerErr, innerErr.Error())
 }
@@ -282,7 +348,7 @@ func TestValidateEnvelope_DetectsExcessiveNesting(t *testing.T) {
 		Step(key, &types.AccessListTx{}),
 	).WithSigner(signer).Build()
 
-	_, _, err = ValidateEnvelope(signer, cur)
+	_, _, err = ValidateEnvelope(signer, cur, opera.Upgrades{})
 	require.NoError(err)
 
 	// Number of nested bundles: 1
@@ -290,7 +356,7 @@ func TestValidateEnvelope_DetectsExcessiveNesting(t *testing.T) {
 		Step(key, cur),
 	).WithSigner(signer).Build()
 
-	_, _, err = ValidateEnvelope(signer, cur)
+	_, _, err = ValidateEnvelope(signer, cur, opera.Upgrades{})
 	require.NoError(err)
 
 	// Number of nested bundles: 2
@@ -298,7 +364,7 @@ func TestValidateEnvelope_DetectsExcessiveNesting(t *testing.T) {
 		Step(key, cur),
 	).WithSigner(signer).Build()
 
-	_, _, err = ValidateEnvelope(signer, cur)
+	_, _, err = ValidateEnvelope(signer, cur, opera.Upgrades{})
 	require.NoError(err)
 
 	// Number of nested bundles: 3
@@ -306,7 +372,7 @@ func TestValidateEnvelope_DetectsExcessiveNesting(t *testing.T) {
 		Step(key, cur),
 	).WithSigner(signer).Build()
 
-	_, _, err = ValidateEnvelope(signer, cur)
+	_, _, err = ValidateEnvelope(signer, cur, opera.Upgrades{})
 	require.ErrorContains(err, "exceeds maximum nesting depth of bundles")
 
 	// Number of nested bundles: 4
@@ -314,7 +380,7 @@ func TestValidateEnvelope_DetectsExcessiveNesting(t *testing.T) {
 		Step(key, cur),
 	).WithSigner(signer).Build()
 
-	_, _, err = ValidateEnvelope(signer, cur)
+	_, _, err = ValidateEnvelope(signer, cur, opera.Upgrades{})
 	require.ErrorContains(err, "exceeds maximum nesting depth of bundles")
 
 }

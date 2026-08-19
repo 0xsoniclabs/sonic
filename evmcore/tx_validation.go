@@ -241,6 +241,13 @@ func (r NetworkRules) forGasComputation() params.Rules {
 	}
 }
 
+// forBundleGas reduces the network rules to the Sonic upgrades consulted when
+// computing the gas limit of a bundle envelope. Canto is the Sonic upgrade
+// activating the Amsterdam gas schedule.
+func (r NetworkRules) forBundleGas() opera.Upgrades {
+	return opera.Upgrades{Canto: r.amsterdam}
+}
+
 // ValidateTxStatic runs a set of verification independent from any context with
 // the aim to identify malformed transactions. It checks that the given
 // transaction is able to provide a valid value for the following fields:
@@ -555,7 +562,7 @@ func validateBundleTransactionsInternal(
 	}
 
 	// If the transaction is a bundle, validate its structure and content.
-	_, plan, err := bundle.ValidateEnvelope(signer, tx)
+	_, plan, err := bundle.ValidateEnvelope(signer, tx, netRules.forBundleGas())
 	if err != nil {
 		return errors.Join(ErrBundleTransactionInvalid, err)
 	}

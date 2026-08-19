@@ -18,508 +18,382 @@ package bundle
 
 import (
 	"bytes"
-	"fmt"
 	"math"
-	"math/rand/v2"
+	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/checked"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
-func Test_calculateEnvelopeGas_ComputesGasBasedOnProvidedParameters(t *testing.T) {
-	const markerCosts = params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
+// gasRevisions lists the gas schedules an envelope can be priced with. Canto
+// activates the Amsterdam schedule, everything before it shares the pre-
+// Amsterdam one.
+var gasRevisions = map[string]opera.Upgrades{
+	"pre-canto": {},
+	"canto":     {Canto: true},
+}
+
+const (
+	// amsterdamBaseGas is the EIP-2780 intrinsic base cost of an envelope
+	// without value: the transaction base cost plus the cold touch of the
+	// BundleProcessor. An envelope is never a contract creation, so it is
+	// charged ColdAccountAccessAmsterdam and not CreateAccessAmsterdam.
+	amsterdamBaseGas = params.TxBaseCost2780 + params.ColdAccountAccessAmsterdam
+
+	// amsterdamValueGas is what EIP-2780 adds for a non-zero envelope value.
+	amsterdamValueGas = params.TransferLogCost2780 + params.TxValueCost2780
+
+	// EIP-7981 charges the data of every access list entry on top of the base
+	// per-entry cost.
+	accessListAddressDataGas = common.AddressLength *
+		params.TxCostFloorPerToken7976 * params.TxTokenPerNonZeroByte
+	accessListStorageKeyDataGas = common.HashLength *
+		params.TxCostFloorPerToken7976 * params.TxTokenPerNonZeroByte
+)
+
+func Test_CalculateEnvelopeGas_ChargesRevisionSpecificBaseCost(t *testing.T) {
+	tests := map[string]struct {
+		upgrades opera.Upgrades
+		value    *uint256.Int
+		want     uint64
+	}{
+		// Before Amsterdam the base cost is flat and ignores the value.
+		"pre-canto without value": {
+			upgrades: opera.Upgrades{},
+			want:     params.TxGas,
+		},
+		"pre-canto with value": {
+			upgrades: opera.Upgrades{},
+			value:    uint256.NewInt(1),
+			want:     params.TxGas,
+		},
+		// Since EIP-2780 the base cost is decomposed per resource, and paying
+		// value adds the transfer log and the recipient's balance write.
+		"canto without value": {
+			upgrades: opera.Upgrades{Canto: true},
+			want:     amsterdamBaseGas,
+		},
+		"canto with zero value": {
+			upgrades: opera.Upgrades{Canto: true},
+			value:    uint256.NewInt(0),
+			want:     amsterdamBaseGas,
+		},
+		"canto with value": {
+			upgrades: opera.Upgrades{Canto: true},
+			value:    uint256.NewInt(1),
+			want:     amsterdamBaseGas + amsterdamValueGas,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			have, err := CalculateEnvelopeGas(
+				TransactionBundle{}, nil, nil, nil, tc.value, tc.upgrades,
+			)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_CalculateEnvelopeGas_PricesEnvelopeContentPerRevision(t *testing.T) {
+	payload := append(
+		bytes.Repeat([]byte{0}, 500),
+		bytes.Repeat([]byte{0xFF}, 700)...,
+	)
+
+	tests := map[string]struct {
+		payload      []byte
+		accessList   types.AccessList
+		authList     []types.SetCodeAuthorization
+		wantPreCanto uint64
+		wantCanto    uint64
+	}{
+		"empty": {
+			wantPreCanto: params.TxGas,
+			wantCanto:    amsterdamBaseGas,
+		},
+		// For both revisions the floor data gas dominates a payload this size.
+		"payload": {
+			payload: payload,
+			wantPreCanto: params.TxGas +
+				(700*params.TxTokenPerNonZeroByte+500)*params.TxCostFloorPerToken,
+			// EIP-7976 stops distinguishing zero from non-zero bytes.
+			wantCanto: amsterdamBaseGas +
+				1200*params.TxTokenPerNonZeroByte*params.TxCostFloorPerToken7976,
+		},
+		"access list addresses": {
+			accessList:   make(types.AccessList, 1000),
+			wantPreCanto: params.TxGas + 1000*params.TxAccessListAddressGas,
+			wantCanto: amsterdamBaseGas + 1000*
+				(params.TxAccessListAddressGasAmsterdam+accessListAddressDataGas),
+		},
+		"access list storage keys": {
+			accessList: types.AccessList{{
+				StorageKeys: make([]common.Hash, 1000),
+			}},
+			wantPreCanto: params.TxGas +
+				params.TxAccessListAddressGas +
+				1000*params.TxAccessListStorageKeyGas,
+			wantCanto: amsterdamBaseGas +
+				params.TxAccessListAddressGasAmsterdam + accessListAddressDataGas +
+				1000*(params.TxAccessListStorageKeyGasAmsterdam+accessListStorageKeyDataGas),
+		},
+		"set code authorizations": {
+			authList:     make([]types.SetCodeAuthorization, 1000),
+			wantPreCanto: params.TxGas + 1000*params.CallNewAccountGas,
+			wantCanto:    amsterdamBaseGas + 1000*params.RegularPerAuthBaseCost,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			for revision, upgrades := range gasRevisions {
+				t.Run(revision, func(t *testing.T) {
+					want := tc.wantPreCanto
+					if upgrades.Canto {
+						want = tc.wantCanto
+					}
+					have, err := CalculateEnvelopeGas(
+						TransactionBundle{}, tc.payload, tc.accessList,
+						tc.authList, nil, upgrades,
+					)
+					require.NoError(t, err)
+					require.Equal(t, want, have)
+				})
+			}
+		})
+	}
+}
+
+func Test_CalculateEnvelopeGas_UsesMaximumOfIntrinsicFloorAndTransactionGas(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	largePayload := append(bytes.Repeat([]byte{0}, 500), bytes.Repeat([]byte{0xFF}, 700)...)
-
+	// A payload of only non-zero bytes is more expensive in floor costs than in
+	// intrinsic costs, while access list addresses only add to intrinsic costs.
 	tests := map[string]struct {
-		bundle     TransactionBundle
 		payload    []byte
 		accessList types.AccessList
-		authList   []types.SetCodeAuthorization
-		expected   uint64
+		txGas      []uint64
+		dominant   string
 	}{
-		"empty": {
-			expected: params.TxGas,
+		"intrinsic gas": {
+			accessList: make(types.AccessList, 100),
+			dominant:   "intrinsic",
 		},
-		"transactions dominating gas requirements": {
-			bundle: NewBuilder().AllOf(
-				Step(key, types.AccessListTx{Gas: 100_000}),
-				Step(key, types.AccessListTx{Gas: 250_000}),
-			).BuildBundle(),
-			expected: 100_000 + 250_000 + 2*markerCosts,
+		"floor data gas": {
+			payload:  bytes.Repeat([]byte{0xFF}, 100),
+			dominant: "floor",
 		},
-		"payload dominating gas requirements": {
-			payload: largePayload,
-			expected: func() uint64 {
-				res, err := core.FloorDataGas(params.Rules{}, common.Address{}, nil, nil, largePayload, nil)
-				require.NoError(t, err)
-				return res
-			}(),
-		},
-		"access list dominating gas requirements": {
-			accessList: make([]types.AccessTuple, 1000),
-			expected:   1000*params.TxAccessListAddressGas + params.TxGas,
-		},
-		"access slot dominating gas requirements": {
-			accessList: []types.AccessTuple{
-				{StorageKeys: make([]common.Hash, 1000)},
-			},
-			expected: 1000*params.TxAccessListStorageKeyGas +
-				params.TxAccessListAddressGas +
-				params.TxGas,
-		},
-		"set code authorization dominating gas requirements": {
-			authList: make([]types.SetCodeAuthorization, 1000),
-			expected: 1000*params.CallNewAccountGas + params.TxGas,
+		"transaction gas": {
+			txGas:    []uint64{1_000_000},
+			dominant: "transactions",
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
+			for revision, upgrades := range gasRevisions {
+				t.Run(revision, func(t *testing.T) {
+					require := require.New(t)
 
-			// cross-check expected gas limit
-			want, err := calculateEnvelopeGasInternal(
-				tc.bundle.GetTransactionsInReferencedOrder(),
-				uint64(bytes.Count(tc.payload, []byte{0})),
-				uint64(len(tc.payload)-bytes.Count(tc.payload, []byte{0})),
-				uint64(len(tc.accessList)),
-				uint64(tc.accessList.StorageKeys()),
-				uint64(len(tc.authList)),
-			)
-			require.NoError(err)
-			require.Equal(tc.expected, want)
+					txBundle := TransactionBundle{}
+					if len(tc.txGas) > 0 {
+						steps := make([]BuilderStep, 0, len(tc.txGas))
+						for _, gas := range tc.txGas {
+							steps = append(steps, Step(key, types.AccessListTx{Gas: gas}))
+						}
+						txBundle = NewBuilder().
+							WithUpgrades(upgrades).
+							AllOf(steps...).
+							BuildBundle()
+					}
 
-			// test that function produces expected value
-			have, err := CalculateEnvelopeGas(
-				tc.bundle,
-				tc.payload,
-				tc.accessList,
-				tc.authList,
-			)
-			require.NoError(err)
-			require.Equal(tc.expected, have)
-		})
-	}
-}
+					rules := envelopeGasRules(upgrades)
+					intrinsic, err := core.IntrinsicGas(
+						tc.payload, tc.accessList, nil,
+						envelopeSender, &BundleProcessor, nil, rules,
+					)
+					require.NoError(err)
+					floor, err := core.FloorDataGas(
+						rules, envelopeSender, &BundleProcessor, nil,
+						tc.payload, tc.accessList,
+					)
+					require.NoError(err)
+					txGasSum, err := calculateTxGasSum(
+						txBundle.GetTransactionsInReferencedOrder(),
+					)
+					require.NoError(err)
 
-func Test_calculateEnvelopeGas_ComputesNonZeroAndZeroBytesInPayloadCorrectly(t *testing.T) {
-	tests := map[string][]byte{
-		"empty":                         nil,
-		"only zero bytes":               make([]byte, 10),
-		"only non-zero bytes":           bytes.Repeat([]byte{0xFF}, 10),
-		"mixed zero and non-zero bytes": append(bytes.Repeat([]byte{0}, 5), bytes.Repeat([]byte{0xFF}, 5)...),
-	}
+					switch tc.dominant {
+					case "intrinsic":
+						require.Greater(intrinsic, floor)
+						require.Greater(intrinsic, txGasSum)
+					case "floor":
+						require.Greater(floor, intrinsic)
+						require.Greater(floor, txGasSum)
+					case "transactions":
+						require.Greater(txGasSum, intrinsic)
+						require.Greater(txGasSum, floor)
+					default:
+						require.FailNow("unsupported test case spec")
+					}
 
-	for name, payload := range tests {
-		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
-
-			zeros := bytes.Count(payload, []byte{0})
-			nonZeros := len(payload) - zeros
-
-			want, err := calculateEnvelopeGasInternal(
-				nil, uint64(zeros), uint64(nonZeros), 0, 0, 0,
-			)
-			require.NoError(err)
-
-			have, err := CalculateEnvelopeGas(
-				TransactionBundle{}, payload, nil, nil,
-			)
-			require.NoError(err)
-			require.Equal(want, have)
-		})
-	}
-}
-
-func Test_calculateEnvelopeGasInternal_UsesMaximumOfIntrinsicFloorAndTransactionGas(t *testing.T) {
-	tests := map[string]struct {
-		transactions           []uint64
-		numNonZeroBytesInData  uint64
-		numAccessListAddresses uint64
-		wantedMax              string
-	}{
-		"max intrinsic gas": {
-			numAccessListAddresses: 100, // < only contributes to intrinsic gas
-			wantedMax:              "intrinsic",
-		},
-		"max floor gas": {
-			numNonZeroBytesInData: 100, // < more expensive in floor costs than in intrinsic costs
-			wantedMax:             "floor",
-		},
-		"max transaction gas": {
-			transactions: []uint64{100000}, // < more expensive than intrinsic and floor costs in this test
-			wantedMax:    "transactions",
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
-
-			intrinsic, err := calculateIntrinsicGas(
-				0,
-				tc.numNonZeroBytesInData,
-				tc.numAccessListAddresses,
-				0,
-				0,
-			)
-			require.NoError(err)
-
-			floorDataGas, err := calculateFloorDataGas(
-				0, tc.numNonZeroBytesInData,
-			)
-			require.NoError(err)
-
-			transactions := make([]*types.Transaction, len(tc.transactions))
-			for i, gas := range tc.transactions {
-				transactions[i] = types.NewTx(&types.LegacyTx{
-					Gas: gas,
+					have, err := CalculateEnvelopeGas(
+						txBundle, tc.payload, tc.accessList, nil, nil, upgrades,
+					)
+					require.NoError(err)
+					require.Equal(max(intrinsic, floor, txGasSum), have)
 				})
 			}
-
-			txGasSum, err := calculateTxGasSum(transactions)
-			require.NoError(err)
-
-			switch tc.wantedMax {
-			case "intrinsic":
-				require.Greater(intrinsic, floorDataGas)
-				require.Greater(intrinsic, txGasSum)
-			case "floor":
-				require.Greater(floorDataGas, intrinsic)
-				require.Greater(floorDataGas, txGasSum)
-			case "transactions":
-				require.Greater(txGasSum, floorDataGas)
-				require.Greater(txGasSum, intrinsic)
-			default:
-				require.FailNow("unsupported test case spec")
-			}
-
-			want := max(intrinsic, floorDataGas, txGasSum)
-			have, err := calculateEnvelopeGasInternal(
-				transactions, 0, tc.numNonZeroBytesInData,
-				tc.numAccessListAddresses, 0, 0,
-			)
-			require.NoError(err)
-			require.Equal(want, have)
 		})
 	}
 }
 
-func Test_calculateEnvelopeGasInternal_CombinationTests(t *testing.T) {
+func Test_CalculateEnvelopeGas_CoversTheGasLimitsOfTheBundledTransactions(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
 
-	txCosts := [][]uint64{
-		{},
-		{1},
-		{21_000, 50_000},
-		{100_000, 150_000},
-		{21_000, 50_000, 10_000_000},
-	}
+	for revision, upgrades := range gasRevisions {
+		t.Run(revision, func(t *testing.T) {
+			txBundle := NewBuilder().
+				WithUpgrades(upgrades).
+				AllOf(
+					Step(key, types.AccessListTx{Gas: 100_000}),
+					Step(key, types.AccessListTx{Gas: 250_000}),
+				).
+				BuildBundle()
 
-	valueRanges := []uint64{
-		0, 1, 10, 100, 1000,
-	}
+			// The builder raises each transaction's gas limit to account for
+			// the bundle-only marker it adds to their access lists.
+			want := uint64(100_000+250_000) + 2*bundleOnlyMarkerGas(upgrades)
 
-	for _, txCosts := range txCosts {
-		for _, numZeroBytes := range valueRanges {
-			for _, numNonZeroBytes := range valueRanges {
-				for _, numAccessListAddresses := range valueRanges {
-					for _, numAccessListStorageKeys := range valueRanges {
-						for _, numAuthListEntries := range valueRanges {
-							name := fmt.Sprintf(
-								"txCosts=%v/zeroBytes=%d/nonZeroBytes=%d/accessListAddresses=%d/accessListStorageKeys=%d/authListEntries=%d",
-								txCosts, numZeroBytes, numNonZeroBytes, numAccessListAddresses, numAccessListStorageKeys, numAuthListEntries,
-							)
-							t.Run(name, func(t *testing.T) {
-								require := require.New(t)
-
-								transactions := make([]*types.Transaction, len(txCosts))
-								for i, gas := range txCosts {
-									transactions[i] = types.NewTx(&types.LegacyTx{
-										Gas: gas,
-									})
-								}
-
-								intrinsic, err := calculateIntrinsicGas(
-									numZeroBytes,
-									numNonZeroBytes,
-									numAccessListAddresses,
-									numAccessListStorageKeys,
-									numAuthListEntries,
-								)
-								require.NoError(err)
-
-								floorDataGas, err := calculateFloorDataGas(
-									numZeroBytes, numNonZeroBytes,
-								)
-								require.NoError(err)
-
-								txGasSum, err := calculateTxGasSum(transactions)
-								require.NoError(err)
-
-								want := max(intrinsic, floorDataGas, txGasSum)
-								have, err := calculateEnvelopeGasInternal(
-									transactions, numZeroBytes, numNonZeroBytes,
-									numAccessListAddresses, numAccessListStorageKeys,
-									numAuthListEntries,
-								)
-								require.NoError(err)
-								require.Equal(want, have)
-							})
-						}
-					}
-				}
-			}
-		}
-	}
-}
-
-func Test_calculateEnvelopeGasInternal_DetectsIntrinsicGasOverflow(t *testing.T) {
-	numAccessListSlots := uint64(math.MaxUint64)
-
-	_, err := calculateEnvelopeGasInternal(nil, 0, 0, 0, numAccessListSlots, 0)
-	require.ErrorContains(t, err, "intrinsic gas")
-	require.ErrorIs(t, err, checked.ErrOverflow)
-}
-
-func Test_calculateEnvelopeGasInternal_DetectsFloorDataGasOverflow(t *testing.T) {
-	// low enough to pass the intrinsic gas computation, but high enough to fail
-	// in the floor data gas computation, where non-zero bytes are more expensive
-	floorDataGasPerNonZeroByte := params.TxTokenPerNonZeroByte * params.TxCostFloorPerToken
-	numNonZeroBytesInData := uint64((math.MaxUint64-params.TxGas)/floorDataGasPerNonZeroByte + 1)
-
-	_, err := calculateEnvelopeGasInternal(nil, 0, numNonZeroBytesInData, 0, 0, 0)
-	require.ErrorContains(t, err, "floor data gas")
-	require.ErrorIs(t, err, checked.ErrOverflow)
-}
-
-func Test_calculateEnvelopeGasInternal_DetectsTxGasSumOverflow(t *testing.T) {
-	transactions := []*types.Transaction{
-		types.NewTx(&types.LegacyTx{Gas: math.MaxUint64 - 1000}),
-		types.NewTx(&types.LegacyTx{Gas: 2000}),
-	}
-
-	_, err := calculateEnvelopeGasInternal(transactions, 0, 0, 0, 0, 0)
-	require.ErrorContains(t, err, "transaction gas sum")
-	require.ErrorIs(t, err, checked.ErrOverflow)
-}
-
-func Test_calculateIntrinsicGas_MatchesGethImplementation(t *testing.T) {
-	tests := map[string]struct {
-		data       []byte
-		accessList types.AccessList
-		authList   []types.SetCodeAuthorization
-	}{
-		"empty transaction": {},
-		"short data": {
-			data: make([]byte, 1),
-		},
-		"data with only zero bytes": {
-			data: make([]byte, 10),
-		},
-		"data with only non-zero bytes": {
-			data: bytes.Repeat([]byte{0xFF}, 10),
-		},
-		"data with mixed zero and non-zero bytes": {
-			data: append(bytes.Repeat([]byte{0}, 5), bytes.Repeat([]byte{0xFF}, 5)...),
-		},
-		"short access list": {
-			accessList: types.AccessList{{}},
-		},
-		"long access list": {
-			accessList: types.AccessList{{}, {}, {}, {}, {}, {}, {}, {}, {}, {}},
-		},
-		"few slots in access list": {
-			accessList: types.AccessList{{
-				StorageKeys: []common.Hash{{}, {}, {}},
-			}},
-		},
-		"many slots in access list": {
-			accessList: types.AccessList{{
-				StorageKeys: []common.Hash{{}, {}, {}, {}, {}, {}, {}, {}, {}, {}},
-			}},
-		},
-		"few set code authorizations": {
-			authList: []types.SetCodeAuthorization{{}, {}},
-		},
-		"many set code authorizations": {
-			authList: []types.SetCodeAuthorization{{}, {}, {}, {}, {}, {}, {}, {}, {}, {}},
-		},
-		"complex transaction": {
-			data: append(bytes.Repeat([]byte{0}, 5), bytes.Repeat([]byte{0xFF}, 5)...),
-			accessList: types.AccessList{
-				{},
-				{
-					StorageKeys: []common.Hash{{}, {}, {}},
-				},
-			},
-			authList: []types.SetCodeAuthorization{{}, {}, {}},
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
-			want, err := core.IntrinsicGas(
-				tc.data,
-				tc.accessList,
-				tc.authList,
-				common.Address{},
-				&common.Address{}, // envelopes are not a contract creations
-				nil,
-				params.Rules{IsHomestead: true, IsIstanbul: true, IsShanghai: true},
+			have, err := CalculateEnvelopeGas(
+				txBundle, nil, nil, nil, nil, upgrades,
 			)
-			require.NoError(err)
-
-			zeros := bytes.Count(tc.data, []byte{0})
-			nonZeros := len(tc.data) - zeros
-
-			got, err := calculateIntrinsicGas(
-				uint64(zeros),
-				uint64(nonZeros),
-				uint64(len(tc.accessList)),
-				uint64(tc.accessList.StorageKeys()),
-				uint64(len(tc.authList)),
-			)
-			require.NoError(err)
-			require.Equal(want, got)
+			require.NoError(t, err)
+			require.Equal(t, want, have)
 		})
 	}
 }
 
-func Test_calculateIntrinsicGas_DetectsOverflows(t *testing.T) {
-	tests := map[string]struct {
-		numZeroBytes             uint64
-		numNonZeroBytes          uint64
-		numAccessListAddresses   uint64
-		numAccessListStorageKeys uint64
-		numAuthListEntries       uint64
-	}{
-		"close overflow from zero bytes": {
-			numZeroBytes: math.MaxUint64/params.TxDataZeroGas + 1,
-		},
-		"big overflow from zero bytes": {
-			numZeroBytes: math.MaxUint64,
-		},
-		"close overflow from non-zero bytes": {
-			numNonZeroBytes: math.MaxUint64/params.TxDataNonZeroGasEIP2028 + 1,
-		},
-		"big overflow from non-zero bytes": {
-			numNonZeroBytes: math.MaxUint64,
-		},
-		"close overflow from access list addresses": {
-			numAccessListAddresses: math.MaxUint64/params.TxAccessListAddressGas + 1,
-		},
-		"big overflow from access list addresses": {
-			numAccessListAddresses: math.MaxUint64,
-		},
-		"close overflow from access list storage keys": {
-			numAccessListStorageKeys: math.MaxUint64/params.TxAccessListStorageKeyGas + 1,
-		},
-		"big overflow from access list storage keys": {
-			numAccessListStorageKeys: math.MaxUint64,
-		},
-		"close overflow from set code authorizations": {
-			numAuthListEntries: math.MaxUint64/params.CallNewAccountGas + 1,
-		},
-		"big overflow from set code authorizations": {
-			numAuthListEntries: math.MaxUint64,
-		},
-		"combination overflow": {
-			numZeroBytes:             math.MaxUint64 / 64,
-			numNonZeroBytes:          math.MaxUint64 / 64,
-			numAccessListAddresses:   math.MaxUint64 / 64,
-			numAccessListStorageKeys: math.MaxUint64 / 64,
-			numAuthListEntries:       math.MaxUint64 / 64,
-		},
-	}
+func Test_CalculateEnvelopeGas_SatisfiesTheChecksAppliedToASignedEnvelope(t *testing.T) {
+	// The gas limit computed for an envelope must be enough to pass the
+	// intrinsic and floor data gas checks a validating node applies to it. Those
+	// checks use the envelope's real sender, whereas the computation here uses a
+	// nominal one, so this pins that the substitution is sound.
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
 
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
+	for revision, upgrades := range gasRevisions {
+		t.Run(revision, func(t *testing.T) {
 			require := require.New(t)
-			_, err := calculateIntrinsicGas(
-				tc.numZeroBytes,
-				tc.numNonZeroBytes,
-				tc.numAccessListAddresses,
-				tc.numAccessListStorageKeys,
-				tc.numAuthListEntries,
+
+			envelope := NewBuilder().
+				WithSigner(signer).
+				WithUpgrades(upgrades).
+				AllOf(Step(key, types.AccessListTx{Gas: 21_000})).
+				Build()
+
+			sender, err := types.Sender(signer, envelope)
+			require.NoError(err)
+			require.NotEqual(BundleProcessor, sender)
+
+			value, overflow := uint256.FromBig(envelope.Value())
+			require.False(overflow)
+
+			rules := envelopeGasRules(upgrades)
+			intrinsic, err := core.IntrinsicGas(
+				envelope.Data(), envelope.AccessList(),
+				envelope.SetCodeAuthorizations(),
+				sender, envelope.To(), value, rules,
 			)
-			require.ErrorIs(err, checked.ErrOverflow)
+			require.NoError(err)
+			require.GreaterOrEqual(envelope.Gas(), intrinsic)
+
+			floor, err := core.FloorDataGas(
+				rules, sender, envelope.To(), value,
+				envelope.Data(), envelope.AccessList(),
+			)
+			require.NoError(err)
+			require.GreaterOrEqual(envelope.Gas(), floor)
 		})
 	}
 }
 
-func Test_calculateFloorDataGas_MatchesGethImplementation(t *testing.T) {
-	tests := map[string][]byte{
-		"empty data":                              {},
-		"data with only zero bytes":               make([]byte, 10),
-		"data with only non-zero bytes":           bytes.Repeat([]byte{0xFF}, 10),
-		"data with mixed zero and non-zero bytes": append(bytes.Repeat([]byte{0}, 5), bytes.Repeat([]byte{0xFF}, 5)...),
+func Test_CalculateEnvelopeGas_DetectsTxGasSumOverflow(t *testing.T) {
+	first := TxReference{From: common.Address{1}}
+	second := TxReference{From: common.Address{2}}
+	txBundle := TransactionBundle{
+		Transactions: map[TxReference]*types.Transaction{
+			first:  types.NewTx(&types.LegacyTx{Gas: math.MaxUint64 - 1000}),
+			second: types.NewTx(&types.LegacyTx{Gas: 2000}),
+		},
+		Plan: ExecutionPlan{
+			Root: NewAllOfStep(NewTxStep(first), NewTxStep(second)),
+		},
 	}
 
-	for i := range 5 {
-		length := rand.IntN(500)
-		randomData := make([]byte, length)
-		for i := range randomData {
-			randomData[i] = byte(rand.IntN(3))
-		}
-		tests[fmt.Sprintf("random data %d", i)] = randomData
-	}
-
-	for name, data := range tests {
-		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
-			want, err := core.FloorDataGas(params.Rules{}, common.Address{}, nil, nil, data, nil)
-			require.NoError(err)
-
-			zeros := bytes.Count(data, []byte{0})
-			nonZeros := len(data) - zeros
-			got, err := calculateFloorDataGas(uint64(zeros), uint64(nonZeros))
-			require.NoError(err)
-			require.Equal(want, got)
+	for revision, upgrades := range gasRevisions {
+		t.Run(revision, func(t *testing.T) {
+			_, err := CalculateEnvelopeGas(
+				txBundle, nil, nil, nil, nil, upgrades,
+			)
+			require.ErrorContains(t, err, "transaction gas sum")
+			require.ErrorIs(t, err, checked.ErrOverflow)
 		})
 	}
 }
 
-func Test_calculateFloorDataGas_DetectsOverflows(t *testing.T) {
-	tests := map[string]struct {
-		numZeroBytes    uint64
-		numNonZeroBytes uint64
-	}{
-		"big overflow from zero bytes": {
-			numZeroBytes:    math.MaxUint64,
-			numNonZeroBytes: 0,
-		},
-		"close overflow from zero bytes": {
-			numZeroBytes: (math.MaxUint64-params.TxGas)/params.TxCostFloorPerToken + 1,
-		},
-		"big overflow from non-zero bytes": {
-			numZeroBytes:    0,
-			numNonZeroBytes: math.MaxUint64,
-		},
-		"close overflow from non-zero bytes": {
-			numZeroBytes:    0,
-			numNonZeroBytes: (math.MaxUint64-params.TxGas)/params.TxCostFloorPerToken/params.TxTokenPerNonZeroByte + 1,
-		},
-		"overflow from combined zero and non-zero bytes": {
-			numZeroBytes:    math.MaxUint64 / 12,
-			numNonZeroBytes: math.MaxUint64 / 50,
-		},
-	}
+func Test_envelopeGasRules_ActivatesAmsterdamWithCanto(t *testing.T) {
+	for revision, upgrades := range gasRevisions {
+		t.Run(revision, func(t *testing.T) {
+			rules := envelopeGasRules(upgrades)
+			require.Equal(t, upgrades.Canto, rules.IsAmsterdam)
 
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
+			// Bundles require Brio, which succeeds both revisions.
+			require.True(t, rules.IsIstanbul)
+			require.True(t, rules.IsShanghai)
+		})
+	}
+}
+
+func Test_bundleOnlyMarkerGas_MatchesGethAccessListCharge(t *testing.T) {
+	// The marker adds one address and one storage key to a transaction's access
+	// list. Its cost is tracked as constants, so compare them against what
+	// go-ethereum charges for such an entry.
+	marker := types.AccessList{{
+		Address:     BundleOnly,
+		StorageKeys: []common.Hash{{}},
+	}}
+
+	for revision, upgrades := range gasRevisions {
+		t.Run(revision, func(t *testing.T) {
 			require := require.New(t)
-			_, err := calculateFloorDataGas(tc.numZeroBytes, tc.numNonZeroBytes)
-			require.ErrorIs(err, checked.ErrOverflow)
+			rules := envelopeGasRules(upgrades)
+
+			withMarker, err := core.IntrinsicGas(
+				nil, marker, nil,
+				envelopeSender, &BundleProcessor, nil, rules,
+			)
+			require.NoError(err)
+			withoutMarker, err := core.IntrinsicGas(
+				nil, nil, nil,
+				envelopeSender, &BundleProcessor, nil, rules,
+			)
+			require.NoError(err)
+
+			require.Equal(withMarker-withoutMarker, bundleOnlyMarkerGas(upgrades))
 		})
 	}
 }

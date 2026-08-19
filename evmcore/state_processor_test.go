@@ -1687,7 +1687,7 @@ func TestRunTransactions_EnvelopeAndBundleOnly_SemanticsEnabledByBrio_ExecutionE
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 
 	envelopeTx := getTransactionBundle(t)
-	txBundle, _, err := bundle.ValidateEnvelope(signer, envelopeTx)
+	txBundle, _, err := bundle.ValidateEnvelope(signer, envelopeTx, opera.Upgrades{})
 	require.NoError(t, err)
 	bundleOnlyTx := txBundle.GetTransactionsInReferencedOrder()[0]
 
@@ -1787,7 +1787,7 @@ func TestRunTransactions_BundleOnlyTxsAreNotFilteredDuringReplay(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 
 	envelopeTx := getTransactionBundle(t)
-	txBundle, _, err := bundle.ValidateEnvelope(signer, envelopeTx)
+	txBundle, _, err := bundle.ValidateEnvelope(signer, envelopeTx, opera.Upgrades{})
 	require.NoError(t, err)
 	bundleOnlyTx := txBundle.GetTransactionsInReferencedOrder()[0]
 
@@ -3148,7 +3148,7 @@ func TestRunTransactionBundle_BundleOutOfRange_ReturnsEnvelopeAndResultInvalid(t
 		SetRangeLength(2).
 		Build()
 
-	_, _, err = bundle.ValidateEnvelope(signer, tx)
+	_, _, err = bundle.ValidateEnvelope(signer, tx, opera.Upgrades{})
 	require.NoError(t, err)
 
 	context := &runContext{
@@ -3187,7 +3187,7 @@ func TestRunTransactionBundle_BundleOutOfTime_ReturnsEnvelopeAndResultInvalid(t 
 		SetNotBefore(blockTime + 1).
 		Build()
 
-	_, _, err = bundle.ValidateEnvelope(signer, tx)
+	_, _, err = bundle.ValidateEnvelope(signer, tx, opera.Upgrades{})
 	require.NoError(t, err)
 
 	context := &runContext{
@@ -3213,7 +3213,7 @@ func TestRunTransactionBundle_PreviouslyProcessedBundle_ReturnsEnvelopeAndResult
 	ctrl := gomock.NewController(t)
 
 	tx, plan := bundle.NewBuilder().BuildEnvelopeAndPlan()
-	_, _, err := bundle.ValidateEnvelope(signer, tx)
+	_, _, err := bundle.ValidateEnvelope(signer, tx, opera.Upgrades{})
 	require.NoError(t, err)
 
 	log := NewMocklogger(ctrl)
@@ -3248,7 +3248,7 @@ func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResu
 	txOffset := 12
 
 	tx := bundle.OneOf().Build() // an empty bundle with OneOf flag will fail
-	_, plan, err := bundle.ValidateEnvelope(signer, tx)
+	_, plan, err := bundle.ValidateEnvelope(signer, tx, opera.Upgrades{})
 	require.NoError(t, err)
 
 	gomock.InOrder(
@@ -3291,7 +3291,7 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 	envelope := getTransactionBundle(t)
 	txBundle, err := bundle.OpenEnvelope(signer, envelope)
 	require.NoError(t, err)
-	_, plan, err := bundle.ValidateEnvelope(signer, envelope)
+	_, plan, err := bundle.ValidateEnvelope(signer, envelope, opera.Upgrades{})
 	require.NoError(t, err)
 
 	gomock.InOrder(

@@ -23,11 +23,12 @@ import (
 	"slices"
 
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 )
 
 // This file offers utilities to build bundles from transaction data. The most
@@ -136,6 +137,7 @@ func NewBuilder() *builder {
 
 type builder struct {
 	signer           types.Signer
+	upgrades         opera.Upgrades
 	earliest         *uint64
 	rangeLength      *uint64
 	notBefore        *inter.Timestamp
@@ -176,6 +178,17 @@ func (b *builder) GetSigner() types.Signer {
 		return b.signer
 	}
 	return types.LatestSignerForChainID(big.NewInt(1))
+}
+
+// WithUpgrades selects the network upgrades the built bundle is priced for.
+// It defaults to no upgrades being active.
+func (b *builder) WithUpgrades(upgrades opera.Upgrades) *builder {
+	b.upgrades = upgrades
+	return b
+}
+
+func (b *builder) GetUpgrades() opera.Upgrades {
+	return b.upgrades
 }
 
 func (b *builder) With(root BuilderStep) *builder {
@@ -239,7 +252,7 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 	txReferences := root.collectTxReferences()
 
 	// Add the costs for the additional marker to the gas limit.
-	markerCosts := params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
+	markerCosts := bundleOnlyMarkerGas(b.upgrades)
 	for _, ref := range txReferences {
 		// Fix the gas limit for nested envelops to be accurate.
 		tx := types.NewTx(ref.tx)
@@ -256,8 +269,13 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 				}
 				accessList := slices.Clone(tx.AccessList())
 				accessList = append(accessList, marker)
+				value, overflow := uint256.FromBig(tx.Value())
+				if overflow {
+					panic("envelope value out of range")
+				}
 				newGasLimit, err = CalculateEnvelopeGas(
-					innerBundle, tx.Data(), accessList, tx.SetCodeAuthorizations(),
+					innerBundle, tx.Data(), accessList,
+					tx.SetCodeAuthorizations(), value, b.upgrades,
 				)
 				if err != nil {
 					panic(err)
@@ -357,7 +375,10 @@ func (b *builder) BuildEnvelopeBundleAndPlan() (
 	}
 	bundle, plan := b.BuildBundleAndPlan()
 	signer := b.GetSigner()
-	return NewEnvelope(signer, key, b.envelopeNonce, b.envelopeGasPrice, bundle), bundle, plan
+	envelope := NewEnvelope(
+		signer, key, b.envelopeNonce, b.envelopeGasPrice, bundle, b.upgrades,
+	)
+	return envelope, bundle, plan
 }
 
 // BuildEnvelope returns an envelope transaction and its execution plan
@@ -411,6 +432,7 @@ func (s BuilderStep) Clone() BuilderStep {
 		}
 		res.txRef.tx = tx
 	}
+	res.steps = slices.Clone(s.steps)
 	for i := range res.steps {
 		res.steps[i] = res.steps[i].Clone()
 	}
@@ -481,13 +503,15 @@ func NewEnvelope(
 	nonce uint64,
 	gasPrice *big.Int,
 	bundle *TransactionBundle,
+	upgrades opera.Upgrades,
 ) *types.Transaction {
 
 	payload, err := bundle.Encode()
 	if err != nil {
 		panic(fmt.Sprintf("failed to encode bundle: %v", err))
 	}
-	gasLimit, err := CalculateEnvelopeGas(*bundle, payload, nil, nil)
+	// Envelopes created here carry no value.
+	gasLimit, err := CalculateEnvelopeGas(*bundle, payload, nil, nil, nil, upgrades)
 	if err != nil {
 		panic(err)
 	}
@@ -501,10 +525,14 @@ func NewEnvelope(
 	})
 }
 
-func MustWrapIntoEnvelope(signer types.Signer, bundle *TransactionBundle) *types.Transaction {
+func MustWrapIntoEnvelope(
+	signer types.Signer,
+	bundle *TransactionBundle,
+	upgrades opera.Upgrades,
+) *types.Transaction {
 	key, err := crypto.GenerateKey()
 	if err != nil {
 		panic(fmt.Sprintf("failed to generate new key: %v", err))
 	}
-	return NewEnvelope(signer, key, 0, &big.Int{}, bundle)
+	return NewEnvelope(signer, key, 0, &big.Int{}, bundle, upgrades)
 }
