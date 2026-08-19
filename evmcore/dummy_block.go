@@ -47,6 +47,8 @@ type (
 		GasLimit uint64
 		GasUsed  uint64
 
+		Difficulty *big.Int
+
 		WithdrawalsHash *common.Hash
 
 		BaseFee     *big.Int
@@ -126,6 +128,7 @@ func ToEvmHeader(block *inter.Block, prevHash common.Hash, rules opera.Rules) *E
 		Duration:        time.Duration(block.Duration) * time.Nanosecond,
 		GasLimit:        block.GasLimit,
 		GasUsed:         block.GasUsed,
+		Difficulty:      new(big.Int).SetUint64(block.Difficulty),
 		BaseFee:         baseFee,
 		PrevRandao:      prevRandao,
 		WithdrawalsHash: withdrawalsHash,
@@ -146,10 +149,21 @@ func ConvertFromEthHeader(h *types.Header) *EvmHeader {
 		ParentHash:      h.ParentHash,
 		Time:            inter.FromUnix(int64(h.Time)),
 		Hash:            common.BytesToHash(h.Extra),
+		Difficulty:      h.Difficulty,
 		BaseFee:         h.BaseFee,
 		PrevRandao:      h.MixDigest,
 		WithdrawalsHash: h.WithdrawalsHash,
 	}
+}
+
+// difficultyOf returns the header's difficulty, defaulting to zero for a header
+// that does not carry one. The difficulty is a required field of the Ethereum
+// header and of the RPC block encoding, so it must never be nil.
+func difficultyOf(h *EvmHeader) *big.Int {
+	if h.Difficulty == nil {
+		return new(big.Int)
+	}
+	return new(big.Int).Set(h.Difficulty)
 }
 
 // EthHeader returns header in ETH format
@@ -170,7 +184,7 @@ func (h *EvmHeader) EthHeader() *types.Header {
 		Extra:      inter.EncodeExtraData(h.Time.Time(), h.Duration),
 		BaseFee:    h.BaseFee,
 
-		Difficulty: new(big.Int),
+		Difficulty: difficultyOf(h),
 		MixDigest:  h.PrevRandao,
 
 		WithdrawalsHash: h.WithdrawalsHash,
@@ -227,7 +241,7 @@ func (h *EvmHeader) ToJson(receipts types.Receipts) *EvmHeaderJson {
 		TimeNano:        hexutil.Uint64(h.Time),
 		Extra:           inter.EncodeExtraData(h.Time.Time(), h.Duration),
 		BaseFee:         (*hexutil.Big)(h.BaseFee),
-		Difficulty:      new(hexutil.Big),
+		Difficulty:      (*hexutil.Big)(difficultyOf(h)),
 		PrevRandao:      h.PrevRandao,
 		TotalDiff:       new(hexutil.Big),
 		Hash:            &h.Hash,
