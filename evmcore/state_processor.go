@@ -946,13 +946,27 @@ func ApplyTransactionWithEVM(
 	return receipt, err
 }
 
+// systemCallGasBudget returns the gas budget granted to a block-level system
+// call. It mirrors go-ethereum's function of the same name: from Amsterdam on,
+// EIP-8037 grants the call a state-gas reservoir covering
+// SYSTEM_MAX_SSTORES_PER_CALL freshly created storage slots, so that the state
+// gas the call charges is not taken out of its regular gas limit.
+func systemCallGasBudget(evm *vm.EVM) (gasLimit uint64, gasBudget vm.GasBudget) {
+	gasLimit = 30_000_000
+	stateGas := uint64(0)
+	if evm.GetRules().IsAmsterdam {
+		stateGas = params.SystemMaxSStoresPerCall * evm.Context.CostPerStateByte * params.StorageCreationSize
+	}
+	return gasLimit, vm.NewGasBudget(gasLimit, stateGas)
+}
+
 // ProcessParentBlockHash stores the parent block hash in the history storage contract
 // as per EIP-2935.
 func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM, stateDb state.StateDB) {
-	const systemCallGasLimit = 30_000_000
+	gasLimit, gasBudget := systemCallGasBudget(evm)
 	msg := &core.Message{
 		From:      params.SystemAddress,
-		GasLimit:  systemCallGasLimit,
+		GasLimit:  gasLimit,
 		GasPrice:  common.U2560,
 		GasFeeCap: common.U2560,
 		GasTipCap: common.U2560,
@@ -964,7 +978,7 @@ func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM, stateDb state.Sta
 	evm.SetTxContext(MustNewEVMTxContext(msg))
 
 	stateDb.AddAddressToAccessList(params.HistoryStorageAddress)
-	_, _, _ = evm.Call(msg.From, *msg.To, msg.Data, vm.NewGasBudget(systemCallGasLimit, 0), common.U2560)
+	_, _, _ = evm.Call(msg.From, *msg.To, msg.Data, gasBudget, common.U2560)
 	stateDb.Finalise(true)
 	stateDb.EndTransaction()
 }
