@@ -384,6 +384,134 @@ func TestProcessParentBlockHash_GrantsAStateGasReservoirFromAmsterdamOn(t *testi
 	}
 }
 
+// preExecutionHeader produces a header for a block whose parent is the zero
+// hash, at a fixed height and time, for use with PreExecution.
+func preExecutionHeader() *EvmHeader {
+	return &EvmHeader{
+		Number:     big.NewInt(1),
+		Time:       inter.Timestamp(1_000_000_000),
+		ParentHash: common.Hash{7},
+	}
+}
+
+// preExecutionChainConfig produces a chain config enabling the forks up to and
+// including the given one, in the style of opera.CreateTransientEvmChainConfig,
+// which back-dates every active fork to a timestamp in the past.
+func preExecutionChainConfig(prague, amsterdam bool) *params.ChainConfig {
+	timestampInThePast := uint64(0)
+	cfg := &params.ChainConfig{
+		ChainID:     big.NewInt(12),
+		LondonBlock: new(big.Int),
+	}
+	if prague {
+		cfg.PragueTime = &timestampInThePast
+	}
+	if amsterdam {
+		cfg.AmsterdamTime = &timestampInThePast
+	}
+	return cfg
+}
+
+func TestPreExecution_InsertsTheDeterministicFactoryFromAmsterdamOn(t *testing.T) {
+	tests := map[string]bool{
+		"before amsterdam":  false,
+		"from amsterdam on": true,
+	}
+
+	for name, amsterdam := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			stateDb := state.NewMockStateDB(ctrl)
+
+			// The EIP-2935 system call is enabled in both cases and is covered
+			// by its own test.
+			stateDb.EXPECT().AddAddressToAccessList(gomock.Any()).AnyTimes()
+			stateDb.EXPECT().Finalise(gomock.Any()).AnyTimes()
+			stateDb.EXPECT().EndTransaction().AnyTimes()
+
+			if amsterdam {
+				stateDb.EXPECT().GetCodeHash(params.DeterministicFactoryAddress).
+					Return(common.Hash{})
+				stateDb.EXPECT().Exist(params.DeterministicFactoryAddress).Return(false)
+				stateDb.EXPECT().CreateAccount(params.DeterministicFactoryAddress)
+				stateDb.EXPECT().CreateContract(params.DeterministicFactoryAddress)
+				stateDb.EXPECT().SetCode(
+					params.DeterministicFactoryAddress,
+					params.DeterministicFactoryCode,
+					gomock.Any(),
+				)
+				stateDb.EXPECT().GetNonce(params.DeterministicFactoryAddress).Return(uint64(0))
+				stateDb.EXPECT().SetNonce(
+					params.DeterministicFactoryAddress,
+					uint64(1),
+					gomock.Any(),
+				)
+			}
+
+			header := preExecutionHeader()
+			blockContext := vm.BlockContext{
+				BlockNumber: header.Number,
+				Time:        uint64(header.Time.Unix()),
+				Random:      &common.Hash{1},
+			}
+			evm := vm.NewEVM(blockContext, stateDb, preExecutionChainConfig(true, amsterdam), vm.Config{})
+			evm.CallInterceptor = &callBudgetRecorder{}
+
+			PreExecution(header, evm, stateDb)
+		})
+	}
+}
+
+func TestPreExecution_DeterministicFactoryInsertionIsIdempotent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+
+	stateDb.EXPECT().AddAddressToAccessList(gomock.Any()).AnyTimes()
+	stateDb.EXPECT().Finalise(gomock.Any()).AnyTimes()
+	stateDb.EXPECT().EndTransaction().AnyTimes()
+
+	// A chain already hosting the factory must not be modified again.
+	stateDb.EXPECT().GetCodeHash(params.DeterministicFactoryAddress).
+		Return(crypto.Keccak256Hash(params.DeterministicFactoryCode))
+
+	header := preExecutionHeader()
+	blockContext := vm.BlockContext{
+		BlockNumber: header.Number,
+		Time:        uint64(header.Time.Unix()),
+		Random:      &common.Hash{1},
+	}
+	evm := vm.NewEVM(blockContext, stateDb, preExecutionChainConfig(true, true), vm.Config{})
+	evm.CallInterceptor = &callBudgetRecorder{}
+
+	PreExecution(header, evm, stateDb)
+}
+
+func TestPreExecution_SealsTheFactoryInsertionAgainstLaterRollbacks(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+
+	stateDb.EXPECT().GetCodeHash(params.DeterministicFactoryAddress).Return(common.Hash{})
+	stateDb.EXPECT().Exist(gomock.Any()).Return(true)
+	stateDb.EXPECT().CreateContract(gomock.Any())
+	stateDb.EXPECT().SetCode(gomock.Any(), gomock.Any(), gomock.Any())
+	stateDb.EXPECT().GetNonce(gomock.Any()).Return(uint64(3))
+
+	// The insertion must be committed before any transaction can roll it back.
+	// Prague is disabled here, so the EIP-2935 system call cannot be the one
+	// ending the transaction.
+	stateDb.EXPECT().EndTransaction()
+
+	header := preExecutionHeader()
+	blockContext := vm.BlockContext{
+		BlockNumber: header.Number,
+		Time:        uint64(header.Time.Unix()),
+		Random:      &common.Hash{1},
+	}
+	evm := vm.NewEVM(blockContext, stateDb, preExecutionChainConfig(false, true), vm.Config{})
+
+	PreExecution(header, evm, stateDb)
+}
+
 func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)

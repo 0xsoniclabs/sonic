@@ -22,6 +22,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -159,17 +160,13 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	var (
 		gp           = core.NewGasPool(gasLimit)
 		header       = block.Header()
-		time         = uint64(block.Time.Unix())
 		blockContext = NewEVMBlockContextWithDifficulty(header, p.bc, nil, difficulty)
 		vmenv        = vm.NewEVM(blockContext, statedb, p.config, cfg)
 		blockNumber  = block.Number
 		signer       = types.LatestSignerForChainID(p.config.ChainID)
 	)
 
-	// execute EIP-2935 HistoryStorage contract.
-	if p.config.IsPrague(blockNumber, time) {
-		ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
-	}
+	PreExecution(header, vmenv, statedb)
 
 	// Iterate over and process the individual transactions
 	summary := runTransactions(newRunContext(
@@ -817,17 +814,13 @@ func (p *StateProcessor) BeginBlock(
 	var (
 		gp            = core.NewGasPool(gasLimit)
 		header        = block.Header()
-		time          = uint64(block.Time.Unix())
 		blockContext  = NewEVMBlockContext(header, p.bc, nil)
 		vmEnvironment = vm.NewEVM(blockContext, stateDb, p.config, cfg)
 		blockNumber   = block.Number
 		signer        = types.LatestSignerForChainID(p.config.ChainID)
 	)
 
-	// execute EIP-2935 HistoryStorage contract.
-	if p.config.IsPrague(blockNumber, time) {
-		ProcessParentBlockHash(block.ParentHash, vmEnvironment, stateDb)
-	}
+	PreExecution(header, vmEnvironment, stateDb)
 
 	return &TransactionProcessor{
 		blockNumber:   blockNumber,
@@ -958,6 +951,39 @@ func systemCallGasBudget(evm *vm.EVM) (gasLimit uint64, gasBudget vm.GasBudget) 
 		stateGas = params.SystemMaxSStoresPerCall * evm.Context.CostPerStateByte * params.StorageCreationSize
 	}
 	return gasLimit, vm.NewGasBudget(gasLimit, stateGas)
+}
+
+// PreExecution applies the block-level state changes that precede the execution
+// of a block's transactions. It mirrors go-ethereum's core.PreExecution, reduced
+// to the parts that apply to Sonic: Sonic has no beacon block root and does not
+// construct block access lists.
+//
+// Unlike go-ethereum, Sonic cannot recognize the fork-activation block by
+// comparing the block's rules against its parent's:
+// opera.CreateTransientEvmChainConfig back-dates every active fork to timestamp
+// zero, so the parent always looks as if the fork had already been active. The
+// EIP-7997 insertion is therefore attempted on every Amsterdam block. It is
+// idempotent -- misc.ApplyEIP7997 leaves the state untouched once the factory is
+// in place -- so the resulting state is the same as a one-shot transition at the
+// activation block, and networks enabling Canto in their genesis are covered by
+// the same code path.
+func PreExecution(header *EvmHeader, evm *vm.EVM, stateDb state.StateDB) {
+	config := evm.ChainConfig()
+	blockNumber, blockTime := header.Number, uint64(header.Time.Unix())
+
+	// EIP-7997: insert the deterministic deployment factory.
+	if config.IsAmsterdam(blockNumber, blockTime) {
+		misc.ApplyEIP7997(stateDb)
+		// Carmen seals the effects of a transaction by forgetting its undo list
+		// when the transaction ends. Without this, a rollback in a later
+		// transaction could revert the insertion.
+		stateDb.EndTransaction()
+	}
+
+	// EIP-2935: record the parent block hash in the history storage contract.
+	if config.IsPrague(blockNumber, blockTime) {
+		ProcessParentBlockHash(header.ParentHash, evm, stateDb)
+	}
 }
 
 // ProcessParentBlockHash stores the parent block hash in the history storage contract

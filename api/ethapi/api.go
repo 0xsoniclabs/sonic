@@ -1183,10 +1183,7 @@ func DoCall(
 		evm.Cancel()
 	}()
 
-	// execute EIP-2935 HistoryStorage contract.
-	if evm.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(block.ParentHash, evm, state)
-	}
+	evmcore.PreExecution(block.Header(), evm, state)
 
 	// Add sufficient gas to the pool.
 	gp := core.NewGasPool(math.MaxUint64)
@@ -2759,10 +2756,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 		return nil, nil, err
 	}
 
-	// execute EIP-2935 HistoryStorage contract.
-	if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
-	}
+	evmcore.PreExecution(block.Header(), vmenv, statedb)
 
 	// Recompute transactions up to the target index.
 	chainConfig := b.ChainConfig(idx.Block(block.NumberU64()))
