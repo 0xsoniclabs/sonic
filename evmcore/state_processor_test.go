@@ -324,6 +324,66 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 	}
 }
 
+// callBudgetRecorder is a vm.CallContextInterceptor that records the gas budget
+// of the first EVM call it sees and skips the actual execution.
+type callBudgetRecorder struct {
+	vm.CallContextInterceptor
+	budget vm.GasBudget
+}
+
+func (r *callBudgetRecorder) Call(_ *vm.EVM, _ common.Address, _ common.Address, _ []byte, gas vm.GasBudget, _ *uint256.Int) ([]byte, vm.GasBudget, error) {
+	r.budget = gas
+	return nil, gas, nil
+}
+
+func TestProcessParentBlockHash_GrantsAStateGasReservoirFromAmsterdamOn(t *testing.T) {
+	const costPerStateByte = 7
+	tests := map[string]struct {
+		amsterdam bool
+		want      vm.GasBudget
+	}{
+		"before amsterdam": {
+			amsterdam: false,
+			want:      vm.NewGasBudget(30_000_000, 0),
+		},
+		"from amsterdam on": {
+			amsterdam: true,
+			want: vm.NewGasBudget(30_000_000,
+				params.SystemMaxSStoresPerCall*costPerStateByte*params.StorageCreationSize),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			stateDb := state.NewMockStateDB(ctrl)
+			stateDb.EXPECT().AddAddressToAccessList(params.HistoryStorageAddress)
+			stateDb.EXPECT().Finalise(gomock.Any())
+			stateDb.EXPECT().EndTransaction()
+
+			chainConfig := &params.ChainConfig{
+				ChainID:     big.NewInt(12),
+				LondonBlock: new(big.Int),
+			}
+			if test.amsterdam {
+				chainConfig.AmsterdamTime = new(uint64)
+			}
+			blockContext := vm.BlockContext{
+				BlockNumber:      big.NewInt(1),
+				Random:           &common.Hash{1},
+				CostPerStateByte: costPerStateByte,
+			}
+
+			evm := vm.NewEVM(blockContext, stateDb, chainConfig, vm.Config{})
+			recorder := &callBudgetRecorder{}
+			evm.CallInterceptor = recorder
+
+			ProcessParentBlockHash(common.Hash{1}, evm, stateDb)
+			require.Equal(t, test.want, recorder.budget)
+		})
+	}
+}
+
 func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
