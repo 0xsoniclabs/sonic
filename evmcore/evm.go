@@ -23,12 +23,10 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/holiman/uint256"
 )
 
 // DummyChain supports retrieving headers and consensus parameters from the
@@ -84,8 +82,8 @@ func NewEVMBlockContextWithDifficulty(
 	}
 
 	return vm.BlockContext{
-		CanTransfer: CanTransfer,
-		Transfer:    Transfer,
+		CanTransfer: core.CanTransfer,
+		Transfer:    core.Transfer,
 		GetHash:     GetHashFn(header, chain),
 		Coinbase:    beneficiary,
 		BlockNumber: new(big.Int).Set(header.Number),
@@ -158,12 +156,6 @@ func GetHashFn(ref *EvmHeader, chain DummyChain) func(n uint64) common.Hash {
 	}
 }
 
-// CanTransfer checks whether there are enough funds in the address' account to make a transfer.
-// This does not take the necessary gas in to account to make the transfer valid.
-func CanTransfer(db vm.StateDB, addr common.Address, amount *uint256.Int) bool {
-	return db.GetBalance(addr).Cmp(amount) >= 0
-}
-
 // MaxTxGas returns the per-transaction gas cap the state transition applies
 // for the given EVM, which is its configured MaxTxGas or the protocol default.
 func MaxTxGas(evm *vm.EVM) uint64 {
@@ -171,10 +163,4 @@ func MaxTxGas(evm *vm.EVM) uint64 {
 		return *evm.Config.MaxTxGas
 	}
 	return params.MaxTxGas
-}
-
-// Transfer subtracts amount from sender and adds amount to recipient using the given Db
-func Transfer(db vm.StateDB, sender, recipient common.Address, amount *uint256.Int, _ *params.Rules) {
-	db.SubBalance(sender, amount, tracing.BalanceChangeTransfer)
-	db.AddBalance(recipient, amount, tracing.BalanceChangeTransfer)
 }
