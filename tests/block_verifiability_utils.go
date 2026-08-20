@@ -86,7 +86,7 @@ func verifyBlocksOnState(
 
 	// Verify all blocks by replaying them on the state-DB.
 	for i, block := range blocks {
-		receipts, err := state.ApplyBlock(
+		receipts, blockGas, err := state.ApplyBlock(
 			genesis.Rules,
 			block,
 		)
@@ -103,6 +103,9 @@ func verifyBlocksOnState(
 		for _, r := range receipts {
 			usedGas += r.GasUsed
 			require.Equal(usedGas, r.CumulativeGasUsed)
+		}
+		if genesis.Rules.Upgrades.Canto {
+			usedGas = blockGas.Used()
 		}
 		require.Equal(block.GasUsed(), usedGas,
 			"block %d, tx %d: gas used mismatch", block.NumberU64(), i,
@@ -330,11 +333,12 @@ func (s *State) ApplyGenesis(genesis *makefakegenesis.GenesisJson) error {
 
 // ApplyBlock applies the given block to this state, processing all transactions
 // and updating the state accordingly. It returns the receipts of the transactions
-// in the block, or an error if the block could not be processed.
+// in the block and the gas charged to the block from Amsterdam on, or an error if
+// the block could not be processed.
 func (s *State) ApplyBlock(
 	rules opera.Rules,
 	block *types.Block,
-) (types.Receipts, error) {
+) (types.Receipts, evmcore.BlockGas, error) {
 
 	chainConfig := opera.CreateTransientEvmChainConfig(
 		rules.NetworkID,
@@ -370,7 +374,7 @@ func (s *State) ApplyBlock(
 
 	s.db.BeginBlock()
 	var usedGas uint64
-	processed := processor.Process(
+	summary := processor.Process(
 		evmBlock,
 		stateDb,
 		vmConfig,
@@ -379,34 +383,34 @@ func (s *State) ApplyBlock(
 		0, // tx index offset
 		nil,
 		math.MaxUint64, // the blocks have already been produced, the size limit is not relevant for the replay
-	).ProcessedTransactions
+	)
 
 	receipts := types.Receipts{}
-	for i, cur := range processed {
+	for i, cur := range summary.ProcessedTransactions {
 		if cur.Receipt == nil {
-			return nil, fmt.Errorf("failed to process tx %d in block %d", i, block.NumberU64())
+			return nil, evmcore.BlockGas{}, fmt.Errorf("failed to process tx %d in block %d", i, block.NumberU64())
 		}
 		receipts = append(receipts, cur.Receipt)
 	}
 
 	staged, err := s.db.EndBlock(block.NumberU64())
 	if err != nil {
-		return nil, fmt.Errorf("failed to end block %d: %w", block.NumberU64(), err)
+		return nil, evmcore.BlockGas{}, fmt.Errorf("failed to end block %d: %w", block.NumberU64(), err)
 	}
 	if staged == nil {
-		return nil, fmt.Errorf("staged block is nil after processing block %d", block.NumberU64())
+		return nil, evmcore.BlockGas{}, fmt.Errorf("staged block is nil after processing block %d", block.NumberU64())
 	}
 	handle, err := staged.Commit()
 	if err != nil {
-		return nil, fmt.Errorf("failed to commit block %d: %w", block.NumberU64(), err)
+		return nil, evmcore.BlockGas{}, fmt.Errorf("failed to commit block %d: %w", block.NumberU64(), err)
 	}
 	if handle != nil {
 		if err := handle.Wait(); err != nil {
-			return nil, fmt.Errorf("failed to wait for commit of block %d: %w", block.NumberU64(), err)
+			return nil, evmcore.BlockGas{}, fmt.Errorf("failed to wait for commit of block %d: %w", block.NumberU64(), err)
 		}
 	}
 
-	return receipts, s.db.Check()
+	return receipts, summary.BlockGas, s.db.Check()
 }
 
 // --- block hash history tracking ---

@@ -120,7 +120,8 @@ type OperaEVMProcessor struct {
 	prevBlockHash common.Hash
 	gasBaseFee    *big.Int
 
-	gasUsed uint64
+	gasUsed  uint64
+	blockGas evmcore.BlockGas
 
 	processedTxs []evmcore.ProcessedTransaction
 	prevRandao   common.Hash
@@ -156,6 +157,13 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 		withdrawalsHash = &types.EmptyWithdrawalsHash
 	}
 
+	// From Canto on, the block gas used follows EIP-7778 and EIP-8037: the gas
+	// charged to the block before refunds, not the sum of the receipts.
+	gasUsed := p.gasUsed
+	if p.rules.Upgrades.Canto {
+		gasUsed = p.blockGas.Used()
+	}
+
 	blobBaseFee := evmcore.GetBlobBaseFee()
 	h := &evmcore.EvmHeader{
 		Number:          new(big.Int).SetUint64(p.blockIdx),
@@ -164,7 +172,7 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 		Time:            p.blockTime,
 		Coinbase:        evmcore.GetCoinbase(),
 		GasLimit:        p.rules.Blocks.MaxBlockGas,
-		GasUsed:         p.gasUsed,
+		GasUsed:         gasUsed,
 		BaseFee:         baseFee,
 		BlobBaseFee:     blobBaseFee.ToBig(),
 		PrevRandao:      prevRandao,
@@ -199,6 +207,7 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64, siz
 	summary := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, trueTxsOffset, p.onNewLog, sizeLimit)
 
 	p.processedTxs = append(p.processedTxs, summary.ProcessedTransactions...)
+	p.blockGas = p.blockGas.Add(summary.BlockGas)
 
 	return summary
 }
