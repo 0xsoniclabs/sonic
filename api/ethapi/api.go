@@ -2831,10 +2831,7 @@ func applyPreBlockSystemCalls(ctx context.Context, b Backend, block *evmcore.Evm
 		return nil, err
 	}
 
-	// execute EIP-2935 HistoryStorage contract.
-	if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
-	}
+	evmcore.PreExecution(block.Header(), vmenv, statedb)
 	return vmenv, nil
 }
 

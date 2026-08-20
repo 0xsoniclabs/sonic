@@ -160,17 +160,13 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	var (
 		gp           = core.NewGasPool(gasLimit)
 		header       = block.Header()
-		time         = uint64(block.Time.Unix())
 		blockContext = NewEVMBlockContextWithDifficulty(header, p.bc, nil, difficulty)
 		vmenv        = vm.NewEVM(blockContext, statedb, p.config, cfg)
 		blockNumber  = block.Number
 		signer       = types.LatestSignerForChainID(p.config.ChainID)
 	)
 
-	// execute EIP-2935 HistoryStorage contract.
-	if p.config.IsPrague(blockNumber, time) {
-		ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
-	}
+	PreExecution(header, vmenv, statedb)
 
 	// Iterate over and process the individual transactions
 	summary := runTransactions(newRunContext(
@@ -818,17 +814,13 @@ func (p *StateProcessor) BeginBlock(
 	var (
 		gp            = core.NewGasPool(gasLimit)
 		header        = block.Header()
-		time          = uint64(block.Time.Unix())
 		blockContext  = NewEVMBlockContext(header, p.bc, nil)
 		vmEnvironment = vm.NewEVM(blockContext, stateDb, p.config, cfg)
 		blockNumber   = block.Number
 		signer        = types.LatestSignerForChainID(p.config.ChainID)
 	)
 
-	// execute EIP-2935 HistoryStorage contract.
-	if p.config.IsPrague(blockNumber, time) {
-		ProcessParentBlockHash(block.ParentHash, vmEnvironment, stateDb)
-	}
+	PreExecution(header, vmEnvironment, stateDb)
 
 	return &TransactionProcessor{
 		blockNumber:   blockNumber,
@@ -959,6 +951,17 @@ func systemCallGasBudget(evm *vm.EVM) (gasLimit uint64, gasBudget vm.GasBudget) 
 		stateGas = params.SystemMaxSStoresPerCall * evm.Context.CostPerStateByte * params.StorageCreationSize
 	}
 	return gasLimit, vm.NewGasBudget(gasLimit, stateGas)
+}
+
+// PreExecution applies the block-level state changes that precede the execution
+// of a block's transactions. It mirrors go-ethereum's core.PreExecution, reduced
+// to the parts that apply to Sonic: Sonic has no beacon block root and does not
+// construct block access lists.
+func PreExecution(header *EvmHeader, evm *vm.EVM, stateDb state.StateDB) {
+	// EIP-2935: record the parent block hash in the history storage contract.
+	if evm.ChainConfig().IsPrague(header.Number, uint64(header.Time.Unix())) {
+		ProcessParentBlockHash(header.ParentHash, evm, stateDb)
+	}
 }
 
 // ProcessParentBlockHash stores the parent block hash in the history storage contract
