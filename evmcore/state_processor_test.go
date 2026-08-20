@@ -337,6 +337,54 @@ func (r *callBudgetRecorder) Call(_ *vm.EVM, _ common.Address, _ common.Address,
 	return nil, gas, nil
 }
 
+func TestProcessParentBlockHash_GrantsAStateGasReservoirFromAmsterdamOn(t *testing.T) {
+	const costPerStateByte = 7
+	tests := map[string]struct {
+		amsterdam bool
+		want      vm.GasBudget
+	}{
+		"before amsterdam": {
+			amsterdam: false,
+			want:      vm.NewGasBudget(30_000_000, 0),
+		},
+		"from amsterdam on": {
+			amsterdam: true,
+			want: vm.NewGasBudget(30_000_000,
+				params.SystemMaxSStoresPerCall*costPerStateByte*params.StorageCreationSize),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			stateDb := state.NewMockStateDB(ctrl)
+			stateDb.EXPECT().AddAddressToAccessList(params.HistoryStorageAddress)
+			stateDb.EXPECT().Finalise(gomock.Any())
+			stateDb.EXPECT().EndTransaction()
+
+			chainConfig := &params.ChainConfig{
+				ChainID:     big.NewInt(12),
+				LondonBlock: new(big.Int),
+			}
+			if test.amsterdam {
+				chainConfig.AmsterdamTime = new(uint64)
+			}
+			blockContext := vm.BlockContext{
+				BlockNumber:      big.NewInt(1),
+				Random:           &common.Hash{1},
+				CostPerStateByte: costPerStateByte,
+			}
+
+			evm := vm.NewEVM(blockContext, stateDb, chainConfig, vm.Config{})
+			recorder := &callBudgetRecorder{}
+			evm.CallInterceptor = recorder
+
+			ProcessParentBlockHash(common.Hash{1}, evm, stateDb)
+			require.Equal(t, test.want, recorder.budget)
+		})
+	}
+}
+
 func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
@@ -529,6 +577,87 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 
 		})
 	}
+}
+
+func TestProcess_ReportsBlockGasFromAmsterdamOn(t *testing.T) {
+	const gasLimit = 50_000
+	// With Sonic's excess-gas charge, the receipts include a tenth of the
+	// unused gas, which the block gas does not.
+	const blockGas = params.TxBaseCost2780 + params.ColdAccountAccessAmsterdam
+	const receiptGas = blockGas + (gasLimit-blockGas)/10
+
+	tests := map[string]struct {
+		amsterdam bool
+		want      BlockGas
+	}{
+		"before Amsterdam": {
+			want: BlockGas{},
+		},
+		"from Amsterdam on": {
+			amsterdam: true,
+			want:      BlockGas{Execution: 2 * blockGas},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			ctrl := gomock.NewController(t)
+
+			chainConfig := &params.ChainConfig{
+				LondonBlock: big.NewInt(0),
+				PragueTime:  new(uint64),
+			}
+			if test.amsterdam {
+				chainConfig.AmsterdamTime = new(uint64)
+			}
+			processor := NewStateProcessorForHeadState(chainConfig, NewMockDummyChain(ctrl), opera.Upgrades{}, nil)
+
+			key, err := crypto.GenerateKey()
+			require.NoError(err)
+			tx := types.MustSignNewTx(key, types.LatestSignerForChainID(nil), &types.LegacyTx{
+				To: &common.Address{1}, Gas: gasLimit,
+			})
+			transactions := []*types.Transaction{tx, tx}
+
+			any := gomock.Any()
+			state := getStateDbMockForTransactions(ctrl, transactions)
+			state.EXPECT().AddAddressToAccessList(any).AnyTimes()
+			state.EXPECT().Finalise(any).AnyTimes()
+
+			block := &EvmBlock{
+				EvmHeader: EvmHeader{
+					Number:     big.NewInt(1),
+					GasLimit:   math.MaxUint64,
+					BaseFee:    big.NewInt(0),
+					PrevRandao: common.Hash{1},
+				},
+				Transactions: transactions,
+			}
+			vmConfig := vm.Config{ChargeExcessGas: true}
+			summary := processor.Process(block, state, vmConfig, math.MaxUint64, new(uint64), 0, nil, math.MaxUint64)
+
+			require.Len(summary.ProcessedTransactions, 2)
+			for _, processed := range summary.ProcessedTransactions {
+				require.NotNil(processed.Receipt)
+				if test.amsterdam {
+					require.EqualValues(receiptGas, processed.Receipt.GasUsed)
+				}
+			}
+			require.Equal(test.want, summary.BlockGas)
+		})
+	}
+}
+
+func TestBlockGas_Add_SumsEachDimension(t *testing.T) {
+	sum := BlockGas{Execution: 1, State: 20}.Add(BlockGas{Execution: 300, State: 4_000})
+	require.Equal(t, BlockGas{Execution: 301, State: 4_020}, sum)
+}
+
+func TestBlockGas_Used_IsTheLargerDimension(t *testing.T) {
+	require.EqualValues(t, 0, BlockGas{}.Used())
+	require.EqualValues(t, 7, BlockGas{Execution: 7, State: 3}.Used())
+	require.EqualValues(t, 9, BlockGas{Execution: 7, State: 9}.Used())
 }
 
 func TestProcess_UsesDifficultyOfOne(t *testing.T) {

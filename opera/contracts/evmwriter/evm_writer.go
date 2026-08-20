@@ -70,6 +70,14 @@ func init() {
 	}
 }
 
+// PreCompiledContract is the EvmWriter pre-compiled contract.
+//
+// Its gas charges are the pre-Amsterdam ones and are deliberately not adapted
+// to that fork: the state the contract creates is not charged as EIP-8037 state
+// gas, and the hardcoded constants below do not track the EIP-8038 repricing.
+// Only driver.ContractAddress may call this contract, and the NodeDriver only
+// forwards calls from its foundation-held owner, so the prices are not reachable
+// by arbitrary callers and cannot be used to grow state cheaply.
 type PreCompiledContract struct{}
 
 func (PreCompiledContract) Run(stateDB vm.StateDB, _ vm.BlockContext, txCtx vm.TxContext, caller common.Address, input []byte, suppliedGas vm.GasBudget) ([]byte, vm.GasBudget, error) {

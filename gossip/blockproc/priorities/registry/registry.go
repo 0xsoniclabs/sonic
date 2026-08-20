@@ -58,6 +58,10 @@ const GasLimitForGetPriority = 100_000
 // `getPriorityConfig` function.
 const GasLimitForGetPriorityConfig = 50_000
 
+// Both limits are the entire budget of their call: the registry is entered with
+// an empty EIP-8037 state-gas reservoir, so any state gas a query charges is
+// taken from the limits above rather than added on top of them.
+
 // ------------------------------ Internals ------------------------------------
 
 // contractAddress is the address of the deployed PriorityRegistry contract.

@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	tracing "github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -280,6 +281,56 @@ func TestOperaEVMProcessor_Execute_StateProcessorProducesTransactionsAndBundles_
 	// The result of the processor should be returned without modifications.
 	result := processor.Execute([]*types.Transaction{tx}, math.MaxUint64, math.MaxUint64)
 	require.Equal(summary, result)
+}
+
+func TestOperaEVMProcessor_GasUsed_IsReceiptSumBeforeCantoAndBlockGasFromCantoOn(t *testing.T) {
+	tests := map[string]struct {
+		upgrades opera.Upgrades
+		want     uint64
+	}{
+		"Brio": {
+			upgrades: opera.GetBrioUpgrades(),
+			want:     100 + 50,
+		},
+		"Canto": {
+			upgrades: opera.GetCantoUpgrades(),
+			want:     max(150+30, 40+200),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			factory := NewMock_stateProcessorFactory(ctrl)
+			stateProcessor := NewMock_stateProcessor(ctrl)
+
+			any := gomock.Any()
+			factory.EXPECT().NewStateProcessorForHeadState(any, any, any, any).Return(stateProcessor).AnyTimes()
+			reportGas := func(receiptGas uint64, blockGas evmcore.BlockGas) func(
+				*evmcore.EvmBlock, state.StateDB, vm.Config, uint64, *uint64, int, func(*core_types.Log), uint64,
+			) evmcore.ProcessSummary {
+				return func(_ *evmcore.EvmBlock, _ state.StateDB, _ vm.Config, _ uint64, gasUsed *uint64, _ int, _ func(*core_types.Log), _ uint64) evmcore.ProcessSummary {
+					*gasUsed += receiptGas
+					return evmcore.ProcessSummary{BlockGas: blockGas}
+				}
+			}
+			gomock.InOrder(
+				stateProcessor.EXPECT().Process(any, any, any, any, any, any, any, any).
+					DoAndReturn(reportGas(100, evmcore.BlockGas{Execution: 150, State: 40})),
+				stateProcessor.EXPECT().Process(any, any, any, any, any, any, any, any).
+					DoAndReturn(reportGas(50, evmcore.BlockGas{Execution: 30, State: 200})),
+			)
+
+			processor := &OperaEVMProcessor{
+				rules:            opera.Rules{Upgrades: test.upgrades},
+				processorFactory: factory,
+			}
+			processor.Execute(nil, math.MaxUint64, math.MaxUint64)
+			processor.Execute(nil, math.MaxUint64, math.MaxUint64)
+
+			require.Equal(t, test.want, processor.evmBlockWith(nil).GasUsed)
+		})
+	}
 }
 
 func TestOperaEVMProcessor_Execute_UsesNumberOfAcceptedTransactionsAsTransactionIndexOffsetInProcessorCall(t *testing.T) {

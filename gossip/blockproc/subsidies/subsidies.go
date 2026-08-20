@@ -413,6 +413,10 @@ func getGasConfig(
 	}, nil
 }
 
+// gasConfig holds the registry-supplied gas limits and overhead charges. The
+// limits are the entire budget of their call: the registry is entered with an
+// empty EIP-8037 state-gas reservoir, so a call can never consume more than the
+// overhead charged to the sponsored transaction.
 type gasConfig struct {
 	gasLimitForChooseFund            uint64
 	gasLimitForDeductFees            uint64
