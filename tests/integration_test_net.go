@@ -1207,11 +1207,25 @@ func (s *Session) EndowAccounts(
 		return nil, fmt.Errorf("failed to get gas price: %w", err)
 	}
 
+	// The gas of a plain value transfer depends on the network's gas schedule
+	// and on whether the recipient already exists: since Amsterdam (EIP-8037)
+	// creating an account costs state gas. Estimating against a fresh address
+	// yields the most expensive case, covering every recipient in the list.
+	unusedAddress := NewAccount().Address()
+	gas, err := client.EstimateGas(context.Background(), ethereum.CallMsg{
+		From:  s.account.Address(),
+		To:    &unusedAddress,
+		Value: value,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to estimate gas: %w", err)
+	}
+
 	transactions := make([]*types.Transaction, len(addresses))
 	for i, address := range addresses {
 		transaction, err := types.SignTx(types.NewTx(&types.AccessListTx{
 			ChainID:  chainId,
-			Gas:      21000,
+			Gas:      gas,
 			GasPrice: price,
 			To:       &address,
 			Value:    value,
