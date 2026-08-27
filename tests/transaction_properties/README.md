@@ -43,8 +43,10 @@ purpose and reports itself. `SONIC_VERBOSITY=3 go test ./tests/transaction_prope
 client's own logging back.
 
 A deeper search runs nightly from [CI/transaction-properties.jenkinsfile](../../CI/transaction-properties.jenkinsfile),
-which draws 5000 batches per scenario instead of 200 and archives the log of any run that failed.
-Nothing about the test differs there — only how long it searches.
+which draws 5000 batches per scenario instead of 200, after rebasing the branch onto `SonicVersion` of
+`SonicRepository` — main of this repository unless the build says otherwise. It only runs the command:
+nothing about the test differs there, only how long it searches, and whatever the test says is the
+build's result.
 
 ## Domains
 

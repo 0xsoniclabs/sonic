@@ -1,0 +1,167 @@
+// Copyright 2026 Sonic Operations Ltd
+// This file is part of the Sonic Client
+//
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
+// Searches the transaction property tests far longer than a PR build can afford: 5000 batches per
+// scenario instead of the 200 a PR run draws (see tests/transaction_properties/README.md). Nothing
+// else differs - same tests, same oracles, and whatever the test says is the build's result.
+//
+// The pipeline lives in this repository because a Jenkins dockerfile agent is resolved against the
+// pipeline's own repository, so only a pipeline in Sonic can build on Sonic's CI/Dockerfile.jenkins.
+@Library('shared-library') _
+
+pipeline {
+    agent {
+        dockerfile {
+            filename 'CI/Dockerfile.jenkins'
+            label 'pr'
+        }
+    }
+
+    options {
+        timestamps()
+        // Must stay above the -timeout given to `go test` below, so an overrunning search is
+        // reported by the test binary -- which dumps every goroutine -- rather than killed here.
+        timeout(time: 6, unit: 'HOURS')
+        disableConcurrentBuilds(abortPrevious: false)
+        buildDiscarder(logRotator(numToKeepStr: '50'))
+    }
+
+    triggers {
+        cron('@daily')
+    }
+
+    environment {
+        GOMEMLIMIT = goMemLimit()
+    }
+
+    parameters {
+        string(
+            name: 'SonicRepository',
+            defaultValue: 'https://github.com/0xsoniclabs/sonic.git',
+            description: 'Sonic repository url. This build rebases onto it before searching.'
+        )
+        string(
+            name: 'SonicVersion',
+            defaultValue: 'main',
+            description: 'Branch or commit to rebase onto, so the branch is tested as it will land.'
+        )
+        string(
+            name: 'Checks',
+            defaultValue: '5000',
+            description: 'Batches rapid draws per scenario. The package runs eleven scenarios, so ' +
+                '5000 takes about four hours. Keep the total below the timeout.'
+        )
+        string(
+            name: 'Seed',
+            defaultValue: '',
+            description: 'Reproduce one reported failure: the seed named in its message. Empty - ' +
+                'which is what the daily run leaves it - searches from a fresh seed every build.'
+        )
+        string(
+            name: 'Package',
+            defaultValue: './tests/transaction_properties/',
+            description: 'Package to search. Present so a second property-testing package can be ' +
+                'run from here without a change to this file.'
+        )
+    }
+
+    stages {
+        // Test the branch as it will land rather than as it was written, since a search this long is
+        // only worth its hours against the version it will run on. A conflict fails the build: a
+        // branch that no longer applies is worth knowing about on its own.
+        //
+        // Note that the toolchain image was built from CI/Dockerfile.jenkins as the branch had it,
+        // before this stage ran, because a dockerfile agent is resolved before any stage.
+        stage('rebase') {
+            steps {
+                script {
+                    // A shallow workspace shares no ancestor with the target, and the rebase would
+                    // then report a conflict that is really a missing history. The deepening has to
+                    // go through Jenkins' own checkout: `git fetch --unshallow` reaches for origin,
+                    // which is the repository this branch lives in and is private, and a plain sh
+                    // step holds none of the credentials the job's SCM configuration was given.
+                    boolean shallow = sh(
+                        label: 'is this workspace a shallow clone?',
+                        returnStdout: true,
+                        script: 'git rev-parse --is-shallow-repository'
+                    ).trim() == 'true'
+                    if (shallow) {
+                        checkout scmGit(
+                            userRemoteConfigs: scm.userRemoteConfigs,
+                            branches: scm.branches,
+                            extensions: [cloneOption(shallow: false, depth: 0, noTags: true, timeout: 30)]
+                        )
+                    }
+
+                    // The target repository is public, so this fetch needs no credentials of its own.
+                    sh(label: "fetch ${params.SonicVersion} from ${params.SonicRepository}",
+                       script: "set -eu; git fetch --no-tags ${params.SonicRepository} ${params.SonicVersion}")
+
+                    String target = sh(
+                        returnStdout: true,
+                        script: 'git rev-parse --short=12 FETCH_HEAD'
+                    ).trim()
+
+                    // Recorded before the rebase is attempted, so a build failing on a conflict still
+                    // names the commit it could not apply to. notifySlack reports the description.
+                    describeBuild(["sonic ${params.SonicVersion}: ${target}"])
+
+                    // Without a common ancestor the rebase would replay this branch's whole history
+                    // onto the target and call what follows a conflict. Say what is actually wrong.
+                    sh(label: 'check the target shares history with this branch', script: """set -eu
+                        if ! git merge-base FETCH_HEAD HEAD > /dev/null; then
+                            echo 'no ancestor shared with ${params.SonicVersion}: history incomplete' >&2
+                            exit 1
+                        fi
+                        """)
+
+                    // An identity is needed because a rebase writes commits, and the container has none.
+                    sh(
+                        label: "rebase onto ${params.SonicVersion} ${target}",
+                        script: 'git -c user.name=Jenkins -c user.email=jenkins@soniclabs.com rebase FETCH_HEAD'
+                    )
+                }
+            }
+        }
+
+        // No build stage: Sonic has no cgo and no submodules, the test net runs the client in
+        // process, so `go test` compiles everything it needs from a clean checkout.
+        //
+        // -v because the run reports its outcome distribution through t.Logf, which `go test`
+        // otherwise discards. The console log is the report: a failure names the batch that broke a
+        // property and the seed that replays it.
+        stage('property-tests') {
+            steps {
+                sh(
+                    label: "draw ${params.Checks} batches per scenario",
+                    script: "go test ${params.Package} -v -count=1 -timeout 5h30m" +
+                        " -rapid.checks=${params.Checks}" +
+                        (params.Seed.trim() ? " -rapid.seed=${params.Seed.trim()}" : '')
+                )
+            }
+        }
+    }
+
+    post {
+        always {
+            notifySlack(channel: 'sonic-jenkins')
+        }
+
+        cleanup {
+            deleteDir()
+        }
+    }
+}
