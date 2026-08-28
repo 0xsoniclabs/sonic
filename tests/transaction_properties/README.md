@@ -116,15 +116,24 @@ it is a scenario rather than a draw:
 
 | Scenario | Registry | Forks | Coverage depends on | Follows a sponsored transaction |
 | --- | --- | --- | --- | --- |
-| fund-backed (mode 1) | the reference registry deployed in genesis | all three | what the fund holds | `deductFees`, charging `(gasUsed + 210k) × baseFee` |
+| fund-backed (mode 1) | the reference registry deployed in genesis | Allegro onwards | what the fund holds | `deductFees`, charging `(gasUsed + 210k) × baseFee` |
 | network-sponsored (mode 2) | `tests/contracts/network_sponsor` | Brio | nothing, every request is covered | nothing |
 | with tracking (mode 3) | `tests/contracts/network_sponsor_tracking` | Brio | nothing, every request is covered | `track`, recording `(gasUsed + 230k) × baseFee` |
 
-The fund-backed scenario runs on every fork, because it is the one whose answer depends on money and
-because the structural rules a request still has to satisfy are fork-dependent. The other two run on
-Brio alone: once a request is covered they behave the same on every fork, and the fork-dependent half
-is already covered by the fund-backed runs. Each of their registries answers the same mode for every
-caller, which is what keeps them free of per-iteration setup.
+The fund-backed scenario runs on every fork from Allegro on, because it is the one whose answer
+depends on money and because the structural rules a request still has to satisfy are fork-dependent.
+The other two run on Brio alone: once a request is covered they behave the same on every fork, and the
+fork-dependent half is already covered by the fund-backed runs. Each of their registries answers the
+same mode for every caller, which is what keeps them free of per-iteration setup.
+
+Sonic is not sponsored on. It is the one fork that accepts a blob transaction carrying blob hashes,
+and sponsoring one produces a block the archive can never ingest: the archive is state re-derived from
+blocks, so it stops at that block and never advances again while the chain runs on, and every state
+read after it answers for the last block the archive holds rather than for the head. The oracles then
+see a transaction that has a receipt but moved nothing, and report a nonce that did not follow its
+transactions. Subsidies are a network rule rather than a fork feature, so no sponsorship rule is
+peculiar to Sonic; the pre-Allegro structural rules stay covered by the ordinary scenario, which does
+run on Sonic.
 
 ### Funding, and the three bands
 
