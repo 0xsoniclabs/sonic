@@ -41,13 +41,37 @@ func (r *Runner) dropOffending(
 	baseFee *big.Int,
 ) []TxSpec {
 
+	// What each sender may still hold by the time a transaction of the batch reaches the EVM. A policy
+	// is asked what a transaction's sender can cover, and a batch is several transactions from few
+	// senders running in nonce order, so the answer has to follow the money: a creation drawn behind a
+	// transfer that hands most of the balance away has to be judged against what that transfer leaves,
+	// not against what the sender held before any of it ran. Judging it against the opening balance is
+	// how a creation that does provoke defect 1 gets injected anyway.
+	//
+	// Every kept transaction is charged the most it could take -- its whole value, and its gas at the
+	// top of the band the base fee may move into -- because which of them execute is not settled until
+	// the chain has run them. That errs towards skipping, which is the safe direction: a policy exists
+	// to keep a defect out of the run, and one skip too many costs coverage while one too few costs a
+	// red build over a defect already known.
+	left := make([]*big.Int, len(senders))
+	for i, sender := range senders {
+		left[i] = new(big.Int).Set(sender.Balance)
+	}
+
 	kept := make([]TxSpec, 0, len(specs))
 	for _, spec := range specs {
-		if reason := r.Domain.Skip(spec, senders[SenderOf(spec, senders)], baseFee); reason != "" {
+		i := SenderOf(spec, senders)
+		sender := SenderState{Nonce: senders[i].Nonce, Balance: left[i]}
+		if reason := r.Domain.Skip(spec, sender, baseFee); reason != "" {
 			r.skipped[reason]++
 			continue
 		}
 		kept = append(kept, spec)
+
+		takes := new(big.Int).Add(spec.Amount(), GasCost(spec, Scale(baseFee, 4, 1)))
+		if left[i] = new(big.Int).Sub(left[i], takes); left[i].Sign() < 0 {
+			left[i] = new(big.Int)
+		}
 	}
 	return kept
 }
