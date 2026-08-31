@@ -937,3 +937,47 @@ func TestGetBundleOnlyTransactions_ToleratesReferencesToMissingTransactions(t *t
 	found := GetBundleOnlyTransactions(signer, envelope)
 	require.Len(t, found, 1)
 }
+
+func TestGetApprovedExecutionPlans_ReportsPlansOfTheBundleOnlyMark(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	txBundle, plan := NewBuilder().
+		With(Step(key, &types.AccessListTx{})).
+		BuildBundleAndPlan()
+
+	bundleOnlyTx := txBundle.GetTransactionsInReferencedOrder()[0]
+	require.Equal(t,
+		[]common.Hash{plan.Hash()},
+		GetApprovedExecutionPlans(bundleOnlyTx),
+	)
+
+	otherPlan := common.Hash{0x42}
+	tests := map[string]struct {
+		accessList types.AccessList
+		expected   []common.Hash
+	}{
+		"no access list":     {},
+		"unrelated entry":    {accessList: types.AccessList{{Address: common.Address{0x1}, StorageKeys: []common.Hash{otherPlan}}}},
+		"mark without plans": {accessList: types.AccessList{{Address: BundleOnly}}},
+		"mark with a plan": {
+			accessList: types.AccessList{{Address: BundleOnly, StorageKeys: []common.Hash{otherPlan}}},
+			expected:   []common.Hash{otherPlan},
+		},
+		"multiple marks": {
+			accessList: types.AccessList{
+				{Address: BundleOnly, StorageKeys: []common.Hash{otherPlan}},
+				{Address: common.Address{0x1}, StorageKeys: []common.Hash{{0x7}}},
+				{Address: BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
+			},
+			expected: []common.Hash{otherPlan, plan.Hash()},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			tx := types.NewTx(&types.AccessListTx{AccessList: test.accessList})
+			require.Equal(t, test.expected, GetApprovedExecutionPlans(tx))
+		})
+	}
+}

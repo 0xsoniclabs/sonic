@@ -175,6 +175,11 @@ func TestBundles_BundleOnlyTxOfEvaluatedBundleDoesNotBlockTheSendersNonce(t *tes
 				"the envelope of an evaluated bundle should be dropped from the pool",
 			)
 
+			// Gossip may re-introduce the transaction, it must be rejected.
+			_, err = net.Send(testedTx)
+			require.ErrorContains(t, err, "bundle has already been processed",
+				"a bundle-only transaction of an evaluated bundle must not be accepted again")
+
 			// A regular transaction using the reported nonce must be executable.
 			followUp := tests.CreateTransaction(t, net, &types.AccessListTx{
 				To:    &recipient,
