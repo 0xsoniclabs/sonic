@@ -43,8 +43,16 @@ func (spendingSpec) TxData(uint64, BuildContext) (types.TxData, error) {
 }
 
 func spending(sender int, value *big.Int) spendingSpec {
+	return spendingAt(sender, NonceCorrect, value)
+}
+
+// spendingAt is spending for a transaction that does not simply follow its sender's sequence, which
+// is what decides where in the batch the chain runs it.
+func spendingAt(sender int, nonce NonceChoice, value *big.Int) spendingSpec {
 	return spendingSpec{
-		Envelope:    Envelope{SenderIdx: sender, GasLimit: 21_000},
+		Envelope: Envelope{
+			SenderIdx: sender, Nonce: nonce, NonceGapSize: 1, GasLimit: 21_000,
+		},
 		WideValue:   WideValue{Value: value},
 		SinglePrice: SinglePrice{GasPrice: big.NewInt(0)},
 	}
@@ -107,7 +115,8 @@ func TestDropOffending_JudgesEachTransactionAgainstWhatIsLeftOfTheBalance(t *tes
 }
 
 // TestDropOffending_KeepsSendersApart checks the running balance is per sender: what one sender
-// spends says nothing about what another can cover.
+// spends says nothing about what another can cover. The walk takes a sender's transactions together,
+// since only its own sequence decides what it has left.
 func TestDropOffending_KeepsSendersApart(t *testing.T) {
 	domain := &balanceReportingDomain{}
 	runner := &Runner{Domain: domain, skipped: map[string]int{}}
@@ -126,7 +135,7 @@ func TestDropOffending_KeepsSendersApart(t *testing.T) {
 
 	runner.dropOffending(specs, senders, big.NewInt(0))
 
-	require.Equal(t, []*big.Int{AccountBalance, AccountBalance, half, half}, domain.seen)
+	require.Equal(t, []*big.Int{AccountBalance, half, AccountBalance, half}, domain.seen)
 }
 
 // TestDropOffending_ABalanceCannotGoNegative covers a sender drawn to hand away more than it holds,
@@ -183,4 +192,88 @@ type fixedSkipDomain struct {
 func (d *fixedSkipDomain) Skip(spec TxSpec, sender SenderState, _ *big.Int) string {
 	d.report(sender.Balance)
 	return d.skip(spec)
+}
+
+// TestDropOffending_JudgesAnInjectedBatchInNonceOrder is the property this walk exists for. The
+// scrambler puts one sender's transactions in nonce order whatever order they were drawn in, so a
+// transaction drawn ahead of the one that drains its sender still runs behind it and has to be judged
+// against what that one leaves. Judging it where it was drawn is how a creation that does provoke
+// defect 1 was injected anyway.
+func TestDropOffending_JudgesAnInjectedBatchInNonceOrder(t *testing.T) {
+	domain := &balanceReportingDomain{}
+	runner := &Runner{Domain: domain, skipped: map[string]int{}}
+
+	half := new(big.Int).Div(AccountBalance, big.NewInt(2))
+	specs := []TxSpec{
+		spendingAt(0, NonceGap, big.NewInt(0)), // nonce 1, so it runs second
+		spending(0, half),                      // nonce 0, so it runs first
+	}
+	senders := []SenderState{{Balance: new(big.Int).Set(AccountBalance)}}
+
+	kept := runner.dropOffending(specs, senders, big.NewInt(0))
+	require.Equal(t, specs, kept, "the domain skipped nothing, so the batch is unchanged")
+
+	require.Equal(t, []*big.Int{AccountBalance, half}, domain.seen,
+		"the transaction behind the gap must be told what the one filling it leaves")
+}
+
+// TestDropOffendingInGivenOrder_JudgesABatchWhereItIsWritten covers the other order: nothing reorders
+// the inside of a bundle, so its contents are judged where they stand, and the same two transactions
+// see the opposite balances.
+func TestDropOffendingInGivenOrder_JudgesABatchWhereItIsWritten(t *testing.T) {
+	domain := &balanceReportingDomain{}
+
+	half := new(big.Int).Div(AccountBalance, big.NewInt(2))
+	specs := []TxSpec{
+		spendingAt(0, NonceGap, big.NewInt(0)),
+		spending(0, half),
+	}
+	senders := []SenderState{{Balance: new(big.Int).Set(AccountBalance)}}
+
+	skipped := map[string]int{}
+	kept := DropOffendingInGivenOrder(specs, senders, big.NewInt(0), domain.Skip,
+		func(reason string) { skipped[reason]++ })
+
+	require.Equal(t, specs, kept)
+	require.Equal(t, []*big.Int{AccountBalance, AccountBalance}, domain.seen)
+}
+
+// TestDropOffending_ReordersAgainAfterADrop checks the walk starts over rather than carrying on with an
+// order that no longer holds: dropping a transaction changes the nonces of the ones behind it, and so
+// which of them runs first.
+func TestDropOffending_ReordersAgainAfterADrop(t *testing.T) {
+	half := new(big.Int).Div(AccountBalance, big.NewInt(2))
+
+	// The gap transaction is drawn first but sits at nonce 1 behind the two that follow it, so it is
+	// walked last and judged against nothing left. Once the transaction the domain refuses is gone, the
+	// nonces close up and the gap moves to where the refused one stood.
+	var seen []*big.Int
+	domain := &fixedSkipDomain{
+		skip: func(spec TxSpec) string {
+			if spec.Amount().Cmp(half) == 0 {
+				return "refused"
+			}
+			return ""
+		},
+		report: func(balance *big.Int) { seen = append(seen, new(big.Int).Set(balance)) },
+	}
+	runner := &Runner{Domain: domain, skipped: map[string]int{}}
+
+	gapped := spendingAt(0, NonceGap, big.NewInt(0))
+	refused := spending(0, half)
+	trailing := spending(0, big.NewInt(0))
+	specs := []TxSpec{gapped, refused, trailing}
+	senders := []SenderState{{Balance: new(big.Int).Set(AccountBalance)}}
+
+	kept := runner.dropOffending(specs, senders, big.NewInt(0))
+	require.Equal(t, []TxSpec{gapped, trailing}, kept)
+	require.Equal(t, 1, runner.skipped["refused"])
+
+	require.Equal(t, []*big.Int{
+		// The first walk: nonce 0 is the refused one, which ends it.
+		AccountBalance,
+		// The second walk, over what is left: the trailing transaction now holds nonce 0 and the gap
+		// nonce 1, and neither takes anything.
+		AccountBalance, AccountBalance,
+	}, seen)
 }

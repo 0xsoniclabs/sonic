@@ -65,3 +65,39 @@ func TestSkip_KeepsOutOnlyCreationsWhoseValueMayNotBeCovered(t *testing.T) {
 		})
 	}
 }
+
+// TestDropOffending_KeepsOutACreationTheTransferAHEADOfItDrains is the failure this policy's ordering
+// was written for, reduced to two transactions: a creation drawn first but sitting behind a transfer
+// in its sender's sequence. The scrambler runs the transfer first, so the creation meets a balance it
+// cannot hand its value out of and provokes defect 1 -- a receipt without a nonce -- while a walk in
+// the order the batch was drawn sees it against the full balance and lets it through.
+func TestDropOffending_KeepsOutACreationTheTransferAheadOfItDrains(t *testing.T) {
+	baseFee := big.NewInt(1)
+	half := new(big.Int).Div(core.AccountBalance, big.NewInt(2))
+
+	creation := affordableSpec(0, core.NonceGap)
+	creation.NonceGapSize = 1
+	creation.To = core.ToCreate
+	creation.Value = half
+
+	transfer := affordableSpec(0, core.NonceCorrect)
+	transfer.To = core.ToOther
+	transfer.Value = half
+
+	specs := []core.TxSpec{creation, transfer}
+	senders := []core.SenderState{{Balance: new(big.Int).Set(core.AccountBalance)}}
+
+	skipped := map[string]int{}
+	kept := core.DropOffending(specs, senders, baseFee, Domain{}.Skip,
+		func(reason string) { skipped[reason]++ })
+
+	require.Equal(t, []core.TxSpec{transfer}, kept,
+		"the creation runs behind the transfer, so it must not be injected")
+	require.Equal(t, 1, skipped[defect1], "the reason must be tallied for the report")
+
+	// The same two inside a bundle, which nothing reorders: there the creation really does run first,
+	// against the whole balance, and there is nothing to keep out.
+	kept = core.DropOffendingInGivenOrder(specs, senders, baseFee, Domain{}.Skip,
+		func(string) { t.Error("nothing runs ahead of the creation here") })
+	require.Equal(t, specs, kept)
+}

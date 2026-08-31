@@ -52,14 +52,11 @@ func (d *Domain) Skip(spec core.TxSpec, sender core.SenderState, baseFee *big.In
 // bundle is a batch like any other, so this happens before the contents are planned: a nonce given to a
 // transaction that never reaches a node would leave the rest of them judged against a position nothing
 // takes.
+//
+// In the order given rather than in nonce order, because nothing reorders the inside of a bundle: the
+// execution plan runs the contents in the order it references them, so that is the order in which one
+// of them takes the balance the next is judged against.
 func (d *Domain) dropOffending(contents []core.TxSpec, baseFee *big.Int) []core.TxSpec {
-	kept := make([]core.TxSpec, 0, len(contents))
-	for _, spec := range contents {
-		if reason := d.Inner.Skip(spec, d.stateOf(spec), baseFee); reason != "" {
-			d.skipped[reason]++
-			continue
-		}
-		kept = append(kept, spec)
-	}
-	return kept
+	return core.DropOffendingInGivenOrder(contents, d.inner, baseFee, d.Inner.Skip,
+		func(reason string) { d.skipped[reason]++ })
 }
