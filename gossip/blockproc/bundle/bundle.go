@@ -123,6 +123,45 @@ func (tb *TransactionBundle) Copy() TransactionBundle {
 	}
 }
 
+// GetBundleOnlyTransactions returns the bundle-only transactions the given
+// envelope carries, including those of nested bundles. Transactions without the
+// bundle-only mark are skipped, as those may also be executed on their own.
+// Nothing is reported if the transaction is no envelope or can not be decoded.
+func GetBundleOnlyTransactions(
+	signer types.Signer,
+	envelope *types.Transaction,
+) []*types.Transaction {
+	return getBundleOnlyTransactions(signer, envelope, 0)
+}
+
+func getBundleOnlyTransactions(
+	signer types.Signer,
+	envelope *types.Transaction,
+	depth int,
+) []*types.Transaction {
+	if depth > MaxBundleNestingDepth || envelope == nil || !IsEnvelope(envelope) {
+		return nil
+	}
+	txBundle, err := OpenEnvelope(signer, envelope)
+	if err != nil {
+		return nil
+	}
+
+	var res []*types.Transaction
+	for _, tx := range txBundle.GetTransactionsInReferencedOrder() {
+		if tx == nil { // < ill-formed bundles may reference missing transactions
+			continue
+		}
+		if IsBundleOnly(tx) {
+			res = append(res, tx)
+		}
+		if IsEnvelope(tx) {
+			res = append(res, getBundleOnlyTransactions(signer, tx, depth+1)...)
+		}
+	}
+	return res
+}
+
 // --- internal utilities ---
 
 // removeBundleOnlyMark is an utility function that removes the bundle-only mark

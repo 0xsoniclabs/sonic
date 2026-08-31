@@ -1227,6 +1227,38 @@ func (pool *TxPool) removeTx(hash common.Hash, removeFromPriced bool) {
 	}
 }
 
+// evictTransactionsOfEvaluatedBundles removes the bundle-only transactions of
+// the bundles the pool knows an envelope of and which have been processed by a
+// block. Those transactions can only run as part of their bundle, so once it
+// got evaluated they would just block the nonce of their sender until they time
+// out. The pool lock must be held and the current state must be up to date.
+func (pool *TxPool) evictTransactionsOfEvaluatedBundles() {
+	if !pool.chain.CurrentRules().Upgrades.Brio || pool.currentState == nil {
+		return
+	}
+
+	// The removal below must not be interleaved with the iteration.
+	var evaluated []*types.Transaction
+	for _, tx := range pool.all.txs() {
+		if !bundle.IsEnvelope(tx) {
+			continue
+		}
+		txBundle, err := bundle.OpenEnvelope(pool.signer, tx)
+		if err != nil {
+			continue // < ill-formed bundles are never executed
+		}
+		if pool.currentState.HasBundleRecentlyBeenProcessed(txBundle.Plan.Hash()) {
+			evaluated = append(evaluated, tx)
+		}
+	}
+
+	for _, envelope := range evaluated {
+		for _, tx := range bundle.GetBundleOnlyTransactions(pool.signer, envelope) {
+			pool.removeTx(tx.Hash(), true)
+		}
+	}
+}
+
 // requestReset requests a pool reset to the new head block.
 // The returned channel is closed when the reset has occurred.
 func (pool *TxPool) requestReset(oldHead *EvmHeader, newHead *EvmHeader) chan struct{} {
@@ -1499,6 +1531,8 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	pool.currentState = statedb
 	pool.pendingNonces = newTxNoncer(statedb)
 	pool.currentMaxGas = pool.chain.CurrentMaxGasLimit()
+
+	pool.evictTransactionsOfEvaluatedBundles()
 
 	// Inject any transactions discarded due to reorgs
 	log.Debug("Reinjecting stale transactions", "count", len(reinject))
