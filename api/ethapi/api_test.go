@@ -39,6 +39,7 @@ import (
 	geth_math "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -1687,4 +1688,62 @@ func TestCapMaxGas_IsUpgradesAware(t *testing.T) {
 			require.Equal(t, uint64(test.wantEstimation), got)
 		})
 	}
+}
+
+func TestLimitStructLogs_ReportsAtMostLimitOpcodes(t *testing.T) {
+	tests := map[string]struct {
+		limit int
+		calls int
+		want  int
+	}{
+		"zero limit is unlimited":       {limit: 0, calls: 10, want: 10},
+		"negative limit reports none":   {limit: -1, calls: 10, want: 0},
+		"limit above the call count":    {limit: 10, calls: 3, want: 3},
+		"limit below the call count":    {limit: 3, calls: 10, want: 3},
+		"limit equal to the call count": {limit: 5, calls: 5, want: 5},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			reported := 0
+			hook := limitStructLogs(func(uint64, byte, uint64, uint64, tracing.OpContext, []byte, int, error) {
+				reported++
+			}, test.limit)
+
+			for i := 0; i < test.calls; i++ {
+				hook(uint64(i), 0, 0, 0, nil, nil, 0, nil)
+			}
+
+			require.Equal(t, test.want, reported)
+		})
+	}
+}
+
+func TestLimitStructLogs_KeepsTheOpcodeArguments(t *testing.T) {
+	var got struct {
+		pc        uint64
+		op        byte
+		gas, cost uint64
+		rData     []byte
+		depth     int
+		err       error
+	}
+	wantErr := errors.New("some error")
+	hook := limitStructLogs(func(pc uint64, op byte, gas, cost uint64, _ tracing.OpContext, rData []byte, depth int, err error) {
+		got.pc, got.op, got.gas, got.cost, got.rData, got.depth, got.err = pc, op, gas, cost, rData, depth, err
+	}, 1)
+
+	hook(1, 2, 3, 4, nil, []byte{5}, 6, wantErr)
+
+	require.Equal(t, uint64(1), got.pc)
+	require.Equal(t, byte(2), got.op)
+	require.Equal(t, uint64(3), got.gas)
+	require.Equal(t, uint64(4), got.cost)
+	require.Equal(t, []byte{5}, got.rData)
+	require.Equal(t, 6, got.depth)
+	require.Equal(t, wantErr, got.err)
+}
+
+func TestLimitStructLogs_KeepsANilHookNil(t *testing.T) {
+	require.Nil(t, limitStructLogs(nil, 100))
 }
