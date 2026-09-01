@@ -35,6 +35,13 @@ import (
 
 //go:generate mockgen -source=interface.go -package=blockproc -destination=interface_mock.go
 
+// NonceSource exposes the nonce of the zero address, which is all state
+// information internal-transaction builders read.
+type NonceSource interface {
+	// ZeroAddressNonce returns the current nonce of the zero address.
+	ZeroAddressNonce() uint64
+}
+
 type TxListener interface {
 	OnNewLog(*core_types.Log)
 	OnNewReceipt(tx *types.Transaction, r *types.Receipt, originator idx.ValidatorID, baseFee *big.Int, blobBaseFee *big.Int)
@@ -47,7 +54,7 @@ type TxListenerModule interface {
 }
 
 type TxTransactor interface {
-	PopInternalTxs(block iblockproc.BlockCtx, bs iblockproc.BlockState, es iblockproc.EpochState, sealing bool, statedb state.StateDB) types.Transactions
+	PopInternalTxs(block iblockproc.BlockCtx, bs iblockproc.BlockState, es iblockproc.EpochState, sealing bool, nonces NonceSource) types.Transactions
 }
 
 type SealerProcessor interface {

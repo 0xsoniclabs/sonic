@@ -82,11 +82,11 @@ func NewDriverTxPreTransactor() *DriverTxPreTransactor {
 	return &DriverTxPreTransactor{}
 }
 
-func InternalTxBuilder(statedb state.StateDB) func(calldata []byte, addr common.Address) *types.Transaction {
+func InternalTxBuilder(nonces blockproc.NonceSource) func(calldata []byte, addr common.Address) *types.Transaction {
 	nonce := uint64(math.MaxUint64)
 	return func(calldata []byte, addr common.Address) *types.Transaction {
 		if nonce == math.MaxUint64 {
-			nonce = statedb.GetNonce(common.Address{})
+			nonce = nonces.ZeroAddressNonce()
 		}
 		tx := types.NewTransaction(nonce, addr, common.Big0, internalTransactionsGasLimit, common.Big0, calldata)
 		nonce++
@@ -101,8 +101,8 @@ func maxBlockIdx(a, b idx.Block) idx.Block {
 	return b
 }
 
-func (p *DriverTxPreTransactor) PopInternalTxs(block iblockproc.BlockCtx, bs iblockproc.BlockState, es iblockproc.EpochState, sealing bool, statedb state.StateDB) types.Transactions {
-	buildTx := InternalTxBuilder(statedb)
+func (p *DriverTxPreTransactor) PopInternalTxs(block iblockproc.BlockCtx, bs iblockproc.BlockState, es iblockproc.EpochState, sealing bool, nonces blockproc.NonceSource) types.Transactions {
+	buildTx := InternalTxBuilder(nonces)
 	internalTxs := make(types.Transactions, 0, 8)
 
 	// write cheaters
@@ -139,8 +139,8 @@ func (p *DriverTxPreTransactor) PopInternalTxs(block iblockproc.BlockCtx, bs ibl
 	return internalTxs
 }
 
-func (p *DriverTxTransactor) PopInternalTxs(_ iblockproc.BlockCtx, _ iblockproc.BlockState, es iblockproc.EpochState, sealing bool, statedb state.StateDB) types.Transactions {
-	buildTx := InternalTxBuilder(statedb)
+func (p *DriverTxTransactor) PopInternalTxs(_ iblockproc.BlockCtx, _ iblockproc.BlockState, es iblockproc.EpochState, sealing bool, nonces blockproc.NonceSource) types.Transactions {
+	buildTx := InternalTxBuilder(nonces)
 	internalTxs := make(types.Transactions, 0, 1)
 	// push data into Driver after epoch sealing
 	if sealing {

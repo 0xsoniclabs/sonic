@@ -269,7 +269,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	bs = txListener.Finalize()
 
 	// Execute pre-internal transactions
-	preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, true, b.tmpStateDB)
+	preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, true, blockproc.NewNonceSource(b.tmpStateDB))
 	evmProcessor.Execute(preInternalTxs, es.Rules.Blocks.MaxBlockGas, math.MaxUint64)
 	bs = txListener.Finalize()
 
@@ -283,7 +283,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	txListener.Update(bs, es)
 
 	// Execute post-internal transactions
-	internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, true, b.tmpStateDB)
+	internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, true, blockproc.NewNonceSource(b.tmpStateDB))
 	evmProcessor.Execute(internalTxs, es.Rules.Blocks.MaxBlockGas, math.MaxUint64)
 
 	evmBlock, numSkippedTxs, receipts := evmProcessor.Finalize()
