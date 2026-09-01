@@ -2509,7 +2509,7 @@ func (api *PublicDebugAPI) TraceTransaction(ctx context.Context, hash common.Has
 		return nil, err
 	}
 	if tx == nil {
-		return nil, fmt.Errorf("transaction %s not found", hash.Hex())
+		return nil, errors.New("transaction not found")
 	}
 	// It shouldn't happen in practice.
 	if blockNumber == 0 {
