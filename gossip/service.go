@@ -251,6 +251,10 @@ type Service struct {
 	// shutdown.
 	storeReadersWg sync.WaitGroup
 
+	// ledger owns the consensus-agnostic block-execution infrastructure and is
+	// driven by the consensus block callback, one block at a time.
+	ledger Ledger
+
 	blockBusyFlag uint32
 	eventBusyFlag uint32
 
@@ -357,6 +361,18 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	}
 	svc.txpool = newTxPool(stateReader)
 	svc.gpo.SetReader(&GPOBackend{svc.store, svc.txpool})
+
+	// create the long-lived ledger driven by the consensus block callback. It
+	// derives its own state reader (without the gas-price oracle) from the store
+	// and feed.
+	svc.ledger = NewLedger(
+		svc.store,
+		LedgerConfig{
+			Feed:              &svc.feed,
+			IndexTransactions: config.TxIndex,
+			ExecutionMetrics:  sonicFeaturesMetrics,
+		},
+	)
 
 	// init dialCandidates
 	dnsclient := dnsdisc.NewClient(dnsdisc.Config{})

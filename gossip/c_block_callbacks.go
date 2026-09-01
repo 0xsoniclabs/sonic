@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
-	"math"
 	"math/big"
 	"slices"
 	"sort"
@@ -30,7 +29,6 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/dag"
@@ -50,7 +48,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
-	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/gossip/scrambler"
@@ -86,19 +83,6 @@ var (
 
 	confirmedEventsMeter = metrics.GetOrRegisterMeter("chain/events/confirmed", nil) // events received from lachesis
 	spilledEventsMeter   = metrics.GetOrRegisterMeter("chain/events/spilled", nil)   // tx excluded because of MaxBlockGas
-
-	sonicFeaturesMetrics = &evmcore.SonicBlockExecutionMetrics{
-		SponsoredTxs:        utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/sponsored", nil)),
-		SkippedSponsoredTxs: utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/sponsored/skipped", nil)),
-		ExecutedBundles:     utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles", nil)),
-		RolledBackBundles:   utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles/rolledback", nil)),
-		InvalidBundles:      utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles/invalid", nil)),
-		BundleEfficiency: utils.MetricsHistogram(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
-			Name:    "chain_bundle_gas_effective",
-			Help:    "Effective gas usage ratio for a bundle transaction",
-			Buckets: prometheus.LinearBuckets(0.00, 0.01, 100), // Buckets [0.00, 0.01, ..., 0.99, +inf]
-		})),
-	}
 )
 
 // priorityFailureMeters collects the meters reporting silently degraded
@@ -106,11 +90,6 @@ var (
 type priorityFailureMeters struct {
 	config metricCounter // config query failed, the default config is used
 	txs    metricCounter // per-transaction query failed, the tx is not prioritized
-}
-
-type ExtendedTxPosition struct {
-	evmstore.TxPosition
-	EventCreator idx.ValidatorID
 }
 
 // GetConsensusCallbacks returns single (for Service) callback instance.
@@ -121,8 +100,8 @@ func (s *Service) GetConsensusCallbacks() lachesis.ConsensusCallbacks {
 			&s.blockProcWg,
 			&s.blockBusyFlag,
 			s.store,
+			s.ledger,
 			s.blockProcModules,
-			s.config.TxIndex,
 			&s.feed,
 			&s.emitters,
 			s.verWatcher,
@@ -138,8 +117,8 @@ func consensusCallbackBeginBlockFn(
 	wg *sync.WaitGroup,
 	blockBusyFlag *uint32,
 	store *Store,
+	ledger Ledger,
 	blockProc BlockProc,
-	txIndex bool,
 	feed *ServiceFeed,
 	emitters *[]*emitter.Emitter,
 	verWatcher *verwatcher.VersionWatcher,
@@ -167,12 +146,10 @@ func consensusCallbackBeginBlockFn(
 		// otherwise cheaters would get punished after a first block where cheaters were observed
 		bs.EpochCheaters = mergeCheaters(bs.EpochCheaters, cBlock.Cheaters)
 
-		// Get stateDB
-		statedb, err := store.evm.GetLiveStateDb(bs.FinalizedStateRoot)
-		if err != nil {
-			log.Crit("Failed to open StateDB", "err", err)
-		}
-		nonceSource := blockproc.NewNonceSource(statedb)
+		// Capture the finalized state root now, before eventProcessor.Finalize may
+		// mutate the block state below; the ledger opens the live state against it
+		// inside BeginBlock.
+		finalizedStateRoot := bs.FinalizedStateRoot
 		evmStateReader := &EvmStateReader{
 			ServiceFeed: feed,
 			store:       store,
@@ -344,24 +321,6 @@ func consensusCallbackBeginBlockFn(
 					)
 				}
 
-				// Apply the transaction priorities and reorder the (already
-				// filtered) transactions, identically in both legacy and
-				// single-proposer modes, overriding any proposer order.
-				// It is a no-op while the feature is disabled.
-				proposal.Transactions = applyTransactionPriorities(
-					proposal.Transactions,
-					thisBlocksRules,
-					chainCfg,
-					statedb,
-					evmStateReader,
-					signer,
-					blockCtx.Idx,
-					blockCtx.Time,
-					randao,
-					lastBlockHeader,
-					priorityFailures,
-				)
-
 				sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
 				sealing := sealer.EpochSealing()
 				txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es)
@@ -374,23 +333,49 @@ func consensusCallbackBeginBlockFn(
 				}
 
 				// prepare block processing
-				evmProcessor := blockProc.EVMModule.Start(
-					blockCtx.Idx,
-					blockCtx.Time,
-					blockCtx.Atropos.Epoch(),
-					statedb,
-					evmStateReader,
-					onNewLogAll,
+				blockDuration := time.Duration(blockCtx.Time - bs.LastBlock.Time)
+				processor, err := ledger.BeginBlock(BlockParams{
+					Number:          number,
+					Time:            blockCtx.Time,
+					Epoch:           cBlock.Atropos.Epoch(),
+					ParentHash:      proposal.ParentHash,
+					PrevRandao:      randao,
+					ParentStateRoot: common.Hash(finalizedStateRoot),
+					GasLimit:        maxBlockGas,
+					UserGasLimit:    userTransactionGasLimit,
+					Duration:        blockDuration,
+					Rules:           thisBlocksRules, // block-start rules snapshot
+				}, onNewLogAll)
+				if err != nil {
+					log.Crit("Failed to open StateDB", "err", err)
+				}
+				// The internal-transaction builders only read the zero-address
+				// nonce; pass them a narrow NonceSource over the live state owned by
+				// the block processor rather than the full statedb.
+				nonceSource := blockproc.NewNonceSource(processor.StateDB())
+
+				// Apply the transaction priorities and reorder the (already
+				// filtered) transactions, identically in both legacy and
+				// single-proposer modes, overriding any proposer order.
+				// It is a no-op while the feature is disabled.
+				proposal.Transactions = applyTransactionPriorities(
+					proposal.Transactions,
 					thisBlocksRules,
 					chainCfg,
+					processor.StateDB(),
+					evmStateReader,
+					signer,
+					blockCtx.Idx,
+					blockCtx.Time,
 					randao,
-					sonicFeaturesMetrics,
+					lastBlockHeader,
+					priorityFailures,
 				)
 				executionStart := time.Now()
 
 				// Execute pre-internal transactions
 				preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
-				preInternalProcessedTxs := evmProcessor.Execute(preInternalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
+				preInternalProcessedTxs := processor.runInternal(preInternalTxs).ProcessedTransactions
 				bs = txListener.Finalize()
 				for _, tx := range preInternalProcessedTxs {
 					if tx.Receipt == nil || tx.Receipt.Status == 0 {
@@ -425,111 +410,37 @@ func consensusCallbackBeginBlockFn(
 				// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
 				blockFn := func() {
 
-					blockDuration := time.Duration(blockCtx.Time - bs.LastBlock.Time)
-					blockBuilder := inter.NewBlockBuilder().
-						WithEpoch(blockCtx.Atropos.Epoch()).
-						WithNumber(number).
-						WithParentHash(proposal.ParentHash).
-						WithTime(blockCtx.Time).
-						WithPrevRandao(randao).
-						WithGasLimit(maxBlockGas).
-						WithDuration(blockDuration)
-
-					// With the transition from v2.0 to v2.1, the handling of
-					// block-gas-limit updates has changed. In v2.0, epoch
-					// sealing blocks used to already adapt the new gas limit,
-					// while in v2.1 the old gas limit is kept and only the
-					// first block after the sealing block is adapting the new
-					// gas limit. As the list of transactions for the sealing
-					// block is assembled by validators using the rules of the
-					// current epoch, using the ending epoch's gas limit is
-					// matching the assumptions made by the validators.
-					//
-					// However, in the past, there was one epoch-sealing block
-					// (8054923) in which the gas limit was adapted. To support
-					// this one-time exception, we add a special case for
-					// this block here to ensure backward compatibility.
-					if thisBlocksRules.NetworkID == 146 && number == 8054923 {
-						blockBuilder.WithGasLimit(es.Rules.Blocks.MaxBlockGas)
-					}
-
-					for _, cur := range preInternalProcessedTxs {
-						if cur.Receipt != nil {
-							blockBuilder.AddTransaction(
-								cur.Transaction,
-								cur.Receipt,
-							)
-						}
-					}
-
 					// Execute post-internal transactions
 					internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
-					internalProcessedTxs := evmProcessor.Execute(internalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
+					internalProcessedTxs := processor.runInternal(internalTxs).ProcessedTransactions
 					for _, tx := range internalProcessedTxs {
 						if tx.Receipt == nil || tx.Receipt.Status == 0 {
 							log.Warn("Internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
 						}
 					}
 
-					for _, cur := range internalProcessedTxs {
-						if cur.Receipt != nil {
-							blockBuilder.AddTransaction(
-								cur.Transaction,
-								cur.Receipt,
-							)
-						}
-					}
+					txCausedBy := processor.Run(proposal.Transactions).CausedBy
 
-					txCausedBy := processUserTransactions(
-						evmProcessor,
-						blockBuilder,
-						proposal.Transactions,
-						userTransactionGasLimit,
-						thisBlocksRules.Upgrades,
-					)
+					// Finalize the block: commit state, assemble and hash the block,
+					// and stamp the block hash/time onto the receipts and logs.
+					candidate := processor.Finalize()
+					block := candidate.Block
+					evmBlock := candidate.EvmBlock
+					allReceipts := candidate.Receipts
+					numSkippedTxs := candidate.NumSkipped
 
-					evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
-
-					// Add results of the transaction processing to the block.
-					blockBuilder.
-						WithStateRoot(common.Hash(evmBlock.Root)).
-						WithGasUsed(evmBlock.GasUsed).
-						WithBaseFee(evmBlock.BaseFee)
-
-					// Complete the block.
-					block := blockBuilder.Build()
-					evmBlock.Hash = block.Hash()
-					evmBlock.Duration = blockDuration
-
-					// Update block-hash and -time values in receipts and logs.
-					for i := range allReceipts {
-						allReceipts[i].BlockHash = block.Hash()
-						for j := range allReceipts[i].Logs {
-							allReceipts[i].Logs[j].BlockHash = block.Hash()
-							allReceipts[i].Logs[j].BlockTimestamp = uint64(block.Time.Unix())
-						}
-					}
-
-					// memorize the event creator of each tx
-					txPositions := make(map[common.Hash]ExtendedTxPosition)
+					// memorize the creating validator of each tx, used below to
+					// attribute receipts. Tx positions are persisted by the ledger
+					// in Commit.
+					txCreators := make(map[common.Hash]idx.ValidatorID)
 					for _, e := range blockEvents {
 						for _, tx := range e.Transactions() {
 							// If tx was met in multiple events, then assign to first ordered event
-							if _, ok := txPositions[tx.Hash()]; ok {
+							if _, ok := txCreators[tx.Hash()]; ok {
 								continue
 							}
-							txPositions[tx.Hash()] = ExtendedTxPosition{
-								EventCreator: e.Creator(),
-							}
+							txCreators[tx.Hash()] = e.Creator()
 						}
-					}
-					// memorize block position of each tx
-					for i, tx := range evmBlock.Transactions {
-						// not skipped txs only
-						position := txPositions[tx.Hash()]
-						position.Block = blockCtx.Idx
-						position.BlockOffset = uint32(i)
-						txPositions[tx.Hash()] = position
 					}
 
 					// call OnNewReceipt
@@ -540,7 +451,7 @@ func consensusCallbackBeginBlockFn(
 								originTx = origin
 							}
 						}
-						creator := txPositions[originTx].EventCreator
+						creator := txCreators[originTx]
 						if creator != 0 && es.Validators.Get(creator) == 0 {
 							creator = 0
 						}
@@ -550,30 +461,6 @@ func consensusCallbackBeginBlockFn(
 					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
 					// At this point, block state is finalized
 
-					// Store the transaction bodies before indexing their
-					// positions, such that readers finding a position always
-					// find the corresponding body as well.
-					for _, tx := range blockBuilder.GetTransactions() {
-						store.evm.SetTx(tx.Hash(), tx)
-					}
-
-					// Build index for not skipped txs
-					if txIndex {
-						for _, tx := range evmBlock.Transactions {
-							// not skipped txs only
-							store.evm.SetTxPosition(tx.Hash(), txPositions[tx.Hash()].TxPosition)
-						}
-
-						// Index receipts
-						// Note: it's possible for receipts to get indexed twice by BR and block processing
-						if allReceipts.Len() != 0 {
-							store.evm.SetReceipts(blockCtx.Idx, allReceipts)
-							for _, r := range allReceipts {
-								store.evm.IndexLogs(r.Logs...)
-							}
-						}
-					}
-
 					bs.LastBlock = blockCtx
 					bs.CheatersWritten = uint32(bs.EpochCheaters.Len())
 					if sealing {
@@ -581,10 +468,14 @@ func consensusCallbackBeginBlockFn(
 						store.SetEpochBlock(blockCtx.Idx+1, es.Epoch)
 					}
 
-					store.SetBlock(blockCtx.Idx, block)
-					store.SetBlockIndex(block.Hash(), blockCtx.Idx)
+					// Persist the block, its transactions, receipt/log indexes, and
+					// cached EVM block via the ledger (no RPC notification yet).
+					processor.Commit()
+
+					// Advance the consensus head pointer before publishing, so the
+					// RPC head and the new-block notification observe it (matching
+					// the monolith's ordering).
 					store.SetBlockEpochState(bs, es)
-					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
 
 					// Update the metrics touched during block processing
 					executionTime := time.Since(executionStart)
@@ -596,14 +487,8 @@ func consensusCallbackBeginBlockFn(
 					headHeaderGauge.Update(int64(blockCtx.Idx))
 					headFastBlockGauge.Update(int64(blockCtx.Idx))
 
-					// Notify about new block
-					if feed != nil {
-						var logs []*types.Log
-						for _, r := range allReceipts {
-							logs = append(logs, r.Logs...)
-						}
-						feed.notifyAboutNewBlock(evmBlock, logs)
-					}
+					// Publish the new block to the RPC layer.
+					processor.Publish()
 
 					now := time.Now()
 					blockAge := now.Sub(block.Time.Time())
@@ -661,32 +546,7 @@ func processUserTransactions(
 ) (
 	causedBy map[common.Hash]common.Hash,
 ) {
-	remainingSize := uint64(math.MaxUint64)
-	if upgrades.Brio {
-		remainingSize = uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
-		for _, tx := range blockBuilder.GetTransactions() {
-			txSize := tx.Size()
-			if txSize > remainingSize {
-				// Still call evmProcessor execute with 0 remaining size to track skipped transactions correctly.
-				log.Warn("block filled with only internal transactions")
-				remainingSize = 0
-				break
-			}
-			remainingSize -= txSize
-		}
-	}
-
-	summary := evmProcessor.Execute(orderedTxs, userTransactionGasLimit, remainingSize)
-	for _, processed := range summary.ProcessedTransactions {
-		if processed.Receipt != nil { // < nil if skipped
-			blockBuilder.AddTransaction(
-				processed.Transaction,
-				processed.Receipt,
-			)
-		}
-	}
-
-	return summary.CausedBy
+	return executeUserBatch(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit, upgrades).CausedBy
 }
 
 // resolveRandaoMix computes the randao mix to be used by the block processor
