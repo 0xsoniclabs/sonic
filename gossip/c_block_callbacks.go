@@ -172,8 +172,6 @@ func consensusCallbackBeginBlockFn(
 		if err != nil {
 			log.Crit("Failed to open StateDB", "err", err)
 		}
-		// The internal-transaction builders only read the zero-address nonce; pass
-		// them a narrow NonceSource over the live state rather than the full statedb.
 		nonceSource := blockproc.NewNonceSource(statedb)
 		evmStateReader := &EvmStateReader{
 			ServiceFeed: feed,

@@ -35,13 +35,10 @@ import (
 
 //go:generate mockgen -source=interface.go -package=blockproc -destination=interface_mock.go
 
-// NonceSource exposes the nonce of the zero address (0x0) — the only piece of
-// state the internal-transaction builders read. Internal-transaction sources are
-// narrowed to this interface (rather than a full state.StateDB) to make explicit,
-// at the type level, that they observe nothing else in the state.
+// NonceSource exposes the nonce of the zero address, which is all state
+// information internal-transaction builders read.
 type NonceSource interface {
-	// ZeroAddressNonce returns the current nonce of the zero address, used to
-	// sequence the internal transactions sent from it.
+	// ZeroAddressNonce returns the current nonce of the zero address.
 	ZeroAddressNonce() uint64
 }
 
