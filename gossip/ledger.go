@@ -17,6 +17,7 @@
 package gossip
 
 import (
+	"fmt"
 	"math"
 	"time"
 
@@ -54,6 +55,12 @@ type Ledger interface {
 	// returned BlockProcessor owns the opened live state and carries the per-block
 	// state through the rest of the pipeline.
 	BeginBlock(params BlockParams, onNewLog func(*core_types.Log)) (BlockProcessor, error)
+
+	// GetHeadBlock returns the ledger's current head: the last committed block. Its
+	// StateRoot field is the finalized live-state root the next block must be opened
+	// against (as BlockParams.ParentStateRoot). It returns an error if that state
+	// root does not match the Carmen live state.
+	GetHeadBlock() (*inter.Block, error)
 }
 
 // BlockProcessor drives a single block through the state machine
@@ -132,22 +139,35 @@ type ledger struct {
 
 // LedgerConfig groups the configuration a Ledger needs beyond the store: the
 // new-block feed (publish target and reader input, may be nil), whether to index
-// transactions, and the block-execution metrics sink (may be nil, in which case
-// NewLedger uses the default sink).
+// transactions, the block-execution metrics sink (may be nil, in which case
+// NewLedger uses the default sink), and whether the ledger replays historical
+// blocks rather than producing new ones.
 type LedgerConfig struct {
 	Feed              *ServiceFeed
 	IndexTransactions bool
 	ExecutionMetrics  evmcore.BlockExecutionMetrics
+
+	// Replay selects an EVM module that reproduces already-produced blocks
+	// instead of producing new ones. It must be false for the live node: a
+	// replaying ledger does not re-generate the post-execution transactions of
+	// subsidies and bundles (which a historical block already contains), so it
+	// reproduces such blocks but would produce incorrect new ones.
+	Replay bool
 }
 
 // NewLedger creates a Ledger over the given store, backed by the production EVM
 // implementation. A nil config.ExecutionMetrics defaults to the shared
-// block-execution metrics sink.
+// block-execution metrics sink. When config.Replay is set, the ledger uses the
+// replaying EVM module (see LedgerConfig.Replay).
 func NewLedger(store *Store, config LedgerConfig) Ledger {
 	if config.ExecutionMetrics == nil {
 		config.ExecutionMetrics = sonicFeaturesMetrics
 	}
-	return newLedgerInternal(store, config, evmmodule.New())
+	evm := evmmodule.New()
+	if config.Replay {
+		evm = evmmodule.NewForReplay()
+	}
+	return newLedgerInternal(store, config, evm)
 }
 
 // newLedgerInternal creates a ledger with an explicit EVM module. It exists so
@@ -226,6 +246,21 @@ func (l *ledger) BeginBlock(
 			WithGasLimit(params.GasLimit).
 			WithDuration(params.Duration),
 	}, nil
+}
+
+// GetHeadBlock returns the ledger's current head: the last committed block. It
+// checks that the head block's state root matches the Carmen live state and
+// returns an error if it does not.
+func (l *ledger) GetHeadBlock() (*inter.Block, error) {
+	headIdx := l.store.GetBlockState().LastBlock.Idx
+	block := l.store.GetBlock(headIdx)
+	if block == nil {
+		return nil, fmt.Errorf("head block %d not found in store", headIdx)
+	}
+	if err := l.store.evm.CheckLiveStateHash(headIdx, hash.Hash(block.StateRoot)); err != nil {
+		return nil, fmt.Errorf("ledger store head and Carmen live state do not match: %w", err)
+	}
+	return block, nil
 }
 
 // StateDB returns the live state opened for this block.

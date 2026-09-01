@@ -38,10 +38,26 @@ import (
 
 //go:generate mockgen -source=evm.go -destination=evm_mock.go -package=evmmodule
 
-type EVMModule struct{}
+type EVMModule struct {
+	// forReplay selects the replaying state processor over the head-state one.
+	// When replaying historical blocks, the block already contains the
+	// post-execution transactions that subsidies and bundles generate, so they
+	// must not be generated again; the replaying processor skips them.
+	forReplay bool
+}
 
+// New creates an EVM module for head-state block production, as used by the live
+// node.
 func New() *EVMModule {
 	return &EVMModule{}
+}
+
+// NewForReplay creates an EVM module that replays historical blocks: it executes
+// the recorded transactions without re-generating the post-execution
+// transactions of subsidies and bundles. Use it to reproduce already-produced
+// blocks, not to produce new ones.
+func NewForReplay() *EVMModule {
+	return &EVMModule{forReplay: true}
 }
 
 func (p *EVMModule) Start(
@@ -87,6 +103,7 @@ func (p *EVMModule) Start(
 		gasBaseFee:       baseFee,
 		processorFactory: stateProcessorFactory{},
 		metrics:          metrics,
+		forReplay:        p.forReplay,
 	}
 }
 
@@ -111,6 +128,9 @@ type OperaEVMProcessor struct {
 	processorFactory _stateProcessorFactory
 
 	metrics evmcore.BlockExecutionMetrics
+
+	// forReplay selects the replaying state processor in Execute (see EVMModule).
+	forReplay bool
 }
 
 func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlock {
@@ -152,7 +172,12 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 }
 
 func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64, sizeLimit uint64) evmcore.ProcessSummary {
-	evmProcessor := p.processorFactory.NewStateProcessorForHeadState(p.evmCfg, p.reader, p.rules.Upgrades, p.metrics)
+	var evmProcessor _stateProcessor
+	if p.forReplay {
+		evmProcessor = p.processorFactory.NewStateProcessorForReplay(p.evmCfg, p.reader, p.rules.Upgrades)
+	} else {
+		evmProcessor = p.processorFactory.NewStateProcessorForHeadState(p.evmCfg, p.reader, p.rules.Upgrades, p.metrics)
+	}
 	trueTxsOffset := int(0)
 	for _, tx := range p.processedTxs {
 		if tx.Receipt != nil {

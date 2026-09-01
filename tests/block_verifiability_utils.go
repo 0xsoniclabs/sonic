@@ -21,17 +21,22 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"path/filepath"
 	"testing"
 
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/amount"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
+	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
+	"github.com/0xsoniclabs/sonic/integration"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/trie"
@@ -41,6 +46,13 @@ import (
 // VerifyBlocks verifies the entire chain of blocks starting from the given
 // genesis. It processes each block in sequence, applying all transactions and
 // ensuring that the resulting block hashes match the expected values.
+//
+// Verification runs over two independent paths that must both reproduce the
+// recorded block hashes:
+//   - verifyBlocksOnState replays the blocks directly on a Carmen state and
+//     re-derives each block hash by hand; and
+//   - verifyBlocksOnLedger replays them through the production block-processing
+//     pipeline (a real gossip ledger over a real store).
 func VerifyBlocks(
 	t *testing.T,
 	genesis *makefakegenesis.GenesisJson,
@@ -49,6 +61,20 @@ func VerifyBlocks(
 	require := require.New(t)
 	require.NotEmpty(blocks)
 	require.Equal(uint64(0), blocks[0].NumberU64())
+
+	verifyBlocksOnState(t, genesis, blocks)
+	verifyBlocksOnLedger(t, genesis, blocks)
+}
+
+// verifyBlocksOnState verifies the chain of blocks by replaying them directly on
+// a standalone Carmen state, checking the state root, gas usage, and receipts
+// hash of each block, and re-deriving and comparing the full block hash.
+func verifyBlocksOnState(
+	t *testing.T,
+	genesis *makefakegenesis.GenesisJson,
+	blocks []*types.Block,
+) {
+	require := require.New(t)
 
 	// Create a new state-DB instance.
 	state, err := NewState(t.TempDir())
@@ -118,6 +144,142 @@ func VerifyBlocks(
 			"block %d: block hash mismatch", block.NumberU64(),
 		)
 	}
+}
+
+// verifyBlocksOnLedger verifies the chain of blocks by replaying them through the
+// production block-processing pipeline: a real gossip ledger driven over a real
+// store (opened through integration.Ledger in replay mode). For each block it
+// drives BeginBlock -> Run -> Finalize and asserts that the assembled block
+// reproduces the recorded state root, gas usage, and -- decisively -- the block
+// hash. Each block is committed so the next block's base fee (derived from the
+// parent header) and state root can be reproduced.
+//
+// Replay mode is required: a live ledger re-generates the post-execution
+// transactions that subsidies and bundles produce, but a historical block
+// already contains them, so re-generating would diverge. Because those
+// transactions are already present, all of a block's transactions can be replayed
+// in their recorded order as a single batch with a generous (block-gas-limit,
+// unbounded-size) budget that never skips any.
+func verifyBlocksOnLedger(
+	t *testing.T,
+	genesis *makefakegenesis.GenesisJson,
+	blocks []*types.Block,
+) {
+	require := require.New(t)
+
+	dataDir := initLedgerDataDirFromGenesis(t, genesis)
+
+	// Replay mode: historical blocks already contain the post-execution
+	// transactions that subsidies and bundles generate, so the ledger must not
+	// re-generate them.
+	ledger, err := integration.OpenLedger(dataDir, gossip.LedgerConfig{Replay: true})
+	require.NoError(err, "failed to open ledger")
+	defer func() {
+		require.NoError(ledger.Close())
+	}()
+
+	// The genesis bakes one or more blocks into the store (block 0 plus the
+	// chain-initialization block(s)); the ledger only produces blocks after them.
+	// Replay therefore starts at the first block past the genesis head, opening
+	// against its finalized state root (the Carmen world-state root that
+	// GetHeadBlock returns and verifies against the live state).
+	head, err := ledger.GetHeadBlock()
+	require.NoError(err, "failed to read ledger head")
+	firstReplayed := head.Number + 1
+	liveStateRoot := head.StateRoot
+	require.Less(firstReplayed, uint64(len(blocks)),
+		"no blocks beyond the genesis head to replay")
+
+	// The last genesis-baked block must match the recorded chain.
+	require.Equal(blocks[firstReplayed-1].Hash(), head.Hash(),
+		"genesis head block hash mismatch")
+
+	// Replay every block after the genesis head in order, chaining on the live
+	// state root produced by each block.
+	for i := firstReplayed; i < uint64(len(blocks)); i++ {
+		block := blocks[i]
+
+		nanos, duration, err := inter.DecodeExtraData(block.Header().Extra)
+		require.NoError(err, "block %d: failed to decode extra data", block.NumberU64())
+
+		processor, err := ledger.BeginBlock(gossip.BlockParams{
+			Number: block.NumberU64(),
+			Time:   inter.Timestamp(block.Time()*1e9 + uint64(nanos)),
+			// Epoch is left zero: it does not feed the block hash.
+			ParentHash:      block.ParentHash(),
+			PrevRandao:      block.MixDigest(),
+			ParentStateRoot: liveStateRoot,
+			GasLimit:        block.GasLimit(),
+			// Unused by the single system batch below; set for clarity.
+			UserGasLimit: block.GasLimit(),
+			Duration:     duration,
+			Rules:        genesis.Rules,
+		}, func(*core_types.Log) {})
+		require.NoError(err, "block %d: failed to begin block", block.NumberU64())
+
+		// Replay all of the block's transactions in their recorded order as a
+		// single batch. The replaying EVM module executes them faithfully without
+		// re-generating subsidy/bundle post-transactions (which the block already
+		// contains, interleaved with the user transactions), so the order — and
+		// thus the transactions and receipts roots — is reproduced exactly. Only
+		// already-included transactions are fed, with the user gas limit set to the
+		// full block gas limit and the full block size budget, so neither limit
+		// binds and no transaction is skipped.
+		processor.Run(block.Transactions())
+		candidate := processor.Finalize()
+
+		require.Zero(candidate.NumSkipped,
+			"block %d: some transactions were skipped", block.NumberU64())
+		require.Equal(block.Root(), common.Hash(candidate.Block.StateRoot),
+			"block %d: state root mismatch", block.NumberU64())
+		require.Equal(block.GasUsed(), candidate.Block.GasUsed,
+			"block %d: gas used mismatch", block.NumberU64())
+		require.Equal(block.Hash(), candidate.Block.Hash(),
+			"block %d: block hash mismatch", block.NumberU64())
+
+		// Persist the block so the next block can read it as its parent (e.g. for
+		// the base fee), and chain on the state root just produced.
+		processor.Commit()
+		liveStateRoot = candidate.Block.StateRoot
+	}
+}
+
+// initLedgerDataDirFromGenesis creates a temporary Sonic data directory and
+// initializes an on-disk gossip store in it from the given JSON genesis,
+// returning the data directory for integration.OpenLedger to reopen.
+//
+// It mirrors the production genesis-import flow (open the store WITHOUT opening
+// the EVM store, ApplyGenesis, Commit), since the genesis import requires an
+// empty carmen directory — which OpenLedger's EvmStore().Open() would populate.
+func initLedgerDataDirFromGenesis(t *testing.T, genesis *makefakegenesis.GenesisJson) string {
+	t.Helper()
+	require := require.New(t)
+
+	dataDir := t.TempDir()
+	chaindataDir := filepath.Join(dataDir, "chaindata")
+	carmenDir := filepath.Join(dataDir, "carmen")
+	require.NoError(os.MkdirAll(chaindataDir, 0700))
+	require.NoError(os.MkdirAll(carmenDir, 0700))
+
+	genStore, err := makefakegenesis.ApplyGenesisJson(genesis, dataDir)
+	require.NoError(err, "failed to build genesis store")
+
+	dbs, err := integration.GetDbProducer(chaindataDir, integration.DBCacheConfig{
+		Cache:   480 << 20,
+		Fdlimit: 100,
+	})
+	require.NoError(err)
+
+	cfg := gossip.DefaultStoreConfig(cachescale.Identity)
+	cfg.EVM.StateDb.Directory = carmenDir
+	store, err := gossip.NewStore(dbs, cfg)
+	require.NoError(err)
+
+	require.NoError(store.ApplyGenesis(genStore.Genesis()))
+	require.NoError(store.Commit())
+	require.NoError(store.Close())
+	require.NoError(dbs.Close())
+	return dataDir
 }
 
 // --- Block Replay Infrastructure ---
