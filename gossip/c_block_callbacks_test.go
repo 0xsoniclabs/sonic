@@ -275,7 +275,7 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 				txListener.EXPECT().Finalize().Return(iblockproc.BlockState{}).AnyTimes()
 
 				txListenerModule := blockproc.NewMockTxListenerModule(ctrl)
-				txListenerModule.EXPECT().Start(_any, _any, _any, _any).Return(txListener)
+				txListenerModule.EXPECT().Start(_any, _any, _any).Return(txListener)
 
 				evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
 				evmProcessor.EXPECT().Execute(_any, _any, _any).MinTimes(1)
@@ -450,7 +450,7 @@ func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
 	txListener.EXPECT().Update(_any, _any).AnyTimes()
 	txListener.EXPECT().OnNewReceipt(_any, _any, _any, _any, _any).AnyTimes()
 	txListenerModule := blockproc.NewMockTxListenerModule(ctrl)
-	txListenerModule.EXPECT().Start(_any, _any, _any, _any).Return(txListener)
+	txListenerModule.EXPECT().Start(_any, _any, _any).Return(txListener)
 
 	txTransactor := blockproc.NewMockTxTransactor(ctrl)
 	txTransactor.EXPECT().PopInternalTxs(_any, _any, _any, _any, _any).
@@ -628,7 +628,7 @@ func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 			reportedOriginators = append(reportedOriginators, originator)
 		}).AnyTimes()
 	txListenerModule := blockproc.NewMockTxListenerModule(ctrl)
-	txListenerModule.EXPECT().Start(_any, _any, _any, _any).Return(txListener)
+	txListenerModule.EXPECT().Start(_any, _any, _any).Return(txListener)
 
 	txTransactor := blockproc.NewMockTxTransactor(ctrl)
 	txTransactor.EXPECT().PopInternalTxs(_any, _any, _any, _any, _any).
@@ -773,7 +773,7 @@ func TestConsensusCallback_AppliesTransactionPriorities(t *testing.T) {
 	txListener := blockproc.NewMockTxListener(ctrl)
 	txListener.EXPECT().Finalize().Return(iblockproc.BlockState{}).AnyTimes()
 	txListenerModule := blockproc.NewMockTxListenerModule(ctrl)
-	txListenerModule.EXPECT().Start(_any, _any, _any, _any).Return(txListener)
+	txListenerModule.EXPECT().Start(_any, _any, _any).Return(txListener)
 
 	txTransactor := blockproc.NewMockTxTransactor(ctrl)
 	txTransactor.EXPECT().PopInternalTxs(_any, _any, _any, _any, _any).
@@ -2235,7 +2235,7 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupWithBrio(t *te
 				}).Times(2)
 
 			txListenerModule := blockproc.NewMockTxListenerModule(ctrl)
-			txListenerModule.EXPECT().Start(_any, _any, _any, _any).Return(txListener)
+			txListenerModule.EXPECT().Start(_any, _any, _any).Return(txListener)
 
 			// EVM processor: 3 Execute calls in order (pre-internal, post-internal, user txs).
 			evmProcessor := blockproc.NewMockEVMProcessor(ctrl)

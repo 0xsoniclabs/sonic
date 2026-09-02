@@ -245,7 +245,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	}
 
 	sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
-	txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es, b.tmpStateDB)
+	txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es)
 	chainConfig := opera.CreateTransientEvmChainConfig(
 		es.Rules.NetworkID,
 		// apply upgrades described in genesis rules, effect immediately

@@ -50,7 +50,7 @@ type TxListener interface {
 }
 
 type TxListenerModule interface {
-	Start(block iblockproc.BlockCtx, bs iblockproc.BlockState, es iblockproc.EpochState, statedb state.StateDB) TxListener
+	Start(block iblockproc.BlockCtx, bs iblockproc.BlockState, es iblockproc.EpochState) TxListener
 }
 
 type TxTransactor interface {

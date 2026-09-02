@@ -364,7 +364,7 @@ func consensusCallbackBeginBlockFn(
 
 				sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
 				sealing := sealer.EpochSealing()
-				txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es, statedb)
+				txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es)
 				onNewLogAll := func(l *core_types.Log) {
 					txListener.OnNewLog(l)
 					// Note: it's possible for logs to get indexed twice by BR and block processing
