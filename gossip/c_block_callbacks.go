@@ -508,7 +508,7 @@ func consensusCallbackBeginBlockFn(
 						}
 					}
 
-					// memorize event position of each tx
+					// memorize the event creator of each tx
 					txPositions := make(map[common.Hash]ExtendedTxPosition)
 					for _, e := range blockEvents {
 						for _, tx := range e.Transactions() {
