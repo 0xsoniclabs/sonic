@@ -19,6 +19,7 @@ package ethapi
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"maps"
@@ -603,4 +604,50 @@ func TestEIP7910_Config_ResolvesTimeGatedForksWithTheBlockTime(t *testing.T) {
 	require.Contains(t, gotConfig.Current.Precompiles, "P256VERIFY")
 	require.Contains(t, gotConfig.Current.Precompiles, "KZG_POINT_EVALUATION")
 	require.Contains(t, gotConfig.Current.Precompiles, "BLS12_PAIRING_CHECK")
+}
+
+func TestEIP7910_Config_ReportsAZeroBlobScheduleAndTheActivatingBlockHeight(t *testing.T) {
+	// EIP-7910 requires blobSchedule to be an object, and Sonic has no blobs, so
+	// the schedule reports zero capacity. blockHeight is Sonic's extension beyond
+	// the specification: it names the block whose transaction activated the
+	// upgrade, which is how Sonic activates one.
+	chainId := big.NewInt(250)
+	upgradeHeights := []opera.UpgradeHeight{{
+		Upgrades: opera.GetSonicUpgrades(),
+		Height:   idx.Block(5),
+	}}
+
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+	backend.EXPECT().ChainID().Return(chainId)
+	backend.EXPECT().GetGenesisID().Return(common.Hash{0x42})
+	backend.EXPECT().CurrentBlock().Return(&evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{Number: big.NewInt(5)},
+	})
+	backend.EXPECT().GetUpgradeHeights().Return(upgradeHeights)
+	backend.EXPECT().ChainConfig(gomock.Any()).Return(opera.CreateTransientEvmChainConfig(
+		chainId.Uint64(), upgradeHeights, idx.Block(5),
+	))
+	backend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(&evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			Number: big.NewInt(5),
+			Time:   inter.FromUnix(540),
+		},
+	}, nil)
+
+	gotConfig, err := NewPublicBlockChainAPI(backend).Config(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, params.BlobConfig{}, gotConfig.Current.BlobSchedule)
+
+	encoded, err := json.Marshal(gotConfig)
+	require.NoError(t, err)
+
+	var decoded map[string]map[string]any
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+	require.Equal(t, "0x5", decoded["current"]["blockHeight"])
+	require.Equal(t, map[string]any{
+		"target":                float64(0),
+		"max":                   float64(0),
+		"baseFeeUpdateFraction": float64(0),
+	}, decoded["current"]["blobSchedule"])
 }
