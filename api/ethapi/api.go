@@ -1257,6 +1257,13 @@ func DoCall(
 	defer evm.Release()
 	// Skip gas price checks for API runs.
 	evm.Config.NoBaseFee = true
+	if msg.GasPrice.Sign() == 0 {
+		evm.Context.BaseFee = new(big.Int)
+	}
+	if msg.BlobGasFeeCap != nil && msg.BlobGasFeeCap.BitLen() == 0 {
+		evm.Context.BlobBaseFee = new(big.Int)
+	}
+
 	// Wait for the context to be done and cancel the evm. Even if the
 	// EVM has finished, cancelling may be done (repeatedly)
 	go func() {
