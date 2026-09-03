@@ -1506,6 +1506,9 @@ func RPCMarshalBlock(block *evmcore.EvmBlock, receipts types.Receipts, inclTx bo
 	json := &evmcore.EvmBlockJson{
 		EvmHeaderJson: block.Header().ToJson(receipts),
 		Size:          &size,
+		// Sonic blocks carry no withdrawals; the field is reported as the empty
+		// list every post-Shanghai client emits, never as null.
+		Withdrawals: []*types.Withdrawal{},
 	}
 
 	if inclTx {

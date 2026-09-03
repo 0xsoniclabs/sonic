@@ -17,6 +17,7 @@
 package evmcore
 
 import (
+	"encoding/json"
 	"math/big"
 	"testing"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -70,4 +72,29 @@ func TestConvertFromEthHeader_CarriesTheDifficulty(t *testing.T) {
 	}
 	header := ConvertFromEthHeader(source.EthHeader())
 	require.Equal(t, big.NewInt(0x20000), header.Difficulty)
+}
+
+func TestEvmHeader_ToJson_ReportsThePostCancunHeaderFields(t *testing.T) {
+	// Sonic runs Cancun and Prague rules, so a client reading block JSON
+	// structurally expects these fields. Sonic has neither a beacon chain nor
+	// execution layer requests, so it states that rather than omitting them.
+	header := &EvmHeader{Number: big.NewInt(1)}
+
+	json := header.ToJson(nil)
+	require.Equal(t, &common.Hash{}, json.ParentBeaconBlockRoot)
+	require.Equal(t, &types.EmptyRequestsHash, json.RequestsHash)
+}
+
+func TestEvmHeader_ToJson_EncodesThePostCancunFieldsAsHashes(t *testing.T) {
+	// The specification permits no null for either field: both must be 32 bytes
+	// of hex when present.
+	header := &EvmHeader{Number: big.NewInt(1)}
+
+	encoded, err := json.Marshal(header.ToJson(nil))
+	require.NoError(t, err)
+
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+	require.Equal(t, "0x0000000000000000000000000000000000000000000000000000000000000000", decoded["parentBeaconBlockRoot"])
+	require.Equal(t, types.EmptyRequestsHash.Hex(), decoded["requestsHash"])
 }

@@ -1761,3 +1761,19 @@ func TestDoCall_ZeroesTheBaseFeeForACallThatNamesNoGasPrice(t *testing.T) {
 		})
 	}
 }
+
+func TestRPCMarshalBlock_ReportsAnEmptyWithdrawalsList(t *testing.T) {
+	// Sonic blocks carry no consensus layer withdrawals, but a post-Shanghai
+	// client reads the list structurally: it must be present and empty, never
+	// null and never absent.
+	block := &evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Number: big.NewInt(1)}}
+
+	marshalled, err := RPCMarshalBlock(block, nil, true, false, big.NewInt(1))
+	require.NoError(t, err)
+	require.NotNil(t, marshalled.Withdrawals)
+	require.Empty(t, marshalled.Withdrawals)
+
+	encoded, err := json.Marshal(marshalled)
+	require.NoError(t, err)
+	require.Contains(t, string(encoded), `"withdrawals":[]`)
+}
