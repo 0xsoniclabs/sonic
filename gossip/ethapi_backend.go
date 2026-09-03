@@ -412,7 +412,7 @@ func (b *EthAPIBackend) GetEVM(ctx context.Context, state vm.StateDB, header *ev
 	}
 	var context vm.BlockContext
 	if blockContext == nil {
-		context = evmcore.NewEVMBlockContext(header, b.state, nil)
+		context = evmcore.NewEVMBlockContextFromHeader(header, b.state, nil)
 	} else {
 		context = *blockContext
 	}
