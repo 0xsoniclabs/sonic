@@ -17,6 +17,7 @@
 package evmcore
 
 import (
+	"encoding/json"
 	"math/big"
 	"testing"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -70,4 +72,35 @@ func TestConvertFromEthHeader_CarriesTheDifficulty(t *testing.T) {
 	}
 	header := ConvertFromEthHeader(source.EthHeader())
 	require.Equal(t, big.NewInt(0x20000), header.Difficulty)
+}
+
+func TestEvmHeader_ToJson_HashOfDecodedHeaderMatchesBlockHash(t *testing.T) {
+	// Clients such as go-ethereum's ethclient decode the block JSON into a
+	// types.Header and recompute the block hash from it. Every optional header
+	// field present in the JSON is part of that hash, so the JSON must carry
+	// exactly the fields of Sonic's canonical header - no more, no less.
+	block := inter.NewBlockBuilder().
+		WithNumber(12).
+		WithParentHash(common.Hash{0x01}).
+		WithStateRoot(common.Hash{0x02}).
+		WithTime(inter.Timestamp(1_700_000_000_123_456_789)).
+		WithDuration(1234).
+		WithGasLimit(30_000_000).
+		WithGasUsed(21_000).
+		WithBaseFee(big.NewInt(1_000_000_000)).
+		WithPrevRandao(common.Hash{0x03}).
+		WithEpoch(7).
+		Build()
+
+	header := ToEvmHeader(block, block.ParentHash, opera.FakeNetRules(opera.GetSonicUpgrades()))
+	header.TxHash = block.TransactionsHashRoot
+
+	encoded, err := json.Marshal(header.ToJson(types.Receipts{}))
+	require.NoError(t, err)
+
+	var decoded types.Header
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+	require.Nil(t, decoded.ParentBeaconRoot, "parentBeaconBlockRoot is not part of Sonic's header")
+	require.Nil(t, decoded.RequestsHash, "requestsHash is not part of Sonic's header")
+	require.Equal(t, block.Hash(), decoded.Hash())
 }

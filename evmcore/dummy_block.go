@@ -222,9 +222,17 @@ type EvmHeaderJson struct {
 
 type EvmBlockJson struct {
 	*EvmHeaderJson
-	Txs    []interface{}   `json:"transactions"`
-	Size   *hexutil.Uint64 `json:"size"` // RLP encoded storage size of the block
-	Uncles []common.Hash   `json:"uncles"`
+	Txs  []interface{}   `json:"transactions"`
+	Size *hexutil.Uint64 `json:"size"` // RLP encoded storage size of the block
+
+	// Withdrawals is always empty: Sonic blocks carry no consensus layer
+	// withdrawals, which is why every Sonic block commits to
+	// types.EmptyWithdrawalsHash. It belongs to the body rather than the header,
+	// so it is reported for a block and not for a header subscription, the same
+	// split go-ethereum makes.
+	Withdrawals []*types.Withdrawal `json:"withdrawals"`
+
+	Uncles []common.Hash `json:"uncles"`
 }
 
 func (h *EvmHeader) ToJson(receipts types.Receipts) *EvmHeaderJson {
