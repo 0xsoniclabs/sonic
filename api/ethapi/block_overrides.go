@@ -75,7 +75,7 @@ func GetBlockContext(ctx context.Context, backend Backend, header *evmcore.EvmHe
 		ctx: ctx,
 		b:   backend,
 	}
-	return evmcore.NewEVMBlockContext(header, &chain, nil)
+	return evmcore.NewEVMBlockContextFromHeader(header, &chain, nil)
 }
 
 // chainContextBackend provides methods required to implement ChainContext.
