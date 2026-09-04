@@ -21,9 +21,11 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/carmen/go/database/mpt"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip/contract/sfc100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/integration/makegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
@@ -33,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -507,5 +510,75 @@ func BenchmarkIntegrationTestNet_StartAndStop(b *testing.B) {
 		net := StartIntegrationTestNet(b)
 		b.StopTimer()
 		net.Stop()
+	}
+}
+
+func TestIntegrationTestNet_CanStartWithAGenesisTooBigForTheMinimumCache(t *testing.T) {
+	const numAccounts = 4096
+	balance := new(uint256.Int).Mul(uint256.NewInt(1e18), uint256.NewInt(1_000_000))
+
+	// Addresses are offset past the precompiles, whose balances the genesis should not touch.
+	accounts := make([]makefakegenesis.Account, numAccounts)
+	for i := range accounts {
+		accounts[i] = makefakegenesis.Account{
+			Address: common.BigToAddress(big.NewInt(int64(i) + 1<<32)),
+			Balance: balance,
+		}
+	}
+
+	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{Accounts: accounts})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	for _, account := range []makefakegenesis.Account{accounts[0], accounts[numAccounts-1]} {
+		got, err := client.BalanceAt(t.Context(), account.Address, nil)
+		require.NoError(t, err)
+		require.Equal(t, balance.ToBig(), got)
+	}
+}
+
+func TestIntegrationTestNet_CacheSizes_GrowWithTheGenesisAndAreOverridable(t *testing.T) {
+	accounts := func(n int) []makefakegenesis.Account {
+		return make([]makefakegenesis.Account, n)
+	}
+	bytesPerNode := int64(mpt.EstimatePerNodeMemoryUsage())
+
+	tests := map[string]struct {
+		options IntegrationTestNetOptions
+		want    makegenesis.CacheSizes
+	}{
+		"a genesis the minimum cache holds is run with the minimum": {
+			options: IntegrationTestNetOptions{Accounts: accounts(500)},
+			want:    makegenesis.CacheSizes{LiveBytes: 1, ArchiveBytes: 1, StateDbItems: 1024},
+		},
+		"no accounts at all is the same": {
+			options: IntegrationTestNetOptions{},
+			want:    makegenesis.CacheSizes{LiveBytes: 1, ArchiveBytes: 1, StateDbItems: 1024},
+		},
+		"a bigger genesis is given a cache that holds it": {
+			options: IntegrationTestNetOptions{Accounts: accounts(4096)},
+			want: makegenesis.CacheSizes{
+				LiveBytes:    4096 * 4 * bytesPerNode,
+				ArchiveBytes: 4096 * 4 * bytesPerNode,
+				StateDbItems: 4096 * 4,
+			},
+		},
+		"an explicit size wins": {
+			options: IntegrationTestNetOptions{
+				Accounts:         accounts(4096),
+				LiveCacheSize:    AsPointer(7),
+				ArchiveCacheSize: AsPointer(8),
+				CacheSize:        AsPointer(9),
+			},
+			want: makegenesis.CacheSizes{LiveBytes: 7, ArchiveBytes: 8, StateDbItems: 9},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.want, test.options.cacheSizes())
+		})
 	}
 }
