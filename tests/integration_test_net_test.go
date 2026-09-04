@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/carmen/go/database/mpt"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip/contract/sfc100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
@@ -514,6 +515,7 @@ func TestIntegrationTestNet_CacheSizes_GrowWithTheGenesisAndAreOverridable(t *te
 	accounts := func(n int) []makefakegenesis.Account {
 		return make([]makefakegenesis.Account, n)
 	}
+	bytesPerNode := int64(mpt.EstimatePerNodeMemoryUsage())
 
 	tests := map[string]struct {
 		options                 IntegrationTestNetOptions
@@ -529,7 +531,7 @@ func TestIntegrationTestNet_CacheSizes_GrowWithTheGenesisAndAreOverridable(t *te
 		},
 		"a bigger genesis is given a cache that holds it": {
 			options: IntegrationTestNetOptions{Accounts: accounts(4096)},
-			live:    4096 * 4 * 1200, archive: 4096 * 4 * 1200, elements: 4096 * 4,
+			live:    4096 * 4 * bytesPerNode, archive: 4096 * 4 * bytesPerNode, elements: 4096 * 4,
 		},
 		"an explicit size wins": {
 			options: IntegrationTestNetOptions{
