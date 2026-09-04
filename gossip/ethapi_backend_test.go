@@ -21,10 +21,12 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
+	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
@@ -98,6 +100,50 @@ func TestEthApiBackend_GetNetworkRules_MissingBlockReturnsNilRules(t *testing.T)
 	rules, err := backend.GetNetworkRules(t.Context(), blockNumber)
 	require.NoError(err)
 	require.Nil(rules)
+}
+
+func TestEthApiBackend_GetTransaction_ReturnsTransactionAtItsPosition(t *testing.T) {
+	require := require.New(t)
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	tx := types.NewTx(&types.LegacyTx{Nonce: 1})
+	store.evm.SetTx(tx.Hash(), tx)
+	store.evm.SetTxPosition(tx.Hash(), evmstore.TxPosition{Block: 42, BlockOffset: 7})
+
+	backend := &EthAPIBackend{
+		svc: &Service{
+			config: Config{TxIndex: true},
+			store:  store,
+		},
+	}
+
+	got, block, offset, err := backend.GetTransaction(t.Context(), tx.Hash())
+	require.NoError(err)
+	require.Equal(tx.Hash(), got.Hash())
+	require.Equal(uint64(42), block)
+	require.Equal(uint64(7), offset)
+}
+
+func TestEthApiBackend_GetTransaction_ReportsCorruptedIndexIfBodyIsMissing(t *testing.T) {
+	require := require.New(t)
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	txHash := common.Hash{1}
+	store.evm.SetTxPosition(txHash, evmstore.TxPosition{Block: 42, BlockOffset: 7})
+
+	backend := &EthAPIBackend{
+		svc: &Service{
+			config: Config{TxIndex: true},
+			store:  store,
+		},
+	}
+
+	_, _, _, err = backend.GetTransaction(t.Context(), txHash)
+	require.ErrorContains(err, "index is corrupted")
 }
 
 func TestEthApiBackend_IsTestOnlyApiEnabled_ReturnsConfigFlagValue(t *testing.T) {

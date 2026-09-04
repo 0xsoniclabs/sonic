@@ -508,19 +508,15 @@ func consensusCallbackBeginBlockFn(
 						}
 					}
 
-					// memorize event position of each tx
+					// memorize the event creator of each tx
 					txPositions := make(map[common.Hash]ExtendedTxPosition)
 					for _, e := range blockEvents {
-						for i, tx := range e.Transactions() {
+						for _, tx := range e.Transactions() {
 							// If tx was met in multiple events, then assign to first ordered event
 							if _, ok := txPositions[tx.Hash()]; ok {
 								continue
 							}
 							txPositions[tx.Hash()] = ExtendedTxPosition{
-								TxPosition: evmstore.TxPosition{
-									Event:       e.ID(),
-									EventOffset: uint32(i),
-								},
 								EventCreator: e.Creator(),
 							}
 						}
@@ -552,6 +548,13 @@ func consensusCallbackBeginBlockFn(
 					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
 					// At this point, block state is finalized
 
+					// Store the transaction bodies before indexing their
+					// positions, such that readers finding a position always
+					// find the corresponding body as well.
+					for _, tx := range blockBuilder.GetTransactions() {
+						store.evm.SetTx(tx.Hash(), tx)
+					}
+
 					// Build index for not skipped txs
 					if txIndex {
 						for _, tx := range evmBlock.Transactions {
@@ -574,10 +577,6 @@ func consensusCallbackBeginBlockFn(
 					if sealing {
 						store.SetHistoryBlockEpochState(es.Epoch, bs, es)
 						store.SetEpochBlock(blockCtx.Idx+1, es.Epoch)
-					}
-
-					for _, tx := range blockBuilder.GetTransactions() {
-						store.evm.SetTx(tx.Hash(), tx)
 					}
 
 					store.SetBlock(blockCtx.Idx, block)

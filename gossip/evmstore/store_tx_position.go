@@ -21,16 +21,34 @@ package evmstore
 */
 
 import (
-	"github.com/Fantom-foundation/lachesis-base/hash"
+	"fmt"
+
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 type TxPosition struct {
 	Block       idx.Block
-	Event       hash.Event
-	EventOffset uint32
 	BlockOffset uint32
+}
+
+// DecodeRLP decodes a TxPosition, tolerating the historical 4-element layout
+// [Block, Event, EventOffset, BlockOffset] in addition to the current
+// [Block, BlockOffset]. In both layouts Block is the first element and
+// BlockOffset is the last, so older records remain readable without a reindex.
+func (p *TxPosition) DecodeRLP(s *rlp.Stream) error {
+	var raw []rlp.RawValue
+	if err := s.Decode(&raw); err != nil {
+		return err
+	}
+	if len(raw) != 2 && len(raw) != 4 {
+		return fmt.Errorf("unexpected TxPosition arity %d", len(raw))
+	}
+	if err := rlp.DecodeBytes(raw[0], &p.Block); err != nil {
+		return err
+	}
+	return rlp.DecodeBytes(raw[len(raw)-1], &p.BlockOffset)
 }
 
 // SetTxPosition stores transaction block and position.
