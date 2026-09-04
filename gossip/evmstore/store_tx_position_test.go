@@ -17,6 +17,7 @@
 package evmstore
 
 import (
+	"math"
 	"testing"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -60,10 +61,35 @@ func TestTxPosition_DecodeRLP_ReadsLegacyFourFieldLayout(t *testing.T) {
 	require.Equal(t, TxPosition{Block: 42, BlockOffset: 7}, got)
 }
 
-func TestTxPosition_DecodeRLP_RejectsUnexpectedArity(t *testing.T) {
-	encoded, err := rlp.EncodeToBytes([]uint32{1, 2, 3})
-	require.NoError(t, err)
+func TestTxPosition_DecodeRLP_RejectsInvalidEncodings(t *testing.T) {
+	encode := func(v any) []byte {
+		encoded, err := rlp.EncodeToBytes(v)
+		require.NoError(t, err)
+		return encoded
+	}
 
-	var got TxPosition
-	require.Error(t, rlp.DecodeBytes(encoded, &got))
+	tests := map[string]struct {
+		encoded []byte
+	}{
+		"not a list":   {encode(uint32(1))},
+		"no fields":    {encode([]uint32{})},
+		"one field":    {encode([]uint32{1})},
+		"three fields": {encode([]uint32{1, 2, 3})},
+		"five fields":  {encode([]uint32{1, 2, 3, 4, 5})},
+		"block is not an integer": {encode(struct {
+			Block       []uint32
+			BlockOffset uint32
+		}{[]uint32{1}, 7})},
+		"block offset overflows uint32": {encode(struct {
+			Block       idx.Block
+			BlockOffset uint64
+		}{42, math.MaxUint32 + 1})},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			var got TxPosition
+			require.Error(t, rlp.DecodeBytes(test.encoded, &got))
+		})
+	}
 }
