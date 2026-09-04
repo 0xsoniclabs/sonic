@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -509,6 +510,32 @@ func BenchmarkIntegrationTestNet_StartAndStop(b *testing.B) {
 		net := StartIntegrationTestNet(b)
 		b.StopTimer()
 		net.Stop()
+	}
+}
+
+func TestIntegrationTestNet_CanStartWithAGenesisTooBigForTheMinimumCache(t *testing.T) {
+	const numAccounts = 4096
+	balance := new(uint256.Int).Mul(uint256.NewInt(1e18), uint256.NewInt(1_000_000))
+
+	// Addresses are offset past the precompiles, whose balances the genesis should not touch.
+	accounts := make([]makefakegenesis.Account, numAccounts)
+	for i := range accounts {
+		accounts[i] = makefakegenesis.Account{
+			Address: common.BigToAddress(big.NewInt(int64(i) + 1<<32)),
+			Balance: balance,
+		}
+	}
+
+	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{Accounts: accounts})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	for _, account := range []makefakegenesis.Account{accounts[0], accounts[numAccounts-1]} {
+		got, err := client.BalanceAt(t.Context(), account.Address, nil)
+		require.NoError(t, err)
+		require.Equal(t, balance.ToBig(), got)
 	}
 }
 
