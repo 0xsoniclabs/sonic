@@ -42,6 +42,7 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 
+	"github.com/0xsoniclabs/carmen/go/database/mpt"
 	sonicd "github.com/0xsoniclabs/sonic/cmd/sonicd/app"
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
 	"github.com/0xsoniclabs/sonic/config"
@@ -1571,16 +1572,17 @@ func (o IntegrationTestNetOptions) cacheSizes() (live, archive int64, elements i
 	const (
 		// A node per account, plus headroom for the branch nodes above them.
 		nodesPerAccount = 4
-		// mpt.EstimatePerNodeMemoryUsage, which Carmen does not export. The byte sizes are divided by
-		// it to get a node count, so this is how a node count is turned back into bytes.
-		bytesPerNode = 1200
 		// Carmen's own minimum node cache, which is what the minimum below really buys.
 		minNodes = 2000
 	)
+	// Carmen divides the byte sizes by this to get a node count, so it is how a node count is turned
+	// back into bytes.
+	bytesPerNode := int64(mpt.EstimatePerNodeMemoryUsage())
 
 	live, archive, elements = 1, 1, 1024
 	if nodes := nodesPerAccount * len(o.Accounts); nodes > minNodes {
-		live, archive, elements = int64(nodes)*bytesPerNode, int64(nodes)*bytesPerNode, nodes
+		size := int64(nodes) * bytesPerNode
+		live, archive, elements = size, size, nodes
 	}
 
 	if o.LiveCacheSize != nil {
