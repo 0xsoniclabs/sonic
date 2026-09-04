@@ -25,6 +25,7 @@ import (
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip/contract/sfc100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/integration/makegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
@@ -518,20 +519,24 @@ func TestIntegrationTestNet_CacheSizes_GrowWithTheGenesisAndAreOverridable(t *te
 	bytesPerNode := int64(mpt.EstimatePerNodeMemoryUsage())
 
 	tests := map[string]struct {
-		options                 IntegrationTestNetOptions
-		live, archive, elements int64
+		options IntegrationTestNetOptions
+		want    makegenesis.CacheSizes
 	}{
 		"a genesis the minimum cache holds is run with the minimum": {
 			options: IntegrationTestNetOptions{Accounts: accounts(500)},
-			live:    1, archive: 1, elements: 1024,
+			want:    makegenesis.CacheSizes{LiveBytes: 1, ArchiveBytes: 1, StateDbItems: 1024},
 		},
 		"no accounts at all is the same": {
 			options: IntegrationTestNetOptions{},
-			live:    1, archive: 1, elements: 1024,
+			want:    makegenesis.CacheSizes{LiveBytes: 1, ArchiveBytes: 1, StateDbItems: 1024},
 		},
 		"a bigger genesis is given a cache that holds it": {
 			options: IntegrationTestNetOptions{Accounts: accounts(4096)},
-			live:    4096 * 4 * bytesPerNode, archive: 4096 * 4 * bytesPerNode, elements: 4096 * 4,
+			want: makegenesis.CacheSizes{
+				LiveBytes:    4096 * 4 * bytesPerNode,
+				ArchiveBytes: 4096 * 4 * bytesPerNode,
+				StateDbItems: 4096 * 4,
+			},
 		},
 		"an explicit size wins": {
 			options: IntegrationTestNetOptions{
@@ -540,16 +545,13 @@ func TestIntegrationTestNet_CacheSizes_GrowWithTheGenesisAndAreOverridable(t *te
 				ArchiveCacheSize: AsPointer(8),
 				CacheSize:        AsPointer(9),
 			},
-			live: 7, archive: 8, elements: 9,
+			want: makegenesis.CacheSizes{LiveBytes: 7, ArchiveBytes: 8, StateDbItems: 9},
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			live, archive, elements := test.options.cacheSizes()
-			require.Equal(t, test.live, live)
-			require.Equal(t, test.archive, archive)
-			require.Equal(t, test.elements, int64(elements))
+			require.Equal(t, test.want, test.options.cacheSizes())
 		})
 	}
 }

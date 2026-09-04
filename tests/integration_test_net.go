@@ -456,9 +456,8 @@ func StartIntegrationTestNetWithJsonGenesis(
 	require.NoError(t, err, "failed to start integration test network with json genesis")
 
 	net.genesis = jsonGenesis
-	live, archive, elements := effectiveOptions.cacheSizes()
 	net.genesisId, err = makefakegenesis.GetGenesisIdFromJson(jsonGenesis, genesisTmpDir,
-		makegenesis.CacheSizes{LiveBytes: live, ArchiveBytes: archive, StateDbItems: elements})
+		effectiveOptions.cacheSizes())
 	require.NoError(t, err, "failed to get genesis ID from json genesis")
 
 	return net
@@ -494,13 +493,13 @@ func startIntegrationTestNet(
 
 		// initialize the data directory for the single node on the test network
 		// using the configuration arguments provided by the caller
-		live, archive, elements := options.cacheSizes()
+		caches := options.cacheSizes()
 		args := append([]string{
 			"sonictool",
 			"--datadir", net.nodes[i].getStateDir(),
-			"--statedb.livecache", strconv.FormatInt(live, 10),
-			"--statedb.archivecache", strconv.FormatInt(archive, 10),
-			"--statedb.cache", strconv.Itoa(elements),
+			"--statedb.livecache", strconv.FormatInt(caches.LiveBytes, 10),
+			"--statedb.archivecache", strconv.FormatInt(caches.ArchiveBytes, 10),
+			"--statedb.cache", strconv.Itoa(caches.StateDbItems),
 		}, sonicToolArguments...)
 		require.NoError(t, sonictool.RunWithArgs(args), "failed to initialize the test network")
 	}
@@ -562,7 +561,7 @@ func (n *IntegrationTestNet) start() error {
 				}
 			}()
 
-			liveCacheSize, archiveCacheSize, cacheSize := n.options.cacheSizes()
+			caches := n.options.cacheSizes()
 
 			// start the fakenet sonic node
 			// equivalent to running `sonicd ...` but in this local process
@@ -594,9 +593,9 @@ func (n *IntegrationTestNet) start() error {
 				"--nodiscover",
 
 				// database memory usage options
-				"--statedb.livecache", fmt.Sprintf("%d", liveCacheSize),
-				"--statedb.archivecache", fmt.Sprintf("%d", archiveCacheSize),
-				"--statedb.cache", fmt.Sprintf("%d", cacheSize),
+				"--statedb.livecache", fmt.Sprintf("%d", caches.LiveBytes),
+				"--statedb.archivecache", fmt.Sprintf("%d", caches.ArchiveBytes),
+				"--statedb.cache", fmt.Sprintf("%d", caches.StateDbItems),
 
 				"--ipcpath", fmt.Sprintf("%s/sonic.ipc", tmp),
 
@@ -1568,7 +1567,7 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 // for a size only a few of them need. It is not enough for a genesis of thousands of accounts, though:
 // a genesis is written as one block, and Carmen panics rather than writing out a node whose hash it has
 // not computed yet, so the caches have to hold the whole genesis trie.
-func (o IntegrationTestNetOptions) cacheSizes() (live, archive int64, elements int) {
+func (o IntegrationTestNetOptions) cacheSizes() makegenesis.CacheSizes {
 	const (
 		// A node per account, plus headroom for the branch nodes above them.
 		nodesPerAccount = 4
@@ -1579,22 +1578,22 @@ func (o IntegrationTestNetOptions) cacheSizes() (live, archive int64, elements i
 	// back into bytes.
 	bytesPerNode := int64(mpt.EstimatePerNodeMemoryUsage())
 
-	live, archive, elements = 1, 1, 1024
+	sizes := makegenesis.CacheSizes{LiveBytes: 1, ArchiveBytes: 1, StateDbItems: 1024}
 	if nodes := nodesPerAccount * len(o.Accounts); nodes > minNodes {
 		size := int64(nodes) * bytesPerNode
-		live, archive, elements = size, size, nodes
+		sizes = makegenesis.CacheSizes{LiveBytes: size, ArchiveBytes: size, StateDbItems: nodes}
 	}
 
 	if o.LiveCacheSize != nil {
-		live = int64(*o.LiveCacheSize)
+		sizes.LiveBytes = int64(*o.LiveCacheSize)
 	}
 	if o.ArchiveCacheSize != nil {
-		archive = int64(*o.ArchiveCacheSize)
+		sizes.ArchiveBytes = int64(*o.ArchiveCacheSize)
 	}
 	if o.CacheSize != nil {
-		elements = *o.CacheSize
+		sizes.StateDbItems = *o.CacheSize
 	}
-	return live, archive, elements
+	return sizes
 }
 
 func IsDataRaceDetectionEnabled() bool {
