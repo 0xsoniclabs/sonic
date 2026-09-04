@@ -20,8 +20,9 @@
 // replay of the whole chain. README.md describes the design.
 //
 // This package only wires the domains together and holds the property tests themselves: the harness
-// is in core, the ordinary transaction types are in regular, and everything about gas subsidies is
-// in subsidies.
+// is in core, the ordinary transaction types are in regular, and everything about gas subsidies,
+// transaction bundles and transaction priorities is in subsidies, bundles and priorities
+// respectively.
 //
 // A reported failure names the seed that produced it, so it can be replayed:
 //
