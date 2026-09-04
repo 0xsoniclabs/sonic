@@ -548,6 +548,13 @@ func consensusCallbackBeginBlockFn(
 					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
 					// At this point, block state is finalized
 
+					// Store the transaction bodies before indexing their
+					// positions, such that readers finding a position always
+					// find the corresponding body as well.
+					for _, tx := range blockBuilder.GetTransactions() {
+						store.evm.SetTx(tx.Hash(), tx)
+					}
+
 					// Build index for not skipped txs
 					if txIndex {
 						for _, tx := range evmBlock.Transactions {
@@ -570,10 +577,6 @@ func consensusCallbackBeginBlockFn(
 					if sealing {
 						store.SetHistoryBlockEpochState(es.Epoch, bs, es)
 						store.SetEpochBlock(blockCtx.Idx+1, es.Epoch)
-					}
-
-					for _, tx := range blockBuilder.GetTransactions() {
-						store.evm.SetTx(tx.Hash(), tx)
 					}
 
 					store.SetBlock(blockCtx.Idx, block)
