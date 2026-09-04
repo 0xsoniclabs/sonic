@@ -467,6 +467,9 @@ func (b *EthAPIBackend) GetTransaction(ctx context.Context, txHash common.Hash) 
 	}
 
 	tx := b.svc.store.evm.GetTx(txHash)
+	if tx == nil {
+		return nil, 0, 0, fmt.Errorf("transactions index is corrupted (position without body), txid=%s, block=%d", txHash, position.Block)
+	}
 	return tx, uint64(position.Block), uint64(position.BlockOffset), nil
 }
 
