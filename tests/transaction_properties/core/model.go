@@ -156,7 +156,7 @@ func planBatch(
 		}
 	}
 
-	ResolveNonceOrder(specs, senders, baseFee, plans, reorderable)
+	ResolveNonceOrder(specs, senders, baseFee, cfg, plans, reorderable)
 	return plans, false, ""
 }
 
@@ -201,10 +201,18 @@ func AssignNonces(specs []TxSpec, senders []SenderState) []uint64 {
 // carrying nonces 0, 3, 1, 2 executes all four, and judging them as injected would wrongly call 3 a
 // gap. A batch nothing reorders is walked as written, where those same nonces leave everything after
 // the 3 behind a hole.
+//
+// Transaction priorities are what makes a nonce two of a sender's transactions claim unsettle the rest
+// of its sequence. The ordering step builds the sender's prioritized sequence before anything
+// executes, so it has to pick between such rivals by their hash rather than by which of them can
+// spend the nonce -- and it then hoists the later nonces behind the one it picked, past the rival that
+// spends the nonce in the end. A transaction hoisted like that is nonce-too-high in the block it was
+// hoisted into, with nothing but the order of the block against it.
 func ResolveNonceOrder(
 	specs []TxSpec,
 	senders []SenderState,
 	baseFee *big.Int,
+	cfg NetworkConfig,
 	plans []TxPlan,
 	reorderable bool,
 ) {
@@ -224,6 +232,16 @@ func ResolveNonceOrder(
 		rivals := map[uint64]int{}
 		for _, i := range order {
 			rivals[plans[i].Nonce]++
+		}
+
+		// What the ordering step sees claiming a nonce, which is more than what can spend it: it runs
+		// ahead of execution, on transactions filtered for nothing about nonces or prices, and a
+		// signature that does not recover to this sender is all that keeps one out of its sequence.
+		claimed := map[uint64]int{}
+		for i, spec := range specs {
+			if SenderOf(spec, senders) == index && spec.SigningMode() == SignCorrect {
+				claimed[plans[i].Nonce]++
+			}
 		}
 
 		balance := new(big.Int).Set(senders[index].Balance)
@@ -279,7 +297,9 @@ func ResolveNonceOrder(
 				expected++
 			}
 
-			uncertain = uncertain || drained
+			uncertain = uncertain ||
+				drained ||
+				(cfg.Upgrades.TransactionPriorities && claimed[plans[i].Nonce] > 1)
 		}
 	}
 }

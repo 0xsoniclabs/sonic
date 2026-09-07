@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 	"strings"
 
 	"github.com/0xsoniclabs/sonic/tests"
@@ -112,6 +113,7 @@ type Domain struct {
 	hoisted     int
 	ordered     int // blocks that hoisted more than one, and so ordered them against each other
 	demoted     int
+	unjudged    int // prioritized transactions whose place a rival for their nonce slot leaves open
 }
 
 // New builds the domain over a session whose network has transaction priorities enabled and the
@@ -209,28 +211,36 @@ func (d *Domain) Notes() []string {
 // Check verifies the order of every block the batch reached: it must begin with the transactions the
 // ordering rules hoist, in their order, and nothing that was not hoisted may sit among them.
 //
-// What became of the rest of the batch cannot change the answer, which is what the unreachable
-// budget buys: a transaction that did not execute is the last of its sender's run, since the nonces
-// behind it cannot execute either, and dropping the tail of a run leaves both the run and the order
-// of what is left alone.
+// The ordering step judges every transaction the block's events carried, not only the ones that go on
+// to execute: it runs before execution, on what is left after a filter that asks nothing about nonces,
+// balances or prices. So the batch's dropped transactions are part of the model's input too -- one
+// dropped for what it costs still occupied its sender's nonce slot in the sequence the rules built,
+// and a rival for that slot is then not the sender's own next nonce at all.
+//
+// What the model cannot decide is a slot two of the batch's transactions both claim: the two carry
+// the same registered priority, being the same slot, and which of them the ordering step took is
+// settled by their hashes among the transactions it was given -- a set a filter ahead of it may have
+// thinned in a way nothing here can observe. The place of such a transaction is left unjudged, and
+// reported as such.
 func (d *Domain) Check(rt *rapid.T, ctx context.Context, obs core.Observation) error {
 	if err := d.Inner.Check(rt, ctx, obs); err != nil {
 		return err
 	}
 
-	senderOf := make(map[common.Hash]common.Address, len(obs.Txs))
+	injected := make(map[common.Hash]core.TxObservation, len(obs.Txs))
 	executed := 0
 	for _, tx := range obs.Txs {
-		senderOf[tx.Hash] = tx.Sender.Address()
+		injected[tx.Hash] = tx
 		if tx.Outcome == core.OutcomeExecuted {
 			executed++
 		}
 	}
+	dropped := d.dropped(obs)
 
 	found := 0
 	seen := map[common.Address]uint64{}
 	for _, block := range obs.Blocks {
-		mine, positions := d.ours(block, senderOf)
+		mine, positions := d.ours(block, injected)
 		if len(mine) == 0 {
 			continue
 		}
@@ -243,18 +253,31 @@ func (d *Domain) Check(rt *rapid.T, ctx context.Context, obs core.Observation) e
 			starts[sender] = before + seen[sender]
 		}
 
-		expected := PrioritizedPrefix(mine, starts, perEntityBudget)
-		if err := d.compare(block, mine, positions, expected); err != nil {
+		candidates := append(slices.Clone(mine), dropped...)
+		contested := contestedSlots(candidates)
+		hoisted, err := d.compare(
+			block, mine, positions, PrioritizedPrefix(candidates, starts, perEntityBudget), contested)
+		if err != nil {
 			return err
 		}
 
 		for _, tx := range mine {
-			seen[tx.Sender]++
+			if injected[tx.Hash].Spec.SigningMode() == core.SignCorrect {
+				seen[tx.Sender]++
+			}
 		}
-		d.prioritized += countPrioritized(mine)
-		d.demoted += countPrioritized(mine) - len(expected)
-		d.hoisted += len(expected)
-		if len(expected) > 1 {
+		prioritized := countPrioritized(mine)
+		unjudged := 0
+		for _, tx := range mine {
+			if tx.Priority.IsPrioritized() && contested[slot{tx.Sender, tx.Nonce}] {
+				unjudged++
+			}
+		}
+		d.prioritized += prioritized
+		d.unjudged += unjudged
+		d.hoisted += len(hoisted)
+		d.demoted += prioritized - unjudged - len(hoisted)
+		if len(hoisted) > 1 {
 			d.ordered++
 		}
 		d.blocks++
@@ -273,82 +296,188 @@ func (d *Domain) Check(rt *rapid.T, ctx context.Context, obs core.Observation) e
 // with the index each one sits at.
 func (d *Domain) ours(
 	block *types.Block,
-	senderOf map[common.Hash]common.Address,
+	injected map[common.Hash]core.TxObservation,
 ) ([]BlockTx, []int) {
 
-	mine := make([]BlockTx, 0, len(senderOf))
-	positions := make([]int, 0, len(senderOf))
+	mine := make([]BlockTx, 0, len(injected))
+	positions := make([]int, 0, len(injected))
 	for index, tx := range block.Transactions() {
-		sender, ok := senderOf[tx.Hash()]
+		observed, ok := injected[tx.Hash()]
 		if !ok {
 			continue
 		}
+		sender := observed.Sender.Address()
 		mine = append(mine, BlockTx{
 			Hash:     tx.Hash(),
 			Sender:   sender,
 			Nonce:    tx.Nonce(),
 			Gas:      tx.Gas(),
-			Priority: d.table[slot{sender, tx.Nonce()}],
+			Priority: d.priorityOf(observed.Spec, sender, tx.Nonce()),
 		})
 		positions = append(positions, index)
 	}
 	return mine, positions
 }
 
+// dropped is what the ordering step was given of the batch and no block kept, so that the sequences
+// it built are modelled from the same transactions rather than from the survivors alone. The nonce is
+// the one the transaction was built with and the gas its drawn limit, both being what it carried into
+// the block it was dropped from.
+//
+// Some of these the filter ahead of the ordering step took out instead, which cannot be told apart
+// from here. Naming one too many is harmless: alone at its nonce slot it displaces nothing, and no
+// block kept it, so it is dropped from the prefix to be looked for -- and a later nonce of its sender
+// cannot be in a block either, that slot never having been spent. Where it does displace something it
+// shares the slot with it, which is what leaves such a slot unjudged.
+func (d *Domain) dropped(obs core.Observation) []BlockTx {
+	out := make([]BlockTx, 0, len(obs.Txs))
+	for _, tx := range obs.Txs {
+		if tx.Outcome == core.OutcomeExecuted {
+			continue
+		}
+		sender := tx.Sender.Address()
+		out = append(out, BlockTx{
+			Hash:     tx.Hash,
+			Sender:   sender,
+			Nonce:    tx.Nonce,
+			Gas:      tx.Spec.Gas(),
+			Priority: d.priorityOf(tx.Spec, sender, tx.Nonce),
+		})
+	}
+	return out
+}
+
+// priorityOf is the priority the ordering step gives one of the batch's transactions: what the
+// registry holds for its sender's nonce slot, and nothing at all unless the signature recovers to the
+// sender the transaction was drawn for. The registry answers per (sender, nonce), so a transaction the
+// chain attributes to a stranger holds no slot of its sender's -- and none of its own, nothing being
+// registered for an address the pool never handed out.
+func (d *Domain) priorityOf(spec core.TxSpec, sender common.Address, nonce uint64) Priority {
+	if spec.SigningMode() != core.SignCorrect {
+		return Priority{}
+	}
+	return d.table[slot{sender, nonce}]
+}
+
+// contestedSlots are the nonce slots more than one of the batch's transactions claims. The ordering
+// step took exactly one of them into its sender's sequence, by their hashes among the transactions it
+// was given, and that set is not the one observable here -- so which it was, and with it the place of
+// every one of them, is not the model's to decide.
+func contestedSlots(candidates []BlockTx) map[slot]bool {
+	claims := map[slot]int{}
+	for _, tx := range candidates {
+		if tx.Priority.IsPrioritized() {
+			claims[slot{tx.Sender, tx.Nonce}]++
+		}
+	}
+	contested := map[slot]bool{}
+	for at, claimed := range claims {
+		if claimed > 1 {
+			contested[at] = true
+		}
+	}
+	return contested
+}
+
+// judged sorts out what a comparison holds against each other: the batch's transactions of the
+// block whose place the rules decide, in block order and with where the block puts them, and the
+// ones of the expected prefix to be looked for among them. Two of the expected ones are left out --
+// one the ordering step hoisted and execution then dropped, which is in no block to be found in, and
+// one at a contested slot, which is left out of both sides.
+func judged(
+	mine []BlockTx,
+	positions []int,
+	expected []BlockTx,
+	kept map[common.Hash]struct{},
+	contested map[slot]bool,
+) (want, got []BlockTx, at []int) {
+
+	want = make([]BlockTx, 0, len(expected))
+	for _, tx := range expected {
+		_, inBlock := kept[tx.Hash]
+		if inBlock && !contested[slot{tx.Sender, tx.Nonce}] {
+			want = append(want, tx)
+		}
+	}
+
+	got = make([]BlockTx, 0, len(mine))
+	at = make([]int, 0, len(mine))
+	for i, tx := range mine {
+		if contested[slot{tx.Sender, tx.Nonce}] {
+			continue
+		}
+		got = append(got, tx)
+		at = append(at, positions[i])
+	}
+	return want, got, at
+}
+
 // compare holds the block's order against the expected prefix, in the two ways it can be wrong: the
 // hoisted transactions in the wrong order or the wrong set of them, and something else placed among
-// them.
+// them. It returns the hoisted transactions it judged.
 //
-// An internal transaction is not something else: a sponsorship appends its follow-up immediately
-// behind the transaction it belongs to, which is inside the prefix when that transaction was
-// hoisted, and it is placed there by execution rather than by the ordering step.
+// Two of the expected ones are passed over rather than looked for: one the ordering step hoisted and
+// execution then dropped, which is in no block to be found in, and one at a contested slot, whose
+// place is unjudged on both sides. An internal transaction is not something else: a sponsorship
+// appends its follow-up immediately behind the transaction it belongs to, which is inside the prefix
+// when that transaction was hoisted, and it is placed there by execution rather than by the ordering
+// step.
 func (d *Domain) compare(
 	block *types.Block,
 	mine []BlockTx,
 	positions []int,
 	expected []BlockTx,
-) error {
+	contested map[slot]bool,
+) ([]BlockTx, error) {
 
-	for i, want := range expected {
-		if mine[i].Hash != want.Hash {
-			return fmt.Errorf(
-				"block %d puts %s at position %d of the batch's transactions, where the priority "+
-					"rules call for %s\n%s",
-				block.NumberU64(), mine[i], i, want, d.describe(mine, expected))
+	kept := hashesOf(mine)
+	want, got, at := judged(mine, positions, expected, kept, contested)
+
+	for i, tx := range want {
+		if got[i].Hash != tx.Hash {
+			return nil, fmt.Errorf(
+				"block %d puts %s at position %d of the batch's transactions whose place the "+
+					"priority rules decide, where the rules call for %s\n%s",
+				block.NumberU64(), got[i], i, tx, d.describe(mine, expected, want))
 		}
 	}
 
-	if len(expected) == 0 {
-		return nil
+	if len(want) == 0 {
+		return want, nil
 	}
-	hoisted := hashesOf(expected)
 	for index, tx := range block.Transactions() {
-		if index >= positions[len(expected)-1] {
+		if index >= at[len(want)-1] {
 			break
 		}
 		if internaltx.IsInternal(tx) {
 			continue
 		}
-		if _, ok := hoisted[tx.Hash()]; !ok {
-			return fmt.Errorf(
+		if _, ours := kept[tx.Hash()]; !ours {
+			return nil, fmt.Errorf(
 				"block %d places %v at position %d, ahead of the prioritized transaction %s the "+
 					"ordering must have hoisted past it\n%s",
 				block.NumberU64(), tx.Hash().TerminalString(), index,
-				expected[len(expected)-1], d.describe(mine, expected))
+				want[len(want)-1], d.describe(mine, expected, want))
 		}
 	}
-	return nil
+	return want, nil
 }
 
-// describe renders what the block held and what was expected of it, for a failure report.
-func (d *Domain) describe(mine, expected []BlockTx) string {
+// describe renders what the block held and what was expected of it, for a failure report. The
+// prefix the rules call for is given twice: as the ordering step decided it, transactions no block
+// kept included, and as what is left of it to look for.
+func (d *Domain) describe(mine, expected, want []BlockTx) string {
 	var out strings.Builder
 	out.WriteString("the batch's transactions, in block order:")
 	for _, tx := range mine {
 		fmt.Fprintf(&out, "\n  %s", tx)
 	}
-	out.WriteString("\nexpected to be hoisted, in this order:")
+	out.WriteString("\nthe prioritized prefix the rules call for, in this order:")
 	for _, tx := range expected {
+		fmt.Fprintf(&out, "\n  %s", tx)
+	}
+	out.WriteString("\nof which these are the ones to be found in the block, in this order:")
+	for _, tx := range want {
 		fmt.Fprintf(&out, "\n  %s", tx)
 	}
 	return out.String()
@@ -380,9 +509,9 @@ func (d *Domain) String() string {
 	}
 	return fmt.Sprintf(
 		"%d blocks checked: %d prioritized transactions, %d of them hoisted, %d demoted by a nonce "+
-			"they could not extend; %d blocks hoisted more than one, and so ordered them against "+
-			"each other",
-		d.blocks, d.prioritized, d.hoisted, d.demoted, d.ordered)
+			"they could not extend, %d left unjudged by a rival for their nonce slot; %d blocks "+
+			"hoisted more than one, and so ordered them against each other",
+		d.blocks, d.prioritized, d.hoisted, d.demoted, d.unjudged, d.ordered)
 }
 
 // label names a draw after the slot it belongs to, matching how the generators in core label theirs.

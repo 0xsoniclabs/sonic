@@ -369,6 +369,38 @@ func TestResolveNonceOrder_LeavesRivalsForOneNonceUndecided(t *testing.T) {
 	}
 }
 
+// TestResolveNonceOrder_WithPrioritiesARivalNonceUnsettlesTheRestOfTheSequence is what transaction
+// priorities do to a run behind a contested nonce, and what a run of the priorities property found:
+// the ordering step picks between the rivals for a nonce before anything executes, and hoists what
+// comes after behind the one it picked -- past the rival that ends up spending the nonce.
+func TestResolveNonceOrder_WithPrioritiesARivalNonceUnsettlesTheRestOfTheSequence(t *testing.T) {
+	batch := func() []core.TxSpec {
+		return []core.TxSpec{
+			affordableSpec(0, core.NonceCorrect),
+			affordableSpec(0, core.NonceTooLow), // resolves to 0 as well, so the two compete
+			affordableSpec(0, core.NonceCorrect),
+		}
+	}
+	senders := []core.SenderState{{Nonce: 0, Balance: new(big.Int).Set(core.AccountBalance)}}
+
+	ordinary, rejected, _ := core.PlanBatch(
+		batch(), senders, big.NewInt(1), testNetwork(opera.GetAllegroUpgrades()))
+	require.False(t, rejected)
+	require.Equal(t, []uint64{0, 0, 1},
+		[]uint64{ordinary[0].Nonce, ordinary[1].Nonce, ordinary[2].Nonce})
+	require.False(t, ordinary[2].Prediction.Permits(core.OutcomeDropped),
+		"the scrambler leaves a sender's run in nonce order, so whichever rival spends nonce 0, "+
+			"the transaction behind it executes: %s", ordinary[2].Prediction)
+
+	upgrades := opera.GetAllegroUpgrades()
+	upgrades.TransactionPriorities = true
+	hoistable, rejected, _ := core.PlanBatch(batch(), senders, big.NewInt(1), testNetwork(upgrades))
+	require.False(t, rejected)
+	require.True(t, hoistable[2].Prediction.Permits(core.OutcomeExecuted))
+	require.True(t, hoistable[2].Prediction.Permits(core.OutcomeDropped),
+		"nonce 1 may be hoisted past the rival that spends nonce 0: %s", hoistable[2].Prediction)
+}
+
 func TestResolveNonceOrder_RejectsATransactionBehindAGap(t *testing.T) {
 	senders := []core.SenderState{{Nonce: 0, Balance: new(big.Int).Set(core.AccountBalance)}}
 	specs := []core.TxSpec{affordableSpec(0, core.NonceGap)}

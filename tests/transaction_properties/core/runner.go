@@ -96,6 +96,7 @@ type Observation struct {
 type TxObservation struct {
 	Spec    TxSpec
 	Hash    common.Hash
+	Nonce   uint64
 	Outcome Outcome
 	Receipt *types.Receipt
 	Sender  PooledAccount
@@ -315,6 +316,7 @@ func (r *Runner) Run(rt *rapid.T) {
 		observation.Txs[i] = TxObservation{
 			Spec:    spec,
 			Hash:    hashes[i],
+			Nonce:   plans[i].Nonce,
 			Outcome: outcome,
 			Receipt: result.Receipts[hashes[i]],
 			Sender:  accounts[senderIdx],
