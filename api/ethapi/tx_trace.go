@@ -567,8 +567,8 @@ func (s *PublicTxTraceAPI) traceTx(
 	chainConfig := s.b.ChainConfig(idx.Block(block.Number.Uint64()))
 	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, core.NewGasPool(msg.GasLimit), statedb, block.Number, block.Hash, tx, &index, tracedEVM.vmenv)
 
+	// Note: statedb.EndTransaction() already included in ApplyTransactionWithEVM
 	traceActions := tracedEVM.txTracer.GetResult()
-	statedb.EndTransaction()
 
 	if err != nil {
 		errTrace := txtrace.GetErrorTraceFromMsg(msg, block.Hash, *block.Number, tx.Hash(), index, err)
