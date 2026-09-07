@@ -342,10 +342,7 @@ func (sim *simulator) processBlock(
 		evm.SetPrecompiles(precompiles)
 	}
 
-	// EIP-2935: store parent block hash in history contract.
-	if sim.chainConfig.IsPrague(header.Number, uint64(header.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(header.ParentHash, evm, activeState)
-	}
+	executePreBlockSystemCalls(evm, header.Number, uint64(header.Time.Unix()), header.ParentHash, activeState)
 
 	for i, call := range block.Calls {
 		if err := ctx.Err(); err != nil {
