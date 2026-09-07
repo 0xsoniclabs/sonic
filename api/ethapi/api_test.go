@@ -1029,7 +1029,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		mockState.EXPECT().Snapshot()
 		mockState.EXPECT().Exist(recipient)
 		mockState.EXPECT().GetRefund().Times(2)
-		mockState.EXPECT().EndTransaction().Times(2)
+		mockState.EXPECT().EndTransaction()
 		mockState.EXPECT().TxIndex()
 	}
 
