@@ -26,7 +26,6 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
@@ -70,7 +69,9 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 
 	evmModule := New()
 	processor := evmModule.Start(
-		iblockproc.BlockCtx{},
+		0,
+		0,
+		0,
 		stateDb,
 		nil,
 		nil,
@@ -153,7 +154,7 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInReceipts(t *test
 
 	evmModule := New()
 	processor := evmModule.Start(
-		iblockproc.BlockCtx{}, stateDb, nil, logConsumer.OnNewLog,
+		0, 0, 0, stateDb, nil, logConsumer.OnNewLog,
 		opera.Rules{}, &params.ChainConfig{}, common.Hash{}, nil,
 	)
 
@@ -410,7 +411,7 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 
 	evmModule := New()
 	processor := evmModule.Start(
-		iblockproc.BlockCtx{}, stateDb, nil, logConsumer.OnNewLog,
+		0, 0, 0, stateDb, nil, logConsumer.OnNewLog,
 		opera.Rules{}, &params.ChainConfig{}, common.Hash{}, nil,
 	)
 
@@ -475,9 +476,7 @@ func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenBlockIsOlderTh
 		evmModule := New()
 		blockTime := time.Now().Add(-1*time.Hour - time.Second)
 		processor := evmModule.Start(
-			iblockproc.BlockCtx{
-				Time: inter.FromUnix(blockTime.Unix()),
-			},
+			0, inter.FromUnix(blockTime.Unix()), 0,
 			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
 			nil,
 		)
@@ -508,9 +507,7 @@ func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenSyncChannelIsN
 		evmModule := New()
 		blockTime := time.Now().Add(-1*time.Hour + time.Second)
 		processor := evmModule.Start(
-			iblockproc.BlockCtx{
-				Time: inter.FromUnix(blockTime.Unix()),
-			},
+			0, inter.FromUnix(blockTime.Unix()), 0,
 			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
 			nil,
 		)
@@ -541,9 +538,7 @@ func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOne
 		evmModule := New()
 		blockTime := time.Now().Add(-1*time.Hour + time.Second)
 		processor := evmModule.Start(
-			iblockproc.BlockCtx{
-				Time: inter.FromUnix(blockTime.Unix()),
-			},
+			0, inter.FromUnix(blockTime.Unix()), 0,
 			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
 			nil,
 		)
