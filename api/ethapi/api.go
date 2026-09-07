@@ -2679,6 +2679,26 @@ func (api *PublicDebugAPI) TraceBlockByHash(ctx context.Context, hash common.Has
 	return api.traceBlock(ctx, block, config)
 }
 
+// applyPreBlockSystemCalls executes the system calls which have to be applied on
+// top of the parent state before any transaction of the given block can be executed.
+func applyPreBlockSystemCalls(ctx context.Context, b Backend, block *evmcore.EvmBlock, statedb state.StateDB) (*vm.EVM, error) {
+	cfg, err := GetVmConfig(ctx, b, idx.Block(block.NumberU64()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vm config: %w", err)
+	}
+	cfg.NoBaseFee = true
+	vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &cfg, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// execute EIP-2935 HistoryStorage contract.
+	if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
+		evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
+	}
+	return vmenv, nil
+}
+
 // traceBlock configures a new tracer according to the provided configuration, and
 // executes all the transactions contained within. The return value will be one item
 // per transaction, dependent on the requested tracer.
@@ -2691,6 +2711,10 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 		return nil, err
 	}
 	defer statedb.Release()
+
+	if _, err := applyPreBlockSystemCalls(ctx, api.b, block, statedb); err != nil {
+		return nil, err
+	}
 
 	var (
 		chainConfig   = api.b.ChainConfig(idx.Block(block.Header().Number.Uint64()))
@@ -2743,25 +2767,14 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 		return nil, nil, err
 	}
 
-	if txIndex == 0 && len(block.Transactions) == 0 {
-		return nil, statedb, nil
-	}
-
-	// Use the block's VM config for replaying transactions with possible no base fee
-	cfg, err := GetVmConfig(ctx, b, idx.Block(block.NumberU64()))
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get vm config: %w", err)
-	}
-	cfg.NoBaseFee = true
-	vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &cfg, nil)
+	vmenv, err := applyPreBlockSystemCalls(ctx, b, block, statedb)
 	if err != nil {
 		statedb.Release()
 		return nil, nil, err
 	}
 
-	// execute EIP-2935 HistoryStorage contract.
-	if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
+	if txIndex == 0 && len(block.Transactions) == 0 {
+		return nil, statedb, nil
 	}
 
 	// Recompute transactions up to the target index.
