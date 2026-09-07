@@ -2724,7 +2724,10 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 		resultsLength int
 	)
 	for i, tx := range txs {
-		msg, _ := evmcore.TxAsMessage(tx, signer, block.BaseFee)
+		msg, err := evmcore.TxAsMessage(tx, signer, block.BaseFee)
+		if err != nil {
+			return nil, fmt.Errorf("cannot get message from transaction %s: %w", tx.Hash(), err)
+		}
 		txctx := &tracers.Context{
 			BlockHash:   block.Hash,
 			BlockNumber: block.Number,
