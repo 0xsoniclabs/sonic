@@ -2741,8 +2741,6 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 		results[i] = &txTraceResult{TxHash: tx.Hash(), Result: res}
 		resultsLength += len(res)
 
-		// Note: statedb.EndTransaction() already included in ApplyTransactionWithEVM
-
 		// limit the response size.
 		if api.maxResponseSize > 0 && resultsLength > api.maxResponseSize {
 			return nil, ErrMaxResponseSize
