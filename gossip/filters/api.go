@@ -201,12 +201,17 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context, fullTx *
 		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
 	}
 
-	rpcSub := notifier.CreateSubscription()
+	// The subscription must be installed in the event system before this
+	// function returns. Otherwise the client's subscription request completes
+	// while the feed is not yet registered, and transactions entering the pool
+	// in that window are never reported to this subscriber.
+	var (
+		rpcSub       = notifier.CreateSubscription()
+		incomingTxs  = make(chan []*types.Transaction, 128)
+		pendingTxSub = api.events.SubscribePendingTxs(incomingTxs)
+	)
 
 	go func() {
-		incomingTxs := make(chan []*types.Transaction, 128)
-		pendingTxSub := api.events.SubscribePendingTxs(incomingTxs)
-
 		for {
 			select {
 			case txs := <-incomingTxs:
@@ -272,12 +277,15 @@ func (api *PublicFilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, er
 		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
 	}
 
-	rpcSub := notifier.CreateSubscription()
+	// Installed before returning, for the same reason as in
+	// NewPendingTransactions.
+	var (
+		rpcSub     = notifier.CreateSubscription()
+		headers    = make(chan *evmcore.EvmHeaderJson)
+		headersSub = api.events.SubscribeNewHeads(headers)
+	)
 
 	go func() {
-		headers := make(chan *evmcore.EvmHeaderJson)
-		headersSub := api.events.SubscribeNewHeads(headers)
-
 		for {
 			select {
 			case h := <-headers:

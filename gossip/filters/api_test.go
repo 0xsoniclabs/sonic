@@ -17,9 +17,12 @@
 package filters
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -181,5 +184,79 @@ func TestUnmarshalJSONNewFilterArgs(t *testing.T) {
 	}
 	if len(test7.Topics[2]) != 0 {
 		t.Fatalf("expected 0 topics, got %d topics", len(test7.Topics[2]))
+	}
+}
+
+// A subscription must be installed in the event system before the RPC method
+// returns. If it is installed by a background goroutine instead, the client's
+// subscribe request completes while the feed is not yet registered, and events
+// occurring in that window are silently lost for that subscriber. For
+// newPendingTransactions that is unrecoverable: a client that sends a single
+// transaction and waits for its notification waits forever.
+//
+// Installation goes through the event loop, so the property is observable by
+// occupying the loop: while it is busy, a subscribe request that installs
+// synchronously cannot complete, and one that defers the install to a
+// goroutine returns straight away.
+func TestPublicFilterAPI_Subscribe_InstallsFeedBeforeReturning(t *testing.T) {
+	for _, method := range []string{"newPendingTransactions", "newHeads"} {
+		t.Run(method, func(t *testing.T) {
+			backend := &instrumentedBackend{
+				testBackend: newTestBackend(),
+				entered:     make(chan struct{}),
+				release:     make(chan struct{}),
+			}
+			api := NewPublicFilterAPI(backend, testConfig())
+
+			// Release the event loop no matter how this test ends: while it is
+			// occupied, api.Stop waits for the in-flight broadcast, so a
+			// failure would otherwise hang instead of reporting.
+			releaseLoop := sync.OnceFunc(func() { close(backend.release) })
+			defer api.Stop()
+			defer releaseLoop()
+
+			server := rpc.NewServer()
+			if err := server.RegisterName("eth", api); err != nil {
+				t.Fatalf("failed to register API: %v", err)
+			}
+			defer server.Stop()
+
+			client := rpc.DialInProc(server)
+			defer client.Close()
+
+			// Occupy the event loop, so that no install can be processed.
+			sendBlock(backend, 1)
+			select {
+			case <-backend.entered:
+			case <-time.After(5 * time.Second):
+				t.Fatal("broadcast did not reach the backend")
+			}
+
+			subscribed := make(chan error, 1)
+			go func() {
+				notifications := make(chan json.RawMessage)
+				sub, err := client.EthSubscribe(context.Background(), notifications, method)
+				if err == nil {
+					sub.Unsubscribe()
+				}
+				subscribed <- err
+			}()
+
+			select {
+			case err := <-subscribed:
+				t.Fatalf("subscribe returned before the feed was installed (err: %v)", err)
+			case <-time.After(100 * time.Millisecond):
+			}
+
+			releaseLoop()
+			select {
+			case err := <-subscribed:
+				if err != nil {
+					t.Fatalf("failed to subscribe: %v", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("subscribe did not return after the event loop was released")
+			}
+		})
 	}
 }
