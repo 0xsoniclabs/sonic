@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -812,4 +813,171 @@ func TestTransactionBundle_Copy_CreatesDistinctCopy(t *testing.T) {
 
 	require.NotContains(t, bundle.Transactions, TxReference{From: common.Address{0x2}, Hash: common.Hash{0x2}})
 	require.Equal(t, NewTxStep(TxReference{From: common.Address{0x1}, Hash: common.Hash{0x1}}), bundle.Plan.Root)
+}
+
+func TestGetBundleOnlyTransactions_CollectsTransactionsOfNestedBundles(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	inner := OneOf(
+		Step(key, &types.AccessListTx{Nonce: 1}),
+		Step(key, &types.AccessListTx{Nonce: 2}),
+	).Build()
+
+	outer, outerBundle, _ := NewBuilder().
+		AllOf(
+			Step(key, &types.AccessListTx{Nonce: 3}),
+			Step(key, inner),
+		).
+		BuildEnvelopeBundleAndPlan()
+
+	signer := NewBuilder().GetSigner()
+	found := GetBundleOnlyTransactions(signer, outer)
+
+	// The bundle's transactions, the nested envelope, and the transactions of
+	// the nested bundle are all bundle-only.
+	want := []common.Hash{}
+	for _, tx := range outerBundle.GetTransactionsInReferencedOrder() {
+		want = append(want, tx.Hash())
+		if IsEnvelope(tx) {
+			nested, err := OpenEnvelope(signer, tx)
+			require.NoError(t, err)
+			for _, nestedTx := range nested.GetTransactionsInReferencedOrder() {
+				want = append(want, nestedTx.Hash())
+			}
+		}
+	}
+	require.Len(t, want, 4)
+
+	got := []common.Hash{}
+	for _, tx := range found {
+		got = append(got, tx.Hash())
+	}
+	require.ElementsMatch(t, want, got)
+}
+
+func TestGetBundleOnlyTransactions_IgnoresTransactionsWithoutTheBundleOnlyMark(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	signer := NewBuilder().GetSigner()
+	txBundle, _ := NewBuilder().
+		AllOf(
+			Step(key, &types.AccessListTx{Nonce: 1}),
+			Step(key, &types.AccessListTx{Nonce: 2}),
+		).
+		BuildBundleAndPlan()
+
+	// Strip the mark from one of the transactions, which retains its reference
+	// in the bundle.
+	var replaced TxReference
+	for ref := range txBundle.Transactions {
+		replaced = ref
+		break
+	}
+	stripped, err := removeBundleOnlyMark(txBundle.Transactions[replaced])
+	require.NoError(t, err)
+	txData, err := utils.GetTxData(stripped)
+	require.NoError(t, err)
+	regularTx := types.MustSignNewTx(key, signer, txData)
+	require.False(t, IsBundleOnly(regularTx))
+	txBundle.Transactions[replaced] = regularTx
+
+	found := GetBundleOnlyTransactions(signer, MustWrapIntoEnvelope(signer, txBundle))
+	require.Len(t, found, 1)
+	require.True(t, IsBundleOnly(found[0]))
+	require.NotEqual(t, regularTx.Hash(), found[0].Hash())
+}
+
+func TestGetBundleOnlyTransactions_ReportsNothingForNonBundleTransactions(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := NewBuilder().GetSigner()
+
+	tests := map[string]*types.Transaction{
+		"nil transaction": nil,
+		"regular transaction": types.MustSignNewTx(key, signer,
+			&types.AccessListTx{Nonce: 1},
+		),
+		"envelope with an undecodable payload": types.MustSignNewTx(key, signer,
+			&types.AccessListTx{To: &BundleProcessor, Data: []byte{1, 2, 3}},
+		),
+	}
+
+	for name, tx := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Empty(t, GetBundleOnlyTransactions(signer, tx))
+		})
+	}
+}
+
+func TestGetBundleOnlyTransactions_ToleratesReferencesToMissingTransactions(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	signer := NewBuilder().GetSigner()
+	txBundle, _ := NewBuilder().
+		AllOf(
+			Step(key, &types.AccessListTx{Nonce: 1}),
+			Step(key, &types.AccessListTx{Nonce: 2}),
+		).
+		BuildBundleAndPlan()
+
+	// Drop a transaction referenced by the plan, such a bundle is rejected by
+	// the block processor but must be tolerated here.
+	for ref := range txBundle.Transactions {
+		delete(txBundle.Transactions, ref)
+		break
+	}
+
+	envelope := MustWrapIntoEnvelope(signer, txBundle)
+	_, _, err = ValidateEnvelope(signer, envelope)
+	require.Error(t, err)
+
+	found := GetBundleOnlyTransactions(signer, envelope)
+	require.Len(t, found, 1)
+}
+
+func TestGetApprovedExecutionPlans_ReportsPlansOfTheBundleOnlyMark(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	txBundle, plan := NewBuilder().
+		With(Step(key, &types.AccessListTx{})).
+		BuildBundleAndPlan()
+
+	bundleOnlyTx := txBundle.GetTransactionsInReferencedOrder()[0]
+	require.Equal(t,
+		[]common.Hash{plan.Hash()},
+		GetApprovedExecutionPlans(bundleOnlyTx),
+	)
+
+	otherPlan := common.Hash{0x42}
+	tests := map[string]struct {
+		accessList types.AccessList
+		expected   []common.Hash
+	}{
+		"no access list":     {},
+		"unrelated entry":    {accessList: types.AccessList{{Address: common.Address{0x1}, StorageKeys: []common.Hash{otherPlan}}}},
+		"mark without plans": {accessList: types.AccessList{{Address: BundleOnly}}},
+		"mark with a plan": {
+			accessList: types.AccessList{{Address: BundleOnly, StorageKeys: []common.Hash{otherPlan}}},
+			expected:   []common.Hash{otherPlan},
+		},
+		"multiple marks": {
+			accessList: types.AccessList{
+				{Address: BundleOnly, StorageKeys: []common.Hash{otherPlan}},
+				{Address: common.Address{0x1}, StorageKeys: []common.Hash{{0x7}}},
+				{Address: BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
+			},
+			expected: []common.Hash{otherPlan, plan.Hash()},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			tx := types.NewTx(&types.AccessListTx{AccessList: test.accessList})
+			require.Equal(t, test.expected, GetApprovedExecutionPlans(tx))
+		})
+	}
 }

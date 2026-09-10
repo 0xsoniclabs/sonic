@@ -19,6 +19,7 @@ package evmcore
 import (
 	"crypto/ecdsa"
 	"math/big"
+	"sync/atomic"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -225,4 +226,120 @@ func bundleTx(nonce uint64, key *ecdsa.PrivateKey) *types.Transaction {
 		SetEnvelopeNonce(nonce).
 		With(bundle.Step(key, &types.AccessListTx{Nonce: nonce})).
 		Build()
+}
+
+func TestTxPool_EvictTransactionsOfEvaluatedBundles_DropsBundleOnlyTransactionsOfEvaluatedBundles(t *testing.T) {
+
+	chainId := big.NewInt(123)
+	blockNumber := idx.Block(1)
+
+	rules := opera.Rules{
+		NetworkID: chainId.Uint64(),
+		Economy: opera.EconomyRules{
+			Gas: opera.GasRules{
+				MaxEventGas: 30_000_000,
+			},
+		},
+		Upgrades: opera.Upgrades{
+			Allegro:            true,
+			Brio:               true,
+			TransactionBundles: true,
+		},
+	}
+	signer := types.LatestSignerForChainID(chainId)
+
+	chainConfig := opera.CreateTransientEvmChainConfig(
+		chainId.Uint64(),
+		[]opera.UpgradeHeight{{Upgrades: rules.Upgrades, Height: 0}},
+		blockNumber,
+	)
+
+	poolConfig := DefaultTxPoolConfig
+	poolConfig.Journal = ""
+	poolConfig.DisableTxPoolValidation = true
+
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+
+	bundleeKey, err := crypto.GenerateKey()
+	require.NoError(err)
+	bundleeAddress := crypto.PubkeyToAddress(bundleeKey.PublicKey)
+
+	envelope, txBundle, plan := bundle.NewBuilder().
+		WithSigner(signer).
+		SetEnvelopeNonce(0).
+		AllOf(
+			bundle.Step(bundleeKey, &types.AccessListTx{Nonce: 0, Gas: 60_000}),
+		).
+		BuildEnvelopeBundleAndPlan()
+
+	// Registered before the catch-all expectations installed below.
+	evaluated := atomic.Bool{}
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).
+		DoAndReturn(func(execPlanHash common.Hash) bool {
+			return evaluated.Load() && execPlanHash == plan.Hash()
+		}).AnyTimes()
+	mockStateDbExecutionUsageForAccountWithNonce(stateDb, bundleeAddress, 0)
+	stateDb.EXPECT().Release().AnyTimes() // < released on every new head
+
+	chain := NewMockStateReader(ctrl)
+	chain.EXPECT().CurrentBlock().DoAndReturn(func() *EvmBlock {
+		// The evaluating block advances the head, making the pool
+		// re-evaluate the bundles it knows.
+		head := blockNumber
+		if evaluated.Load() {
+			head++
+		}
+		return &EvmBlock{EvmHeader: EvmHeader{Number: big.NewInt(int64(head))}}
+	}).AnyTimes()
+	chain.EXPECT().CurrentConfig().Return(chainConfig).AnyTimes()
+	chain.EXPECT().CurrentStateDB().Return(stateDb, nil).AnyTimes()
+	chain.EXPECT().CurrentMaxGasLimit().Return(rules.Economy.Gas.MaxEventGas).AnyTimes()
+	chain.EXPECT().CurrentBaseFee().Return(big.NewInt(1)).AnyTimes()
+	chain.EXPECT().CurrentRules().Return(rules).AnyTimes()
+
+	subscriber := NewMocksubscriber(ctrl)
+	subscriber.EXPECT().Err().Return(make(chan error)).AnyTimes()
+	subscriber.EXPECT().Unsubscribe().AnyTimes()
+	chain.EXPECT().SubscribeNewBlock(gomock.Any()).Return(subscriber).AnyTimes()
+
+	subsidiesCheckFactory := func(opera.Rules, StateReader, state.StateDB, types.Signer) utils.TransactionCheckFunc {
+		return nil
+	}
+
+	pool := newTxPool(poolConfig, chainConfig, chain, subsidiesCheckFactory,
+		NewBundleEvaluationCache())
+
+	// The pool knows the envelope and the transactions of its bundle, which
+	// occupy the nonces of their sender.
+	bundledTxs := txBundle.GetTransactionsInReferencedOrder()
+	require.Len(bundledTxs, 1)
+	require.NoError(pool.AddLocal(envelope))
+	for _, tx := range bundledTxs {
+		require.True(bundle.IsBundleOnly(tx))
+		require.NoError(pool.AddLocal(tx))
+	}
+	require.Equal(2, pool.Count())
+	require.Equal(uint64(1), pool.Nonce(bundleeAddress))
+
+	// A new head not evaluating the bundle retains all of them.
+	<-pool.requestReset(nil, nil)
+	require.Equal(2, pool.Count())
+	require.Equal(uint64(1), pool.Nonce(bundleeAddress))
+
+	// Once the bundle got evaluated, its transactions are of no use anymore.
+	evaluated.Store(true)
+	<-pool.requestReset(nil, nil)
+
+	for _, tx := range bundledTxs {
+		require.Nil(pool.Get(tx.Hash()),
+			"bundle-only transaction of an evaluated bundle must be evicted")
+	}
+	require.Nil(pool.Get(envelope.Hash()),
+		"the envelope of an evaluated bundle must be dropped as well")
+	require.Zero(pool.Count())
+	require.Equal(uint64(0), pool.Nonce(bundleeAddress),
+		"the evicted transaction must not block the nonce of its sender")
+	require.NoError(validateTxPoolInternals(pool))
 }
