@@ -133,11 +133,34 @@ func (b *GenesisBuilder) CurrentHash() hash.Hash {
 	return er.Hash()
 }
 
+// CacheSizes are the Carmen cache sizes a genesis builder runs with. The zero value asks for the
+// minimum, which is what a genesis of a few hundred accounts needs.
+//
+// A bigger genesis needs more: it is written as a single block, and Carmen panics rather than writing
+// out a node whose hash it has not computed yet, so a cache that cannot hold the whole genesis trie
+// brings the process down with "unable to store account node with dirty hash".
+type CacheSizes struct {
+	LiveBytes    int64 // size of the live db cache, in bytes
+	ArchiveBytes int64 // size of the archive cache, in bytes
+	StateDbItems int   // number of data elements cached by the state db
+}
+
 // NewGenesisBuilder creates a builder for a new genesis. The given tmpDir is used as the
 // parent directory for the Carmen database and data produced while exporting the state into the genesis
 // store returned by Build. It must exist and remain available until that store has been
 // fully read; removing it is the responsibility of the caller.
-func NewGenesisBuilder(tmpDir string) (*GenesisBuilder, error) {
+//
+// The caches default to the minimum, since most genesis blocks are small; pass CacheSizes to import
+// more accounts than that can hold.
+func NewGenesisBuilder(tmpDir string, sizes ...CacheSizes) (*GenesisBuilder, error) {
+	caches := CacheSizes{}
+	if len(sizes) > 0 {
+		caches = sizes[0]
+	}
+	caches.LiveBytes = max(caches.LiveBytes, 1)
+	caches.ArchiveBytes = max(caches.ArchiveBytes, 1)
+	caches.StateDbItems = max(caches.StateDbItems, 1024)
+
 	carmenDir, err := os.MkdirTemp(tmpDir, "opera-tmp-genesis")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary dir for GenesisBuilder: %v", err)
@@ -147,14 +170,13 @@ func NewGenesisBuilder(tmpDir string) (*GenesisBuilder, error) {
 		Schema:       carmen.Schema(5),
 		Archive:      carmen.S5Archive,
 		Directory:    carmenDir,
-		LiveCache:    1, // use minimum cache (not default)
-		ArchiveCache: 1, // use minimum cache (not default)
+		LiveCache:    caches.LiveBytes,
+		ArchiveCache: caches.ArchiveBytes,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create carmen state; %s", err)
 	}
-	// Set cache size to lowest value possible
-	carmenStateDb := carmen.CreateCustomStateDBUsing(carmenState, 1024)
+	carmenStateDb := carmen.CreateCustomStateDBUsing(carmenState, caches.StateDbItems)
 	tmpStateDB := evmstore.CreateCarmenStateDb(carmenStateDb, nil)
 
 	return &GenesisBuilder{
