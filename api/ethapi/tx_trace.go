@@ -455,6 +455,10 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 	}
 	defer state.Release()
 
+	if _, err := applyPreBlockSystemCalls(ctx, s.b, block, state); err != nil {
+		return nil, fmt.Errorf("cannot apply pre-block system calls for block %v, error: %v", block.NumberU64(), err.Error())
+	}
+
 	receipts, err := s.b.GetReceiptsByNumber(ctx, rpc.BlockNumber(blockNumber))
 	if err != nil {
 		return nil, fmt.Errorf("cannot get receipts for block %v, error: %v", block.NumberU64(), err.Error())
@@ -509,26 +513,22 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 				return nil, fmt.Errorf("cannot initialize vm for transaction %s, error: %s", tx.Hash().String(), err.Error())
 			}
 
-			if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-				evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, state)
-			}
-
 			res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
-			failed := false
+			status := types.ReceiptStatusSuccessful
 			if err != nil {
-				failed = true
+				status = types.ReceiptStatusFailed
 				log.Error("Cannot replay transaction", "txHash", tx.Hash().String(), "err", err.Error())
 			}
 
 			if res != nil && res.Err != nil {
-				failed = true
+				status = types.ReceiptStatusFailed
 				log.Debug("Error replaying transaction", "txHash", tx.Hash().String(), "err", res.Err.Error())
 			}
 
 			state.EndTransaction()
 
 			// Check correct replay status according to receipt data
-			if (failed && receipts[i].Status == 1) || (!failed && receipts[i].Status == 0) {
+			if status != receipts[i].Status {
 				return nil, fmt.Errorf("invalid transaction replay state at %s", tx.Hash().String())
 			}
 		}
@@ -566,14 +566,12 @@ func (s *PublicTxTraceAPI) traceTx(
 	statedb.SetTxContext(tx.Hash(), int(index))
 	chainConfig := s.b.ChainConfig(idx.Block(block.Number.Uint64()))
 	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, core.NewGasPool(msg.GasLimit), statedb, block.Number, block.Hash, tx, &index, tracedEVM.vmenv)
-
 	traceActions := tracedEVM.txTracer.GetResult()
-	statedb.EndTransaction()
 
 	if err != nil {
 		errTrace := txtrace.GetErrorTraceFromMsg(msg, block.Hash, *block.Number, tx.Hash(), index, err)
 		at := []txtrace.ActionTrace{*errTrace}
-		if status == 1 {
+		if status == types.ReceiptStatusSuccessful {
 			return nil, fmt.Errorf("invalid transaction replay state at %s, error: %s", tx.Hash().String(), err.Error())
 		}
 		return &at, nil
