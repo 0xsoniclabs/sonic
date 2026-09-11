@@ -2509,7 +2509,7 @@ func (api *PublicDebugAPI) TraceTransaction(ctx context.Context, hash common.Has
 		return nil, err
 	}
 	if tx == nil {
-		return nil, fmt.Errorf("transaction %s not found", hash.Hex())
+		return nil, errors.New("transaction not found")
 	}
 	// It shouldn't happen in practice.
 	if blockNumber == 0 {
@@ -2533,6 +2533,26 @@ func (api *PublicDebugAPI) TraceTransaction(ctx context.Context, hash common.Has
 	}
 
 	return api.traceTx(ctx, tx, msg, txctx, block.Header(), statedb, config, nil)
+}
+
+// limitStructLogs wraps the given opcode hook such that it is called at most
+// limit times. A zero limit means unlimited, a negative limit suppresses the
+// hook entirely -- the semantics documented for the --rpc.structloglimit flag.
+func limitStructLogs(onOpcode tracing.OpcodeHook, limit int) tracing.OpcodeHook {
+	if onOpcode == nil || limit == 0 {
+		return onOpcode
+	}
+	if limit < 0 {
+		return func(uint64, byte, uint64, uint64, tracing.OpContext, []byte, int, error) {}
+	}
+	reported := 0
+	return func(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+		if reported >= limit {
+			return
+		}
+		reported++
+		onOpcode(pc, op, gas, cost, scope, rData, depth, err)
+	}
 }
 
 // traceTx configures a new tracer according to the provided configuration, and
@@ -2563,19 +2583,20 @@ func (api *PublicDebugAPI) traceTx(
 	// Default tracer is the struct logger
 	if config.Tracer == nil {
 		if config.Config == nil {
-			config.Config = &logger.Config{Limit: api.structLogLimit}
-		} else {
-			if api.structLogLimit > 0 &&
-				(config.Limit == 0 || config.Limit > api.structLogLimit) {
-
-				config.Limit = api.structLogLimit
-			}
+			config.Config = &logger.Config{}
 		}
-		logger := logger.NewStructLogger(config.Config)
+		structLogger := logger.NewStructLogger(config.Config)
+		hooks := structLogger.Hooks()
+		// The struct logger's own config.Limit is a limit on the size of the
+		// produced output in bytes, while api.structLogLimit is a limit on the
+		// number of produced log entries. The latter has to be enforced here.
+		// The total response size is capped independently, see maxResponseSize
+		// below.
+		hooks.OnOpcode = limitStructLogs(hooks.OnOpcode, api.structLogLimit)
 		tracer = &tracers.Tracer{
-			Hooks:     logger.Hooks(),
-			GetResult: logger.GetResult,
-			Stop:      logger.Stop,
+			Hooks:     hooks,
+			GetResult: structLogger.GetResult,
+			Stop:      structLogger.Stop,
 		}
 	} else {
 		tracer, err = tracers.DefaultDirectory.New(*config.Tracer, txctx, config.TracerConfig, chainConfig)
