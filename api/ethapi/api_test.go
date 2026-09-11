@@ -141,7 +141,7 @@ func TestAPI_GetProof(t *testing.T) {
 
 	api := NewPublicBlockChainAPI(mockBackend)
 
-	accountProof, err := api.GetProof(context.Background(), common.Address(addr), keys, blkNr)
+	accountProof, err := api.GetProof(context.Background(), common.Address(addr), keys, &blkNr)
 	require.NoError(t, err, "failed to get account")
 
 	u256Balance := balance.Uint256()
@@ -184,7 +184,7 @@ func TestAPI_GetAccount(t *testing.T) {
 
 	api := NewPublicBlockChainAPI(mockBackend)
 
-	account, err := api.GetAccount(context.Background(), common.Address(addr), blkNr)
+	account, err := api.GetAccount(context.Background(), common.Address(addr), &blkNr)
 	require.NoError(t, err, "failed to get account")
 
 	u256Balance := balance.Uint256()
@@ -459,7 +459,7 @@ func TestBlockStateOverrides(t *testing.T) {
 	// Check block overrides on eth api with eth_call and eth_estimateGas rpc function
 	apiEth := NewPublicBlockChainAPI(mockBackend)
 
-	_, err = apiEth.Call(context.Background(), getTxArgs(t), rpcBlkNr, stateOverrides, blockOverrides)
+	_, err = apiEth.Call(context.Background(), getTxArgs(t), &rpcBlkNr, stateOverrides, blockOverrides)
 	require.NoError(t, err, "debug api must be able to override block number and base fee")
 
 	_, err = apiEth.EstimateGas(context.Background(), getTxArgs(t), &rpcBlkNr, stateOverrides, blockOverrides)
@@ -1685,6 +1685,95 @@ func TestCapMaxGas_IsUpgradesAware(t *testing.T) {
 
 			require.NoError(t, err, "unexpected error")
 			require.Equal(t, uint64(test.wantEstimation), got)
+		})
+	}
+}
+
+func TestBlockNrOrHashOrLatest_DefaultsOmittedParameterToLatest(t *testing.T) {
+	latest := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+	pending := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
+	number := rpc.BlockNumberOrHashWithNumber(42)
+	hash := rpc.BlockNumberOrHashWithHash(common.Hash{7}, true)
+
+	tests := map[string]struct {
+		given *rpc.BlockNumberOrHash
+		want  rpc.BlockNumberOrHash
+	}{
+		"omitted defaults to latest": {given: nil, want: latest},
+		"latest is kept":             {given: &latest, want: latest},
+		"pending is kept":            {given: &pending, want: pending},
+		"number is kept":             {given: &number, want: number},
+		"hash is kept":               {given: &hash, want: hash},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.want, blockNrOrHashOrLatest(test.given))
+		})
+	}
+}
+
+func TestAPI_OmittedBlockParameterResolvesLatestBlock(t *testing.T) {
+	addr := common.Address{1}
+	latest := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+
+	tests := map[string]struct {
+		expectState func(*state.MockStateDB)
+		call        func(*PublicBlockChainAPI, *PublicTransactionPoolAPI) error
+	}{
+		"eth_getBalance": {
+			expectState: func(s *state.MockStateDB) {
+				s.EXPECT().GetBalance(addr).Return(uint256.NewInt(1))
+			},
+			call: func(api *PublicBlockChainAPI, _ *PublicTransactionPoolAPI) error {
+				_, err := api.GetBalance(context.Background(), addr, nil)
+				return err
+			},
+		},
+		"eth_getCode": {
+			expectState: func(s *state.MockStateDB) {
+				s.EXPECT().GetCode(addr).Return([]byte{1})
+			},
+			call: func(api *PublicBlockChainAPI, _ *PublicTransactionPoolAPI) error {
+				_, err := api.GetCode(context.Background(), addr, nil)
+				return err
+			},
+		},
+		"eth_getStorageAt": {
+			expectState: func(s *state.MockStateDB) {
+				s.EXPECT().GetState(addr, common.Hash{}).Return(common.Hash{1})
+			},
+			call: func(api *PublicBlockChainAPI, _ *PublicTransactionPoolAPI) error {
+				_, err := api.GetStorageAt(context.Background(), addr, "0x0", nil)
+				return err
+			},
+		},
+		"eth_getTransactionCount": {
+			expectState: func(s *state.MockStateDB) {
+				s.EXPECT().GetNonce(addr).Return(uint64(1))
+			},
+			call: func(_ *PublicBlockChainAPI, api *PublicTransactionPoolAPI) error {
+				_, err := api.GetTransactionCount(context.Background(), addr, nil)
+				return err
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockBackend := NewMockBackend(ctrl)
+			mockState := state.NewMockStateDB(ctrl)
+			mockBackend.EXPECT().ChainID().Return(big.NewInt(1)).AnyTimes()
+
+			// The backend must be asked for the latest block, not for a zero value.
+			mockBackend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), latest).Return(mockState, nil, nil)
+			test.expectState(mockState)
+			mockState.EXPECT().Error().Return(nil).AnyTimes()
+			mockState.EXPECT().Release()
+
+			err := test.call(NewPublicBlockChainAPI(mockBackend), NewPublicTransactionPoolAPI(mockBackend, nil))
+			require.NoError(t, err)
 		})
 	}
 }

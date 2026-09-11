@@ -708,11 +708,21 @@ func (s *PublicBlockChainAPI) BlockNumber() hexutil.Uint64 {
 	return hexutil.Uint64(header.Number.Uint64())
 }
 
+// blockNrOrHashOrLatest returns the given block parameter, defaulting to the
+// latest block if the parameter was omitted by the caller.
+func blockNrOrHashOrLatest(blockNrOrHash *rpc.BlockNumberOrHash) rpc.BlockNumberOrHash {
+	if blockNrOrHash != nil {
+		return *blockNrOrHash
+	}
+	return rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+}
+
 // GetBalance returns the amount of wei for the given address in the state of the
 // given block number. The rpc.LatestBlockNumber and rpc.PendingBlockNumber meta
-// block numbers are also allowed.
-func (s *PublicBlockChainAPI) GetBalance(ctx context.Context, address common.Address, blockNrOrHash rpc.BlockNumberOrHash) (*hexutil.U256, error) {
-	state, _, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
+// block numbers are also allowed. When the block parameter is omitted, it
+// defaults to the latest block.
+func (s *PublicBlockChainAPI) GetBalance(ctx context.Context, address common.Address, blockNrOrHash *rpc.BlockNumberOrHash) (*hexutil.U256, error) {
+	state, _, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHashOrLatest(blockNrOrHash))
 	if state == nil || err != nil {
 		return nil, err
 	}
@@ -815,8 +825,9 @@ type GetAccountResult struct {
 
 // GetAccount returns the information about account with given address in the state of the given block number.
 // The rpc.LatestBlockNumber and rpc.PendingBlockNumber meta block numbers are also allowed.
-func (s *PublicBlockChainAPI) GetAccount(ctx context.Context, address common.Address, blockNrOrHash rpc.BlockNumberOrHash) (*GetAccountResult, error) {
-	state, block, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
+// When the block parameter is omitted, it defaults to the latest block.
+func (s *PublicBlockChainAPI) GetAccount(ctx context.Context, address common.Address, blockNrOrHash *rpc.BlockNumberOrHash) (*GetAccountResult, error) {
+	state, block, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHashOrLatest(blockNrOrHash))
 	if err != nil {
 		return nil, err
 	}
@@ -866,8 +877,9 @@ type StorageResult struct {
 }
 
 // GetProof returns the Merkle-proof for a given account and optionally some storage keys.
-func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNrOrHash rpc.BlockNumberOrHash) (*AccountResult, error) {
-	state, block, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
+// When the block parameter is omitted, it defaults to the latest block.
+func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNrOrHash *rpc.BlockNumberOrHash) (*AccountResult, error) {
+	state, block, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHashOrLatest(blockNrOrHash))
 	if state == nil || err != nil {
 		return nil, err
 	}
@@ -1029,8 +1041,9 @@ func (s *PublicBlockChainAPI) GetUncleCountByBlockHash(ctx context.Context, bloc
 }
 
 // GetCode returns the code stored at the given address in the state for the given block number.
-func (s *PublicBlockChainAPI) GetCode(ctx context.Context, address common.Address, blockNrOrHash rpc.BlockNumberOrHash) (hexutil.Bytes, error) {
-	state, _, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
+// When the block parameter is omitted, it defaults to the latest block.
+func (s *PublicBlockChainAPI) GetCode(ctx context.Context, address common.Address, blockNrOrHash *rpc.BlockNumberOrHash) (hexutil.Bytes, error) {
+	state, _, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHashOrLatest(blockNrOrHash))
 	if state == nil || err != nil {
 		return nil, err
 	}
@@ -1041,9 +1054,10 @@ func (s *PublicBlockChainAPI) GetCode(ctx context.Context, address common.Addres
 
 // GetStorageAt returns the storage from the state at the given address, key and
 // block number. The rpc.LatestBlockNumber and rpc.PendingBlockNumber meta block
-// numbers are also allowed.
-func (s *PublicBlockChainAPI) GetStorageAt(ctx context.Context, address common.Address, key string, blockNr rpc.BlockNumberOrHash) (hexutil.Bytes, error) {
-	state, _, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNr)
+// numbers are also allowed. When the block parameter is omitted, it defaults to
+// the latest block.
+func (s *PublicBlockChainAPI) GetStorageAt(ctx context.Context, address common.Address, key string, blockNr *rpc.BlockNumberOrHash) (hexutil.Bytes, error) {
+	state, _, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHashOrLatest(blockNr))
 	if state == nil || err != nil {
 		return nil, err
 	}
@@ -1256,8 +1270,8 @@ func (e *revertError) ErrorData() interface{} {
 //
 // Note, this function doesn't make and changes in the state/blockchain and is
 // useful to execute and retrieve values.
-func (s *PublicBlockChainAPI) Call(ctx context.Context, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, stateOverrides *StateOverride, blockOverrides *BlockOverrides) (hexutil.Bytes, error) {
-	result, err := DoCall(ctx, s.b, args, blockNrOrHash, stateOverrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap(), nil)
+func (s *PublicBlockChainAPI) Call(ctx context.Context, args TransactionArgs, blockNrOrHash *rpc.BlockNumberOrHash, stateOverrides *StateOverride, blockOverrides *BlockOverrides) (hexutil.Bytes, error) {
+	result, err := DoCall(ctx, s.b, args, blockNrOrHashOrLatest(blockNrOrHash), stateOverrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1913,10 +1927,12 @@ func (s *PublicTransactionPoolAPI) GetRawTransactionByBlockHashAndIndex(ctx cont
 	return nil
 }
 
-// GetTransactionCount returns the number of transactions the given address has sent for the given block number
-func (s *PublicTransactionPoolAPI) GetTransactionCount(ctx context.Context, address common.Address, blockNrOrHash rpc.BlockNumberOrHash) (*hexutil.Uint64, error) {
+// GetTransactionCount returns the number of transactions the given address has sent for the given block number.
+// When the block parameter is omitted, it defaults to the latest block.
+func (s *PublicTransactionPoolAPI) GetTransactionCount(ctx context.Context, address common.Address, blockNrOrHash *rpc.BlockNumberOrHash) (*hexutil.Uint64, error) {
+	resolved := blockNrOrHashOrLatest(blockNrOrHash)
 	// Ask transaction pool for the nonce which includes pending transactions
-	if blockNr, ok := blockNrOrHash.Number(); ok && blockNr == rpc.PendingBlockNumber {
+	if blockNr, ok := resolved.Number(); ok && blockNr == rpc.PendingBlockNumber {
 		nonce, err := s.b.GetPoolNonce(ctx, address)
 		if err != nil {
 			return nil, err
@@ -1924,7 +1940,7 @@ func (s *PublicTransactionPoolAPI) GetTransactionCount(ctx context.Context, addr
 		return (*hexutil.Uint64)(&nonce), nil
 	}
 	// Resolve block number and use its state to ask for the nonce
-	state, _, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
+	state, _, err := s.b.StateAndBlockByNumberOrHash(ctx, resolved)
 	if state == nil || err != nil {
 		return nil, err
 	}
