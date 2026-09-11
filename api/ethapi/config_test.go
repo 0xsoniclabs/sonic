@@ -553,10 +553,9 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 }
 
 func TestEIP7910_Config_ResolvesTimeGatedForksWithTheBlockTime(t *testing.T) {
-	// A chain config whose forks are gated on real timestamps -- a foreign chain
-	// replayed through the backend, unlike Sonic's own transient config, which
-	// places every time-gated fork at timestamp 0. The precompile set must follow
-	// the block's time, not a zero one.
+	// A chain config whose forks are gated on real timestamps, unlike Sonic's own
+	// transient config, which places every time-gated fork at timestamp 0. The
+	// precompile set must follow the block's time, not a zero one.
 	forkTime := uint64(480)
 	blockTime := forkTime + 60
 
