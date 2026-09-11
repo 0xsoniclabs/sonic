@@ -432,14 +432,16 @@ func TestFilter_FilterLogs_ReturnsCorrectedTransactionIndexes(t *testing.T) {
 			return txs[f]
 		}).AnyTimes()
 
+	// The head is block 2, the last block the logs above are taken from, so that
+	// the filtered ranges below do not extend beyond it.
 	backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).
 		Return(&evmcore.EvmHeader{
-			Number: big.NewInt(1),
+			Number: big.NewInt(2),
 		}, nil,
 		).AnyTimes()
 	backend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).
 		Return(&evmcore.EvmHeader{
-			Number: big.NewInt(1),
+			Number: big.NewInt(2),
 		}, nil,
 		).AnyTimes()
 	backend.EXPECT().GetLogs(gomock.Any(), gomock.Any()).Return([][]*types.Log{logs}, nil).AnyTimes()
@@ -550,8 +552,14 @@ func TestFilter_FilterLogs_HandlesMalformedQueries(t *testing.T) {
 		expectedError error
 	}{
 		"invalid block range, begin > end": {
-			begin: 2,
-			end:   1,
+			begin:         2,
+			end:           1,
+			expectedError: errInvalidBlockRange,
+		},
+		"block range beyond the head": {
+			begin:         0,
+			end:           2,
+			expectedError: errBlockRangeIntoFuture,
 		},
 		"invalid block range, begin < 0": {
 			begin:         -2,
@@ -709,6 +717,19 @@ func TestFilter_IndexedLogs_AcceptsAnyQueryIfThereAreNoLimits(t *testing.T) {
 			// Running the large queries without restrictions should be fine.
 			_, err := filter.indexedLogs(t.Context(), 0, 1)
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestFilter_BlockRangeErrors_AreReportedAsInvalidParams(t *testing.T) {
+	for name, err := range map[string]error{
+		"invalid block range params":              errInvalidBlockRange,
+		"block range extends beyond current head": errBlockRangeIntoFuture,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var rpcErr rpc.Error
+			require.ErrorAs(t, err, &rpcErr)
+			require.Equal(t, -32602, rpcErr.ErrorCode())
 		})
 	}
 }
