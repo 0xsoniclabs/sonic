@@ -734,11 +734,18 @@ type configResponse struct {
 // config as described by https://eips.ethereum.org/EIPS/eip-7910
 type config struct {
 	// ActivationTime is the timestamp of the first block where this config is active.
-	ActivationTime uint64       `json:"activationTime"`
-	BlockHeight    *hexutil.Big `json:"blockHeight"`
+	ActivationTime uint64 `json:"activationTime"`
 
-	// BlobSchedule will remain nil because in Sonic this is not relevant
-	BlobSchedule *params.BlobConfig `json:"blobSchedule"`
+	// BlockHeight is the height of the block that activated this configuration.
+	// It is an extension beyond EIP-7910, which describes forks activated by
+	// time: Sonic activates an upgrade with a transaction, so the block carrying
+	// it - not a schedule - is what identifies the fork.
+	BlockHeight *hexutil.Big `json:"blockHeight"`
+
+	// BlobSchedule reports zero blob capacity: Sonic supports no blobs. EIP-7910
+	// requires the field to be an object, so it cannot be omitted or reported as
+	// null.
+	BlobSchedule params.BlobConfig `json:"blobSchedule"`
 
 	ChainId *hexutil.Big `json:"chainId"`
 
@@ -764,7 +771,11 @@ type contractRegistry map[string]common.Address
 // activation. The "Current" config corresponds to the config active at the current block,
 // and the "Last" config (if available) corresponds to the config active before the current one.
 //
-// BlobSchedule field is not relevant in Sonic, hence is always nil.
+// BlobSchedule is reported with zero target, maximum and base fee update fraction:
+// Sonic supports no blobs, and EIP-7910 requires the field to be an object.
+//
+// BlockHeight reports the block that activated the configuration, which EIP-7910
+// has no field for; see the field's comment.
 func (s *PublicBlockChainAPI) Config(ctx context.Context) (*configResponse, error) {
 
 	currentHeader := s.b.CurrentBlock().Header()
