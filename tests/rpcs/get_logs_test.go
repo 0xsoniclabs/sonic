@@ -146,10 +146,6 @@ func testGetLogFiltersWithClient(
 		"all logs": {
 			// Default accepts everything.
 		},
-		"no logs": {
-			FromBlock: big.NewInt(int64(endBlock + 1)),
-		},
-
 		// Test filtering by block hash.
 
 		"logs from block adding the first set of logs": {
@@ -320,6 +316,42 @@ func testGetLogFiltersWithClient(
 	// Smoke-test that the reference filter implementation is not broken.
 	require.Equal(t, 1, numFull, "exactly one test case should return the full set of logs")
 	require.Less(t, numEmpty, len(tests)-1, "at least one test case should return a true subset of logs")
+
+	// Invalid block ranges are rejected with an error instead of being answered
+	// with an empty result. The error messages are the ones used by go-ethereum.
+	// A large offset is used to be robust against blocks produced meanwhile.
+	farFuture := big.NewInt(int64(endBlock + 1_000_000))
+	invalidRanges := map[string]struct {
+		query ethereum.FilterQuery
+		err   string
+	}{
+		"from block beyond head": {
+			query: ethereum.FilterQuery{FromBlock: farFuture},
+			err:   "invalid block range params",
+		},
+		"from block after to block": {
+			query: ethereum.FilterQuery{
+				FromBlock: big.NewInt(int64(startBlock + 1)),
+				ToBlock:   big.NewInt(int64(startBlock)),
+			},
+			err: "invalid block range params",
+		},
+		"to block beyond head": {
+			query: ethereum.FilterQuery{
+				FromBlock: big.NewInt(int64(startBlock)),
+				ToBlock:   farFuture,
+			},
+			err: "block range extends beyond current head block",
+		},
+	}
+
+	for name, test := range invalidRanges {
+		t.Run(name, func(t *testing.T) {
+			logs, err := client.FilterLogs(t.Context(), test.query)
+			require.ErrorContains(t, err, test.err)
+			require.Empty(t, logs)
+		})
+	}
 }
 
 type logSource interface {
