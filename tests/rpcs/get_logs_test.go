@@ -28,7 +28,9 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 )
 
@@ -345,17 +347,54 @@ func testGetLogFiltersWithClient(
 		},
 	}
 
-	for name, test := range invalidRanges {
-		t.Run(name, func(t *testing.T) {
-			logs, err := client.FilterLogs(t.Context(), test.query)
-			require.ErrorContains(t, err, test.err)
-			require.Empty(t, logs)
-		})
+	// Both eth_getLogs and eth_getFilterLogs evaluate the same range filter.
+	methods := map[string]func(ethereum.FilterQuery) ([]types.Log, error){
+		"eth_getLogs": func(query ethereum.FilterQuery) ([]types.Log, error) {
+			return client.FilterLogs(t.Context(), query)
+		},
+		"eth_getFilterLogs": func(query ethereum.FilterQuery) ([]types.Log, error) {
+			return getFilterLogs(t.Context(), client.Client(), query)
+		},
 	}
+
+	for method, getLogs := range methods {
+		for name, test := range invalidRanges {
+			t.Run(method+"/"+name, func(t *testing.T) {
+				logs, err := getLogs(test.query)
+				require.ErrorContains(t, err, test.err)
+				require.Empty(t, logs)
+
+				var rpcErr rpc.Error
+				require.ErrorAs(t, err, &rpcErr)
+				require.Equal(t, -32602, rpcErr.ErrorCode(), "expected the JSON-RPC invalid params code")
+			})
+		}
+	}
+}
+
+// getFilterLogs installs a log filter using eth_newFilter and retrieves its
+// logs using eth_getFilterLogs, for which ethclient offers no wrapper.
+func getFilterLogs(
+	ctx context.Context,
+	client *rpc.Client,
+	query ethereum.FilterQuery,
+) ([]types.Log, error) {
+	arg := map[string]any{
+		"fromBlock": (*hexutil.Big)(query.FromBlock),
+		"toBlock":   (*hexutil.Big)(query.ToBlock),
+	}
+	var id string
+	if err := client.CallContext(ctx, &id, "eth_newFilter", arg); err != nil {
+		return nil, err
+	}
+	var logs []types.Log
+	err := client.CallContext(ctx, &logs, "eth_getFilterLogs", id)
+	return logs, err
 }
 
 type logSource interface {
 	FilterLogs(context.Context, ethereum.FilterQuery) ([]types.Log, error)
+	Client() *rpc.Client
 }
 
 func filterLogs(logs []types.Log, query ethereum.FilterQuery) []types.Log {
