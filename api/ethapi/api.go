@@ -100,28 +100,37 @@ func (s *PublicEthereumAPI) MaxPriorityFeePerGas(ctx context.Context) (*hexutil.
 	return (*hexutil.Big)(tipcap), nil
 }
 
-type feeHistoryResult struct {
-	OldestBlock  *hexutil.Big     `json:"oldestBlock"`
-	Reward       [][]*hexutil.Big `json:"reward,omitempty"`
-	BaseFee      []*hexutil.Big   `json:"baseFeePerGas,omitempty"`
-	GasUsedRatio []float64        `json:"gasUsedRatio"`
+// FeeHistoryResult is the result of eth_feeHistory, matching go-ethereum.
+// Reward and GasUsedRatio hold one entry per returned block, while BaseFee
+// and BlobBaseFee hold one extra trailing entry for the block following the
+// last returned one.
+type FeeHistoryResult struct {
+	OldestBlock      *hexutil.Big     `json:"oldestBlock"`
+	Reward           [][]*hexutil.Big `json:"reward,omitempty"`
+	BaseFee          []*hexutil.Big   `json:"baseFeePerGas,omitempty"`
+	GasUsedRatio     []float64        `json:"gasUsedRatio"`
+	BlobBaseFee      []*hexutil.Big   `json:"baseFeePerBlobGas,omitempty"`
+	BlobGasUsedRatio []float64        `json:"blobGasUsedRatio,omitempty"`
 }
+
+// maxRewardPercentiles limits the number of requested percentiles, as in go-ethereum.
+const maxRewardPercentiles = 100
 
 var errInvalidPercentile = errors.New("invalid reward percentile")
 
-func (s *PublicEthereumAPI) FeeHistory(ctx context.Context, blockCount geth_math.HexOrDecimal64, lastBlock rpc.BlockNumber, rewardPercentiles []float64) (*feeHistoryResult, error) {
-	res := &feeHistoryResult{}
-	res.Reward = make([][]*hexutil.Big, 0, blockCount)
-	res.BaseFee = make([]*hexutil.Big, 0, blockCount)
-	res.GasUsedRatio = make([]float64, 0, blockCount)
-	res.OldestBlock = (*hexutil.Big)(new(big.Int))
-
+func (s *PublicEthereumAPI) FeeHistory(ctx context.Context, blockCount geth_math.HexOrDecimal64, lastBlock rpc.BlockNumber, rewardPercentiles []float64) (*FeeHistoryResult, error) {
 	// validate input parameters
 	if blockCount == 0 {
-		return res, nil
+		return &FeeHistoryResult{
+			OldestBlock:  (*hexutil.Big)(new(big.Int)),
+			GasUsedRatio: nil,
+		}, nil
 	}
 	if blockCount > 1024 {
 		blockCount = 1024
+	}
+	if len(rewardPercentiles) > maxRewardPercentiles {
+		return nil, fmt.Errorf("%w: over the query limit %d", errInvalidPercentile, maxRewardPercentiles)
 	}
 	for i, p := range rewardPercentiles {
 		if p < 0 || p > 100 {
@@ -131,6 +140,7 @@ func (s *PublicEthereumAPI) FeeHistory(ctx context.Context, blockCount geth_math
 			return nil, fmt.Errorf("%w: #%d:%f > #%d:%f", errInvalidPercentile, i-1, rewardPercentiles[i-1], i, p)
 		}
 	}
+
 	last, err := s.b.ResolveRpcBlockNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &lastBlock})
 	if err != nil {
 		return nil, err
@@ -141,7 +151,7 @@ func (s *PublicEthereumAPI) FeeHistory(ctx context.Context, blockCount geth_math
 	}
 
 	oldest := last
-	if oldest > idx.Block(blockCount) {
+	if oldest >= idx.Block(blockCount) {
 		oldest -= idx.Block(blockCount - 1)
 	} else {
 		oldest = 0
@@ -154,12 +164,32 @@ func (s *PublicEthereumAPI) FeeHistory(ctx context.Context, blockCount geth_math
 		tip := s.b.SuggestGasTipCap(ctx, uint64(gasprice.DecimalUnit*p/100.0))
 		tips = append(tips, (*hexutil.Big)(tip))
 	}
-	res.OldestBlock.ToInt().SetUint64(uint64(oldest))
-	for i := uint64(0); i < uint64(last-oldest+1); i++ {
+
+	// Blobs are not supported, so the blob base fee is constant and no blob
+	// gas is ever used.
+	blobBaseFee := (*hexutil.Big)(big.NewInt(params.BlobTxMinBlobGasprice))
+
+	numBlocks := uint64(last - oldest + 1)
+	res := &FeeHistoryResult{
+		OldestBlock:      (*hexutil.Big)(new(big.Int).SetUint64(uint64(oldest))),
+		Reward:           make([][]*hexutil.Big, 0, numBlocks),
+		BaseFee:          make([]*hexutil.Big, 0, numBlocks+1),
+		GasUsedRatio:     make([]float64, 0, numBlocks),
+		BlobBaseFee:      make([]*hexutil.Big, 0, numBlocks+1),
+		BlobGasUsedRatio: make([]float64, 0, numBlocks),
+	}
+	for i := uint64(0); i < numBlocks; i++ {
 		res.Reward = append(res.Reward, tips)
 		res.BaseFee = append(res.BaseFee, (*hexutil.Big)(baseFee))
 		res.GasUsedRatio = append(res.GasUsedRatio, 0.99)
+		res.BlobBaseFee = append(res.BlobBaseFee, blobBaseFee)
+		res.BlobGasUsedRatio = append(res.BlobGasUsedRatio, 0)
 	}
+	// As in go-ethereum, the base fee arrays carry one extra entry for the
+	// block following the last one. The base fee is constant, so it is the
+	// same as for the returned blocks.
+	res.BaseFee = append(res.BaseFee, (*hexutil.Big)(baseFee))
+	res.BlobBaseFee = append(res.BlobBaseFee, blobBaseFee)
 	return res, nil
 }
 

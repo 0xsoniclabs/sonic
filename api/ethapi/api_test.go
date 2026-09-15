@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	reflect "reflect"
 	"testing"
@@ -31,6 +32,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common/amount"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/carmen/go/common/witness"
+	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -1454,6 +1456,233 @@ func TestFeeHistory_BlockNotFound(t *testing.T) {
 	ethAPI := NewPublicEthereumAPI(mockBackend)
 	_, err := ethAPI.FeeHistory(context.Background(), geth_math.HexOrDecimal64(5), requestedBlock, nil)
 	require.Error(t, err, "expected error when block is not found")
+}
+
+func TestFeeHistory_RejectsInvalidInput(t *testing.T) {
+	tests := map[string]struct {
+		blockCount  geth_math.HexOrDecimal64
+		percentiles []float64
+		wantErr     string
+	}{
+		"percentile above 100": {
+			blockCount:  1,
+			percentiles: []float64{50, 101},
+			wantErr:     "invalid reward percentile: 101",
+		},
+		"negative percentile": {
+			blockCount:  1,
+			percentiles: []float64{-1},
+			wantErr:     "invalid reward percentile: -1",
+		},
+		"non-monotonic percentiles": {
+			blockCount:  1,
+			percentiles: []float64{50, 25},
+			wantErr:     "invalid reward percentile: #0:50",
+		},
+		"one percentile over the limit": {
+			blockCount:  1,
+			percentiles: make([]float64, maxRewardPercentiles+1),
+			wantErr:     "over the query limit 100",
+		},
+		"huge block count with too many percentiles": {
+			blockCount:  geth_math.HexOrDecimal64(math.MaxUint64),
+			percentiles: make([]float64, maxRewardPercentiles+1),
+			wantErr:     "over the query limit 100",
+		},
+		"huge block count with invalid percentile": {
+			blockCount:  geth_math.HexOrDecimal64(math.MaxUint64),
+			percentiles: []float64{200},
+			wantErr:     "invalid reward percentile: 200",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			// No expectations: any backend call fails the test, proving the
+			// input is validated before any block is resolved.
+			mockBackend := NewMockBackend(ctrl)
+			ethAPI := NewPublicEthereumAPI(mockBackend)
+
+			res, err := ethAPI.FeeHistory(context.Background(), test.blockCount, rpc.LatestBlockNumber, test.percentiles)
+			require.ErrorIs(t, err, errInvalidPercentile)
+			require.ErrorContains(t, err, test.wantErr)
+			require.Nil(t, res)
+		})
+	}
+}
+
+func TestFeeHistory_ZeroBlockCount_ReturnsEmptyResult(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBackend := NewMockBackend(ctrl)
+	ethAPI := NewPublicEthereumAPI(mockBackend)
+
+	// Percentiles are irrelevant when nothing is requested, as in go-ethereum.
+	res, err := ethAPI.FeeHistory(context.Background(), 0, rpc.LatestBlockNumber, []float64{200})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.Empty(t, res.Reward)
+	require.Empty(t, res.BaseFee)
+	require.Empty(t, res.GasUsedRatio)
+	require.Empty(t, res.BlobBaseFee)
+	require.Empty(t, res.BlobGasUsedRatio)
+	require.NotNil(t, res.OldestBlock)
+	require.Zero(t, res.OldestBlock.ToInt().Sign())
+
+	encoded, err := json.Marshal(res)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"oldestBlock":"0x0","gasUsedRatio":null}`, string(encoded))
+}
+
+func TestFeeHistory_ReturnsRequestedBlockRange(t *testing.T) {
+	const (
+		latestBlock = idx.Block(2000)
+		baseFee     = 7
+	)
+
+	tests := map[string]struct {
+		blockCount  geth_math.HexOrDecimal64
+		lastBlock   rpc.BlockNumber
+		percentiles []float64
+		wantOldest  uint64
+		wantLen     int
+	}{
+		"single block": {
+			blockCount: 1,
+			lastBlock:  10,
+			wantOldest: 10,
+			wantLen:    1,
+		},
+		"range ending at last block": {
+			blockCount: 5,
+			lastBlock:  10,
+			wantOldest: 6,
+			wantLen:    5,
+		},
+		"range starting right after genesis": {
+			blockCount: 5,
+			lastBlock:  5,
+			wantOldest: 1,
+			wantLen:    5,
+		},
+		"range including genesis": {
+			blockCount: 5,
+			lastBlock:  4,
+			wantOldest: 0,
+			wantLen:    5,
+		},
+		"range longer than chain is cut at genesis": {
+			blockCount: 100,
+			lastBlock:  10,
+			wantOldest: 0,
+			wantLen:    11,
+		},
+		"genesis only": {
+			blockCount: 1,
+			lastBlock:  0,
+			wantOldest: 0,
+			wantLen:    1,
+		},
+		"block count clamped to 1024": {
+			blockCount: 5000,
+			lastBlock:  rpc.BlockNumber(latestBlock),
+			wantOldest: uint64(latestBlock) - 1023,
+			wantLen:    1024,
+		},
+		"huge block count clamped to 1024": {
+			blockCount: geth_math.HexOrDecimal64(math.MaxUint64),
+			lastBlock:  rpc.BlockNumber(latestBlock),
+			wantOldest: uint64(latestBlock) - 1023,
+			wantLen:    1024,
+		},
+		"no percentiles": {
+			blockCount:  2,
+			lastBlock:   10,
+			percentiles: nil,
+			wantOldest:  9,
+			wantLen:     2,
+		},
+		"with percentiles": {
+			blockCount:  2,
+			lastBlock:   10,
+			percentiles: []float64{0, 25, 50, 100},
+			wantOldest:  9,
+			wantLen:     2,
+		},
+		"maximum number of percentiles": {
+			blockCount:  2,
+			lastBlock:   10,
+			percentiles: make([]float64, maxRewardPercentiles),
+			wantOldest:  9,
+			wantLen:     2,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockBackend := NewMockBackend(ctrl)
+
+			currentBlock := evmcore.NewEvmBlock(
+				&evmcore.EvmHeader{Number: new(big.Int).SetUint64(uint64(latestBlock))}, nil)
+			lastBlock := test.lastBlock
+			mockBackend.EXPECT().
+				ResolveRpcBlockNumberOrHash(gomock.Any(), rpc.BlockNumberOrHash{BlockNumber: &lastBlock}).
+				Return(idx.Block(uint64(lastBlock)), nil)
+			mockBackend.EXPECT().CurrentBlock().Return(currentBlock)
+			mockBackend.EXPECT().MinGasPrice().Return(big.NewInt(baseFee))
+			// Each percentile is mapped to a certainty and queried exactly once,
+			// regardless of the number of blocks.
+			for _, p := range test.percentiles {
+				certainty := uint64(gasprice.DecimalUnit * p / 100.0)
+				mockBackend.EXPECT().
+					SuggestGasTipCap(gomock.Any(), certainty).
+					Return(new(big.Int).SetUint64(certainty))
+			}
+
+			ethAPI := NewPublicEthereumAPI(mockBackend)
+			res, err := ethAPI.FeeHistory(context.Background(), test.blockCount, lastBlock, test.percentiles)
+			require.NoError(t, err)
+			require.NotNil(t, res)
+
+			require.Equal(t, test.wantOldest, res.OldestBlock.ToInt().Uint64())
+			require.Len(t, res.Reward, test.wantLen)
+			require.Len(t, res.GasUsedRatio, test.wantLen)
+			require.Len(t, res.BlobGasUsedRatio, test.wantLen)
+			// Base fee arrays carry one extra entry for the next block.
+			require.Len(t, res.BaseFee, test.wantLen+1)
+			require.Len(t, res.BlobBaseFee, test.wantLen+1)
+			for i := range test.wantLen {
+				require.Len(t, res.Reward[i], len(test.percentiles))
+				for j, p := range test.percentiles {
+					certainty := uint64(gasprice.DecimalUnit * p / 100.0)
+					require.Equal(t, certainty, res.Reward[i][j].ToInt().Uint64())
+				}
+				require.Equal(t, 0.99, res.GasUsedRatio[i])
+				require.Equal(t, float64(0), res.BlobGasUsedRatio[i])
+			}
+			for i := range test.wantLen + 1 {
+				require.Equal(t, int64(baseFee), res.BaseFee[i].ToInt().Int64())
+				require.Equal(t, int64(params.BlobTxMinBlobGasprice), res.BlobBaseFee[i].ToInt().Int64())
+			}
+		})
+	}
+}
+
+func TestFeeHistory_ForwardsBlockResolutionError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBackend := NewMockBackend(ctrl)
+
+	lastBlock := rpc.BlockNumber(10)
+	injected := fmt.Errorf("injected error")
+	mockBackend.EXPECT().
+		ResolveRpcBlockNumberOrHash(gomock.Any(), rpc.BlockNumberOrHash{BlockNumber: &lastBlock}).
+		Return(idx.Block(0), injected)
+
+	ethAPI := NewPublicEthereumAPI(mockBackend)
+	res, err := ethAPI.FeeHistory(context.Background(), 1, lastBlock, nil)
+	require.ErrorIs(t, err, injected)
+	require.Nil(t, res)
 }
 
 func TestGetNumberAndTime_ReportsErrors(t *testing.T) {
