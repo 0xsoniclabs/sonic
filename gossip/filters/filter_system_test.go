@@ -33,6 +33,7 @@ import (
 	notify "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -407,12 +408,12 @@ func TestInvalidLogFilterCreation(t *testing.T) {
 		0: {FromBlock: big.NewInt(rpc.PendingBlockNumber.Int64()), ToBlock: big.NewInt(rpc.LatestBlockNumber.Int64())},
 		1: {FromBlock: big.NewInt(rpc.PendingBlockNumber.Int64()), ToBlock: big.NewInt(100)},
 		2: {FromBlock: big.NewInt(rpc.LatestBlockNumber.Int64()), ToBlock: big.NewInt(100)},
+		3: {FromBlock: big.NewInt(101), ToBlock: big.NewInt(100)},
 	}
 
 	for i, test := range testCases {
-		if _, err := api.NewFilter(test); err == nil {
-			t.Errorf("Expected NewFilter for case #%d to fail", i)
-		}
+		_, err := api.NewFilter(test)
+		require.ErrorIs(t, err, errInvalidBlockRange, "case #%d", i)
 	}
 }
 
