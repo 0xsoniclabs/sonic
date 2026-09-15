@@ -61,8 +61,8 @@ func (e *simInvalidTxError) ErrorCode() int { return e.Code }
 func simInvalidParamsError() *simInvalidTxError {
 	return &simInvalidTxError{Message: "empty input", Code: errCodeInvalidParams}
 }
-func simClientLimitExceededError() *simInvalidTxError {
-	return &simInvalidTxError{Message: "too many blocks", Code: errCodeClientLimitExceeded}
+func simClientLimitExceededError(message string) *simInvalidTxError {
+	return &simInvalidTxError{Message: message, Code: errCodeClientLimitExceeded}
 }
 func simInvalidBlockNumberError(message string) *simInvalidTxError {
 	return &simInvalidTxError{Message: message, Code: errCodeBlockNumberInvalid}
