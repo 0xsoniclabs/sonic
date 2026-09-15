@@ -27,6 +27,23 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Fixed
 
+## [2.2.2] - 15 September 2026
+
+Version 2.2.2 is a stability release. Upgrading is recommended for all operators.
+
+### Changed
+
+- `sonicd` and `sonictool` now handle `SIGINT` and `SIGTERM` during node startup and password prompts.
+- `sonictool` genesis imports now place temporary data in the data directory instead of the system temporary directory.
+- Released binaries now ship with symbol table and debug information.
+- Reduced the memory footprint of the state database.
+- `eth_feeHistory` results now include the baseFeePerBlobGas and blobGasUsedRatio fields, for compatibility with the Ethereum execution APIs.
+
+### Fixed
+
+- Fixed a data race during shutdown caused by the transaction pool being stopped twice.
+- Fixed data races in the state database node cache and in its error reporting.
+
 ## [2.2.1] - 5 August 2026
 
 Version 2.2.1 is a stability release. Upgrading is recommended for all operators but is not mandatory — the minimum version required to support the Brio hard-fork is still 2.2.0.
