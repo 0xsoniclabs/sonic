@@ -1338,6 +1338,17 @@ func (fcc *FakeChainContext) Config() *params.ChainConfig {
 	return fcc.chainConfig
 }
 
+func TestTraceTransaction_ReportsUnknownTransactionAsNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBackend := NewMockBackend(ctrl)
+	mockBackend.EXPECT().GetTransaction(gomock.Any(), common.Hash{0x42}).Return(nil, uint64(0), uint64(0), nil)
+
+	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+	_, err := api.TraceTransaction(context.Background(), common.Hash{0x42}, &tracers.TraceConfig{})
+	// The exact message is matched by the execution-apis conformance tests.
+	require.EqualError(t, err, "transaction not found")
+}
+
 func TestDebugTraceWithBlobTx(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
