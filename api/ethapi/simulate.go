@@ -50,6 +50,12 @@ const (
 	// in a single request.
 	maxSimulateBlocks = 256
 
+	// maxSimulateCallsPerBlock is the maximum number of calls in one simulated block.
+	maxSimulateCallsPerBlock = 5000
+
+	// maxSimulateTotalCalls is the maximum number of calls across all blocks of a request.
+	maxSimulateTotalCalls = 10000
+
 	// timestampIncrement is the default increment between block timestamps.
 	timestampIncrement = 12
 )
@@ -577,7 +583,7 @@ func (sim *simulator) sanitizeChain(blocks []simBlock) ([]simBlock, error) {
 			)
 		}
 		if total := new(big.Int).Sub(block.BlockOverrides.Number.ToInt(), base.Number); total.Cmp(big.NewInt(maxSimulateBlocks)) > 0 {
-			return nil, simClientLimitExceededError()
+			return nil, simClientLimitExceededError("too many blocks")
 		}
 
 		// Fill any gap with empty blocks.

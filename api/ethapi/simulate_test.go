@@ -694,3 +694,24 @@ func TestSimulateV1_RejectsTooManyBlockStateCalls(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, errCodeClientLimitExceeded, simTxError.ErrorCode())
 }
+
+func TestSimulateV1_TooManyCallsInBlock_ReturnsError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	api := NewPublicBlockChainAPI(NewMockBackend(ctrl))
+
+	opts := simOpts{BlockStateCalls: []simBlock{{Calls: make([]TransactionArgs, maxSimulateCallsPerBlock+1)}}}
+	_, err := api.SimulateV1(context.Background(), opts, nil)
+	require.ErrorContains(t, err, "too many calls in block")
+}
+
+func TestSimulateV1_TooManyCallsInTotal_ReturnsError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	api := NewPublicBlockChainAPI(NewMockBackend(ctrl))
+
+	var blocks []simBlock
+	for i := 0; i < 3; i++ {
+		blocks = append(blocks, simBlock{Calls: make([]TransactionArgs, maxSimulateCallsPerBlock)})
+	}
+	_, err := api.SimulateV1(context.Background(), simOpts{BlockStateCalls: blocks}, nil)
+	require.ErrorContains(t, err, "too many calls:")
+}
