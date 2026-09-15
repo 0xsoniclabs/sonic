@@ -125,9 +125,9 @@ type Network struct {
 }
 
 // StartNetwork starts a network running the given upgrades and stops it when the test that asked for
-// it ends, so one fork's nodes and databases are gone before the next fork's are started. Every
-// iteration of that fork's run shares it; none can disturb another, because each works on accounts
-// nobody else holds.
+// it ends. Everything the run does shares it -- every fork, every workload -- so that what comes out
+// is one chain carrying all of them; none of it can disturb another, because each iteration works on
+// accounts nobody else holds. Upgrade is how the rules move on from here.
 func StartNetwork(t *testing.T, upgrades opera.Upgrades) *Network {
 	t.Helper()
 
@@ -151,18 +151,43 @@ func StartNetwork(t *testing.T, upgrades opera.Upgrades) *Network {
 			handedOut, dirtied, untouched)
 	})
 
-	rules := tests.GetNetworkRules(t, net)
-	return &Network{
-		Net:       net,
-		Pool:      pool,
-		Contracts: deployed,
-		Cfg: NetworkConfig{
-			ChainId:     net.GetChainId(),
-			Upgrades:    upgrades,
-			MaxEventGas: rules.Economy.Gas.MaxEventGas,
-			MaxBlockGas: rules.Blocks.MaxBlockGas,
-			MaxTxType:   MaxTxTypeFor(upgrades),
-		},
+	network := &Network{Net: net, Pool: pool, Contracts: deployed}
+	network.readConfig(t)
+	return network
+}
+
+// Upgrade puts the network on the given rules and waits for them to take effect, then reads back
+// what the model needs to know about it. Every feature a workload needs is named here rather than
+// only switched on, because the chain is shared: a flag left over from the workload before would
+// change what the next one's transactions mean.
+//
+// The hard forks only ever move forwards -- opera refuses to disable one -- while the feature flags
+// beside them can go either way.
+func (n *Network) Upgrade(t *testing.T, upgrades opera.Upgrades) {
+	t.Helper()
+
+	if n.Cfg.Upgrades == upgrades {
+		return // the rules already say this; a transaction changing nothing is a block wasted
+	}
+
+	tests.UpdateNetworkRules(t, n.Net, struct{ Upgrades opera.Upgrades }{upgrades})
+	n.Net.AdvanceEpoch(t, 1) // rules take effect with the epoch, not with the transaction
+
+	n.readConfig(t)
+	require.Equal(t, upgrades, n.Cfg.Upgrades, "the network did not take the rules it was given")
+}
+
+// readConfig reads the rules the network is running under into the configuration the model reads.
+func (n *Network) readConfig(t *testing.T) {
+	t.Helper()
+
+	rules := tests.GetNetworkRules(t, n.Net)
+	n.Cfg = NetworkConfig{
+		ChainId:     n.Net.GetChainId(),
+		Upgrades:    rules.Upgrades,
+		MaxEventGas: rules.Economy.Gas.MaxEventGas,
+		MaxBlockGas: rules.Blocks.MaxBlockGas,
+		MaxTxType:   MaxTxTypeFor(rules.Upgrades),
 	}
 }
 
@@ -190,17 +215,15 @@ type Runner struct {
 	Cfg     GenConfig
 	Domain  Domain
 
-	batch      *rapid.Generator[[]TxSpec]
-	firstBlock uint64
-	observed   map[Outcome]int
-	skipped    map[string]int
-	defects    *DefectLog
+	batch    *rapid.Generator[[]TxSpec]
+	observed map[Outcome]int
+	skipped  map[string]int
+	defects  *DefectLog
 }
 
-// Init prepares a runner for rapid.Check: it takes the domain's generator and pricing rules,
-// verifies the assumptions the model makes about the network's economics -- so a change to either
-// produces a clear message here rather than a puzzling failure later -- and records where the run
-// starts, for the replay check.
+// Init prepares a runner for rapid.Check: it takes the domain's generator and pricing rules, and
+// verifies the assumptions the model makes about the network's economics, so a change to either
+// produces a clear message here rather than a puzzling failure later.
 func (r *Runner) Init(t *testing.T) {
 	t.Helper()
 
@@ -223,9 +246,6 @@ func (r *Runner) Init(t *testing.T) {
 	require.Positive(t, AccountBalance.Cmp(dearest),
 		"the pooled balance %v cannot back the most expensive affordable transaction (%v)",
 		AccountBalance, dearest)
-
-	r.firstBlock, err = r.Client.BlockNumber(t.Context())
-	require.NoError(t, err)
 }
 
 // Run is one property iteration: draw a batch, inject it, and check the result against the model and
@@ -553,53 +573,17 @@ func transfersValue(tx *types.Transaction, receipt *types.Receipt, sender common
 		(tx.To() == nil || *tx.To() != sender)
 }
 
-// VerifyChainReplays replays the chain on an independent state database and requires it to agree with
-// the node, which is how correctness is checked rather than mere liveness: a node staying up says
-// nothing about whether it computed the right thing, while a replay reproducing every state root and
-// block hash from the same inputs says the execution was deterministic and the accounting
-// self-consistent.
-//
-// It is skipped for a run that reproduced known defect 2, where the state no longer follows from the
-// blocks alone.
-func (r *Runner) VerifyChainReplays(t *testing.T) {
-	t.Helper()
-
-	if n := len(r.defects.unreceiptedCharges); n > 0 {
-		t.Logf(
-			"skipping the replay check: %d account(s) were charged by transactions that "+
-				"produced no receipt, so the blocks alone do not determine the state", n)
-		return
-	}
-
-	genesis := r.Network.Net.GetJsonGenesis()
-	require.NotNil(t, genesis, "the network must be started with a JSON genesis")
-
-	head, err := r.Client.BlockNumber(t.Context())
-	require.NoError(t, err)
-	require.Greater(t, head, r.firstBlock, "the run should have produced blocks to verify")
-
-	blocks := make([]*types.Block, 0, head+1)
-	for number := uint64(0); number <= head; number++ {
-		block, err := r.Client.BlockByNumber(t.Context(), new(big.Int).SetUint64(number))
-		require.NoError(t, err)
-		blocks = append(blocks, block)
-	}
-
-	tests.VerifyBlocks(t, genesis, blocks)
-}
-
-// ExportGenesisEnv names a directory a run writes its chain to when it is done. It is off by default:
-// exporting takes a while and the files are large, and what a green run produced is of no further
-// interest.
+// ExportGenesisEnv names a directory the chain is written to once the run is done. It is off by
+// default: exporting takes a while and the files are large, and what a green run produced is of no
+// further interest.
 const ExportGenesisEnv = "SONIC_TXPROP_EXPORT_DIR"
 
-// ExportGenesis writes the chain this run produced -- every block it drew, in the form a node can be
-// started from -- to a genesis file named after the test, in the directory ExportGenesisEnv names.
-// Without that variable it does nothing.
+// ExportGenesis writes the whole chain -- every fork and every workload that ran on it, in the form
+// a node can be started from -- to a genesis file named after the test, in the directory
+// ExportGenesisEnv names. Without that variable it does nothing.
 //
-// It stops the network, so it must come after everything else the test does: the replay check reads
-// the chain through the client, and there is no client once the nodes are down.
-func (r *Runner) ExportGenesis(t *testing.T) {
+// It stops the network, so nothing may use it afterwards: this is the last thing a run does.
+func (n *Network) ExportGenesis(t *testing.T) {
 	t.Helper()
 
 	directory, set := os.LookupEnv(ExportGenesisEnv)
@@ -609,7 +593,7 @@ func (r *Runner) ExportGenesis(t *testing.T) {
 
 	require.NoError(t, os.MkdirAll(directory, 0755), "failed to create the export directory")
 	path := filepath.Join(directory, strings.ReplaceAll(t.Name(), "/", "_")+".g")
-	require.NoError(t, r.Network.Net.ExportGenesis(path), "failed to export the chain")
+	require.NoError(t, n.Net.ExportGenesis(path), "failed to export the chain")
 	t.Logf("exported the chain of this run to %s", path)
 }
 

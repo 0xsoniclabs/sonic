@@ -2,7 +2,7 @@
 
 This package draws transactions with [`pgregory.net/rapid`](https://pkg.go.dev/pgregory.net/rapid)
 and pushes them **straight into consensus through the test-only API, bypassing the transaction
-pool**. It then checks what the network did with each one against three independent oracles.
+pool**. It then checks what the network did with each one against two independent oracles.
 
 It covers two families of transaction: ordinary ones, which pay for their own gas, and **sponsorship
 requests**, which offer nothing for it and are covered by a gas-subsidies fund instead. The second is
@@ -25,20 +25,21 @@ crash search.
 ## Running it
 
 ```sh
-go test ./tests/transaction_properties/                       # 200 batches per scenario, ~3 min
-go test ./tests/transaction_properties/ -v                    # + the distribution per scenario
+go test ./tests/transaction_properties/                       # 200 batches per workload, ~6 min
+go test ./tests/transaction_properties/ -v                    # + the distribution per workload
 go test ./tests/transaction_properties/ -rapid.checks=2000    # a longer search
 go test ./tests/transaction_properties/ -rapid.seed=1436157575314665811   # replay one failure
 
 go test ./tests/transaction_properties/...                    # + the unit tests of the harness
-go test ./tests/transaction_properties/ -run Sponsored -v     # the sponsorship scenarios alone
-go test ./tests/transaction_properties/ -run Prioritized -v   # the priorities scenarios alone
+go test ./tests/transaction_properties/ -run 'TestTransactionProperties/Brio' -v
+go test ./tests/transaction_properties/ -run 'TestTransactionProperties/.*/sponsored' -v
 ```
 
-`SONIC_TXPROP_EXPORT_DIR=/some/dir go test ./tests/transaction_properties/` writes the chain each
-scenario produced to a genesis file of its own in that directory, through the same `sonictool genesis
-export` an operator would use, so a run's whole history can be imported and looked at afterwards. It
-is off by default: exporting takes a while, the files are large, and what a green run produced is of
+`SONIC_TXPROP_EXPORT_DIR=/some/dir go test ./tests/transaction_properties/` writes the chain the run
+produced to a genesis file in that directory, through the same `sonictool genesis export` an operator
+would use. Everything ran on one chain, so that is one file carrying every fork and every feature the
+run exercised — which is what makes it worth keeping for something else to start from. It is off by
+default: exporting takes a while, the files are large, and what a green run produced is of
 no further interest.
 
 What comes out is an ordinary genesis file, so a node can be initialised from it:
@@ -52,9 +53,9 @@ preset, so the check for one has to be waived (`sonictool genesis sign <file>` i
 `--mode=validator` imports it without the archive section.
 
 No flags, and no way to make it fail over something already known: a transaction that provokes a
-defect the client has not fixed is not injected at all — see [Skipping](#skipping). A scenario is one
-network: each of the three forks on its own, five more with gas subsidies enabled, three carrying
-bundles, and two with transaction priorities.
+defect the client has not fixed is not injected at all — see [Skipping](#skipping).
+
+Everything runs on **one chain** — see [One chain, every workload](#one-chain-every-workload).
 
 The nodes are silenced, because every batch deliberately made too large for one event is logged at
 ERROR as `Self-event connection failed` — hundreds of times a run, for something the test provokes on
@@ -62,10 +63,47 @@ purpose and reports itself. `SONIC_VERBOSITY=3 go test ./tests/transaction_prope
 client's own logging back.
 
 A deeper search runs nightly from [CI/transaction-properties.jenkinsfile](../../CI/transaction-properties.jenkinsfile),
-which draws 5000 batches per scenario instead of 200, after rebasing the branch onto `SonicVersion` of
+which draws 5000 batches per workload instead of 200, after rebasing the branch onto `SonicVersion` of
 `SonicRepository` — main of this repository unless the build says otherwise. It only runs the command:
 nothing about the test differs there, only how long it searches, and whatever the test says is the
 build's result.
+
+## One chain, every workload
+
+The whole run is a single test over a single network. Each fork is a subtest, and inside it each
+**workload** — one domain run against the chain — is another. The rules move on between them, so the
+chain ends up carrying every fork and every feature in the order they were switched on:
+
+| Fork | Workloads, in order |
+| --- | --- |
+| Sonic | `regular` |
+| Allegro | `regular`, `bundlesInert`, `sponsored` |
+| Brio | `regular`, `bundlesInert`, `bundles`, `sponsored`, `prioritized`, `prioritizedSponsored` |
+| Canto | `regular`, `sponsored`, `sponsoredByNetwork`, `sponsoredByNetworkTracked` |
+
+A workload **names the rules it needs** rather than merely switching them on: `Network.Upgrade` is
+handed a complete set of upgrades, so a feature the workload before it enabled is switched back off
+unless this one asks for it too. Opera allows that for the feature flags — `GasSubsidies`,
+`TransactionPriorities` and `TransactionBundles` can be moved either way — while a hard fork only
+ever moves forwards, which is why the forks are the outer loop.
+
+Two things follow from sharing one chain, and both are why the order above is what it is:
+
+- The genesis is written once, and the subsidies and priorities registries only reach it when their
+  flags are enabled *there*. So the chain starts with both on, and the first workload switches them
+  off again. A flag can be moved later; a contract in the genesis cannot be added later.
+- The network-sponsored registries replace the fund-backed one behind the registry proxy, and nothing
+  puts it back. They therefore run last, on the final fork. That costs nothing: a registry that
+  covers every request answers the same on every fork, and the fork-dependent half of sponsorship is
+  what the fund-backed workload searches on each of them.
+
+State a workload leaves behind is state the next one meets. A sponsorship fund stocked by one is
+money the next one's requests can spend, so the fund ledger counts what a fund already held when the
+domain first met the account as paid in (`subsidies.Domain.openFunds`); a priority registration is
+overwritten by whoever claims that nonce slot next, and the pool hands out the accounts nobody is
+using.
+
+`SONIC_TXPROP_EXPORT_DIR` then yields **one** genesis file carrying all of it.
 
 ## Domains
 
@@ -137,14 +175,16 @@ it is a scenario rather than a draw:
 | Scenario | Registry | Forks | Coverage depends on | Follows a sponsored transaction |
 | --- | --- | --- | --- | --- |
 | fund-backed (mode 1) | the reference registry deployed in genesis | Allegro onwards | what the fund holds | `deductFees`, charging `(gasUsed + 210k) × baseFee` |
-| network-sponsored (mode 2) | `tests/contracts/network_sponsor` | Brio | nothing, every request is covered | nothing |
-| with tracking (mode 3) | `tests/contracts/network_sponsor_tracking` | Brio | nothing, every request is covered | `track`, recording `(gasUsed + 230k) × baseFee` |
+| network-sponsored (mode 2) | `tests/contracts/network_sponsor` | Canto | nothing, every request is covered | nothing |
+| with tracking (mode 3) | `tests/contracts/network_sponsor_tracking` | Canto | nothing, every request is covered | `track`, recording `(gasUsed + 230k) × baseFee` |
 
 The fund-backed scenario runs on every fork from Allegro on, because it is the one whose answer
 depends on money and because the structural rules a request still has to satisfy are fork-dependent.
-The other two run on Brio alone: once a request is covered they behave the same on every fork, and the
-fork-dependent half is already covered by the fund-backed runs. Each of their registries answers the
-same mode for every caller, which is what keeps them free of per-iteration setup.
+The other two run on the last fork alone: once a request is covered they behave the same on every
+fork, and the fork-dependent half is already covered by the fund-backed runs. Last rather than
+anywhere, because installing one of their registries replaces the fund-backed one behind the proxy
+for good — see [One chain, every workload](#one-chain-every-workload). Each of them answers the same
+mode for every caller, which is what keeps them free of per-iteration setup.
 
 Sonic is not sponsored on. It is the one fork that accepts a blob transaction carrying blob hashes,
 and sponsoring one produces a block the archive can never ingest: the archive is state re-derived from
@@ -152,7 +192,7 @@ blocks, so it stops at that block and never advances again while the chain runs 
 read after it answers for the last block the archive holds rather than for the head. The oracles then
 see a transaction that has a receipt but moved nothing, and report a nonce that did not follow its
 transactions. Subsidies are a network rule rather than a fork feature, so no sponsorship rule is
-peculiar to Sonic; the pre-Allegro structural rules stay covered by the ordinary scenario, which does
+peculiar to Sonic; the pre-Allegro structural rules stay covered by the `regular` workload, which does
 run on Sonic.
 
 ### Funding, and the three bands
@@ -340,8 +380,8 @@ Why the tests of the model live in `regular` rather than in `core`: a rule needs
 judge, and the transaction types are that package's. Only the checks needing no spec at all stay in
 `core`.
 
-The two oracles that need a chain — the replay and the outcome comparison — are exercised by the
-property tests themselves, not here.
+The oracle that needs a chain — the outcome comparison — is exercised by the property test itself,
+not here.
 
 ## The shape of one iteration
 
@@ -378,7 +418,7 @@ property tests themselves, not here.
                   v                                        v
    ┌──────────────────────────────────────────────────────────────────────────┐
    │  observed outcome  ==  permitted outcome ?                               │
-   │  + block invariants  + accounting  + chain replay  + Domain.Check()      │
+   │  + block invariants  + accounting  + Domain.Check()                      │
    └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -579,17 +619,8 @@ features need not deploy on an older one. The run logs how many of them went up.
 ## What is checked, and at what layer
 
 ```text
-  ┌─ LAYER: whole chain ──────────────────────────────────────────────────────┐
-  │  ORACLE 1  replay determinism            invariants: —                    │
-  │  tests.VerifyBlocks replays every block produced by the run on an          │
-  │  independent Carmen state DB from the same genesis, and requires identical │
-  │  state roots, gas used, cumulative gas, receipt hashes and full block      │
-  │  hashes, each replayed with the base fee its own header records.           │
-  │  Skipped when the run reproduced defect [2] — see Skipping.                │
-  └───────────────────────────────────────────────────────────────────────────┘
-
   ┌─ LAYER: one block ────────────────────────────────────────────────────────┐
-  │  ORACLE 3  structural invariants     core/invariants.go — no model needed  │
+  │  ORACLE 2  structural invariants     core/invariants.go — no model needed  │
   │  1. every tx in a block has a receipt                                     │
   │  2. receipt.TransactionIndex == i; BlockHash and BlockNumber match         │
   │  3. gasUsed ≤ tx.Gas(); CumulativeGasUsed is the running sum;              │
@@ -600,15 +631,15 @@ features need not deploy on an older one. The run logs how many of them went up.
   └───────────────────────────────────────────────────────────────────────────┘
 
   ┌─ LAYER: one transaction ──────────────────────────────────────────────────┐
-  │  ORACLE 2  the outcome model               core/model.go                   │
+  │  ORACLE 1  the outcome model               core/model.go                   │
   │  observed outcome ∈ Prediction.Allowed, for every transaction.             │
   │  This is what catches execution that is WRONG BUT SELF-CONSISTENT, which   │
-  │  oracle 1 structurally cannot see: the node and the replay share the same  │
-  │  evmcore processor, so they agree on a wrong answer just as readily.       │
+  │  no amount of replaying can see: a replay shares evmcore with the node,    │
+  │  so the two agree on a wrong answer just as readily.                       │
   └───────────────────────────────────────────────────────────────────────────┘
 
   ┌─ LAYER: one account ──────────────────────────────────────────────────────┐
-  │  ORACLE 3  accounting                     core/invariants.go               │
+  │  ORACLE 2  accounting                     core/invariants.go               │
   │  nonceAfter  − nonceBefore  == number of its transactions that executed    │
   │  balanceBefore − balanceAfter == Σ (gasUsed × effectiveGasPrice            │
   │                                     + blobFee + value transferred)        │
@@ -622,7 +653,7 @@ features need not deploy on an older one. The run logs how many of them went up.
   └───────────────────────────────────────────────────────────────────────────┘
 
   ┌─ LAYER: one domain ───────────────────────────────────────────────────────┐
-  │  ORACLE 3  what only this family can see  subsidies/invariants.go         │
+  │  ORACLE 2  what only this family can see  subsidies/invariants.go         │
   │  For every sponsorship request that executed: the follow-up its mode calls │
   │  for is the very next transaction of the block, it succeeded, and it       │
   │  charges the base fee on the gas used plus that mode's overhead — no more, │
@@ -631,7 +662,7 @@ features need not deploy on an older one. The run logs how many of them went up.
   └───────────────────────────────────────────────────────────────────────────┘
 
   ┌─ LAYER: the order of one block ───────────────────────────────────────────┐
-  │  ORACLE 3  what the registry's answers say  priorities/domain.go          │
+  │  ORACLE 2  what the registry's answers say  priorities/domain.go          │
   │  Every block the batch reached begins with exactly the transactions the   │
   │  priorities hoist, in exactly their order: level desc, weight desc, hash  │
   │  asc, cut to each sender's contiguous run of prioritized nonces and to    │
@@ -715,7 +746,7 @@ Defect **[2]** is the one that cannot be skipped: pre-Allegro, a transaction the
 apply keeps the gas it bought although it reaches no block and gets no receipt, because the
 snapshot/revert around `ApplyMessage` is gated on Allegro. Skipping it would mean skipping most of what
 a pre-Allegro run has to say, so it is tolerated instead — the accounting check accepts that much of a
-shortfall, oracle 1 is skipped for a run that hit it, and the run reports what it saw. Allegro fixed it.
+shortfall, and the run reports what it saw. Allegro fixed it.
 
 The numbering is stable: a defect keeps its number once it is fixed and its case deleted, so an old log
 still names the same thing.

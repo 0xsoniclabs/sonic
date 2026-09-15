@@ -86,7 +86,9 @@ type Domain struct {
 
 	// paid and charged are what the whole run put into each fund and what the follow-ups took out of
 	// it, which is what the conservation check compares against the balance once the run is over and
-	// the archive can answer for the head again.
+	// the archive can answer for the head again. What a fund already held when this domain first met
+	// the account counts as paid: the chain is shared with whatever ran on it before, and a fund an
+	// earlier workload left stocked is money this one's requests can spend.
 	paid    map[common.Address]*big.Int
 	charged map[common.Address]*big.Int
 
@@ -175,6 +177,9 @@ func (d *Domain) Prepare(
 
 	// Modes 2 and 3 need no fund at all, so no block is spent on one.
 	if d.Mode == ModeFundBacked {
+		if err := d.openFunds(ctx, accounts); err != nil {
+			return err
+		}
 		baseFee, err := d.baseFee(ctx)
 		if err != nil {
 			return err
@@ -207,6 +212,25 @@ func (d *Domain) Prepare(
 		funds := d.held(account.Address())
 		d.funds[account.Address()] = funds
 		d.coverage[i] = coverage{funds: funds, requiredGas: requiredGas[i]}
+	}
+	return nil
+}
+
+// openFunds records what the fund of each newly claimed account already holds, which is nothing
+// unless an earlier workload on this chain stocked it. Reading it once per account, rather than per
+// iteration, is what keeps the ledger free of the archive: the balance of a fund this domain has
+// already met follows from its own payments and charges.
+func (d *Domain) openFunds(ctx context.Context, accounts []core.PooledAccount) error {
+	for _, account := range accounts {
+		address := account.Address()
+		if _, met := d.paid[address]; met {
+			continue
+		}
+		held, err := d.registry.FundsOf(ctx, address, 0)
+		if err != nil {
+			return fmt.Errorf("failed to read what the fund of %v already holds: %w", address, err)
+		}
+		add(d.paid, address, held)
 	}
 	return nil
 }

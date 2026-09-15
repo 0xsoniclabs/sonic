@@ -16,11 +16,15 @@
 
 // Package transaction_properties draws transactions with pgregory.net/rapid and injects them
 // straight into consensus through the test-only API, bypassing the transaction pool, then checks
-// what the network did with them against an independent model, a set of block invariants and a
-// replay of the whole chain. README.md describes the design.
+// what the network did with them against an independent model and a set of block invariants.
+// README.md describes the design.
 //
-// This package only wires the domains together and holds the property tests themselves: the harness
-// is in core, the ordinary transaction types are in regular, and everything about gas subsidies,
+// It all runs on one chain: each fork is a subtest, and each workload within it another, so the
+// history the run leaves behind carries every fork and every feature in the order they were switched
+// on.
+//
+// This package only wires the domains together and holds the property test itself: the harness is in
+// core, the ordinary transaction types are in regular, and everything about gas subsidies,
 // transaction bundles and transaction priorities is in subsidies, bundles and priorities
 // respectively.
 //
@@ -41,20 +45,21 @@ import (
 // interesting interactions: rival nonces, one malformed transaction taking its batch-mates down, a
 // sender's sequence advancing mid-batch.
 const (
-	scenariosPerNetwork = "200"
+	checksPerWorkload   = "200"
 	maxTxsPerBatch      = 4
 	maxAccountsPerBatch = 3
 )
 
 func TestMain(m *testing.M) {
-	if err := core.ApplyTestFlags(scenariosPerNetwork); err != nil {
+	if err := core.ApplyTestFlags(checksPerWorkload); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 	os.Exit(m.Run())
 }
 
-// genConfig is the generation budget for one network. The gas budget stays clearly below MaxEventGas,
+// genConfig is the generation budget for one workload, read from the rules the network is running
+// under at the time, which the fork it is in has just moved on. The gas budget stays clearly below MaxEventGas,
 // since a batch rejected for exceeding it starves every other case of coverage.
 func genConfig(network *core.Network) core.GenConfig {
 	return core.GenConfig{
