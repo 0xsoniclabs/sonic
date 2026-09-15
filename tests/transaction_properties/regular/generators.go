@@ -52,6 +52,7 @@ func GenBatch(t *rapid.T, cfg core.GenConfig) []core.TxSpec {
 			GasCeiling:  cfg.GasBudget / uint64(count),
 			ClaimAllGas: oversized && i == 0,
 			Index:       i,
+			Contracts:   cfg.Contracts,
 		})
 	}
 	return specs

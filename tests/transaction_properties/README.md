@@ -35,6 +35,22 @@ go test ./tests/transaction_properties/ -run Sponsored -v     # the sponsorship 
 go test ./tests/transaction_properties/ -run Prioritized -v   # the priorities scenarios alone
 ```
 
+`SONIC_TXPROP_EXPORT_DIR=/some/dir go test ./tests/transaction_properties/` writes the chain each
+scenario produced to a genesis file of its own in that directory, through the same `sonictool genesis
+export` an operator would use, so a run's whole history can be imported and looked at afterwards. It
+is off by default: exporting takes a while, the files are large, and what a green run produced is of
+no further interest.
+
+What comes out is an ordinary genesis file, so a node can be initialised from it:
+
+```sh
+sonictool --datadir=<datadir> genesis --experimental TestX_Allegro.g
+```
+
+`--experimental` is what says the file may be unsigned — an exported chain refers to no trusted
+preset, so the check for one has to be waived (`sonictool genesis sign <file>` is the alternative).
+`--mode=validator` imports it without the archive section.
+
 No flags, and no way to make it fail over something already known: a transaction that provokes a
 defect the client has not fixed is not injected at all — see [Skipping](#skipping). A scenario is one
 network: each of the three forks on its own, five more with gas subsidies enabled, three carrying
@@ -452,7 +468,9 @@ cap that could sit above its fee cap.
                         GasLimit               collapse onto one dirty account
                         Signing
   payload               DataLen, DataNonZero   data(): all-00 or all-01, which
-                                               are priced differently
+                        Call                   are priced differently — or, for
+                                               a recipient that is a deployed
+                                               contract, that contract's calldata
   optionalRecipient     To                     isCreate(): To may be empty
   requiredRecipient     To                     isCreate() = false: no creation
   wideValue             Value                  value(): big.Int, >256 bits fits
@@ -485,8 +503,8 @@ since that is drawn *relative to the intrinsic cost of everything above it*:
 ```go
 func (s *blobTx) draw(t *rapid.T, env genEnv) {
 	s.envelope.draw(t, env)
-	s.payload.draw(t, env)
 	s.requiredRecipient.draw(t, env)
+	s.payload.drawFor(t, env, s.To)   // what the payload is depends on where it goes
 	s.narrowValue.draw(t, env)
 	s.narrowPrices.draw(t, env)
 	s.accessListEntries.draw(t, env)
@@ -529,6 +547,34 @@ towards. A typical run lands around 11-16 % /
 69-73 % / 13-14 % across the three outcomes on Allegro and Brio, and around 38 % / 48 % / 12 % on
 Sonic, which refuses more batches outright because it is the only fork with a representable
 transaction type above its maximum.
+
+### Calls to deployed contracts
+
+Every application in [tests/contracts](../contracts) is deployed on the network before the run
+starts, by an account no iteration observes, in a handful of blocks. A recipient drawn as
+`ToContract` then addresses one of them, and the payload stops being bytes nobody reads: it becomes
+the calldata of one of that contract's methods, with an argument drawn per ABI type — integers within
+what their width admits, byte strings, arrays, and the tuples the bindings derived a Go type for.
+Everything about this lives in `core/contracts`, which knows nothing of the harness: a call is plain
+data, encoded from the checked-in bindings alone.
+
+About half of them are left valid, and the rest carry one mutation:
+
+| Mutation | What the contract is sent |
+| --- | --- |
+| `Selector` | a selector no method of the contract matches |
+| `Flip` | an argument byte changed, which can put a value outside its type or point a dynamic argument's offset out of the calldata |
+| `Truncate` | the calldata cut short, leaving the arguments incomplete |
+| `Extend` | bytes past the end of the arguments |
+| `DropArgs` | the selector alone, with every argument gone |
+
+Address arguments are drawn as bytes like anything else, and that is deliberate: several of these
+contracts forward value to an address they are handed, and the accounting checks every watched
+account to the wei, so no drawn address may be one of them.
+
+A contract the fork under test cannot even price is left out of that fork's draws rather than failing
+the run — these applications are written for the whole test suite, and one built for a fork's
+features need not deploy on an older one. The run logs how many of them went up.
 
 ## What is checked, and at what layer
 

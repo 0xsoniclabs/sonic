@@ -12,11 +12,12 @@ func _() {
 	_ = x[ToOther-1]
 	_ = x[ToCreate-2]
 	_ = x[ToPrecompile-3]
+	_ = x[ToContract-4]
 }
 
-const _ToChoice_name = "SelfOtherCreatePrecompile"
+const _ToChoice_name = "SelfOtherCreatePrecompileContract"
 
-var _ToChoice_index = [...]uint8{0, 4, 9, 15, 25}
+var _ToChoice_index = [...]uint8{0, 4, 9, 15, 25, 33}
 
 func (i ToChoice) String() string {
 	idx := int(i) - 0

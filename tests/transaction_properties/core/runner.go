@@ -24,12 +24,14 @@ import (
 	"maps"
 	"math/big"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/sonic/tests/transaction_properties/core/contracts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -113,12 +115,13 @@ func (o Observation) Executed() []TxObservation {
 	return out
 }
 
-// Network bundles a running test network with the account pool funded in its genesis and the
-// configuration the model needs.
+// Network bundles a running test network with the account pool funded in its genesis, the
+// applications deployed on it, and the configuration the model needs.
 type Network struct {
-	Net  *tests.IntegrationTestNet
-	Pool *AccountPool
-	Cfg  NetworkConfig
+	Net       *tests.IntegrationTestNet
+	Pool      *AccountPool
+	Cfg       NetworkConfig
+	Contracts []contracts.Deployed
 }
 
 // StartNetwork starts a network running the given upgrades and stops it when the test that asked for
@@ -133,8 +136,14 @@ func StartNetwork(t *testing.T, upgrades opera.Upgrades) *Network {
 
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
-		Accounts: pool.GenesisAccounts(),
+		Accounts: append(pool.GenesisAccounts(), contracts.GenesisAccount()),
 	})
+
+	// The applications of tests/contracts go up before anything is drawn, so that a transaction can
+	// be addressed to code without the generator having to produce any.
+	deployed, err := contracts.Deploy(t.Context(), net)
+	require.NoError(t, err, "failed to deploy the test contracts")
+	t.Logf("deployed %d of %d test contracts", len(deployed), len(contracts.Registry))
 
 	t.Cleanup(func() {
 		handedOut, dirtied, untouched := pool.Stats()
@@ -144,8 +153,9 @@ func StartNetwork(t *testing.T, upgrades opera.Upgrades) *Network {
 
 	rules := tests.GetNetworkRules(t, net)
 	return &Network{
-		Net:  net,
-		Pool: pool,
+		Net:       net,
+		Pool:      pool,
+		Contracts: deployed,
 		Cfg: NetworkConfig{
 			ChainId:     net.GetChainId(),
 			Upgrades:    upgrades,
@@ -576,6 +586,31 @@ func (r *Runner) VerifyChainReplays(t *testing.T) {
 	}
 
 	tests.VerifyBlocks(t, genesis, blocks)
+}
+
+// ExportGenesisEnv names a directory a run writes its chain to when it is done. It is off by default:
+// exporting takes a while and the files are large, and what a green run produced is of no further
+// interest.
+const ExportGenesisEnv = "SONIC_TXPROP_EXPORT_DIR"
+
+// ExportGenesis writes the chain this run produced -- every block it drew, in the form a node can be
+// started from -- to a genesis file named after the test, in the directory ExportGenesisEnv names.
+// Without that variable it does nothing.
+//
+// It stops the network, so it must come after everything else the test does: the replay check reads
+// the chain through the client, and there is no client once the nodes are down.
+func (r *Runner) ExportGenesis(t *testing.T) {
+	t.Helper()
+
+	directory, set := os.LookupEnv(ExportGenesisEnv)
+	if !set {
+		return
+	}
+
+	require.NoError(t, os.MkdirAll(directory, 0755), "failed to create the export directory")
+	path := filepath.Join(directory, strings.ReplaceAll(t.Name(), "/", "_")+".g")
+	require.NoError(t, r.Network.Net.ExportGenesis(path), "failed to export the chain")
+	t.Logf("exported the chain of this run to %s", path)
 }
 
 // UnfundedKey signs the SignUnfundedKey case: derived from a fixed seed and never funded, so a

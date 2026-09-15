@@ -108,6 +108,7 @@ func TestTransactionProperties_PrioritizedTransactionsAreOrderedAsTheRegistrySay
 				t.Logf("%s", domain)
 				runner.Report(t, name)
 				runner.VerifyChainReplays(t)
+				runner.ExportGenesis(t)
 			})
 		}
 	}

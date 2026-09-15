@@ -58,6 +58,12 @@ func (c BuildContext) RecipientAddress(spec TxSpec) *common.Address {
 		return nil
 	}
 	switch spec.Recipient() {
+	case ToContract:
+		if call := CallOf(spec); call != nil {
+			return &call.Address
+		}
+		address := c.Bystander(spec) // a spec naming a contract it never drew has nowhere else to go
+		return &address
 	case ToPrecompile:
 		return &PrecompileAddress
 	case ToOther:

@@ -164,12 +164,15 @@ func (d *Domain) Expect(envelope *Envelope, baseFee *big.Int) Expectation {
 //   - a contract creation runs its data as init code, and a byte of 0x01 is an ADD with nothing to add;
 //   - a transfer the sender cannot back after buying its gas reverts, since Sonic's EVM treats an
 //     insufficient balance as a revert rather than as an error;
-//   - a gas limit merely above the intrinsic cost can still run out inside a precompile.
+//   - a gas limit merely above the intrinsic cost can still run out inside a precompile;
+//   - a call to a deployed contract runs whatever that contract does with what it was sent, which
+//     can revert for reasons no model here knows -- a mutated call reaches no method at all, and
+//     several of these contracts revert by design.
 //
 // A call to an account with no code, with gas to spare and a value its sender clearly holds, has none
 // of those left to go wrong.
 func cannotFail(spec core.TxSpec, sender core.SenderState, baseFee *big.Int) bool {
-	if spec.IsCreate() {
+	if spec.IsCreate() || core.CallOf(spec) != nil {
 		return false
 	}
 	if spec.Gas() < core.SaturatingAdd(gasBoundary(spec), ampleGas) {

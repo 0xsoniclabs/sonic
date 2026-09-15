@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"strconv"
 
+	"github.com/0xsoniclabs/sonic/tests/transaction_properties/core/contracts"
 	"pgregory.net/rapid"
 )
 
@@ -42,6 +43,10 @@ type GenConfig struct {
 	MaxTxsPerBatch      int
 	MaxAccountsPerBatch int
 	GasBudget           uint64
+
+	// Contracts are the applications deployed on this network before the run, which a transaction
+	// may be drawn to call. Empty leaves every payload meaningless to whoever receives it.
+	Contracts []contracts.Deployed
 }
 
 // GenEnv is the state a draw needs but does not draw: the network being generated for, how many
@@ -53,6 +58,7 @@ type GenEnv struct {
 	GasCeiling  uint64
 	ClaimAllGas bool // ask for the whole event allowance rather than a share of the budget
 	Index       int
+	Contracts   []contracts.Deployed
 }
 
 // label names a draw after the transaction it belongs to, so a failure report says where a value came
@@ -80,18 +86,34 @@ func (e *Envelope) Draw(t *rapid.T, env GenEnv) {
 	e.Signing = Signatures.Draw(t, env.Label("signing"))
 }
 
-func (p *Payload) Draw(t *rapid.T, env GenEnv) {
+// DrawFor draws the payload for a transaction already known to be going somewhere, because what the
+// payload should be depends on it: call data for a deployed contract, and bytes nobody will read for
+// anything else. It is drawn after the recipient for that reason alone.
+func (p *Payload) DrawFor(t *rapid.T, env GenEnv, to ToChoice) {
+	if to == ToContract && len(env.Contracts) > 0 {
+		p.Call = contracts.DrawCall(t, env.Label("call"), env.Contracts)
+		return
+	}
 	p.DataLen = DataLengths.Draw(t, env.Label("dataLen"))
 	p.DataNonZero = rapid.Bool().Draw(t, env.Label("dataNonZero"))
 }
 
 func (r *OptionalRecipient) Draw(t *rapid.T, env GenEnv) {
-	r.To = rapid.SampledFrom([]ToChoice{ToSelf, ToOther, ToCreate, ToPrecompile}).
-		Draw(t, env.Label("to"))
+	r.To = rapid.SampledFrom(RecipientChoices(env, ToCreate)).Draw(t, env.Label("to"))
 }
 
 func (r *RequiredRecipient) Draw(t *rapid.T, env GenEnv) {
-	r.To = rapid.SampledFrom([]ToChoice{ToSelf, ToOther, ToPrecompile}).Draw(t, env.Label("to"))
+	r.To = rapid.SampledFrom(RecipientChoices(env)).Draw(t, env.Label("to"))
+}
+
+// RecipientChoices are the recipients a transaction can be drawn towards: the ones every transaction
+// has, whatever else the capability admits, and a deployed contract where the network has any.
+func RecipientChoices(env GenEnv, also ...ToChoice) []ToChoice {
+	choices := append([]ToChoice{ToSelf, ToOther, ToPrecompile}, also...)
+	if len(env.Contracts) > 0 {
+		choices = append(choices, ToContract)
+	}
+	return choices
 }
 
 func (v *WideValue) Draw(t *rapid.T, env GenEnv) {

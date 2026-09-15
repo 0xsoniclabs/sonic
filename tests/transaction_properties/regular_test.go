@@ -57,6 +57,7 @@ func TestTransactionProperties_ForcedTransactionsPreserveConsensusInvariants(t *
 
 			runner.Report(t, name)
 			runner.VerifyChainReplays(t)
+			runner.ExportGenesis(t)
 		})
 	}
 }

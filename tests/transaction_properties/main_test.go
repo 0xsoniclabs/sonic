@@ -62,5 +62,6 @@ func genConfig(network *core.Network) core.GenConfig {
 		MaxTxsPerBatch:      maxTxsPerBatch,
 		MaxAccountsPerBatch: maxAccountsPerBatch,
 		GasBudget:           network.Cfg.MaxEventGas / 10,
+		Contracts:           network.Contracts,
 	}
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/transaction_properties/core"
+	"github.com/0xsoniclabs/sonic/tests/transaction_properties/core/contracts"
 	"github.com/0xsoniclabs/sonic/tests/transaction_properties/regular"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -300,6 +301,11 @@ func TestCannotFail_ClaimsOnlyThePlainCase(t *testing.T) {
 
 	poor := *plain
 	poor.WideValue = core.WideValue{Value: big.NewInt(1e18)}
+	call := *plain
+	call.Payload = core.Payload{Call: &contracts.Call{}}
+	require.False(t, cannotFail(&call, sender, baseFee),
+		"a call to a contract can revert for reasons of the contract's own")
+
 	require.False(t, cannotFail(&poor, sender, baseFee),
 		"a transfer the sender cannot back once it has bought its gas reverts")
 }

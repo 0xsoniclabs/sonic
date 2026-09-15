@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/tests/transaction_properties/core"
+	"github.com/0xsoniclabs/sonic/tests/transaction_properties/core/contracts"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -52,6 +53,13 @@ func TestPayload_HoldsOnlyZeroOrNonZeroBytes(t *testing.T) {
 	ones := core.Payload{DataLen: 4, DataNonZero: true}.Data()
 	require.Equal(t, []byte{1, 1, 1, 1}, ones)
 	require.Zero(t, bytes.Count(ones, []byte{0}))
+}
+
+func TestPayload_ACallSuppliesTheDataInsteadOfTheDrawnLength(t *testing.T) {
+	call := &contracts.Call{Args: []byte{9}}
+	payload := core.Payload{DataLen: 4, Call: call}
+	require.Equal(t, call.Data(), payload.Data())
+	require.Equal(t, call, core.CallOf(&legacyTx{Payload: payload}))
 }
 
 func TestRecipient_OnlyAPointerRecipientCanBeACreation(t *testing.T) {

@@ -87,6 +87,7 @@ func TestTransactionProperties_BundlesExecuteWholeOrNotAtAll(t *testing.T) {
 			t.Logf("%s", domain)
 			runner.Report(t, scenario.name)
 			runner.VerifyChainReplays(t)
+			runner.ExportGenesis(t)
 		})
 	}
 }

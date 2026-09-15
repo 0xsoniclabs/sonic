@@ -21,6 +21,8 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/tests/transaction_properties/core"
+	"github.com/0xsoniclabs/sonic/tests/transaction_properties/core/contracts"
+	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -112,6 +114,10 @@ func TestBuildTx_CarriesTheSpecIntoATransactionOfThatType(t *testing.T) {
 	}
 }
 
+// deployedContract stands in for a contract put on chain before a run, which is all a spec holds of
+// one: where it is, and what to send it.
+var deployedContract = &contracts.Call{Address: common.Address{0xc0, 0xde}}
+
 func TestBuildTx_ResolvesTheRecipientOfEachChoice(t *testing.T) {
 	ctx := testBuildContext(t)
 	sender := ctx.Accounts[0].Address()
@@ -132,12 +138,18 @@ func TestBuildTx_ResolvesTheRecipientOfEachChoice(t *testing.T) {
 		core.ToCreate: func(tx *types.Transaction) {
 			require.Nil(t, tx.To(), "an empty recipient is what makes it a creation")
 		},
+		core.ToContract: func(tx *types.Transaction) {
+			require.Equal(t, deployedContract.Address, *tx.To(),
+				"a contract call must reach the contract whose call data it carries")
+			require.Equal(t, deployedContract.Data(), tx.Data())
+		},
 	}
 
 	for choice, check := range tests {
 		t.Run(choice.String(), func(t *testing.T) {
 			spec := &legacyTx{
 				Envelope:          core.Envelope{GasLimit: 100_000},
+				Payload:           core.Payload{Call: deployedContract},
 				OptionalRecipient: core.OptionalRecipient{To: choice},
 				WideValue:         core.WideValue{Value: big.NewInt(0)},
 				SinglePrice:       core.SinglePrice{GasPrice: big.NewInt(1)},

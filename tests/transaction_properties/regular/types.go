@@ -83,13 +83,14 @@ func (dynamicFeeTx) TxType() uint8 { return types.DynamicFeeTxType }
 func (blobTx) TxType() uint8       { return types.BlobTxType }
 func (setCodeTx) TxType() uint8    { return types.SetCodeTxType }
 
-// Each transaction type draws the capabilities it carries, and nothing else. The gas limit comes last
-// because it is drawn relative to the intrinsic cost of everything above it.
+// Each transaction type draws the capabilities it carries, and nothing else. The recipient comes
+// before the payload, because what the payload is depends on whether it is addressed to code; the gas
+// limit comes last, because it is drawn relative to the intrinsic cost of everything above it.
 
 func (s *legacyTx) Draw(t *rapid.T, env core.GenEnv) {
 	s.Envelope.Draw(t, env)
-	s.Payload.Draw(t, env)
 	s.OptionalRecipient.Draw(t, env)
+	s.Payload.DrawFor(t, env, s.To)
 	s.WideValue.Draw(t, env)
 	s.SinglePrice.Draw(t, env)
 	s.GasLimit = DrawGasLimit(t, env, s)
@@ -97,8 +98,8 @@ func (s *legacyTx) Draw(t *rapid.T, env core.GenEnv) {
 
 func (s *accessListTx) Draw(t *rapid.T, env core.GenEnv) {
 	s.Envelope.Draw(t, env)
-	s.Payload.Draw(t, env)
 	s.OptionalRecipient.Draw(t, env)
+	s.Payload.DrawFor(t, env, s.To)
 	s.WideValue.Draw(t, env)
 	s.SinglePrice.Draw(t, env)
 	s.AccessListEntries.Draw(t, env)
@@ -107,8 +108,8 @@ func (s *accessListTx) Draw(t *rapid.T, env core.GenEnv) {
 
 func (s *dynamicFeeTx) Draw(t *rapid.T, env core.GenEnv) {
 	s.Envelope.Draw(t, env)
-	s.Payload.Draw(t, env)
 	s.OptionalRecipient.Draw(t, env)
+	s.Payload.DrawFor(t, env, s.To)
 	s.WideValue.Draw(t, env)
 	s.WidePrices.Draw(t, env)
 	s.AccessListEntries.Draw(t, env)
@@ -117,8 +118,8 @@ func (s *dynamicFeeTx) Draw(t *rapid.T, env core.GenEnv) {
 
 func (s *blobTx) Draw(t *rapid.T, env core.GenEnv) {
 	s.Envelope.Draw(t, env)
-	s.Payload.Draw(t, env)
 	s.RequiredRecipient.Draw(t, env)
+	s.Payload.DrawFor(t, env, s.To)
 	s.NarrowValue.Draw(t, env)
 	s.NarrowPrices.Draw(t, env)
 	s.AccessListEntries.Draw(t, env)
@@ -128,8 +129,8 @@ func (s *blobTx) Draw(t *rapid.T, env core.GenEnv) {
 
 func (s *setCodeTx) Draw(t *rapid.T, env core.GenEnv) {
 	s.Envelope.Draw(t, env)
-	s.Payload.Draw(t, env)
 	s.RequiredRecipient.Draw(t, env)
+	s.Payload.DrawFor(t, env, s.To)
 	s.NarrowValue.Draw(t, env)
 	s.NarrowPrices.Draw(t, env)
 	s.AccessListEntries.Draw(t, env)

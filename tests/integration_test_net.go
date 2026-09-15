@@ -930,6 +930,19 @@ func (n *IntegrationTestNet) RestartWithExportImport() error {
 	return n.start()
 }
 
+// ExportGenesis stops the network and writes everything it has -- the genesis it started from and
+// every block since -- to a genesis file at the given path, through the same sonictool export an
+// operator would use. The network is left stopped, because a node cannot export the database it is
+// running on.
+func (n *IntegrationTestNet) ExportGenesis(path string) error {
+	n.Stop()
+	return sonictool.RunWithArgs([]string{
+		"sonictool",
+		"--datadir", n.nodes[0].getStateDir(),
+		"genesis", "export", path,
+	})
+}
+
 // GetHeaders returns the headers of all blocks on the network from block 0 to the latest block.
 func (n *IntegrationTestNet) GetHeaders() ([]*types.Header, error) {
 	client, err := n.GetClient()

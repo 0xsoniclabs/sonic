@@ -29,6 +29,7 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/0xsoniclabs/sonic/tests/transaction_properties/core/contracts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
@@ -92,14 +93,22 @@ func (e Envelope) GapSize() uint64            { return e.NonceGapSize }
 func (e Envelope) Gas() uint64                { return e.GasLimit }
 func (e Envelope) SigningMode() SigningChoice { return e.Signing }
 
-// Payload is the call data. Its content matters only in that zero and non-zero bytes are priced
-// differently, so it is drawn as a length and a choice between the two.
+// Payload is the call data. Where it goes nowhere in particular its content matters only in that
+// zero and non-zero bytes are priced differently, so it is drawn as a length and a choice between
+// the two. Where the recipient is a deployed contract it is that contract's call data instead, and
+// Call holds what was drawn.
 type Payload struct {
 	DataLen     int
 	DataNonZero bool
+	Call        *contracts.Call
 }
 
+func (p Payload) ContractCall() *contracts.Call { return p.Call }
+
 func (p Payload) Data() []byte {
+	if p.Call != nil {
+		return p.Call.Data()
+	}
 	if p.DataLen <= 0 {
 		return nil
 	}
@@ -241,6 +250,7 @@ type (
 	WithAccessList interface{ AccessList() types.AccessList }
 	WithBlobHashes interface{ BlobHashes() []common.Hash }
 	WithAuths      interface{ Auths() []AuthChoice }
+	WithCall       interface{ ContractCall() *contracts.Call }
 )
 
 func AccessListOf(spec TxSpec) types.AccessList {
@@ -253,6 +263,14 @@ func AccessListOf(spec TxSpec) types.AccessList {
 func BlobHashesOf(spec TxSpec) []common.Hash {
 	if with, ok := spec.(WithBlobHashes); ok {
 		return with.BlobHashes()
+	}
+	return nil
+}
+
+// CallOf is the contract call a spec carries, or nil when its payload names no contract.
+func CallOf(spec TxSpec) *contracts.Call {
+	if with, ok := spec.(WithCall); ok {
+		return with.ContractCall()
 	}
 	return nil
 }
@@ -280,6 +298,9 @@ func Format(spec TxSpec) string {
 	}
 	if auths := AuthsOf(spec); auths != nil {
 		fmt.Fprintf(&out, " auths=%v", auths)
+	}
+	if call := CallOf(spec); call != nil {
+		fmt.Fprintf(&out, " call=%v@%v", call, call.Address)
 	}
 	// A transaction type that carries more than the capabilities above says so itself, so that a
 	// failure names what it really was.
@@ -346,6 +367,9 @@ const (
 	ToCreate
 	// ToPrecompile targets a precompile address.
 	ToPrecompile
+	// ToContract targets one of the contracts deployed before the run, which is the only recipient
+	// whose code the payload can mean anything to.
+	ToContract
 )
 
 // SigningChoice selects how a transaction is signed. Everything but SignCorrect is a deliberate
