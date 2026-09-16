@@ -35,12 +35,17 @@ go test ./tests/transaction_properties/ -run 'TestTransactionProperties/Brio' -v
 go test ./tests/transaction_properties/ -run 'TestTransactionProperties/.*/sponsored' -v
 ```
 
-`SONIC_TXPROP_EXPORT_DIR=/some/dir go test ./tests/transaction_properties/` writes the chain the run
-produced to a genesis file in that directory, through the same `sonictool genesis export` an operator
-would use. Everything ran on one chain, so that is one file carrying every fork and every feature the
-run exercised — which is what makes it worth keeping for something else to start from. It is off by
-default: exporting takes a while, the files are large, and what a green run produced is of
-no further interest.
+`-txprop.export=<file>` writes the chain the run produced to that genesis file, through the same
+`sonictool genesis export` an operator would use:
+
+```sh
+go test ./tests/transaction_properties/ -txprop.export=/tmp/all-features.g
+```
+
+Everything ran on one chain, so that is one file carrying every fork and every feature the run
+exercised — which is what makes it worth keeping for something else to start from. The directory is
+created if it is not there. It is off by default: exporting takes a while, the file is large, and
+what a green run produced is of no further interest.
 
 What comes out is an ordinary genesis file, so a node can be initialised from it:
 
@@ -52,8 +57,9 @@ sonictool --datadir=<datadir> genesis --experimental TestX_Allegro.g
 preset, so the check for one has to be waived (`sonictool genesis sign <file>` is the alternative).
 `--mode=validator` imports it without the archive section.
 
-No flags, and no way to make it fail over something already known: a transaction that provokes a
-defect the client has not fixed is not injected at all — see [Skipping](#skipping).
+No flags. On the older forks there is no way to make it fail over something already known — a
+transaction that provokes a defect the client has not fixed is kept out and reported — while on the
+newest fork nothing is kept out and a known defect fails the run. See [Skipping](#skipping).
 
 Everything runs on **one chain** — see [One chain, every workload](#one-chain-every-workload).
 
@@ -103,7 +109,7 @@ domain first met the account as paid in (`subsidies.Domain.openFunds`); a priori
 overwritten by whoever claims that nonce slot next, and the pool hands out the accounts nobody is
 using.
 
-`SONIC_TXPROP_EXPORT_DIR` then yields **one** genesis file carrying all of it.
+`-txprop.export` then yields **one** genesis file carrying all of it.
 
 ## Domains
 
@@ -724,32 +730,71 @@ keeps a run of ten thousand iterations on accounts whose balance the model knows
 
 ## Skipping
 
-A transaction that provokes a defect the client has not fixed is dropped before it is injected, so a
-run stays green and says in one line what it stepped around:
+Whether a known defect is skipped depends on the fork. The rule, `NetworkConfig.Latest`:
 
-```text
-  12 kept out of their batch: [1] a contract creation whose value its sender cannot transfer keeps its nonce (regular/skip.go)
-  known defects on Allegro:
-      avoided: [1] a contract creation whose value its sender cannot transfer keeps its nonce (regular/skip.go)
-```
+- **On an older fork — Sonic, Allegro, Brio — a known defect is a fact.** The client there is what it
+  is, and a run that dies of a known crash finds nothing else. A transaction that provokes one is kept
+  out of the batch before injection, the run goes on, and it says in one line what it stepped around:
 
-[core/skip.go](core/skip.go) applies the policies; each one lives in the `skip.go` of the domain it
-belongs to, next to the note explaining the defect and what to delete once it is fixed:
+  ```text
+    12 kept out of their batch: [1] a contract creation whose value its sender cannot transfer keeps its nonce (regular/skip.go)
+    known defects on Allegro:
+        avoided: [1] a contract creation whose value its sender cannot transfer keeps its nonce (regular/skip.go)
+  ```
 
-| | skipped | where |
+- **On the newest fork a known defect is work.** Nothing is kept out — the generator produces
+  everything the client can be given, and the run goes red until the client is fixed, naming the seed.
+  A defect that crashes the node ends the run there, which is the point of finding it.
+
+  The one exception is defect **[1]**: its fix is prepared but not landed, so until it does the
+  creation is kept out on the newest fork as well and the defect is tolerated rather than red.
+
+Which fork is newest is derived, not named: `core.OnLatestFork` takes the last fork in
+`opera.GetAllHardForksInOrder` and asks whether every flag it sets is set on the network. Forks are
+cumulative, so a new fork takes the role over without anyone editing this package.
+
+### Everything the generators keep out, and why
+
+Not every filter is a known defect. Some are harness blind spots, some are coverage choices. This is
+the complete list, so that no exclusion is silent:
+
+| What is kept out | Where | Why | On the newest fork |
+| --- | --- | --- | --- |
+| a contract creation whose value its sender may not hold after buying gas | `regular.Domain.Skip` | **defect [1]** — it executes and gets a receipt without spending its nonce (`EVM.create` tests `CanTransfer` before its own `SetNonce`), so the accounting sees a nonce behind the transactions that ran | **kept out**, tolerated until the prepared fix lands |
+| a bundle with a bare root whose transaction can fail — demoted to `AllOf(A)` | `bundles.Domain.build` | **defect [3]** — `runTransactionBundleInternal` takes no snapshot of its own, so a failed bare root keeps what its transaction did while reaching no block | **generated**; the accounting fails |
+| a sponsorship request whose value exceeds 256 bits | `subsidies.unsponsorable` | **defect [4]** — `createChooseFundInput` writes the value with `FillBytes(32)`, which panics on anything wider, and block formation asks it before `ValidateTxStatic` would have dropped the transaction | **generated**; the node dies and the run ends there |
+| a sponsorship request signed by a stranger, under a network-sponsored registry | `subsidies.unsponsorable` | **harness blind spot, not a defect** — a registry covering everyone sponsors a stranger too, so the transaction executes and moves an account this harness never claimed, spending the stranger's nonce. A fund-backed registry has no such case, so it keeps them | still kept out; removing it manufactures failures that mean nothing |
+| a contract creation, from being made a request | `subsidies.Sponsoring` | production refuses to sponsor a creation, so zeroing its price would only make a transaction nothing can pay for — which the ordinary rules already predict. It stays in the batch, priced as drawn | same |
+| a contract creation, from the batch altogether | `subsidies.SponsoringAll` (feature off) | that generator claims to produce nothing but requests, and a creation is not a request whatever it is priced at | same |
+| a transaction that asked to be sponsored and is unsponsorable | `subsidies.Sponsoring` | the ordinary fee caps include zero, so a transaction can ask without the transform touching it; what must not be sponsored is dropped rather than left to ask | same |
+| a signing defect drawn for a bundle's contents | `bundles.Domain.build` | the bundle builder signs the contents itself after stamping the marker, so the drawn defect is not what the transaction carries; the spec is corrected to say what it became | same |
+| `NonceMax` for an envelope | `bundles.envelopeOf` | a carrier's nonce is never spent or checked, so taking a bundle down for the one static check that refuses the maximum would cost a draw for a reason unrelated to bundles; the ordinary domain covers that rule | same |
+| a second envelope in one batch | `bundles.Bundling` | two bundles would compete for one nonce; the contents' senders live in their own window of accounts for the same reason | same |
+| a transaction identical to one already on the chain | `core.Runner.Run` | the chain would see nothing new; the iteration is skipped | same |
+| a batch nothing in which could be built | `core.Runner.Run` | a spec the builder cannot represent is a harness limit, not a finding; the iteration is skipped | same |
+| an address argument that is an observed account | `contracts.fill` | several test contracts forward value to an address they are handed; the accounting checks every observed account to the wei, so none may receive any that way. Addresses are drawn as bytes, which cannot land on one | same |
+
+And the shape of what is drawn is itself bounded, for reasons of coverage rather than safety — each
+is documented at the generator:
+
+| Bound | Value | Why |
 | --- | --- | --- |
-| [1] | a contract creation whose value its sender cannot transfer keeps its nonce | [regular/skip.go](regular/skip.go) |
-| [3] | a bundle whose bare root fails keeps what its transaction did | [bundles/skip.go](bundles/skip.go), applied in `Domain.build` |
-| [4] | a sponsorship request whose value exceeds 256 bits panics the node | [subsidies/skip.go](subsidies/skip.go), via `unsponsorable` |
+| payload length | ≤ 2048, far below `MaxInitCodeSize` | an oversized init code behaves inconsistently across forks and the model cannot name one outcome for it |
+| fee caps | never in the band around the base fee | the base fee moves as blocks are produced; a cap near it makes the outcome depend on timing rather than on the transaction |
+| access list | ≤ 8 entries | 4700 gas apiece is enough to push a transaction over a modest limit without inflating the batch |
+| blob hashes | ≤ 2 | any at all is malformed; more adds nothing |
+| authorizations | ≤ 3 | the empty list is the case that matters |
+| a type above the fork's maximum | one draw in nine | a batch containing one is refused whole, which starves everything downstream |
+| a batch reaching `MaxEventGas` | one batch in six | the same, for size |
 
-Defect **[2]** is the one that cannot be skipped: pre-Allegro, a transaction the state processor cannot
-apply keeps the gas it bought although it reaches no block and gets no receipt, because the
-snapshot/revert around `ApplyMessage` is gated on Allegro. Skipping it would mean skipping most of what
-a pre-Allegro run has to say, so it is tolerated instead — the accounting check accepts that much of a
-shortfall, and the run reports what it saw. Allegro fixed it.
+Defect **[2]** is in neither table because it cannot be kept out: pre-Allegro, a transaction the state
+processor cannot apply keeps the gas it bought although it reaches no block and gets no receipt, since
+the snapshot/revert around `ApplyMessage` is gated on Allegro. Skipping it would mean skipping most of
+what a pre-Allegro run has to say, so it is tolerated — the accounting accepts that much of a
+shortfall and the run reports what it saw as `seen [2]`. Allegro fixed it.
 
-The numbering is stable: a defect keeps its number once it is fixed and its case deleted, so an old log
-still names the same thing.
+The numbering is stable: a defect keeps its number once it is fixed and its case deleted, so an old
+log still names the same thing.
 
 Separately, and not a defect of the client: a genesis is written as a single block, and Carmen panics
 rather than writing out a node whose hash it has not computed yet, so a genesis carrying more accounts

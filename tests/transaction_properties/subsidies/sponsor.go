@@ -69,6 +69,36 @@ func Sponsoring(
 	})
 }
 
+// SponsoringAll turns a whole batch into sponsorship requests, for a network that sponsors nothing.
+// With gas subsidies switched off every one of them has to die of the price it now carries, so the
+// workload drawing from this is a plain negative control: a single receipt anywhere in the batch is
+// a defect.
+//
+// Contract creations are dropped rather than zeroed. A creation is not a request whatever it is
+// priced at -- IsSponsorshipRequest says so, and production refuses to sponsor one -- so leaving it
+// in would put a transaction in the batch that is not what this generator claims to produce.
+//
+// Nothing else is held back, and in particular nothing that unsponsorable names. Both of the hazards
+// that function avoids need the feature to be on: a value wider than 256 bits panics the node while
+// it picks a fund (defect 4), and a request whose signature recovers to a stranger executes on a
+// registry that covers everyone. Neither path is reached at all here, because subsidies.IsCovered
+// returns on the flag before it looks at the transaction.
+func SponsoringAll(inner *rapid.Generator[[]core.TxSpec]) *rapid.Generator[[]core.TxSpec] {
+	return rapid.Custom(func(t *rapid.T) []core.TxSpec {
+		specs := inner.Draw(t, "batch")
+
+		kept := make([]core.TxSpec, 0, len(specs))
+		for _, spec := range specs {
+			if spec.IsCreate() {
+				continue
+			}
+			spec.(core.ZeroablePrice).ZeroPrices()
+			kept = append(kept, spec)
+		}
+		return kept
+	})
+}
+
 // IsSponsorshipRequest reports whether a spec asks to be sponsored, mirroring
 // subsidies.IsSponsorshipRequest: a transaction with a maximum gas price of zero and a recipient.
 // It is written from the specification rather than by calling that function, which would make the

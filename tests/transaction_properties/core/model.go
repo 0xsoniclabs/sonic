@@ -47,6 +47,12 @@ type NetworkConfig struct {
 	MaxBlockGas uint64
 	MaxTxType   uint8
 
+	// Latest is whether the network runs the newest hard fork, which decides what a known defect is.
+	// On an older fork it is a fact: the client there is what it is, so a transaction provoking one
+	// is kept out and the run says so. On the latest it is work: nothing is kept out, and the run
+	// goes red until the client is fixed.
+	Latest bool
+
 	// Pricing is the tail of PredictTx's rule table, taken from the domain under test.
 	Pricing PricingRules
 }

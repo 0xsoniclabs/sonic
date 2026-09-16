@@ -78,6 +78,12 @@ type Domain struct {
 	registry *Registry
 	client   *tests.PooledEhtClient
 
+	// cfg is the network as it was when this domain was built. Whether it sponsors anything decides
+	// what the batch is for: with gas subsidies off nothing covers a request, so no fund is worth
+	// paying into and every request must die of the price it was drawn with -- which the model
+	// already says, since its rules fall through to the inner domain's whenever the feature is off.
+	cfg core.NetworkConfig
+
 	// What the last Prepare established about the iteration now running. rapid runs iterations one
 	// at a time, and every one of them calls Prepare before anything reads these.
 	senders  int
@@ -97,9 +103,12 @@ type Domain struct {
 	observed map[core.Outcome]int
 }
 
-// New builds the domain over a session whose network has gas subsidies enabled and the registry of
-// the given mode installed. It reads the registry's gas configuration once, and verifies that no fund
-// other than the account funds it pays into holds anything.
+// New builds the domain over a session whose network has the registry of the given mode installed.
+// It reads the registry's gas configuration once, and verifies that no fund other than the account
+// funds it pays into holds anything.
+//
+// The network need not have gas subsidies enabled: a domain built over one that does not is how the
+// inert case is searched, where a request nothing will cover has to die of its own price.
 func New(
 	session tests.IntegrationTestNetSession,
 	client *tests.PooledEhtClient,
@@ -131,6 +140,7 @@ func New(
 		Config:   config,
 		registry: registry,
 		client:   client,
+		cfg:      network.Cfg,
 		funds:    map[common.Address]*big.Int{},
 		paid:     map[common.Address]*big.Int{},
 		charged:  map[common.Address]*big.Int{},
@@ -138,8 +148,12 @@ func New(
 	}, nil
 }
 
-// Batch draws the inner domain's transactions and sponsors part of them.
+// Batch draws the inner domain's transactions and sponsors part of them -- or all of them, where the
+// network sponsors nothing and the whole batch is there to be refused.
 func (d *Domain) Batch() *rapid.Generator[[]core.TxSpec] {
+	if !d.cfg.Upgrades.GasSubsidies {
+		return SponsoringAll(d.Inner.Batch())
+	}
 	return Sponsoring(d.Inner.Batch(), d.unsponsorable)
 }
 
@@ -175,8 +189,9 @@ func (d *Domain) Prepare(
 			core.SaturatingAdd(spec.Gas(), d.Config.MaxOverhead()))
 	}
 
-	// Modes 2 and 3 need no fund at all, so no block is spent on one.
-	if d.Mode == ModeFundBacked {
+	// Modes 2 and 3 need no fund at all, and neither does a network that sponsors nothing, so no
+	// block is spent on one.
+	if d.Mode == ModeFundBacked && d.cfg.Upgrades.GasSubsidies {
 		if err := d.openFunds(ctx, accounts); err != nil {
 			return err
 		}

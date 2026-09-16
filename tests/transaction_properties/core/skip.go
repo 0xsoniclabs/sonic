@@ -14,13 +14,17 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-// THIS IS WHERE OFFENDING TRANSACTIONS ARE DROPPED.
+// THIS IS WHERE OFFENDING TRANSACTIONS ARE DROPPED -- ON THE OLDER FORKS.
 //
-// A transaction that provokes a defect the client has not fixed yet is not injected at all, so a run
-// stays green and says in one line what it stepped around. Every policy deciding that lives in the
-// skip.go of the domain it belongs to:
+// A transaction that provokes a defect the client has not fixed is kept out of the batch on every
+// fork but the newest, so the run there stays green and says in one line what it stepped around: the
+// client on an old fork is what it is, and a run that dies of a known crash finds nothing else. On
+// the newest fork nothing is kept out. A known defect there is work rather than a fact, and the run
+// goes red until the client is fixed -- see NetworkConfig.Latest. The one exception is defect [1],
+// whose fix is prepared but not landed: it is tolerated on every fork. Every policy deciding what to
+// keep out lives in the skip.go of the domain it belongs to:
 //
-//	regular/skip.go     a contract creation whose value its sender may not be able to transfer
+//	regular/skip.go     a contract creation whose value its sender may not be able to transfer (every fork)
 //	subsidies/skip.go   a sponsorship request whose value does not fit in 256 bits
 //	bundles/skip.go     the inner domain's policies, applied to a bundle's contents too
 //

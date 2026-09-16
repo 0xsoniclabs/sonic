@@ -25,6 +25,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -188,7 +189,24 @@ func (n *Network) readConfig(t *testing.T) {
 		MaxEventGas: rules.Economy.Gas.MaxEventGas,
 		MaxBlockGas: rules.Blocks.MaxBlockGas,
 		MaxTxType:   MaxTxTypeFor(rules.Upgrades),
+		Latest:      OnLatestFork(rules.Upgrades),
 	}
+}
+
+// OnLatestFork reports whether these upgrades include the newest hard fork opera knows of. Forks are
+// cumulative, so that is so exactly when every flag the last fork in opera's order sets is set here
+// too, whatever else is -- which is what keeps this true of a new fork without anyone naming it.
+func OnLatestFork(upgrades opera.Upgrades) bool {
+	var latest opera.Upgrades
+	for _, latest = range opera.GetAllHardForksInOrder() {
+	}
+	want, have := reflect.ValueOf(latest), reflect.ValueOf(upgrades)
+	for i := range want.NumField() {
+		if want.Field(i).Bool() && !have.Field(i).Bool() {
+			return false
+		}
+	}
+	return true
 }
 
 // MaxTxTypeFor is the highest transaction type a fork accepts, mirroring epochcheck.CheckTxs.
@@ -573,28 +591,32 @@ func transfersValue(tx *types.Transaction, receipt *types.Receipt, sender common
 		(tx.To() == nil || *tx.To() != sender)
 }
 
-// ExportGenesisEnv names a directory the chain is written to once the run is done. It is off by
-// default: exporting takes a while and the files are large, and what a green run produced is of no
-// further interest.
-const ExportGenesisEnv = "SONIC_TXPROP_EXPORT_DIR"
+// exportPath is where the chain is written once the run is done, given on the command line:
+//
+//	go test ./tests/transaction_properties/ -txprop.export=/tmp/all-features.g
+//
+// Empty, and so off, by default: exporting takes a while, the file is large, and what a green run
+// produced is of no further interest. The flag is registered here rather than in the test package
+// because this is what reads it, and flag.Parse comes later, in ApplyTestFlags.
+var exportPath = flag.String("txprop.export", "",
+	"write the chain this run produces to this genesis file")
 
 // ExportGenesis writes the whole chain -- every fork and every workload that ran on it, in the form
-// a node can be started from -- to a genesis file named after the test, in the directory
-// ExportGenesisEnv names. Without that variable it does nothing.
+// a node can be started from -- to the genesis file -txprop.export names. Without that flag it does
+// nothing.
 //
 // It stops the network, so nothing may use it afterwards: this is the last thing a run does.
 func (n *Network) ExportGenesis(t *testing.T) {
 	t.Helper()
 
-	directory, set := os.LookupEnv(ExportGenesisEnv)
-	if !set {
+	if *exportPath == "" {
 		return
 	}
 
-	require.NoError(t, os.MkdirAll(directory, 0755), "failed to create the export directory")
-	path := filepath.Join(directory, strings.ReplaceAll(t.Name(), "/", "_")+".g")
-	require.NoError(t, n.Net.ExportGenesis(path), "failed to export the chain")
-	t.Logf("exported the chain of this run to %s", path)
+	require.NoError(t, os.MkdirAll(filepath.Dir(*exportPath), 0755),
+		"failed to create the directory of the export file")
+	require.NoError(t, n.Net.ExportGenesis(*exportPath), "failed to export the chain")
+	t.Logf("exported the chain of this run to %s", *exportPath)
 }
 
 // UnfundedKey signs the SignUnfundedKey case: derived from a fixed seed and never funded, so a

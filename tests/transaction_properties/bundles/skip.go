@@ -39,6 +39,9 @@ const defect3 = "[3] a bundle whose bare root fails keeps what its transaction d
 	"(bundles/skip.go, avoided in Domain.build)"
 
 func (d *Domain) Notes() []string {
+	if d.cfg.Latest {
+		return d.Inner.Notes()
+	}
 	return append(d.Inner.Notes(), defect3)
 }
 

@@ -252,8 +252,9 @@ func (d *Domain) build(
 	if envelope.Root == RootSingle {
 		envelope.Contents, plans = envelope.Contents[:1], plans[:1]
 	}
-	if envelope.Root == RootSingle && !cannotFail(envelope.Contents[0], d.stateOf(envelope.Contents[0]), baseFee) {
-		envelope.Root = RootAllOf // defect3, see bundles/skip.go
+	if envelope.Root == RootSingle && !d.cfg.Latest &&
+		!cannotFail(envelope.Contents[0], d.stateOf(envelope.Contents[0]), baseFee) {
+		envelope.Root = RootAllOf // defect3, see bundles/skip.go; left alone on the newest fork
 		d.demoted++
 	}
 	if envelope.Root == RootSingle {

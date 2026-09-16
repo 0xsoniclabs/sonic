@@ -93,12 +93,17 @@ func (w workload) runsOn(fork string) bool {
 	return false
 }
 
-// workloads are what the chain is put through, in this order at every fork that admits them.
+// workloads are what the chain is put through, in this order at every fork that admits them: the
+// features in the order they build on one another -- ordinary transactions, then sponsorship, then
+// bundles, then priorities -- and each of them preceded by the inert case, where the transactions of
+// the workload are drawn but the feature carrying them is switched off.
 //
-// The order is not arbitrary. The network-sponsored registries replace the fund-backed one behind the
-// registry proxy and nothing puts it back, so they come last, on the final fork -- which costs
-// nothing, since a registry covering every request answers the same on every fork and the
-// fork-dependent half of sponsorship is what the fund-backed workload searches on each of them.
+// The two network-sponsored workloads are the exception, and sit at the end rather than with the
+// sponsorship they belong to. Installing one of their registries replaces the fund-backed one behind
+// the registry proxy and nothing puts it back, so anything still needing a fund -- sponsored and
+// prioritizedSponsored -- has to have run already. It costs nothing to run them last: a registry
+// covering every request answers the same on every fork, and the fork-dependent half of sponsorship
+// is what the fund-backed workload searches on each of them.
 var workloads = []workload{
 	{
 		name:  "regular",
@@ -110,18 +115,14 @@ var workloads = []workload{
 		},
 	},
 	{
-		// A bundle before Brio, and a bundle on Brio with the feature switched off: an envelope that
-		// means nothing to the network carrying it.
-		name:  "bundlesInert",
-		forks: []string{"Allegro", "Brio"},
+		// Sponsorship with the feature switched off: a batch mostly of requests, none of which
+		// anything will cover, so every one of them has to die of the price it was drawn with. No
+		// fund is paid into, and Sonic is not excluded the way the sponsored workload is -- what
+		// stalls the archive there is a request the block formation prices at zero, and with the
+		// feature off there is no such thing.
+		name:  "sponsoredInert",
 		rules: plain,
-		run:   runBundles,
-	},
-	{
-		name:  "bundles",
-		forks: []string{"Brio"},
-		rules: with(func(u *opera.Upgrades) { u.TransactionBundles = true }),
-		run:   runBundles,
+		run:   runSponsored(subsidies.ModeFundBacked),
 	},
 	{
 		// Sonic is left out: a sponsored blob transaction carrying blob hashes produces a block the
@@ -134,14 +135,26 @@ var workloads = []workload{
 		run:   runSponsored(subsidies.ModeFundBacked),
 	},
 	{
+		name:  "bundlesInert",
+		forks: []string{"Brio", "Canto"},
+		rules: plain,
+		run:   runBundles,
+	},
+	{
+		name:  "bundles",
+		forks: []string{"Brio", "Canto"},
+		rules: with(func(u *opera.Upgrades) { u.TransactionBundles = true }),
+		run:   runBundles,
+	},
+	{
 		name:  "prioritized",
-		forks: []string{"Brio"},
+		forks: []string{"Canto"},
 		rules: with(func(u *opera.Upgrades) { u.TransactionPriorities = true }),
 		run:   runPrioritized(false),
 	},
 	{
 		name:  "prioritizedSponsored",
-		forks: []string{"Brio"},
+		forks: []string{"Canto"},
 		rules: with(func(u *opera.Upgrades) {
 			u.TransactionPriorities = true
 			u.GasSubsidies = true

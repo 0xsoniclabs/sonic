@@ -34,6 +34,9 @@ const defect4 = "[4] a sponsorship request whose value exceeds 256 bits panics t
 	"(subsidies/skip.go)"
 
 func (d *Domain) Notes() []string {
+	if d.cfg.Latest {
+		return d.Inner.Notes()
+	}
 	return append(d.Inner.Notes(), defect4)
 }
 
@@ -47,8 +50,8 @@ func (d *Domain) Skip(spec core.TxSpec, sender core.SenderState, baseFee *big.In
 // unsponsorable reports what this domain will not ask to have sponsored. Whatever it names keeps the
 // price it was drawn with, and is dropped from the batch if that price made a request of it anyway.
 func (d *Domain) unsponsorable(spec core.TxSpec) bool {
-	if spec.Amount().BitLen() > 256 {
-		return true // defect4
+	if spec.Amount().BitLen() > 256 && !d.cfg.Latest {
+		return true // defect4, left to bring the node down on the newest fork
 	}
 
 	// A registry that sponsors every sender sponsors a stranger too, so a signature recovering to an
