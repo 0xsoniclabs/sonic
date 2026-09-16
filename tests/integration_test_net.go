@@ -1388,6 +1388,14 @@ func (s *Session) TryGetReceipts(timeout time.Duration, txHash []common.Hash) ([
 			if err != nil {
 				return fmt.Errorf("failed to get transaction receipt: %w", err)
 			}
+			// The receipt becomes visible before the node updates its notion
+			// of the "latest" block. RPC calls resolving "latest" (eth_call,
+			// eth_estimateGas, eth_getBalance, ...) could thus still observe
+			// the state before this transaction. Wait until the block of the
+			// receipt is the latest block and its state is served.
+			if err := waitUntilBlockStateIsLatest(ctx, client, res[i].BlockNumber); err != nil {
+				return fmt.Errorf("failed to wait for state of block %v: %w", res[i].BlockNumber, err)
+			}
 			return nil
 		},
 	)
@@ -1395,6 +1403,36 @@ func (s *Session) TryGetReceipts(timeout time.Duration, txHash []common.Hash) ([
 		return nil, err
 	}
 	return res, nil
+}
+
+// waitUntilBlockStateIsLatest blocks until the node the given client is
+// connected to reports the given block (or a later one) as its latest block
+// and serves the state of the given block. Both are probed repeatedly until
+// they are satisfied or the context expires. In the latter case, the reason
+// of the last failed probe is included in the returned error.
+func waitUntilBlockStateIsLatest(ctx context.Context, client *PooledEhtClient, blockNumber *big.Int) error {
+	var lastErr error
+	err := WaitFor(ctx, func(ctx context.Context) (bool, error) {
+		latest, err := client.BlockNumber(ctx)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to get latest block number: %w", err)
+			return false, nil
+		}
+		if latest < blockNumber.Uint64() {
+			lastErr = fmt.Errorf("latest block %d is behind block %d", latest, blockNumber)
+			return false, nil
+		}
+		// State queries for a block whose state is not yet available fail.
+		if _, err := client.BalanceAt(ctx, common.Address{}, blockNumber); err != nil {
+			lastErr = fmt.Errorf("state of block %d is not available: %w", blockNumber, err)
+			return false, nil
+		}
+		return true, nil
+	})
+	if err != nil {
+		return errors.Join(err, lastErr)
+	}
+	return nil
 }
 
 // runParallelWithClient as a helper function to run a number of jobs in parallel

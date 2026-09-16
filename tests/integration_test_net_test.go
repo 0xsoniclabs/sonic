@@ -17,9 +17,12 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"math/big"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip/contract/sfc100"
@@ -29,10 +32,13 @@ import (
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 )
 
@@ -135,8 +141,8 @@ func testIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T, session Int
 		require.NoError(t, err, "Failed to endow account 1")
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-		WaitForProofOf(t, client, int(receipt.BlockNumber.Uint64()))
-
+		// The state of the block containing the transaction must be
+		// available as soon as the receipt is returned; no extra waiting.
 		want := balance.Add(balance, big.NewInt(int64(increment)))
 		balance, err = client.BalanceAt(t.Context(), address, nil)
 		require.NoError(t, err, "Failed to get balance for account")
@@ -500,6 +506,313 @@ func TestIntegrationTestNet_ValidateAndSanitizeOptions(t *testing.T) {
 		})
 	}
 
+}
+
+// TestIntegrationTestNet_StateIsAvailableWhenReceiptIsReturned checks that all
+// helpers returning receipts only return once the state of the block containing
+// the transaction is served by state-dependent RPC calls at "latest". Receipts
+// are served from the block store, which is updated before the archive state
+// becomes available. Without waiting for the archive, calls like
+// eth_estimateGas from a freshly funded account would fail with
+// "insufficient funds for transfer".
+func TestIntegrationTestNet_StateIsAvailableWhenReceiptIsReturned(t *testing.T) {
+	net := StartIntegrationTestNet(t)
+
+	// Each session is funded with MaxUint64 wei; keep the total of all
+	// repetitions well below that budget.
+	const numRepetitions = 20
+	value := big.NewInt(1e17)
+
+	// Each case funds the given account and returns the receipt of the funding
+	// transaction, using a different helper each time.
+	testCases := map[string]struct {
+		fund func(t *testing.T, session IntegrationTestNetSession, address common.Address) *types.Receipt
+	}{
+		"EndowAccount": {
+			fund: func(t *testing.T, session IntegrationTestNetSession, address common.Address) *types.Receipt {
+				receipt, err := session.EndowAccount(address, value)
+				require.NoError(t, err)
+				return receipt
+			},
+		},
+		"EndowAccounts": {
+			fund: func(t *testing.T, session IntegrationTestNetSession, address common.Address) *types.Receipt {
+				receipts, err := session.EndowAccounts([]common.Address{address}, value)
+				require.NoError(t, err)
+				require.Len(t, receipts, 1)
+				return receipts[0]
+			},
+		},
+		"Run": {
+			fund: func(t *testing.T, session IntegrationTestNetSession, address common.Address) *types.Receipt {
+				receipt, err := session.Run(makeTransferTx(t, session, address, value))
+				require.NoError(t, err)
+				return receipt
+			},
+		},
+		"RunAll": {
+			fund: func(t *testing.T, session IntegrationTestNetSession, address common.Address) *types.Receipt {
+				receipts, err := session.RunAll([]*types.Transaction{makeTransferTx(t, session, address, value)})
+				require.NoError(t, err)
+				require.Len(t, receipts, 1)
+				return receipts[0]
+			},
+		},
+		"Send and GetReceipt": {
+			fund: func(t *testing.T, session IntegrationTestNetSession, address common.Address) *types.Receipt {
+				hash, err := session.Send(makeTransferTx(t, session, address, value))
+				require.NoError(t, err)
+				receipt, err := session.GetReceipt(hash)
+				require.NoError(t, err)
+				return receipt
+			},
+		},
+		"Send and TryGetReceipt": {
+			fund: func(t *testing.T, session IntegrationTestNetSession, address common.Address) *types.Receipt {
+				hash, err := session.Send(makeTransferTx(t, session, address, value))
+				require.NoError(t, err)
+				receipt, err := session.TryGetReceipt(100*time.Second, hash)
+				require.NoError(t, err)
+				return receipt
+			},
+		},
+		"MakeAccountWithBalance": {
+			fund: func(t *testing.T, session IntegrationTestNetSession, address common.Address) *types.Receipt {
+				// MakeAccountWithBalance creates its own account; the address
+				// parameter is ignored and the receipt is not exposed. The
+				// state checks below are performed on the created account.
+				return nil
+			},
+		},
+	}
+
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			session := net.SpawnSession(t)
+			t.Parallel()
+
+			client, err := session.GetClient()
+			require.NoError(t, err)
+			defer client.Close()
+
+			for range numRepetitions {
+				account := NewAccount()
+				address := account.Address()
+
+				receipt := test.fund(t, session, address)
+				if receipt == nil {
+					account = MakeAccountWithBalance(t, session, value)
+					address = account.Address()
+				} else {
+					require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+					// The state of the block of the receipt must be available.
+					balance, err := client.BalanceAt(t.Context(), address, receipt.BlockNumber)
+					require.NoError(t, err, "state of block %v not available", receipt.BlockNumber)
+					require.Equal(t, value, balance)
+				}
+
+				// The latest state must include the funding transaction.
+				balance, err := client.BalanceAt(t.Context(), address, nil)
+				require.NoError(t, err)
+				require.Equal(t, value, balance, "latest state does not include the funding")
+
+				// Gas estimation must see the funds of the new account. This
+				// is the operation that failed before the receipt helpers
+				// started to wait for the archive state.
+				gasPrice, err := client.SuggestGasPrice(t.Context())
+				require.NoError(t, err)
+				_, err = client.EstimateGas(t.Context(), ethereum.CallMsg{
+					From:     address,
+					To:       &common.Address{},
+					GasPrice: gasPrice,
+					Value:    big.NewInt(1),
+				})
+				require.NoError(t, err, "gas estimation does not see the funds of the new account")
+			}
+		})
+	}
+}
+
+// makeTransferTx creates a signed transaction transferring the given value
+// from the session sponsor to the given address.
+func makeTransferTx(t *testing.T, session IntegrationTestNetSession, to common.Address, value *big.Int) *types.Transaction {
+	t.Helper()
+	return CreateTransaction(t, session, &types.LegacyTx{
+		To:    &to,
+		Value: value,
+	}, session.GetSessionSponsor())
+}
+
+// latestBlockProbeService is a fake implementation of the eth_blockNumber and
+// eth_getBalance RPC methods. It simulates a node whose latest block number
+// lags behind for a configurable number of calls, and whose state for the
+// probed block is unavailable for a configurable number of calls.
+type latestBlockProbeService struct {
+	mu sync.Mutex
+
+	block           uint64 // the block the probe is waiting for
+	behindCalls     int    // number of eth_blockNumber calls reporting block-1
+	noStateCalls    int    // number of eth_getBalance calls failing
+	blockNumberSeen int    // number of eth_blockNumber calls received
+	getBalanceSeen  int    // number of eth_getBalance calls received
+}
+
+func (s *latestBlockProbeService) BlockNumber() hexutil.Uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.blockNumberSeen++
+	if s.blockNumberSeen <= s.behindCalls {
+		return hexutil.Uint64(s.block - 1)
+	}
+	return hexutil.Uint64(s.block)
+}
+
+func (s *latestBlockProbeService) GetBalance(_ context.Context, _ common.Address, block rpc.BlockNumberOrHash) (*hexutil.Big, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.getBalanceSeen++
+	if s.getBalanceSeen <= s.noStateCalls {
+		number, _ := block.Number()
+		return nil, fmt.Errorf("block %d is not present in the archive", number)
+	}
+	return (*hexutil.Big)(big.NewInt(0)), nil
+}
+
+func (s *latestBlockProbeService) calls() (blockNumber, getBalance int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.blockNumberSeen, s.getBalanceSeen
+}
+
+// newLatestBlockProbeClient creates a client connected to an in-process RPC
+// server serving the given fake eth service.
+func newLatestBlockProbeClient(t *testing.T, service *latestBlockProbeService) *PooledEhtClient {
+	t.Helper()
+	server := rpc.NewServer()
+	t.Cleanup(server.Stop)
+	require.NoError(t, server.RegisterName("eth", service))
+	rpcClient := rpc.DialInProc(server)
+	t.Cleanup(rpcClient.Close)
+	return &PooledEhtClient{ethClient: *ethclient.NewClient(rpcClient)}
+}
+
+func TestWaitUntilBlockStateIsLatest_ReturnsOnceLatestBlockAndStateAreAvailable(t *testing.T) {
+	const block = 42
+	testCases := map[string]struct {
+		behindCalls  int
+		noStateCalls int
+		// expected number of calls to the respective RPC methods
+		blockNumberCalls int
+		getBalanceCalls  int
+	}{
+		"available immediately": {
+			blockNumberCalls: 1,
+			getBalanceCalls:  1,
+		},
+		"latest block behind for one probe": {
+			behindCalls:      1,
+			blockNumberCalls: 2,
+			getBalanceCalls:  1,
+		},
+		"latest block behind for several probes": {
+			behindCalls:      4,
+			blockNumberCalls: 5,
+			getBalanceCalls:  1,
+		},
+		"state unavailable for one probe": {
+			noStateCalls:     1,
+			blockNumberCalls: 2,
+			getBalanceCalls:  2,
+		},
+		"state unavailable for several probes": {
+			noStateCalls:     3,
+			blockNumberCalls: 4,
+			getBalanceCalls:  4,
+		},
+		"latest block behind, then state unavailable": {
+			behindCalls:      2,
+			noStateCalls:     2,
+			blockNumberCalls: 5,
+			getBalanceCalls:  3,
+		},
+	}
+
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			service := &latestBlockProbeService{
+				block:        block,
+				behindCalls:  test.behindCalls,
+				noStateCalls: test.noStateCalls,
+			}
+			client := newLatestBlockProbeClient(t, service)
+
+			err := waitUntilBlockStateIsLatest(t.Context(), client, big.NewInt(block))
+			require.NoError(t, err)
+			blockNumberCalls, getBalanceCalls := service.calls()
+			require.Equal(t, test.blockNumberCalls, blockNumberCalls, "unexpected number of eth_blockNumber calls")
+			require.Equal(t, test.getBalanceCalls, getBalanceCalls, "unexpected number of eth_getBalance calls")
+		})
+	}
+}
+
+func TestWaitUntilBlockStateIsLatest_ReportsContextAndLastProbeError(t *testing.T) {
+	const block = 42
+	never := int(^uint(0) >> 1)
+
+	deadlineContext := func(t *testing.T) context.Context {
+		ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+		t.Cleanup(cancel)
+		return ctx
+	}
+	canceledContext := func(t *testing.T) context.Context {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		return ctx
+	}
+
+	testCases := map[string]struct {
+		makeContext   func(t *testing.T) context.Context
+		behindCalls   int
+		noStateCalls  int
+		expectedError error
+		expectedText  string
+	}{
+		"latest block never advances": {
+			makeContext:   deadlineContext,
+			behindCalls:   never,
+			expectedError: context.DeadlineExceeded,
+			expectedText:  "latest block 41 is behind block 42",
+		},
+		"state never available": {
+			makeContext:   deadlineContext,
+			noStateCalls:  never,
+			expectedError: context.DeadlineExceeded,
+			expectedText:  "state of block 42 is not available: block 42 is not present in the archive",
+		},
+		"context canceled before the first probe": {
+			makeContext:   canceledContext,
+			behindCalls:   never,
+			expectedError: context.Canceled,
+			// the RPC call itself fails with the context error
+			expectedText: "failed to get latest block number",
+		},
+	}
+
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			service := &latestBlockProbeService{
+				block:        block,
+				behindCalls:  test.behindCalls,
+				noStateCalls: test.noStateCalls,
+			}
+			client := newLatestBlockProbeClient(t, service)
+
+			err := waitUntilBlockStateIsLatest(test.makeContext(t), client, big.NewInt(block))
+			require.ErrorIs(t, err, test.expectedError)
+			require.ErrorContains(t, err, test.expectedText,
+				"last probe error should be reported")
+		})
+	}
 }
 
 func BenchmarkIntegrationTestNet_StartAndStop(b *testing.B) {
