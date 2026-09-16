@@ -141,6 +141,7 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 		lastBlockTime inter.Timestamp
 		atroposTime   inter.Timestamp
 		proposal      *inter.Proposal
+		staleProposal bool
 		proposalTime  inter.Timestamp
 		producesBlock bool
 		blockTime     inter.Timestamp
@@ -155,8 +156,20 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 			lastBlockTime: inter.Timestamp(1000),
 			atroposTime:   inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 1),
 			proposal:      nil,
-			producesBlock: true,
-			blockTime:     inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 1),
+			// The block height must not advance without a proposal, no matter
+			// how long the last block is ago. Advancing it would invalidate the
+			// proposal that may still be on its way through consensus.
+			producesBlock: false,
+		},
+		"stale proposal, after max empty block skip period": {
+			lastBlockTime: inter.Timestamp(1000),
+			atroposTime:   inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 1),
+			proposal: &inter.Proposal{
+				Transactions: []*types.Transaction{types.NewTx(&types.LegacyTx{})},
+			},
+			staleProposal: true,
+			proposalTime:  inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 1),
+			producesBlock: false,
 		},
 		"empty proposal, before max empty block skip period": {
 			lastBlockTime: inter.Timestamp(1000),
@@ -214,8 +227,12 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 				builder.SetMedianTime(test.proposalTime)
 				if test.proposal != nil {
 					proposal := *test.proposal
-					// Fix some required fields in any proposal.
+					// Fix some required fields in any proposal. A stale proposal
+					// names a block that the chain has already produced.
 					proposal.Number = 1
+					if test.staleProposal {
+						proposal.Number = 0
+					}
 					proposal.ParentHash = store.GetBlock(0).Hash()
 					builder.SetPayload(inter.Payload{
 						Proposal: &proposal,

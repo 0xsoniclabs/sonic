@@ -255,8 +255,10 @@ func consensusCallbackBeginBlockFn(
 					ParentHash: lastBlockHeader.Hash,
 				}
 				blockTime := atroposTime
+				hasProposal := false
 				if thisBlocksRules.Upgrades.SingleProposerBlockFormation {
 					if proposed, proposer, time := extractProposalForNextBlock(lastBlockHeader, blockEvents, log.Root()); proposed != nil {
+						hasProposal = true
 						proposal = *proposed
 						blockTime = time
 						validatorKeys := readEpochPubKeys(store, cBlock.Atropos.Epoch())
@@ -326,6 +328,20 @@ func consensusCallbackBeginBlockFn(
 					// included -- the resulting block would be empty, and should
 					// in general be skipped.
 					emptyBlock = cBlock.Cheaters.Len() == 0 && len(proposal.Transactions) == 0
+
+					// In SingleProposer mode the block height must only advance
+					// on a confirmed proposal. A proposal names the block number
+					// it is made for, so producing a block without one
+					// invalidates the proposal that is still travelling through
+					// consensus: it arrives one block too late, gets discarded,
+					// and leaves the next block without a proposal as well. As
+					// soon as confirming a proposal takes longer than
+					// MaxEmptyBlockSkipPeriod -- which sustained load makes it
+					// do -- this feeds back on itself and starves the chain of
+					// transactions. Pacing of empty blocks is unaffected: an
+					// idle network keeps confirming empty proposals, and those
+					// still produce empty blocks at the configured rate.
+					skipBlock = skipBlock || (!hasProposal && cBlock.Cheaters.Len() == 0)
 				}
 				skipBlock = skipBlock || (emptyBlock && blockCtx.Time < bs.LastBlock.Time+thisBlocksRules.Blocks.MaxEmptyBlockSkipPeriod)
 				// Finalize the progress of eventProcessor
