@@ -106,6 +106,14 @@ func (g *testGossipStoreAdapter) GetEvent(id hash.Event) dag.Event {
 	return e
 }
 
+// setLatestBlockIndex publishes the given block as the head of the chain.
+func setLatestBlockIndex(store *Store, block idx.Block) {
+	store.SetBlockEpochState(
+		iblockproc.BlockState{LastBlock: iblockproc.BlockCtx{Idx: block}},
+		iblockproc.EpochState{},
+	)
+}
+
 func makeTestEngine(gdb *Store) (*abft.Lachesis, *vecmt.Index) {
 	cdb := abft.NewMemStore()
 	_ = cdb.ApplyGenesis(&abft.Genesis{

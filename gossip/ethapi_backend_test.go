@@ -50,6 +50,7 @@ func TestEthApiBackend_GetNetworkRules_LoadsRulesFromEpoch(t *testing.T) {
 			Build(),
 	)
 	require.True(store.HasBlock(blockNumber))
+	setLatestBlockIndex(store, blockNumber)
 
 	rules := opera.FakeNetRules(opera.Upgrades{})
 	rules.Name = "test-rules"
@@ -90,6 +91,7 @@ func TestEthApiBackend_GetNetworkRules_MissingBlockReturnsNilRules(t *testing.T)
 	store, err := NewMemStore(t)
 	require.NoError(err)
 	require.False(store.HasBlock(blockNumber))
+	setLatestBlockIndex(store, blockNumber)
 
 	backend := &EthAPIBackend{
 		state: &EvmStateReader{
@@ -111,6 +113,7 @@ func TestEthApiBackend_GetTransaction_ReturnsTransactionAtItsPosition(t *testing
 	tx := types.NewTx(&types.LegacyTx{Nonce: 1})
 	store.evm.SetTx(tx.Hash(), tx)
 	store.evm.SetTxPosition(tx.Hash(), evmstore.TxPosition{Block: 42, BlockOffset: 7})
+	setLatestBlockIndex(store, 42)
 
 	backend := &EthAPIBackend{
 		svc: &Service{
@@ -126,6 +129,46 @@ func TestEthApiBackend_GetTransaction_ReturnsTransactionAtItsPosition(t *testing
 	require.Equal(uint64(7), offset)
 }
 
+// TestEthApiBackend_GetTransaction_IsNotReportedBeforeItsBlockIsPublished
+// checks that a transaction is reported as unknown while the latest block index
+// does not cover the block it was included in. The transaction index is written
+// before that index is advanced; reporting the transaction in between would let
+// a client obtain its receipt while queries resolving "latest" still answer from
+// the preceding block.
+func TestEthApiBackend_GetTransaction_IsNotReportedBeforeItsBlockIsPublished(t *testing.T) {
+	require := require.New(t)
+
+	const blockNumber = idx.Block(42)
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	tx := types.NewTx(&types.LegacyTx{Nonce: 1})
+	store.evm.SetTx(tx.Hash(), tx)
+	store.evm.SetTxPosition(tx.Hash(), evmstore.TxPosition{Block: blockNumber, BlockOffset: 7})
+
+	backend := &EthAPIBackend{
+		svc: &Service{
+			config: Config{TxIndex: true},
+			store:  store,
+		},
+	}
+
+	setLatestBlockIndex(store, blockNumber-1)
+	require.Nil(backend.GetTxPosition(tx.Hash()),
+		"a transaction of an unpublished block must not be reported")
+	got, _, _, err := backend.GetTransaction(t.Context(), tx.Hash())
+	require.NoError(err)
+	require.Nil(got, "a transaction of an unpublished block must not be reported")
+
+	setLatestBlockIndex(store, blockNumber)
+	got, block, offset, err := backend.GetTransaction(t.Context(), tx.Hash())
+	require.NoError(err)
+	require.Equal(tx.Hash(), got.Hash())
+	require.Equal(uint64(blockNumber), block)
+	require.Equal(uint64(7), offset)
+}
+
 func TestEthApiBackend_GetTransaction_ReportsCorruptedIndexIfBodyIsMissing(t *testing.T) {
 	require := require.New(t)
 
@@ -134,6 +177,7 @@ func TestEthApiBackend_GetTransaction_ReportsCorruptedIndexIfBodyIsMissing(t *te
 
 	txHash := common.Hash{1}
 	store.evm.SetTxPosition(txHash, evmstore.TxPosition{Block: 42, BlockOffset: 7})
+	setLatestBlockIndex(store, 42)
 
 	backend := &EthAPIBackend{
 		svc: &Service{
