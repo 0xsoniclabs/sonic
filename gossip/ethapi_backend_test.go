@@ -62,6 +62,7 @@ func TestEthApiBackend_GetNetworkRules_LoadsRulesFromEpoch(t *testing.T) {
 			Rules: rules,
 		},
 	)
+	setLatestBlock(store, blockNumber)
 
 	backend := &EthAPIBackend{
 		svc: &Service{
@@ -90,8 +91,10 @@ func TestEthApiBackend_GetNetworkRules_MissingBlockReturnsNilRules(t *testing.T)
 	store, err := NewMemStore(t)
 	require.NoError(err)
 	require.False(store.HasBlock(blockNumber))
+	setLatestBlock(store, blockNumber)
 
 	backend := &EthAPIBackend{
+		svc: &Service{store: store},
 		state: &EvmStateReader{
 			store: store,
 		},
@@ -100,6 +103,14 @@ func TestEthApiBackend_GetNetworkRules_MissingBlockReturnsNilRules(t *testing.T)
 	rules, err := backend.GetNetworkRules(t.Context(), blockNumber)
 	require.NoError(err)
 	require.Nil(rules)
+}
+
+// setLatestBlock sets the latest block index of the given store.
+func setLatestBlock(store *Store, number idx.Block) {
+	store.SetBlockEpochState(
+		iblockproc.BlockState{LastBlock: iblockproc.BlockCtx{Idx: number}},
+		iblockproc.EpochState{},
+	)
 }
 
 func TestEthApiBackend_GetTransaction_ReturnsTransactionAtItsPosition(t *testing.T) {
@@ -111,6 +122,7 @@ func TestEthApiBackend_GetTransaction_ReturnsTransactionAtItsPosition(t *testing
 	tx := types.NewTx(&types.LegacyTx{Nonce: 1})
 	store.evm.SetTx(tx.Hash(), tx)
 	store.evm.SetTxPosition(tx.Hash(), evmstore.TxPosition{Block: 42, BlockOffset: 7})
+	setLatestBlock(store, 42)
 
 	backend := &EthAPIBackend{
 		svc: &Service{
@@ -134,6 +146,7 @@ func TestEthApiBackend_GetTransaction_ReportsCorruptedIndexIfBodyIsMissing(t *te
 
 	txHash := common.Hash{1}
 	store.evm.SetTxPosition(txHash, evmstore.TxPosition{Block: 42, BlockOffset: 7})
+	setLatestBlock(store, 42)
 
 	backend := &EthAPIBackend{
 		svc: &Service{
@@ -144,6 +157,122 @@ func TestEthApiBackend_GetTransaction_ReportsCorruptedIndexIfBodyIsMissing(t *te
 
 	_, _, _, err = backend.GetTransaction(t.Context(), txHash)
 	require.ErrorContains(err, "index is corrupted")
+}
+
+func TestEthApiBackend_GetTransaction_IsNotFoundUntilItsBlockIsCoveredByLatest(t *testing.T) {
+	const txBlock = 42
+	testCases := map[string]struct {
+		latest idx.Block
+		found  bool
+	}{
+		"latest block behind the transaction block": {latest: txBlock - 1, found: false},
+		"latest block is the transaction block":     {latest: txBlock, found: true},
+		"latest block after the transaction block":  {latest: txBlock + 1, found: true},
+	}
+
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+
+			store, err := NewMemStore(t)
+			require.NoError(err)
+
+			tx := types.NewTx(&types.LegacyTx{Nonce: 1})
+			store.evm.SetTx(tx.Hash(), tx)
+			store.evm.SetTxPosition(tx.Hash(), evmstore.TxPosition{Block: txBlock, BlockOffset: 0})
+			setLatestBlock(store, test.latest)
+
+			backend := &EthAPIBackend{
+				svc: &Service{
+					config: Config{TxIndex: true},
+					store:  store,
+				},
+			}
+
+			got, block, _, err := backend.GetTransaction(t.Context(), tx.Hash())
+			require.NoError(err)
+			if test.found {
+				require.NotNil(got)
+				require.Equal(uint64(txBlock), block)
+			} else {
+				require.Nil(got, "transaction must not be reported before its block is the latest block")
+			}
+		})
+	}
+}
+
+func TestEthApiBackend_BlockByNumber_DoesNotServeBlocksBeyondLatest(t *testing.T) {
+	const stored = 42
+	testCases := map[string]struct {
+		latest    idx.Block
+		requested rpc.BlockNumber
+		found     bool
+	}{
+		"requested block behind latest":  {latest: stored + 1, requested: stored, found: true},
+		"requested block is latest":      {latest: stored, requested: stored, found: true},
+		"requested block beyond latest":  {latest: stored - 1, requested: stored, found: false},
+		"latest tag resolves to latest":  {latest: stored, requested: rpc.LatestBlockNumber, found: true},
+		"pending tag resolves to latest": {latest: stored, requested: rpc.PendingBlockNumber, found: true},
+	}
+
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+
+			store, err := NewMemStore(t)
+			require.NoError(err)
+
+			store.SetBlock(stored, inter.NewBlockBuilder().WithNumber(stored).Build())
+			setLatestBlock(store, test.latest)
+
+			backend := &EthAPIBackend{
+				svc:   &Service{store: store},
+				state: &EvmStateReader{store: store},
+			}
+
+			block, err := backend.BlockByNumber(t.Context(), test.requested)
+			require.NoError(err)
+			if test.found {
+				require.NotNil(block)
+				require.Equal(uint64(stored), block.NumberU64())
+			} else {
+				require.Nil(block, "block must not be served before it is covered by the latest block")
+			}
+		})
+	}
+}
+
+func TestEthApiBackend_StateAndBlockByNumberOrHash_DoesNotServeBlocksBeyondLatest(t *testing.T) {
+	const stored = 42
+	block := inter.NewBlockBuilder().WithNumber(stored).Build()
+
+	testCases := map[string]struct {
+		selector rpc.BlockNumberOrHash
+	}{
+		"by number": {selector: rpc.BlockNumberOrHashWithNumber(stored)},
+		"by hash":   {selector: rpc.BlockNumberOrHashWithHash(common.Hash(block.Hash()), false)},
+	}
+
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+
+			store, err := NewMemStore(t)
+			require.NoError(err)
+
+			store.SetBlock(stored, block)
+			store.SetBlockIndex(block.Hash(), stored)
+			setLatestBlock(store, stored-1)
+
+			backend := &EthAPIBackend{
+				svc:   &Service{store: store},
+				state: &EvmStateReader{store: store},
+			}
+
+			_, _, err = backend.StateAndBlockByNumberOrHash(t.Context(), test.selector)
+			require.ErrorContains(err, "header not found")
+		})
+	}
 }
 
 func TestEthApiBackend_IsTestOnlyApiEnabled_ReturnsConfigFlagValue(t *testing.T) {

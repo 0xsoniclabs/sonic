@@ -152,9 +152,22 @@ func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumbe
 		blk = b.state.Block(common.Hash{}, b.HistoryPruningCutoff())
 	} else {
 		n := uint64(number.Int64())
+		if b.isBeyondLatestBlock(idx.Block(n)) {
+			return nil, nil
+		}
 		blk = b.state.Block(common.Hash{}, n)
 	}
 	return blk, nil
+}
+
+// isBeyondLatestBlock returns true if the given block number is greater than
+// the latest block index of the node. Data of a block being committed (block,
+// transactions, receipts) becomes visible in the store before the latest
+// block index is updated. To provide a consistent view, in which all
+// information of a block is accompanied by a matching "latest" block and
+// state, RPC calls must not serve blocks beyond the latest block index.
+func (b *EthAPIBackend) isBeyondLatestBlock(number idx.Block) bool {
+	return number > b.svc.store.GetLatestBlockIndex()
 }
 
 // isLatestBlockNumber returns true if the block number is latest, pending, finalized or safe
@@ -179,11 +192,14 @@ func (b *EthAPIBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNr
 		} else if number == rpc.EarliestBlockNumber {
 			block = b.state.Block(common.Hash{}, b.HistoryPruningCutoff())
 		} else {
+			if b.isBeyondLatestBlock(idx.Block(number)) {
+				return nil, nil, errors.New("header not found")
+			}
 			block = b.state.Block(common.Hash{}, uint64(number))
 		}
 	} else if h, ok := blockNrOrHash.Hash(); ok {
 		index := b.svc.store.GetBlockIndex(hash.Event(h))
-		if index == nil {
+		if index == nil || b.isBeyondLatestBlock(*index) {
 			return nil, nil, errors.New("header not found")
 		}
 		block = b.state.Block(common.Hash{}, uint64(*index))
@@ -463,6 +479,13 @@ func (b *EthAPIBackend) GetTransaction(ctx context.Context, txHash common.Hash) 
 
 	position := b.svc.store.evm.GetTxPosition(txHash)
 	if position == nil {
+		return nil, 0, 0, nil
+	}
+	// The transaction index is written before the latest block index is
+	// updated. Do not report the transaction as included until its block is
+	// covered by the latest block, such that a receipt implies that "latest"
+	// queries observe the state produced by the transaction.
+	if b.isBeyondLatestBlock(position.Block) {
 		return nil, 0, 0, nil
 	}
 
