@@ -20,10 +20,13 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip/contract/sfc100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
@@ -821,4 +824,47 @@ func BenchmarkIntegrationTestNet_StartAndStop(b *testing.B) {
 		b.StopTimer()
 		net.Stop()
 	}
+}
+
+func TestIntegrationTestNet_ExportGenesis_WritesAChainANodeCanStartFrom(t *testing.T) {
+	const numBlocks = 3
+	require := require.New(t)
+
+	net := StartIntegrationTestNet(t)
+	for range numBlocks {
+		_, err := net.EndowAccount(common.Address{42}, big.NewInt(100))
+		require.NoError(err)
+	}
+	exported, err := net.GetHeaders()
+	require.NoError(err)
+
+	path := filepath.Join(t.TempDir(), "chain.g")
+	require.NoError(net.ExportGenesis(path))
+
+	info, err := os.Stat(path)
+	require.NoError(err)
+	require.Positive(info.Size())
+	require.Nil(net.nodes[0].done, "the network must be left stopped")
+
+	// A node started from the file alone carries the same chain.
+	stateDir := net.nodes[0].getStateDir()
+	require.NoError(os.RemoveAll(stateDir))
+	require.NoError(sonictool.RunWithArgs([]string{
+		"sonictool", "--datadir", stateDir, "genesis", "--experimental", path,
+	}))
+	require.NoError(net.start())
+
+	imported, err := net.GetHeaders()
+	require.NoError(err)
+	require.GreaterOrEqual(len(imported), len(exported))
+	for i, header := range exported {
+		require.Equal(header.Hash(), imported[i].Hash(), "block %d", i)
+	}
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+	balance, err := client.BalanceAt(t.Context(), common.Address{42}, nil)
+	require.NoError(err)
+	require.Equal(int64(100*numBlocks), balance.Int64())
 }
