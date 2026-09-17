@@ -131,6 +131,7 @@ type Network struct {
 // accounts nobody else holds. Upgrade is how the rules move on from here.
 func StartNetwork(t *testing.T, upgrades opera.Upgrades) *Network {
 	t.Helper()
+	checkExportPath(t)
 
 	pool, err := NewAccountPool(MaxGenesisAccounts)
 	require.NoError(t, err, "failed to derive the account pool")
@@ -155,6 +156,27 @@ func StartNetwork(t *testing.T, upgrades opera.Upgrades) *Network {
 	network := &Network{Net: net, Pool: pool, Contracts: deployed}
 	network.readConfig(t)
 	return network
+}
+
+// ClaimPayer claims one account of the pool for the life of the network and stocks it with the full
+// pooled balance, for a domain that pays from it on every iteration: a fund top-up, a registration.
+// The pool alone is not enough for that. It hands out untouched accounts first, but a run long enough
+// exhausts them, and what comes after is an account earlier iterations executed from, holding
+// anything from the full balance down to nothing.
+func (n *Network) ClaimPayer() (PooledAccount, error) {
+	payer, err := n.Pool.Claim(1)
+	if err != nil {
+		return PooledAccount{}, err
+	}
+	receipt, err := n.Net.EndowAccount(payer[0].Address(), AccountBalance)
+	if err != nil {
+		return PooledAccount{}, fmt.Errorf("failed to stock the payer %v: %w", payer[0].Address(), err)
+	}
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return PooledAccount{}, fmt.Errorf("stocking the payer %v failed with status %d",
+			payer[0].Address(), receipt.Status)
+	}
+	return payer[0], nil
 }
 
 // Upgrade puts the network on the given rules and waits for them to take effect, then reads back
@@ -613,10 +635,24 @@ func (n *Network) ExportGenesis(t *testing.T) {
 		return
 	}
 
-	require.NoError(t, os.MkdirAll(filepath.Dir(*exportPath), 0755),
-		"failed to create the directory of the export file")
 	require.NoError(t, n.Net.ExportGenesis(*exportPath), "failed to export the chain")
 	t.Logf("exported the chain of this run to %s", *exportPath)
+}
+
+// checkExportPath makes sure the file -txprop.export names can be written before the run starts,
+// the way the export will write it: a path that turns out to be a directory, or unwritable, must
+// fail here and not two hours later, after everything it was meant to keep has run.
+func checkExportPath(t *testing.T) {
+	t.Helper()
+
+	if *exportPath == "" {
+		return
+	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(*exportPath), 0755),
+		"failed to create the directory of the export file")
+	file, err := os.OpenFile(*exportPath, os.O_CREATE|os.O_WRONLY, 0644)
+	require.NoError(t, err, "the export file -txprop.export names cannot be written")
+	require.NoError(t, file.Close())
 }
 
 // UnfundedKey signs the SignUnfundedKey case: derived from a fixed seed and never funded, so a

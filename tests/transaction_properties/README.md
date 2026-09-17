@@ -209,7 +209,9 @@ iteration is sent before any of them is waited for, so funding three senders cos
 rather than three, and paying nothing costs none at all.
 
 The payer is one account of the pool, claimed for the life of the network and never released, so it is
-never an account under observation. It cannot be the session sponsor: that account also drives every
+never an account under observation. It is stocked with the full pooled balance when claimed: once the
+untouched accounts run out, the pool hands over one that earlier iterations executed from, holding
+anywhere from the full balance down to nothing. It cannot be the session sponsor: that account also drives every
 block of the barrier, and a few hundred iterations paying several funds apiece drain it — which is
 exactly how this was found, at iteration 138 of a 200-iteration run.
 

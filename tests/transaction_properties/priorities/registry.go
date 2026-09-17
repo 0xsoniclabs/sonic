@@ -111,9 +111,10 @@ type Registrar struct {
 	chainId  *big.Int
 
 	// clerk pays for every registration. It is one account of the pool, claimed for the life of the
-	// network and never released, so it is never an account under observation -- and never the
-	// session sponsor, which drives every block of the barrier and would be drained by a run of a
-	// few hundred iterations registering several windows apiece.
+	// network and never released, so it is never an account under observation, and stocked on claim,
+	// since the pool may hand over one that earlier iterations have drained -- and never the session
+	// sponsor, which drives every block of the barrier and would be drained by a run of a few hundred
+	// iterations registering several windows apiece.
 	clerk core.PooledAccount
 }
 
@@ -130,7 +131,7 @@ func NewRegistrar(
 		return nil, fmt.Errorf("failed to bind the priority registry: %w", err)
 	}
 
-	clerk, err := network.Pool.Claim(1)
+	clerk, err := network.ClaimPayer()
 	if err != nil {
 		return nil, fmt.Errorf("failed to claim the account paying for the registrations: %w", err)
 	}
@@ -140,7 +141,7 @@ func NewRegistrar(
 		session:  session,
 		client:   client,
 		chainId:  network.Cfg.ChainId,
-		clerk:    clerk[0],
+		clerk:    clerk,
 	}, nil
 }
 

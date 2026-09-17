@@ -59,7 +59,8 @@ type Registry struct {
 	chainId  *big.Int
 
 	// treasurer pays for every top-up. It is one account of the pool, claimed for the life of the
-	// network and never released, so it is never an account under observation. The session sponsor
+	// network and never released, so it is never an account under observation, and stocked on claim,
+	// since the pool may hand over one that earlier iterations have drained. The session sponsor
 	// cannot do this job: it also drives every block of the barrier, and a run of a few hundred
 	// iterations paying several funds apiece drains it.
 	treasurer core.PooledAccount
@@ -78,7 +79,7 @@ func NewRegistry(
 		return nil, fmt.Errorf("failed to bind the subsidies registry: %w", err)
 	}
 
-	treasurer, err := network.Pool.Claim(1)
+	treasurer, err := network.ClaimPayer()
 	if err != nil {
 		return nil, fmt.Errorf("failed to claim the account paying into the funds: %w", err)
 	}
@@ -88,7 +89,7 @@ func NewRegistry(
 		session:   session,
 		client:    client,
 		chainId:   network.Cfg.ChainId,
-		treasurer: treasurer[0],
+		treasurer: treasurer,
 	}, nil
 }
 
