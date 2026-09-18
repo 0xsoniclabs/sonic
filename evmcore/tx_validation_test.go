@@ -2441,3 +2441,61 @@ func returnBundleState(ctrl *gomock.Controller, state BundleState) BundleEvaluat
 		AnyTimes()
 	return mock
 }
+
+func Test_validateBundleTransactions_RejectsBundleOnlyTransactionsOfProcessedBundles(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	txBundle, plan := bundle.NewBuilder().
+		WithSigner(signer).
+		With(bundle.Step(key, &types.AccessListTx{})).
+		BuildBundleAndPlan()
+
+	bundleOnlyTx := txBundle.GetTransactionsInReferencedOrder()[0]
+	require.True(t, bundle.IsBundleOnly(bundleOnlyTx))
+
+	tests := map[string]struct {
+		rules       NetworkRules
+		processed   bool
+		expectedErr error
+	}{
+		"bundle not processed yet": {
+			rules:     NetworkRules{brio: true, transactionBundles: true},
+			processed: false,
+		},
+		"bundle already processed": {
+			rules:       NetworkRules{brio: true, transactionBundles: true},
+			processed:   true,
+			expectedErr: ErrBundleAlreadyProcessed,
+		},
+		"bundles disabled": {
+			// The transaction can not be executed by a bundle anymore either.
+			rules:       NetworkRules{brio: true},
+			processed:   true,
+			expectedErr: ErrBundleAlreadyProcessed,
+		},
+		"before brio the mark is ignored": {
+			rules:     NetworkRules{},
+			processed: true,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+			state.EXPECT().HasBundleRecentlyBeenProcessed(plan.Hash()).
+				Return(test.processed).AnyTimes()
+
+			err := validateBundleTransactions(
+				bundleOnlyTx, test.rules, nil, nil, state, signer,
+			)
+			if test.expectedErr == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, test.expectedErr)
+			}
+		})
+	}
+}

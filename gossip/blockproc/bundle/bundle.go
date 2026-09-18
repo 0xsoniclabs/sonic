@@ -40,6 +40,18 @@ func IsBundleOnly(tx *types.Transaction) bool {
 	return false
 }
 
+// GetApprovedExecutionPlans returns the hashes of the execution plans the given
+// transaction approves through its bundle-only mark.
+func GetApprovedExecutionPlans(tx *types.Transaction) []common.Hash {
+	var res []common.Hash
+	for _, entry := range tx.AccessList() {
+		if entry.Address == BundleOnly {
+			res = append(res, entry.StorageKeys...)
+		}
+	}
+	return res
+}
+
 // IsEnvelope checks if the transaction is an envelope of a bundle, meaning
 // it is carrying the encoding of a list of transactions to be executed as a
 // bundle.
@@ -121,6 +133,45 @@ func (tb *TransactionBundle) Copy() TransactionBundle {
 		Transactions: maps.Clone(tb.Transactions),
 		Plan:         tb.Plan,
 	}
+}
+
+// GetBundleOnlyTransactions returns the bundle-only transactions the given
+// envelope carries, including those of nested bundles. Transactions without the
+// bundle-only mark are skipped, as those may also be executed on their own.
+// Nothing is reported if the transaction is no envelope or can not be decoded.
+func GetBundleOnlyTransactions(
+	signer types.Signer,
+	envelope *types.Transaction,
+) []*types.Transaction {
+	return getBundleOnlyTransactions(signer, envelope, 0)
+}
+
+func getBundleOnlyTransactions(
+	signer types.Signer,
+	envelope *types.Transaction,
+	depth int,
+) []*types.Transaction {
+	if depth > MaxBundleNestingDepth || envelope == nil || !IsEnvelope(envelope) {
+		return nil
+	}
+	txBundle, err := OpenEnvelope(signer, envelope)
+	if err != nil {
+		return nil
+	}
+
+	var res []*types.Transaction
+	for _, tx := range txBundle.GetTransactionsInReferencedOrder() {
+		if tx == nil { // < ill-formed bundles may reference missing transactions
+			continue
+		}
+		if IsBundleOnly(tx) {
+			res = append(res, tx)
+		}
+		if IsEnvelope(tx) {
+			res = append(res, getBundleOnlyTransactions(signer, tx, depth+1)...)
+		}
+	}
+	return res
 }
 
 // --- internal utilities ---
