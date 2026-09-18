@@ -65,8 +65,9 @@ func (s *PublicDAGChainAPI) GetEventPayload(ctx context.Context, shortEventID st
 }
 
 // GetHeads returns IDs of all the epoch events with no descendants.
-// * When epoch is -2 the heads for latest epoch are returned.
-// * When epoch is -1 the heads for latest sealed epoch are returned.
+// Heads are only kept for the open epoch, selected as pending or by its
+// number. Sealed epochs, including latest (the latest sealed one), are
+// rejected.
 func (s *PublicDAGChainAPI) GetHeads(ctx context.Context, epoch rpc.BlockNumber) ([]hexutil.Bytes, error) {
 	res, err := s.b.GetHeads(ctx, epoch)
 

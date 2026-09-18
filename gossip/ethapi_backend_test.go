@@ -25,6 +25,8 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils/concurrent"
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -309,4 +311,51 @@ func TestEthApiBackend_epochWithDefault_RejectsEpochsAboveUint32Max(t *testing.T
 	outOfRange := rpc.BlockNumber(1<<32 + int64(currentEpoch))
 	_, err = backend.epochWithDefault(t.Context(), outOfRange)
 	require.Error(t, err, "epoch value above uint32 max must be rejected")
+}
+
+func newBackendAtEpoch(t *testing.T, epoch idx.Epoch) (*Store, *EthAPIBackend) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	store.SetBlockEpochState(iblockproc.BlockState{}, iblockproc.EpochState{Epoch: epoch})
+	store.loadEpochStore(epoch)
+	return store, &EthAPIBackend{svc: &Service{store: store}}
+}
+
+func TestEthApiBackend_GetHeads_ReturnsHeadsOfOpenEpoch(t *testing.T) {
+	const epoch = idx.Epoch(3)
+	store, backend := newBackendAtEpoch(t, epoch)
+
+	want := hash.Events{hash.BytesToEvent([]byte{1}), hash.BytesToEvent([]byte{2})}
+	store.SetHeads(epoch, concurrent.WrapEventsSet(want.Set()))
+
+	for _, selector := range []rpc.BlockNumber{rpc.BlockNumber(epoch), rpc.PendingBlockNumber} {
+		got, err := backend.GetHeads(t.Context(), selector)
+		require.NoError(t, err, selector)
+		require.ElementsMatch(t, want, got, selector)
+	}
+}
+
+func TestEthApiBackend_GetHeads_ReportsUnavailableHeadsForSealedEpoch(t *testing.T) {
+	const epoch = idx.Epoch(3)
+	_, backend := newBackendAtEpoch(t, epoch)
+
+	for _, sealed := range []rpc.BlockNumber{rpc.BlockNumber(epoch - 1), rpc.LatestBlockNumber} {
+		_, err := backend.GetHeads(t.Context(), sealed)
+		require.ErrorIs(t, err, errHeadsUnavailable, sealed)
+	}
+}
+
+func TestEthApiBackend_GetHeads_ReportsUnavailableHeadsWhileEpochStoreLagsBehindEpochState(t *testing.T) {
+	const epoch = idx.Epoch(3)
+	store, backend := newBackendAtEpoch(t, epoch)
+
+	// Sealing publishes the new epoch state before switchEpochTo swaps the
+	// epoch store, so the open epoch briefly has no epoch store at all.
+	store.SetBlockEpochState(iblockproc.BlockState{}, iblockproc.EpochState{Epoch: epoch + 1})
+
+	var err error
+	require.NotPanics(t, func() {
+		_, err = backend.GetHeads(t.Context(), rpc.PendingBlockNumber)
+	})
+	require.ErrorIs(t, err, errHeadsUnavailable)
 }
