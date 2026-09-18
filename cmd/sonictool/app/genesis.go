@@ -26,6 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/integration/makegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	futils "github.com/0xsoniclabs/sonic/utils"
@@ -133,7 +134,13 @@ func jsonGenesisImport(ctx *cli.Context) (retErr error) {
 		retErr = errors.Join(retErr, tmpDir.Cleanup())
 	}()
 
-	genesisStore, err := makefakegenesis.ApplyGenesisJson(genesisJson, tmpDir.Path())
+	// The builder writes every account of the genesis in one block, so its caches have to hold that
+	// much; the same flags that size the import size them.
+	genesisStore, err := makefakegenesis.ApplyGenesisJson(genesisJson, tmpDir.Path(), makegenesis.CacheSizes{
+		LiveBytes:    ctx.GlobalInt64(flags.LiveDbCacheFlag.Name),
+		ArchiveBytes: ctx.GlobalInt64(flags.ArchiveCacheFlag.Name),
+		StateDbItems: ctx.GlobalInt(flags.StateDbCacheCapacityFlag.Name),
+	})
 	if err != nil {
 		return fmt.Errorf("failed to prepare JSON genesis: %w", err)
 	}
