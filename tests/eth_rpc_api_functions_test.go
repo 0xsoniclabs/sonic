@@ -235,7 +235,7 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 		"current": {
 			"activationTime": block1.Time(),
 			"blockHeight":    fmt.Sprintf("0x%x", block1.Number().Uint64()),
-			"blobSchedule":   nil,
+			"blobSchedule":   map[string]any{"baseFeeUpdateFraction": float64(0), "max": float64(0), "target": float64(0)},
 			"chainId":        "0xfa3",
 			"forkId":         fmt.Sprintf("0x%x", expectedForkId),
 			"precompiles": map[string]any{

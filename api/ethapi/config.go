@@ -21,7 +21,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
-	"math/big"
+	"math"
 
 	priorityRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	subsidiesRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
@@ -45,16 +45,17 @@ func makeConfigFromUpgrade(
 	chainID := b.ChainID()
 	chainCfg := b.ChainConfig(upgradeHeight.Height)
 
-	precompiled := make(contractRegistry)
-	chainCfgRules := chainCfg.Rules(big.NewInt(int64(upgradeHeight.Height)), true, uint64(0))
-	for addr, c := range vm.ActivePrecompiledContracts(chainCfgRules) {
-		precompiled[c.Name()] = addr
-	}
-
 	forkId, err := MakeForkId(upgradeHeight, b.GetGenesisID())
 	if err != nil {
 		// this can only fail if RLP encoding fails, which is unexpected
 		return nil, fmt.Errorf("could not make fork id, %v", err)
+	}
+
+	// rpc.BlockNumber is a signed integer whose negative values name the block
+	// tags, so a height that does not fit would not fail but silently resolve to
+	// "latest" or "pending".
+	if upgradeHeight.Height > math.MaxInt64 {
+		return nil, fmt.Errorf("upgrade height %d exceeds the largest addressable block number", upgradeHeight.Height)
 	}
 
 	block, err := b.BlockByNumber(ctx, rpc.BlockNumber(int64(upgradeHeight.Height)))
@@ -66,10 +67,21 @@ func makeConfigFromUpgrade(
 		return nil, fmt.Errorf("block %d not found to determine activation time", upgradeHeight.Height)
 	}
 
+	if block.Number == nil {
+		return nil, fmt.Errorf("block %d carries no number", upgradeHeight.Height)
+	}
+
+	activationTime := uint64(block.Time.Unix())
+
+	// The chain config resolves the upgrades active at a block from its height and its timestamp
+	precompiled := make(contractRegistry)
+	chainCfgRules := chainCfg.Rules(block.Number, true, activationTime)
+	for addr, c := range vm.ActivePrecompiledContracts(chainCfgRules) {
+		precompiled[c.Name()] = addr
+	}
+
 	return &config{
-		// block time needs to be converted to unix timestamp as it is done in
-		// evmcore/dummy_block.go in method EvmHeader.EthHeader()
-		ActivationTime:  uint64(block.Time.Unix()),
+		ActivationTime:  activationTime,
 		BlockHeight:     (*hexutil.Big)(block.Number),
 		ChainId:         (*hexutil.Big)(chainID),
 		ForkId:          forkId[:],
