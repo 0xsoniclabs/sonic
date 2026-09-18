@@ -31,12 +31,19 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 
+	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/topicsdb"
 )
 
 //go:generate mockgen -source=filter.go -package=filters -destination=filter_mock.go
+
+// The messages are the ones used in go-ethereum to stay compatible during testing.
+var (
+	errInvalidBlockRange    = ethapi.NewInvalidParamsError("invalid block range params")
+	errBlockRangeIntoFuture = ethapi.NewInvalidParamsError("block range extends beyond current head block")
+)
 
 type Backend interface {
 	HeaderByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*evmcore.EvmHeader, error)
@@ -170,7 +177,10 @@ func (f *Filter) fetchLogsFromBlockRange(ctx context.Context, logs []*types.Log)
 		end = head
 	}
 	if begin > end {
-		return nil, nil
+		return nil, errInvalidBlockRange
+	}
+	if end > head {
+		return nil, errBlockRangeIntoFuture
 	}
 
 	if isEmpty(f.topics) && len(f.addresses) == 0 {
