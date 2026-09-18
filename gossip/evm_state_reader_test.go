@@ -17,12 +17,19 @@
 package gossip
 
 import (
+	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 // TestEvmStateReader_Block_IsNotServedBeforeTheLatestBlockIndexCoversIt checks
@@ -54,4 +61,83 @@ func TestEvmStateReader_Block_IsNotServedBeforeTheLatestBlockIndexCoversIt(t *te
 	setLatestBlockIndex(store, blockNumber)
 	require.NotNil(t, reader.Block(common.Hash{}, uint64(blockNumber)))
 	require.NotNil(t, reader.Header(common.Hash{}, uint64(blockNumber)))
+}
+
+// The block being processed is always one ahead of the latest block index:
+// block processing advances that index only after the block is written. Every
+// reader off the RPC path therefore lands on exactly n == latest, and none of
+// them checks the result for nil. Tightening the guard in getBlock to n >=
+// latest, or gating it on anything that can trail the latest index such as the
+// archive height, stops block production rather than an RPC call.
+func TestEvmStateReader_HeadIsServedThroughEveryEntryPointUsedOffTheRpcPath(t *testing.T) {
+	const head = idx.Block(12)
+
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+
+	block := inter.NewBlockBuilder().WithNumber(uint64(head)).Build()
+	store.SetBlock(head, block)
+	store.SetBlockIndex(block.Hash(), head)
+	setLatestBlockIndex(store, head)
+
+	reader := &EvmStateReader{store: store}
+
+	// Block processing reads the parent header by number, in
+	// c_block_callbacks.go and again in evmmodule.Start.
+	require.NotNil(t, reader.Header(common.Hash{}, uint64(head)),
+		"block processing must be able to read the parent header")
+
+	// The emitter builds its priority context from the head block, and the
+	// transaction pool resets to it and reorgs from it by hash.
+	require.NotNil(t, reader.CurrentBlock(),
+		"the emitter and the transaction pool must be able to read the head")
+	require.NotNil(t, reader.Block(block.Hash(), uint64(head)),
+		"the transaction pool must be able to read the head by hash")
+}
+
+// TestEvmModule_Start_ReadsTheParentHeaderAtTheLatestBlockIndex pins the
+// composition of the guard with its most fragile consumer: evmmodule.Start
+// dereferences the parent header without a nil check, so a guard that hides
+// the block at the latest index panics block processing instead of failing a
+// query. The resulting block's parent hash proves the header was read.
+func TestEvmModule_Start_ReadsTheParentHeaderAtTheLatestBlockIndex(t *testing.T) {
+	const head = idx.Block(12)
+
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+
+	parent := inter.NewBlockBuilder().
+		WithNumber(uint64(head)).
+		WithBaseFee(big.NewInt(1e9)).
+		Build()
+	store.SetBlock(head, parent)
+	store.SetBlockIndex(parent.Hash(), head)
+	setLatestBlockIndex(store, head)
+
+	reader := &EvmStateReader{store: store}
+	require.NotNil(t, reader.Header(common.Hash{}, uint64(head)),
+		"the parent header must be readable; evmmodule.Start would segfault below")
+
+	ctrl := gomock.NewController(t)
+	statedb := state.NewMockStateDB(ctrl)
+	statedb.EXPECT().BeginBlock(uint64(head + 1))
+	statedb.EXPECT().EndBlock(uint64(head + 1))
+	statedb.EXPECT().GetStateHash()
+
+	processor := evmmodule.New().Start(
+		head+1,
+		parent.Time+1,
+		0,
+		statedb,
+		reader,
+		func(*core_types.Log) {},
+		opera.FakeNetRules(opera.GetSonicUpgrades()),
+		&params.ChainConfig{},
+		common.Hash{},
+		nil,
+	)
+
+	block, _, _ := processor.Finalize()
+	require.Equal(t, parent.Hash(), block.ParentHash,
+		"block processing must read the parent header at the latest block index")
 }
