@@ -389,7 +389,10 @@ func validateTxPoolInternals(pool *TxPool) error {
 	// Ensure all auths in pool are tracked
 	for _, tx := range pool.all.txs() {
 		for _, auth := range tx.SetCodeAuthorizations() {
-			addr, _ := auth.Authority()
+			addr, err := auth.Authority()
+			if err != nil {
+				continue // not tracked by addAuthorities
+			}
 			list := pool.all.auths[addr]
 			if i := slices.Index(list, tx.Hash()); i < 0 {
 				return fmt.Errorf("authority not tracked: addr %s, tx %s", addr, tx.Hash())
@@ -3544,4 +3547,37 @@ func testSubsidiesCheckerFactory(
 	signer types.Signer,
 ) utils.TransactionCheckFunc {
 	return nil
+}
+
+// TestSetCodeTransactions_InvalidAuthorityIsUntrackedOnRemove reproduces a
+// leak in txLookup: an authorization whose signature does not recover is
+// indexed under the zero address on Add but never dropped on Remove.
+func TestSetCodeTransactions_InvalidAuthorityIsUntrackedOnRemove(t *testing.T) {
+	db := newTestTxPoolStateDb()
+	blockchain := NewTestBlockChain(db)
+	key, _ := crypto.GenerateKey()
+	db.balances[crypto.PubkeyToAddress(key.PublicKey)] = new(uint256.Int).SetUint64(params.Ether)
+
+	pool := newTxPool(testTxPoolConfig, pragueConfig, blockchain, testSubsidiesCheckerFactory, nil)
+	defer pool.Stop()
+
+	invalid := types.SetCodeAuthorization{
+		ChainID: *uint256.MustFromBig(params.TestChainConfig.ChainID),
+		Address: common.Address{0x42},
+		V:       2, // yParity must be 0 or 1; Authority() returns ErrInvalidSig
+		R:       *uint256.NewInt(1),
+		S:       *uint256.NewInt(1),
+	}
+	_, err := invalid.Authority()
+	require.Error(t, err, "test setup: authorization must be unrecoverable")
+
+	tx := pricedSetCodeTxWithAuth(0, 250000, uint256.NewInt(1000), uint256.NewInt(1), key, []types.SetCodeAuthorization{invalid})
+	require.NoError(t, pool.addRemoteSync(tx), "pool accepts a tx with an unrecoverable authorization")
+
+	pool.mu.Lock()
+	pool.removeTx(tx.Hash(), true)
+	pool.mu.Unlock()
+
+	require.Empty(t, pool.all.auths, "authority index must be empty after the only tx is removed")
+	require.NoError(t, validateTxPoolInternals(pool))
 }

@@ -2098,7 +2098,15 @@ func (t *txLookup) Add(tx *types.Transaction, local bool) {
 func (t *txLookup) addAuthorities(tx *types.Transaction) {
 	// FIXME: later geth uses new signature: SetCodeAuthorizers returning addresses
 	for _, auth := range tx.SetCodeAuthorizations() {
-		addr, _ := auth.Authority()
+		addr, err := auth.Authority()
+		if err != nil {
+			// Skip authorizations whose signature does not recover to an
+			// authority. removeAuthorities iterates tx.SetCodeAuthorities(),
+			// which recovers valid authorities only, so an entry tracked here
+			// under the zero address would never be removed and would remain in
+			// t.auths for the lifetime of the pool.
+			continue
+		}
 		list, ok := t.auths[addr]
 		if !ok {
 			list = []common.Hash{}
