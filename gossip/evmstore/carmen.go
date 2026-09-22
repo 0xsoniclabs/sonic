@@ -395,11 +395,15 @@ func (c *CarmenStateDB) BeginBlock(number uint64) {
 }
 
 func (c *CarmenStateDB) EndBlock(number uint64) (carmen.StagedBlock, error) {
+	if !c.committable {
+		// only the live, committable StateDB seals blocks; a non-committable
+		// view has nothing to finalize, so reaching this point is a misuse.
+		return nil, fmt.Errorf("called EndBlock on a non-committable StateDB")
+	}
 	// clear snapshot list since the block-sealing invalidates all snapshots
 	c.interTxSnapshots = c.interTxSnapshots[:0]
-
 	// forward processed bundles to the store and clear the internal list of processed bundles
-	if c.committable && c.processedExecPlanStore != nil {
+	if c.processedExecPlanStore != nil {
 		execInfos := make(map[common.Hash]bundle.PositionInBlock, len(c.processedExecPlans))
 		for _, plan := range c.processedExecPlans {
 			execInfos[plan.execPlanHash] = plan.position
@@ -409,10 +413,11 @@ func (c *CarmenStateDB) EndBlock(number uint64) (carmen.StagedBlock, error) {
 	c.processedExecPlans = c.processedExecPlans[:0]
 
 	// finish the block in the underlying StateDB
-	if db, ok := c.db.(carmen.StateDB); c.committable && ok {
+	if db, ok := c.db.(carmen.StateDB); ok {
 		return db.EndBlock(number)
+	} else {
+		return nil, fmt.Errorf("StateDB does not support EndBlock")
 	}
-	return nil, nil
 }
 
 // blockEnder is the part of a state DB that seals blocks. It is satisfied by

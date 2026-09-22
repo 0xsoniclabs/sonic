@@ -234,64 +234,56 @@ func TestEndBlockAndCommit_ReportsFailures(t *testing.T) {
 	}
 }
 
-func TestCarmenStateDB_EndBlock_NotCommittable_DoesNotSendUpdatesToStateDBNorExecPlanStore(t *testing.T) {
+func TestCarmenStateDB_EndBlock_NotCommittable_ReturnsError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	backend := carmen.NewMockNonCommittableStateDB(ctrl)
 	processedBundleStore := NewMockProcessedBundleStore(ctrl)
 	state := CreateNonCommittableCarmenStateDb(backend, processedBundleStore)
 
-	// EndBlock should not send anything to the underlying state DB or the
-	// processed bundle store, but it should still complete without error.
 	block, err := state.EndBlock(0)
 	require.Nil(block)
-	require.NoError(err)
+	require.Error(err)
 }
 
 func TestCarmenStateDB_EndBlock_SnapshotListIsReset(t *testing.T) {
-	for _, committable := range []bool{true, false} {
-		t.Run(fmt.Sprintf("committable=%v", committable), func(t *testing.T) {
-			require := require.New(t)
-			ctrl := gomock.NewController(t)
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
 
-			db := carmen.NewMockStateDB(ctrl)
-			db.EXPECT().InterTxSnapshot().AnyTimes()
-			if committable {
-				db.EXPECT().EndBlock(uint64(123))
-			}
+	db := carmen.NewMockStateDB(ctrl)
+	db.EXPECT().InterTxSnapshot().AnyTimes()
+	db.EXPECT().EndBlock(uint64(123))
 
-			state := &CarmenStateDB{db: db, committable: committable}
+	state := &CarmenStateDB{db: db, committable: true}
 
-			require.Empty(state.interTxSnapshots)
-			state.InterTxSnapshot()
-			require.Len(state.interTxSnapshots, 1)
+	require.Empty(state.interTxSnapshots)
+	state.InterTxSnapshot()
+	require.Len(state.interTxSnapshots, 1)
 
-			state.InterTxSnapshot()
-			require.Len(state.interTxSnapshots, 2)
+	state.InterTxSnapshot()
+	require.Len(state.interTxSnapshots, 2)
 
-			_, err := state.EndBlock(123)
-			require.NoError(err)
-			require.Empty(state.interTxSnapshots)
-		})
-	}
+	_, err := state.EndBlock(123)
+	require.NoError(err)
+	require.Empty(state.interTxSnapshots)
 }
 
 func TestCarmenStateDB_EndBlock_ProcessedExecPlansAreReset(t *testing.T) {
-	for _, committable := range []bool{true, false} {
-		t.Run(fmt.Sprintf("committable=%v", committable), func(t *testing.T) {
-			require := require.New(t)
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
 
-			state := &CarmenStateDB{committable: committable}
+	db := carmen.NewMockStateDB(ctrl)
+	db.EXPECT().EndBlock(uint64(123))
 
-			state.AddProcessedBundle(common.Hash{1}, bundle.PositionInBlock{})
-			state.AddProcessedBundle(common.Hash{2}, bundle.PositionInBlock{})
-			require.Len(state.processedExecPlans, 2)
+	state := &CarmenStateDB{db: db, committable: true}
 
-			_, err := state.EndBlock(123)
-			require.NoError(err)
-			require.Empty(state.processedExecPlans)
-		})
-	}
+	state.AddProcessedBundle(common.Hash{1}, bundle.PositionInBlock{})
+	state.AddProcessedBundle(common.Hash{2}, bundle.PositionInBlock{})
+	require.Len(state.processedExecPlans, 2)
+
+	_, err := state.EndBlock(123)
+	require.NoError(err)
+	require.Empty(state.processedExecPlans)
 }
 
 func TestCarmenStateDB_EndBlock_CanEndBlockWithoutProcessedBundleStore(t *testing.T) {
