@@ -58,7 +58,7 @@ func levelFromString(lvlString string) (slog.Level, error) {
 	}
 }
 
-//go:generate mockgen -source=logger.go -destination=logger_mock.go -package=logger
+//go:generate go tool mockgen -source=logger.go -destination=logger_mock.go -package=logger
 
 // Logger defined as an alias for log.Logger to allow mocking in tests.
 type Logger interface {

@@ -18,7 +18,7 @@ package bundle
 
 import "errors"
 
-//go:generate mockgen -source=execution_plan_visitor.go -destination=execution_plan_visitor_mock.go -package=bundle
+//go:generate go tool mockgen -source=execution_plan_visitor.go -destination=execution_plan_visitor_mock.go -package=bundle
 
 // ExecutionPlanVisitor is the visitor interface for traversing the execution plan.
 // It allows keeping the internal implementation of the execution plan hidden

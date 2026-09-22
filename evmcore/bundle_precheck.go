@@ -45,7 +45,7 @@ var (
 	evaluatedBundlesExecutionCostCounter = metrics.GetOrRegisterCounter("bundles/pre_check/execution_cost", nil)
 )
 
-//go:generate mockgen -source=bundle_precheck.go -destination=bundle_precheck_mock.go -package=evmcore
+//go:generate go tool mockgen -source=bundle_precheck.go -destination=bundle_precheck_mock.go -package=evmcore
 
 // MinBundleEfficiency is the minimum efficiency threshold for accepting
 // bundles. The efficiency of a bundle is defined as:

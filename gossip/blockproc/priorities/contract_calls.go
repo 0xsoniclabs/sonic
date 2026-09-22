@@ -27,7 +27,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-//go:generate mockgen -source=contract_calls.go -destination=contract_calls_mock.go -package=priorities
+//go:generate go tool mockgen -source=contract_calls.go -destination=contract_calls_mock.go -package=priorities
 
 // VirtualMachine is a minimal interface for an EVM instance that can be used to
 // query the priority registry contract. It is satisfied directly by *vm.EVM.

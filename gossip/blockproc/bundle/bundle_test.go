@@ -634,7 +634,7 @@ func TestRemoveBundleOnlyMark_PreservesOriginalData(t *testing.T) {
 	}
 }
 
-//go:generate mockgen -source=bundle_test.go -destination=bundle_test_mock.go -package=bundle
+//go:generate go tool mockgen -source=bundle_test.go -destination=bundle_test_mock.go -package=bundle
 
 type Signer interface {
 	types.Signer

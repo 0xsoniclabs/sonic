@@ -36,7 +36,7 @@ import (
 	"github.com/0xsoniclabs/sonic/topicsdb"
 )
 
-//go:generate mockgen -source=filter.go -package=filters -destination=filter_mock.go
+//go:generate go tool mockgen -source=filter.go -package=filters -destination=filter_mock.go
 
 type Backend interface {
 	HeaderByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*evmcore.EvmHeader, error)

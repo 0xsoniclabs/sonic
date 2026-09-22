@@ -18,7 +18,7 @@ package evmcore
 
 import "github.com/0xsoniclabs/sonic/utils"
 
-//go:generate mockgen -source=block_metrics.go -destination=block_metrics_mock.go -package=evmcore
+//go:generate go tool mockgen -source=block_metrics.go -destination=block_metrics_mock.go -package=evmcore
 
 // BlockExecutionMetrics collects metrics related to the execution of
 // bundles and sponsored transactions within a block.
