@@ -204,7 +204,9 @@ func (s *State) ApplyGenesis(genesis *makefakegenesis.GenesisJson) error {
 		}
 	}
 	s.db.EndTransaction()
-	s.db.EndBlock(0)
+	if err := evmstore.EndBlockAndCommit(s.db, 0); err != nil {
+		return err
+	}
 	return s.db.Check()
 }
 
@@ -269,7 +271,9 @@ func (s *State) ApplyBlock(
 		receipts = append(receipts, cur.Receipt)
 	}
 
-	s.db.EndBlock(block.NumberU64())
+	if err := evmstore.EndBlockAndCommit(s.db, block.NumberU64()); err != nil {
+		return nil, err
+	}
 	return receipts, s.db.Check()
 }
 

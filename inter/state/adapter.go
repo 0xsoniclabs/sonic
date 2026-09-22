@@ -18,6 +18,7 @@ package state
 
 import (
 	"github.com/0xsoniclabs/carmen/go/common/witness"
+	"github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -49,7 +50,7 @@ type StateDB interface {
 	GetStateHash() common.Hash
 
 	BeginBlock(number uint64)
-	EndBlock(number uint64) <-chan error
+	EndBlock(number uint64) (state.StagedBlock, error)
 	EndTransaction()
 	Release()
 	InterTxSnapshot() int

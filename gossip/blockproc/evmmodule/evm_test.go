@@ -17,12 +17,14 @@
 package evmmodule
 
 import (
+	"fmt"
 	"math"
 	"math/big"
 	"testing"
 	"testing/synctest"
 	"time"
 
+	carmen_state "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -463,64 +465,31 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 }
 
 func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenBlockIsOlderThanOneHour(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		stateDb := state.NewMockStateDB(ctrl)
-
-		stateDb.EXPECT().BeginBlock(gomock.Any())
-		stateDb.EXPECT().GetStateHash()
-		// EndBlock should return a channel,but this should be ignored for
-		// blocks older than one hour.
-		stateDb.EXPECT().EndBlock(gomock.Any()).Return(make(<-chan error))
-
-		evmModule := New()
-		blockTime := time.Now().Add(-1*time.Hour - time.Second)
-		processor := evmModule.Start(
-			0, inter.FromUnix(blockTime.Unix()), 0,
-			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
-			nil,
-		)
-
-		finalizeDone := false
-		go func() {
-			_, _, _ = processor.Finalize()
-			finalizeDone = true
-		}()
-
-		synctest.Wait()
-		require.True(t, finalizeDone, "Finalize did not finish for blocks older than one hour")
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
+	waitCalled := false
+	waitHandle := carmen_state.NewWaitHandle(nil).Then(func(err error) error {
+		waitCalled = true
+		return nil
 	})
-}
+	stagedBlock.EXPECT().Commit().Return(waitHandle, nil)
+	stateDb.EXPECT().BeginBlock(gomock.Any())
+	stateDb.EXPECT().GetStateHash()
+	// EndBlock should return a channel,but this should be ignored for
+	// blocks older than one hour.
+	stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
 
-func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenSyncChannelIsNil(t *testing.T) {
-	// Underlying db implementations may not implement the possibility to wait on
-	// an async finalize operation. The client must work correctly in these cases.
+	evmModule := New()
+	blockTime := time.Now().Add(-1*time.Hour - time.Second)
+	processor := evmModule.Start(
+		0, inter.FromUnix(blockTime.Unix()), 0,
+		stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		nil,
+	)
 
-	synctest.Test(t, func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		stateDb := state.NewMockStateDB(ctrl)
-
-		stateDb.EXPECT().BeginBlock(gomock.Any())
-		stateDb.EXPECT().GetStateHash()
-		// If the sync channel is nil, Finalize should not block even for recent blocks.
-		stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil)
-		evmModule := New()
-		blockTime := time.Now().Add(-1*time.Hour + time.Second)
-		processor := evmModule.Start(
-			0, inter.FromUnix(blockTime.Unix()), 0,
-			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
-			nil,
-		)
-
-		finalizeDone := false
-		go func() {
-			_, _, _ = processor.Finalize()
-			finalizeDone = true
-		}()
-
-		synctest.Wait()
-		require.True(t, finalizeDone, "Finalize did not finish when sync channel was nil")
-	})
+	_, _, _ = processor.Finalize()
+	require.False(t, waitCalled)
 }
 
 func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOneHour(t *testing.T) {
@@ -531,9 +500,11 @@ func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOne
 
 		stateDb.EXPECT().BeginBlock(gomock.Any())
 		stateDb.EXPECT().GetStateHash()
-
+		stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
 		syncChannel := make(chan error)
-		stateDb.EXPECT().EndBlock(gomock.Any()).Return(syncChannel)
+		waitHandle := carmen_state.NewWaitHandle(syncChannel)
+		stagedBlock.EXPECT().Commit().Return(waitHandle, nil)
+		stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
 
 		evmModule := New()
 		blockTime := time.Now().Add(-1*time.Hour + time.Second)
@@ -557,6 +528,51 @@ func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOne
 		synctest.Wait()
 		require.True(t, finalizeDone, "Finalize did not finish after sync channel was closed")
 	})
+}
+
+func TestOperaEVMProcessor_Finalize_SetsStateRoot_WhenCommitPathFails(t *testing.T) {
+	injectedErr := fmt.Errorf("injected error")
+	tests := map[string]func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock){
+		"EndBlock fails": func(stateDb *state.MockStateDB, _ *carmen_state.MockStagedBlock) {
+			stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil, injectedErr)
+		},
+		"EndBlock returns nil staged block": func(stateDb *state.MockStateDB, _ *carmen_state.MockStagedBlock) {
+			stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil, nil)
+		},
+		"Commit fails": func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock) {
+			stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
+			stagedBlock.EXPECT().Commit().Return(nil, injectedErr)
+		},
+		"Wait fails": func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock) {
+			done := make(chan error, 1)
+			done <- injectedErr
+			stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
+			stagedBlock.EXPECT().Commit().Return(carmen_state.NewWaitHandle(done), nil)
+		},
+	}
+
+	for name, setup := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			stateDb := state.NewMockStateDB(ctrl)
+			stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
+			setup(stateDb, stagedBlock)
+
+			wantRoot := common.Hash{0x42}
+			stateDb.EXPECT().BeginBlock(gomock.Any())
+			stateDb.EXPECT().GetStateHash().Return(wantRoot)
+
+			evmModule := New()
+			processor := evmModule.Start(
+				0, inter.FromUnix(time.Now().Unix()), 0,
+				stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+				nil,
+			)
+
+			evmBlock, _, _ := processor.Finalize()
+			require.Equal(t, wantRoot, evmBlock.Root)
+		})
+	}
 }
 
 // onNewLog is a helper interface to allow mocking the onNewLog function

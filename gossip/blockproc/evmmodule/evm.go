@@ -185,22 +185,40 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 
 	evmBlock = p.evmBlockWith(transactions)
 
+	// The state root is always taken from the live state, even if committing
+	// the block fails below, so the caller never receives a zero root.
+	defer func() {
+		evmBlock.Root = p.statedb.GetStateHash()
+	}()
+
 	// Commit block
-	done := p.statedb.EndBlock(evmBlock.Number.Uint64())
-	// Use asynchronous commit for blocks older than one hour to speed up catching up.
-	// For recent blocks (within the last hour), wait for the commit to complete
+	stagedBlock, err := p.statedb.EndBlock(evmBlock.Number.Uint64())
+	if err != nil {
+		log.Error("Failed to finalize block %v: %v", evmBlock.Number, err)
+		return
+	}
+	if stagedBlock == nil {
+		// defensive: a committable StateDB never returns a nil staged block
+		log.Error("Staged block is nil for block %v", evmBlock.Number)
+		return
+	}
+	// Commit the stagedBlock right away for now.
+	done, err := stagedBlock.Commit()
+	if err != nil {
+		log.Error("Failed to commit block %v: %v", evmBlock.Number, err)
+		return
+	}
+	// Use asynchronous archive update for blocks older than one hour to speed up catching up.
+	// For recent blocks (within the last hour), wait for the update to complete
 	// to ensure the latest state is available for both live and archive databases.
-	if time.Since(evmBlock.Time.Time()) < 1*time.Hour && done != nil {
-		if err := <-done; err != nil {
+	if time.Since(evmBlock.Time.Time()) < 1*time.Hour {
+		if err := done.Wait(); err != nil {
 			// the underlying database has collected an error during finalize or
 			// a previous operation. State consistency and its persistence my
 			// have been compromised.
 			log.Error("Failed to finalize block %v: %v", evmBlock.Number, err)
 		}
 	}
-
-	// Get state root
-	evmBlock.Root = p.statedb.GetStateHash()
 
 	return
 }
