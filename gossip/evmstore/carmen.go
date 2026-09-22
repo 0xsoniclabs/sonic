@@ -395,11 +395,19 @@ func (c *CarmenStateDB) BeginBlock(number uint64) {
 }
 
 func (c *CarmenStateDB) EndBlock(number uint64) <-chan error {
+	if !c.committable {
+		// only the live, committable StateDB seals blocks; a non-committable
+		// view has nothing to finalize, so reaching this point is a misuse.
+		done := make(chan error, 1)
+		done <- fmt.Errorf("called EndBlock on a non-committable StateDB")
+		close(done)
+		return done
+	}
 	// clear snapshot list since the block-sealing invalidates all snapshots
 	c.interTxSnapshots = c.interTxSnapshots[:0]
 
 	// forward processed bundles to the store and clear the internal list of processed bundles
-	if c.committable && c.processedExecPlanStore != nil {
+	if c.processedExecPlanStore != nil {
 		execInfos := make(map[common.Hash]bundle.PositionInBlock, len(c.processedExecPlans))
 		for _, plan := range c.processedExecPlans {
 			execInfos[plan.execPlanHash] = plan.position
@@ -409,7 +417,7 @@ func (c *CarmenStateDB) EndBlock(number uint64) <-chan error {
 	c.processedExecPlans = c.processedExecPlans[:0]
 
 	// finish the block in the underlying StateDB
-	if db, ok := c.db.(carmen.StateDB); c.committable && ok {
+	if db, ok := c.db.(carmen.StateDB); ok {
 		return db.EndBlock(number)
 	}
 	return nil
