@@ -317,6 +317,9 @@ func MemTestStoreConfig(tmpDir string) StoreConfig {
 	cfg.EVM.StateDb.Directory = filepath.Join(tmpDir, "carmen")
 	cfg.EVM.StateDb.LiveCache = 100    // bytes, to be overridden by the minimal value
 	cfg.EVM.StateDb.ArchiveCache = 100 // bytes, to be overridden by the minimal value
+	// Without an explicit capacity, importing the genesis archive reserves node cache
+	// slots for Carmen's default of 10M nodes (~600MB per opened trie).
+	cfg.EVM.Cache.StateDbCapacity = 1024
 	return cfg
 }
 
