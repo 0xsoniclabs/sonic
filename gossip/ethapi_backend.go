@@ -50,7 +50,7 @@ import (
 	"github.com/0xsoniclabs/sonic/topicsdb"
 )
 
-//go:generate mockgen -source=ethapi_backend.go -destination=ethapi_backend_mock.go -package=gossip
+//go:generate go tool mockgen -source=ethapi_backend.go -destination=ethapi_backend_mock.go -package=gossip
 
 // EthAPIBackend implements ethapi.Backend.
 type EthAPIBackend struct {

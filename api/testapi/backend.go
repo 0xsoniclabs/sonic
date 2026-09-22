@@ -18,7 +18,7 @@ package testapi
 
 import "github.com/ethereum/go-ethereum/core/types"
 
-//go:generate mockgen -source=backend.go -destination=backend_mock.go -package=testapi
+//go:generate go tool mockgen -source=backend.go -destination=backend_mock.go -package=testapi
 
 type Backend interface {
 	// IsTestOnlyApiEnabled shall return true if in the current node access to

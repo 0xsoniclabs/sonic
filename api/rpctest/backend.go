@@ -47,7 +47,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-//go:generate mockgen -source=backend.go -destination=backend_mock.go -package=rpctest
+//go:generate go tool mockgen -source=backend.go -destination=backend_mock.go -package=rpctest
 
 // AccountState represents the state of an account
 // in the fake backend's state database.

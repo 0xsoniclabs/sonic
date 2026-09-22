@@ -33,7 +33,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
-//go:generate mockgen -source=interface.go -package=blockproc -destination=interface_mock.go
+//go:generate go tool mockgen -source=interface.go -package=blockproc -destination=interface_mock.go
 
 // NonceSource exposes the nonce of the zero address, which is all state
 // information internal-transaction builders read.

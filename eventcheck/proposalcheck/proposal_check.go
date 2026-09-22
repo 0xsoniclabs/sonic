@@ -25,7 +25,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 )
 
-//go:generate mockgen -source=proposal_check.go -destination=proposal_check_mock.go -package=proposalcheck
+//go:generate go tool mockgen -source=proposal_check.go -destination=proposal_check_mock.go -package=proposalcheck
 
 const (
 	// MaxSizeOfProposedTransactions is the maximum size of the transactions

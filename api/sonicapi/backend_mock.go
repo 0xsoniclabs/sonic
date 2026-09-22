@@ -38,6 +38,7 @@ import (
 type MockBundleApiBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockBundleApiBackendMockRecorder
+	isgomock struct{}
 }
 
 // MockBundleApiBackendMockRecorder is the mock recorder for MockBundleApiBackend.
@@ -72,18 +73,18 @@ func (mr *MockBundleApiBackendMockRecorder) AccountManager() *gomock.Call {
 }
 
 // BlockByHash mocks base method.
-func (m *MockBundleApiBackend) BlockByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmBlock, error) {
+func (m *MockBundleApiBackend) BlockByHash(ctx context.Context, arg1 common.Hash) (*evmcore.EvmBlock, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "BlockByHash", ctx, hash)
+	ret := m.ctrl.Call(m, "BlockByHash", ctx, arg1)
 	ret0, _ := ret[0].(*evmcore.EvmBlock)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // BlockByHash indicates an expected call of BlockByHash.
-func (mr *MockBundleApiBackendMockRecorder) BlockByHash(ctx, hash any) *gomock.Call {
+func (mr *MockBundleApiBackendMockRecorder) BlockByHash(ctx, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BlockByHash", reflect.TypeOf((*MockBundleApiBackend)(nil).BlockByHash), ctx, hash)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BlockByHash", reflect.TypeOf((*MockBundleApiBackend)(nil).BlockByHash), ctx, arg1)
 }
 
 // BlockByNumber mocks base method.
@@ -230,9 +231,9 @@ func (mr *MockBundleApiBackendMockRecorder) GetDowntime(ctx, vid any) *gomock.Ca
 }
 
 // GetEVM mocks base method.
-func (m *MockBundleApiBackend) GetEVM(ctx context.Context, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
+func (m *MockBundleApiBackend) GetEVM(ctx context.Context, arg1 vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEVM", ctx, state, header, vmConfig, blockContext)
+	ret := m.ctrl.Call(m, "GetEVM", ctx, arg1, header, vmConfig, blockContext)
 	ret0, _ := ret[0].(*vm.EVM)
 	ret1, _ := ret[1].(func() error)
 	ret2, _ := ret[2].(error)
@@ -240,9 +241,9 @@ func (m *MockBundleApiBackend) GetEVM(ctx context.Context, state vm.StateDB, hea
 }
 
 // GetEVM indicates an expected call of GetEVM.
-func (mr *MockBundleApiBackendMockRecorder) GetEVM(ctx, state, header, vmConfig, blockContext any) *gomock.Call {
+func (mr *MockBundleApiBackendMockRecorder) GetEVM(ctx, arg1, header, vmConfig, blockContext any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEVM", reflect.TypeOf((*MockBundleApiBackend)(nil).GetEVM), ctx, state, header, vmConfig, blockContext)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEVM", reflect.TypeOf((*MockBundleApiBackend)(nil).GetEVM), ctx, arg1, header, vmConfig, blockContext)
 }
 
 // GetEpochBlockState mocks base method.
@@ -456,18 +457,18 @@ func (mr *MockBundleApiBackendMockRecorder) GetUptime(ctx, vid any) *gomock.Call
 }
 
 // HeaderByHash mocks base method.
-func (m *MockBundleApiBackend) HeaderByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmHeader, error) {
+func (m *MockBundleApiBackend) HeaderByHash(ctx context.Context, arg1 common.Hash) (*evmcore.EvmHeader, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HeaderByHash", ctx, hash)
+	ret := m.ctrl.Call(m, "HeaderByHash", ctx, arg1)
 	ret0, _ := ret[0].(*evmcore.EvmHeader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // HeaderByHash indicates an expected call of HeaderByHash.
-func (mr *MockBundleApiBackendMockRecorder) HeaderByHash(ctx, hash any) *gomock.Call {
+func (mr *MockBundleApiBackendMockRecorder) HeaderByHash(ctx, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HeaderByHash", reflect.TypeOf((*MockBundleApiBackend)(nil).HeaderByHash), ctx, hash)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HeaderByHash", reflect.TypeOf((*MockBundleApiBackend)(nil).HeaderByHash), ctx, arg1)
 }
 
 // HeaderByNumber mocks base method.

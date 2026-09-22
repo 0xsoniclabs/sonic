@@ -71,7 +71,7 @@ import (
 	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
-//go:generate mockgen -source=service.go -package=gossip -destination=service_mock.go
+//go:generate go tool mockgen -source=service.go -package=gossip -destination=service_mock.go
 
 type ServiceFeed struct {
 	scope notify.SubscriptionScope

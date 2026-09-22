@@ -16,7 +16,7 @@
 
 package leap
 
-//go:generate mockgen -source=iterator.go -package=leap -destination=iterator_mock.go
+//go:generate go tool mockgen -source=iterator.go -package=leap -destination=iterator_mock.go
 
 // Iterator defines a generic iterator over a sequence of ordered elements of
 // type T. It is a general abstraction of a data source that can be utilized

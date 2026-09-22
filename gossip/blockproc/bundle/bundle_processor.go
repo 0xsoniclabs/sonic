@@ -22,7 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-//go:generate mockgen -source=bundle_processor.go -destination=bundle_processor_mock.go -package=bundle
+//go:generate go tool mockgen -source=bundle_processor.go -destination=bundle_processor_mock.go -package=bundle
 
 // RunBundle executes the transactions in the bundle using the provided
 // TransactionRunner. It returns true if the bundle execution is considered

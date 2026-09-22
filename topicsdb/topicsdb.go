@@ -33,7 +33,7 @@ var (
 	ErrLogsNotRecorded = fmt.Errorf("logs are not being recorded")
 )
 
-//go:generate mockgen -source=topicsdb.go -package=topicsdb -destination=topicsdb_mock.go
+//go:generate go tool mockgen -source=topicsdb.go -package=topicsdb -destination=topicsdb_mock.go
 
 type Index interface {
 	FindInBlocks(ctx context.Context, from, to idx.Block, pattern [][]common.Hash, limit uint) (logs []*types.Log, err error)

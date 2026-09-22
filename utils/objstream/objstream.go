@@ -46,7 +46,7 @@
 // objects.
 package objstream
 
-//go:generate mockgen -source=objstream.go -destination=objstream_mock.go -package=objstream
+//go:generate go tool mockgen -source=objstream.go -destination=objstream_mock.go -package=objstream
 
 import (
 	"bufio"
