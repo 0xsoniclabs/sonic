@@ -13,9 +13,10 @@ import (
 	reflect "reflect"
 
 	witness "github.com/0xsoniclabs/carmen/go/common/witness"
+	state "github.com/0xsoniclabs/carmen/go/state"
 	bundle "github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	common "github.com/ethereum/go-ethereum/common"
-	state "github.com/ethereum/go-ethereum/core/state"
+	state0 "github.com/ethereum/go-ethereum/core/state"
 	stateless "github.com/ethereum/go-ethereum/core/stateless"
 	tracing "github.com/ethereum/go-ethereum/core/tracing"
 	types "github.com/ethereum/go-ethereum/core/types"
@@ -49,10 +50,10 @@ func (m *MockStateDB) EXPECT() *MockStateDBMockRecorder {
 }
 
 // AccessEvents mocks base method.
-func (m *MockStateDB) AccessEvents() *state.AccessEvents {
+func (m *MockStateDB) AccessEvents() *state0.AccessEvents {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AccessEvents")
-	ret0, _ := ret[0].(*state.AccessEvents)
+	ret0, _ := ret[0].(*state0.AccessEvents)
 	return ret0
 }
 
@@ -239,11 +240,12 @@ func (mr *MockStateDBMockRecorder) Empty(arg0 any) *gomock.Call {
 }
 
 // EndBlock mocks base method.
-func (m *MockStateDB) EndBlock(number uint64) <-chan error {
+func (m *MockStateDB) EndBlock(number uint64) (state.StagedBlock, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "EndBlock", number)
-	ret0, _ := ret[0].(<-chan error)
-	return ret0
+	ret0, _ := ret[0].(state.StagedBlock)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // EndBlock indicates an expected call of EndBlock.
@@ -773,4 +775,71 @@ func (m *MockStateDB) Witness() *stateless.Witness {
 func (mr *MockStateDBMockRecorder) Witness() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Witness", reflect.TypeOf((*MockStateDB)(nil).Witness))
+}
+
+// MockStagedBlock is a mock of StagedBlock interface.
+type MockStagedBlock struct {
+	ctrl     *gomock.Controller
+	recorder *MockStagedBlockMockRecorder
+	isgomock struct{}
+}
+
+// MockStagedBlockMockRecorder is the mock recorder for MockStagedBlock.
+type MockStagedBlockMockRecorder struct {
+	mock *MockStagedBlock
+}
+
+// NewMockStagedBlock creates a new mock instance.
+func NewMockStagedBlock(ctrl *gomock.Controller) *MockStagedBlock {
+	mock := &MockStagedBlock{ctrl: ctrl}
+	mock.recorder = &MockStagedBlockMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockStagedBlock) EXPECT() *MockStagedBlockMockRecorder {
+	return m.recorder
+}
+
+// Commit mocks base method.
+func (m *MockStagedBlock) Commit() (*state.WaitHandle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Commit")
+	ret0, _ := ret[0].(*state.WaitHandle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Commit indicates an expected call of Commit.
+func (mr *MockStagedBlockMockRecorder) Commit() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockStagedBlock)(nil).Commit))
+}
+
+// Rollback mocks base method.
+func (m *MockStagedBlock) Rollback() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Rollback")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Rollback indicates an expected call of Rollback.
+func (mr *MockStagedBlockMockRecorder) Rollback() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Rollback", reflect.TypeOf((*MockStagedBlock)(nil).Rollback))
+}
+
+// StateHash mocks base method.
+func (m *MockStagedBlock) StateHash() common.Hash {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StateHash")
+	ret0, _ := ret[0].(common.Hash)
+	return ret0
+}
+
+// StateHash indicates an expected call of StateHash.
+func (mr *MockStagedBlockMockRecorder) StateHash() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StateHash", reflect.TypeOf((*MockStagedBlock)(nil).StateHash))
 }

@@ -17,6 +17,8 @@
 package execspec
 
 import (
+	"fmt"
+
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/ethereum/go-ethereum/common"
@@ -46,7 +48,9 @@ func (f carmenFactory) NewTestStateDB(accounts types.GenesisAlloc) tests.StateTe
 	}
 	// Commit and re-open to start with a clean state.
 	statedb.EndTransaction()
-	statedb.EndBlock(0)
+	if err := evmstore.EndBlockAndCommit(statedb, 0); err != nil {
+		panic(fmt.Sprintf("failed to commit genesis state: %v", err))
+	}
 	statedb.GetStateHash()
 
 	statedb = evmstore.CreateCarmenStateDb(carmenstatedb, nil)
@@ -83,7 +87,9 @@ func (c *carmenStateDB) SetBalance(addr common.Address, amount *uint256.Int, rea
 // we can just end the transaction and block, and return the resulting state root.
 func (c *carmenStateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	c.EndTransaction()
-	c.EndBlock(0)
+	if err := evmstore.EndBlockAndCommit(c.CarmenStateDB, 0); err != nil {
+		panic(fmt.Sprintf("failed to commit block: %v", err))
+	}
 	return c.GetStateHash()
 }
 
@@ -91,6 +97,8 @@ func (c *carmenStateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 func (c *carmenStateDB) Commit(block uint64, deleteEmptyObjects bool, noStorageWiping bool) (common.Hash, error) {
 	c.logs = c.CarmenStateDB.Logs() // backup logs, they are deleted on committing a tx/block
 	c.EndTransaction()
-	c.EndBlock(block)
+	if err := evmstore.EndBlockAndCommit(c.CarmenStateDB, block); err != nil {
+		return common.Hash{}, err
+	}
 	return c.GetStateHash(), nil
 }
