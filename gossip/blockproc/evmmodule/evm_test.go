@@ -17,9 +17,12 @@
 package evmmodule
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"math/big"
+	"os"
+	"os/exec"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -34,6 +37,7 @@ import (
 	tracing "github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	uint256 "github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -408,7 +412,9 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	stateDb.EXPECT().SetTxContext(any, any).AnyTimes()
 	stateDb.EXPECT().TxIndex().AnyTimes()
 	stateDb.EXPECT().GetLogs(any, any).AnyTimes()
-	stateDb.EXPECT().EndBlock(any).AnyTimes()
+	stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
+	stagedBlock.EXPECT().Commit().Return(carmen_state.NewWaitHandle(nil), nil).AnyTimes()
+	stateDb.EXPECT().EndBlock(any).Return(stagedBlock, nil).AnyTimes()
 	stateDb.EXPECT().GetStateHash().AnyTimes()
 
 	evmModule := New()
@@ -532,13 +538,10 @@ func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOne
 
 func TestOperaEVMProcessor_Finalize_SetsStateRoot_WhenCommitPathFails(t *testing.T) {
 	injectedErr := fmt.Errorf("injected error")
+	// A failing EndBlock terminates the node via log.Crit and is not covered
+	// here; the live state already holds the block in the cases below, so
+	// the root must still be reported to the caller.
 	tests := map[string]func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock){
-		"EndBlock fails": func(stateDb *state.MockStateDB, _ *carmen_state.MockStagedBlock) {
-			stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil, injectedErr)
-		},
-		"EndBlock returns nil staged block": func(stateDb *state.MockStateDB, _ *carmen_state.MockStagedBlock) {
-			stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil, nil)
-		},
 		"Commit fails": func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock) {
 			stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
 			stagedBlock.EXPECT().Commit().Return(nil, injectedErr)
@@ -571,6 +574,67 @@ func TestOperaEVMProcessor_Finalize_SetsStateRoot_WhenCommitPathFails(t *testing
 
 			evmBlock, _, _ := processor.Finalize()
 			require.Equal(t, wantRoot, evmBlock.Root)
+		})
+	}
+}
+
+// envFinalizeFatalCase marks the re-executed test binary that runs one of the
+// fatal Finalize paths; log.Crit terminates the process, so the outcome can only
+// be observed from a parent process.
+const envFinalizeFatalCase = "SONIC_TEST_FINALIZE_FATAL_CASE"
+
+func TestOperaEVMProcessor_Finalize_TerminatesProcess_WhenEndBlockFails(t *testing.T) {
+	tests := map[string]struct {
+		setup   func(stateDb *state.MockStateDB)
+		message string
+	}{
+		"EndBlockFails": {
+			setup: func(stateDb *state.MockStateDB) {
+				stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil, fmt.Errorf("injected error"))
+			},
+			message: "Failed to finalize block",
+		},
+		"NilStagedBlock": {
+			setup: func(stateDb *state.MockStateDB) {
+				stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil, nil)
+			},
+			message: "Staged block is nil",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if os.Getenv(envFinalizeFatalCase) == "1" {
+				// child process: run the fatal path, log.Crit must exit with 1
+				log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelCrit, false)))
+				ctrl := gomock.NewController(t)
+				stateDb := state.NewMockStateDB(ctrl)
+				stateDb.EXPECT().BeginBlock(gomock.Any())
+				stateDb.EXPECT().GetStateHash().AnyTimes()
+				test.setup(stateDb)
+
+				processor := New().Start(
+					0, inter.FromUnix(time.Now().Unix()), 0,
+					stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+					nil,
+				)
+				_, _, _ = processor.Finalize()
+				// reached only if log.Crit did not terminate the process; exit
+				// with a code the parent does not expect
+				os.Exit(2)
+			}
+
+			// parent process: re-run exactly this subtest in a child
+			cmd := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
+			cmd.Env = append(os.Environ(), envFinalizeFatalCase+"=1")
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+
+			var exitErr *exec.ExitError
+			require.ErrorAs(t, err, &exitErr, "Finalize must terminate the process")
+			require.Equal(t, 1, exitErr.ExitCode(), "log.Crit exits with code 1; stderr: %s", stderr.String())
+			require.Contains(t, stderr.String(), test.message)
 		})
 	}
 }
