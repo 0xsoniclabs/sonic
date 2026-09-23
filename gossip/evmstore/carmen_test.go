@@ -545,15 +545,15 @@ func TestEndBlockAndCommit_EndsCommitsAndWaits(t *testing.T) {
 
 func TestEndBlockAndCommit_ReportsFailures(t *testing.T) {
 	injectedErr := fmt.Errorf("injected error")
-	tests := map[string]func(db *state.MockStateDB, staged *state.MockStagedBlock){
-		"EndBlock fails": func(db *state.MockStateDB, _ *state.MockStagedBlock) {
+	tests := map[string]func(db *state.MockStateDB, staged *carmen.MockStagedBlock){
+		"EndBlock fails": func(db *state.MockStateDB, _ *carmen.MockStagedBlock) {
 			db.EXPECT().EndBlock(uint64(7)).Return(nil, injectedErr)
 		},
-		"Commit fails": func(db *state.MockStateDB, staged *state.MockStagedBlock) {
+		"Commit fails": func(db *state.MockStateDB, staged *carmen.MockStagedBlock) {
 			db.EXPECT().EndBlock(uint64(7)).Return(staged, nil)
 			staged.EXPECT().Commit().Return(nil, injectedErr)
 		},
-		"Wait fails": func(db *state.MockStateDB, staged *state.MockStagedBlock) {
+		"Wait fails": func(db *state.MockStateDB, staged *carmen.MockStagedBlock) {
 			done := make(chan error, 1)
 			done <- injectedErr
 			db.EXPECT().EndBlock(uint64(7)).Return(staged, nil)
@@ -565,7 +565,7 @@ func TestEndBlockAndCommit_ReportsFailures(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			db := state.NewMockStateDB(ctrl)
-			staged := state.NewMockStagedBlock(ctrl)
+			staged := carmen.NewMockStagedBlock(ctrl)
 			setup(db, staged)
 
 			require.ErrorIs(t, EndBlockAndCommit(db, 7), injectedErr)

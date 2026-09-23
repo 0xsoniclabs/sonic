@@ -482,8 +482,6 @@ func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenBlockIsOlderTh
 	stagedBlock.EXPECT().Commit().Return(waitHandle, nil)
 	stateDb.EXPECT().BeginBlock(gomock.Any())
 	stateDb.EXPECT().GetStateHash()
-	// EndBlock should return a channel,but this should be ignored for
-	// blocks older than one hour.
 	stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
 
 	evmModule := New()
@@ -536,46 +534,29 @@ func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOne
 	})
 }
 
-func TestOperaEVMProcessor_Finalize_SetsStateRoot_WhenCommitPathFails(t *testing.T) {
-	injectedErr := fmt.Errorf("injected error")
-	// A failing EndBlock terminates the node via log.Crit and is not covered
-	// here; the live state already holds the block in the cases below, so
-	// the root must still be reported to the caller.
-	tests := map[string]func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock){
-		"Commit fails": func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock) {
-			stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
-			stagedBlock.EXPECT().Commit().Return(nil, injectedErr)
-		},
-		"Wait fails": func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock) {
-			done := make(chan error, 1)
-			done <- injectedErr
-			stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
-			stagedBlock.EXPECT().Commit().Return(carmen_state.NewWaitHandle(done), nil)
-		},
-	}
+func TestOperaEVMProcessor_Finalize_ArchiveFailure_IsReportedWithoutTerminating(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
 
-	for name, setup := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			stateDb := state.NewMockStateDB(ctrl)
-			stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
-			setup(stateDb, stagedBlock)
+	// the archive update fails, but the live state already holds the block
+	done := make(chan error, 1)
+	done <- fmt.Errorf("injected archive error")
+	stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
+	stagedBlock.EXPECT().Commit().Return(carmen_state.NewWaitHandle(done), nil)
 
-			wantRoot := common.Hash{0x42}
-			stateDb.EXPECT().BeginBlock(gomock.Any())
-			stateDb.EXPECT().GetStateHash().Return(wantRoot)
+	wantRoot := common.Hash{0x42}
+	stateDb.EXPECT().BeginBlock(gomock.Any())
+	stateDb.EXPECT().GetStateHash().Return(wantRoot)
 
-			evmModule := New()
-			processor := evmModule.Start(
-				0, inter.FromUnix(time.Now().Unix()), 0,
-				stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
-				nil,
-			)
+	processor := New().Start(
+		0, inter.FromUnix(time.Now().Unix()), 0,
+		stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		nil,
+	)
 
-			evmBlock, _, _ := processor.Finalize()
-			require.Equal(t, wantRoot, evmBlock.Root)
-		})
-	}
+	evmBlock, _, _ := processor.Finalize()
+	require.Equal(t, wantRoot, evmBlock.Root)
 }
 
 // envFinalizeFatalCase marks the re-executed test binary that runs one of the
@@ -583,22 +564,30 @@ func TestOperaEVMProcessor_Finalize_SetsStateRoot_WhenCommitPathFails(t *testing
 // be observed from a parent process.
 const envFinalizeFatalCase = "SONIC_TEST_FINALIZE_FATAL_CASE"
 
-func TestOperaEVMProcessor_Finalize_TerminatesProcess_WhenEndBlockFails(t *testing.T) {
+func TestOperaEVMProcessor_Finalize_TerminatesProcess_OnFatalErrors(t *testing.T) {
+	injectedErr := fmt.Errorf("injected error")
 	tests := map[string]struct {
-		setup   func(stateDb *state.MockStateDB)
+		setup   func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock)
 		message string
 	}{
 		"EndBlockFails": {
-			setup: func(stateDb *state.MockStateDB) {
-				stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil, fmt.Errorf("injected error"))
+			setup: func(stateDb *state.MockStateDB, _ *carmen_state.MockStagedBlock) {
+				stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil, injectedErr)
 			},
 			message: "Failed to finalize block",
 		},
 		"NilStagedBlock": {
-			setup: func(stateDb *state.MockStateDB) {
+			setup: func(stateDb *state.MockStateDB, _ *carmen_state.MockStagedBlock) {
 				stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil, nil)
 			},
 			message: "Staged block is nil",
+		},
+		"CommitFails": {
+			setup: func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock) {
+				stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
+				stagedBlock.EXPECT().Commit().Return(nil, injectedErr)
+			},
+			message: "Failed to commit block",
 		},
 	}
 
@@ -609,9 +598,10 @@ func TestOperaEVMProcessor_Finalize_TerminatesProcess_WhenEndBlockFails(t *testi
 				log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelCrit, false)))
 				ctrl := gomock.NewController(t)
 				stateDb := state.NewMockStateDB(ctrl)
+				stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
 				stateDb.EXPECT().BeginBlock(gomock.Any())
 				stateDb.EXPECT().GetStateHash().AnyTimes()
-				test.setup(stateDb)
+				test.setup(stateDb, stagedBlock)
 
 				processor := New().Start(
 					0, inter.FromUnix(time.Now().Unix()), 0,
