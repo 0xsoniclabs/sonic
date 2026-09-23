@@ -384,55 +384,6 @@ func TestVmTraceLogger_MemNilForNonMemoryOp(t *testing.T) {
 	require.Nil(t, result.Ops[0].Ex.Mem, "PUSH1 must have Mem=nil (no memory write)")
 }
 
-func TestVmTraceLogger_MemSetAfterMSTORE(t *testing.T) {
-	// MSTORE writes 32 bytes; Ex.Mem must carry the post-execution memory with Off=0.
-	l := NewVmTraceLogger()
-	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
-
-	// Before MSTORE: memory empty.
-	ctxBeforeMstore := &mockOpContext{memory: []byte{}}
-	l.onOpcode(0, byte(vm.MSTORE), 1000, 6, ctxBeforeMstore, nil, 0, nil)
-
-	// After MSTORE: 32 bytes, last byte = 0x42.
-	memAfter := make([]byte, 32)
-	memAfter[31] = 0x42
-	ctxAfterMstore := &mockOpContext{memory: memAfter}
-	l.onOpcode(33, byte(vm.STOP), 994, 0, ctxAfterMstore, nil, 0, nil)
-
-	l.onExit(0, nil, 6, nil, false)
-
-	result := l.GetResult()
-	require.Len(t, result.Ops, 2)
-
-	mstoreOp := result.Ops[0]
-	require.NotNil(t, mstoreOp.Ex)
-	require.NotNil(t, mstoreOp.Ex.Mem, "MSTORE must have Mem set")
-	require.Equal(t, uint64(0), mstoreOp.Ex.Mem.Off, "Mem.Off must be 0")
-	require.Equal(t, []byte(memAfter), []byte(mstoreOp.Ex.Mem.Data), "Mem.Data must equal post-MSTORE memory")
-}
-
-func TestVmTraceLogger_MemOffAlwaysZero(t *testing.T) {
-	// Off must be 0 regardless of memory size — never len(data).
-	l := NewVmTraceLogger()
-	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
-
-	l.onOpcode(0, byte(vm.MSTORE), 1000, 6, &mockOpContext{memory: []byte{}}, nil, 0, nil)
-
-	// 64-byte post-execution memory (two MSTORE slots).
-	bigMem := make([]byte, 64)
-	bigMem[31] = 0x01
-	bigMem[63] = 0x02
-	l.onOpcode(33, byte(vm.STOP), 994, 0, &mockOpContext{memory: bigMem}, nil, 0, nil)
-	l.onExit(0, nil, 6, nil, false)
-
-	result := l.GetResult()
-	require.Len(t, result.Ops, 2)
-	mem := result.Ops[0].Ex.Mem
-	require.NotNil(t, mem)
-	require.Equal(t, uint64(0), mem.Off, "Off must be 0, not len(data)")
-	require.NotEqual(t, uint64(len(mem.Data)), mem.Off, "Off must not equal len(Data)")
-}
-
 func TestVmTraceLogger_MemLastOpIsNil(t *testing.T) {
 	// The last op in a frame has no subsequent onOpcode to finalize it,
 	// so Ex.Mem must remain nil (post-execution state unavailable in onExit).
@@ -445,4 +396,174 @@ func TestVmTraceLogger_MemLastOpIsNil(t *testing.T) {
 	result := l.GetResult()
 	require.Len(t, result.Ops, 1)
 	require.Nil(t, result.Ops[0].Ex.Mem, "last op must have Mem=nil")
+}
+
+func TestVmTraceLogger_MemWriteOffset(t *testing.T) {
+	// MSTORE's write offset comes from its own pre-execution stack (the top
+	// of stack), not from diffing memory buffers, so Off must track the
+	// real write location instead of always being 0.
+	mem32 := make([]byte, 32)
+	mem32[31] = 0x42
+
+	mem64 := make([]byte, 64)
+	mem64[63] = 0x42
+
+	tests := []struct {
+		name    string
+		mOffset uint64
+		postMem []byte
+	}{
+		{"offset 0", 0, mem32},
+		{"offset 32", 32, mem64},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := NewVmTraceLogger()
+			l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+
+			// MSTORE pops offset then value, so offset must be the top
+			// (last) element of the stack passed to onOpcode.
+			mstoreStack := makeStack(0, tt.mOffset)
+			l.onOpcode(0, byte(vm.MSTORE), 1000, 6, &mockOpContext{stack: mstoreStack}, nil, 0, nil)
+			l.onOpcode(33, byte(vm.STOP), 994, 0, &mockOpContext{memory: tt.postMem}, nil, 0, nil)
+			l.onExit(0, nil, 6, nil, false)
+
+			result := l.GetResult()
+			require.Len(t, result.Ops, 2)
+			mem := result.Ops[0].Ex.Mem
+			require.NotNil(t, mem, "MSTORE must have Mem set")
+			require.Equal(t, tt.mOffset, mem.Off)
+			require.Equal(t, tt.postMem[tt.mOffset:tt.mOffset+32], []byte(mem.Data))
+		})
+	}
+}
+
+func TestVmTraceLogger_MemWriteRange(t *testing.T) {
+	// memWriteRange must resolve the exact (off, size) each memory-writing
+	// opcode is about to write from its pre-execution stack operands, per
+	// go-ethereum's core/vm/instructions.go operand order.
+	tests := []struct {
+		name     string
+		op       vm.OpCode
+		stack    []uint256.Int
+		wantOff  uint64
+		wantSize uint64
+		wantOk   bool
+	}{
+		{"MSTORE", vm.MSTORE, makeStack(0, 100), 100, 32, true},
+		{"MSTORE8", vm.MSTORE8, makeStack(0, 200), 200, 1, true},
+		{"MSTORE short stack", vm.MSTORE, makeStack(5), 0, 0, false},
+		{"CALLDATACOPY", vm.CALLDATACOPY, makeStack(50, 7, 300), 300, 50, true},
+		{"CODECOPY", vm.CODECOPY, makeStack(20, 3, 150), 150, 20, true},
+		{"RETURNDATACOPY", vm.RETURNDATACOPY, makeStack(15, 1, 90), 90, 15, true},
+		{"MCOPY", vm.MCOPY, makeStack(40, 5, 250), 250, 40, true},
+		{"EXTCODECOPY", vm.EXTCODECOPY, makeStack(20, 9, 400, 0xdead), 400, 20, true},
+		{"CALL", vm.CALL, makeStack(60, 500, 10, 1, 0, 0xaaaa, 21000), 500, 60, true},
+		{"CALLCODE", vm.CALLCODE, makeStack(60, 500, 10, 1, 0, 0xaaaa, 21000), 500, 60, true},
+		{"DELEGATECALL", vm.DELEGATECALL, makeStack(40, 600, 5, 2, 0xbbbb, 21000), 600, 40, true},
+		{"STATICCALL", vm.STATICCALL, makeStack(40, 600, 5, 2, 0xbbbb, 21000), 600, 40, true},
+		{"ADD (non-memory)", vm.ADD, makeStack(1, 2), 0, 0, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			off, size, ok := memWriteRange(tt.op, tt.stack)
+			require.Equal(t, tt.wantOk, ok)
+			if tt.wantOk {
+				require.Equal(t, tt.wantOff, off)
+				require.Equal(t, tt.wantSize, size)
+			}
+		})
+	}
+}
+
+func TestVmTraceLogger_MemSequentialWrites(t *testing.T) {
+	// Two MSTOREs to different offsets must each report only their own
+	// 32-byte range, not a growing or duplicated full-buffer snapshot.
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+
+	mem32 := make([]byte, 32)
+	mem32[31] = 0x11
+
+	mem64 := make([]byte, 64)
+	copy(mem64, mem32)
+	mem64[63] = 0x22
+
+	// MSTORE(0, 0x11)
+	l.onOpcode(0, byte(vm.MSTORE), 1000, 6, &mockOpContext{stack: makeStack(0, 0)}, nil, 0, nil)
+	// MSTORE(32, 0x22); scope reflects the post-execution memory of the previous op.
+	l.onOpcode(33, byte(vm.MSTORE), 994, 6, &mockOpContext{stack: makeStack(0, 32), memory: mem32}, nil, 0, nil)
+	// STOP; scope reflects the post-execution memory of the second MSTORE.
+	l.onOpcode(66, byte(vm.STOP), 988, 0, &mockOpContext{memory: mem64}, nil, 0, nil)
+	l.onExit(0, nil, 12, nil, false)
+
+	result := l.GetResult()
+	require.Len(t, result.Ops, 3)
+
+	mem1 := result.Ops[0].Ex.Mem
+	require.NotNil(t, mem1)
+	require.Equal(t, uint64(0), mem1.Off)
+	require.Equal(t, mem32, []byte(mem1.Data), "first MSTORE's diff must cover only its own 32 bytes")
+
+	mem2 := result.Ops[1].Ex.Mem
+	require.NotNil(t, mem2)
+	require.Equal(t, uint64(32), mem2.Off)
+	require.Equal(t, mem64[32:64], []byte(mem2.Data), "second MSTORE's diff must cover only its own 32 bytes, not the whole buffer")
+}
+
+func TestVmTraceLogger_CallMemWriteClamped(t *testing.T) {
+	// CALL's reserved return-data region [retOffset, retOffset+retSize) is only
+	// partially written when the callee returns fewer bytes than retSize;
+	// go-ethereum's Memory.Set never zero-fills the remainder, so the trace
+	// must report only the actually-written prefix, not the full reservation.
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+
+	// CALL stack (bottom to top): retSize=32, retOffset=0, inSize=0, inOffset=0, value=0, addr, gas.
+	callStack := makeStack(32, 0, 0, 0, 0, 0xaaaa, 21000)
+	l.onOpcode(0, byte(vm.CALL), 21000, 100, &mockOpContext{stack: callStack}, nil, 0, nil)
+
+	// Callee returned only 10 bytes; [10,32) still holds a stale sentinel from
+	// an earlier, unrelated write and must not be reported as written by CALL.
+	postMem := make([]byte, 32)
+	for i := range postMem {
+		postMem[i] = 0xFF
+	}
+	returned := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	copy(postMem, returned)
+
+	// rData is evm.returnData left by the CALL, i.e. the callee's actual return value.
+	l.onOpcode(1, byte(vm.STOP), 20900, 0, &mockOpContext{memory: postMem}, returned, 0, nil)
+	l.onExit(0, nil, 100, nil, false)
+
+	result := l.GetResult()
+	require.Len(t, result.Ops, 2)
+	mem := result.Ops[0].Ex.Mem
+	require.NotNil(t, mem, "CALL must report the bytes it actually wrote")
+	require.Equal(t, uint64(0), mem.Off)
+	require.Equal(t, returned, []byte(mem.Data), "must not include the reserved-but-unwritten tail")
+}
+
+func TestVmTraceLogger_CallMemWriteNilOnNonRevertError(t *testing.T) {
+	// When a CALL fails with anything other than a revert, go-ethereum skips
+	// Memory.Set entirely, so nothing was written — Ex.Mem must stay nil even
+	// though the reserved [retOffset, retOffset+retSize) range is non-empty.
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+
+	callStack := makeStack(32, 0, 0, 0, 0, 0xaaaa, 21000)
+	l.onOpcode(0, byte(vm.CALL), 21000, 100, &mockOpContext{stack: callStack}, nil, 0, nil)
+
+	// Memory untouched by CALL still holds whatever was there before it ran.
+	postMem := make([]byte, 32)
+	for i := range postMem {
+		postMem[i] = 0xFF
+	}
+	// rData is empty: a non-revert failure (e.g. out of gas) leaves ret == nil.
+	l.onOpcode(1, byte(vm.STOP), 20900, 0, &mockOpContext{memory: postMem}, nil, 0, nil)
+	l.onExit(0, nil, 100, nil, false)
+
+	result := l.GetResult()
+	require.Len(t, result.Ops, 2)
+	require.Nil(t, result.Ops[0].Ex.Mem, "CALL that wrote nothing must have Mem=nil")
 }

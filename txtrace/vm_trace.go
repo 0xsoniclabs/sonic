@@ -17,7 +17,6 @@
 package txtrace
 
 import (
-	"bytes"
 	"errors"
 	"math/big"
 
@@ -52,7 +51,7 @@ type VmExecutedOperation struct {
 	Store *StorageDiff  `json:"store"`
 }
 
-// MemoryDiff records the full VM memory snapshot at opcode execution time.
+// MemoryDiff records the byte range of VM memory that an opcode wrote.
 type MemoryDiff struct {
 	Off  uint64        `json:"off"`
 	Data hexutil.Bytes `json:"data"`
@@ -66,10 +65,12 @@ type StorageDiff struct {
 
 // vmTraceFrame is the call frame state maintained by VmTraceLogger.
 type vmTraceFrame struct {
-	trace       *VmTrace
-	lastOpIdx   int       // index of the most recently appended op, -1 if none
-	lastOp      vm.OpCode // opcode at lastOpIdx
-	memSnapshot []byte    // memory snapshot taken at OnOpcode time for the last op
+	trace     *VmTrace
+	lastOpIdx int       // index of the most recently appended op, -1 if none
+	lastOp    vm.OpCode // opcode at lastOpIdx
+	memWrite  bool      // whether lastOp writes memory
+	memOff    uint64    // memory offset lastOp is about to write, if memWrite
+	memSize   uint64    // memory size lastOp is about to write, if memWrite
 }
 
 // VmTraceLogger implements VM tracing hooks to build vmTrace.
@@ -184,7 +185,7 @@ func (l *VmTraceLogger) onExit(depth int, _ []byte, _ uint64, _ error, _ bool) {
 // onOpcode is called before each opcode executes.
 // It finalizes the previous op's Ex using the current post execution
 // state, then records a new operation entry for the current opcode.
-func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, _ []byte, _ int, _ error) {
+func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, _ int, _ error) {
 	if len(l.traceStack) == 0 {
 		return
 	}
@@ -196,14 +197,24 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 		prevOp := &frame.trace.Ops[frame.lastOpIdx]
 		if prevOp.Ex != nil {
 			prevOp.Ex.Push = computePushed(frame.lastOp, scope.StackData())
-			// scope.MemoryData() here is post-execution of the previous op.
-			// Compare against the pre-execution snapshot; only record a Mem diff
-			// when the opcode actually wrote to memory.
-			curMem := scope.MemoryData()
-			if !bytes.Equal(curMem, frame.memSnapshot) {
-				postMem := make([]byte, len(curMem))
-				copy(postMem, curMem)
-				prevOp.Ex.Mem = &MemoryDiff{Off: 0, Data: hexutil.Bytes(postMem)}
+			if frame.memWrite {
+				size := frame.memSize
+				if isCallOp(frame.lastOp) {
+					// go-ethereum's opCall/opCallCode/opDelegateCall/opStaticCall pass
+					// the callee's return data straight to Memory.Set(retOffset, retSize, ret),
+					// which copy()'s only min(retSize, len(ret)) bytes and never zero-fills
+					// the rest of the reserved region; the write is skipped entirely when
+					// the call fails with anything other than a revert (ret is then nil).
+					// rData here is evm.returnData as left by the previous (this) op, i.e. ret.
+					size = min(size, uint64(len(rData)))
+				}
+				postMem := scope.MemoryData()
+				end := min(frame.memOff+size, uint64(len(postMem)))
+				if frame.memOff < end {
+					data := make([]byte, end-frame.memOff)
+					copy(data, postMem[frame.memOff:end])
+					prevOp.Ex.Mem = &MemoryDiff{Off: frame.memOff, Data: data}
+				}
 			}
 			if l.pendingStore != nil {
 				prevOp.Ex.Store = l.pendingStore
@@ -223,13 +234,75 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 	frame.trace.Ops = append(frame.trace.Ops, newOp)
 	frame.lastOpIdx = len(frame.trace.Ops) - 1
 	frame.lastOp = vm.OpCode(op)
+	// Determine the memory range this opcode is about to write
+	frame.memOff, frame.memSize, frame.memWrite = memWriteRange(vm.OpCode(op), scope.StackData())
+}
 
-	// Memory snapshot is taken here. For dynamic gas opcodes this is BEFORE memory
-	// expansion (the interpreter expands memory after firing OnOpcode), so the snapshot
-	// reflects the pre execution memory state of this opcode.
-	curMem := scope.MemoryData()
-	frame.memSnapshot = make([]byte, len(curMem))
-	copy(frame.memSnapshot, curMem)
+// memWriteRange returns the memory byte range the opcode is about to
+// write, derived from its pre-execution stack operands (mirrors the
+// operand order in go-ethereum's core/vm/instructions.go and eips.go —
+// MSTORE, MSTORE8, the *COPY family (including MCOPY), and the CALL
+// family are the only memory-writing opcodes). ok is false when this
+// opcode does not write memory, or the stack is too shallow for it to
+// execute.
+func memWriteRange(op vm.OpCode, stack []uint256.Int) (off, size uint64, ok bool) {
+	n := len(stack)
+	top := func(k int) uint64 { return stack[n-1-k].Uint64() } // k=0 is the top of stack
+
+	switch op {
+	case vm.MSTORE:
+		if n < 2 {
+			return 0, 0, false
+		}
+		return top(0), 32, true
+	case vm.MSTORE8:
+		if n < 2 {
+			return 0, 0, false
+		}
+		return top(0), 1, true
+	case vm.CALLDATACOPY, vm.CODECOPY, vm.RETURNDATACOPY:
+		// stack: memOffset, dataOffset/codeOffset, length
+		if n < 3 {
+			return 0, 0, false
+		}
+		return top(0), top(2), true
+	case vm.MCOPY:
+		// stack: dst, src, length
+		if n < 3 {
+			return 0, 0, false
+		}
+		return top(0), top(2), true
+	case vm.EXTCODECOPY:
+		// stack: address, memOffset, codeOffset, length
+		if n < 4 {
+			return 0, 0, false
+		}
+		return top(1), top(3), true
+	case vm.CALL, vm.CALLCODE:
+		// stack: gas, addr, value, inOffset, inSize, retOffset, retSize
+		if n < 7 {
+			return 0, 0, false
+		}
+		return top(5), top(6), true
+	case vm.DELEGATECALL, vm.STATICCALL:
+		// stack: gas, addr, inOffset, inSize, retOffset, retSize
+		if n < 6 {
+			return 0, 0, false
+		}
+		return top(4), top(5), true
+	}
+	return 0, 0, false
+}
+
+// isCallOp reports whether op is one of the CALL-family opcodes, whose
+// actual memory write (unlike MSTORE/MSTORE8/*COPY) can be smaller than
+// the reserved [off, off+size) range memWriteRange reports for them.
+func isCallOp(op vm.OpCode) bool {
+	switch op {
+	case vm.CALL, vm.CALLCODE, vm.DELEGATECALL, vm.STATICCALL:
+		return true
+	}
+	return false
 }
 
 // onFault is called when an opcode causes a fault.
