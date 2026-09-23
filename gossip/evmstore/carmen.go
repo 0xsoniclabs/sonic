@@ -431,46 +431,6 @@ func (c *CarmenStateDB) EndBlock(number uint64) (carmen.StagedBlock, error) {
 	return &CarmenStagedBlock{StagedBlock: staged}, nil
 }
 
-// CarmenStagedBlock decorates `carmen.StagedBlock`
-// by prohibiting the rollback of blocks.
-type CarmenStagedBlock struct {
-	carmen.StagedBlock
-}
-
-// Rollback returns an error because rolling a block back is not supported.
-// The processed bundles of a block are recorded in the ProcessedBundleStore
-// when the block is ended, and there is currently
-// no way to take that record back.
-func (b *CarmenStagedBlock) Rollback() error {
-	return fmt.Errorf("block rollback is not supported")
-}
-
-// blockEnder is the part of a state DB that seals blocks. It is satisfied by
-// carmen.StateDB, CarmenStateDB and state.StateDB alike.
-type blockEnder interface {
-	EndBlock(number uint64) (carmen.StagedBlock, error)
-}
-
-// EndBlockAndCommit ends the given block, commits it to the archive and waits
-// for the archive update to complete. A block that is ended but never committed
-// is rolled back when the state is closed, so every EndBlock needs a matching
-// Commit. This helper is meant for uses without a reason to pipeline blocks,
-// such as genesis construction and tests; block processing commits itself.
-func EndBlockAndCommit(db blockEnder, number uint64) error {
-	staged, err := db.EndBlock(number)
-	if err != nil {
-		return fmt.Errorf("failed to end block %d: %w", number, err)
-	}
-	done, err := staged.Commit()
-	if err != nil {
-		return fmt.Errorf("failed to commit block %d: %w", number, err)
-	}
-	if err := done.Wait(); err != nil {
-		return fmt.Errorf("failed to update archive for block %d: %w", number, err)
-	}
-	return nil
-}
-
 func (c *CarmenStateDB) GetStateHash() common.Hash {
 	return common.Hash(c.db.GetHash())
 }
@@ -551,6 +511,36 @@ func (c *CarmenStateDB) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash)
 		return false
 	}
 	return c.processedExecPlanStore.HasBundleRecentlyBeenProcessed(execPlanHash)
+}
+
+// CarmenStagedBlock decorates `carmen.StagedBlock`
+// by prohibiting the rollback of blocks.
+type CarmenStagedBlock struct {
+	carmen.StagedBlock
+}
+
+// Rollback returns an error because rolling a block back is not supported.
+// The processed bundles of a block are recorded in the ProcessedBundleStore
+// when the block is ended, and there is currently
+// no way to take that record back.
+func (b *CarmenStagedBlock) Rollback() error {
+	return fmt.Errorf("block rollback is not supported")
+}
+
+// EndBlockAndCommit ends the block, commits it to the archive and waits for the archive to be updated.
+func EndBlockAndCommit(db state.StateDB, number uint64) error {
+	staged, err := db.EndBlock(number)
+	if err != nil {
+		return fmt.Errorf("failed to end block %d: %w", number, err)
+	}
+	done, err := staged.Commit()
+	if err != nil {
+		return fmt.Errorf("failed to commit block %d: %w", number, err)
+	}
+	if err := done.Wait(); err != nil {
+		return fmt.Errorf("failed to update archive for block %d: %w", number, err)
+	}
+	return nil
 }
 
 type interTxSnapshots struct {
