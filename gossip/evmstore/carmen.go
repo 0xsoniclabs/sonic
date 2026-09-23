@@ -533,6 +533,9 @@ func EndBlockAndCommit(db state.StateDB, number uint64) error {
 	if err != nil {
 		return fmt.Errorf("failed to end block %d: %w", number, err)
 	}
+	if staged == nil {
+		return fmt.Errorf("StateDB returned no staged block for block %d", number)
+	}
 	done, err := staged.Commit()
 	if err != nil {
 		return fmt.Errorf("failed to commit block %d: %w", number, err)
