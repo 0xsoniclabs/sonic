@@ -18,11 +18,9 @@ package gossip
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -214,17 +212,11 @@ func TestImportProcessedBundles_FailsOnHistoryHashMismatch(t *testing.T) {
 	require.ErrorContains(err, "reproduced latest bundle history hash does not match genesis")
 }
 
-func TestImportProcessedBundles_LogsCrit_OnDuplicateExecutionPlan(t *testing.T) {
+func TestImportProcessedBundles_ReportsError_OnDuplicateExecutionPlan(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
-	log := logger.NewMockLogger(gomock.NewController(t))
-	store.Log = log
-	log.EXPECT().Info(gomock.Any(), gomock.Any()).AnyTimes()
 
 	const block = 5
-	duplicateErr := fmt.Errorf("duplicate execution plan hash %s", common.Hash{0x01})
-	expectCrit(log, "Invalid processed bundles in genesis", "block", uint64(block), "err", duplicateErr)
-
 	bundles := fakeProcessedBundles{
 		infos: []bundle.ExecutionInfo{
 			{BlockNumber: block, ExecutionPlanHash: common.Hash{0x01}},
@@ -235,18 +227,19 @@ func TestImportProcessedBundles_LogsCrit_OnDuplicateExecutionPlan(t *testing.T) 
 			Oldest: bundle.HistoryHash{BlockNumber: block},
 		},
 	}
-	require.Panics(t, func() { _ = store.importProcessedBundles(bundles) })
+	err = store.importProcessedBundles(bundles)
+	require.ErrorContains(t, err, "invalid processed bundles in genesis at block 5")
+	require.ErrorContains(t, err, "duplicate execution plan hash")
 }
 
-func TestImportProcessedBundles_LogsCrit_WhenBundlesHaveNoHistoryHash(t *testing.T) {
-	store, _, log, _, _ := storeTableLogMocks(t)
-	const msg = "Bundles were processed but no history hash was found in genesis"
-	log.EXPECT().Crit(msg).Do(func(msg string, _ ...any) { panic(msg) })
+func TestImportProcessedBundles_ReportsError_WhenBundlesHaveNoHistoryHash(t *testing.T) {
+	store, _, _, _, _ := storeTableLogMocks(t)
 
 	bundles := fakeProcessedBundles{
 		infos: []bundle.ExecutionInfo{{BlockNumber: 1, ExecutionPlanHash: common.Hash{0x01}}},
 	}
-	require.Panics(t, func() { _ = store.importProcessedBundles(bundles) })
+	err := store.importProcessedBundles(bundles)
+	require.ErrorContains(t, err, "bundles were processed but no history hash was found in genesis")
 }
 
 func TestImportProcessedBundles_ReportsError_WhenRestoringHistoryHashFails(t *testing.T) {

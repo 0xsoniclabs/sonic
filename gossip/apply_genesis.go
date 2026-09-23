@@ -150,14 +150,13 @@ func (s *Store) importProcessedBundles(bundles genesis.ProcessedBundles) error {
 	case len(bundlesByBlock) > 0 && hasHistory:
 		return s.replayProcessedBundles(historyHashes, bundlesByBlock)
 	case len(bundlesByBlock) > 0:
-		s.Log.Crit("Bundles were processed but no history hash was found in genesis")
 		return errors.New("bundles were processed but no history hash was found in genesis")
 	case hasHistory:
 		// the history hash is updated for every block even if no bundles are retained,
 		// we need to restore it to produce correct epoch state hash at the epoch sealing
 		return s.restoreBundleHistoryHash(historyHashes.Latest)
 	default:
-		s.Log.Info("No processed bundles in genesis, skipping import")
+		s.Log.Info("No processed bundles or bundle history in genesis, skipping bundle history import")
 		return nil
 	}
 }
@@ -207,7 +206,6 @@ func (s *Store) replayProcessedBundles(
 	for block := startBlock; block <= historyHashes.Latest.BlockNumber; block++ {
 		bundlesPerBlock, err := positionsByExecutionPlan(bundlesByBlock[block])
 		if err != nil {
-			s.Log.Crit("Invalid processed bundles in genesis", "block", block, "err", err)
 			return fmt.Errorf("invalid processed bundles in genesis at block %d: %w", block, err)
 		}
 		s.AddProcessedBundles(block, bundlesPerBlock)
