@@ -191,6 +191,27 @@ func TestVmTraceLogger_GetResultBeforeExecution(t *testing.T) {
 	require.Nil(t, l.GetResult(), "result must be nil before any execution")
 }
 
+func TestVmTraceLogger_SizeLimitDropsTrace(t *testing.T) {
+	l := NewVmTraceLogger()
+	l.sizeLimit = 2*vmTraceOpSize + 16
+
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+	l.onOpcode(0, byte(vm.MSTORE), 1000, 6, &mockOpContext{stack: makeStack(0, 0)}, nil, 0, nil)
+	require.NoError(t, l.Err())
+
+	// The MSTORE's 32 byte diff plus a second op exceed the limit.
+	l.onOpcode(33, byte(vm.STOP), 994, 0, &mockOpContext{memory: make([]byte, 32)}, nil, 0, nil)
+	require.ErrorIs(t, l.Err(), errVmTraceTooLarge)
+
+	// Remaining hooks must not resurrect the dropped trace.
+	l.onEnter(1, byte(vm.CALL), addr(2), addr(3), nil, 100, big.NewInt(0))
+	l.onOpcode(0, byte(vm.STOP), 100, 0, &mockOpContext{}, nil, 1, nil)
+	l.onExit(1, nil, 0, nil, false)
+	l.onExit(0, nil, 0, nil, false)
+	require.Nil(t, l.GetResult())
+	require.ErrorIs(t, l.Err(), errVmTraceTooLarge)
+}
+
 func TestVmTraceLogger_EmptyFrame(t *testing.T) {
 	// OnEnter + OnExit with no opcodes → trace with empty ops
 	l := NewVmTraceLogger()

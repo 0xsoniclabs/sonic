@@ -73,17 +73,30 @@ type vmTraceFrame struct {
 	memSize   uint64    // memory size lastOp is about to write, if memWrite
 }
 
+// vmTraceSizeLimit caps the approximate number of bytes a single vmTrace
+// retains (code, memory diffs and per-op overhead), protecting the node
+// from running out of memory on pathological traces.
+const vmTraceSizeLimit = 256 << 20
+
+// vmTraceOpSize approximates the fixed footprint of one traced operation.
+const vmTraceOpSize = 128
+
+var errVmTraceTooLarge = errors.New("vmTrace exceeds size limit")
+
 // VmTraceLogger implements VM tracing hooks to build vmTrace.
 type VmTraceLogger struct {
 	traceStack   []*vmTraceFrame
 	result       *VmTrace
 	stateDB      tracing.StateDB
 	pendingStore *StorageDiff // latest storage write, attributed to the current op
+	size         uint64       // approximate bytes retained so far
+	sizeLimit    uint64
+	err          error // set once the trace is dropped for exceeding sizeLimit
 }
 
 // NewVmTraceLogger creates a new VmTraceLogger.
 func NewVmTraceLogger() *VmTraceLogger {
-	return &VmTraceLogger{}
+	return &VmTraceLogger{sizeLimit: vmTraceSizeLimit}
 }
 
 // Hooks returns the tracing hooks.
@@ -103,6 +116,30 @@ func (l *VmTraceLogger) GetResult() *VmTrace {
 	return l.result
 }
 
+// Err returns a non-nil error when the trace was dropped for exceeding the
+// size limit, in which case GetResult returns nil.
+func (l *VmTraceLogger) Err() error {
+	return l.err
+}
+
+// grow accounts n more retained bytes. Once the limit is exceeded, it drops
+// everything collected so far and returns false; the remaining hooks then
+// find an empty trace stack and do nothing.
+func (l *VmTraceLogger) grow(n uint64) bool {
+	if l.err != nil {
+		return false
+	}
+	if n > l.sizeLimit-l.size {
+		l.err = errVmTraceTooLarge
+		l.traceStack = nil
+		l.result = nil
+		l.pendingStore = nil
+		return false
+	}
+	l.size += n
+	return true
+}
+
 // OnStorageChange records a storage write so it can be attributed to the
 // currently executing opcode.
 func (l *VmTraceLogger) OnStorageChange(_ common.Address, slot common.Hash, _ common.Hash, newVal common.Hash) {
@@ -116,6 +153,9 @@ func (l *VmTraceLogger) onTxStart(vmCtx *tracing.VMContext, _ *types.Transaction
 
 // onEnter creates a new VmTrace frame for each call or create.
 func (l *VmTraceLogger) onEnter(depth int, typ byte, _ common.Address, to common.Address, input []byte, gas uint64, _ *big.Int) {
+	if l.err != nil {
+		return
+	}
 	var (
 		code    []byte
 		noTrace = false
@@ -132,6 +172,10 @@ func (l *VmTraceLogger) onEnter(depth int, typ byte, _ common.Address, to common
 		if l.stateDB != nil {
 			code = l.stateDB.GetCode(to)
 		}
+	}
+
+	if !l.grow(uint64(len(code))) {
+		return
 	}
 
 	newTrace := &VmTrace{
@@ -211,6 +255,9 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 				postMem := scope.MemoryData()
 				end := min(frame.memOff+size, uint64(len(postMem)))
 				if frame.memOff < end {
+					if !l.grow(end - frame.memOff) {
+						return
+					}
 					data := make([]byte, end-frame.memOff)
 					copy(data, postMem[frame.memOff:end])
 					prevOp.Ex.Mem = &MemoryDiff{Off: frame.memOff, Data: data}
@@ -221,6 +268,10 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 				l.pendingStore = nil
 			}
 		}
+	}
+
+	if !l.grow(vmTraceOpSize) {
+		return
 	}
 
 	// Create a new operation entry. Ex.Used = gas before this opcode (gasCopy from
