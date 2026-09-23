@@ -198,7 +198,7 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 	// Commits to the archive right away as no staging is supported in sonic.
 	done, err := stagedBlock.Commit()
 	if err != nil {
-		log.Crit("Failed to commit block %v: %v", evmBlock.Number, err)
+		log.Crit("Failed to commit block", "block", evmBlock.Number, "err", err)
 	}
 	// Use asynchronous archive update for blocks older than one hour to speed up catching up.
 	// For recent blocks (within the last hour), wait for the update to complete
