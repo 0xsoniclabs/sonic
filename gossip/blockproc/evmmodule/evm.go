@@ -185,31 +185,20 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 
 	evmBlock = p.evmBlockWith(transactions)
 
-	// The state root is always taken from the live state, even if committing
-	// the block to the archive fails below, so the caller never receives a
-	// zero root.
-	defer func() {
-		evmBlock.Root = p.statedb.GetStateHash()
-	}()
-
-	// Apply the block to the live state. A failure here means the state has
-	// not accepted the block and is left in an error state; continuing would
-	// persist blocks with a stale root and silently diverge from the network,
-	// so processing is terminated instead.
+	// Apply the block to the live state.
 	stagedBlock, err := p.statedb.EndBlock(evmBlock.Number.Uint64())
 	if err != nil {
+		// Any failures invalidate the DB, and there is no way of recovering from it.
 		log.Crit("Failed to finalize block", "block", evmBlock.Number, "err", err)
 	}
 	if stagedBlock == nil {
 		// defensive: a committable StateDB never returns a nil staged block
 		log.Crit("Staged block is nil", "block", evmBlock.Number)
 	}
-	// Commit the stagedBlock right away for now. The live state already
-	// contains the block at this point; a failure only affects the archive.
+	// Commits to the archive right away as no staging is supported in sonic.
 	done, err := stagedBlock.Commit()
 	if err != nil {
-		log.Error("Failed to commit block %v: %v", evmBlock.Number, err)
-		return
+		log.Crit("Failed to commit block %v: %v", evmBlock.Number, err)
 	}
 	// Use asynchronous archive update for blocks older than one hour to speed up catching up.
 	// For recent blocks (within the last hour), wait for the update to complete
@@ -222,6 +211,8 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 			log.Error("Failed to finalize block %v: %v", evmBlock.Number, err)
 		}
 	}
+
+	evmBlock.Root = p.statedb.GetStateHash()
 
 	return
 }
