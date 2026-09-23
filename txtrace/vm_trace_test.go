@@ -22,7 +22,11 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/core/vm/runtime"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -587,4 +591,81 @@ func TestVmTraceLogger_CallMemWriteNilOnNonRevertError(t *testing.T) {
 	result := l.GetResult()
 	require.Len(t, result.Ops, 2)
 	require.Nil(t, result.Ops[0].Ex.Mem, "CALL that wrote nothing must have Mem=nil")
+}
+
+func TestVmTraceLogger_MemDiffsFromRealEvm(t *testing.T) {
+	returner := common.HexToAddress("0xcc") // returns 0xbeef
+	reverter := common.HexToAddress("0xdd") // reverts with 0xdead
+	failer := common.HexToAddress("0xee")   // hits INVALID
+	calleeCode := func(v uint16, end byte) []byte {
+		return []byte{0x61, byte(v >> 8), byte(v), 0x60, 0, 0x52, 0x60, 2, 0x60, 30, end}
+	}
+	callFrom := func(op vm.OpCode, retOff byte, to common.Address) []byte {
+		code := []byte{0x60, 32, 0x60, retOff, 0x60, 0, 0x60, 0}
+		if op == vm.CALL {
+			code = append(code, 0x60, 0) // value
+		}
+		return append(code, 0x60, to[19], byte(vm.GAS), byte(op), byte(vm.POP))
+	}
+
+	code := []byte{
+		0x60, 0x42, 0x60, 0, byte(vm.MSTORE),
+		0x60, 0, byte(vm.MLOAD), byte(vm.POP),
+		0x60, 0x7f, 0x60, 0x40, byte(vm.MSTORE8),
+		0x60, 32, 0x60, 0, 0x60, 0x60, byte(vm.MCOPY),
+	}
+	code = append(code, callFrom(vm.CALL, 0x80, returner)...)
+	code = append(code, callFrom(vm.STATICCALL, 0xa0, reverter)...)
+	code = append(code, callFrom(vm.CALL, 0xc0, failer)...)
+	code = append(code, byte(vm.STOP))
+
+	run := func(l *VmTraceLogger) error {
+		statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		require.NoError(t, err)
+		statedb.SetCode(returner, calleeCode(0xbeef, byte(vm.RETURN)), tracing.CodeChangeUnspecified)
+		statedb.SetCode(reverter, calleeCode(0xdead, byte(vm.REVERT)), tracing.CodeChangeUnspecified)
+		statedb.SetCode(failer, []byte{byte(vm.INVALID)}, tracing.CodeChangeUnspecified)
+		_, _, err = runtime.Execute(code, nil, &runtime.Config{
+			State:     statedb,
+			GasLimit:  1_000_000,
+			EVMConfig: vm.Config{Tracer: l.Hooks()},
+		})
+		return err
+	}
+
+	t.Run("diffs", func(t *testing.T) {
+		l := NewVmTraceLogger()
+		require.NoError(t, run(l))
+		require.NoError(t, l.Err())
+
+		word := common.LeftPadBytes([]byte{0x42}, 32)
+		type diff struct {
+			op  string
+			mem MemoryDiff
+		}
+		want := []diff{
+			{"MSTORE", MemoryDiff{Off: 0, Data: word}},
+			// MLOAD only reads memory, so it has no entry.
+			{"MSTORE8", MemoryDiff{Off: 0x40, Data: []byte{0x7f}}},
+			{"MCOPY", MemoryDiff{Off: 0x60, Data: word}},
+			// CALL family: only the bytes actually returned, and nothing for the failed CALL.
+			{"CALL", MemoryDiff{Off: 0x80, Data: []byte{0xbe, 0xef}}},
+			{"STATICCALL", MemoryDiff{Off: 0xa0, Data: []byte{0xde, 0xad}}},
+		}
+		var got []diff
+		for _, op := range l.GetResult().Ops {
+			if op.Ex != nil && op.Ex.Mem != nil {
+				got = append(got, diff{op.Op, *op.Ex.Mem})
+			}
+		}
+		require.Equal(t, want, got)
+	})
+
+	t.Run("size limit", func(t *testing.T) {
+		l := NewVmTraceLogger()
+		l.sizeLimit = 10 * vmTraceOpSize
+		require.NoError(t, run(l))
+		require.ErrorIs(t, l.Err(), errVmTraceTooLarge)
+		require.Nil(t, l.GetResult())
+	})
 }
