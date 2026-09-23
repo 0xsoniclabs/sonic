@@ -143,6 +143,9 @@ func (l *VmTraceLogger) grow(n uint64) bool {
 // OnStorageChange records a storage write so it can be attributed to the
 // currently executing opcode.
 func (l *VmTraceLogger) OnStorageChange(_ common.Address, slot common.Hash, _ common.Hash, newVal common.Hash) {
+	if l.err != nil {
+		return
+	}
 	l.pendingStore = &StorageDiff{Key: slot, Val: newVal}
 }
 
@@ -229,7 +232,7 @@ func (l *VmTraceLogger) onExit(depth int, _ []byte, _ uint64, _ error, _ bool) {
 // onOpcode is called before each opcode executes.
 // It finalizes the previous op's Ex using the current post execution
 // state, then records a new operation entry for the current opcode.
-func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, _ int, _ error) {
+func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, _ []byte, _ int, opErr error) {
 	if len(l.traceStack) == 0 {
 		return
 	}
@@ -241,27 +244,13 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 		prevOp := &frame.trace.Ops[frame.lastOpIdx]
 		if prevOp.Ex != nil {
 			prevOp.Ex.Push = computePushed(frame.lastOp, scope.StackData())
-			if frame.memWrite {
-				size := frame.memSize
-				if isCallOp(frame.lastOp) {
-					// go-ethereum's opCall/opCallCode/opDelegateCall/opStaticCall pass
-					// the callee's return data straight to Memory.Set(retOffset, retSize, ret),
-					// which copy()'s only min(retSize, len(ret)) bytes and never zero-fills
-					// the rest of the reserved region; the write is skipped entirely when
-					// the call fails with anything other than a revert (ret is then nil).
-					// rData here is evm.returnData as left by the previous (this) op, i.e. ret.
-					size = min(size, uint64(len(rData)))
+			if frame.memWrite && frame.memSize > 0 {
+				// Report the full reserved [off, off+size) region, matching Parity/OpenEthereum's vmTrace semantics.
+				if !l.grow(frame.memSize) {
+					return
 				}
-				postMem := scope.MemoryData()
-				end := min(frame.memOff+size, uint64(len(postMem)))
-				if frame.memOff < end {
-					if !l.grow(end - frame.memOff) {
-						return
-					}
-					data := make([]byte, end-frame.memOff)
-					copy(data, postMem[frame.memOff:end])
-					prevOp.Ex.Mem = &MemoryDiff{Off: frame.memOff, Data: data}
-				}
+				data := memoryRegion(scope.MemoryData(), frame.memOff, frame.memSize)
+				prevOp.Ex.Mem = &MemoryDiff{Off: frame.memOff, Data: data}
 			}
 			if l.pendingStore != nil {
 				prevOp.Ex.Store = l.pendingStore
@@ -276,11 +265,22 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 
 	// Create a new operation entry. Ex.Used = gas before this opcode (gasCopy from
 	// interpreter, captured before any gas deduction for this op).
+	//
+	// go-ethereum's interpreter reports pre-execution failures (stack
+	// underflow/overflow, out-of-gas on constant or dynamic gas, memory-size
+	// overflow) through this OnOpcode call's err, never through OnFault — the
+	// opcode never actually executes, so it gets no execution result, matching
+	// the onFault treatment. ErrExecutionReverted is the one error that
+	// represents a valid REVERT execution.
+	var ex *VmExecutedOperation
+	if opErr == nil || errors.Is(opErr, vm.ErrExecutionReverted) {
+		ex = &VmExecutedOperation{Used: gas, Push: []hexutil.Big{}}
+	}
 	newOp := VmOperation{
 		Op:   vm.OpCode(op).String(),
 		PC:   pc,
 		Cost: cost,
-		Ex:   &VmExecutedOperation{Used: gas, Push: []hexutil.Big{}},
+		Ex:   ex,
 	}
 	frame.trace.Ops = append(frame.trace.Ops, newOp)
 	frame.lastOpIdx = len(frame.trace.Ops) - 1
@@ -290,70 +290,64 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 }
 
 // memWriteRange returns the memory byte range the opcode is about to
-// write, derived from its pre-execution stack operands (mirrors the
+// touch, derived from its pre-execution stack operands (mirrors the
 // operand order in go-ethereum's core/vm/instructions.go and eips.go —
 // MSTORE, MSTORE8, the *COPY family (including MCOPY), and the CALL
 // family are the only memory-writing opcodes). ok is false when this
-// opcode does not write memory, or the stack is too shallow for it to
+// opcode does not touch memory, or the stack is too shallow for it to
 // execute.
 func memWriteRange(op vm.OpCode, stack []uint256.Int) (off, size uint64, ok bool) {
 	n := len(stack)
 	top := func(k int) uint64 { return stack[n-1-k].Uint64() } // k=0 is the top of stack
 
 	switch op {
+	case vm.MLOAD:
+		// stack: offset (this opcode doesn't write, but Parity/OpenEthereum reports it anyway - compatibility)
+		if n >= 1 {
+			return top(0), 32, true
+		}
 	case vm.MSTORE:
-		if n < 2 {
-			return 0, 0, false
+		// stack: offset, value
+		if n >= 2 {
+			return top(0), 32, true
 		}
-		return top(0), 32, true
 	case vm.MSTORE8:
-		if n < 2 {
-			return 0, 0, false
+		// stack: offset, value
+		if n >= 2 {
+			return top(0), 1, true
 		}
-		return top(0), 1, true
-	case vm.CALLDATACOPY, vm.CODECOPY, vm.RETURNDATACOPY:
-		// stack: memOffset, dataOffset/codeOffset, length
-		if n < 3 {
-			return 0, 0, false
+	case vm.CALLDATACOPY, vm.CODECOPY, vm.RETURNDATACOPY, vm.MCOPY:
+		// stack: memOffset, dataOffset/codeOffset/src, length
+		if n >= 3 {
+			return top(0), top(2), true
 		}
-		return top(0), top(2), true
-	case vm.MCOPY:
-		// stack: dst, src, length
-		if n < 3 {
-			return 0, 0, false
-		}
-		return top(0), top(2), true
 	case vm.EXTCODECOPY:
 		// stack: address, memOffset, codeOffset, length
-		if n < 4 {
-			return 0, 0, false
+		if n >= 4 {
+			return top(1), top(3), true
 		}
-		return top(1), top(3), true
 	case vm.CALL, vm.CALLCODE:
 		// stack: gas, addr, value, inOffset, inSize, retOffset, retSize
-		if n < 7 {
-			return 0, 0, false
+		if n >= 7 {
+			return top(5), top(6), true
 		}
-		return top(5), top(6), true
 	case vm.DELEGATECALL, vm.STATICCALL:
 		// stack: gas, addr, inOffset, inSize, retOffset, retSize
-		if n < 6 {
-			return 0, 0, false
+		if n >= 6 {
+			return top(4), top(5), true
 		}
-		return top(4), top(5), true
 	}
 	return 0, 0, false
 }
 
-// isCallOp reports whether op is one of the CALL-family opcodes, whose
-// actual memory write (unlike MSTORE/MSTORE8/*COPY) can be smaller than
-// the reserved [off, off+size) range memWriteRange reports for them.
-func isCallOp(op vm.OpCode) bool {
-	switch op {
-	case vm.CALL, vm.CALLCODE, vm.DELEGATECALL, vm.STATICCALL:
-		return true
+// memoryRegion copies the size bytes of mem starting at off, zero-padding
+// any part that lies beyond mem's current length.
+func memoryRegion(mem []byte, off, size uint64) []byte {
+	data := make([]byte, size)
+	if off < uint64(len(mem)) {
+		copy(data, mem[off:])
 	}
-	return false
+	return data
 }
 
 // onFault is called when an opcode causes a fault.

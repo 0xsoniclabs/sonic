@@ -246,6 +246,37 @@ func TestVmTraceLogger_OnFaultSetsExToNil(t *testing.T) {
 	require.Nil(t, result.Ops[0].Ex, "Ex must be nil after a fault")
 }
 
+func TestVmTraceLogger_OnOpcodeErrSetsExToNil(t *testing.T) {
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+
+	// go-ethereum reports pre-execution failures (stack underflow/overflow,
+	// out-of-gas, memory-size overflow) through OnOpcode's err argument
+	// instead of a separate OnFault call — the opcode never runs.
+	l.onOpcode(0, 0x01 /* ADD */, 1000, 3, &mockOpContext{}, nil, 0, errFoo)
+
+	l.onExit(0, nil, 3, errFoo, true)
+
+	result := l.GetResult()
+	require.NotNil(t, result)
+	require.Len(t, result.Ops, 1)
+	require.Nil(t, result.Ops[0].Ex, "Ex must be nil for an opcode reported with a non-nil err")
+}
+
+func TestVmTraceLogger_OnOpcodeRevertErrKeepsEx(t *testing.T) {
+	l := NewVmTraceLogger()
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+
+	l.onOpcode(0, 0xfd /* REVERT */, 1000, 0, &mockOpContext{}, nil, 0, vm.ErrExecutionReverted)
+
+	l.onExit(0, nil, 0, vm.ErrExecutionReverted, true)
+
+	result := l.GetResult()
+	require.NotNil(t, result)
+	require.Len(t, result.Ops, 1)
+	require.NotNil(t, result.Ops[0].Ex, "Ex must remain set for a REVERT reported via ErrExecutionReverted")
+}
+
 func TestVmTraceLogger_StorageChangeAttributed(t *testing.T) {
 	l := NewVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
@@ -536,11 +567,11 @@ func TestVmTraceLogger_MemSequentialWrites(t *testing.T) {
 	require.Equal(t, mem64[32:64], []byte(mem2.Data), "second MSTORE's diff must cover only its own 32 bytes, not the whole buffer")
 }
 
-func TestVmTraceLogger_CallMemWriteClamped(t *testing.T) {
-	// CALL's reserved return-data region [retOffset, retOffset+retSize) is only
-	// partially written when the callee returns fewer bytes than retSize;
-	// go-ethereum's Memory.Set never zero-fills the remainder, so the trace
-	// must report only the actually-written prefix, not the full reservation.
+func TestVmTraceLogger_CallMemReportsFullReservedRegion(t *testing.T) {
+	// CALL's reserved return-data region [retOffset, retOffset+retSize) is
+	// reported in full, matching Parity/OpenEthereum's vmTrace semantics,
+	// even though go-ethereum's Memory.Set only actually writes the callee's
+	// returned bytes and never zero-fills the remainder of the reservation.
 	l := NewVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 
@@ -548,8 +579,8 @@ func TestVmTraceLogger_CallMemWriteClamped(t *testing.T) {
 	callStack := makeStack(32, 0, 0, 0, 0, 0xaaaa, 21000)
 	l.onOpcode(0, byte(vm.CALL), 21000, 100, &mockOpContext{stack: callStack}, nil, 0, nil)
 
-	// Callee returned only 10 bytes; [10,32) still holds a stale sentinel from
-	// an earlier, unrelated write and must not be reported as written by CALL.
+	// Callee returned only 10 bytes; [10,32) holds whatever was in memory
+	// beforehand (here a sentinel) and is reported as part of the region too.
 	postMem := make([]byte, 32)
 	for i := range postMem {
 		postMem[i] = 0xFF
@@ -557,22 +588,21 @@ func TestVmTraceLogger_CallMemWriteClamped(t *testing.T) {
 	returned := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 	copy(postMem, returned)
 
-	// rData is evm.returnData left by the CALL, i.e. the callee's actual return value.
-	l.onOpcode(1, byte(vm.STOP), 20900, 0, &mockOpContext{memory: postMem}, returned, 0, nil)
+	l.onOpcode(1, byte(vm.STOP), 20900, 0, &mockOpContext{memory: postMem}, nil, 0, nil)
 	l.onExit(0, nil, 100, nil, false)
 
 	result := l.GetResult()
 	require.Len(t, result.Ops, 2)
 	mem := result.Ops[0].Ex.Mem
-	require.NotNil(t, mem, "CALL must report the bytes it actually wrote")
+	require.NotNil(t, mem, "CALL must report its reserved memory region")
 	require.Equal(t, uint64(0), mem.Off)
-	require.Equal(t, returned, []byte(mem.Data), "must not include the reserved-but-unwritten tail")
+	require.Equal(t, postMem, []byte(mem.Data), "must report the full reserved region, including its unwritten tail")
 }
 
-func TestVmTraceLogger_CallMemWriteNilOnNonRevertError(t *testing.T) {
+func TestVmTraceLogger_CallMemReportsReservedRegionOnNonRevertError(t *testing.T) {
 	// When a CALL fails with anything other than a revert, go-ethereum skips
-	// Memory.Set entirely, so nothing was written — Ex.Mem must stay nil even
-	// though the reserved [retOffset, retOffset+retSize) range is non-empty.
+	// Memory.Set entirely, but the reserved [retOffset, retOffset+retSize)
+	// range was already resized before the call and is still reported.
 	l := NewVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 
@@ -584,13 +614,14 @@ func TestVmTraceLogger_CallMemWriteNilOnNonRevertError(t *testing.T) {
 	for i := range postMem {
 		postMem[i] = 0xFF
 	}
-	// rData is empty: a non-revert failure (e.g. out of gas) leaves ret == nil.
 	l.onOpcode(1, byte(vm.STOP), 20900, 0, &mockOpContext{memory: postMem}, nil, 0, nil)
 	l.onExit(0, nil, 100, nil, false)
 
 	result := l.GetResult()
 	require.Len(t, result.Ops, 2)
-	require.Nil(t, result.Ops[0].Ex.Mem, "CALL that wrote nothing must have Mem=nil")
+	mem := result.Ops[0].Ex.Mem
+	require.NotNil(t, mem, "CALL must still report the reserved region even when it wrote nothing")
+	require.Equal(t, postMem, []byte(mem.Data))
 }
 
 func TestVmTraceLogger_MemDiffsFromRealEvm(t *testing.T) {
@@ -645,12 +676,15 @@ func TestVmTraceLogger_MemDiffsFromRealEvm(t *testing.T) {
 		}
 		want := []diff{
 			{"MSTORE", MemoryDiff{Off: 0, Data: word}},
-			// MLOAD only reads memory, so it has no entry.
+			{"MLOAD", MemoryDiff{Off: 0, Data: word}}, // read only, but included for Parity/OpenEthereum compatibility
 			{"MSTORE8", MemoryDiff{Off: 0x40, Data: []byte{0x7f}}},
 			{"MCOPY", MemoryDiff{Off: 0x60, Data: word}},
-			// CALL family: only the bytes actually returned, and nothing for the failed CALL.
-			{"CALL", MemoryDiff{Off: 0x80, Data: []byte{0xbe, 0xef}}},
-			{"STATICCALL", MemoryDiff{Off: 0xa0, Data: []byte{0xde, 0xad}}},
+			// CALL family: the full reserved [retOffset, retOffset+retSize) region,
+			// zero-padded past what the callee actually returned (or entirely
+			// zero for the failed CALL, which wrote nothing).
+			{"CALL", MemoryDiff{Off: 0x80, Data: common.RightPadBytes([]byte{0xbe, 0xef}, 32)}},
+			{"STATICCALL", MemoryDiff{Off: 0xa0, Data: common.RightPadBytes([]byte{0xde, 0xad}, 32)}},
+			{"CALL", MemoryDiff{Off: 0xc0, Data: make([]byte, 32)}},
 		}
 		var got []diff
 		for _, op := range l.GetResult().Ops {
