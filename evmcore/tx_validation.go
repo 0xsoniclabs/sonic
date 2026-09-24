@@ -510,13 +510,19 @@ func validateBundleTransactionsInternal(
 	bundleEvaluator BundleEvaluator,
 ) error {
 
-	// This check only covers bundle transactions, ignore the rest.
-	if !bundle.IsEnvelope(tx) {
+	// Before brio, envelopes and bundle-only marks are regular tx content.
+	if !netRules.brio {
 		return nil
 	}
 
-	// Before brio, bundle envelopes are normal transactions, so they are not validated as bundles.
-	if !netRules.brio {
+	// A bundle-only transaction without a plan to run in can never be
+	// executed, it would only block the nonce of its sender.
+	if bundle.IsBundleOnly(tx) && len(bundle.GetApprovedExecutionPlans(tx)) == 0 {
+		return ErrBundleOnlyWithoutPlan
+	}
+
+	// The remaining checks only cover bundle envelopes, ignore the rest.
+	if !bundle.IsEnvelope(tx) {
 		return nil
 	}
 	// If transaction bundles are not active, reject the transaction.

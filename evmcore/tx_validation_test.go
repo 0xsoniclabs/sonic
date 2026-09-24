@@ -2441,3 +2441,13 @@ func returnBundleState(ctrl *gomock.Controller, state BundleState) BundleEvaluat
 		AnyTimes()
 	return mock
 }
+
+func Test_validateBundleTransactions_RejectsBundleOnlyTransactionsApprovingNoPlan(t *testing.T) {
+	tx := types.NewTx(&types.AccessListTx{
+		AccessList: types.AccessList{{Address: bundle.BundleOnly}},
+	})
+	rules := NetworkRules{brio: true, transactionBundles: true}
+
+	err := validateBundleTransactions(tx, rules, nil, nil, nil, nil)
+	require.ErrorIs(t, err, ErrBundleOnlyWithoutPlan)
+}
