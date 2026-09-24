@@ -18,12 +18,14 @@ package ethapi
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"math/big"
 	"slices"
+	"strings"
 	"time"
 
 	cc "github.com/0xsoniclabs/carmen/go/common"
@@ -67,6 +69,10 @@ const (
 	// defaultTraceTimeout is the amount of time a single transaction can execute
 	// by default before being forcefully aborted.
 	defaultTraceTimeout = 5 * time.Second
+
+	// maxGetProofKeys is the maximum number of storage keys accepted by a
+	// single eth_getProof request. Every key requires a separate trie walk.
+	maxGetProofKeys = 1024
 )
 
 var (
@@ -897,16 +903,25 @@ type StorageResult struct {
 
 // GetProof returns the Merkle-proof for a given account and optionally some storage keys.
 func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNrOrHash rpc.BlockNumberOrHash) (*AccountResult, error) {
+	if len(storageKeys) > maxGetProofKeys {
+		return nil, invalidParamsError(fmt.Sprintf("too many storage keys requested (max %d, got %d)", maxGetProofKeys, len(storageKeys)))
+	}
+	// Decode all keys up front so invalid input is rejected before any state access.
+	keys := make([]common.Hash, len(storageKeys))
+	for i, key := range storageKeys {
+		decoded, err := decodeStorageKey(key)
+		if err != nil {
+			return nil, invalidParamsError(fmt.Sprintf("%v: %q", err, key))
+		}
+		keys[i] = decoded
+	}
+
 	state, block, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
 	if state == nil || err != nil {
 		return nil, err
 	}
 	defer state.Release()
 
-	keys := make([]common.Hash, len(storageKeys))
-	for i, key := range storageKeys {
-		keys[i] = common.HexToHash(key)
-	}
 	proof, err := state.GetProof(address, keys)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
@@ -950,6 +965,26 @@ func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address common.Addre
 		StorageHash:  common.Hash(storageHash),
 		StorageProof: storageProof,
 	}, state.Error()
+}
+
+// decodeStorageKey parses a hex encoded storage key of at most 32 bytes.
+// Shorter keys are left-padded with zeros; an odd number of hex digits is
+// accepted. Invalid hex or keys longer than 32 bytes are rejected.
+func decodeStorageKey(s string) (common.Hash, error) {
+	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
+		s = s[2:]
+	}
+	if len(s)%2 == 1 {
+		s = "0" + s
+	}
+	if len(s) > 2*common.HashLength {
+		return common.Hash{}, fmt.Errorf("storage key too long (want at most %d bytes)", common.HashLength)
+	}
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return common.Hash{}, errors.New("invalid hex in storage key")
+	}
+	return common.BytesToHash(b), nil
 }
 
 // GetHeaderByNumber returns the requested canonical block header.

@@ -25,6 +25,7 @@ import (
 	"math"
 	"math/big"
 	reflect "reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -154,6 +155,97 @@ func TestAPI_GetProof(t *testing.T) {
 	require.Equal(t, hexutil.Uint64(nonce.ToUint64()), accountProof.Nonce)
 	require.Equal(t, common.Hash(storageHash), accountProof.StorageHash)
 	require.Equal(t, []StorageResult{storageProof}, accountProof.StorageProof)
+}
+
+func TestAPI_GetProof_RejectsTooManyKeys(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// No expectations on the backend: the request must be rejected before
+	// any state is accessed.
+	mockBackend := NewMockBackend(ctrl)
+	api := NewPublicBlockChainAPI(mockBackend)
+
+	keys := make([]string, maxGetProofKeys+1)
+	for i := range keys {
+		keys[i] = "0x1"
+	}
+	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+
+	_, err := api.GetProof(context.Background(), common.Address{1}, keys, blkNr)
+	require.Error(t, err)
+	var rpcErr rpc.Error
+	require.ErrorAs(t, err, &rpcErr)
+	require.Equal(t, errCodeInvalidParams, rpcErr.ErrorCode())
+	require.Contains(t, err.Error(), "too many storage keys")
+}
+
+func TestAPI_GetProof_RejectsInvalidKeys(t *testing.T) {
+	tests := map[string]string{
+		"invalid hex":     "0xzz",
+		"too long":        "0x" + strings.Repeat("00", common.HashLength+1),
+		"non-hex garbage": "hello",
+		"embedded 0x":     "0x00x1",
+		"whitespace":      "0x 1",
+	}
+	for name, key := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			// No expectations on the backend: the request must be rejected
+			// before any state is accessed.
+			mockBackend := NewMockBackend(ctrl)
+			api := NewPublicBlockChainAPI(mockBackend)
+			blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+
+			_, err := api.GetProof(context.Background(), common.Address{1}, []string{key}, blkNr)
+			require.Error(t, err)
+			var rpcErr rpc.Error
+			require.ErrorAs(t, err, &rpcErr)
+			require.Equal(t, errCodeInvalidParams, rpcErr.ErrorCode())
+		})
+	}
+}
+
+func TestDecodeStorageKey(t *testing.T) {
+	full := "0x" + strings.Repeat("ab", common.HashLength)
+	valid := map[string]struct {
+		input string
+		want  common.Hash
+	}{
+		"empty":           {"", common.Hash{}},
+		"prefix only":     {"0x", common.Hash{}},
+		"short odd":       {"0x1", common.HexToHash("0x1")},
+		"short even":      {"0x01", common.HexToHash("0x1")},
+		"no prefix":       {"1", common.HexToHash("0x1")},
+		"upper prefix":    {"0X1", common.HexToHash("0x1")},
+		"upper hex":       {"0xAB", common.HexToHash("0xab")},
+		"full length":     {full, common.HexToHash(full)},
+		"full length odd": {full[:len(full)-1], common.HexToHash(full[:len(full)-1])},
+	}
+	for name, tc := range valid {
+		t.Run(name, func(t *testing.T) {
+			got, err := decodeStorageKey(tc.input)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+
+	invalid := map[string]string{
+		"too long":      full + "00",
+		"too long odd":  full + "0",
+		"invalid hex":   "0xzz",
+		"double prefix": "0x0x1",
+		"negative":      "-0x1",
+		"whitespace":    "0x 1",
+	}
+	for name, input := range invalid {
+		t.Run(name, func(t *testing.T) {
+			_, err := decodeStorageKey(input)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestAPI_GetAccount(t *testing.T) {

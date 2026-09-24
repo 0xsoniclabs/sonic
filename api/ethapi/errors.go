@@ -50,6 +50,12 @@ type simInvalidTxError struct {
 func (e *simInvalidTxError) Error() string  { return e.Message }
 func (e *simInvalidTxError) ErrorCode() int { return e.Code }
 
+// invalidParamsError reports malformed RPC input with the standard
+// JSON-RPC invalid params error code.
+func invalidParamsError(message string) *simInvalidTxError {
+	return &simInvalidTxError{Message: message, Code: errCodeInvalidParams}
+}
+
 func simInvalidParamsError() *simInvalidTxError {
 	return &simInvalidTxError{Message: "empty input", Code: errCodeInvalidParams}
 }
