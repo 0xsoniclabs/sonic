@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -354,6 +355,66 @@ func TestTxPool_EvictTransactionsOfEvaluatedBundles_DropsBundleOnlyTransactionsO
 			require.Equal(uint64(0), pool.Nonce(bundleeAddress),
 				"the evicted transaction must not block the nonce of its sender")
 			require.NoError(validateTxPoolInternals(pool))
+		})
+	}
+}
+
+func TestTxPool_EvictStaleBundleOnlyTransactions_DropsBundleOnlyTransactionsWaitingTooLong(t *testing.T) {
+	tests := map[string]struct {
+		brio     bool
+		lifetime time.Duration
+		evicted  bool
+	}{
+		"stale":       {brio: true, lifetime: time.Nanosecond, evicted: true},
+		"fresh":       {brio: true, lifetime: time.Hour},
+		"before brio": {lifetime: time.Nanosecond},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			pool, remoteKey := setupTxPool()
+			defer pool.Stop()
+			pool.waitForIdleReorgLoop_forTesting()
+
+			pool.mu.Lock()
+			defer pool.mu.Unlock()
+			if test.brio {
+				pool.chain = brioTestBlockChain{pool.chain}
+			}
+			pool.config.BundleOnlyLifetime = test.lifetime
+
+			// Local transactions are not exempt, they can not run on their own either.
+			localKey, err := crypto.GenerateKey()
+			require.NoError(err)
+			pool.locals.add(crypto.PubkeyToAddress(localKey.PublicKey))
+
+			add := func(key *ecdsa.PrivateKey, nonce uint64, accessList types.AccessList) *types.Transaction {
+				tx := types.MustSignNewTx(key, pool.signer, &types.AccessListTx{
+					Nonce:      nonce,
+					Gas:        100_000,
+					GasPrice:   big.NewInt(1),
+					AccessList: accessList,
+				})
+				pool.all.Add(tx, false)
+				pool.promoteTx(crypto.PubkeyToAddress(key.PublicKey), tx.Hash(), tx)
+				return tx
+			}
+			mark := types.AccessList{{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{0x1}}}}
+			bundleOnly := []*types.Transaction{add(remoteKey, 0, mark), add(localKey, 0, mark)}
+			regular := add(remoteKey, 1, nil)
+
+			time.Sleep(time.Millisecond) // < let the stale case expire
+			pool.evictStaleBundleOnlyTransactions()
+
+			for _, tx := range bundleOnly {
+				if test.evicted {
+					require.Nil(pool.all.Get(tx.Hash()), "stale bundle-only transaction must be evicted")
+				} else {
+					require.NotNil(pool.all.Get(tx.Hash()), "bundle-only transaction must be retained")
+				}
+			}
+			require.NotNil(pool.all.Get(regular.Hash()), "regular transactions must be retained")
 		})
 	}
 }
