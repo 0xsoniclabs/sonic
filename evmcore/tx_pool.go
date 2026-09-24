@@ -212,7 +212,8 @@ type TxPoolConfig struct {
 	AccountQueue uint64 // Maximum number of non-executable transaction slots permitted per account
 	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
 
-	Lifetime time.Duration // Maximum amount of time non-executable transaction are queued
+	Lifetime           time.Duration // Maximum amount of time non-executable transaction are queued
+	BundleOnlyLifetime time.Duration // Maximum amount of time bundle-only transactions wait for their bundle
 
 	DisableTxPoolValidation bool // Disable transaction pool validation, used for testing only
 }
@@ -231,7 +232,8 @@ var DefaultTxPoolConfig = TxPoolConfig{
 	AccountQueue: 32,
 	GlobalQueue:  256,
 
-	Lifetime: 3 * time.Hour,
+	Lifetime:           3 * time.Hour,
+	BundleOnlyLifetime: time.Hour,
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -269,6 +271,10 @@ func (config *TxPoolConfig) sanitize() TxPoolConfig {
 	if conf.Lifetime < 1 {
 		log.Warn("Sanitizing invalid txpool lifetime", "provided", conf.Lifetime, "updated", DefaultTxPoolConfig.Lifetime)
 		conf.Lifetime = DefaultTxPoolConfig.Lifetime
+	}
+	if conf.BundleOnlyLifetime < 1 {
+		log.Warn("Sanitizing invalid txpool bundle-only lifetime", "provided", conf.BundleOnlyLifetime, "updated", DefaultTxPoolConfig.BundleOnlyLifetime)
+		conf.BundleOnlyLifetime = DefaultTxPoolConfig.BundleOnlyLifetime
 	}
 	return conf
 }
@@ -496,6 +502,7 @@ func (pool *TxPool) loop() {
 					queuedEvictionMeter.Mark(int64(len(list)))
 				}
 			}
+			pool.evictStaleBundleOnlyTransactions()
 			pool.mu.Unlock()
 
 		// Handle local transaction journal rotation
@@ -1249,6 +1256,28 @@ func (pool *TxPool) evictTransactionsOfEvaluatedBundles() {
 		}
 	}
 	for _, hash := range evaluated {
+		pool.removeTx(hash, true)
+	}
+}
+
+// evictStaleBundleOnlyTransactions removes the bundle-only transactions which
+// have been waiting for their bundle longer than the configured lifetime. Only
+// the envelope tells whether a bundle can still run, so without this, those of
+// expired or never submitted bundles would block the nonce of their sender for
+// as long as they stay pending. The pool lock must be held.
+func (pool *TxPool) evictStaleBundleOnlyTransactions() {
+	if !pool.chain.CurrentRules().Upgrades.Brio {
+		return
+	}
+
+	// The removal below must not be interleaved with the iteration.
+	var stale []common.Hash
+	for hash, tx := range pool.all.txs() {
+		if bundle.IsBundleOnly(tx) && time.Since(tx.Time()) > pool.config.BundleOnlyLifetime {
+			stale = append(stale, hash)
+		}
+	}
+	for _, hash := range stale {
 		pool.removeTx(hash, true)
 	}
 }
