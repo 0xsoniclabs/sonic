@@ -18,6 +18,7 @@ package evmcore
 
 import (
 	"crypto/ecdsa"
+	"fmt"
 	"math/big"
 	"sync/atomic"
 	"testing"
@@ -355,4 +356,75 @@ func TestTxPool_EvictTransactionsOfEvaluatedBundles_DropsBundleOnlyTransactionsO
 			require.NoError(validateTxPoolInternals(pool))
 		})
 	}
+}
+
+// BenchmarkTxPool_EvictTransactionsOfEvaluatedBundles measures the scan run on
+// every new head, excluding the cost of looking up processed bundles, which is
+// reported as lookups/op. No bundle has been processed, so nothing is evicted.
+func BenchmarkTxPool_EvictTransactionsOfEvaluatedBundles(b *testing.B) {
+	for _, size := range []int{1_000, 10_000} {
+		for _, percentBundleOnly := range []int{0, 10, 100} {
+			name := fmt.Sprintf("txs=%d/bundleOnly=%d%%", size, percentBundleOnly)
+			b.Run(name, func(b *testing.B) {
+				benchmarkEvictTransactionsOfEvaluatedBundles(b, size, percentBundleOnly)
+			})
+		}
+	}
+}
+
+func benchmarkEvictTransactionsOfEvaluatedBundles(b *testing.B, size, percentBundleOnly int) {
+	pool, key := setupTxPool()
+	defer pool.Stop()
+	pool.waitForIdleReorgLoop_forTesting()
+
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	stateDb := &countingBundleStateDb{testTxPoolStateDb: newTestTxPoolStateDb()}
+	pool.chain = brioTestBlockChain{pool.chain}
+	pool.currentState = stateDb
+
+	account := crypto.PubkeyToAddress(key.PublicKey)
+	for i := range size {
+		var accessList types.AccessList
+		if i*100 < size*percentBundleOnly {
+			accessList = types.AccessList{{
+				Address:     bundle.BundleOnly,
+				StorageKeys: []common.Hash{{byte(i), byte(i >> 8)}},
+			}}
+		}
+		tx := types.MustSignNewTx(key, pool.signer, &types.AccessListTx{
+			Nonce:      uint64(i),
+			Gas:        100_000,
+			GasPrice:   big.NewInt(1),
+			AccessList: accessList,
+		})
+		pool.all.Add(tx, false)
+		pool.promoteTx(account, tx.Hash(), tx)
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		pool.evictTransactionsOfEvaluatedBundles()
+	}
+	b.ReportMetric(float64(stateDb.lookups)/float64(b.N), "lookups/op")
+	require.Equal(b, size, pool.all.Count())
+}
+
+type brioTestBlockChain struct {
+	StateReader
+}
+
+func (brioTestBlockChain) CurrentRules() opera.Rules {
+	return opera.Rules{Upgrades: opera.Upgrades{Brio: true}}
+}
+
+type countingBundleStateDb struct {
+	*testTxPoolStateDb
+	lookups int
+}
+
+func (s *countingBundleStateDb) HasBundleRecentlyBeenProcessed(common.Hash) bool {
+	s.lookups++
+	return false
 }
