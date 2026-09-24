@@ -515,10 +515,13 @@ func validateBundleTransactionsInternal(
 		return nil
 	}
 
-	// A bundle-only transaction without a plan to run in can never be
-	// executed, it would only block the nonce of its sender.
+	// A bundle-only transaction without a plan to run in, or of which all
+	// plans have been processed already, would only block its sender's nonce.
 	if bundle.IsBundleOnly(tx) && len(bundle.GetApprovedExecutionPlans(tx)) == 0 {
 		return ErrBundleOnlyWithoutPlan
+	}
+	if isBundleOnlyOfProcessedBundles(tx, stateDb) {
+		return ErrBundleAlreadyProcessed
 	}
 
 	// The remaining checks only cover bundle envelopes, ignore the rest.
@@ -578,4 +581,19 @@ func (f getBundleStateAdaptor) Header(hash common.Hash, number uint64) *EvmHeade
 		return nil
 	}
 	return block.Header()
+}
+
+// isBundleOnlyOfProcessedBundles reports whether the given transaction is
+// bundle-only and all the execution plans it approves have been processed
+// recently, so it can not be executed anymore.
+func isBundleOnlyOfProcessedBundles(tx *types.Transaction, stateDb state.StateDB) bool {
+	if !bundle.IsBundleOnly(tx) {
+		return false
+	}
+	for _, planHash := range bundle.GetApprovedExecutionPlans(tx) {
+		if !stateDb.HasBundleRecentlyBeenProcessed(planHash) {
+			return false
+		}
+	}
+	return true
 }
