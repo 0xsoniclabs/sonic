@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -256,6 +257,54 @@ func TestPublicFilterAPI_Subscribe_InstallsFeedBeforeReturning(t *testing.T) {
 				}
 			case <-time.After(5 * time.Second):
 				t.Fatal("subscribe did not return after the event loop was released")
+			}
+		})
+	}
+}
+
+// LogQueryParameterLimit applies to every way a client can hand over log
+// filter criteria, not only to the indexed eth_getLogs path.
+func TestPublicFilterAPI_LogQueryParameterLimit_IsEnforcedOnAllPaths(t *testing.T) {
+	cfg := testConfig()
+	cfg.LogQueryParameterLimit = 2
+	addresses := []common.Address{{1}, {2}, {3}}
+
+	api := NewPublicFilterAPI(newTestBackend(), cfg)
+	defer api.Stop()
+	server := rpc.NewServer()
+	if err := server.RegisterName("eth", api); err != nil {
+		t.Fatalf("failed to register API: %v", err)
+	}
+	defer server.Stop()
+	client := rpc.DialInProc(server)
+	defer client.Close()
+
+	calls := map[string]func() error{
+		"eth_getLogs with blockHash": func() error {
+			var logs []json.RawMessage
+			return client.Call(&logs, "eth_getLogs", map[string]any{
+				"blockHash": common.Hash{1},
+				"address":   addresses,
+			})
+		},
+		"eth_newFilter": func() error {
+			var id rpc.ID
+			return client.Call(&id, "eth_newFilter", map[string]any{"address": addresses})
+		},
+		"eth_subscribe logs": func() error {
+			sub, err := client.EthSubscribe(context.Background(), make(chan json.RawMessage),
+				"logs", map[string]any{"address": addresses})
+			if err == nil {
+				sub.Unsubscribe()
+			}
+			return err
+		},
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			err := call()
+			if err == nil || !strings.Contains(err.Error(), "too many query parameters") {
+				t.Fatalf("expected parameter limit error, got %v", err)
 			}
 		})
 	}

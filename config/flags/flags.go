@@ -306,7 +306,7 @@ var (
 	}
 	RPCLogQueryParameterLimit = &cli.UintFlag{
 		Name:  "rpc.log-query-parameter-limit",
-		Usage: "Maximum total number of addresses or topics allowed in eth_getLogs filter criteria (0 = no cap)",
+		Usage: "Maximum total number of addresses or topics allowed in log filter criteria of eth_getLogs, eth_newFilter and logs subscriptions (0 = no cap)",
 		Value: filters.DefaultConfig().LogQueryParameterLimit,
 	}
 	RPCLogQueryResultLimit = &cli.UintFlag{
