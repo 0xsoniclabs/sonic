@@ -96,6 +96,10 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 	if args.GasPrice != nil && (args.MaxFeePerGas != nil || args.MaxPriorityFeePerGas != nil) {
 		return errors.New("both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified")
 	}
+	// An EIP-7702 set-code transaction cannot be a legacy transaction.
+	if args.GasPrice != nil && args.AuthorizationList != nil {
+		return errors.New("both gasPrice and authorizationList specified")
+	}
 	// After london, default to 1559 unless gasPrice is set
 	head := b.CurrentBlock().Header()
 	chainConfig := b.ChainConfig(idx.Block(head.Number.Uint64()))
@@ -147,8 +151,17 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 	if args.Data != nil && args.Input != nil && !bytes.Equal(*args.Data, *args.Input) {
 		return errors.New(`both "data" and "input" are set and not equal. Please use "input" to pass transaction call data`)
 	}
-	if args.To == nil && len(args.data()) == 0 {
-		return errors.New(`contract creation without any data provided`)
+	// create check
+	if args.To == nil {
+		if args.BlobHashes != nil {
+			return errors.New(`missing "to" in blob transaction`)
+		}
+		if len(args.data()) == 0 {
+			return errors.New(`contract creation without any data provided`)
+		}
+		if args.AuthorizationList != nil {
+			return errors.New(`authorizationList provided for contract creation, but "to" field is missing`)
+		}
 	}
 	// Estimate the gas usage if necessary.
 	if args.Gas == nil {
@@ -175,9 +188,15 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 		args.Gas = &estimated
 		log.Trace("Estimate gas usage automatically", "gas", args.Gas)
 	}
-	if args.ChainID == nil {
-		id := (*hexutil.Big)(b.ChainID())
-		args.ChainID = id
+	// If chain id is provided, ensure it matches the local chain id. Otherwise, set the local
+	// chain id as the default.
+	want := b.ChainID()
+	if args.ChainID != nil {
+		if have := (*big.Int)(args.ChainID); have.Cmp(want) != 0 {
+			return fmt.Errorf("chainId does not match node's (have=%v, want=%v)", have, want)
+		}
+	} else {
+		args.ChainID = (*hexutil.Big)(want)
 	}
 	return nil
 }
