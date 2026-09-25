@@ -510,13 +510,24 @@ func validateBundleTransactionsInternal(
 	bundleEvaluator BundleEvaluator,
 ) error {
 
-	// This check only covers bundle transactions, ignore the rest.
-	if !bundle.IsEnvelope(tx) {
+	// Before brio, envelopes and bundle-only marks are regular tx content.
+	if !netRules.brio {
 		return nil
 	}
 
-	// Before brio, bundle envelopes are normal transactions, so they are not validated as bundles.
-	if !netRules.brio {
+	// A bundle-only transaction without a plan to run in, or of which all
+	// plans have been processed already, would only block its sender's nonce.
+	if bundle.IsBundleOnly(tx) {
+		if len(bundle.GetApprovedExecutionPlans(tx)) == 0 {
+			return ErrBundleOnlyWithoutPlan
+		}
+		if isBundleOnlyOfProcessedBundles(tx, stateDb) {
+			return ErrBundleAlreadyProcessed
+		}
+	}
+
+	// The remaining checks only cover bundle envelopes, ignore the rest.
+	if !bundle.IsEnvelope(tx) {
 		return nil
 	}
 	// If transaction bundles are not active, reject the transaction.
@@ -572,4 +583,19 @@ func (f getBundleStateAdaptor) Header(hash common.Hash, number uint64) *EvmHeade
 		return nil
 	}
 	return block.Header()
+}
+
+// isBundleOnlyOfProcessedBundles reports whether the given transaction is
+// bundle-only and all the execution plans it approves have been processed
+// recently, so it can not be executed anymore.
+func isBundleOnlyOfProcessedBundles(tx *types.Transaction, stateDb state.StateDB) bool {
+	if !bundle.IsBundleOnly(tx) {
+		return false
+	}
+	for _, planHash := range bundle.GetApprovedExecutionPlans(tx) {
+		if !stateDb.HasBundleRecentlyBeenProcessed(planHash) {
+			return false
+		}
+	}
+	return true
 }

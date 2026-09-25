@@ -114,6 +114,10 @@ var (
 	// ErrBundleAlreadyProcessed is returned when a bundle transaction is rejected because the same bundle has already been processed recently.
 	ErrBundleAlreadyProcessed = errors.New("bundle has already been processed recently")
 
+	// ErrBundleOnlyWithoutPlan is returned when a bundle-only transaction does
+	// not approve any execution plan, so it can never be executed.
+	ErrBundleOnlyWithoutPlan = errors.New("bundle-only transaction approves no execution plan")
+
 	// ErrBundleNonExecutable is returned when a bundle transaction is rejected because it is not executable.
 	ErrBundleNonExecutable = errors.New("bundle is not executable")
 )
