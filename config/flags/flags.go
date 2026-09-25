@@ -329,6 +329,11 @@ var (
 		Usage: "Limit maximum size in some RPC calls execution",
 		Value: gossip.DefaultConfig(cachescale.Identity).MaxResponseSize,
 	}
+	MaxTraceFilterRangeFlag = cli.Uint64Flag{
+		Name:  "rpc.tracefilterrange",
+		Usage: "Maximum block range of a single trace_filter call, 0=unlimited",
+		Value: gossip.DefaultConfig(cachescale.Identity).MaxTraceFilterRange,
+	}
 	StructLogLimitFlag = cli.IntFlag{
 		Name:  "rpc.structloglimit",
 		Usage: "Limit maximum number of debug logs for structured EVM logs, 0=unlimited, negative value means no log results",

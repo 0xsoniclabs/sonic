@@ -209,3 +209,18 @@ func Test_TraceFilter_RefusesARangeWiderThanTheLimit(t *testing.T) {
 	require.JSONEq(t, "[]", string(res))
 	require.EqualValues(t, limit+1, be.reads.Load())
 }
+
+func Test_TraceFilter_ZeroLimitMeansUnlimited(t *testing.T) {
+	const head = 2_000
+	history := make([]Block, 0, head+1)
+	for n := uint64(0); n <= head; n++ {
+		history = append(history, Block{Number: n, Hash: common.BigToHash(big.NewInt(int64(n + 1)))})
+	}
+	be := &blockCounter{fakeBackend: NewBackendBuilder(t).WithBlockHistory(history).Build()}
+	api := ethapi.NewPublicTxTraceAPI(be, 100_000, 0)
+
+	res, err := api.Filter(t.Context(), ethapi.FilterArgs{})
+	require.NoError(t, err)
+	require.JSONEq(t, "[]", string(res))
+	require.EqualValues(t, head+1, be.reads.Load())
+}

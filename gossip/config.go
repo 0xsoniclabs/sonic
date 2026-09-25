@@ -107,7 +107,7 @@ type (
 		// MaxResponseSize is a limit for maximum response size in some RPC calls in bytes
 		MaxResponseSize int
 
-		// MaxTraceFilterRange is the widest block span one trace_filter call may replay
+		// MaxTraceFilterRange is the widest block span one trace_filter call may replay, 0=unlimited
 		MaxTraceFilterRange uint64
 
 		// StructLogLimit is a limit for maximum number of logs in structured EVM debug log
