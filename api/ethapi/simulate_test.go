@@ -656,6 +656,30 @@ func TestSanitizeCall_AllowsPlainContractCreationWithNilTo(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestSanitizeCall_RejectsBlobFeeCapWithNilTo(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+
+	gasUsed := uint64(0)
+	nonce := uint64(1)
+	gasLimit := uint64(10_000)
+	mockState.EXPECT().GetNonce(gomock.Any()).Return(nonce).AnyTimes()
+
+	header := &evmcore.EvmHeader{
+		Number:   big.NewInt(10),
+		GasLimit: gasLimit,
+	}
+	sim := newSimulator()
+	// BlobFeeCap alone makes ToTransaction build a BlobTx, which needs "to".
+	call := TransactionArgs{
+		BlobFeeCap: (*hexutil.Big)(big.NewInt(1)),
+	}
+
+	err := sim.sanitizeCall(&call, mockState, header, &gasUsed)
+
+	require.ErrorIs(t, err, core.ErrBlobTxCreate)
+}
+
 func TestRepairSimLogs(t *testing.T) {
 
 	evmHeader := &evmcore.EvmHeader{

@@ -520,7 +520,7 @@ func (sim *simulator) sanitizeCall(call *TransactionArgs, state interState.State
 	// cannot be represented as a transaction, so reject them up front with the
 	// same errors that message execution would return for them.
 	if call.To == nil {
-		if call.BlobHashes != nil {
+		if call.BlobHashes != nil || call.BlobFeeCap != nil {
 			return core.ErrBlobTxCreate
 		}
 		if call.AuthorizationList != nil {
