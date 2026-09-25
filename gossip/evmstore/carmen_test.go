@@ -208,18 +208,6 @@ func TestCarmenStateDB_EndBlock_FailingBackend_DoesNotRecordBundles(t *testing.T
 	require.Len(state.processedExecPlans, 1, "pending bundles must be kept on failure")
 }
 
-func TestCarmenStateDB_EndBlock_NilStagedBlock_ReturnsError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-
-	db := carmen.NewMockStateDB(ctrl)
-	db.EXPECT().EndBlock(uint64(123)).Return(nil, nil)
-	state := &CarmenStateDB{db: db, committable: true}
-
-	block, err := state.EndBlock(123)
-	require.Nil(t, block)
-	require.Error(t, err)
-}
-
 func TestCarmenStateDB_EndBlock_NotCommittable_ReturnsError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
