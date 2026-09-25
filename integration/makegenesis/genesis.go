@@ -226,7 +226,9 @@ func (b *GenesisBuilder) FinalizeBlockZero(
 	}
 
 	// construct state root of initial state
-	b.tmpStateDB.EndBlock(0)
+	if err := evmstore.EndBlockAndCommit(b.tmpStateDB, 0); err != nil {
+		return common.Hash{}, common.Hash{}, fmt.Errorf("failed to finalize block zero: %w", err)
+	}
 	genesisStateRoot := b.tmpStateDB.GetStateHash()
 
 	// construct the block record for the genesis block

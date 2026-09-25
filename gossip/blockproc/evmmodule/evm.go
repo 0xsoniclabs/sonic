@@ -185,21 +185,33 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 
 	evmBlock = p.evmBlockWith(transactions)
 
-	// Commit block
-	done := p.statedb.EndBlock(evmBlock.Number.Uint64())
-	// Use asynchronous commit for blocks older than one hour to speed up catching up.
-	// For recent blocks (within the last hour), wait for the commit to complete
+	// Apply the block to the live state.
+	stagedBlock, err := p.statedb.EndBlock(evmBlock.Number.Uint64())
+	if err != nil {
+		// Any failures invalidate the DB, and there is no way of recovering from it.
+		log.Crit("Failed to finalize block", "block", evmBlock.Number, "err", err)
+	}
+	if stagedBlock == nil {
+		// defensive: a committable StateDB never returns a nil staged block
+		log.Crit("Staged block is nil", "block", evmBlock.Number)
+	}
+	// Commits to the archive right away as no staging is supported in sonic.
+	done, err := stagedBlock.Commit()
+	if err != nil {
+		log.Crit("Failed to commit block", "block", evmBlock.Number, "err", err)
+	}
+	// Use asynchronous archive update for blocks older than one hour to speed up catching up.
+	// For recent blocks (within the last hour), wait for the update to complete
 	// to ensure the latest state is available for both live and archive databases.
 	if time.Since(evmBlock.Time.Time()) < 1*time.Hour && done != nil {
-		if err := <-done; err != nil {
+		if err := done.Wait(); err != nil {
 			// the underlying database has collected an error during finalize or
 			// a previous operation. State consistency and its persistence my
 			// have been compromised.
-			log.Error("Failed to finalize block %v: %v", evmBlock.Number, err)
+			log.Error("Failed to finalize block", "block", evmBlock.Number, "err", err)
 		}
 	}
 
-	// Get state root
 	evmBlock.Root = p.statedb.GetStateHash()
 
 	return

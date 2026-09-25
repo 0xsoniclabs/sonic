@@ -394,12 +394,29 @@ func (c *CarmenStateDB) BeginBlock(number uint64) {
 	}
 }
 
-func (c *CarmenStateDB) EndBlock(number uint64) <-chan error {
+func (c *CarmenStateDB) EndBlock(number uint64) (carmen.StagedBlock, error) {
+	if !c.committable {
+		// only the live, committable StateDB seals blocks; a non-committable
+		// view has nothing to finalize, so reaching this point is a misuse.
+		return nil, fmt.Errorf("called EndBlock on a non-committable StateDB")
+	}
+	db, ok := c.db.(carmen.StateDB)
+	if !ok {
+		return nil, fmt.Errorf("StateDB does not support EndBlock")
+	}
+
+	// finish the block in the underlying StateDB first, so that the bundle
+	// history below only records blocks the state has actually accepted
+	staged, err := db.EndBlock(number)
+	if err != nil {
+		return nil, err
+	}
+
 	// clear snapshot list since the block-sealing invalidates all snapshots
 	c.interTxSnapshots = c.interTxSnapshots[:0]
 
 	// forward processed bundles to the store and clear the internal list of processed bundles
-	if c.committable && c.processedExecPlanStore != nil {
+	if c.processedExecPlanStore != nil {
 		execInfos := make(map[common.Hash]bundle.PositionInBlock, len(c.processedExecPlans))
 		for _, plan := range c.processedExecPlans {
 			execInfos[plan.execPlanHash] = plan.position
@@ -408,11 +425,7 @@ func (c *CarmenStateDB) EndBlock(number uint64) <-chan error {
 	}
 	c.processedExecPlans = c.processedExecPlans[:0]
 
-	// finish the block in the underlying StateDB
-	if db, ok := c.db.(carmen.StateDB); c.committable && ok {
-		return db.EndBlock(number)
-	}
-	return nil
+	return &CarmenStagedBlock{StagedBlock: staged}, nil
 }
 
 func (c *CarmenStateDB) GetStateHash() common.Hash {
@@ -495,6 +508,39 @@ func (c *CarmenStateDB) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash)
 		return false
 	}
 	return c.processedExecPlanStore.HasBundleRecentlyBeenProcessed(execPlanHash)
+}
+
+// CarmenStagedBlock decorates `carmen.StagedBlock`
+// by prohibiting the rollback of blocks.
+type CarmenStagedBlock struct {
+	carmen.StagedBlock
+}
+
+// Rollback returns an error because rolling a block back is not supported.
+// The processed bundles of a block are recorded in the ProcessedBundleStore
+// when the block is ended, and there is currently
+// no way to take that record back.
+func (b *CarmenStagedBlock) Rollback() error {
+	return fmt.Errorf("block rollback is not supported")
+}
+
+// EndBlockAndCommit ends the block, commits it to the archive and waits for the archive to be updated.
+func EndBlockAndCommit(db state.StateDB, number uint64) error {
+	staged, err := db.EndBlock(number)
+	if err != nil {
+		return fmt.Errorf("failed to end block %d: %w", number, err)
+	}
+	if staged == nil {
+		return fmt.Errorf("StateDB returned no staged block for block %d", number)
+	}
+	done, err := staged.Commit()
+	if err != nil {
+		return fmt.Errorf("failed to commit block %d: %w", number, err)
+	}
+	if err := done.Wait(); err != nil {
+		return fmt.Errorf("failed to update archive for block %d: %w", number, err)
+	}
+	return nil
 }
 
 type interTxSnapshots struct {

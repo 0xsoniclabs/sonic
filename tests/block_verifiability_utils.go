@@ -204,7 +204,20 @@ func (s *State) ApplyGenesis(genesis *makefakegenesis.GenesisJson) error {
 		}
 	}
 	s.db.EndTransaction()
-	s.db.EndBlock(0)
+	staged, err := s.db.EndBlock(0)
+	if err != nil {
+		return fmt.Errorf("failed to end genesis block: %v", err)
+	}
+	if staged == nil {
+		return fmt.Errorf("staged block is nil after genesis")
+	}
+	handle, err := staged.Commit()
+	if err != nil {
+		return fmt.Errorf("failed to commit genesis block: %v", err)
+	}
+	if err := handle.Wait(); err != nil {
+		return fmt.Errorf("failed to wait for genesis commit: %v", err)
+	}
 	return s.db.Check()
 }
 
@@ -269,7 +282,21 @@ func (s *State) ApplyBlock(
 		receipts = append(receipts, cur.Receipt)
 	}
 
-	s.db.EndBlock(block.NumberU64())
+	staged, err := s.db.EndBlock(block.NumberU64())
+	if err != nil {
+		return nil, fmt.Errorf("failed to end block %d: %v", block.NumberU64(), err)
+	}
+	if staged == nil {
+		return nil, fmt.Errorf("staged block is nil after processing block %d", block.NumberU64())
+	}
+	handle, err := staged.Commit()
+	if err != nil {
+		return nil, fmt.Errorf("failed to commit block %d: %v", block.NumberU64(), err)
+	}
+	if err := handle.Wait(); err != nil {
+		return nil, fmt.Errorf("failed to wait for commit of block %d: %v", block.NumberU64(), err)
+	}
+
 	return receipts, s.db.Check()
 }
 

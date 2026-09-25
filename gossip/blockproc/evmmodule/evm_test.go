@@ -17,12 +17,17 @@
 package evmmodule
 
 import (
+	"bytes"
+	"fmt"
 	"math"
 	"math/big"
+	"os"
+	"os/exec"
 	"testing"
 	"testing/synctest"
 	"time"
 
+	carmen_state "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -32,6 +37,7 @@ import (
 	tracing "github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	uint256 "github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -406,7 +412,9 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	stateDb.EXPECT().SetTxContext(any, any).AnyTimes()
 	stateDb.EXPECT().TxIndex().AnyTimes()
 	stateDb.EXPECT().GetLogs(any, any).AnyTimes()
-	stateDb.EXPECT().EndBlock(any).AnyTimes()
+	stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
+	stagedBlock.EXPECT().Commit().Return(carmen_state.NewWaitHandle(nil), nil).AnyTimes()
+	stateDb.EXPECT().EndBlock(any).Return(stagedBlock, nil).AnyTimes()
 	stateDb.EXPECT().GetStateHash().AnyTimes()
 
 	evmModule := New()
@@ -463,64 +471,29 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 }
 
 func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenBlockIsOlderThanOneHour(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		stateDb := state.NewMockStateDB(ctrl)
-
-		stateDb.EXPECT().BeginBlock(gomock.Any())
-		stateDb.EXPECT().GetStateHash()
-		// EndBlock should return a channel,but this should be ignored for
-		// blocks older than one hour.
-		stateDb.EXPECT().EndBlock(gomock.Any()).Return(make(<-chan error))
-
-		evmModule := New()
-		blockTime := time.Now().Add(-1*time.Hour - time.Second)
-		processor := evmModule.Start(
-			0, inter.FromUnix(blockTime.Unix()), 0,
-			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
-			nil,
-		)
-
-		finalizeDone := false
-		go func() {
-			_, _, _ = processor.Finalize()
-			finalizeDone = true
-		}()
-
-		synctest.Wait()
-		require.True(t, finalizeDone, "Finalize did not finish for blocks older than one hour")
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
+	waitCalled := false
+	waitHandle := carmen_state.NewWaitHandle(nil).Then(func(err error) error {
+		waitCalled = true
+		return nil
 	})
-}
+	stagedBlock.EXPECT().Commit().Return(waitHandle, nil)
+	stateDb.EXPECT().BeginBlock(gomock.Any())
+	stateDb.EXPECT().GetStateHash()
+	stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
 
-func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenSyncChannelIsNil(t *testing.T) {
-	// Underlying db implementations may not implement the possibility to wait on
-	// an async finalize operation. The client must work correctly in these cases.
+	evmModule := New()
+	blockTime := time.Now().Add(-1*time.Hour - time.Second)
+	processor := evmModule.Start(
+		0, inter.FromUnix(blockTime.Unix()), 0,
+		stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		nil,
+	)
 
-	synctest.Test(t, func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		stateDb := state.NewMockStateDB(ctrl)
-
-		stateDb.EXPECT().BeginBlock(gomock.Any())
-		stateDb.EXPECT().GetStateHash()
-		// If the sync channel is nil, Finalize should not block even for recent blocks.
-		stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil)
-		evmModule := New()
-		blockTime := time.Now().Add(-1*time.Hour + time.Second)
-		processor := evmModule.Start(
-			0, inter.FromUnix(blockTime.Unix()), 0,
-			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
-			nil,
-		)
-
-		finalizeDone := false
-		go func() {
-			_, _, _ = processor.Finalize()
-			finalizeDone = true
-		}()
-
-		synctest.Wait()
-		require.True(t, finalizeDone, "Finalize did not finish when sync channel was nil")
-	})
+	_, _, _ = processor.Finalize()
+	require.False(t, waitCalled)
 }
 
 func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOneHour(t *testing.T) {
@@ -531,9 +504,11 @@ func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOne
 
 		stateDb.EXPECT().BeginBlock(gomock.Any())
 		stateDb.EXPECT().GetStateHash()
-
+		stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
 		syncChannel := make(chan error)
-		stateDb.EXPECT().EndBlock(gomock.Any()).Return(syncChannel)
+		waitHandle := carmen_state.NewWaitHandle(syncChannel)
+		stagedBlock.EXPECT().Commit().Return(waitHandle, nil)
+		stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
 
 		evmModule := New()
 		blockTime := time.Now().Add(-1*time.Hour + time.Second)
@@ -557,6 +532,101 @@ func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOne
 		synctest.Wait()
 		require.True(t, finalizeDone, "Finalize did not finish after sync channel was closed")
 	})
+}
+
+func TestOperaEVMProcessor_Finalize_ArchiveFailure_IsReportedWithoutTerminating(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
+
+	// the archive update fails, but the live state already holds the block
+	done := make(chan error, 1)
+	done <- fmt.Errorf("injected archive error")
+	stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
+	stagedBlock.EXPECT().Commit().Return(carmen_state.NewWaitHandle(done), nil)
+
+	wantRoot := common.Hash{0x42}
+	stateDb.EXPECT().BeginBlock(gomock.Any())
+	stateDb.EXPECT().GetStateHash().Return(wantRoot)
+
+	processor := New().Start(
+		0, inter.FromUnix(time.Now().Unix()), 0,
+		stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		nil,
+	)
+
+	evmBlock, _, _ := processor.Finalize()
+	require.Equal(t, wantRoot, evmBlock.Root)
+}
+
+// envFinalizeFatalCase marks the re-executed test binary that runs one of the
+// fatal Finalize paths; log.Crit terminates the process, so the outcome can only
+// be observed from a parent process.
+const envFinalizeFatalCase = "SONIC_TEST_FINALIZE_FATAL_CASE"
+
+func TestOperaEVMProcessor_Finalize_TerminatesProcess_OnFatalErrors(t *testing.T) {
+	injectedErr := fmt.Errorf("injected error")
+	tests := map[string]struct {
+		setup   func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock)
+		message string
+	}{
+		"EndBlockFails": {
+			setup: func(stateDb *state.MockStateDB, _ *carmen_state.MockStagedBlock) {
+				stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil, injectedErr)
+			},
+			message: "Failed to finalize block",
+		},
+		"NilStagedBlock": {
+			setup: func(stateDb *state.MockStateDB, _ *carmen_state.MockStagedBlock) {
+				stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil, nil)
+			},
+			message: "Staged block is nil",
+		},
+		"CommitFails": {
+			setup: func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock) {
+				stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
+				stagedBlock.EXPECT().Commit().Return(nil, injectedErr)
+			},
+			message: "Failed to commit block",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if os.Getenv(envFinalizeFatalCase) == "1" {
+				// child process: run the fatal path, log.Crit must exit with 1
+				log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelCrit, false)))
+				ctrl := gomock.NewController(t)
+				stateDb := state.NewMockStateDB(ctrl)
+				stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
+				stateDb.EXPECT().BeginBlock(gomock.Any())
+				stateDb.EXPECT().GetStateHash().AnyTimes()
+				test.setup(stateDb, stagedBlock)
+
+				processor := New().Start(
+					0, inter.FromUnix(time.Now().Unix()), 0,
+					stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+					nil,
+				)
+				_, _, _ = processor.Finalize()
+				// reached only if log.Crit did not terminate the process; exit
+				// with a code the parent does not expect
+				os.Exit(2)
+			}
+
+			// parent process: re-run exactly this subtest in a child
+			cmd := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
+			cmd.Env = append(os.Environ(), envFinalizeFatalCase+"=1")
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+
+			var exitErr *exec.ExitError
+			require.ErrorAs(t, err, &exitErr, "Finalize must terminate the process")
+			require.Equal(t, 1, exitErr.ExitCode(), "log.Crit exits with code 1; stderr: %s", stderr.String())
+			require.Contains(t, stderr.String(), test.message)
+		})
+	}
 }
 
 // onNewLog is a helper interface to allow mocking the onNewLog function
