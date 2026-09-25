@@ -236,6 +236,10 @@ type Service struct {
 	// version watcher
 	verWatcher *verwatcher.VersionWatcher
 
+	// peerRuns tracks the peer handler goroutines started by the p2p server
+	// for the protocols returned by Protocols, so Stop can wait them out.
+	peerRuns peerRunTracker
+
 	blockProcWg        sync.WaitGroup
 	blockProcTasks     *workers.Workers
 	blockProcTasksDone chan struct{}
@@ -491,14 +495,11 @@ func MakeProtocols(svc *Service, backend *handler, disc enode.Iterator) ([]p2p.P
 				peer := newPeer(version, p, rw, backend.config.Protocol.PeerCache)
 				defer peer.Close()
 
-				select {
-				case <-backend.quitSync:
+				if !svc.peerRuns.acquireRun() {
 					return p2p.DiscQuitting
-				default:
-					backend.wg.Add(1)
-					defer backend.wg.Done()
-					return backend.handle(peer)
 				}
+				defer svc.peerRuns.releaseRun()
+				return backend.handle(peer)
 			},
 			NodeInfo: func() interface{} {
 				return backend.NodeInfo()
@@ -616,6 +617,30 @@ func (s *Service) WaitBlockEnd() {
 	s.blockProcWg.Wait()
 }
 
+// stopPeerHandling brings down the handler together with the peer handler
+// goroutines the p2p server started for us.
+//
+// The order is load-bearing. Refusing first means the wait cannot race an
+// arriving run. Waiting last is what makes the wait finite: handler.Stop is
+// what releases the runs already in flight, by disconnecting their sessions
+// and terminating the semaphores they park on. A DataSemaphore only re-checks
+// the Acquire deadline when a Release or a Terminate wakes it, so waiting
+// first deadlocks on a run parked on the message semaphore, or on the events
+// semaphore whose weight is held by events buffered for parents that the
+// disconnected peers will never deliver.
+//
+// One wait a run can reach is not covered by handler.Stop: the per-peer send
+// semaphore in peer.enqueueSendEncodedItem, released by that peer's own
+// broadcast loop -- which keeps draining under the p2p write deadline -- and
+// bounded by its own Acquire timeout. Any further blocking wait added to the
+// message handling path has to be bounded like that, or be released by
+// handler.Stop, or this wait stops returning.
+func (s *Service) stopPeerHandling() {
+	s.peerRuns.refuseNewRuns()
+	s.handler.Stop()
+	s.peerRuns.waitForRuns()
+}
+
 // Stop method invoked when the node terminates the service.
 func (s *Service) Stop() error {
 	defer log.Info("Sonic service stopped")
@@ -630,7 +655,8 @@ func (s *Service) Stop() error {
 	// Stop all the peer-related stuff first.
 	s.operaDialCandidates.Close()
 
-	s.handler.Stop()
+	s.stopPeerHandling()
+
 	// Must stop before the store is closed to avoid reading from a closed store.
 	if s.filterAPI != nil {
 		s.filterAPI.Stop()
