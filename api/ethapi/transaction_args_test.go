@@ -1128,6 +1128,32 @@ func TestTransactionArgs_SetDefaults_RejectsMissingToWithBlobHashes(t *testing.T
 	require.EqualError(t, err, `missing "to" in blob transaction`)
 }
 
+func TestTransactionArgs_SetDefaults_RejectsMissingToWithBlobFeeCap(t *testing.T) {
+	t.Parallel()
+
+	addr := common.Address{1}
+	nonce := hexutil.Uint64(0)
+	gas := hexutil.Uint64(21000)
+	fee := (*hexutil.Big)(big.NewInt(100))
+	data := hexutil.Bytes{0x01}
+
+	backend := newSetDefaultsTestBackend(t, big.NewInt(1))
+
+	// BlobFeeCap alone makes ToTransaction build a BlobTx, which needs "to".
+	args := TransactionArgs{
+		From:                 &addr,
+		Nonce:                &nonce,
+		Gas:                  &gas,
+		MaxFeePerGas:         fee,
+		MaxPriorityFeePerGas: fee,
+		Data:                 &data,
+		BlobFeeCap:           fee,
+	}
+
+	err := args.setDefaults(context.Background(), backend)
+	require.EqualError(t, err, `missing "to" in blob transaction`)
+}
+
 func TestTransactionArgs_SetDefaults_RejectsMissingToWithAuthorizationList(t *testing.T) {
 	t.Parallel()
 
