@@ -339,7 +339,9 @@ func (args *TransactionArgs) ToTransaction() (*types.Transaction, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid Value: %w", err)
 		}
-
+		if args.To == nil {
+			return nil, fmt.Errorf("missing To in SetCodeTx")
+		}
 		data = &types.SetCodeTx{
 			To:         *args.To,
 			ChainID:    chainId,
@@ -350,7 +352,7 @@ func (args *TransactionArgs) ToTransaction() (*types.Transaction, error) {
 			Value:      value,
 			Data:       args.data(),
 			AccessList: al,
-			AuthList:   ([]types.SetCodeAuthorization)(args.AuthorizationList),
+			AuthList:   args.AuthorizationList,
 		}
 
 	case args.BlobFeeCap != nil || len(args.BlobHashes) > 0:
@@ -377,6 +379,9 @@ func (args *TransactionArgs) ToTransaction() (*types.Transaction, error) {
 		value, err := utils.BigIntToUint256((*big.Int)(args.Value))
 		if err != nil {
 			return nil, fmt.Errorf("invalid Value: %w", err)
+		}
+		if args.To == nil {
+			return nil, fmt.Errorf("missing To in BlobTx")
 		}
 		data = &types.BlobTx{
 			To:         *args.To,

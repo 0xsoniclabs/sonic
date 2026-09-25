@@ -671,6 +671,17 @@ func TestToTransaction_ReturnsErrors(t *testing.T) {
 		expectedErr string
 	}{
 		// --- SetCodeTx errors (triggered by AuthorizationList) ---
+		"SetCodeTx: missing To": {
+			args: TransactionArgs{
+				From:                 &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: validFee,
+				AuthorizationList:    []types.SetCodeAuthorization{{}},
+			},
+			expectedErr: "missing To in SetCodeTx",
+		},
 		"SetCodeTx: negative MaxFeePerGas": {
 			args: TransactionArgs{
 				From:                 &addr,
@@ -773,6 +784,18 @@ func TestToTransaction_ReturnsErrors(t *testing.T) {
 		},
 
 		// --- BlobTx errors (triggered by BlobFeeCap or BlobHashes) ---
+		"BlobTx: missing To": {
+			args: TransactionArgs{
+				From:                 &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				MaxFeePerGas:         validFee,
+				MaxPriorityFeePerGas: validFee,
+				BlobFeeCap:           validFee,
+				BlobHashes:           []common.Hash{{1}},
+			},
+			expectedErr: "missing To in BlobTx",
+		},
 		"BlobTx: negative MaxFeePerGas": {
 			args: TransactionArgs{
 				From:                 &addr,
