@@ -31,7 +31,7 @@ type TraceCallResult struct {
 	Output    hexutil.Bytes `json:"output"`
 	StateDiff StateDiff     `json:"stateDiff"`
 	Trace     []ActionTrace `json:"trace"`
-	VmTrace   any           `json:"vmTrace"`
+	VmTrace   *VmTrace      `json:"vmTrace"`
 }
 
 // StateDiff maps addresses to their account state changes during transaction execution.
