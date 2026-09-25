@@ -516,6 +516,17 @@ func (sim *simulator) sanitizeCall(call *TransactionArgs, state interState.State
 			fmt.Sprintf("block gas limit reached: %d >= %d", *gasUsed+uint64(*call.Gas), header.GasLimit),
 		)
 	}
+	// Reject blob and setcode transaction types without a recipient. They
+	// cannot be represented as a transaction, so reject them up front with the
+	// same errors that message execution would return for them.
+	if call.To == nil {
+		if call.BlobHashes != nil || call.BlobFeeCap != nil {
+			return core.ErrBlobTxCreate
+		}
+		if call.AuthorizationList != nil {
+			return core.ErrSetCodeTxCreate
+		}
+	}
 	// Set price-related defaults (no-backend equivalent of setDefaults).
 	if err := sim.setCallPriceDefaults(call, header.BaseFee); err != nil {
 		return err
