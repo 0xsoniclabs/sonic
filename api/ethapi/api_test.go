@@ -1031,7 +1031,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		mockState.EXPECT().Snapshot()
 		mockState.EXPECT().Exist(recipient)
 		mockState.EXPECT().GetRefund().Times(2)
-		mockState.EXPECT().EndTransaction().Times(2)
+		mockState.EXPECT().EndTransaction()
 		mockState.EXPECT().TxIndex()
 	}
 
@@ -1167,6 +1167,53 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			test.call(t, backend, txArgs, blockOrHash)
 		})
 	}
+}
+
+// TestStateAtTransaction_ReleasesStateOnTxAsMessageError is a regression test for a
+// statedb leak: if a transaction preceding txIndex cannot be decoded into a message,
+// stateAtTransaction must still release the statedb it acquired before returning the error.
+func TestStateAtTransaction_ReleasesStateOnTxAsMessageError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	header := evmcore.EvmHeader{
+		Number:     big.NewInt(1),
+		BaseFee:    big.NewInt(10000000),
+		ParentHash: common.Hash{0x1},
+	}
+
+	// A transaction with an invalid (non-internal) signature cannot be turned into a
+	// message: recovering its sender fails.
+	invalidTx := types.NewTx(&types.LegacyTx{
+		Gas:      21000,
+		GasPrice: big.NewInt(10000000),
+		V:        big.NewInt(0),
+		R:        big.NewInt(1),
+		S:        big.NewInt(1),
+	})
+	block := &evmcore.EvmBlock{
+		EvmHeader:    header,
+		Transactions: types.Transactions{invalidTx, types.NewTx(&types.LegacyTx{})},
+	}
+
+	mockState := state.NewMockStateDB(ctrl)
+	mockState.EXPECT().Release().Times(1)
+
+	backend := NewMockBackend(ctrl)
+	backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).
+		Return(&opera.Rules{}, nil).AnyTimes()
+	backend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), rpc.BlockNumberOrHashWithHash(header.ParentHash, false)).
+		Return(mockState, block, nil)
+	backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(makeTestEVM(opera.GetSonicUpgrades())).AnyTimes()
+	backend.EXPECT().ChainConfig(gomock.Any()).AnyTimes().Return(makeChainConfig(opera.GetSonicUpgrades()))
+
+	msg, statedb, err := stateAtTransaction(t.Context(), block, 1, backend)
+	require.Error(t, err)
+	require.Nil(t, msg)
+	require.Nil(t, statedb)
+
+	// ctrl.Finish() (called via t.Cleanup by gomock.NewController) verifies
+	// mockState.Release() was called exactly once.
 }
 
 // makeChainConfig allows to create a chain config with a given set of features

@@ -1213,10 +1213,7 @@ func DoCall(
 		evm.Cancel()
 	}()
 
-	// execute EIP-2935 HistoryStorage contract.
-	if evm.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(block.ParentHash, evm, state)
-	}
+	executePreBlockSystemCalls(evm, block.Number, uint64(block.Time.Unix()), block.ParentHash, state)
 
 	// Add sufficient gas to the pool.
 	gp := core.NewGasPool(math.MaxUint64)
@@ -2719,6 +2716,32 @@ func (api *PublicDebugAPI) TraceBlockByHash(ctx context.Context, hash common.Has
 	return api.traceBlock(ctx, block, config)
 }
 
+// applyPreBlockSystemCalls executes the system calls which have to be applied on
+// top of the parent state before any transaction of the given block can be executed,
+// using a default EVM instance built for the block.
+func applyPreBlockSystemCalls(ctx context.Context, b Backend, block *evmcore.EvmBlock, statedb state.StateDB) error {
+	cfg, err := GetVmConfig(ctx, b, idx.Block(block.NumberU64()))
+	if err != nil {
+		return fmt.Errorf("failed to get vm config: %w", err)
+	}
+	cfg.NoBaseFee = true
+	vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &cfg, nil)
+	if err != nil {
+		return err
+	}
+	executePreBlockSystemCalls(vmenv, block.Number, uint64(block.Time.Unix()), block.ParentHash, statedb)
+	return nil
+}
+
+// executePreBlockSystemCalls runs the pre-block system calls (currently the EIP-2935
+// HistoryStorage update) against an already-constructed EVM instance. It is shared by
+// callers that need to build the EVM themselves (e.g. eth_simulateV1's block builder).
+func executePreBlockSystemCalls(vmenv *vm.EVM, blockNumber *big.Int, blockTime uint64, parentHash common.Hash, statedb state.StateDB) {
+	if vmenv.ChainConfig().IsPrague(blockNumber, blockTime) {
+		evmcore.ProcessParentBlockHash(parentHash, vmenv, statedb)
+	}
+}
+
 // traceBlock configures a new tracer according to the provided configuration, and
 // executes all the transactions contained within. The return value will be one item
 // per transaction, dependent on the requested tracer.
@@ -2732,6 +2755,10 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 	}
 	defer statedb.Release()
 
+	if err := applyPreBlockSystemCalls(ctx, api.b, block, statedb); err != nil {
+		return nil, err
+	}
+
 	var (
 		chainConfig   = api.b.ChainConfig(idx.Block(block.Header().Number.Uint64()))
 		txs           = block.Transactions
@@ -2740,7 +2767,10 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 		resultsLength int
 	)
 	for i, tx := range txs {
-		msg, _ := evmcore.TxAsMessage(tx, signer, block.BaseFee)
+		msg, err := evmcore.TxAsMessage(tx, signer, block.BaseFee)
+		if err != nil {
+			return nil, fmt.Errorf("cannot get message from transaction %s: %w", tx.Hash(), err)
+		}
 		txctx := &tracers.Context{
 			BlockHash:   block.Hash,
 			BlockNumber: block.Number,
@@ -2753,8 +2783,6 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 		}
 		results[i] = &txTraceResult{TxHash: tx.Hash(), Result: res}
 		resultsLength += len(res)
-
-		statedb.EndTransaction()
 
 		// limit the response size.
 		if api.maxResponseSize > 0 && resultsLength > api.maxResponseSize {
@@ -2783,13 +2811,9 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 		return nil, nil, err
 	}
 
-	if txIndex == 0 && len(block.Transactions) == 0 {
-		return nil, statedb, nil
-	}
-
-	// Use the block's VM config for replaying transactions with possible no base fee
 	cfg, err := GetVmConfig(ctx, b, idx.Block(block.NumberU64()))
 	if err != nil {
+		statedb.Release()
 		return nil, nil, fmt.Errorf("failed to get vm config: %w", err)
 	}
 	cfg.NoBaseFee = true
@@ -2798,10 +2822,10 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 		statedb.Release()
 		return nil, nil, err
 	}
+	executePreBlockSystemCalls(vmenv, block.Number, uint64(block.Time.Unix()), block.ParentHash, statedb)
 
-	// execute EIP-2935 HistoryStorage contract.
-	if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
+	if txIndex == 0 && len(block.Transactions) == 0 {
+		return nil, statedb, nil
 	}
 
 	// Recompute transactions up to the target index.
@@ -2811,6 +2835,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 		// Assemble the transaction call message and return if the requested offset
 		msg, err := evmcore.TxAsMessage(tx, signer, block.BaseFee)
 		if err != nil {
+			statedb.Release()
 			return nil, nil, err
 		}
 		if idx == txIndex {

@@ -458,6 +458,10 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 	}
 	defer state.Release()
 
+	if err := applyPreBlockSystemCalls(ctx, s.b, block, state); err != nil {
+		return nil, fmt.Errorf("cannot apply pre-block system calls for block %v, error: %v", block.NumberU64(), err.Error())
+	}
+
 	receipts, err := s.b.GetReceiptsByNumber(ctx, rpc.BlockNumber(blockNumber))
 	if err != nil {
 		return nil, fmt.Errorf("cannot get receipts for block %v, error: %v", block.NumberU64(), err.Error())
@@ -510,10 +514,6 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 			vmenv, _, err := s.b.GetEVM(ctx, state, block.Header(), &vmConfig, nil)
 			if err != nil {
 				return nil, fmt.Errorf("cannot initialize vm for transaction %s, error: %s", tx.Hash().String(), err.Error())
-			}
-
-			if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-				evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, state)
 			}
 
 			res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
@@ -571,7 +571,6 @@ func (s *PublicTxTraceAPI) traceTx(
 	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, core.NewGasPool(msg.GasLimit), statedb, block.Number, block.Hash, tx, &index, tracedEVM.vmenv)
 
 	traceActions := tracedEVM.txTracer.GetResult()
-	statedb.EndTransaction()
 
 	if err != nil {
 		errTrace := txtrace.GetErrorTraceFromMsg(msg, block.Hash, *block.Number, tx.Hash(), index, err)
