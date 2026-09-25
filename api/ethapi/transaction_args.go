@@ -153,7 +153,8 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 	}
 	// create check
 	if args.To == nil {
-		if args.BlobHashes != nil {
+		// ToTransaction builds a BlobTx if either blob field is set.
+		if args.BlobHashes != nil || args.BlobFeeCap != nil {
 			return errors.New(`missing "to" in blob transaction`)
 		}
 		if len(args.data()) == 0 {
