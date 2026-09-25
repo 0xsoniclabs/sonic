@@ -25,6 +25,7 @@ import (
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
 
@@ -127,11 +128,31 @@ func (s *Store) ForEachEvent(start idx.Epoch, onEvent func(event *inter.EventPay
 	s.forEachEvent(it, onEvent)
 }
 
+// ForEachEventRLP passes the RLP encoding of each event from the given key on
+// to onEvent, until it returns false or the events are exhausted. The event
+// slice remains valid after onEvent returns.
 func (s *Store) ForEachEventRLP(start []byte, onEvent func(key hash.Event, event rlp.RawValue) bool) {
+	s.forEachEventRLP(start, true, onEvent)
+}
+
+// ForEachEventRLPNoCopy is [Store.ForEachEventRLP] without the per-event copy:
+// the event slice is only valid until onEvent returns, as it points into memory
+// the database owns and may free at any time afterwards. Retaining it reads
+// freed memory, which corrupts the event or faults the process. When in doubt,
+// use [Store.ForEachEventRLP].
+func (s *Store) ForEachEventRLPNoCopy(start []byte, onEvent func(key hash.Event, event rlp.RawValue) bool) {
+	s.forEachEventRLP(start, false, onEvent)
+}
+
+func (s *Store) forEachEventRLP(start []byte, copyValue bool, onEvent func(key hash.Event, event rlp.RawValue) bool) {
 	it := s.table.Events.NewIterator(nil, start)
 	defer it.Release()
 	for it.Next() {
-		if !onEvent(hash.BytesToEvent(it.Key()), it.Value()) {
+		event := rlp.RawValue(it.Value())
+		if copyValue {
+			event = common.CopyBytes(event)
+		}
+		if !onEvent(hash.BytesToEvent(it.Key()), event) {
 			return
 		}
 	}
