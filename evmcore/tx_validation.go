@@ -517,11 +517,13 @@ func validateBundleTransactionsInternal(
 
 	// A bundle-only transaction without a plan to run in, or of which all
 	// plans have been processed already, would only block its sender's nonce.
-	if bundle.IsBundleOnly(tx) && len(bundle.GetApprovedExecutionPlans(tx)) == 0 {
-		return ErrBundleOnlyWithoutPlan
-	}
-	if isBundleOnlyOfProcessedBundles(tx, stateDb) {
-		return ErrBundleAlreadyProcessed
+	if bundle.IsBundleOnly(tx) {
+		if len(bundle.GetApprovedExecutionPlans(tx)) == 0 {
+			return ErrBundleOnlyWithoutPlan
+		}
+		if isBundleOnlyOfProcessedBundles(tx, stateDb) {
+			return ErrBundleAlreadyProcessed
+		}
 	}
 
 	// The remaining checks only cover bundle envelopes, ignore the rest.
