@@ -17,6 +17,7 @@
 package ethapi
 
 import (
+	"context"
 	"math"
 	"math/big"
 	"testing"
@@ -29,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -1067,6 +1069,138 @@ func TestTransactionArgs_ToMessageIsEquivalentToEvmcoreToMessage(t *testing.T) {
 			directMsg.SkipTransactionChecks = false
 
 			require.Equal(t, directMsg, msgFromTx)
+		})
+	}
+}
+
+// newSetDefaultsTestBackend builds a mock Backend with the expectations
+// needed to reach the post-gas-pricing checks in setDefaults, i.e. up to and
+// including the "to == nil" create checks and the chainID check.
+func newSetDefaultsTestBackend(t *testing.T, chainID *big.Int) *MockBackend {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+
+	block := &evmcore.EvmBlock{}
+	block.Number = big.NewInt(1)
+
+	backend.EXPECT().CurrentBlock().Return(block).AnyTimes()
+	backend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
+	backend.EXPECT().ChainID().Return(chainID).AnyTimes()
+	return backend
+}
+
+func TestTransactionArgs_SetDefaults_RejectsGasPriceWithAuthorizationList(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+
+	args := TransactionArgs{
+		GasPrice:          (*hexutil.Big)(big.NewInt(1)),
+		AuthorizationList: []types.SetCodeAuthorization{{}},
+	}
+
+	err := args.setDefaults(context.Background(), backend)
+	require.EqualError(t, err, "both gasPrice and authorizationList specified")
+}
+
+func TestTransactionArgs_SetDefaults_RejectsMissingToWithBlobHashes(t *testing.T) {
+	t.Parallel()
+
+	addr := common.Address{1}
+	nonce := hexutil.Uint64(0)
+	gas := hexutil.Uint64(21000)
+	fee := (*hexutil.Big)(big.NewInt(100))
+
+	backend := newSetDefaultsTestBackend(t, big.NewInt(1))
+
+	args := TransactionArgs{
+		From:                 &addr,
+		Nonce:                &nonce,
+		Gas:                  &gas,
+		MaxFeePerGas:         fee,
+		MaxPriorityFeePerGas: fee,
+		BlobHashes:           []common.Hash{{1}},
+	}
+
+	err := args.setDefaults(context.Background(), backend)
+	require.EqualError(t, err, `missing "to" in blob transaction`)
+}
+
+func TestTransactionArgs_SetDefaults_RejectsMissingToWithAuthorizationList(t *testing.T) {
+	t.Parallel()
+
+	addr := common.Address{1}
+	nonce := hexutil.Uint64(0)
+	gas := hexutil.Uint64(21000)
+	fee := (*hexutil.Big)(big.NewInt(100))
+	data := hexutil.Bytes{0x01}
+
+	backend := newSetDefaultsTestBackend(t, big.NewInt(1))
+
+	args := TransactionArgs{
+		From:                 &addr,
+		Nonce:                &nonce,
+		Gas:                  &gas,
+		MaxFeePerGas:         fee,
+		MaxPriorityFeePerGas: fee,
+		Data:                 &data,
+		AuthorizationList:    []types.SetCodeAuthorization{{}},
+	}
+
+	err := args.setDefaults(context.Background(), backend)
+	require.EqualError(t, err, `authorizationList provided for contract creation, but "to" field is missing`)
+}
+
+func TestTransactionArgs_SetDefaults_ChainID(t *testing.T) {
+	t.Parallel()
+
+	addr := common.Address{1}
+	nonce := hexutil.Uint64(0)
+	gas := hexutil.Uint64(21000)
+	fee := (*hexutil.Big)(big.NewInt(100))
+	nodeChainID := big.NewInt(146)
+
+	tests := map[string]struct {
+		chainID     *hexutil.Big
+		expectedErr string
+	}{
+		"nil chainID defaults to node's chainID": {
+			chainID: nil,
+		},
+		"matching chainID is accepted": {
+			chainID: (*hexutil.Big)(nodeChainID),
+		},
+		"mismatching chainID is rejected": {
+			chainID:     (*hexutil.Big)(big.NewInt(1337)),
+			expectedErr: "chainId does not match node's (have=1337, want=146)",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			backend := newSetDefaultsTestBackend(t, nodeChainID)
+
+			args := TransactionArgs{
+				From:                 &addr,
+				To:                   &addr,
+				Nonce:                &nonce,
+				Gas:                  &gas,
+				MaxFeePerGas:         fee,
+				MaxPriorityFeePerGas: fee,
+				ChainID:              test.chainID,
+			}
+
+			err := args.setDefaults(context.Background(), backend)
+			if test.expectedErr != "" {
+				require.EqualError(t, err, test.expectedErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, (*hexutil.Big)(nodeChainID), args.ChainID)
 		})
 	}
 }
