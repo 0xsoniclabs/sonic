@@ -1853,8 +1853,13 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 			statedb.Release()
 			return nil, 0, nil, err
 		}
+		stopCancel := context.AfterFunc(ctx, vmenv.Cancel)
 		res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
+		stopCancel()
 		statedb.Release()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, 0, nil, ctxErr
+		}
 		if err != nil {
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction from sender %v and nonce %d: %w",
 				args.from(), uint64(*args.Nonce), err)
