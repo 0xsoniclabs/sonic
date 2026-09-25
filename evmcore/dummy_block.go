@@ -47,6 +47,8 @@ type (
 		GasLimit uint64
 		GasUsed  uint64
 
+		Difficulty *big.Int
+
 		WithdrawalsHash *common.Hash
 
 		BaseFee     *big.Int
@@ -126,6 +128,7 @@ func ToEvmHeader(block *inter.Block, prevHash common.Hash, rules opera.Rules) *E
 		Duration:        time.Duration(block.Duration) * time.Nanosecond,
 		GasLimit:        block.GasLimit,
 		GasUsed:         block.GasUsed,
+		Difficulty:      new(big.Int).SetUint64(block.Difficulty),
 		BaseFee:         baseFee,
 		PrevRandao:      prevRandao,
 		WithdrawalsHash: withdrawalsHash,
@@ -146,10 +149,25 @@ func ConvertFromEthHeader(h *types.Header) *EvmHeader {
 		ParentHash:      h.ParentHash,
 		Time:            inter.FromUnix(int64(h.Time)),
 		Hash:            common.BytesToHash(h.Extra),
+		Difficulty:      h.Difficulty,
 		BaseFee:         h.BaseFee,
 		PrevRandao:      h.MixDigest,
 		WithdrawalsHash: h.WithdrawalsHash,
 	}
+}
+
+// emptyRequestsHash is the EIP-7685 hash of an empty request list, addressable
+// so that the JSON encoding can point at it.
+var emptyRequestsHash = types.EmptyRequestsHash
+
+// difficultyOf returns the header's difficulty, defaulting to zero for a header
+// that does not carry one. The difficulty is a required field of the Ethereum
+// header and of the RPC block encoding, so it must never be nil.
+func difficultyOf(h *EvmHeader) *big.Int {
+	if h.Difficulty == nil {
+		return new(big.Int)
+	}
+	return new(big.Int).Set(h.Difficulty)
 }
 
 // EthHeader returns header in ETH format
@@ -170,7 +188,7 @@ func (h *EvmHeader) EthHeader() *types.Header {
 		Extra:      inter.EncodeExtraData(h.Time.Time(), h.Duration),
 		BaseFee:    h.BaseFee,
 
-		Difficulty: new(big.Int),
+		Difficulty: difficultyOf(h),
 		MixDigest:  h.PrevRandao,
 
 		WithdrawalsHash: h.WithdrawalsHash,
@@ -204,13 +222,35 @@ type EvmHeaderJson struct {
 	WithdrawalsHash *common.Hash     `json:"withdrawalsRoot"`
 	BlobGasUsed     *hexutil.Uint64  `json:"blobGasUsed"`
 	ExcessBlobGas   *hexutil.Uint64  `json:"excessBlobGas"`
+
+	// ParentBeaconBlockRoot is reported as the zero hash. EIP-4788 names the
+	// beacon block root of the parent, and Sonic has no beacon chain; the field
+	// is reported because every client running Cancun rules - which Sonic does -
+	// emits it, and a consumer reading block JSON structurally trips on its
+	// absence. The specification permits no null here, so zero is the value a
+	// chain without a beacon chain can state.
+	ParentBeaconBlockRoot *common.Hash `json:"parentBeaconBlockRoot"`
+
+	// RequestsHash is the EIP-7685 hash of an empty request list: Sonic produces
+	// no execution layer requests - no deposits, withdrawal or consolidation
+	// requests, since staking is the SFC - and the empty hash states exactly
+	// that.
+	RequestsHash *common.Hash `json:"requestsHash"`
 }
 
 type EvmBlockJson struct {
 	*EvmHeaderJson
-	Txs    []interface{}   `json:"transactions"`
-	Size   *hexutil.Uint64 `json:"size"` // RLP encoded storage size of the block
-	Uncles []common.Hash   `json:"uncles"`
+	Txs  []interface{}   `json:"transactions"`
+	Size *hexutil.Uint64 `json:"size"` // RLP encoded storage size of the block
+
+	// Withdrawals is always empty: Sonic blocks carry no consensus layer
+	// withdrawals, which is why every Sonic block commits to
+	// types.EmptyWithdrawalsHash. It belongs to the body rather than the header,
+	// so it is reported for a block and not for a header subscription, the same
+	// split go-ethereum makes.
+	Withdrawals []*types.Withdrawal `json:"withdrawals"`
+
+	Uncles []common.Hash `json:"uncles"`
 }
 
 func (h *EvmHeader) ToJson(receipts types.Receipts) *EvmHeaderJson {
@@ -227,7 +267,7 @@ func (h *EvmHeader) ToJson(receipts types.Receipts) *EvmHeaderJson {
 		TimeNano:        hexutil.Uint64(h.Time),
 		Extra:           inter.EncodeExtraData(h.Time.Time(), h.Duration),
 		BaseFee:         (*hexutil.Big)(h.BaseFee),
-		Difficulty:      new(hexutil.Big),
+		Difficulty:      (*hexutil.Big)(difficultyOf(h)),
 		PrevRandao:      h.PrevRandao,
 		TotalDiff:       new(hexutil.Big),
 		Hash:            &h.Hash,
@@ -235,6 +275,9 @@ func (h *EvmHeader) ToJson(receipts types.Receipts) *EvmHeaderJson {
 		WithdrawalsHash: h.WithdrawalsHash,
 		BlobGasUsed:     (*hexutil.Uint64)(new(uint64)),
 		ExcessBlobGas:   (*hexutil.Uint64)(new(uint64)),
+
+		ParentBeaconBlockRoot: &common.Hash{},
+		RequestsHash:          &emptyRequestsHash,
 	}
 	if receipts != nil { // if receipts resolution fails, don't set ReceiptsHash at all
 		if receipts.Len() != 0 {

@@ -36,6 +36,61 @@ func TestNewEVMBlockContext_DifficultyIsOne(t *testing.T) {
 	require.Equal(t, big.NewInt(1), context.Difficulty)
 }
 
+func TestNewEVMBlockContextFromHeader_UsesTheHeadersDifficulty(t *testing.T) {
+	tests := map[string]struct {
+		difficulty     *big.Int
+		prevRandao     common.Hash
+		wantDifficulty *big.Int
+		wantRandom     bool
+	}{
+		"a header carrying no difficulty is post-merge": {
+			difficulty:     nil,
+			wantDifficulty: big.NewInt(0),
+			wantRandom:     true,
+		},
+		"a zero difficulty is post-merge, and PREVRANDAO is the header's": {
+			difficulty:     big.NewInt(0),
+			prevRandao:     common.Hash{0x42},
+			wantDifficulty: big.NewInt(0),
+			wantRandom:     true,
+		},
+		"a non-zero difficulty is reported as it is": {
+			difficulty:     big.NewInt(0x20000),
+			wantDifficulty: big.NewInt(0x20000),
+			wantRandom:     false,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			header := &EvmHeader{
+				Number:     big.NewInt(12),
+				Difficulty: test.difficulty,
+				PrevRandao: test.prevRandao,
+			}
+			context := NewEVMBlockContextFromHeader(header, nil, nil)
+			require.Equal(t, test.wantDifficulty, context.Difficulty)
+			if test.wantRandom {
+				require.Equal(t, &test.prevRandao, context.Random)
+			} else {
+				require.Nil(t, context.Random)
+			}
+		})
+	}
+}
+
+func TestNewEVMBlockContextFromHeader_DoesNotModifyTheHeader(t *testing.T) {
+	// The context takes the difficulty by value: it zeroes the one it is given
+	// when PREVRANDAO applies, and the header must not follow it.
+	header := &EvmHeader{
+		Number:     big.NewInt(12),
+		Difficulty: big.NewInt(0x20000),
+		PrevRandao: common.Hash{0x42},
+	}
+	NewEVMBlockContextFromHeader(header, nil, nil)
+	require.Equal(t, big.NewInt(0x20000), header.Difficulty)
+}
+
 func TestNewEVMBlockContextWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 	header := &EvmHeader{
 		Number: big.NewInt(12),

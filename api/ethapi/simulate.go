@@ -311,7 +311,7 @@ func (sim *simulator) processBlock(
 
 	// Build block context.
 	chain := &simDummyChain{ctx: ctx, backend: sim.b, base: sim.base, processedHeaders: prevHeaders}
-	blockContext := evmcore.NewEVMBlockContext(header, chain, nil)
+	blockContext := evmcore.NewEVMBlockContextFromHeader(header, chain, nil)
 
 	precompiles := sim.activePrecompiles(sim.base)
 

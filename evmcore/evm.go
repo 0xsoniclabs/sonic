@@ -47,6 +47,15 @@ func NewEVMBlockContext(header *EvmHeader, chain DummyChain, author *common.Addr
 	return NewEVMBlockContextWithDifficulty(header, chain, author, difficulty)
 }
 
+// NewEVMBlockContextFromHeader creates a new context for use in the EVM using
+// the difficulty the header itself carries.
+//
+// A header that carries no difficulty is treated as carrying zero, the
+// canonical post-merge encoding and what Sonic blocks report.
+func NewEVMBlockContextFromHeader(header *EvmHeader, chain DummyChain, author *common.Address) vm.BlockContext {
+	return NewEVMBlockContextWithDifficulty(header, chain, author, difficultyOf(header))
+}
+
 // NewEVMBlockContextWithDifficulty creates a new context for use in the EVM
 // with a specified difficulty.
 func NewEVMBlockContextWithDifficulty(

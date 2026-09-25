@@ -423,10 +423,16 @@ func TestBlockStateOverrides(t *testing.T) {
 	mockState.EXPECT().SetBalance(common.Address{1}, uint256.NewInt(123)).AnyTimes() // state override
 	setExpectedStateCalls(mockState)
 
+	// The RPC layer builds the block context from the difficulty the header
+	// carries. This header carries none, which is zero - the canonical
+	// post-merge encoding - so the EVM reports PREVRANDAO rather than a
+	// difficulty of 1.
+	prevRandao := block.PrevRandao
 	expectedBlockCtx := &vm.BlockContext{
 		BlockNumber: big.NewInt(5),
 		Time:        0,
-		Difficulty:  big.NewInt(1),
+		Difficulty:  big.NewInt(0),
+		Random:      &prevRandao,
 		BaseFee:     big.NewInt(1234),
 		BlobBaseFee: big.NewInt(1),
 	}
@@ -1916,4 +1922,87 @@ func TestCapMaxGas_IsUpgradesAware(t *testing.T) {
 			require.Equal(t, uint64(test.wantEstimation), got)
 		})
 	}
+}
+
+func TestDoCall_ZeroesTheBaseFeeForACallThatNamesNoGasPrice(t *testing.T) {
+	// go-ethereum lowers the base fee to zero for such a call so that the EVM's
+	// basefee < feecap invariant holds; BASEFEE then reads zero, which is what a
+	// caller pricing its call at zero must see.
+	headerBaseFee := big.NewInt(27399063)
+
+	tests := map[string]struct {
+		gasPrice    *hexutil.Big
+		wantBaseFee *big.Int
+	}{
+		"no gas price zeroes the base fee": {
+			gasPrice:    nil,
+			wantBaseFee: big.NewInt(0),
+		},
+		"an explicit zero gas price zeroes it too": {
+			gasPrice:    (*hexutil.Big)(big.NewInt(0)),
+			wantBaseFee: big.NewInt(0),
+		},
+		"a priced call keeps the block's base fee": {
+			gasPrice:    (*hexutil.Big)(new(big.Int).Add(headerBaseFee, big.NewInt(1))),
+			wantBaseFee: headerBaseFee,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockBackend := NewMockBackend(ctrl)
+			mockState := state.NewMockStateDB(ctrl)
+
+			header := &evmcore.EvmHeader{
+				Number:  big.NewInt(1),
+				BaseFee: headerBaseFee,
+			}
+			block := &evmcore.EvmBlock{EvmHeader: *header}
+			blockNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+
+			any := gomock.Any()
+			mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+			mockBackend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(mockState, block, nil).AnyTimes()
+			mockBackend.EXPECT().ChainConfig(any).Return(&params.ChainConfig{}).AnyTimes()
+			// Declared before the defaults so the sender can afford a priced call.
+			mockState.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)).AnyTimes()
+			setExpectedStateCalls(mockState)
+
+			// The base fee is set on the EVM the backend hands out, so the
+			// instance itself is what the test inspects.
+			var evm *vm.EVM
+			mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(
+				func(a1, a2, a3, a4, a5 interface{}) (*vm.EVM, func() error, error) {
+					created, release, err := getEvmFunc(mockState)(a1, a2, a3, a4, a5)
+					created.Context.BaseFee = new(big.Int).Set(headerBaseFee)
+					evm = created
+					return created, release, err
+				}).AnyTimes()
+
+			args := getTxArgs(t)
+			args.GasPrice = test.gasPrice
+
+			_, err := DoCall(context.Background(), mockBackend, args, blockNr, nil, nil, 0, 10000000, nil)
+			require.NoError(t, err)
+			require.NotNil(t, evm, "the call must have created an EVM")
+			require.Equal(t, test.wantBaseFee, evm.Context.BaseFee)
+		})
+	}
+}
+
+func TestRPCMarshalBlock_ReportsAnEmptyWithdrawalsList(t *testing.T) {
+	// Sonic blocks carry no consensus layer withdrawals, but a post-Shanghai
+	// client reads the list structurally: it must be present and empty, never
+	// null and never absent.
+	block := &evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Number: big.NewInt(1)}}
+
+	marshalled, err := RPCMarshalBlock(block, nil, true, false, big.NewInt(1))
+	require.NoError(t, err)
+	require.NotNil(t, marshalled.Withdrawals)
+	require.Empty(t, marshalled.Withdrawals)
+
+	encoded, err := json.Marshal(marshalled)
+	require.NoError(t, err)
+	require.Contains(t, string(encoded), `"withdrawals":[]`)
 }
