@@ -151,6 +151,13 @@ func (r *EvmStateReader) Block(verificationHash common.Hash, number uint64) *evm
 // If the hash provided is not zero and does not match the hash of the block
 // found, nil is returned.
 func (r *EvmStateReader) getBlock(verificationHash common.Hash, n idx.Block, readTxs bool) *evmcore.EvmBlock {
+	// A block, its transactions, receipts, and logs are written to the store
+	// before the latest block index is advanced; that index is what makes the
+	// block public. Serving it earlier would let a client observe a transaction
+	// while queries resolving "latest" still answer from the preceding block.
+	if n > r.store.GetLatestBlockIndex() {
+		return nil
+	}
 	block := r.store.GetBlock(n)
 	if block == nil {
 		return nil
