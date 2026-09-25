@@ -256,6 +256,9 @@ func gossipConfigWithFlags(ctx *cli.Context, src gossip.Config) gossip.Config {
 	if ctx.GlobalIsSet(flags.MaxResponseSizeFlag.Name) {
 		cfg.MaxResponseSize = ctx.GlobalInt(flags.MaxResponseSizeFlag.Name)
 	}
+	if ctx.GlobalIsSet(flags.MaxTraceFilterRangeFlag.Name) {
+		cfg.MaxTraceFilterRange = ctx.GlobalUint64(flags.MaxTraceFilterRangeFlag.Name)
+	}
 	if ctx.IsSet(flags.StructLogLimitFlag.Name) {
 		cfg.StructLogLimit = ctx.GlobalInt(flags.StructLogLimitFlag.Name)
 	}

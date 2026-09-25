@@ -54,7 +54,7 @@ const (
 type PublicTxTraceAPI struct {
 	b               Backend
 	maxResponseSize int    // in bytes
-	maxFilterRange  uint64 // widest block span of one trace_filter
+	maxFilterRange  uint64 // widest block span of one trace_filter, 0=unlimited
 }
 
 // NewPublicTxTraceAPI creates a new transaction trace API
@@ -867,7 +867,7 @@ func parseFilterArguments(b Backend, args FilterArgs, maxRange uint64) (fromBloc
 		toBlock = blockHead
 	}
 
-	if toBlock > fromBlock && uint64(toBlock-fromBlock) > maxRange {
+	if maxRange > 0 && toBlock > fromBlock && uint64(toBlock-fromBlock) > maxRange {
 		return 0, 0, nil, nil, fmt.Errorf("too wide blocks range, the limit is %d", maxRange)
 	}
 
