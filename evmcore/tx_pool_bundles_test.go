@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -360,6 +361,76 @@ func TestTxPool_EvictBundleOnlyTransactionsOfProcessedBundles_DropsTheTransactio
 	}
 }
 
+func TestTxPool_EvictStaleBundleOnlyTransactions_DropsBundleOnlyTransactionsWaitingTooLong(t *testing.T) {
+	tests := map[string]struct {
+		brio     bool
+		lifetime time.Duration
+		evicted  bool
+	}{
+		"stale":       {brio: true, lifetime: time.Nanosecond, evicted: true},
+		"fresh":       {brio: true, lifetime: time.Hour},
+		"before brio": {lifetime: time.Nanosecond},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			setup := setupTxPool
+			if test.brio {
+				setup = setupBrioTxPool
+			}
+			pool, remoteKey := setup()
+			defer pool.Stop()
+			pool.waitForIdleReorgLoop_forTesting()
+
+			pool.mu.Lock()
+			defer pool.mu.Unlock()
+			pool.config.BundleOnlyLifetime = test.lifetime
+
+			// Local transactions are not exempt, they can not run on their own either.
+			localKey, err := crypto.GenerateKey()
+			require.NoError(err)
+			pool.locals.add(crypto.PubkeyToAddress(localKey.PublicKey))
+
+			add := func(key *ecdsa.PrivateKey, nonce uint64, accessList types.AccessList) *types.Transaction {
+				tx := types.MustSignNewTx(key, pool.signer, &types.AccessListTx{
+					Nonce:      nonce,
+					Gas:        100_000,
+					GasPrice:   big.NewInt(1),
+					AccessList: accessList,
+				})
+				pool.all.Add(tx, false)
+				pool.promoteTx(crypto.PubkeyToAddress(key.PublicKey), tx.Hash(), tx)
+				return tx
+			}
+			mark := types.AccessList{{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{0x1}}}}
+			bundleOnly := []*types.Transaction{add(remoteKey, 0, mark), add(localKey, 0, mark)}
+			regular := add(remoteKey, 1, nil)
+
+			time.Sleep(time.Millisecond) // < let the stale case expire
+			pool.evictStaleBundleOnlyTransactions()
+
+			for _, tx := range bundleOnly {
+				if test.evicted {
+					require.Nil(pool.all.Get(tx.Hash()), "stale bundle-only transaction must be evicted")
+				} else {
+					require.NotNil(pool.all.Get(tx.Hash()), "bundle-only transaction must be retained")
+				}
+			}
+			require.NotNil(pool.all.Get(regular.Hash()), "regular transactions must be retained")
+
+			remote := crypto.PubkeyToAddress(remoteKey.PublicKey)
+			if test.evicted {
+				require.Equal(uint64(0), pool.pendingNonces.get(remote), "the evicted transaction must not block the nonce of its sender")
+				require.True(pool.queue[remote].Contains(regular.Nonce()), "transactions behind the evicted one must be queued")
+			} else {
+				require.Equal(uint64(2), pool.pendingNonces.get(remote))
+				require.True(pool.pending[remote].Contains(regular.Nonce()))
+			}
+		})
+	}
+}
+
 // BenchmarkTxPool_EvictBundleOnlyTransactionsOfProcessedBundles measures the
 // scan run on every new head, excluding the cost of looking up processed
 // bundles, which is reported as lookups/op. No bundle has been processed, so
@@ -376,7 +447,7 @@ func BenchmarkTxPool_EvictBundleOnlyTransactionsOfProcessedBundles(b *testing.B)
 }
 
 func benchmarkEvictBundleOnlyTransactionsOfProcessedBundles(b *testing.B, size, percentBundleOnly int) {
-	pool, key := setupTxPool()
+	pool, key := setupBrioTxPool()
 	defer pool.Stop()
 	pool.waitForIdleReorgLoop_forTesting()
 
@@ -384,7 +455,6 @@ func benchmarkEvictBundleOnlyTransactionsOfProcessedBundles(b *testing.B, size, 
 	defer pool.mu.Unlock()
 
 	stateDb := &countingBundleStateDb{testTxPoolStateDb: newTestTxPoolStateDb()}
-	pool.chain = brioTestBlockChain{pool.chain}
 	pool.currentState = stateDb
 
 	account := crypto.PubkeyToAddress(key.PublicKey)
@@ -412,6 +482,12 @@ func benchmarkEvictBundleOnlyTransactionsOfProcessedBundles(b *testing.B, size, 
 	}
 	b.ReportMetric(float64(stateDb.lookups)/float64(b.N), "lookups/op")
 	require.Equal(b, size, pool.all.Count())
+}
+
+// setupBrioTxPool is setupTxPool on a chain running Brio. The chain of a running
+// pool can not be swapped, its event loop reads it without holding the lock.
+func setupBrioTxPool() (*TxPool, *ecdsa.PrivateKey) {
+	return setupTxPoolWithChain(params.TestChainConfig, brioTestBlockChain{NewTestBlockChain(newTestTxPoolStateDb())})
 }
 
 type brioTestBlockChain struct {
