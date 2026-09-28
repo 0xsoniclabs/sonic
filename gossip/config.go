@@ -107,6 +107,9 @@ type (
 		// MaxResponseSize is a limit for maximum response size in some RPC calls in bytes
 		MaxResponseSize int
 
+		// MaxTraceFilterRange is the widest block span one trace_filter call may replay, 0=unlimited
+		MaxTraceFilterRange uint64
+
 		// StructLogLimit is a limit for maximum number of logs in structured EVM debug log
 		StructLogLimit int
 
@@ -225,8 +228,9 @@ func DefaultConfig(scale cachescale.Func) Config {
 		RPCTxFeeCap: 100, // 100 FTM
 		RPCTimeout:  5 * time.Second,
 
-		MaxResponseSize: 25 * 1024 * 1024,
-		StructLogLimit:  2000,
+		MaxResponseSize:     25 * 1024 * 1024,
+		MaxTraceFilterRange: 1000,
+		StructLogLimit:      2000,
 	}
 	sessionCfg := cfg.Protocol.DagStreamLeecher.Session
 

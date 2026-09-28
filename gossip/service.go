@@ -557,7 +557,7 @@ func (s *Service) APIs() []rpc.API {
 		}, {
 			Namespace: "trace",
 			Version:   "1.0",
-			Service:   ethapi.NewPublicTxTraceAPI(s.EthAPI, s.config.MaxResponseSize),
+			Service:   ethapi.NewPublicTxTraceAPI(s.EthAPI, s.config.MaxResponseSize, s.config.MaxTraceFilterRange),
 			Public:    true,
 		},
 	}...)

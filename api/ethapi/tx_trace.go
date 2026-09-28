@@ -53,14 +53,16 @@ const (
 // It offers only methods that operate on public data that is freely available to anyone
 type PublicTxTraceAPI struct {
 	b               Backend
-	maxResponseSize int // in bytes
+	maxResponseSize int    // in bytes
+	maxFilterRange  uint64 // widest block span of one trace_filter, 0=unlimited
 }
 
 // NewPublicTxTraceAPI creates a new transaction trace API
-func NewPublicTxTraceAPI(b Backend, maxResponseSize int) *PublicTxTraceAPI {
+func NewPublicTxTraceAPI(b Backend, maxResponseSize int, maxFilterRange uint64) *PublicTxTraceAPI {
 	return &PublicTxTraceAPI{
 		b:               b,
 		maxResponseSize: maxResponseSize,
+		maxFilterRange:  maxFilterRange,
 	}
 }
 
@@ -639,7 +641,7 @@ func filterBlocks(ctx context.Context, s *PublicTxTraceAPI, args FilterArgs) (js
 	}
 
 	// parse arguments
-	fromBlock, toBlock, fromAddresses, toAddresses, err := parseFilterArguments(s.b, args)
+	fromBlock, toBlock, fromAddresses, toAddresses, err := parseFilterArguments(s.b, args, s.maxFilterRange)
 	if err != nil {
 		return nil, err
 	}
@@ -684,7 +686,7 @@ func filterBlocksInParallel(ctx context.Context, s *PublicTxTraceAPI, args Filte
 		return nil, err
 	}
 	// parse arguments
-	fromBlock, toBlock, fromAddresses, toAddresses, err := parseFilterArguments(s.b, args)
+	fromBlock, toBlock, fromAddresses, toAddresses, err := parseFilterArguments(s.b, args, s.maxFilterRange)
 	if err != nil {
 		return nil, err
 	}
@@ -766,8 +768,9 @@ func addBlocksForProcessing(ctx context.Context, fromBlock rpc.BlockNumber, toBl
 	}
 }
 
-// Parses rpc call arguments
-func parseFilterArguments(b Backend, args FilterArgs) (fromBlock rpc.BlockNumber, toBlock rpc.BlockNumber, fromAddresses map[common.Address]struct{}, toAddresses map[common.Address]struct{}, err error) {
+// Parses rpc call arguments and refuses a block span wider than maxRange,
+// before any block is read; both filter paths route through here.
+func parseFilterArguments(b Backend, args FilterArgs, maxRange uint64) (fromBlock rpc.BlockNumber, toBlock rpc.BlockNumber, fromAddresses map[common.Address]struct{}, toAddresses map[common.Address]struct{}, err error) {
 
 	blockHead := rpc.BlockNumber(b.CurrentBlock().NumberU64())
 
@@ -787,6 +790,10 @@ func parseFilterArguments(b Backend, args FilterArgs) (fromBlock rpc.BlockNumber
 		toBlock = rpc.BlockNumber(blockNumber)
 	} else {
 		toBlock = blockHead
+	}
+
+	if maxRange > 0 && toBlock > fromBlock && uint64(toBlock-fromBlock) > maxRange {
+		return 0, 0, nil, nil, fmt.Errorf("too wide blocks range, the limit is %d", maxRange)
 	}
 
 	if args.FromAddress != nil {
