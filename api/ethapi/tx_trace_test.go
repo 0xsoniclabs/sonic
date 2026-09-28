@@ -633,3 +633,50 @@ func TestCallMany_BlockNotFound(t *testing.T) {
 
 	require.ErrorIs(t, err, injected)
 }
+
+func TestTraceCalls_MissingBlock_ReportHeaderNotFound(t *testing.T) {
+	calls := map[string]func(Backend, rpc.BlockNumberOrHash) error{
+		"trace_call": func(b Backend, blockNrOrHash rpc.BlockNumberOrHash) error {
+			_, err := (&PublicTxTraceAPI{b: b}).Call(t.Context(), TransactionArgs{}, []string{"trace"}, blockNrOrHash, nil)
+			return err
+		},
+		"trace_callMany": func(b Backend, blockNrOrHash rpc.BlockNumberOrHash) error {
+			_, err := (&PublicTxTraceAPI{b: b}).CallMany(t.Context(), []CallRequest{}, blockNrOrHash, nil)
+			return err
+		},
+		"debug_traceCall": func(b Backend, blockNrOrHash rpc.BlockNumberOrHash) error {
+			_, err := NewPublicDebugAPI(b, 0, 0).TraceCall(t.Context(), TransactionArgs{}, blockNrOrHash, nil)
+			return err
+		},
+	}
+
+	blockHash := common.Hash{1}
+	selectors := map[string]struct {
+		blockNrOrHash rpc.BlockNumberOrHash
+		expectLookup  func(*MockBackend)
+	}{
+		"number": {
+			blockNrOrHash: rpc.BlockNumberOrHashWithNumber(99),
+			expectLookup: func(b *MockBackend) {
+				b.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(99)).Return(nil, nil)
+			},
+		},
+		"hash": {
+			blockNrOrHash: rpc.BlockNumberOrHashWithHash(blockHash, false),
+			expectLookup: func(b *MockBackend) {
+				b.EXPECT().BlockByHash(gomock.Any(), blockHash).Return(nil, nil)
+			},
+		},
+	}
+
+	for callName, call := range calls {
+		for selectorName, selector := range selectors {
+			t.Run(callName+"/"+selectorName, func(t *testing.T) {
+				backend := NewMockBackend(gomock.NewController(t))
+				selector.expectLookup(backend)
+
+				require.ErrorContains(t, call(backend, selector.blockNrOrHash), "header not found")
+			})
+		}
+	}
+}

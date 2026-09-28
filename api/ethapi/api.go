@@ -2881,6 +2881,9 @@ func getEvmBlockFromNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNum
 	} else {
 		return nil, errors.New("invalid arguments; neither block number nor hash specified")
 	}
+	if block == nil {
+		return nil, errors.New("header not found")
+	}
 	return block, nil
 }
 
