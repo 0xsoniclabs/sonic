@@ -31,7 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,12 +42,12 @@ type bundleSteps struct {
 	succeeding bundle.BuilderStep // < executes fine, from an unrelated account
 }
 
-// TestBundles_BundleOnlyTxOfEvaluatedBundleDoesNotBlockTheSendersNonce checks
+// TestBundles_BundleOnlyTxOfProcessedBundleDoesNotBlockTheSendersNonce checks
 // that a bundle-only transaction in the pool is dropped once its bundle got
-// evaluated without executing it. Such a transaction can never be included in a
-// block on its own, so keeping it would block the nonce of its sender until it
-// times out of the pool.
-func TestBundles_BundleOnlyTxOfEvaluatedBundleDoesNotBlockTheSendersNonce(t *testing.T) {
+// processed without executing it. Such a transaction can never be included in a
+// block on its own, so keeping it would block the nonce of its sender
+// indefinitely.
+func TestBundles_BundleOnlyTxOfProcessedBundleDoesNotBlockTheSendersNonce(t *testing.T) {
 
 	// Each case builds a bundle which is executable as a whole, and thus
 	// accepted by the pool, but which does not execute the tested transaction.
@@ -155,7 +154,7 @@ func TestBundles_BundleOnlyTxOfEvaluatedBundleDoesNotBlockTheSendersNonce(t *tes
 			require.Equal(t, nonce, onChainNonce,
 				"the skipped transaction must not consume a nonce")
 
-			// The evaluated transaction must be evicted from the pool.
+			// The skipped transaction must be evicted from the pool.
 			ctxt, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
 			err = tests.WaitFor(ctxt, func(ctxt context.Context) (bool, error) {
@@ -165,8 +164,8 @@ func TestBundles_BundleOnlyTxOfEvaluatedBundleDoesNotBlockTheSendersNonce(t *tes
 				}
 				return pending == nonce, nil
 			})
-			assert.NoError(t, err,
-				"the pending nonce must return to %d after the bundle got evaluated", nonce,
+			require.NoError(t, err,
+				"the pending nonce must return to %d after the bundle got processed", nonce,
 			)
 
 			// The envelope is dropped as well, it can not run a second time.
@@ -174,13 +173,13 @@ func TestBundles_BundleOnlyTxOfEvaluatedBundleDoesNotBlockTheSendersNonce(t *tes
 				_, _, err := client.TransactionByHash(t.Context(), envelope.Hash())
 				return errors.Is(err, ethereum.NotFound)
 			}, 30*time.Second, 100*time.Millisecond,
-				"the envelope of an evaluated bundle should be dropped from the pool",
+				"the envelope of a processed bundle should be dropped from the pool",
 			)
 
 			// Gossip may re-introduce the transaction, it must be rejected.
 			_, err = net.Send(testedTx)
 			require.ErrorContains(t, err, "bundle has already been processed",
-				"a bundle-only transaction of an evaluated bundle must not be accepted again")
+				"a bundle-only transaction of a processed bundle must not be accepted again")
 
 			// A regular transaction using the reported nonce must be executable.
 			followUp := tests.CreateTransaction(t, net, &types.AccessListTx{
@@ -198,7 +197,7 @@ func TestBundles_BundleOnlyTxOfEvaluatedBundleDoesNotBlockTheSendersNonce(t *tes
 }
 
 // TestBundles_BundleOnlyTxIsEvictedWithoutItsEnvelope checks that a node drops
-// a bundle-only transaction of an evaluated bundle even if its pool never got
+// a bundle-only transaction of a processed bundle even if its pool never got
 // to see the envelope, e.g. because a wallet signed the transaction before it
 // got packed into an envelope submitted to another node.
 func TestBundles_BundleOnlyTxIsEvictedWithoutItsEnvelope(t *testing.T) {
@@ -276,7 +275,7 @@ func TestBundles_BundleOnlyTxIsEvictedWithoutItsEnvelope(t *testing.T) {
 		_, _, err := client0.TransactionByHash(t.Context(), envelope.Hash())
 		return errors.Is(err, ethereum.NotFound)
 	}, 30*time.Second, 100*time.Millisecond,
-		"the envelope of an evaluated bundle should be dropped from the pool of node 0",
+		"the envelope of a processed bundle should be dropped from the pool of node 0",
 	)
 	_, _, err = client1.TransactionByHash(t.Context(), envelope.Hash())
 	require.ErrorIs(t, err, ethereum.NotFound, "node 1 must never see the envelope")
@@ -293,7 +292,7 @@ func TestBundles_BundleOnlyTxIsEvictedWithoutItsEnvelope(t *testing.T) {
 		return pending == nonce, err
 	})
 	require.NoError(t, err,
-		"the pending nonce on node 1 must return to %d after the bundle got evaluated", nonce,
+		"the pending nonce on node 1 must return to %d after the bundle got processed", nonce,
 	)
 
 	// A regular transaction using the reported nonce must be executable.
@@ -301,6 +300,7 @@ func TestBundles_BundleOnlyTxIsEvictedWithoutItsEnvelope(t *testing.T) {
 		To:    &recipient,
 		Value: big.NewInt(1),
 	}, sender)
+	require.Equal(t, nonce, followUp.Nonce())
 	require.NoError(t, client1.SendTransaction(t.Context(), followUp))
 	receipt, err := net.TryGetReceipt(20*time.Second, followUp.Hash())
 	require.NoError(t, err,

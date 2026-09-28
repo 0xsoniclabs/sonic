@@ -229,7 +229,7 @@ func bundleTx(nonce uint64, key *ecdsa.PrivateKey) *types.Transaction {
 		Build()
 }
 
-func TestTxPool_EvictTransactionsOfEvaluatedBundles_DropsBundleOnlyTransactionsOfEvaluatedBundles(t *testing.T) {
+func TestTxPool_EvictBundleOnlyTransactionsOfProcessedBundles_DropsTheTransactionsAndTheirEnvelope(t *testing.T) {
 	for name, withEnvelope := range map[string]bool{
 		"with envelope":    true,
 		"without envelope": false,
@@ -279,21 +279,21 @@ func TestTxPool_EvictTransactionsOfEvaluatedBundles_DropsBundleOnlyTransactionsO
 				BuildEnvelopeBundleAndPlan()
 
 			// Registered before the catch-all expectations installed below.
-			evaluated := atomic.Bool{}
+			processed := atomic.Bool{}
 			stateDb := state.NewMockStateDB(ctrl)
 			stateDb.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).
 				DoAndReturn(func(execPlanHash common.Hash) bool {
-					return evaluated.Load() && execPlanHash == plan.Hash()
+					return processed.Load() && execPlanHash == plan.Hash()
 				}).AnyTimes()
 			mockStateDbExecutionUsageForAccountWithNonce(stateDb, bundleeAddress, 0)
 			stateDb.EXPECT().Release().AnyTimes() // < released on every new head
 
 			chain := NewMockStateReader(ctrl)
 			chain.EXPECT().CurrentBlock().DoAndReturn(func() *EvmBlock {
-				// The evaluating block advances the head, making the pool
+				// The processing block advances the head, making the pool
 				// re-evaluate the bundles it knows.
 				head := blockNumber
-				if evaluated.Load() {
+				if processed.Load() {
 					head++
 				}
 				return &EvmBlock{EvmHeader: EvmHeader{Number: big.NewInt(int64(head))}}
@@ -335,21 +335,21 @@ func TestTxPool_EvictTransactionsOfEvaluatedBundles_DropsBundleOnlyTransactionsO
 			require.Equal(len(bundledTxs)+envelopes, pool.Count())
 			require.Equal(uint64(1), pool.Nonce(bundleeAddress))
 
-			// A new head not evaluating the bundle retains all of them.
+			// A new head not processing the bundle retains all of them.
 			<-pool.requestReset(nil, nil)
 			require.Equal(len(bundledTxs)+envelopes, pool.Count())
 			require.Equal(uint64(1), pool.Nonce(bundleeAddress))
 
-			// Once the bundle got evaluated, its transactions are of no use anymore.
-			evaluated.Store(true)
+			// Once the bundle got processed, its transactions are of no use anymore.
+			processed.Store(true)
 			<-pool.requestReset(nil, nil)
 
 			for _, tx := range bundledTxs {
 				require.Nil(pool.Get(tx.Hash()),
-					"bundle-only transaction of an evaluated bundle must be evicted")
+					"bundle-only transaction of a processed bundle must be evicted")
 			}
 			require.Nil(pool.Get(envelope.Hash()),
-				"the envelope of an evaluated bundle must be dropped as well")
+				"the envelope of a processed bundle must be dropped as well")
 			require.Zero(pool.Count())
 			require.Equal(uint64(0), pool.Nonce(bundleeAddress),
 				"the evicted transaction must not block the nonce of its sender")
@@ -358,21 +358,22 @@ func TestTxPool_EvictTransactionsOfEvaluatedBundles_DropsBundleOnlyTransactionsO
 	}
 }
 
-// BenchmarkTxPool_EvictTransactionsOfEvaluatedBundles measures the scan run on
-// every new head, excluding the cost of looking up processed bundles, which is
-// reported as lookups/op. No bundle has been processed, so nothing is evicted.
-func BenchmarkTxPool_EvictTransactionsOfEvaluatedBundles(b *testing.B) {
+// BenchmarkTxPool_EvictBundleOnlyTransactionsOfProcessedBundles measures the
+// scan run on every new head, excluding the cost of looking up processed
+// bundles, which is reported as lookups/op. No bundle has been processed, so
+// nothing is evicted.
+func BenchmarkTxPool_EvictBundleOnlyTransactionsOfProcessedBundles(b *testing.B) {
 	for _, size := range []int{1_000, 10_000} {
 		for _, percentBundleOnly := range []int{0, 10, 100} {
 			name := fmt.Sprintf("txs=%d/bundleOnly=%d%%", size, percentBundleOnly)
 			b.Run(name, func(b *testing.B) {
-				benchmarkEvictTransactionsOfEvaluatedBundles(b, size, percentBundleOnly)
+				benchmarkEvictBundleOnlyTransactionsOfProcessedBundles(b, size, percentBundleOnly)
 			})
 		}
 	}
 }
 
-func benchmarkEvictTransactionsOfEvaluatedBundles(b *testing.B, size, percentBundleOnly int) {
+func benchmarkEvictBundleOnlyTransactionsOfProcessedBundles(b *testing.B, size, percentBundleOnly int) {
 	pool, key := setupTxPool()
 	defer pool.Stop()
 	pool.waitForIdleReorgLoop_forTesting()
@@ -405,7 +406,7 @@ func benchmarkEvictTransactionsOfEvaluatedBundles(b *testing.B, size, percentBun
 
 	b.ResetTimer()
 	for range b.N {
-		pool.evictTransactionsOfEvaluatedBundles()
+		pool.evictBundleOnlyTransactionsOfProcessedBundles()
 	}
 	b.ReportMetric(float64(stateDb.lookups)/float64(b.N), "lookups/op")
 	require.Equal(b, size, pool.all.Count())

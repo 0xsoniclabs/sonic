@@ -1231,24 +1231,24 @@ func (pool *TxPool) removeTx(hash common.Hash, removeFromPriced bool) {
 	}
 }
 
-// evictTransactionsOfEvaluatedBundles removes the bundle-only transactions of
-// which every approved execution plan has been processed by a block. Those
-// transactions can only run as part of such a bundle, so they would just block
-// the nonce of their sender until they time out. The pool lock must be held and
-// the current state must be up to date.
-func (pool *TxPool) evictTransactionsOfEvaluatedBundles() {
+// evictBundleOnlyTransactionsOfProcessedBundles removes the bundle-only
+// transactions of which every approved execution plan has been processed by a
+// block. Those transactions can only run as part of such a bundle, so they
+// would block the nonce of their sender indefinitely. The pool lock must be
+// held and the current state must be up to date.
+func (pool *TxPool) evictBundleOnlyTransactionsOfProcessedBundles() {
 	if !pool.chain.CurrentRules().Upgrades.Brio || pool.currentState == nil {
 		return
 	}
 
 	// The removal below must not be interleaved with the iteration.
-	var evaluated []common.Hash
+	var processed []common.Hash
 	for hash, tx := range pool.all.txs() {
 		if isBundleOnlyOfProcessedBundles(tx, pool.currentState) {
-			evaluated = append(evaluated, hash)
+			processed = append(processed, hash)
 		}
 	}
-	for _, hash := range evaluated {
+	for _, hash := range processed {
 		pool.removeTx(hash, true)
 	}
 }
@@ -1526,7 +1526,7 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	pool.pendingNonces = newTxNoncer(statedb)
 	pool.currentMaxGas = pool.chain.CurrentMaxGasLimit()
 
-	pool.evictTransactionsOfEvaluatedBundles()
+	pool.evictBundleOnlyTransactionsOfProcessedBundles()
 
 	// Inject any transactions discarded due to reorgs
 	log.Debug("Reinjecting stale transactions", "count", len(reinject))
