@@ -2908,13 +2908,16 @@ func getEvmBlockFromNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNum
 
 	if hash, ok := blockNrOrHash.Hash(); ok {
 		block, err = b.BlockByHash(ctx, hash)
+		if err != nil {
+			return nil, err
+		}
 	} else if number, ok := blockNrOrHash.Number(); ok {
 		block, err = b.BlockByNumber(ctx, number)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		return nil, errors.New("invalid arguments; neither block number nor hash specified")
-	}
-	if err != nil {
-		return nil, err
 	}
 	if block == nil {
 		return nil, errors.New("header not found")
