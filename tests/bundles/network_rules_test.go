@@ -77,7 +77,7 @@ func TestBundles_BundleOnlyTransactionsAreAcceptedByTxPoolButNeverExecutedStarti
 				Value: big.NewInt(100),
 				AccessList: types.AccessList{{
 					Address:     bundle.BundleOnly,
-					StorageKeys: []common.Hash{},
+					StorageKeys: []common.Hash{{0x42}}, // < a plan never processed
 				}},
 			}, sender)
 			require.True(t, bundle.IsBundleOnly(bundleOnlyTx))
@@ -235,7 +235,7 @@ func makeBundleOnlyTx(t *testing.T, net *tests.IntegrationTestNet, account *test
 		Value: big.NewInt(0),
 		AccessList: types.AccessList{{
 			Address:     bundle.BundleOnly,
-			StorageKeys: []common.Hash{},
+			StorageKeys: []common.Hash{{0x42}}, // < a plan never processed
 		}},
 	}, account)
 	require.True(t, bundle.IsBundleOnly(tx))

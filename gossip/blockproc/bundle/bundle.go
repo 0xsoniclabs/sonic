@@ -40,6 +40,18 @@ func IsBundleOnly(tx *types.Transaction) bool {
 	return false
 }
 
+// GetApprovedExecutionPlans returns the hashes of the execution plans the given
+// transaction approves through its bundle-only mark.
+func GetApprovedExecutionPlans(tx *types.Transaction) []common.Hash {
+	var res []common.Hash
+	for _, entry := range tx.AccessList() {
+		if entry.Address == BundleOnly {
+			res = append(res, entry.StorageKeys...)
+		}
+	}
+	return res
+}
+
 // IsEnvelope checks if the transaction is an envelope of a bundle, meaning
 // it is carrying the encoding of a list of transactions to be executed as a
 // bundle.
