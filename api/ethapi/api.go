@@ -1262,11 +1262,6 @@ func DoCall(
 		evm.Cancel()
 	}()
 
-	// execute EIP-2935 HistoryStorage contract.
-	if evm.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(block.ParentHash, evm, state)
-	}
-
 	// Add sufficient gas to the pool.
 	gp := core.NewGasPool(math.MaxUint64)
 
