@@ -104,11 +104,8 @@ func TestTraceConsistency_TracesReproduceBlockProcessing(t *testing.T) {
 
 	queriedBlockNumber := new(big.Int).Sub(receipt.BlockNumber, big.NewInt(1))
 
-	// eth_call reads state as of an already-mined block, whose history storage
-	// slot was already populated by that block's own (real) pre-block system
-	// call. So this cannot observe a missing call in DoCall - it is a smoke
-	// test that the shared helper wires the correct value, not a regression
-	// test for it.
+	// eth_call runs on the state after the block, whose history storage slot
+	// was populated by the block's own pre-block system call.
 	t.Run("eth_call", func(t *testing.T) {
 		result := ethCallHistoryStorage(t, rpcClient, receipt.BlockNumber, queriedBlockNumber)
 		req.New(t).Equal(observedDuringBlockProcessing, result)

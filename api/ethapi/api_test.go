@@ -1046,13 +1046,10 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			setupStateDb: expectedCallsFromTxCall,
 			call:         executeDoCall,
 		},
-		"DoCall allegro": {
-			upgrades: opera.GetAllegroUpgrades(),
-			setupStateDb: func(mockState *state.MockStateDB) {
-				expectedCallsFromHistoryStorageContract(mockState)
-				expectedCallsFromTxCall(mockState)
-			},
-			call: executeDoCall,
+		"DoCall allegro does not invoke history storage": {
+			upgrades:     opera.GetAllegroUpgrades(),
+			setupStateDb: expectedCallsFromTxCall,
+			call:         executeDoCall,
 		},
 		"StateAtTransaction sonic": {
 			upgrades: opera.GetSonicUpgrades(),

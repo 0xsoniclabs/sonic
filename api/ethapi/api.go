@@ -1213,8 +1213,6 @@ func DoCall(
 		evm.Cancel()
 	}()
 
-	executePreBlockSystemCalls(evm, block.Number, uint64(block.Time.Unix()), block.ParentHash, state)
-
 	// Add sufficient gas to the pool.
 	gp := core.NewGasPool(math.MaxUint64)
 
