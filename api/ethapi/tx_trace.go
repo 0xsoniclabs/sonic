@@ -365,6 +365,9 @@ func (s *PublicTxTraceAPI) traceCallExec(
 		callResult.StateDiff = tracedEVM.stateDiffLogger.GetResult()
 	}
 	if traceOptions.VmTrace {
+		if err := tracedEVM.vmTraceLogger.Err(); err != nil {
+			return nil, err
+		}
 		callResult.VmTrace = tracedEVM.vmTraceLogger.GetResult()
 	}
 
