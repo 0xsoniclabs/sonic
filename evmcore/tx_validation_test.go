@@ -1994,6 +1994,32 @@ func Test_validateBundleTransactions_AcceptNonBundleTransactions(t *testing.T) {
 	}
 }
 
+func Test_validateBundleTransactions_RejectsBundleOnlyTxApprovingMultiplePlans(t *testing.T) {
+	tx := types.NewTx(&types.AccessListTx{AccessList: types.AccessList{
+		{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{0x01}, {0x02}}},
+	}})
+
+	tests := map[string]struct {
+		brio     bool
+		rejected bool
+	}{
+		"before brio": {brio: false, rejected: false},
+		"after brio":  {brio: true, rejected: true},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := validateBundleTransactions(tx, NetworkRules{brio: test.brio}, nil, nil, nil, nil)
+			if test.rejected {
+				require.ErrorIs(t, err, ErrBundleTransactionInvalid)
+				require.ErrorContains(t, err, "approves multiple execution plans")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func Test_validateBundleTransactions_RespectNetworkRules(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	bundle := bundle.NewBuilder().Build()
@@ -2173,6 +2199,55 @@ func Test_validateBundleTransactionsInternal_AccumulatesRejectionReasons(t *test
 	require.ErrorIs(t, err, ErrBundleNonExecutable)
 	for _, reason := range reasons {
 		require.ErrorContains(t, err, reason)
+	}
+}
+
+func Test_approvesMultiplePlans_DetectsBundleOnlyTxsApprovingMoreThanOnePlan(t *testing.T) {
+	tests := map[string]struct {
+		accessList types.AccessList
+		expected   bool
+	}{
+		"single plan": {
+			accessList: types.AccessList{{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{0x01}}}},
+		},
+		"same plan twice in one entry": {
+			accessList: types.AccessList{{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{0x01}, {0x01}}}},
+			expected:   true,
+		},
+		"same plan twice in separate entries": {
+			accessList: types.AccessList{
+				{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{0x01}}},
+				{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{0x01}}},
+			},
+			expected: true,
+		},
+		"multiple keys of other address": {
+			accessList: types.AccessList{{Address: common.Address{0x42}, StorageKeys: []common.Hash{{0x01}, {0x02}}}},
+		},
+		"single plan with keys of other address": {
+			accessList: types.AccessList{
+				{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{0x01}}},
+				{Address: common.Address{0x42}, StorageKeys: []common.Hash{{0x01}, {0x02}}},
+			},
+		},
+		"multiple plans in one entry": {
+			accessList: types.AccessList{{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{0x01}, {0x02}}}},
+			expected:   true,
+		},
+		"multiple plans in separate entries": {
+			accessList: types.AccessList{
+				{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{0x01}}},
+				{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{0x02}}},
+			},
+			expected: true,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			tx := types.NewTx(&types.AccessListTx{AccessList: test.accessList})
+			require.Equal(t, test.expected, approvesMultiplePlans(tx))
+		})
 	}
 }
 
