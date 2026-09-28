@@ -375,15 +375,16 @@ func TestTxPool_EvictStaleBundleOnlyTransactions_DropsBundleOnlyTransactionsWait
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			pool, remoteKey := setupTxPool()
+			setup := setupTxPool
+			if test.brio {
+				setup = setupBrioTxPool
+			}
+			pool, remoteKey := setup()
 			defer pool.Stop()
 			pool.waitForIdleReorgLoop_forTesting()
 
 			pool.mu.Lock()
 			defer pool.mu.Unlock()
-			if test.brio {
-				pool.chain = brioTestBlockChain{pool.chain}
-			}
 			pool.config.BundleOnlyLifetime = test.lifetime
 
 			// Local transactions are not exempt, they can not run on their own either.
@@ -417,6 +418,15 @@ func TestTxPool_EvictStaleBundleOnlyTransactions_DropsBundleOnlyTransactionsWait
 				}
 			}
 			require.NotNil(pool.all.Get(regular.Hash()), "regular transactions must be retained")
+
+			remote := crypto.PubkeyToAddress(remoteKey.PublicKey)
+			if test.evicted {
+				require.Equal(uint64(0), pool.pendingNonces.get(remote), "the evicted transaction must not block the nonce of its sender")
+				require.True(pool.queue[remote].Contains(regular.Nonce()), "transactions behind the evicted one must be queued")
+			} else {
+				require.Equal(uint64(2), pool.pendingNonces.get(remote))
+				require.True(pool.pending[remote].Contains(regular.Nonce()))
+			}
 		})
 	}
 }
@@ -437,7 +447,7 @@ func BenchmarkTxPool_EvictBundleOnlyTransactionsOfProcessedBundles(b *testing.B)
 }
 
 func benchmarkEvictBundleOnlyTransactionsOfProcessedBundles(b *testing.B, size, percentBundleOnly int) {
-	pool, key := setupTxPool()
+	pool, key := setupBrioTxPool()
 	defer pool.Stop()
 	pool.waitForIdleReorgLoop_forTesting()
 
@@ -445,7 +455,6 @@ func benchmarkEvictBundleOnlyTransactionsOfProcessedBundles(b *testing.B, size, 
 	defer pool.mu.Unlock()
 
 	stateDb := &countingBundleStateDb{testTxPoolStateDb: newTestTxPoolStateDb()}
-	pool.chain = brioTestBlockChain{pool.chain}
 	pool.currentState = stateDb
 
 	account := crypto.PubkeyToAddress(key.PublicKey)
@@ -473,6 +482,12 @@ func benchmarkEvictBundleOnlyTransactionsOfProcessedBundles(b *testing.B, size, 
 	}
 	b.ReportMetric(float64(stateDb.lookups)/float64(b.N), "lookups/op")
 	require.Equal(b, size, pool.all.Count())
+}
+
+// setupBrioTxPool is setupTxPool on a chain running Brio. The chain of a running
+// pool can not be swapped, its event loop reads it without holding the lock.
+func setupBrioTxPool() (*TxPool, *ecdsa.PrivateKey) {
+	return setupTxPoolWithChain(params.TestChainConfig, brioTestBlockChain{NewTestBlockChain(newTestTxPoolStateDb())})
 }
 
 type brioTestBlockChain struct {
