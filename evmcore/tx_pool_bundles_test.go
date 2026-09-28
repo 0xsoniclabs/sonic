@@ -304,9 +304,10 @@ func TestTxPool_EvictBundleOnlyTransactionsOfProcessedBundles_DropsTheTransactio
 			chain.EXPECT().CurrentBaseFee().Return(big.NewInt(1)).AnyTimes()
 			chain.EXPECT().CurrentRules().Return(rules).AnyTimes()
 
+			subscriberErr := make(chan error)
 			subscriber := NewMocksubscriber(ctrl)
-			subscriber.EXPECT().Err().Return(make(chan error)).AnyTimes()
-			subscriber.EXPECT().Unsubscribe().AnyTimes()
+			subscriber.EXPECT().Err().Return(subscriberErr).AnyTimes()
+			subscriber.EXPECT().Unsubscribe().Do(func() { close(subscriberErr) })
 			chain.EXPECT().SubscribeNewBlock(gomock.Any()).Return(subscriber).AnyTimes()
 
 			subsidiesCheckFactory := func(opera.Rules, StateReader, state.StateDB, types.Signer) utils.TransactionCheckFunc {
@@ -315,6 +316,7 @@ func TestTxPool_EvictBundleOnlyTransactionsOfProcessedBundles_DropsTheTransactio
 
 			pool := newTxPool(poolConfig, chainConfig, chain, subsidiesCheckFactory,
 				NewBundleEvaluationCache())
+			t.Cleanup(pool.Stop)
 
 			// The pool knows the transactions of the bundle, which occupy the nonces
 			// of their sender, but not necessarily its envelope, e.g. when a wallet
