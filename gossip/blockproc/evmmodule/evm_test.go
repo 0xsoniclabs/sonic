@@ -496,6 +496,29 @@ func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenBlockIsOlderTh
 	require.False(t, waitCalled)
 }
 
+func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenWaitHandleIsNil(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
+	stagedBlock.EXPECT().Commit().Return(nil, nil)
+	stateDb.EXPECT().BeginBlock(gomock.Any())
+	stateDb.EXPECT().GetStateHash()
+	stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
+
+	evmModule := New()
+	blockTime := time.Now().Add(-1*time.Hour + time.Second)
+	processor := evmModule.Start(
+		0, inter.FromUnix(blockTime.Unix()), 0,
+		stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		nil,
+	)
+
+	// A wait on a nil handle would panic
+	require.NotPanics(t, func() {
+		_, _, _ = processor.Finalize()
+	})
+}
+
 func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOneHour(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 
