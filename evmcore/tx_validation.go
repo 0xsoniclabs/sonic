@@ -478,7 +478,8 @@ func validateSponsoredTransactions(
 	return nil
 }
 
-// validateBundleTransactions checks if a transaction is a bundle transaction and if so,
+// validateBundleTransactions rejects individually submitted bundle-only transactions
+// approving multiple execution plans. If the transaction is a bundle transaction, it
 // validates the bundle structure and the validity of each transaction in the bundle.
 // if the bundle is malformed or any bundle-only transactions is invalid,
 // it returns an error rejecting the transaction.
@@ -517,9 +518,15 @@ func validateBundleTransactionsInternal(
 
 	// A bundle-only transaction without a plan to run in, or of which all
 	// plans have been processed already, would only block its sender's nonce.
+	// Bundles may contain bundle-only transactions approving multiple
+	// execution plans, the pool does not accept them individually.
 	if bundle.IsBundleOnly(tx) {
 		if len(bundle.GetApprovedExecutionPlans(tx)) == 0 {
 			return ErrBundleOnlyWithoutPlan
+		}
+		if approvesMultiplePlans(tx) {
+			return errors.Join(ErrBundleTransactionInvalid,
+				errors.New("bundle-only transaction approves multiple execution plans"))
 		}
 		if isBundleOnlyOfProcessedBundles(tx, stateDb) {
 			return ErrBundleAlreadyProcessed
@@ -558,6 +565,18 @@ func validateBundleTransactionsInternal(
 	}
 
 	return nil
+}
+
+// approvesMultiplePlans reports whether the transaction's bundle-only marker
+// lists more than one execution plan, counting duplicates.
+func approvesMultiplePlans(tx *types.Transaction) bool {
+	plans := 0
+	for _, entry := range tx.AccessList() {
+		if entry.Address == bundle.BundleOnly {
+			plans += len(entry.StorageKeys)
+		}
+	}
+	return plans > 1
 }
 
 // getBundleState is a helper tool to get the state of a bundle transaction
