@@ -25,6 +25,7 @@ import (
 	"math"
 	"math/big"
 	reflect "reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -154,6 +155,97 @@ func TestAPI_GetProof(t *testing.T) {
 	require.Equal(t, hexutil.Uint64(nonce.ToUint64()), accountProof.Nonce)
 	require.Equal(t, common.Hash(storageHash), accountProof.StorageHash)
 	require.Equal(t, []StorageResult{storageProof}, accountProof.StorageProof)
+}
+
+func TestAPI_GetProof_RejectsTooManyKeys(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// No expectations on the backend: the request must be rejected before
+	// any state is accessed.
+	mockBackend := NewMockBackend(ctrl)
+	api := NewPublicBlockChainAPI(mockBackend)
+
+	keys := make([]string, maxGetProofKeys+1)
+	for i := range keys {
+		keys[i] = "0x1"
+	}
+	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+
+	_, err := api.GetProof(context.Background(), common.Address{1}, keys, blkNr)
+	require.Error(t, err)
+	var rpcErr rpc.Error
+	require.ErrorAs(t, err, &rpcErr)
+	require.Equal(t, errCodeInvalidParams, rpcErr.ErrorCode())
+	require.Contains(t, err.Error(), "too many storage keys")
+}
+
+func TestAPI_GetProof_RejectsInvalidKeys(t *testing.T) {
+	tests := map[string]string{
+		"invalid hex":     "0xzz",
+		"too long":        "0x" + strings.Repeat("00", common.HashLength+1),
+		"non-hex garbage": "hello",
+		"embedded 0x":     "0x00x1",
+		"whitespace":      "0x 1",
+	}
+	for name, key := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			// No expectations on the backend: the request must be rejected
+			// before any state is accessed.
+			mockBackend := NewMockBackend(ctrl)
+			api := NewPublicBlockChainAPI(mockBackend)
+			blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+
+			_, err := api.GetProof(context.Background(), common.Address{1}, []string{key}, blkNr)
+			require.Error(t, err)
+			var rpcErr rpc.Error
+			require.ErrorAs(t, err, &rpcErr)
+			require.Equal(t, errCodeInvalidParams, rpcErr.ErrorCode())
+		})
+	}
+}
+
+func TestDecodeStorageKey(t *testing.T) {
+	full := "0x" + strings.Repeat("ab", common.HashLength)
+	valid := map[string]struct {
+		input string
+		want  common.Hash
+	}{
+		"empty":           {"", common.Hash{}},
+		"prefix only":     {"0x", common.Hash{}},
+		"short odd":       {"0x1", common.HexToHash("0x1")},
+		"short even":      {"0x01", common.HexToHash("0x1")},
+		"no prefix":       {"1", common.HexToHash("0x1")},
+		"upper prefix":    {"0X1", common.HexToHash("0x1")},
+		"upper hex":       {"0xAB", common.HexToHash("0xab")},
+		"full length":     {full, common.HexToHash(full)},
+		"full length odd": {full[:len(full)-1], common.HexToHash(full[:len(full)-1])},
+	}
+	for name, tc := range valid {
+		t.Run(name, func(t *testing.T) {
+			got, err := decodeStorageKey(tc.input)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+
+	invalid := map[string]string{
+		"too long":      full + "00",
+		"too long odd":  full + "0",
+		"invalid hex":   "0xzz",
+		"double prefix": "0x0x1",
+		"negative":      "-0x1",
+		"whitespace":    "0x 1",
+	}
+	for name, input := range invalid {
+		t.Run(name, func(t *testing.T) {
+			_, err := decodeStorageKey(input)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestAPI_GetAccount(t *testing.T) {
@@ -1962,5 +2054,73 @@ func TestCapMaxGas_IsUpgradesAware(t *testing.T) {
 			require.NoError(t, err, "unexpected error")
 			require.Equal(t, uint64(test.wantEstimation), got)
 		})
+	}
+}
+
+func TestAccessList_StopsWhenContextIsCancelled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBackend := NewMockBackend(ctrl)
+	mockState := state.NewMockStateDB(ctrl)
+
+	block := &evmcore.EvmBlock{}
+	block.Number = big.NewInt(1)
+	sender := common.Address{1}
+	contract := common.Address{2}
+	infiniteLoop := []byte{byte(vm.JUMPDEST), byte(vm.PUSH1), 0, byte(vm.JUMP)}
+	gasCap := uint64(math.MaxInt64)
+
+	chainConfig := &params.ChainConfig{ChainID: big.NewInt(1), LondonBlock: big.NewInt(0)}
+	blockCtx := vm.BlockContext{
+		BlockNumber: block.Number,
+		BaseFee:     big.NewInt(0),
+		Transfer:    vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int, _ *params.Rules) {}),
+		CanTransfer: vm.CanTransferFunc(func(sd vm.StateDB, a1 common.Address, i *uint256.Int) bool { return true }),
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	any := gomock.Any()
+	mockBackend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(mockState, block, nil)
+	mockBackend.EXPECT().ChainConfig(any).Return(chainConfig).AnyTimes()
+	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+	mockBackend.EXPECT().RPCGasCap().Return(gasCap).AnyTimes()
+	mockBackend.EXPECT().MaxGasLimit().Return(gasCap).AnyTimes()
+	mockBackend.EXPECT().ChainID().Return(big.NewInt(1)).AnyTimes()
+	mockBackend.EXPECT().CurrentBlock().Return(block).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(
+		func(_ context.Context, _ state.StateDB, _ *evmcore.EvmHeader, vmConfig *vm.Config, _ *vm.BlockContext) (*vm.EVM, func() error, error) {
+			return vm.NewEVM(blockCtx, mockState, chainConfig, *vmConfig), func() error { return nil }, nil
+		}).AnyTimes()
+
+	mockState.EXPECT().Copy().Return(mockState).AnyTimes()
+	mockState.EXPECT().GetCode(contract).DoAndReturn(func(common.Address) []byte {
+		cancel()
+		return infiniteLoop
+	}).AnyTimes()
+	mockState.EXPECT().GetCodeHash(contract).Return(crypto.Keccak256Hash(infiniteLoop)).AnyTimes()
+	setExpectedStateCalls(mockState)
+
+	nonce := hexutil.Uint64(0)
+	gas := hexutil.Uint64(gasCap)
+	args := TransactionArgs{
+		From:     &sender,
+		To:       &contract,
+		Nonce:    &nonce,
+		Gas:      &gas,
+		GasPrice: (*hexutil.Big)(big.NewInt(0)),
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, _, _, err := AccessList(ctx, mockBackend, rpc.BlockNumberOrHashWithNumber(1), args)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(10 * time.Second):
+		t.Fatal("AccessList did not stop after context cancellation")
 	}
 }

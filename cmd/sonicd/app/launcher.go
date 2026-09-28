@@ -158,6 +158,7 @@ func initFlags() {
 		flags.BatchRequestLimit,
 		flags.BatchResponseMaxSize,
 		flags.MaxResponseSizeFlag,
+		flags.MaxTraceFilterRangeFlag,
 		flags.StructLogLimitFlag,
 	}
 

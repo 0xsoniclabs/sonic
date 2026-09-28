@@ -275,6 +275,21 @@ func (b *fakeBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber)
 	}, nil
 }
 
+func (b *fakeBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error) {
+	if blockNrOrHash.BlockHash != nil {
+		header, err := b.HeaderByHash(ctx, *blockNrOrHash.BlockHash)
+		if err != nil {
+			return 0, err
+		}
+		return idx.Block(header.Number.Uint64()), nil
+	}
+	block, err := b.blockByNumber(*blockNrOrHash.BlockNumber)
+	if err != nil {
+		return 0, err
+	}
+	return idx.Block(block.Number), nil
+}
+
 func (b *fakeBackend) BlockByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmBlock, error) {
 	header, err := b.HeaderByHash(ctx, hash)
 	if err != nil {
