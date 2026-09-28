@@ -110,7 +110,10 @@ func BenchmarkFilters(b *testing.B) {
 	}
 	b.ResetTimer()
 
-	filter := NewRangeFilter(backend, testConfig(), 0, -1, []common.Address{addr1, addr2, addr3, addr4}, nil, 0)
+	filter, err := NewRangeFilter(backend, testConfig(), 0, -1, []common.Address{addr1, addr2, addr3, addr4}, nil, 0)
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	for i := 0; i < b.N; i++ {
 		logs, _ := filter.Logs(context.Background())
@@ -201,7 +204,8 @@ func TestFilters(t *testing.T) {
 		err    error
 	)
 
-	filter = NewRangeFilter(backend, testConfig(), 0, -1, []common.Address{addr}, [][]common.Hash{{hash1, hash2, hash3, hash4}}, 0)
+	filter, err = NewRangeFilter(backend, testConfig(), 0, -1, []common.Address{addr}, [][]common.Hash{{hash1, hash2, hash3, hash4}}, 0)
+	require.NoError(t, err)
 	logs, err = filter.Logs(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -210,7 +214,8 @@ func TestFilters(t *testing.T) {
 		t.Error("expected 4 log, got", len(logs))
 	}
 
-	filter = NewRangeFilter(backend, testConfig(), 900, 999, []common.Address{addr}, [][]common.Hash{{hash3}}, 0)
+	filter, err = NewRangeFilter(backend, testConfig(), 900, 999, []common.Address{addr}, [][]common.Hash{{hash3}}, 0)
+	require.NoError(t, err)
 	logs, err = filter.Logs(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -223,7 +228,8 @@ func TestFilters(t *testing.T) {
 		t.Errorf("expected log[0].Topics[0] to be %x, got %x", hash3, logs[0].Topics[0])
 	}
 
-	filter = NewRangeFilter(backend, testConfig(), 990, -1, []common.Address{addr}, [][]common.Hash{{hash3}}, 0)
+	filter, err = NewRangeFilter(backend, testConfig(), 990, -1, []common.Address{addr}, [][]common.Hash{{hash3}}, 0)
+	require.NoError(t, err)
 	logs, err = filter.Logs(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -235,7 +241,8 @@ func TestFilters(t *testing.T) {
 		t.Errorf("expected log[0].Topics[0] to be %x, got %x", hash3, logs[0].Topics[0])
 	}
 
-	filter = NewRangeFilter(backend, testConfig(), 1, 10, nil, [][]common.Hash{{hash1, hash2}}, 0)
+	filter, err = NewRangeFilter(backend, testConfig(), 1, 10, nil, [][]common.Hash{{hash1, hash2}}, 0)
+	require.NoError(t, err)
 	logs, err = filter.Logs(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -245,7 +252,8 @@ func TestFilters(t *testing.T) {
 	}
 
 	failHash := common.BytesToHash([]byte("fail"))
-	filter = NewRangeFilter(backend, testConfig(), 0, -1, nil, [][]common.Hash{{failHash}}, 0)
+	filter, err = NewRangeFilter(backend, testConfig(), 0, -1, nil, [][]common.Hash{{failHash}}, 0)
+	require.NoError(t, err)
 	logs, err = filter.Logs(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -255,7 +263,8 @@ func TestFilters(t *testing.T) {
 	}
 
 	failAddr := common.BytesToAddress([]byte("failmenow"))
-	filter = NewRangeFilter(backend, testConfig(), 0, -1, []common.Address{failAddr}, nil, 0)
+	filter, err = NewRangeFilter(backend, testConfig(), 0, -1, []common.Address{failAddr}, nil, 0)
+	require.NoError(t, err)
 	logs, err = filter.Logs(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -264,7 +273,8 @@ func TestFilters(t *testing.T) {
 		t.Error("expected 0 log, got", len(logs))
 	}
 
-	filter = NewRangeFilter(backend, testConfig(), 0, -1, nil, [][]common.Hash{{failHash}, {hash1}}, 0)
+	filter, err = NewRangeFilter(backend, testConfig(), 0, -1, nil, [][]common.Hash{{failHash}, {hash1}}, 0)
+	require.NoError(t, err)
 	logs, err = filter.Logs(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -621,32 +631,28 @@ func TestFilter_FilterLogs_WhenGetLogsCallReturnError_LogsByHashReturnsError(t *
 	require.Nil(t, logs)
 }
 
-func TestFilter_IndexedLogs_DetectsQueriesWithTooManyParameters(t *testing.T) {
+func TestFilter_Constructors_RejectQueriesWithTooManyParameters(t *testing.T) {
 
 	for _, limit := range []uint{10, 20} {
-		config := Config{
-			IndexedLogsBlockRangeLimit: 100,
-			LogQueryParameterLimit:     limit,
-		}
+		config := Config{LogQueryParameterLimit: limit}
 
-		tests := map[string]Filter{
+		tests := map[string]struct {
+			addresses []common.Address
+			topics    [][]common.Hash
+		}{
 			"too many addresses": {
-				config:    config,
 				addresses: make([]common.Address, limit+1),
 			},
 			"too many topics in position 0": {
-				config: config,
 				topics: [][]common.Hash{make([]common.Hash, limit+1)},
 			},
 			"too many topics in position 0 and 1": {
-				config: config,
 				topics: [][]common.Hash{
 					make([]common.Hash, limit),
 					make([]common.Hash, limit+1),
 				},
 			},
 			"too many combined parameters": {
-				config:    config,
 				addresses: make([]common.Address, limit/2),
 				topics: [][]common.Hash{
 					make([]common.Hash, limit/2),
@@ -655,15 +661,31 @@ func TestFilter_IndexedLogs_DetectsQueriesWithTooManyParameters(t *testing.T) {
 			},
 		}
 
-		for name, filter := range tests {
+		for name, test := range tests {
 			t.Run(name, func(t *testing.T) {
-				logs, err := filter.indexedLogs(t.Context(), 0, 1)
-				require.Error(t, err)
-				require.ErrorContains(t, err, fmt.Sprintf("the limit is %d", limit))
-				require.Nil(t, logs)
+				wantErr := fmt.Sprintf("too many query parameters, the limit is %d", limit)
+
+				filter, err := NewRangeFilter(nil, config, 0, 1, test.addresses, test.topics, 0)
+				require.ErrorContains(t, err, wantErr)
+				require.Nil(t, filter)
+
+				filter, err = NewBlockFilter(nil, config, common.Hash{1}, test.addresses, test.topics)
+				require.ErrorContains(t, err, wantErr)
+				require.Nil(t, filter)
 			})
 		}
 	}
+}
+
+func TestFilter_Constructors_AcceptQueriesAtTheParameterLimit(t *testing.T) {
+	config := Config{LogQueryParameterLimit: 2}
+	addresses := []common.Address{{1}}
+	topics := [][]common.Hash{{{2}}}
+
+	_, err := NewRangeFilter(nil, config, 0, 1, addresses, topics, 0)
+	require.NoError(t, err)
+	_, err = NewBlockFilter(nil, config, common.Hash{1}, addresses, topics)
+	require.NoError(t, err)
 }
 
 func TestFilter_IndexedLogs_AcceptsAnyQueryIfThereAreNoLimits(t *testing.T) {

@@ -307,7 +307,7 @@ var (
 	}
 	RPCLogQueryParameterLimit = &cli.UintFlag{
 		Name:  "rpc.log-query-parameter-limit",
-		Usage: "Maximum total number of addresses or topics allowed in eth_getLogs filter criteria (0 = no cap)",
+		Usage: "Maximum total number of addresses or topics allowed in log filter criteria of eth_getLogs, eth_newFilter and logs subscriptions (0 = no cap)",
 		Value: filters.DefaultConfig().LogQueryParameterLimit,
 	}
 	RPCLogQueryResultLimit = &cli.UintFlag{
@@ -339,6 +339,11 @@ var (
 		Name:  "rpc.maxresponsesize",
 		Usage: "Limit maximum size in some RPC calls execution",
 		Value: gossip.DefaultConfig(cachescale.Identity).MaxResponseSize,
+	}
+	MaxTraceFilterRangeFlag = cli.Uint64Flag{
+		Name:  "rpc.tracefilterrange",
+		Usage: "Maximum block range of a single trace_filter call, 0=unlimited",
+		Value: gossip.DefaultConfig(cachescale.Identity).MaxTraceFilterRange,
 	}
 	StructLogLimitFlag = cli.IntFlag{
 		Name:  "rpc.structloglimit",
