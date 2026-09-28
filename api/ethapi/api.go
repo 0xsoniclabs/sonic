@@ -913,7 +913,8 @@ type StorageResult struct {
 }
 
 // GetProof returns the Merkle-proof for a given account and optionally some storage keys.
-func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNrOrHash rpc.BlockNumberOrHash) (*AccountResult, error) {
+// When the block parameter is omitted, it defaults to the latest block.
+func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNrOrHash *rpc.BlockNumberOrHash) (*AccountResult, error) {
 	if len(storageKeys) > maxGetProofKeys {
 		return nil, invalidParamsError(fmt.Sprintf("too many storage keys requested (max %d, got %d)", maxGetProofKeys, len(storageKeys)))
 	}
@@ -927,7 +928,7 @@ func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address common.Addre
 		keys[i] = decoded
 	}
 
-	state, block, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
+	state, block, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHashOrLatest(blockNrOrHash))
 	if state == nil || err != nil {
 		return nil, err
 	}

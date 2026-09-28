@@ -144,7 +144,7 @@ func TestAPI_GetProof(t *testing.T) {
 
 	api := NewPublicBlockChainAPI(mockBackend)
 
-	accountProof, err := api.GetProof(context.Background(), common.Address(addr), keys, rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber))
+	accountProof, err := api.GetProof(context.Background(), common.Address(addr), keys, nil)
 	require.NoError(t, err, "failed to get account")
 
 	u256Balance := balance.Uint256()
@@ -172,7 +172,7 @@ func TestAPI_GetProof_RejectsTooManyKeys(t *testing.T) {
 	}
 	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
-	_, err := api.GetProof(context.Background(), common.Address{1}, keys, blkNr)
+	_, err := api.GetProof(context.Background(), common.Address{1}, keys, &blkNr)
 	require.Error(t, err)
 	var rpcErr rpc.Error
 	require.ErrorAs(t, err, &rpcErr)
@@ -199,7 +199,7 @@ func TestAPI_GetProof_RejectsInvalidKeys(t *testing.T) {
 			api := NewPublicBlockChainAPI(mockBackend)
 			blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
-			_, err := api.GetProof(context.Background(), common.Address{1}, []string{key}, blkNr)
+			_, err := api.GetProof(context.Background(), common.Address{1}, []string{key}, &blkNr)
 			require.Error(t, err)
 			var rpcErr rpc.Error
 			require.ErrorAs(t, err, &rpcErr)
@@ -2163,6 +2163,44 @@ func TestAPI_OmittedBlockParameterResolvesLatestBlock(t *testing.T) {
 
 			err := test.call(NewPublicBlockChainAPI(mockBackend), NewPublicTransactionPoolAPI(mockBackend, nil))
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestAPI_OmittedBlockParameterOverJsonRpcResolvesLatestBlock(t *testing.T) {
+	addr := common.Address{1}
+	latest := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+	errBackend := errors.New("backend reached")
+
+	tests := map[string][]any{
+		"eth_getBalance":          {addr},
+		"eth_getAccount":          {addr},
+		"eth_getProof":            {addr, []string{}},
+		"eth_getCode":             {addr},
+		"eth_getStorageAt":        {addr, "0x0"},
+		"eth_call":                {TransactionArgs{}},
+		"eth_getTransactionCount": {addr},
+	}
+
+	for method, params := range tests {
+		t.Run(method, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockBackend := NewMockBackend(ctrl)
+			mockBackend.EXPECT().ChainID().Return(big.NewInt(1)).AnyTimes()
+			mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
+			mockBackend.EXPECT().RPCGasCap().Return(uint64(0)).AnyTimes()
+			mockBackend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), latest).Return(nil, nil, errBackend)
+
+			server := rpc.NewServer()
+			defer server.Stop()
+			require.NoError(t, server.RegisterName("eth", NewPublicBlockChainAPI(mockBackend)))
+			require.NoError(t, server.RegisterName("eth", NewPublicTransactionPoolAPI(mockBackend, nil)))
+			client := rpc.DialInProc(server)
+			defer client.Close()
+
+			var result any
+			err := client.Call(&result, method, params...)
+			require.ErrorContains(t, err, errBackend.Error())
 		})
 	}
 }
