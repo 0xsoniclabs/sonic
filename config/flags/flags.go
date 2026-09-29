@@ -430,6 +430,13 @@ var (
 			"is recommended. Setting this to <1 will automatically set the cache capacity to a DB defined default value.",
 		Value: 0,
 	}
+	MaxRetainedProcessedBundlesFlag = cli.Uint64Flag{
+		Name: "bundles.maxretained",
+		Usage: "The maximum number of processed bundles retained to support healing the node. " +
+			"If exceeded, the oldest blocks are pruned early, reducing the depth to which the " +
+			"node can be healed. Bundles within the replay protection window are always retained.",
+		Value: gossip.DefaultMaxRetainedProcessedBundles,
+	}
 	StateDbCheckPointInterval = cli.IntFlag{
 		Name:   "statedb.checkpointinterval",
 		Hidden: true, // Intended for testing

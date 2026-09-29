@@ -133,6 +133,11 @@ func healGossipDb(
 		)
 	}
 
+	// revert the processed bundles history, which feeds into the epoch hash
+	if err := rollbackProcessedBundles(gdb, epochId, uint64(blockState.LastBlock.Idx)); err != nil {
+		return nil, 0, err
+	}
+
 	// set the historic state to be the current
 	log.Info("Reverting to epoch state", "epoch", epochId, "block", blockState.LastBlock.Idx)
 	gdb.SetBlockEpochState(*blockState, *epochState)
@@ -151,6 +156,52 @@ func healGossipDb(
 	})
 
 	return epochState, blockState.LastBlock.Idx, nil
+}
+
+// rollbackProcessedBundles reverts the processed bundles history to the given
+// block, refusing targets for which the node lacks enough bundle history.
+func rollbackProcessedBundles(gdb *gossip.Store, epoch idx.Epoch, block uint64) error {
+	if err := checkBundleHistoryDepth(gdb, epoch, block); err != nil {
+		return err
+	}
+	log.Info("Reverting processed bundles history", "block", block)
+	if err := gdb.RollbackProcessedBundles(block); err != nil {
+		return fmt.Errorf("failed to revert processed bundles history: %w", err)
+	}
+	return nil
+}
+
+// checkBundleHistoryDepth reports whether the node retains enough processed
+// bundles history to safely roll back to the given block.
+func checkBundleHistoryDepth(gdb *gossip.Store, epoch idx.Epoch, block uint64) error {
+	earliest, limited := gdb.EarliestBundleRollbackBlock()
+	if !limited || block >= earliest {
+		return nil
+	}
+	safeEpoch, found := earliestEpochStartingFrom(gdb, earliest)
+	log.Warn("Not enough processed bundles history for a safe heal",
+		"epoch", epoch, "block", block, "earliestSafeBlock", earliest, "earliestSafeEpoch", safeEpoch)
+	if !found {
+		return fmt.Errorf("epoch %d (block %d) is too deep to heal safely, "+
+			"no epoch starts at or after the earliest safe block %d yet", epoch, block, earliest)
+	}
+	return fmt.Errorf("epoch %d (block %d) is too deep to heal safely, "+
+		"earliest safe epoch is %d", epoch, block, safeEpoch)
+}
+
+// earliestEpochStartingFrom returns the earliest epoch starting at or after the
+// given block. Epochs start at increasing blocks, so the search walks back from
+// the current epoch while epochs start late enough.
+func earliestEpochStartingFrom(gdb *gossip.Store, block uint64) (idx.Epoch, bool) {
+	earliest, found := idx.Epoch(0), false
+	for epoch := gdb.GetEpoch(); epoch > 0; epoch-- {
+		blockState, _ := gdb.GetHistoryBlockEpochState(epoch)
+		if blockState == nil || uint64(blockState.LastBlock.Idx) < block {
+			break
+		}
+		earliest, found = epoch, true
+	}
+	return earliest, found
 }
 
 // getLastEpochWithState finds the last closed epoch with the state available

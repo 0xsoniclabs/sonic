@@ -106,6 +106,11 @@ type Store struct {
 
 	// mutex for synchronizing access to processed bundles data
 	processedBundleMutex sync.Mutex
+	// number of processed bundles retained in the store, counted on first use
+	retainedBundles        uint64
+	retainedBundlesCounted bool
+	// time of the last warning about pruning caused by the bundles budget
+	lastBudgetWarning time.Time
 }
 
 // NewMemStore creates temporary gossip store for testing purposes.
