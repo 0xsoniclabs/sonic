@@ -56,7 +56,7 @@ func Fund(
 
 	tests.WaitForProofOf(t, client, int(latestBlock.NumberU64()))
 
-	sponsorshipBefore, err := registry.Sponsorships(nil, fundId)
+	sponsorshipBefore, err := registry.Sponsorships(&bind.CallOpts{BlockNumber: latestBlock.Number()}, fundId)
 	require.NoError(t, err)
 
 	receipt, err := session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
@@ -70,8 +70,8 @@ func Fund(
 
 	tests.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
 
-	// check that the sponsorshipAfter funds got deposited
-	sponsorshipAfter, err := registry.Sponsorships(nil, fundId)
+	// Read at the receipt's block: "latest" may still lag behind it.
+	sponsorshipAfter, err := registry.Sponsorships(&bind.CallOpts{BlockNumber: receipt.BlockNumber}, fundId)
 	require.NoError(t, err)
 	require.Equal(t, sponsorshipBefore.Funds.Uint64()+donation.Uint64(), sponsorshipAfter.Funds.Uint64())
 
