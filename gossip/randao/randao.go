@@ -29,7 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-//go:generate mockgen -source=randao.go -destination=randao_mock.go -package=randao
+//go:generate go tool mockgen -source=randao.go -destination=randao_mock.go -package=randao
 
 // RandaoReveal contains the randao reveal value, which can be used to generate
 // the next randao value. RandaoReveal can be sent in events to other peers

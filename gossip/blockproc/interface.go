@@ -33,7 +33,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
-//go:generate mockgen -source=interface.go -package=blockproc -destination=interface_mock.go
+//go:generate go tool mockgen -source=interface.go -package=blockproc -destination=interface_mock.go
 
 // NonceSource exposes the nonce of the zero address, which is all state
 // information internal-transaction builders read.
@@ -87,7 +87,9 @@ type EVMProcessor interface {
 
 type EVM interface {
 	Start(
-		block iblockproc.BlockCtx,
+		blockNumber idx.Block,
+		blockTime inter.Timestamp,
+		epoch idx.Epoch,
 		statedb state.StateDB,
 		reader evmcore.DummyChain,
 		onNewLog func(*core_types.Log),

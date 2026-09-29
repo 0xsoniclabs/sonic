@@ -22,8 +22,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	reflect "reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,6 +33,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common/amount"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/carmen/go/common/witness"
+	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -152,6 +155,97 @@ func TestAPI_GetProof(t *testing.T) {
 	require.Equal(t, hexutil.Uint64(nonce.ToUint64()), accountProof.Nonce)
 	require.Equal(t, common.Hash(storageHash), accountProof.StorageHash)
 	require.Equal(t, []StorageResult{storageProof}, accountProof.StorageProof)
+}
+
+func TestAPI_GetProof_RejectsTooManyKeys(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// No expectations on the backend: the request must be rejected before
+	// any state is accessed.
+	mockBackend := NewMockBackend(ctrl)
+	api := NewPublicBlockChainAPI(mockBackend)
+
+	keys := make([]string, maxGetProofKeys+1)
+	for i := range keys {
+		keys[i] = "0x1"
+	}
+	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+
+	_, err := api.GetProof(context.Background(), common.Address{1}, keys, blkNr)
+	require.Error(t, err)
+	var rpcErr rpc.Error
+	require.ErrorAs(t, err, &rpcErr)
+	require.Equal(t, errCodeInvalidParams, rpcErr.ErrorCode())
+	require.Contains(t, err.Error(), "too many storage keys")
+}
+
+func TestAPI_GetProof_RejectsInvalidKeys(t *testing.T) {
+	tests := map[string]string{
+		"invalid hex":     "0xzz",
+		"too long":        "0x" + strings.Repeat("00", common.HashLength+1),
+		"non-hex garbage": "hello",
+		"embedded 0x":     "0x00x1",
+		"whitespace":      "0x 1",
+	}
+	for name, key := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			// No expectations on the backend: the request must be rejected
+			// before any state is accessed.
+			mockBackend := NewMockBackend(ctrl)
+			api := NewPublicBlockChainAPI(mockBackend)
+			blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+
+			_, err := api.GetProof(context.Background(), common.Address{1}, []string{key}, blkNr)
+			require.Error(t, err)
+			var rpcErr rpc.Error
+			require.ErrorAs(t, err, &rpcErr)
+			require.Equal(t, errCodeInvalidParams, rpcErr.ErrorCode())
+		})
+	}
+}
+
+func TestDecodeStorageKey(t *testing.T) {
+	full := "0x" + strings.Repeat("ab", common.HashLength)
+	valid := map[string]struct {
+		input string
+		want  common.Hash
+	}{
+		"empty":           {"", common.Hash{}},
+		"prefix only":     {"0x", common.Hash{}},
+		"short odd":       {"0x1", common.HexToHash("0x1")},
+		"short even":      {"0x01", common.HexToHash("0x1")},
+		"no prefix":       {"1", common.HexToHash("0x1")},
+		"upper prefix":    {"0X1", common.HexToHash("0x1")},
+		"upper hex":       {"0xAB", common.HexToHash("0xab")},
+		"full length":     {full, common.HexToHash(full)},
+		"full length odd": {full[:len(full)-1], common.HexToHash(full[:len(full)-1])},
+	}
+	for name, tc := range valid {
+		t.Run(name, func(t *testing.T) {
+			got, err := decodeStorageKey(tc.input)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+
+	invalid := map[string]string{
+		"too long":      full + "00",
+		"too long odd":  full + "0",
+		"invalid hex":   "0xzz",
+		"double prefix": "0x0x1",
+		"negative":      "-0x1",
+		"whitespace":    "0x 1",
+	}
+	for name, input := range invalid {
+		t.Run(name, func(t *testing.T) {
+			_, err := decodeStorageKey(input)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestAPI_GetAccount(t *testing.T) {
@@ -1465,6 +1559,233 @@ func TestFeeHistory_BlockNotFound(t *testing.T) {
 	require.Error(t, err, "expected error when block is not found")
 }
 
+func TestFeeHistory_RejectsInvalidInput(t *testing.T) {
+	tests := map[string]struct {
+		blockCount  geth_math.HexOrDecimal64
+		percentiles []float64
+		wantErr     string
+	}{
+		"percentile above 100": {
+			blockCount:  1,
+			percentiles: []float64{50, 101},
+			wantErr:     "invalid reward percentile: 101",
+		},
+		"negative percentile": {
+			blockCount:  1,
+			percentiles: []float64{-1},
+			wantErr:     "invalid reward percentile: -1",
+		},
+		"non-monotonic percentiles": {
+			blockCount:  1,
+			percentiles: []float64{50, 25},
+			wantErr:     "invalid reward percentile: #0:50",
+		},
+		"one percentile over the limit": {
+			blockCount:  1,
+			percentiles: make([]float64, maxRewardPercentiles+1),
+			wantErr:     "over the query limit 100",
+		},
+		"huge block count with too many percentiles": {
+			blockCount:  geth_math.HexOrDecimal64(math.MaxUint64),
+			percentiles: make([]float64, maxRewardPercentiles+1),
+			wantErr:     "over the query limit 100",
+		},
+		"huge block count with invalid percentile": {
+			blockCount:  geth_math.HexOrDecimal64(math.MaxUint64),
+			percentiles: []float64{200},
+			wantErr:     "invalid reward percentile: 200",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			// No expectations: any backend call fails the test, proving the
+			// input is validated before any block is resolved.
+			mockBackend := NewMockBackend(ctrl)
+			ethAPI := NewPublicEthereumAPI(mockBackend)
+
+			res, err := ethAPI.FeeHistory(context.Background(), test.blockCount, rpc.LatestBlockNumber, test.percentiles)
+			require.ErrorIs(t, err, errInvalidPercentile)
+			require.ErrorContains(t, err, test.wantErr)
+			require.Nil(t, res)
+		})
+	}
+}
+
+func TestFeeHistory_ZeroBlockCount_ReturnsEmptyResult(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBackend := NewMockBackend(ctrl)
+	ethAPI := NewPublicEthereumAPI(mockBackend)
+
+	// Percentiles are irrelevant when nothing is requested, as in go-ethereum.
+	res, err := ethAPI.FeeHistory(context.Background(), 0, rpc.LatestBlockNumber, []float64{200})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.Empty(t, res.Reward)
+	require.Empty(t, res.BaseFee)
+	require.Empty(t, res.GasUsedRatio)
+	require.Empty(t, res.BlobBaseFee)
+	require.Empty(t, res.BlobGasUsedRatio)
+	require.NotNil(t, res.OldestBlock)
+	require.Zero(t, res.OldestBlock.ToInt().Sign())
+
+	encoded, err := json.Marshal(res)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"oldestBlock":"0x0","gasUsedRatio":null}`, string(encoded))
+}
+
+func TestFeeHistory_ReturnsRequestedBlockRange(t *testing.T) {
+	const (
+		latestBlock = idx.Block(2000)
+		baseFee     = 7
+	)
+
+	tests := map[string]struct {
+		blockCount  geth_math.HexOrDecimal64
+		lastBlock   rpc.BlockNumber
+		percentiles []float64
+		wantOldest  uint64
+		wantLen     int
+	}{
+		"single block": {
+			blockCount: 1,
+			lastBlock:  10,
+			wantOldest: 10,
+			wantLen:    1,
+		},
+		"range ending at last block": {
+			blockCount: 5,
+			lastBlock:  10,
+			wantOldest: 6,
+			wantLen:    5,
+		},
+		"range starting right after genesis": {
+			blockCount: 5,
+			lastBlock:  5,
+			wantOldest: 1,
+			wantLen:    5,
+		},
+		"range including genesis": {
+			blockCount: 5,
+			lastBlock:  4,
+			wantOldest: 0,
+			wantLen:    5,
+		},
+		"range longer than chain is cut at genesis": {
+			blockCount: 100,
+			lastBlock:  10,
+			wantOldest: 0,
+			wantLen:    11,
+		},
+		"genesis only": {
+			blockCount: 1,
+			lastBlock:  0,
+			wantOldest: 0,
+			wantLen:    1,
+		},
+		"block count clamped to 1024": {
+			blockCount: 5000,
+			lastBlock:  rpc.BlockNumber(latestBlock),
+			wantOldest: uint64(latestBlock) - 1023,
+			wantLen:    1024,
+		},
+		"huge block count clamped to 1024": {
+			blockCount: geth_math.HexOrDecimal64(math.MaxUint64),
+			lastBlock:  rpc.BlockNumber(latestBlock),
+			wantOldest: uint64(latestBlock) - 1023,
+			wantLen:    1024,
+		},
+		"no percentiles": {
+			blockCount:  2,
+			lastBlock:   10,
+			percentiles: nil,
+			wantOldest:  9,
+			wantLen:     2,
+		},
+		"with percentiles": {
+			blockCount:  2,
+			lastBlock:   10,
+			percentiles: []float64{0, 25, 50, 100},
+			wantOldest:  9,
+			wantLen:     2,
+		},
+		"maximum number of percentiles": {
+			blockCount:  2,
+			lastBlock:   10,
+			percentiles: make([]float64, maxRewardPercentiles),
+			wantOldest:  9,
+			wantLen:     2,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockBackend := NewMockBackend(ctrl)
+
+			currentBlock := evmcore.NewEvmBlock(
+				&evmcore.EvmHeader{Number: new(big.Int).SetUint64(uint64(latestBlock))}, nil)
+			lastBlock := test.lastBlock
+			mockBackend.EXPECT().
+				ResolveRpcBlockNumberOrHash(gomock.Any(), rpc.BlockNumberOrHash{BlockNumber: &lastBlock}).
+				Return(idx.Block(uint64(lastBlock)), nil)
+			mockBackend.EXPECT().CurrentBlock().Return(currentBlock)
+			mockBackend.EXPECT().MinGasPrice().Return(big.NewInt(baseFee))
+			// Each percentile is mapped to a certainty and queried exactly once,
+			// regardless of the number of blocks.
+			for _, p := range test.percentiles {
+				certainty := uint64(gasprice.DecimalUnit * p / 100.0)
+				mockBackend.EXPECT().
+					SuggestGasTipCap(gomock.Any(), certainty).
+					Return(new(big.Int).SetUint64(certainty))
+			}
+
+			ethAPI := NewPublicEthereumAPI(mockBackend)
+			res, err := ethAPI.FeeHistory(context.Background(), test.blockCount, lastBlock, test.percentiles)
+			require.NoError(t, err)
+			require.NotNil(t, res)
+
+			require.Equal(t, test.wantOldest, res.OldestBlock.ToInt().Uint64())
+			require.Len(t, res.Reward, test.wantLen)
+			require.Len(t, res.GasUsedRatio, test.wantLen)
+			require.Len(t, res.BlobGasUsedRatio, test.wantLen)
+			// Base fee arrays carry one extra entry for the next block.
+			require.Len(t, res.BaseFee, test.wantLen+1)
+			require.Len(t, res.BlobBaseFee, test.wantLen+1)
+			for i := range test.wantLen {
+				require.Len(t, res.Reward[i], len(test.percentiles))
+				for j, p := range test.percentiles {
+					certainty := uint64(gasprice.DecimalUnit * p / 100.0)
+					require.Equal(t, certainty, res.Reward[i][j].ToInt().Uint64())
+				}
+				require.Equal(t, 0.99, res.GasUsedRatio[i])
+				require.Equal(t, float64(0), res.BlobGasUsedRatio[i])
+			}
+			for i := range test.wantLen + 1 {
+				require.Equal(t, int64(baseFee), res.BaseFee[i].ToInt().Int64())
+				require.Equal(t, int64(params.BlobTxMinBlobGasprice), res.BlobBaseFee[i].ToInt().Int64())
+			}
+		})
+	}
+}
+
+func TestFeeHistory_ForwardsBlockResolutionError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBackend := NewMockBackend(ctrl)
+
+	lastBlock := rpc.BlockNumber(10)
+	injected := fmt.Errorf("injected error")
+	mockBackend.EXPECT().
+		ResolveRpcBlockNumberOrHash(gomock.Any(), rpc.BlockNumberOrHash{BlockNumber: &lastBlock}).
+		Return(idx.Block(0), injected)
+
+	ethAPI := NewPublicEthereumAPI(mockBackend)
+	res, err := ethAPI.FeeHistory(context.Background(), 1, lastBlock, nil)
+	require.ErrorIs(t, err, injected)
+	require.Nil(t, res)
+}
+
 func TestGetNumberAndTime_ReportsErrors(t *testing.T) {
 
 	tests := map[string]struct {
@@ -1686,5 +2007,73 @@ func TestCapMaxGas_IsUpgradesAware(t *testing.T) {
 			require.NoError(t, err, "unexpected error")
 			require.Equal(t, uint64(test.wantEstimation), got)
 		})
+	}
+}
+
+func TestAccessList_StopsWhenContextIsCancelled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBackend := NewMockBackend(ctrl)
+	mockState := state.NewMockStateDB(ctrl)
+
+	block := &evmcore.EvmBlock{}
+	block.Number = big.NewInt(1)
+	sender := common.Address{1}
+	contract := common.Address{2}
+	infiniteLoop := []byte{byte(vm.JUMPDEST), byte(vm.PUSH1), 0, byte(vm.JUMP)}
+	gasCap := uint64(math.MaxInt64)
+
+	chainConfig := &params.ChainConfig{ChainID: big.NewInt(1), LondonBlock: big.NewInt(0)}
+	blockCtx := vm.BlockContext{
+		BlockNumber: block.Number,
+		BaseFee:     big.NewInt(0),
+		Transfer:    vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int, _ *params.Rules) {}),
+		CanTransfer: vm.CanTransferFunc(func(sd vm.StateDB, a1 common.Address, i *uint256.Int) bool { return true }),
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	any := gomock.Any()
+	mockBackend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(mockState, block, nil)
+	mockBackend.EXPECT().ChainConfig(any).Return(chainConfig).AnyTimes()
+	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+	mockBackend.EXPECT().RPCGasCap().Return(gasCap).AnyTimes()
+	mockBackend.EXPECT().MaxGasLimit().Return(gasCap).AnyTimes()
+	mockBackend.EXPECT().ChainID().Return(big.NewInt(1)).AnyTimes()
+	mockBackend.EXPECT().CurrentBlock().Return(block).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(
+		func(_ context.Context, _ state.StateDB, _ *evmcore.EvmHeader, vmConfig *vm.Config, _ *vm.BlockContext) (*vm.EVM, func() error, error) {
+			return vm.NewEVM(blockCtx, mockState, chainConfig, *vmConfig), func() error { return nil }, nil
+		}).AnyTimes()
+
+	mockState.EXPECT().Copy().Return(mockState).AnyTimes()
+	mockState.EXPECT().GetCode(contract).DoAndReturn(func(common.Address) []byte {
+		cancel()
+		return infiniteLoop
+	}).AnyTimes()
+	mockState.EXPECT().GetCodeHash(contract).Return(crypto.Keccak256Hash(infiniteLoop)).AnyTimes()
+	setExpectedStateCalls(mockState)
+
+	nonce := hexutil.Uint64(0)
+	gas := hexutil.Uint64(gasCap)
+	args := TransactionArgs{
+		From:     &sender,
+		To:       &contract,
+		Nonce:    &nonce,
+		Gas:      &gas,
+		GasPrice: (*hexutil.Big)(big.NewInt(0)),
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, _, _, err := AccessList(ctx, mockBackend, rpc.BlockNumberOrHashWithNumber(1), args)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(10 * time.Second):
+		t.Fatal("AccessList did not stop after context cancellation")
 	}
 }

@@ -47,7 +47,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-//go:generate mockgen -source=backend.go -destination=backend_mock.go -package=rpctest
+//go:generate go tool mockgen -source=backend.go -destination=backend_mock.go -package=rpctest
 
 // AccountState represents the state of an account
 // in the fake backend's state database.
@@ -273,6 +273,21 @@ func (b *fakeBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber)
 		EvmHeader:    *header,
 		Transactions: getBlockTransactions(block),
 	}, nil
+}
+
+func (b *fakeBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error) {
+	if blockNrOrHash.BlockHash != nil {
+		header, err := b.HeaderByHash(ctx, *blockNrOrHash.BlockHash)
+		if err != nil {
+			return 0, err
+		}
+		return idx.Block(header.Number.Uint64()), nil
+	}
+	block, err := b.blockByNumber(*blockNrOrHash.BlockNumber)
+	if err != nil {
+		return 0, err
+	}
+	return idx.Block(block.Number), nil
 }
 
 func (b *fakeBackend) BlockByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmBlock, error) {

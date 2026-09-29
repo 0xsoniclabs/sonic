@@ -33,7 +33,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-//go:generate mockgen -source=leap_join_test.go -destination=leap_join_test_mock.go -package=topicsdb
+//go:generate go tool mockgen -source=leap_join_test.go -destination=leap_join_test_mock.go -package=topicsdb
 
 func TestFindInBlocks_FindsLogsUsingPattern(t *testing.T) {
 	require := require.New(t)

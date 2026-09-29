@@ -17,10 +17,14 @@
 package rpctest
 
 import (
+	"context"
+	"fmt"
 	"math/big"
+	"sync/atomic"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -53,7 +57,7 @@ func Test_TraceSimpleTransfer(t *testing.T) {
 		).
 		Build()
 
-	api := ethapi.NewPublicTxTraceAPI(be, 100_000)
+	api := ethapi.NewPublicTxTraceAPI(be, 100_000, 1000)
 
 	txRequest1 := ethapi.TransactionArgs{
 		From:     acc1.Address(),
@@ -155,11 +159,68 @@ func Test_TraceTransaction_MustProcessWithBaseFeeSet(t *testing.T) {
 		).
 		Build()
 
-	api := ethapi.NewPublicTxTraceAPI(be, 100_000)
+	api := ethapi.NewPublicTxTraceAPI(be, 100_000, 1000)
 
 	// trace call should succeed and not error out due to base fee set in block
 	res, err := api.Transaction(t.Context(), tx1.Hash())
 	require.NoError(t, err)
 	require.NotNil(t, res)
 
+}
+
+// blockCounter counts the blocks a trace_filter reads from the backend.
+type blockCounter struct {
+	*fakeBackend
+	reads atomic.Int64
+}
+
+func (b *blockCounter) BlockByNumber(ctx context.Context, n rpc.BlockNumber) (*evmcore.EvmBlock, error) {
+	b.reads.Add(1)
+	return b.fakeBackend.BlockByNumber(ctx, n)
+}
+
+// Test_TraceFilter_RefusesARangeWiderThanTheLimit checks that a span wider
+// than the limit is refused before any block is read.
+func Test_TraceFilter_RefusesARangeWiderThanTheLimit(t *testing.T) {
+	const head, limit = 2_000, 1000
+	history := make([]Block, 0, head+1)
+	for n := uint64(0); n <= head; n++ {
+		history = append(history, Block{Number: n, Hash: common.BigToHash(big.NewInt(int64(n + 1)))})
+	}
+	be := &blockCounter{fakeBackend: NewBackendBuilder(t).WithBlockHistory(history).Build()}
+	api := ethapi.NewPublicTxTraceAPI(be, 100_000, limit)
+
+	block := func(n int64) *rpc.BlockNumberOrHash {
+		b := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(n))
+		return &b
+	}
+	for _, args := range []ethapi.FilterArgs{
+		{},
+		{FromBlock: block(0), ToBlock: block(limit + 1)},
+		{FromBlock: block(0), ToBlock: block(head), After: 1 << 40, Count: 1},
+	} {
+		_, err := api.Filter(t.Context(), args)
+		require.ErrorContains(t, err, fmt.Sprintf("too wide blocks range, the limit is %d", limit), "%+v", args)
+	}
+	require.Zero(t, be.reads.Load(), "a refused filter reads no block")
+
+	res, err := api.Filter(t.Context(), ethapi.FilterArgs{FromBlock: block(0), ToBlock: block(limit)})
+	require.NoError(t, err)
+	require.JSONEq(t, "[]", string(res))
+	require.EqualValues(t, limit+1, be.reads.Load())
+}
+
+func Test_TraceFilter_ZeroLimitMeansUnlimited(t *testing.T) {
+	const head = 2_000
+	history := make([]Block, 0, head+1)
+	for n := uint64(0); n <= head; n++ {
+		history = append(history, Block{Number: n, Hash: common.BigToHash(big.NewInt(int64(n + 1)))})
+	}
+	be := &blockCounter{fakeBackend: NewBackendBuilder(t).WithBlockHistory(history).Build()}
+	api := ethapi.NewPublicTxTraceAPI(be, 100_000, 0)
+
+	res, err := api.Filter(t.Context(), ethapi.FilterArgs{})
+	require.NoError(t, err)
+	require.JSONEq(t, "[]", string(res))
+	require.EqualValues(t, head+1, be.reads.Load())
 }

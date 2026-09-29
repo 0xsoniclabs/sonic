@@ -26,7 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/valkeystore/encryption"
 )
 
-//go:generate mockgen -source=signer.go -destination=signer_mock.go  -package=valkeystore
+//go:generate go tool mockgen -source=signer.go -destination=signer_mock.go  -package=valkeystore
 
 // SignerAuthority is an interface for signing operations with a validator's key.
 type SignerAuthority interface {

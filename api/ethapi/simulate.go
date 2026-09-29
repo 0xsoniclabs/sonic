@@ -50,6 +50,12 @@ const (
 	// in a single request.
 	maxSimulateBlocks = 256
 
+	// maxSimulateCallsPerBlock is the maximum number of calls in one simulated block.
+	maxSimulateCallsPerBlock = 5000
+
+	// maxSimulateTotalCalls is the maximum number of calls across all blocks of a request.
+	maxSimulateTotalCalls = 10000
+
 	// timestampIncrement is the default increment between block timestamps.
 	timestampIncrement = 12
 )
@@ -510,6 +516,17 @@ func (sim *simulator) sanitizeCall(call *TransactionArgs, state interState.State
 			fmt.Sprintf("block gas limit reached: %d >= %d", *gasUsed+uint64(*call.Gas), header.GasLimit),
 		)
 	}
+	// Reject blob and setcode transaction types without a recipient. They
+	// cannot be represented as a transaction, so reject them up front with the
+	// same errors that message execution would return for them.
+	if call.To == nil {
+		if call.BlobHashes != nil || call.BlobFeeCap != nil {
+			return core.ErrBlobTxCreate
+		}
+		if call.AuthorizationList != nil {
+			return core.ErrSetCodeTxCreate
+		}
+	}
 	// Set price-related defaults (no-backend equivalent of setDefaults).
 	if err := sim.setCallPriceDefaults(call, header.BaseFee); err != nil {
 		return err
@@ -577,7 +594,7 @@ func (sim *simulator) sanitizeChain(blocks []simBlock) ([]simBlock, error) {
 			)
 		}
 		if total := new(big.Int).Sub(block.BlockOverrides.Number.ToInt(), base.Number); total.Cmp(big.NewInt(maxSimulateBlocks)) > 0 {
-			return nil, simClientLimitExceededError()
+			return nil, simClientLimitExceededError("too many blocks")
 		}
 
 		// Fill any gap with empty blocks.

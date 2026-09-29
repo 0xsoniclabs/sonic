@@ -288,9 +288,9 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 
 				evmModule := blockproc.NewMockEVM(ctrl)
 				evmModule.EXPECT().
-					Start(_any, _any, _any, _any, _any, _any, _any, _any).
-					DoAndReturn(func(block iblockproc.BlockCtx, _, _, _, _, _, _, _ any) blockproc.EVMProcessor {
-						require.Equal(t, test.blockTime, block.Time)
+					Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).
+					DoAndReturn(func(_ idx.Block, blockTime inter.Timestamp, _ idx.Epoch, _, _, _, _, _, _, _ any) blockproc.EVMProcessor {
+						require.Equal(t, test.blockTime, blockTime)
 						return evmProcessor
 					})
 
@@ -433,7 +433,7 @@ func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
 		},
 	}, 0, nil)
 	evmModule := blockproc.NewMockEVM(ctrl)
-	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
 
 	// Sealer reports that this block seals the epoch and returns the sealed
 	// epoch state carrying the changed rules.
@@ -605,7 +605,7 @@ func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 		&types.Receipt{TxHash: receiptTx.Hash(), Status: 1},
 	})
 	evmModule := blockproc.NewMockEVM(ctrl)
-	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
 
 	sealer := blockproc.NewMockSealerProcessor(ctrl)
 	sealer.EXPECT().EpochSealing().Return(true)
@@ -763,7 +763,7 @@ func TestConsensusCallback_AppliesTransactionPriorities(t *testing.T) {
 		},
 	}, 0, nil)
 	evmModule := blockproc.NewMockEVM(ctrl)
-	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
 
 	sealer := blockproc.NewMockSealerProcessor(ctrl)
 	sealer.EXPECT().EpochSealing().Return(false)
@@ -1741,7 +1741,9 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 
 	evmModule := evmmodule.New()
 	evmProcessor := evmModule.Start(
-		iblockproc.BlockCtx{},
+		0,
+		0,
+		0,
 		statedb,
 		&EvmStateReader{},
 		func(l *core_types.Log) {},
@@ -1794,7 +1796,9 @@ func TestProcessUserTransactions_MetricsAreForwardedToStateProcessor(t *testing.
 
 	evmModule := evmmodule.New()
 	evmProcessor := evmModule.Start(
-		iblockproc.BlockCtx{},
+		0,
+		0,
+		0,
 		statedb,
 		&EvmStateReader{},
 		func(l *core_types.Log) {},
@@ -2260,7 +2264,7 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupWithBrio(t *te
 			}, 0, types.Receipts{originReceipt, derivedReceipt})
 
 			evmModule := blockproc.NewMockEVM(ctrl)
-			evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+			evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
 
 			txTransactor := blockproc.NewMockTxTransactor(ctrl)
 			txTransactor.EXPECT().PopInternalTxs(_any, _any, _any, _any, _any).Return(types.Transactions{}).AnyTimes()

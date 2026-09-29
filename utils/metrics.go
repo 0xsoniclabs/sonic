@@ -18,7 +18,7 @@ package utils
 
 import "github.com/prometheus/client_golang/prometheus"
 
-//go:generate mockgen -source=metrics.go -destination=metrics_mock.go -package=utils
+//go:generate go tool mockgen -source=metrics.go -destination=metrics_mock.go -package=utils
 
 // MetricsHistogram is an interface that wraps the methods of a
 // prometheus Histogram to facilitate testing with mocks.
