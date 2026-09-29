@@ -265,15 +265,18 @@ func TestSonicTool_genesis_ExportImport_WithBundles(t *testing.T) {
 	require.Equal(t, originalInfo1, info1,
 		"bundle info mismatch after genesis export-import")
 
-	// run enough blocks to make sure that the history hash is pruned.
+	// run more blocks than the maximum block range of a bundle; processed
+	// bundles are retained beyond it (see gossip.ProcessedBundlesRetention),
+	// so the node can still be healed to an earlier epoch.
 	generateNBlocks(t, net, int(bundle.MaxBlockRangeLength)+10)
 
 	// run another bundle
 	bundleHash2, originalInfo2 := runBundle(t, net)
 
-	// check that the first bundle is pruned and the second bundle is still there after pruning
-	_, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
-	require.ErrorContains(t, err, "not found")
+	// check that both bundles are still retained
+	info1, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
+	require.NoError(t, err)
+	require.Equal(t, originalInfo1, info1)
 	info2, err := bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash2)
 	require.NoError(t, err)
 	require.Equal(t, originalInfo2, info2)
@@ -284,9 +287,11 @@ func TestSonicTool_genesis_ExportImport_WithBundles(t *testing.T) {
 	client, err = net.GetClient()
 	require.NoError(t, err)
 
-	// check that the second bundle is available, but the first bundle is not, after the export-import process
-	_, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
-	require.ErrorContains(t, err, "not found")
+	// the archive genesis exports all retained bundles, so both bundles are
+	// still available after the export-import process
+	info1, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
+	require.NoError(t, err)
+	require.Equal(t, originalInfo1, info1)
 	info2, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash2)
 	require.NoError(t, err)
 	require.Equal(t, originalInfo2, info2)

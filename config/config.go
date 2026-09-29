@@ -457,6 +457,10 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 		cfg.OperaStore.EVM.StateDb.CheckpointInterval = ctx.GlobalInt(flags.StateDbCheckPointInterval.Name)
 	}
 
+	if ctx.IsSet(flags.MaxRetainedProcessedBundlesFlag.Name) {
+		cfg.OperaStore.MaxRetainedProcessedBundles = ctx.GlobalUint64(flags.MaxRetainedProcessedBundlesFlag.Name)
+	}
+
 	return &cfg, nil
 }
 

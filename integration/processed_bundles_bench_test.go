@@ -30,7 +30,9 @@ import (
 
 // BenchmarkStore_HasBundleRecentlyBeenProcessed measures the lookup the tx
 // pool performs per bundle-only transaction, on the DB stack of a node holding
-// a full window of processed bundles.
+// processed bundles for the maximum block range of a bundle. Bundles are
+// retained longer (see gossip.ProcessedBundlesRetention), so none of them are
+// pruned.
 func BenchmarkStore_HasBundleRecentlyBeenProcessed(b *testing.B) {
 	const bundlesPerBlock = 10
 
@@ -54,7 +56,6 @@ func BenchmarkStore_HasBundleRecentlyBeenProcessed(b *testing.B) {
 			store.AddProcessedBundles(block, bundles)
 		}
 		require.NoError(b, dbs.Flush([]byte("bench"))) // < read from pebble, not from memory
-		processed = processed[bundlesPerBlock:]        // < the first block got pruned
 
 		b.Run(fmt.Sprintf("cache=%dMiB/processed", cacheMiB), func(b *testing.B) {
 			for i := range b.N {
