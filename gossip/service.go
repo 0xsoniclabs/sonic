@@ -71,7 +71,7 @@ import (
 	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
-//go:generate mockgen -source=service.go -package=gossip -destination=service_mock.go
+//go:generate go tool mockgen -source=service.go -package=gossip -destination=service_mock.go
 
 type ServiceFeed struct {
 	scope notify.SubscriptionScope
@@ -563,7 +563,7 @@ func (s *Service) APIs() []rpc.API {
 		}, {
 			Namespace: "trace",
 			Version:   "1.0",
-			Service:   ethapi.NewPublicTxTraceAPI(s.EthAPI, s.config.MaxResponseSize),
+			Service:   ethapi.NewPublicTxTraceAPI(s.EthAPI, s.config.MaxResponseSize, s.config.MaxTraceFilterRange),
 			Public:    true,
 		},
 	}...)

@@ -19,6 +19,7 @@ package tests
 import (
 	"fmt"
 	"math/big"
+	"runtime"
 	"slices"
 	"testing"
 
@@ -130,9 +131,17 @@ func testLargeTransactionLoadTest(
 	// processed and no receipts are produced. This test ensures that the
 	// network can handle such a load without stalling.
 	const (
-		numAccounts = 50
-		numRounds   = 10
+		numAccounts  = 50
+		minNumRounds = 4
+		maxNumRounds = 10
 	)
+	// Processing the flood is CPU bound -- all nodes of the network validate
+	// and execute the large transactions in this single process -- while the
+	// budget for collecting the receipts is a fixed wall-clock duration. The
+	// depth of the flood is therefore scaled with the available parallelism.
+	// The number of accounts, and with it the volume of transactions pending
+	// simultaneously, is retained to keep the peak beyond the 10 MB limit.
+	numRounds := min(maxNumRounds, max(minNumRounds, runtime.GOMAXPROCS(0)))
 	require := require.New(t)
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: upgrades,

@@ -35,7 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-//go:generate mockgen -source=tx_validation.go -destination=tx_validation_mock.go -package=evmcore
+//go:generate go tool mockgen -source=tx_validation.go -destination=tx_validation_mock.go -package=evmcore
 
 // poolOptions is a set of options to adjust the validation of transactions
 // according to the current state of the transaction pool.
@@ -478,7 +478,8 @@ func validateSponsoredTransactions(
 	return nil
 }
 
-// validateBundleTransactions checks if a transaction is a bundle transaction and if so,
+// validateBundleTransactions rejects individually submitted bundle-only transactions
+// approving multiple execution plans. If the transaction is a bundle transaction, it
 // validates the bundle structure and the validity of each transaction in the bundle.
 // if the bundle is malformed or any bundle-only transactions is invalid,
 // it returns an error rejecting the transaction.
@@ -510,13 +511,30 @@ func validateBundleTransactionsInternal(
 	bundleEvaluator BundleEvaluator,
 ) error {
 
-	// This check only covers bundle transactions, ignore the rest.
-	if !bundle.IsEnvelope(tx) {
+	// Before brio, envelopes and bundle-only marks are regular tx content.
+	if !netRules.brio {
 		return nil
 	}
 
-	// Before brio, bundle envelopes are normal transactions, so they are not validated as bundles.
-	if !netRules.brio {
+	// A bundle-only transaction without a plan to run in, or of which all
+	// plans have been processed already, would only block its sender's nonce.
+	// Bundles may contain bundle-only transactions approving multiple
+	// execution plans, the pool does not accept them individually.
+	if bundle.IsBundleOnly(tx) {
+		if len(bundle.GetApprovedExecutionPlans(tx)) == 0 {
+			return ErrBundleOnlyWithoutPlan
+		}
+		if approvesMultiplePlans(tx) {
+			return errors.Join(ErrBundleTransactionInvalid,
+				errors.New("bundle-only transaction approves multiple execution plans"))
+		}
+		if isBundleOnlyOfProcessedBundles(tx, stateDb) {
+			return ErrBundleAlreadyProcessed
+		}
+	}
+
+	// The remaining checks only cover bundle envelopes, ignore the rest.
+	if !bundle.IsEnvelope(tx) {
 		return nil
 	}
 	// If transaction bundles are not active, reject the transaction.
@@ -549,6 +567,18 @@ func validateBundleTransactionsInternal(
 	return nil
 }
 
+// approvesMultiplePlans reports whether the transaction's bundle-only marker
+// lists more than one execution plan, counting duplicates.
+func approvesMultiplePlans(tx *types.Transaction) bool {
+	plans := 0
+	for _, entry := range tx.AccessList() {
+		if entry.Address == bundle.BundleOnly {
+			plans += len(entry.StorageKeys)
+		}
+	}
+	return plans > 1
+}
+
 // getBundleState is a helper tool to get the state of a bundle transaction
 type getBundleStateAdaptor struct {
 	StateReader
@@ -572,4 +602,19 @@ func (f getBundleStateAdaptor) Header(hash common.Hash, number uint64) *EvmHeade
 		return nil
 	}
 	return block.Header()
+}
+
+// isBundleOnlyOfProcessedBundles reports whether the given transaction is
+// bundle-only and all the execution plans it approves have been processed
+// recently, so it can not be executed anymore.
+func isBundleOnlyOfProcessedBundles(tx *types.Transaction, stateDb state.StateDB) bool {
+	if !bundle.IsBundleOnly(tx) {
+		return false
+	}
+	for _, planHash := range bundle.GetApprovedExecutionPlans(tx) {
+		if !stateDb.HasBundleRecentlyBeenProcessed(planHash) {
+			return false
+		}
+	}
+	return true
 }

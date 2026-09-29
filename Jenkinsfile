@@ -35,6 +35,24 @@ pipeline {
             }
         }
 
+        stage('Check mocks are up-to-date') {
+            steps {
+                sh 'go generate -run \'mockgen\' ./...'
+                // Detect both modifications to tracked files and any
+                // newly generated untracked files.
+                sh '''
+                    status=$(git status --porcelain)
+                    if [ -n "$status" ]; then
+                        echo "Generated files are out of date:"
+                        echo "$status"
+                        git diff
+                        exit 1
+                    fi
+                '''
+            }
+        }
+
+
         stage('Run tests') {
             steps {
                 sh 'make coverage'

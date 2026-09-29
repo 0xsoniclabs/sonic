@@ -62,7 +62,7 @@ import (
 	"github.com/0xsoniclabs/sonic/utils"
 )
 
-//go:generate mockgen -source=c_block_callbacks.go -package=gossip -destination=c_block_callbacks_mock.go
+//go:generate go tool mockgen -source=c_block_callbacks.go -package=gossip -destination=c_block_callbacks_mock.go
 
 var (
 	// Ethereum compatible metrics set (see go-ethereum/core)
@@ -375,7 +375,9 @@ func consensusCallbackBeginBlockFn(
 
 				// prepare block processing
 				evmProcessor := blockProc.EVMModule.Start(
-					blockCtx,
+					blockCtx.Idx,
+					blockCtx.Time,
+					blockCtx.Atropos.Epoch(),
 					statedb,
 					evmStateReader,
 					onNewLogAll,

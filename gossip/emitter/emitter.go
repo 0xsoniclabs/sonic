@@ -53,7 +53,7 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/errlock"
 )
 
-//go:generate mockgen -source=emitter.go -destination=emitter_mock.go -package=emitter
+//go:generate go tool mockgen -source=emitter.go -destination=emitter_mock.go -package=emitter
 
 const (
 	SenderCountBufferSize = 20000

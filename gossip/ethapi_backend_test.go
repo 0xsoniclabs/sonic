@@ -25,6 +25,8 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils/concurrent"
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -50,6 +52,7 @@ func TestEthApiBackend_GetNetworkRules_LoadsRulesFromEpoch(t *testing.T) {
 			Build(),
 	)
 	require.True(store.HasBlock(blockNumber))
+	setLatestBlockIndex(store, blockNumber)
 
 	rules := opera.FakeNetRules(opera.Upgrades{})
 	rules.Name = "test-rules"
@@ -90,6 +93,7 @@ func TestEthApiBackend_GetNetworkRules_MissingBlockReturnsNilRules(t *testing.T)
 	store, err := NewMemStore(t)
 	require.NoError(err)
 	require.False(store.HasBlock(blockNumber))
+	setLatestBlockIndex(store, blockNumber)
 
 	backend := &EthAPIBackend{
 		state: &EvmStateReader{
@@ -111,6 +115,7 @@ func TestEthApiBackend_GetTransaction_ReturnsTransactionAtItsPosition(t *testing
 	tx := types.NewTx(&types.LegacyTx{Nonce: 1})
 	store.evm.SetTx(tx.Hash(), tx)
 	store.evm.SetTxPosition(tx.Hash(), evmstore.TxPosition{Block: 42, BlockOffset: 7})
+	setLatestBlockIndex(store, 42)
 
 	backend := &EthAPIBackend{
 		svc: &Service{
@@ -126,6 +131,46 @@ func TestEthApiBackend_GetTransaction_ReturnsTransactionAtItsPosition(t *testing
 	require.Equal(uint64(7), offset)
 }
 
+// TestEthApiBackend_GetTransaction_IsNotReportedBeforeItsBlockIsPublished
+// checks that a transaction is reported as unknown while the latest block index
+// does not cover the block it was included in. The transaction index is written
+// before that index is advanced; reporting the transaction in between would let
+// a client obtain its receipt while queries resolving "latest" still answer from
+// the preceding block.
+func TestEthApiBackend_GetTransaction_IsNotReportedBeforeItsBlockIsPublished(t *testing.T) {
+	require := require.New(t)
+
+	const blockNumber = idx.Block(42)
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	tx := types.NewTx(&types.LegacyTx{Nonce: 1})
+	store.evm.SetTx(tx.Hash(), tx)
+	store.evm.SetTxPosition(tx.Hash(), evmstore.TxPosition{Block: blockNumber, BlockOffset: 7})
+
+	backend := &EthAPIBackend{
+		svc: &Service{
+			config: Config{TxIndex: true},
+			store:  store,
+		},
+	}
+
+	setLatestBlockIndex(store, blockNumber-1)
+	require.Nil(backend.GetTxPosition(tx.Hash()),
+		"a transaction of an unpublished block must not be reported")
+	got, _, _, err := backend.GetTransaction(t.Context(), tx.Hash())
+	require.NoError(err)
+	require.Nil(got, "a transaction of an unpublished block must not be reported")
+
+	setLatestBlockIndex(store, blockNumber)
+	got, block, offset, err := backend.GetTransaction(t.Context(), tx.Hash())
+	require.NoError(err)
+	require.Equal(tx.Hash(), got.Hash())
+	require.Equal(uint64(blockNumber), block)
+	require.Equal(uint64(7), offset)
+}
+
 func TestEthApiBackend_GetTransaction_ReportsCorruptedIndexIfBodyIsMissing(t *testing.T) {
 	require := require.New(t)
 
@@ -134,6 +179,7 @@ func TestEthApiBackend_GetTransaction_ReportsCorruptedIndexIfBodyIsMissing(t *te
 
 	txHash := common.Hash{1}
 	store.evm.SetTxPosition(txHash, evmstore.TxPosition{Block: 42, BlockOffset: 7})
+	setLatestBlockIndex(store, 42)
 
 	backend := &EthAPIBackend{
 		svc: &Service{
@@ -309,4 +355,51 @@ func TestEthApiBackend_epochWithDefault_RejectsEpochsAboveUint32Max(t *testing.T
 	outOfRange := rpc.BlockNumber(1<<32 + int64(currentEpoch))
 	_, err = backend.epochWithDefault(t.Context(), outOfRange)
 	require.Error(t, err, "epoch value above uint32 max must be rejected")
+}
+
+func newBackendAtEpoch(t *testing.T, epoch idx.Epoch) (*Store, *EthAPIBackend) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	store.SetBlockEpochState(iblockproc.BlockState{}, iblockproc.EpochState{Epoch: epoch})
+	store.loadEpochStore(epoch)
+	return store, &EthAPIBackend{svc: &Service{store: store}}
+}
+
+func TestEthApiBackend_GetHeads_ReturnsHeadsOfOpenEpoch(t *testing.T) {
+	const epoch = idx.Epoch(3)
+	store, backend := newBackendAtEpoch(t, epoch)
+
+	want := hash.Events{hash.BytesToEvent([]byte{1}), hash.BytesToEvent([]byte{2})}
+	store.SetHeads(epoch, concurrent.WrapEventsSet(want.Set()))
+
+	for _, selector := range []rpc.BlockNumber{rpc.BlockNumber(epoch), rpc.PendingBlockNumber} {
+		got, err := backend.GetHeads(t.Context(), selector)
+		require.NoError(t, err, selector)
+		require.ElementsMatch(t, want, got, selector)
+	}
+}
+
+func TestEthApiBackend_GetHeads_ReportsUnavailableHeadsForSealedEpoch(t *testing.T) {
+	const epoch = idx.Epoch(3)
+	_, backend := newBackendAtEpoch(t, epoch)
+
+	for _, sealed := range []rpc.BlockNumber{rpc.BlockNumber(epoch - 1), rpc.LatestBlockNumber} {
+		_, err := backend.GetHeads(t.Context(), sealed)
+		require.ErrorIs(t, err, errHeadsUnavailable, sealed)
+	}
+}
+
+func TestEthApiBackend_GetHeads_ReportsUnavailableHeadsWhileEpochStoreLagsBehindEpochState(t *testing.T) {
+	const epoch = idx.Epoch(3)
+	store, backend := newBackendAtEpoch(t, epoch)
+
+	// Sealing publishes the new epoch state before switchEpochTo swaps the
+	// epoch store, so the open epoch briefly has no epoch store at all.
+	store.SetBlockEpochState(iblockproc.BlockState{}, iblockproc.EpochState{Epoch: epoch + 1})
+
+	var err error
+	require.NotPanics(t, func() {
+		_, err = backend.GetHeads(t.Context(), rpc.PendingBlockNumber)
+	})
+	require.ErrorIs(t, err, errHeadsUnavailable)
 }

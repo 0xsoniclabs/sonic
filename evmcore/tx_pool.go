@@ -44,7 +44,7 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 )
 
-//go:generate mockgen -source=tx_pool.go -destination=tx_pool_mock.go -package=evmcore
+//go:generate go tool mockgen -source=tx_pool.go -destination=tx_pool_mock.go -package=evmcore
 
 const (
 	// chainHeadChanSize is the size of channel listening to ChainHeadNotify.
@@ -113,6 +113,10 @@ var (
 
 	// ErrBundleAlreadyProcessed is returned when a bundle transaction is rejected because the same bundle has already been processed recently.
 	ErrBundleAlreadyProcessed = errors.New("bundle has already been processed recently")
+
+	// ErrBundleOnlyWithoutPlan is returned when a bundle-only transaction does
+	// not approve any execution plan, so it can never be executed.
+	ErrBundleOnlyWithoutPlan = errors.New("bundle-only transaction approves no execution plan")
 
 	// ErrBundleNonExecutable is returned when a bundle transaction is rejected because it is not executable.
 	ErrBundleNonExecutable = errors.New("bundle is not executable")
@@ -208,7 +212,8 @@ type TxPoolConfig struct {
 	AccountQueue uint64 // Maximum number of non-executable transaction slots permitted per account
 	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
 
-	Lifetime time.Duration // Maximum amount of time non-executable transaction are queued
+	Lifetime           time.Duration // Maximum amount of time non-executable transaction are queued
+	BundleOnlyLifetime time.Duration // Maximum amount of time bundle-only transactions wait for their bundle
 
 	DisableTxPoolValidation bool // Disable transaction pool validation, used for testing only
 }
@@ -227,7 +232,8 @@ var DefaultTxPoolConfig = TxPoolConfig{
 	AccountQueue: 32,
 	GlobalQueue:  256,
 
-	Lifetime: 3 * time.Hour,
+	Lifetime:           3 * time.Hour,
+	BundleOnlyLifetime: time.Hour,
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -265,6 +271,10 @@ func (config *TxPoolConfig) sanitize() TxPoolConfig {
 	if conf.Lifetime < 1 {
 		log.Warn("Sanitizing invalid txpool lifetime", "provided", conf.Lifetime, "updated", DefaultTxPoolConfig.Lifetime)
 		conf.Lifetime = DefaultTxPoolConfig.Lifetime
+	}
+	if conf.BundleOnlyLifetime < 1 {
+		log.Warn("Sanitizing invalid txpool bundle-only lifetime", "provided", conf.BundleOnlyLifetime, "updated", DefaultTxPoolConfig.BundleOnlyLifetime)
+		conf.BundleOnlyLifetime = DefaultTxPoolConfig.BundleOnlyLifetime
 	}
 	return conf
 }
@@ -492,6 +502,7 @@ func (pool *TxPool) loop() {
 					queuedEvictionMeter.Mark(int64(len(list)))
 				}
 			}
+			pool.evictStaleBundleOnlyTransactions()
 			pool.mu.Unlock()
 
 		// Handle local transaction journal rotation
@@ -1227,6 +1238,50 @@ func (pool *TxPool) removeTx(hash common.Hash, removeFromPriced bool) {
 	}
 }
 
+// evictBundleOnlyTransactionsOfProcessedBundles removes the bundle-only
+// transactions of which every approved execution plan has been processed by a
+// block. Those transactions can only run as part of such a bundle, so they
+// would block the nonce of their sender indefinitely. The pool lock must be
+// held and the current state must be up to date.
+func (pool *TxPool) evictBundleOnlyTransactionsOfProcessedBundles() {
+	if !pool.chain.CurrentRules().Upgrades.Brio || pool.currentState == nil {
+		return
+	}
+
+	// The removal below must not be interleaved with the iteration.
+	var processed []common.Hash
+	for hash, tx := range pool.all.txs() {
+		if isBundleOnlyOfProcessedBundles(tx, pool.currentState) {
+			processed = append(processed, hash)
+		}
+	}
+	for _, hash := range processed {
+		pool.removeTx(hash, true)
+	}
+}
+
+// evictStaleBundleOnlyTransactions removes the bundle-only transactions which
+// have been waiting for their bundle longer than the configured lifetime. Only
+// the envelope tells whether a bundle can still run, so without this, those of
+// expired or never submitted bundles would block the nonce of their sender for
+// as long as they stay pending. The pool lock must be held.
+func (pool *TxPool) evictStaleBundleOnlyTransactions() {
+	if !pool.chain.CurrentRules().Upgrades.Brio {
+		return
+	}
+
+	// The removal below must not be interleaved with the iteration.
+	var stale []common.Hash
+	for hash, tx := range pool.all.txs() {
+		if bundle.IsBundleOnly(tx) && time.Since(tx.Time()) > pool.config.BundleOnlyLifetime {
+			stale = append(stale, hash)
+		}
+	}
+	for _, hash := range stale {
+		pool.removeTx(hash, true)
+	}
+}
+
 // requestReset requests a pool reset to the new head block.
 // The returned channel is closed when the reset has occurred.
 func (pool *TxPool) requestReset(oldHead *EvmHeader, newHead *EvmHeader) chan struct{} {
@@ -1499,6 +1554,8 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	pool.currentState = statedb
 	pool.pendingNonces = newTxNoncer(statedb)
 	pool.currentMaxGas = pool.chain.CurrentMaxGasLimit()
+
+	pool.evictBundleOnlyTransactionsOfProcessedBundles()
 
 	// Inject any transactions discarded due to reorgs
 	log.Debug("Reinjecting stale transactions", "count", len(reinject))
@@ -2098,7 +2155,15 @@ func (t *txLookup) Add(tx *types.Transaction, local bool) {
 func (t *txLookup) addAuthorities(tx *types.Transaction) {
 	// FIXME: later geth uses new signature: SetCodeAuthorizers returning addresses
 	for _, auth := range tx.SetCodeAuthorizations() {
-		addr, _ := auth.Authority()
+		addr, err := auth.Authority()
+		if err != nil {
+			// Skip authorizations whose signature does not recover to an
+			// authority. removeAuthorities iterates tx.SetCodeAuthorities(),
+			// which recovers valid authorities only, so an entry tracked here
+			// under the zero address would never be removed and would remain in
+			// t.auths for the lifetime of the pool.
+			continue
+		}
 		list, ok := t.auths[addr]
 		if !ok {
 			list = []common.Hash{}

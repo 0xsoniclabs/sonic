@@ -24,7 +24,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 )
 
-//go:generate mockgen -source=throttler.go -destination=throttler_mock.go -package=throttler
+//go:generate go tool mockgen -source=throttler.go -destination=throttler_mock.go -package=throttler
 
 // ThrottlingState holds the state required to decide if an event can be safely skipped,
 // or if the validator must emit it to bring the stake online.

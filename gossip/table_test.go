@@ -21,7 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 )
 
-//go:generate mockgen -source=table_test.go -destination=table_mock.go -package=gossip
+//go:generate go tool mockgen -source=table_test.go -destination=table_mock.go -package=gossip
 
 // storeTable is an interface needed to generate a mock for a kvdb.Store.
 type storeTable interface {

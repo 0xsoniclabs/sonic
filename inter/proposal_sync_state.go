@@ -23,7 +23,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 )
 
-//go:generate mockgen -source=proposal_sync_state.go -destination=proposal_sync_state_mock.go -package=inter
+//go:generate go tool mockgen -source=proposal_sync_state.go -destination=proposal_sync_state_mock.go -package=inter
 
 // ProposalSyncState is a structure holding a summary of the state tracked by
 // events on the DAG to facilitate the proposal selection.

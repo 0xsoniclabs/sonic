@@ -62,8 +62,9 @@ type Config struct {
 	UnindexedLogsBlockRangeLimit idx.Block
 
 	// LogQueryParameterLimit is the maximum number of parameters that can be
-	// specified in eth_getLogs filter criteria. A parameter is either an
-	// address or a topic. A value of 0 means no cap.
+	// specified in log filter criteria, for eth_getLogs, eth_newFilter and
+	// logs subscriptions alike. A parameter is either an address or a topic.
+	// A value of 0 means no cap.
 	LogQueryParameterLimit uint
 
 	// LogQueryResultLimit is the maximum number of logs that can be returned in
@@ -201,12 +202,17 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context, fullTx *
 		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
 	}
 
-	rpcSub := notifier.CreateSubscription()
+	// The subscription must be installed in the event system before this
+	// function returns. Otherwise the client's subscription request completes
+	// while the feed is not yet registered, and transactions entering the pool
+	// in that window are never reported to this subscriber.
+	var (
+		rpcSub       = notifier.CreateSubscription()
+		incomingTxs  = make(chan []*types.Transaction, 128)
+		pendingTxSub = api.events.SubscribePendingTxs(incomingTxs)
+	)
 
 	go func() {
-		incomingTxs := make(chan []*types.Transaction, 128)
-		pendingTxSub := api.events.SubscribePendingTxs(incomingTxs)
-
 		for {
 			select {
 			case txs := <-incomingTxs:
@@ -272,12 +278,15 @@ func (api *PublicFilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, er
 		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
 	}
 
-	rpcSub := notifier.CreateSubscription()
+	// Installed before returning, for the same reason as in
+	// NewPendingTransactions.
+	var (
+		rpcSub     = notifier.CreateSubscription()
+		headers    = make(chan *evmcore.EvmHeaderJson)
+		headersSub = api.events.SubscribeNewHeads(headers)
+	)
 
 	go func() {
-		headers := make(chan *evmcore.EvmHeaderJson)
-		headersSub := api.events.SubscribeNewHeads(headers)
-
 		for {
 			select {
 			case h := <-headers:
@@ -297,6 +306,10 @@ func (api *PublicFilterAPI) Logs(ctx context.Context, crit FilterCriteria) (*rpc
 	notifier, supported := rpc.NotifierFromContext(ctx)
 	if !supported {
 		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
+	}
+
+	if err := checkParameterLimit(api.config, crit.Addresses, crit.Topics); err != nil {
+		return nil, err
 	}
 
 	var (
@@ -345,6 +358,9 @@ type FilterCriteria ethereum.FilterQuery
 //
 // https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_newfilter
 func (api *PublicFilterAPI) NewFilter(crit FilterCriteria) (rpc.ID, error) {
+	if err := checkParameterLimit(api.config, crit.Addresses, crit.Topics); err != nil {
+		return rpc.ID(""), err
+	}
 	logs := make(chan []*types.Log)
 	logsSub, err := api.events.SubscribeLogs(ethereum.FilterQuery(crit), logs)
 	if err != nil {
@@ -380,10 +396,13 @@ func (api *PublicFilterAPI) NewFilter(crit FilterCriteria) (rpc.ID, error) {
 //
 // https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_getlogs
 func (api *PublicFilterAPI) GetLogs(ctx context.Context, crit FilterCriteria) ([]*types.Log, error) {
-	var filter *Filter
+	var (
+		filter *Filter
+		err    error
+	)
 	if crit.BlockHash != nil {
 		// Block filter requested, construct a single-shot filter
-		filter = NewBlockFilter(api.backend, api.config, *crit.BlockHash, crit.Addresses, crit.Topics)
+		filter, err = NewBlockFilter(api.backend, api.config, *crit.BlockHash, crit.Addresses, crit.Topics)
 	} else {
 		// Convert the RPC block numbers into internal representations
 		begin := rpc.LatestBlockNumber.Int64()
@@ -396,7 +415,10 @@ func (api *PublicFilterAPI) GetLogs(ctx context.Context, crit FilterCriteria) ([
 		}
 		// Construct the range filter
 		resultLimit := api.config.LogQueryResultLimit
-		filter = NewRangeFilter(api.backend, api.config, begin, end, crit.Addresses, crit.Topics, resultLimit)
+		filter, err = NewRangeFilter(api.backend, api.config, begin, end, crit.Addresses, crit.Topics, resultLimit)
+	}
+	if err != nil {
+		return nil, err
 	}
 	// Run the filter and return all the logs
 	logs, err := filter.Logs(ctx)
@@ -436,10 +458,13 @@ func (api *PublicFilterAPI) GetFilterLogs(ctx context.Context, id rpc.ID) ([]*ty
 		return nil, fmt.Errorf("filter not found")
 	}
 
-	var filter *Filter
+	var (
+		filter *Filter
+		err    error
+	)
 	if f.crit.BlockHash != nil {
 		// Block filter requested, construct a single-shot filter
-		filter = NewBlockFilter(api.backend, api.config, *f.crit.BlockHash, f.crit.Addresses, f.crit.Topics)
+		filter, err = NewBlockFilter(api.backend, api.config, *f.crit.BlockHash, f.crit.Addresses, f.crit.Topics)
 	} else {
 		// Convert the RPC block numbers into internal representations
 		begin := rpc.LatestBlockNumber.Int64()
@@ -452,7 +477,10 @@ func (api *PublicFilterAPI) GetFilterLogs(ctx context.Context, id rpc.ID) ([]*ty
 		}
 		// Construct the range filter
 		resultLimit := api.config.LogQueryResultLimit
-		filter = NewRangeFilter(api.backend, api.config, begin, end, f.crit.Addresses, f.crit.Topics, resultLimit)
+		filter, err = NewRangeFilter(api.backend, api.config, begin, end, f.crit.Addresses, f.crit.Topics, resultLimit)
+	}
+	if err != nil {
+		return nil, err
 	}
 	// Run the filter and return all the logs
 	logs, err := filter.Logs(ctx)

@@ -50,7 +50,7 @@ import (
 	"github.com/0xsoniclabs/sonic/topicsdb"
 )
 
-//go:generate mockgen -source=ethapi_backend.go -destination=ethapi_backend_mock.go -package=gossip
+//go:generate go tool mockgen -source=ethapi_backend.go -destination=ethapi_backend_mock.go -package=gossip
 
 // EthAPIBackend implements ethapi.Backend.
 type EthAPIBackend struct {
@@ -264,29 +264,27 @@ func (b *EthAPIBackend) GetEvent(ctx context.Context, shortEventID string) (*int
 	return b.svc.store.GetEvent(id), nil
 }
 
-// GetHeads returns IDs of all the epoch events with no descendants.
-// * When epoch is -2 the heads for latest epoch are returned.
-// * When epoch is -1 the heads for latest sealed epoch are returned.
-func (b *EthAPIBackend) GetHeads(ctx context.Context, epoch rpc.BlockNumber) (heads hash.Events, err error) {
-	current := b.svc.store.GetEpoch()
+var errHeadsUnavailable = stderrors.New("heads are not available")
 
+// GetHeads returns IDs of all the epoch events with no descendants.
+// Heads are only kept for the open epoch, selected as pending or by its
+// number. Sealed epochs, including latest (the latest sealed one), fail
+// with errHeadsUnavailable.
+func (b *EthAPIBackend) GetHeads(ctx context.Context, epoch rpc.BlockNumber) (hash.Events, error) {
 	requested, err := b.epochWithDefault(ctx, epoch)
 	if err != nil {
 		return nil, err
 	}
 
-	if requested == current {
-		heads = b.svc.store.GetHeadsSlice(requested)
-	} else {
-		err = errors.New("heads for previous epochs are not available")
-		return
-	}
-
+	// The epoch may seal between resolving it and reading its heads, so the
+	// store is the only authority on their availability.
+	heads := b.svc.store.GetHeads(requested)
 	if heads == nil {
-		heads = hash.Events{}
+		return nil, fmt.Errorf("epoch %d: %w", requested, errHeadsUnavailable)
 	}
-
-	return
+	heads.RLock()
+	defer heads.RUnlock()
+	return heads.Val.Slice(), nil
 }
 
 func (b *EthAPIBackend) epochWithDefault(ctx context.Context, epoch rpc.BlockNumber) (requested idx.Epoch, err error) {
@@ -341,7 +339,8 @@ func (b *EthAPIBackend) BlockByHash(ctx context.Context, h common.Hash) (*evmcor
 	return blk, nil
 }
 
-// GetReceiptsByNumber returns receipts by block number.
+// GetReceiptsByNumber returns receipts by block number. An unknown block yields
+// nil receipts and no error, as rpc clients expect.
 func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error) {
 	if !b.svc.config.TxIndex {
 		return nil, errors.New("transactions index is disabled (enable TxIndex and re-process the DAGs)")
@@ -349,12 +348,14 @@ func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.Bloc
 
 	blockNumber, err := b.ResolveRpcBlockNumberOrHash(ctx, rpc.BlockNumberOrHashWithNumber(number))
 	if err != nil {
-		// when block not found, return nil as rpc clients expect this
 		return nil, nil
 	}
 	number = rpc.BlockNumber(blockNumber)
 
 	block := b.state.Block(common.Hash{}, uint64(number))
+	if block == nil {
+		return nil, nil
+	}
 	return b.FetchReceiptsForBlock(block), nil
 }
 
@@ -452,8 +453,16 @@ func (b *EthAPIBackend) GetPoolTransaction(hash common.Hash) *types.Transaction 
 	return b.svc.txpool.Get(hash)
 }
 
+// GetTxPosition returns the position of the given transaction in the chain, or
+// nil if the transaction is unknown. Transactions of blocks that are not
+// published yet are reported as unknown, so that they cannot be observed
+// before the state of their block can be.
 func (b *EthAPIBackend) GetTxPosition(txHash common.Hash) *evmstore.TxPosition {
-	return b.svc.store.evm.GetTxPosition(txHash)
+	position := b.svc.store.evm.GetTxPosition(txHash)
+	if position == nil || position.Block > b.svc.store.GetLatestBlockIndex() {
+		return nil
+	}
+	return position
 }
 
 func (b *EthAPIBackend) GetTransaction(ctx context.Context, txHash common.Hash) (*types.Transaction, uint64, uint64, error) {
@@ -461,7 +470,7 @@ func (b *EthAPIBackend) GetTransaction(ctx context.Context, txHash common.Hash) 
 		return nil, 0, 0, errors.New("transactions index is disabled (enable TxIndex and re-process the DAG)")
 	}
 
-	position := b.svc.store.evm.GetTxPosition(txHash)
+	position := b.GetTxPosition(txHash)
 	if position == nil {
 		return nil, 0, 0, nil
 	}

@@ -96,6 +96,10 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 	if args.GasPrice != nil && (args.MaxFeePerGas != nil || args.MaxPriorityFeePerGas != nil) {
 		return errors.New("both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified")
 	}
+	// An EIP-7702 set-code transaction cannot be a legacy transaction.
+	if args.GasPrice != nil && args.AuthorizationList != nil {
+		return errors.New("both gasPrice and authorizationList specified")
+	}
 	// After london, default to 1559 unless gasPrice is set
 	head := b.CurrentBlock().Header()
 	chainConfig := b.ChainConfig(idx.Block(head.Number.Uint64()))
@@ -147,8 +151,18 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 	if args.Data != nil && args.Input != nil && !bytes.Equal(*args.Data, *args.Input) {
 		return errors.New(`both "data" and "input" are set and not equal. Please use "input" to pass transaction call data`)
 	}
-	if args.To == nil && len(args.data()) == 0 {
-		return errors.New(`contract creation without any data provided`)
+	// create check
+	if args.To == nil {
+		// ToTransaction builds a BlobTx if either blob field is set.
+		if args.BlobHashes != nil || args.BlobFeeCap != nil {
+			return errors.New(`missing "to" in blob transaction`)
+		}
+		if len(args.data()) == 0 {
+			return errors.New(`contract creation without any data provided`)
+		}
+		if args.AuthorizationList != nil {
+			return errors.New(`authorizationList provided for contract creation, but "to" field is missing`)
+		}
 	}
 	// Estimate the gas usage if necessary.
 	if args.Gas == nil {
@@ -175,9 +189,15 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 		args.Gas = &estimated
 		log.Trace("Estimate gas usage automatically", "gas", args.Gas)
 	}
-	if args.ChainID == nil {
-		id := (*hexutil.Big)(b.ChainID())
-		args.ChainID = id
+	// If chain id is provided, ensure it matches the local chain id. Otherwise, set the local
+	// chain id as the default.
+	want := b.ChainID()
+	if args.ChainID != nil {
+		if have := (*big.Int)(args.ChainID); have.Cmp(want) != 0 {
+			return fmt.Errorf("chainId does not match node's (have=%v, want=%v)", have, want)
+		}
+	} else {
+		args.ChainID = (*hexutil.Big)(want)
 	}
 	return nil
 }
@@ -320,7 +340,9 @@ func (args *TransactionArgs) ToTransaction() (*types.Transaction, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid Value: %w", err)
 		}
-
+		if args.To == nil {
+			return nil, fmt.Errorf("missing To in SetCodeTx")
+		}
 		data = &types.SetCodeTx{
 			To:         *args.To,
 			ChainID:    chainId,
@@ -331,7 +353,7 @@ func (args *TransactionArgs) ToTransaction() (*types.Transaction, error) {
 			Value:      value,
 			Data:       args.data(),
 			AccessList: al,
-			AuthList:   ([]types.SetCodeAuthorization)(args.AuthorizationList),
+			AuthList:   args.AuthorizationList,
 		}
 
 	case args.BlobFeeCap != nil || len(args.BlobHashes) > 0:
@@ -358,6 +380,9 @@ func (args *TransactionArgs) ToTransaction() (*types.Transaction, error) {
 		value, err := utils.BigIntToUint256((*big.Int)(args.Value))
 		if err != nil {
 			return nil, fmt.Errorf("invalid Value: %w", err)
+		}
+		if args.To == nil {
+			return nil, fmt.Errorf("missing To in BlobTx")
 		}
 		data = &types.BlobTx{
 			To:         *args.To,

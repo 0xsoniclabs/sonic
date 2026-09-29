@@ -29,7 +29,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-//go:generate mockgen -source=scheduler.go -destination=scheduler_mock.go -package=scheduler
+//go:generate go tool mockgen -source=scheduler.go -destination=scheduler_mock.go -package=scheduler
 
 // Scheduler implements a scheduling algorithm for transactions facilitating
 // the selection of transactions for inclusion in a block. The scheduler thereby

@@ -22,7 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-//go:generate mockgen -source=backend.go -destination=backend_mock.go -package=sonicapi
+//go:generate go tool mockgen -source=backend.go -destination=backend_mock.go -package=sonicapi
 
 // BundleApiBackend is an interface that abstracts the necessary BundleApiBackend functions for the
 // sonic API.

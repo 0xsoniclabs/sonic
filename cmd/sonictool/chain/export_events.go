@@ -81,7 +81,8 @@ func ExportEvents(gdbParams db.GossipDbParameters, w io.Writer, importAll bool, 
 		counter int
 		last    hash.Event
 	)
-	gdb.ForEachEventRLP(from.Bytes(), func(id hash.Event, event rlp.RawValue) bool {
+	// NoCopy is safe here: the event is written to w before the callback returns.
+	gdb.ForEachEventRLPNoCopy(from.Bytes(), func(id hash.Event, event rlp.RawValue) bool {
 		if to >= from && id.Epoch() > to {
 			return false
 		}

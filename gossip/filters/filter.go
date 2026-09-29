@@ -36,7 +36,7 @@ import (
 	"github.com/0xsoniclabs/sonic/topicsdb"
 )
 
-//go:generate mockgen -source=filter.go -package=filters -destination=filter_mock.go
+//go:generate go tool mockgen -source=filter.go -package=filters -destination=filter_mock.go
 
 type Backend interface {
 	HeaderByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*evmcore.EvmHeader, error)
@@ -71,49 +71,46 @@ type Filter struct {
 }
 
 // NewRangeFilter creates a new filter which inspects the blocks to
-// figure out whether a particular block is interesting or not.
-func NewRangeFilter(backend Backend, cfg Config, begin, end int64, addresses []common.Address, topics [][]common.Hash, resultLimit uint) *Filter {
+// figure out whether a particular block is interesting or not. It fails if
+// the criteria exceed cfg.LogQueryParameterLimit.
+func NewRangeFilter(backend Backend, cfg Config, begin, end int64, addresses []common.Address, topics [][]common.Hash, resultLimit uint) (*Filter, error) {
+	if err := checkParameterLimit(cfg, addresses, topics); err != nil {
+		return nil, err
+	}
 	// Result limit is ignored if only a single block is queried.
 	if begin == end {
 		resultLimit = 0 // 0 means no limit
 	}
-
-	// Create a generic filter and convert it into a range filter
-	filter := newFilter(backend, cfg, addresses, topics, resultLimit)
-
-	filter.begin = begin
-	filter.end = end
-
-	return filter
-}
-
-// NewBlockFilter creates a new filter which directly inspects the contents of
-// a block to figure out whether it is interesting or not.
-func NewBlockFilter(backend Backend, cfg Config, block common.Hash, addresses []common.Address, topics [][]common.Hash) *Filter {
-	// Create a generic filter and convert it into a block filter
-	filter := newFilter(backend, cfg, addresses, topics, 0) // result limit is not enforced for a single block
-
-	filter.block = block
-
-	return filter
-}
-
-// newFilter creates a generic filter that can either filter based on a block hash,
-// or based on range queries. The search criteria needs to be explicitly set.
-func newFilter(backend Backend, cfg Config, addresses []common.Address, topics [][]common.Hash, resultLimit uint) *Filter {
 	return &Filter{
 		backend:     backend,
 		config:      cfg,
 		addresses:   addresses,
 		topics:      topics,
+		begin:       begin,
+		end:         end,
 		resultLimit: resultLimit,
+	}, nil
+}
+
+// NewBlockFilter creates a new filter which directly inspects the contents of
+// a block to figure out whether it is interesting or not. It fails if the
+// criteria exceed cfg.LogQueryParameterLimit.
+func NewBlockFilter(backend Backend, cfg Config, block common.Hash, addresses []common.Address, topics [][]common.Hash) (*Filter, error) {
+	if err := checkParameterLimit(cfg, addresses, topics); err != nil {
+		return nil, err
 	}
+	return &Filter{
+		backend:   backend,
+		config:    cfg,
+		addresses: addresses,
+		topics:    topics,
+		block:     block,
+	}, nil
 }
 
 // Logs searches the blockchain for matching log entries, returning all from the
 // first block that contains matches, updating the start of the filter accordingly.
 func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
-
 	var logs []*types.Log
 	var err error
 
@@ -185,17 +182,6 @@ func (f *Filter) indexedLogs(ctx context.Context, begin, end idx.Block) ([]*type
 	if end-begin > f.config.IndexedLogsBlockRangeLimit {
 		return nil, fmt.Errorf("too wide blocks range, the limit is %d", f.config.IndexedLogsBlockRangeLimit)
 	}
-	parameterLimit := f.config.LogQueryParameterLimit
-	if parameterLimit > 0 {
-		numParameters := len(f.addresses)
-		for _, topics := range f.topics {
-			numParameters += len(topics)
-		}
-		if numParameters > int(parameterLimit) {
-			return nil, fmt.Errorf("too many query parameters, the limit is %d", parameterLimit)
-		}
-	}
-
 	addresses := make([]common.Hash, len(f.addresses))
 	for i, addr := range f.addresses {
 		addresses[i] = common.BytesToHash(addr[:])
@@ -229,6 +215,23 @@ func (f *Filter) indexedLogs(ctx context.Context, begin, end idx.Block) ([]*type
 	}
 
 	return logs, nil
+}
+
+// checkParameterLimit rejects criteria whose combined number of addresses and
+// topics exceeds cfg.LogQueryParameterLimit.
+func checkParameterLimit(cfg Config, addresses []common.Address, topics [][]common.Hash) error {
+	limit := cfg.LogQueryParameterLimit
+	if limit == 0 {
+		return nil
+	}
+	numParameters := len(addresses)
+	for _, sub := range topics {
+		numParameters += len(sub)
+	}
+	if uint(numParameters) > limit {
+		return fmt.Errorf("too many query parameters, the limit is %d", limit)
+	}
+	return nil
 }
 
 func sortLogsByBlockNumberAndLogIndex(logs []*types.Log) {

@@ -30,6 +30,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -588,6 +589,97 @@ func TestSanitizeCall_BlockGasLimitReachedError(t *testing.T) {
 	require.Equal(t, errCodeBlockGasLimitReached, simTxError.ErrorCode())
 }
 
+func TestSanitizeCall_RejectsBlobTxWithNilTo(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+
+	gasUsed := uint64(0)
+	nonce := uint64(1)
+	gasLimit := uint64(10_000)
+	mockState.EXPECT().GetNonce(gomock.Any()).Return(nonce).AnyTimes()
+
+	header := &evmcore.EvmHeader{
+		Number:   big.NewInt(10),
+		GasLimit: gasLimit,
+	}
+	sim := newSimulator()
+	call := TransactionArgs{
+		BlobHashes: []common.Hash{{0x01}},
+	}
+
+	err := sim.sanitizeCall(&call, mockState, header, &gasUsed)
+
+	require.ErrorIs(t, err, core.ErrBlobTxCreate)
+}
+
+func TestSanitizeCall_RejectsSetCodeTxWithNilTo(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+
+	gasUsed := uint64(0)
+	nonce := uint64(1)
+	gasLimit := uint64(10_000)
+	mockState.EXPECT().GetNonce(gomock.Any()).Return(nonce).AnyTimes()
+
+	header := &evmcore.EvmHeader{
+		Number:   big.NewInt(10),
+		GasLimit: gasLimit,
+	}
+	sim := newSimulator()
+	call := TransactionArgs{
+		AuthorizationList: []types.SetCodeAuthorization{{}},
+	}
+
+	err := sim.sanitizeCall(&call, mockState, header, &gasUsed)
+
+	require.ErrorIs(t, err, core.ErrSetCodeTxCreate)
+}
+
+func TestSanitizeCall_AllowsPlainContractCreationWithNilTo(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+
+	gasUsed := uint64(0)
+	nonce := uint64(1)
+	gasLimit := uint64(10_000)
+	mockState.EXPECT().GetNonce(gomock.Any()).Return(nonce).AnyTimes()
+
+	header := &evmcore.EvmHeader{
+		Number:   big.NewInt(10),
+		GasLimit: gasLimit,
+	}
+	sim := newSimulator()
+	call := TransactionArgs{}
+
+	err := sim.sanitizeCall(&call, mockState, header, &gasUsed)
+
+	require.NoError(t, err)
+}
+
+func TestSanitizeCall_RejectsBlobFeeCapWithNilTo(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+
+	gasUsed := uint64(0)
+	nonce := uint64(1)
+	gasLimit := uint64(10_000)
+	mockState.EXPECT().GetNonce(gomock.Any()).Return(nonce).AnyTimes()
+
+	header := &evmcore.EvmHeader{
+		Number:   big.NewInt(10),
+		GasLimit: gasLimit,
+	}
+	sim := newSimulator()
+	// BlobFeeCap alone makes ToTransaction build a BlobTx, which needs "to".
+	call := TransactionArgs{
+		BlobFeeCap: (*hexutil.Big)(big.NewInt(1)),
+	}
+
+	err := sim.sanitizeCall(&call, mockState, header, &gasUsed)
+
+	require.ErrorIs(t, err, core.ErrBlobTxCreate)
+}
+
 func TestRepairSimLogs(t *testing.T) {
 
 	evmHeader := &evmcore.EvmHeader{
@@ -693,4 +785,25 @@ func TestSimulateV1_RejectsTooManyBlockStateCalls(t *testing.T) {
 	simTxError, ok := err.(*simInvalidTxError)
 	require.True(t, ok)
 	require.Equal(t, errCodeClientLimitExceeded, simTxError.ErrorCode())
+}
+
+func TestSimulateV1_TooManyCallsInBlock_ReturnsError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	api := NewPublicBlockChainAPI(NewMockBackend(ctrl))
+
+	opts := simOpts{BlockStateCalls: []simBlock{{Calls: make([]TransactionArgs, maxSimulateCallsPerBlock+1)}}}
+	_, err := api.SimulateV1(context.Background(), opts, nil)
+	require.ErrorContains(t, err, "too many calls in block")
+}
+
+func TestSimulateV1_TooManyCallsInTotal_ReturnsError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	api := NewPublicBlockChainAPI(NewMockBackend(ctrl))
+
+	var blocks []simBlock
+	for i := 0; i < 3; i++ {
+		blocks = append(blocks, simBlock{Calls: make([]TransactionArgs, maxSimulateCallsPerBlock)})
+	}
+	_, err := api.SimulateV1(context.Background(), simOpts{BlockStateCalls: blocks}, nil)
+	require.ErrorContains(t, err, "too many calls:")
 }
