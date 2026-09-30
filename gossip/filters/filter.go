@@ -162,8 +162,10 @@ func (f *Filter) fetchLogsFromBlockRange(ctx context.Context, logs []*types.Log)
 	if f.begin < 0 {
 		begin = head
 	}
+	// The log index is written before the head advances; blocks beyond it are
+	// not published yet.
 	end := idx.Block(f.end)
-	if f.end < 0 {
+	if f.end < 0 || end > head {
 		end = head
 	}
 	if begin > end {

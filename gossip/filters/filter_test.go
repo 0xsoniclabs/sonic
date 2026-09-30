@@ -32,6 +32,7 @@ import (
 	gomock "go.uber.org/mock/gomock"
 
 	"github.com/0xsoniclabs/sonic/topicsdb"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
@@ -733,4 +734,21 @@ func TestFilter_IndexedLogs_AcceptsAnyQueryIfThereAreNoLimits(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestFilter_Logs_RangeIsClampedToHead(t *testing.T) {
+	const head = idx.Block(5)
+
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+	index := topicsdb.NewMockIndex(ctrl)
+	backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.LatestBlockNumber).
+		Return(&evmcore.EvmHeader{Number: big.NewInt(int64(head))}, nil)
+	backend.EXPECT().EvmLogIndex().Return(index)
+	index.EXPECT().FindInBlocks(gomock.Any(), idx.Block(0), head, gomock.Any(), gomock.Any())
+
+	filter, err := NewRangeFilter(backend, testConfig(), 0, int64(head)+10, []common.Address{{0x42}}, nil, 0)
+	require.NoError(t, err)
+	_, err = filter.Logs(t.Context())
+	require.NoError(t, err)
 }
