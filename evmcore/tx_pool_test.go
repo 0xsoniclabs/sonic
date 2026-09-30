@@ -344,8 +344,10 @@ func setupTxPool() (*TxPool, *ecdsa.PrivateKey) {
 }
 
 func setupTxPoolWithConfig(config *params.ChainConfig) (*TxPool, *ecdsa.PrivateKey) {
-	blockchain := NewTestBlockChain(newTestTxPoolStateDb())
+	return setupTxPoolWithChain(config, NewTestBlockChain(newTestTxPoolStateDb()))
+}
 
+func setupTxPoolWithChain(config *params.ChainConfig, blockchain StateReader) (*TxPool, *ecdsa.PrivateKey) {
 	key, _ := crypto.GenerateKey()
 	pool := newTxPool(
 		testTxPoolConfig,
