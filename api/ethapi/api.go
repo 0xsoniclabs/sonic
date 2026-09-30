@@ -1180,6 +1180,8 @@ func (diff *StateOverride) Apply(state state.StateDB) error {
 			}
 		}
 	}
+	// Calls must see the overrides as committed state of a preceding transaction.
+	state.EndTransaction()
 	return nil
 }
 
