@@ -139,6 +139,19 @@ func TestCarmenStateDB_Copy_CannotCloneCommittableStateDB(t *testing.T) {
 	})
 }
 
+func TestCarmenStateDB_EndBlock_FailsIfNotConvertibleToCarmenStateDB(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+
+	db := carmen.NewMockVmStateDB(ctrl)
+
+	state := &CarmenStateDB{db: db, committable: true}
+
+	block, err := state.EndBlock(123)
+	require.Nil(block)
+	require.ErrorContains(err, "StateDB does not support EndBlock")
+}
+
 func TestCarmenStateDB_EndBlock_Committable_CallsEndBlockOnStateDB(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
@@ -190,22 +203,51 @@ func TestCarmenStateDB_EndBlock_Committable_ProcessedExecPlansAreFlushedAndReset
 	require.Empty(state.processedExecPlans)
 }
 
-func TestCarmenStateDB_EndBlock_FailingBackend_DoesNotRecordBundles(t *testing.T) {
-	require := require.New(t)
-	ctrl := gomock.NewController(t)
-
-	// the store must not see any update when the backend rejects the block
-	bundleStore := NewMockProcessedBundleStore(ctrl)
-	db := carmen.NewMockStateDB(ctrl)
+func TestCarmenStateDB_EndBlock_RecordsBundlesOnlyWhenBackendAcceptsBlock(t *testing.T) {
 	injectedErr := fmt.Errorf("injected error")
-	db.EXPECT().EndBlock(uint64(123)).Return(nil, injectedErr)
+	plan := common.Hash{1}
+	pos := bundle.PositionInBlock{Offset: 1, Count: 2}
 
-	state := &CarmenStateDB{db: db, committable: true, processedExecPlanStore: bundleStore}
-	state.AddProcessedBundle(common.Hash{1}, bundle.PositionInBlock{})
+	tests := map[string]struct {
+		backendErr  error
+		wantErr     error
+		wantPending int
+	}{
+		"backend accepts block": {
+			backendErr:  nil,
+			wantErr:     nil,
+			wantPending: 0,
+		},
+		"backend rejects block": {
+			backendErr:  injectedErr,
+			wantErr:     injectedErr,
+			wantPending: 1,
+		},
+	}
 
-	_, err := state.EndBlock(123)
-	require.ErrorIs(err, injectedErr)
-	require.Len(state.processedExecPlans, 1, "pending bundles must be kept on failure")
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			ctrl := gomock.NewController(t)
+
+			db := carmen.NewMockStateDB(ctrl)
+			bundleStore := NewMockProcessedBundleStore(ctrl)
+			if test.backendErr == nil {
+				db.EXPECT().EndBlock(uint64(123)).Return(carmen.NewMockStagedBlock(ctrl), nil)
+				bundleStore.EXPECT().AddProcessedBundles(uint64(123), map[common.Hash]bundle.PositionInBlock{plan: pos})
+			} else {
+				// the store must not see any update when the backend rejects the block
+				db.EXPECT().EndBlock(uint64(123)).Return(nil, test.backendErr)
+			}
+
+			state := &CarmenStateDB{db: db, committable: true, processedExecPlanStore: bundleStore}
+			state.AddProcessedBundle(plan, pos)
+
+			_, err := state.EndBlock(123)
+			require.ErrorIs(err, test.wantErr)
+			require.Len(state.processedExecPlans, test.wantPending, "pending bundles must be kept only on failure")
+		})
+	}
 }
 
 func TestCarmenStateDB_EndBlock_NotCommittable_ReturnsError(t *testing.T) {
@@ -523,40 +565,70 @@ func TestEndBlockAndCommit_EndsCommitsAndWaits(t *testing.T) {
 
 	db := state.NewMockStateDB(ctrl)
 	staged := carmen.NewMockStagedBlock(ctrl)
-	done := make(chan error, 1)
-	done <- nil
+
+	channel := make(chan error, 1)
+	close(channel) // simulate successful commit
+	waitCalled := false
+	handle := carmen.NewWaitHandle(channel)
+	handle = handle.Then(func(err error) error {
+		require.NoError(err)
+		waitCalled = true
+		return nil
+	})
 	db.EXPECT().EndBlock(uint64(7)).Return(staged, nil)
-	staged.EXPECT().Commit().Return(carmen.NewWaitHandle(done), nil)
+	staged.EXPECT().Commit().Return(handle, nil)
 
 	require.NoError(EndBlockAndCommit(db, 7))
+	require.True(waitCalled)
 }
 
 func TestEndBlockAndCommit_ReportsFailures(t *testing.T) {
 	injectedErr := fmt.Errorf("injected error")
-	tests := map[string]func(db *state.MockStateDB, staged *carmen.MockStagedBlock){
-		"EndBlock fails": func(db *state.MockStateDB, _ *carmen.MockStagedBlock) {
-			db.EXPECT().EndBlock(uint64(7)).Return(nil, injectedErr)
+	tests := map[string]struct {
+		setup   func(db *state.MockStateDB, staged *carmen.MockStagedBlock)
+		wantErr error // nil: any error is accepted
+	}{
+		"EndBlock fails": {
+			setup: func(db *state.MockStateDB, _ *carmen.MockStagedBlock) {
+				db.EXPECT().EndBlock(uint64(7)).Return(nil, injectedErr)
+			},
+			wantErr: injectedErr,
 		},
-		"Commit fails": func(db *state.MockStateDB, staged *carmen.MockStagedBlock) {
-			db.EXPECT().EndBlock(uint64(7)).Return(staged, nil)
-			staged.EXPECT().Commit().Return(nil, injectedErr)
+		"Nil staged block": {
+			setup: func(db *state.MockStateDB, _ *carmen.MockStagedBlock) {
+				db.EXPECT().EndBlock(uint64(7)).Return(nil, nil)
+			},
 		},
-		"Wait fails": func(db *state.MockStateDB, staged *carmen.MockStagedBlock) {
-			done := make(chan error, 1)
-			done <- injectedErr
-			db.EXPECT().EndBlock(uint64(7)).Return(staged, nil)
-			staged.EXPECT().Commit().Return(carmen.NewWaitHandle(done), nil)
+		"Commit fails": {
+			setup: func(db *state.MockStateDB, staged *carmen.MockStagedBlock) {
+				db.EXPECT().EndBlock(uint64(7)).Return(staged, nil)
+				staged.EXPECT().Commit().Return(nil, injectedErr)
+			},
+			wantErr: injectedErr,
+		},
+		"Wait fails": {
+			setup: func(db *state.MockStateDB, staged *carmen.MockStagedBlock) {
+				done := make(chan error, 1)
+				done <- injectedErr
+				db.EXPECT().EndBlock(uint64(7)).Return(staged, nil)
+				staged.EXPECT().Commit().Return(carmen.NewWaitHandle(done), nil)
+			},
+			wantErr: injectedErr,
 		},
 	}
 
-	for name, setup := range tests {
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			db := state.NewMockStateDB(ctrl)
 			staged := carmen.NewMockStagedBlock(ctrl)
-			setup(db, staged)
+			test.setup(db, staged)
 
-			require.ErrorIs(t, EndBlockAndCommit(db, 7), injectedErr)
+			err := EndBlockAndCommit(db, 7)
+			require.Error(t, err)
+			if test.wantErr != nil {
+				require.ErrorIs(t, err, test.wantErr)
+			}
 		})
 	}
 }

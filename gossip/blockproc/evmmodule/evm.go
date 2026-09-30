@@ -208,7 +208,7 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 			// the underlying database has collected an error during finalize or
 			// a previous operation. State consistency and its persistence my
 			// have been compromised.
-			log.Error("Failed to finalize block", "block", evmBlock.Number, "err", err)
+			log.Crit("Failed to finalize block", "block", evmBlock.Number, "err", err)
 		}
 	}
 

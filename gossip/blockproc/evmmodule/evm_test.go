@@ -557,31 +557,6 @@ func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOne
 	})
 }
 
-func TestOperaEVMProcessor_Finalize_ArchiveFailure_IsReportedWithoutTerminating(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	stateDb := state.NewMockStateDB(ctrl)
-	stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
-
-	// the archive update fails, but the live state already holds the block
-	done := make(chan error, 1)
-	done <- fmt.Errorf("injected archive error")
-	stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
-	stagedBlock.EXPECT().Commit().Return(carmen_state.NewWaitHandle(done), nil)
-
-	wantRoot := common.Hash{0x42}
-	stateDb.EXPECT().BeginBlock(gomock.Any())
-	stateDb.EXPECT().GetStateHash().Return(wantRoot)
-
-	processor := New().Start(
-		0, inter.FromUnix(time.Now().Unix()), 0,
-		stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
-		nil,
-	)
-
-	evmBlock, _, _ := processor.Finalize()
-	require.Equal(t, wantRoot, evmBlock.Root)
-}
-
 // envFinalizeFatalCase marks the re-executed test binary that runs one of the
 // fatal Finalize paths; log.Crit terminates the process, so the outcome can only
 // be observed from a parent process.
@@ -611,6 +586,15 @@ func TestOperaEVMProcessor_Finalize_TerminatesProcess_OnFatalErrors(t *testing.T
 				stagedBlock.EXPECT().Commit().Return(nil, injectedErr)
 			},
 			message: "Failed to commit block",
+		},
+		"WaitFails": {
+			setup: func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock) {
+				stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
+				done := make(chan error, 1)
+				done <- injectedErr
+				stagedBlock.EXPECT().Commit().Return(carmen_state.NewWaitHandle(done), nil)
+			},
+			message: "Failed to finalize block",
 		},
 	}
 
