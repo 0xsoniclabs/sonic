@@ -27,6 +27,31 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Fixed
 
+## [2.2.3] - 30 September 2026
+
+Version 2.2.3 is a stability release. Upgrading is recommended for all operators.
+
+### Changed
+
+- `trace_filter` now rejects requests spanning more than 1000 blocks. The limit can be adjusted with the new `--rpc.tracefilterrange` flag, 0 disables it.
+- `eth_getProof` now accepts at most 1024 storage keys per request and rejects malformed storage keys with an invalid params error.
+- The `--rpc.log-query-parameter-limit` now applies to `eth_newFilter` and logs subscriptions as well as to `eth_getLogs`.
+- `eth_createAccessList` now stops when its request is cancelled or times out.
+- `eth_sendTransaction`, `eth_signTransaction`, `eth_fillTransaction`, `eth_resend` and `eth_createAccessList` now reject a `chainId` that does not match the node's, set-code transactions without `to` or with `gasPrice`, and blob transactions without `to`.
+- The transaction pool now rejects bundle-only transactions that approve no execution plan, more than one execution plan, or only execution plans that have already been processed.
+- The transaction pool now evicts bundle-only transactions once all execution plans they approve have been processed, or once they have waited for their bundle for one hour (`TxPool.BundleOnlyLifetime` in the configuration file).
+
+### Fixed
+
+- Fixed genesis import skipping the bundle history when the genesis contains no retained bundles, which made the node diverge from the network at the next epoch sealing.
+- Fixed RPC methods serving a transaction or its receipt before the state of its block, so that calls resolving `latest` could miss the effects of a transaction whose receipt was already returned.
+- Fixed `newHeads` and `newPendingTransactions` subscriptions dropping notifications for events occurring right after the subscription was created.
+- Fixed internal errors in `debug_traceCall`, `trace_call` and `trace_callMany` for unknown blocks, which now report `header not found`.
+- Fixed internal errors in `eth_simulateV1` for set-code and blob calls without `to`, which are now rejected as in transaction execution.
+- Fixed internal errors in `dag_getHeads` at epoch boundaries.
+- Fixed the transaction pool keeping set-code transactions with invalid authorizations indexed indefinitely, which slowed the pool down over time.
+- Fixed a race between node shutdown and connecting peers.
+
 ## [2.2.2] - 15 September 2026
 
 Version 2.2.2 is a stability release. Upgrading is recommended for all operators.
