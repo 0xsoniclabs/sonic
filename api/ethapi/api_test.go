@@ -1258,6 +1258,44 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 	}
 }
 
+func TestStateAtTransaction_ReleasesStateOnTxAsMessageError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	header := evmcore.EvmHeader{
+		Number:     big.NewInt(1),
+		BaseFee:    big.NewInt(10000000),
+		ParentHash: common.Hash{0x1},
+	}
+	txWithUnrecoverableSender := types.NewTx(&types.LegacyTx{
+		Gas:      21000,
+		GasPrice: big.NewInt(10000000),
+		V:        big.NewInt(0),
+		R:        big.NewInt(1),
+		S:        big.NewInt(1),
+	})
+	block := &evmcore.EvmBlock{
+		EvmHeader:    header,
+		Transactions: types.Transactions{txWithUnrecoverableSender, types.NewTx(&types.LegacyTx{})},
+	}
+
+	mockState := state.NewMockStateDB(ctrl)
+	mockState.EXPECT().Release()
+
+	backend := NewMockBackend(ctrl)
+	backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).
+		Return(&opera.Rules{}, nil).AnyTimes()
+	backend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), rpc.BlockNumberOrHashWithHash(header.ParentHash, false)).
+		Return(mockState, block, nil)
+	backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(makeTestEVM(opera.GetSonicUpgrades())).AnyTimes()
+	backend.EXPECT().ChainConfig(gomock.Any()).AnyTimes().Return(makeChainConfig(opera.GetSonicUpgrades()))
+
+	msg, statedb, err := stateAtTransaction(t.Context(), block, 1, backend)
+	require.Error(t, err)
+	require.Nil(t, msg)
+	require.Nil(t, statedb)
+}
+
 // makeChainConfig allows to create a chain config with a given set of features
 func makeChainConfig(upgrades opera.Upgrades) *params.ChainConfig {
 	return opera.CreateTransientEvmChainConfig(

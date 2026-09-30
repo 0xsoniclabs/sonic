@@ -2845,7 +2845,7 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 }
 
 // stateAtTransaction returns the execution environment of a certain transaction.
-func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex int, b Backend) (*core.Message, state.StateDB, error) {
+func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex int, b Backend) (_ *core.Message, _ state.StateDB, err error) {
 	// Short circuit if it's genesis block.
 	if block.NumberU64() == 0 {
 		return nil, nil, errors.New("no transaction in genesis")
@@ -2862,10 +2862,14 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 	if err != nil {
 		return nil, nil, err
 	}
+	defer func() {
+		if err != nil {
+			statedb.Release()
+		}
+	}()
 
 	vmenv, err := applyPreBlockSystemCalls(ctx, b, block, statedb)
 	if err != nil {
-		statedb.Release()
 		return nil, nil, err
 	}
 
@@ -2897,13 +2901,11 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 
 		statedb.SetTxContext(tx.Hash(), idx)
 		if _, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(tx.Gas())); err != nil {
-			statedb.Release()
 			return nil, nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
 		}
 		// Ensure any modifications are committed to the state
 		statedb.EndTransaction()
 	}
-	statedb.Release()
 	return nil, nil, fmt.Errorf("transaction index %d out of range for block %#x", txIndex, block.Hash)
 }
 
