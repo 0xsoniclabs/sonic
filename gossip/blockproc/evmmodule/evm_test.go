@@ -120,6 +120,78 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 	}
 }
 
+func TestEVMModule_New_And_NewForReplay_ConfigureReplayFlag(t *testing.T) {
+	require.False(t, New().forReplay)
+	require.True(t, NewForReplay().forReplay)
+}
+
+func TestEVMModule_Start_HandsReplayModeToProcessor(t *testing.T) {
+	tests := map[string]struct {
+		module        *EVMModule
+		wantForReplay bool
+	}{
+		"head-state module": {module: New(), wantForReplay: false},
+		"replay module":     {module: NewForReplay(), wantForReplay: true},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			stateDb := state.NewMockStateDB(gomock.NewController(t))
+			stateDb.EXPECT().BeginBlock(uint64(0))
+
+			processor := test.module.Start(0, 0, 0, stateDb, nil, nil, opera.Rules{}, nil, common.Hash{}, nil)
+			require.Equal(t, test.wantForReplay, processor.(*OperaEVMProcessor).forReplay)
+		})
+	}
+}
+
+func TestOperaEVMProcessor_Execute_ReplayModeSelectsReplayingStateProcessor(t *testing.T) {
+	evmCfg := &params.ChainConfig{}
+	upgrades := opera.Upgrades{Brio: true}
+
+	tests := map[string]struct {
+		forReplay bool
+		expect    func(*Mock_stateProcessorFactory, evmcore.DummyChain, evmcore.BlockExecutionMetrics, _stateProcessor)
+	}{
+		"head state": {
+			forReplay: false,
+			expect: func(factory *Mock_stateProcessorFactory, reader evmcore.DummyChain, metrics evmcore.BlockExecutionMetrics, processor _stateProcessor) {
+				factory.EXPECT().NewStateProcessorForHeadState(evmCfg, reader, upgrades, metrics).Return(processor)
+			},
+		},
+		"replay": {
+			forReplay: true,
+			expect: func(factory *Mock_stateProcessorFactory, reader evmcore.DummyChain, _ evmcore.BlockExecutionMetrics, processor _stateProcessor) {
+				factory.EXPECT().NewStateProcessorForReplay(evmCfg, reader, upgrades).Return(processor)
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			factory := NewMock_stateProcessorFactory(ctrl)
+			stateProcessor := NewMock_stateProcessor(ctrl)
+			reader := evmcore.NewMockDummyChain(ctrl)
+			metrics := evmcore.NewMockBlockExecutionMetrics(ctrl)
+
+			test.expect(factory, reader, metrics, stateProcessor)
+			any := gomock.Any()
+			stateProcessor.EXPECT().Process(any, any, any, any, any, any, any, any)
+
+			processor := &OperaEVMProcessor{
+				reader:           reader,
+				rules:            opera.Rules{Upgrades: upgrades},
+				evmCfg:           evmCfg,
+				processorFactory: factory,
+				metrics:          metrics,
+				forReplay:        test.forReplay,
+			}
+			processor.Execute(nil, 0, 0)
+		})
+	}
+}
+
 func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInReceipts(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)

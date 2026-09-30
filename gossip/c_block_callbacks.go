@@ -290,9 +290,9 @@ func consensusCallbackBeginBlockFn(
 					proposal.Transactions, &thisBlocksRules, signer, log.Root(), invalidTxsMeter,
 				)
 
-				// Make sure the new block time is after the last block time.
-				if blockTime <= bs.LastBlock.Time {
-					blockTime = bs.LastBlock.Time + 1
+				// Make sure the new block time is after the parent's time.
+				if blockTime <= parent.Time {
+					blockTime = parent.Time + 1
 				}
 
 				blockCtx := iblockproc.BlockCtx{

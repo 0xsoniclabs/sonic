@@ -72,22 +72,35 @@ type Ledger struct {
 
 // LedgerConfig groups the configuration a Ledger needs beyond the store: the
 // new-block feed (publish target and reader input, may be nil), whether to
-// index transactions, and the block-execution metrics sink (may be nil, in
-// which case NewLedger uses the default sink).
+// index transactions, the block-execution metrics sink (may be nil, in which
+// case NewLedger uses the default sink), and whether the ledger replays
+// historical blocks rather than producing new ones.
 type LedgerConfig struct {
 	Feed              *ServiceFeed
 	IndexTransactions bool
 	ExecutionMetrics  evmcore.BlockExecutionMetrics
+
+	// Replay selects an EVM module that reproduces already-produced blocks
+	// instead of producing new ones. It must be false for the live node: a
+	// replaying ledger does not re-generate the post-execution transactions of
+	// subsidies and bundles (which a historical block already contains), so it
+	// reproduces such blocks but would produce incorrect new ones.
+	Replay bool
 }
 
 // NewLedger creates a Ledger over the given store, backed by the production EVM
 // implementation. A nil config.ExecutionMetrics defaults to the shared
-// block-execution metrics sink.
+// block-execution metrics sink. When config.Replay is set, the ledger uses the
+// replaying EVM module (see LedgerConfig.Replay).
 func NewLedger(store *Store, config LedgerConfig) *Ledger {
 	if config.ExecutionMetrics == nil {
 		config.ExecutionMetrics = sonicFeaturesMetrics
 	}
-	return newLedgerInternal(store, config, evmmodule.New())
+	evm := evmmodule.New()
+	if config.Replay {
+		evm = evmmodule.NewForReplay()
+	}
+	return newLedgerInternal(store, config, evm)
 }
 
 // newLedgerInternal creates a ledger with an explicit EVM module. It exists so

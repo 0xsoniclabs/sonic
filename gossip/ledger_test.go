@@ -67,6 +67,23 @@ func TestNewLedger_DefaultsNilExecutionMetricsToSharedSink(t *testing.T) {
 	}
 }
 
+func TestNewLedger_ReplaySelectsReplayingEvmModule(t *testing.T) {
+	tests := map[string]struct {
+		replay bool
+		want   *evmmodule.EVMModule
+	}{
+		"without replay": {replay: false, want: evmmodule.New()},
+		"with replay":    {replay: true, want: evmmodule.NewForReplay()},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			l := NewLedger(nil, LedgerConfig{Replay: test.replay})
+			require.Equal(t, test.want, l.evmModule)
+		})
+	}
+}
+
 func TestLedger_Head_ReturnsHandleToBlockAtHeadPointer(t *testing.T) {
 	store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
 	headIdx := store.GetLatestBlockIndex()
