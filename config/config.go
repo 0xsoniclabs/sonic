@@ -30,6 +30,7 @@ import (
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/sonic/config/flags"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/version"
 	"github.com/ethereum/go-ethereum/common/fdlimit"
@@ -457,8 +458,12 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 		cfg.OperaStore.EVM.StateDb.CheckpointInterval = ctx.GlobalInt(flags.StateDbCheckPointInterval.Name)
 	}
 
-	if ctx.IsSet(flags.MaxRetainedProcessedBundlesFlag.Name) {
-		cfg.OperaStore.MaxRetainedProcessedBundles = ctx.GlobalUint64(flags.MaxRetainedProcessedBundlesFlag.Name)
+	// for non-archive node, keep only necessary minimum of processed bundles (can be overridden by cmd flag)
+	if cfg.OperaStore.EVM.StateDb.Archive == carmen.NoArchive {
+		cfg.OperaStore.ProcessedBundlesRetention = bundle.MaxBlockRangeLength
+	}
+	if ctx.IsSet(flags.ProcessedBundlesRetentionFlag.Name) {
+		cfg.OperaStore.ProcessedBundlesRetention = ctx.GlobalUint64(flags.ProcessedBundlesRetentionFlag.Name)
 	}
 
 	return &cfg, nil

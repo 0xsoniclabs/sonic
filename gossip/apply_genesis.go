@@ -238,7 +238,6 @@ func (s *Store) restoreBundleHistoryBase(
 	if err := batch.Write(); err != nil {
 		return err
 	}
-	s.retainedBundlesCounted = false // < recount the restored bundles on next use
 	return nil
 }
 

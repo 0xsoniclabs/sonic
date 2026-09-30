@@ -83,7 +83,7 @@ func initFlags() {
 		flags.ArchiveCacheFlag,
 		flags.StateDbCacheCapacityFlag,
 		flags.StateDbCheckPointInterval,
-		flags.MaxRetainedProcessedBundlesFlag,
+		flags.ProcessedBundlesRetentionFlag,
 		flags.EnableThrottlingFlag,
 		flags.ThrottlingDominantThresholdFlag,
 		flags.ThrottlingDominatingTimeout,

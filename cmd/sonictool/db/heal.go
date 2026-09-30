@@ -174,8 +174,8 @@ func rollbackProcessedBundles(gdb *gossip.Store, epoch idx.Epoch, block uint64) 
 // checkBundleHistoryDepth reports whether the node retains enough processed
 // bundles history to safely roll back to the given block.
 func checkBundleHistoryDepth(gdb *gossip.Store, epoch idx.Epoch, block uint64) error {
-	earliest, limited := gdb.EarliestBundleRollbackBlock()
-	if !limited || block >= earliest {
+	earliest, hasBundleHistory := gdb.EarliestBundleRollbackBlock()
+	if !hasBundleHistory || block >= earliest {
 		return nil
 	}
 	safeEpoch, found := earliestEpochStartingFrom(gdb, earliest)

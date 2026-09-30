@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
@@ -59,21 +58,12 @@ import (
 // The hash can be used to verify that validators remain aligned on their bundle
 // processing history.
 
-// ProcessedBundlesRetention is the number of blocks for which processed bundles
-// and bundle history hashes are retained. Beyond protecting against replayed
-// bundles, which require bundle.MaxBlockRangeLength blocks, the retention bounds
-// how far back the processed bundles can be rolled back when healing a node (see
-// EarliestBundleRollbackBlock).
-const ProcessedBundlesRetention = uint64(1 << 16)
-
-// DefaultMaxRetainedProcessedBundles is the default budget of processed bundles
-// retained in the store (~93 MB), bounding the storage used by processed
-// bundles independently of the number of bundles per block.
-const DefaultMaxRetainedProcessedBundles = uint64(1_000_000)
-
-// budgetWarningInterval limits how often pruning beyond the retention window
-// caused by an exhausted budget of retained bundles is reported.
-const budgetWarningInterval = time.Hour
+// DefaultProcessedBundlesRetention is the default number of blocks for which
+// processed bundles and bundle history hashes are retained. Beyond protecting
+// against replayed bundles, which require bundle.MaxBlockRangeLength blocks, the
+// retention bounds how far back the processed bundles can be rolled back when
+// healing a node (see EarliestBundleRollbackBlock).
+const DefaultProcessedBundlesRetention = uint64(1 << 13)
 
 // AddProcessedBundles adds the given bundle execution information for the given
 // block number. This should be called after every block, listing the bundles
@@ -110,18 +100,12 @@ func (s *Store) addProcessedBundles(
 	}
 
 	// Register and index new hashes, and delete outdated ones.
-	retained, err := s.retainedBundlesCount()
-	if err != nil {
-		return err
-	}
 	batch := s.table.ProcessedBundles.NewBatch()
 	addedHash, err := s.addNewBundles(blockNum, executedBundles, batch)
 	if err != nil {
 		return err
 	}
-	retained += uint64(len(executedBundles))
-	deleted, err := s.deleteOutdatedBundles(blockNum, retained, batch)
-	if err != nil {
+	if err := s.deleteOutdatedBundles(blockNum, batch); err != nil {
 		return err
 	}
 
@@ -139,7 +123,6 @@ func (s *Store) addProcessedBundles(
 	if err := batch.Write(); err != nil {
 		return fmt.Errorf("failed to write batch for updating processed bundles: %w", err)
 	}
-	s.retainedBundles = retained - deleted
 	return nil
 }
 
@@ -170,122 +153,35 @@ func (s *Store) addNewBundles(
 	return addedHash, nil
 }
 
-// deleteOutdatedBundles deletes the entries of processed bundles that were
-// processed too far in the past, or that exceed the budget of retained bundles,
-// and returns the number of deleted bundles. The retained number of bundles
-// includes the bundles added in the finished block.
-func (s *Store) deleteOutdatedBundles(finishedBlock, retained uint64, batch kvdb.Batch) (uint64, error) {
-	cutoff, found, err := s.pruningCutoff(finishedBlock+1, retained)
-	if err != nil || !found {
-		return 0, err
+// deleteOutdatedBundles deletes the entries of bundles processed outside of
+// the retention window of the finished block.
+func (s *Store) deleteOutdatedBundles(finishedBlock uint64, batch kvdb.Batch) error {
+	nextBlock := finishedBlock + 1
+	retention := s.processedBundlesRetention()
+	if nextBlock < retention {
+		return nil
 	}
-	deleted, err := s.deleteBundlesInRange(0, cutoff+1, batch)
-	if err != nil {
-		return 0, err
+	cutoff := nextBlock - retention
+	if err := s.deleteBundlesInRange(0, cutoff+1, batch); err != nil {
+		return err
 	}
 
 	// NOTE: we keep one extra history hash after than the other entries.
 	// this is useful for genesis export/import and as the base of rollbacks.
-	return deleted, s.deleteHistoryHashesInRange(0, cutoff, batch)
+	return s.deleteHistoryHashesInRange(0, cutoff, batch)
 }
 
-// pruningCutoff returns the highest block whose bundles are to be pruned: the
-// last block outside the retention window, or a later one if the retained
-// bundles exceed the budget. The boolean result is false if nothing is pruned.
-func (s *Store) pruningCutoff(nextBlock, retained uint64) (uint64, bool, error) {
-	budgetCutoff, overBudget, err := s.budgetCutoff(nextBlock, retained)
-	if err != nil {
-		return 0, false, err
-	}
-	retentionCutoff, outdated := retentionCutoff(nextBlock)
-	if overBudget && (!outdated || budgetCutoff > retentionCutoff) {
-		s.warnAboutBudgetPruning(retained, budgetCutoff)
-	}
-	return max(budgetCutoff, retentionCutoff), overBudget || outdated, nil
-}
-
-// retentionCutoff returns the last block outside the retention window. The
-// boolean result is false if no block is outside the window yet.
-func retentionCutoff(nextBlock uint64) (uint64, bool) {
-	if nextBlock < ProcessedBundlesRetention {
-		return 0, false
-	}
-	return nextBlock - ProcessedBundlesRetention, true
-}
-
-// warnAboutBudgetPruning reports that the budget of retained bundles causes
-// history within the retention window to be pruned, at most once per interval.
-func (s *Store) warnAboutBudgetPruning(retained, cutoff uint64) {
-	if time.Since(s.lastBudgetWarning) < budgetWarningInterval {
-		return
-	}
-	s.lastBudgetWarning = time.Now()
-	s.Log.Warn("Processed bundles exceed the retention budget, pruning older history early",
-		"retained", retained, "budget", s.cfg.MaxRetainedProcessedBundles,
-		"earliestSafeHealBlock", cutoff+bundle.MaxBlockRangeLength)
-}
-
-// budgetCutoff returns the highest block whose bundles are to be pruned to keep
-// the retained bundles within the budget, pruning whole blocks, oldest first.
-// Blocks of the replay protection window are never pruned, so the budget may be
-// exceeded while they alone hold more bundles.
-func (s *Store) budgetCutoff(nextBlock, retained uint64) (uint64, bool, error) {
-	budget := s.cfg.MaxRetainedProcessedBundles
-	if retained <= budget || nextBlock < bundle.MaxBlockRangeLength {
-		return 0, false, nil
-	}
-	highestPrunableBlock := nextBlock - bundle.MaxBlockRangeLength
-
-	// key layout for 'i': 1 byte prefix + 8 bytes blockNum + 32 bytes execPlanHash
-	it := s.table.ProcessedBundles.NewIterator([]byte{'i'}, nil)
-	defer it.Release()
-	cutoff, found := uint64(0), false
-	for it.Next() {
-		key := it.Key()
-		if len(key) != 1+8+32 {
-			continue
-		}
-		blockNum := binary.BigEndian.Uint64(key[1 : 1+8])
-		if blockNum > highestPrunableBlock || (retained <= budget && blockNum != cutoff) {
-			break
-		}
-		cutoff, found, retained = blockNum, true, retained-1
-	}
-	if err := it.Error(); err != nil {
-		return 0, false, fmt.Errorf("failed to iterate processed bundles for budget pruning: %w", err)
-	}
-	return cutoff, found, nil
-}
-
-// retainedBundlesCount returns the number of processed bundles retained in the
-// store. It is counted on first use and kept up to date by all updates of the
-// processed bundles. The caller must hold the processedBundleMutex.
-func (s *Store) retainedBundlesCount() (uint64, error) {
-	if s.retainedBundlesCounted {
-		return s.retainedBundles, nil
-	}
-	it := s.table.ProcessedBundles.NewIterator([]byte{'i'}, nil)
-	defer it.Release()
-	count := uint64(0)
-	for it.Next() {
-		if len(it.Key()) == 1+8+32 {
-			count++
-		}
-	}
-	if err := it.Error(); err != nil {
-		return 0, fmt.Errorf("failed to count processed bundles: %w", err)
-	}
-	s.retainedBundles, s.retainedBundlesCounted = count, true
-	return count, nil
+// processedBundlesRetention returns the number of blocks for which processed bundles are retained.
+func (s *Store) processedBundlesRetention() uint64 {
+	return max(s.cfg.ProcessedBundlesRetention, bundle.MaxBlockRangeLength)
 }
 
 // deleteBundlesInRange deletes the index and entry keys ('i', 'e') of all
-// bundles processed in the blocks [from, to), and returns their number.
-func (s *Store) deleteBundlesInRange(from, to uint64, batch kvdb.Batch) (uint64, error) {
+// bundles processed in the blocks [from, to).
+func (s *Store) deleteBundlesInRange(from, to uint64, batch kvdb.Batch) error {
 	// key layout for 'i': 1 byte prefix + 8 bytes blockNum + 32 bytes execPlanHash
 	it := s.table.ProcessedBundles.NewIterator([]byte{'i'}, bigendian.Uint64ToBytes(from))
 	defer it.Release()
-	deleted := uint64(0)
 	for it.Next() {
 		key := it.Key()
 		if len(key) != 1+8+32 {
@@ -301,14 +197,13 @@ func (s *Store) deleteBundlesInRange(from, to uint64, batch kvdb.Batch) (uint64,
 			batch.Delete(getEntryKey(hash)),
 		)
 		if err != nil {
-			return 0, fmt.Errorf("failed to delete processed bundle hash: %w", err)
+			return fmt.Errorf("failed to delete processed bundle hash: %w", err)
 		}
-		deleted++
 	}
 	if err := it.Error(); err != nil {
-		return 0, fmt.Errorf("failed to iterate processed bundles for deletion: %w", err)
+		return fmt.Errorf("failed to iterate processed bundles for deletion: %w", err)
 	}
-	return deleted, nil
+	return nil
 }
 
 // deleteHistoryHashesInRange deletes the per-block history hashes ('h') of the
@@ -363,8 +258,8 @@ func computeNewBundleStateHash(
 // given hash has been processed recently. This is used to prevent re-processing
 // the same bundle multiple times.
 //
-// Note: the store only keeps track of the bundles being executed in the last
-// ProcessedBundlesRetention blocks, so this function returns false for bundles
+// Note: the store only keeps track of the bundles being executed within the
+// configured retention, so this function returns false for bundles
 // that were processed too far in the past and have been cleaned up from the
 // store.
 func (s *Store) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
@@ -377,7 +272,7 @@ func (s *Store) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
 
 // GetBundleExecutionInfo returns the execution info for a processed execution
 // plan if it is present in the store. Note that execution info is being
-// automatically removed from the store after ProcessedBundlesRetention blocks,
+// automatically removed from the store after the configured retention,
 // so this function returns nil for bundles that were processed too far in the
 // past.
 func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) *bundle.ExecutionInfo {
@@ -510,25 +405,16 @@ func (s *Store) RollbackProcessedBundles(block uint64) error {
 		return fmt.Errorf("no processed bundles history hash retained for block %d", block)
 	}
 
-	retained, err := s.retainedBundlesCount()
-	if err != nil {
-		return err
-	}
 	batch := s.table.ProcessedBundles.NewBatch()
-	deleted, deleteErr := s.deleteBundlesInRange(block+1, math.MaxUint64, batch)
-	err = errors.Join(
-		deleteErr,
+	err := errors.Join(
+		s.deleteBundlesInRange(block+1, math.MaxUint64, batch),
 		s.deleteHistoryHashesInRange(block+1, math.MaxUint64, batch),
 		putLatestBundleHistoryHash(batch, block, hash),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to roll back processed bundles: %w", err)
 	}
-	if err := batch.Write(); err != nil {
-		return err
-	}
-	s.retainedBundles = retained - deleted
-	return nil
+	return batch.Write()
 }
 
 // EnumerateProcessedBundles returns a list of all recently processed bundle

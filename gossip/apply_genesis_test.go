@@ -73,7 +73,7 @@ func TestImportProcessedBundles_RestoresHistoryHash_WhenNoBundlesAreRetained(t *
 	source.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
 		{0x01}: {Offset: 0, Count: 1},
 	})
-	const lastBlock = ProcessedBundlesRetention + 100
+	const lastBlock = DefaultProcessedBundlesRetention + 100
 	for block := uint64(2); block <= lastBlock; block++ {
 		source.AddProcessedBundles(block, nil)
 	}
@@ -172,7 +172,7 @@ func TestImportProcessedBundles_ReplaysFromOldestHash_WhenRangeExceedsRetentionW
 	source.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
 		{0x01}: {Offset: 0, Count: 1},
 	})
-	const lastBlock = ProcessedBundlesRetention + 6
+	const lastBlock = DefaultProcessedBundlesRetention + 6
 	for block := uint64(2); block <= lastBlock; block++ {
 		source.AddProcessedBundles(block, nil)
 	}
@@ -183,7 +183,7 @@ func TestImportProcessedBundles_ReplaysFromOldestHash_WhenRangeExceedsRetentionW
 	require.Len(exported.infos, 1)
 	require.GreaterOrEqual(
 		exported.historyHashes.Latest.BlockNumber-exported.historyHashes.Oldest.BlockNumber,
-		ProcessedBundlesRetention-1)
+		DefaultProcessedBundlesRetention-1)
 
 	target, err := NewMemStore(t)
 	require.NoError(err)
@@ -319,17 +319,12 @@ func TestImportProcessedBundles_ReportsError_WhenWritingHistoryBaseFails(t *test
 }
 
 func TestImportProcessedBundles_ReportsError_WhenReplayingBlockFails(t *testing.T) {
-	store, table, log, batch, it := storeTableLogMocks(t)
+	store, table, log, batch, _ := storeTableLogMocks(t)
 	log.EXPECT().Info(gomock.Any(), gomock.Any()).AnyTimes()
 
 	injectedErr := errors.New("batch write error")
 	// the base is restored with a first batch, block 8 is replayed with a second one
 	table.EXPECT().NewBatch().Return(batch).Times(2)
-	// the retained bundles are recounted after restoring the base
-	table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it)
-	it.EXPECT().Next().Return(false)
-	it.EXPECT().Error().Return(nil)
-	it.EXPECT().Release()
 	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).Times(4)
 	gomock.InOrder(
 		batch.EXPECT().Write().Return(nil),

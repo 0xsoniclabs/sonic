@@ -26,17 +26,17 @@ import (
 	"gopkg.in/urfave/cli.v1"
 )
 
-func TestMakeAllConfigs_UsesDefaultMaxRetainedProcessedBundles(t *testing.T) {
+func TestMakeAllConfigs_UsesDefaultProcessedBundlesRetention(t *testing.T) {
 	cfg, err := MakeAllConfigsFromFile(newCliContextWithArgs(t), "")
 	require.NoError(t, err)
-	require.Equal(t, gossip.DefaultMaxRetainedProcessedBundles, cfg.OperaStore.MaxRetainedProcessedBundles)
+	require.Equal(t, gossip.DefaultProcessedBundlesRetention, cfg.OperaStore.ProcessedBundlesRetention)
 }
 
-func TestMakeAllConfigs_AppliesMaxRetainedProcessedBundlesFlag(t *testing.T) {
-	ctx := newCliContextWithArgs(t, "--"+flags.MaxRetainedProcessedBundlesFlag.Name, "42")
+func TestMakeAllConfigs_AppliesProcessedBundlesRetentionFlag(t *testing.T) {
+	ctx := newCliContextWithArgs(t, "--"+flags.ProcessedBundlesRetentionFlag.Name, "42")
 	cfg, err := MakeAllConfigsFromFile(ctx, "")
 	require.NoError(t, err)
-	require.Equal(t, uint64(42), cfg.OperaStore.MaxRetainedProcessedBundles)
+	require.Equal(t, uint64(42), cfg.OperaStore.ProcessedBundlesRetention)
 }
 
 // newCliContextWithArgs creates a CLI context with a temporary data directory
@@ -45,7 +45,7 @@ func newCliContextWithArgs(t *testing.T, args ...string) *cli.Context {
 	t.Helper()
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	fs.String(flags.DataDirFlag.Name, "", "")
-	fs.Uint64(flags.MaxRetainedProcessedBundlesFlag.Name, 0, "")
+	fs.Uint64(flags.ProcessedBundlesRetentionFlag.Name, 0, "")
 	require.NoError(t, fs.Parse(append([]string{"--" + flags.DataDirFlag.Name, t.TempDir()}, args...)))
 	return cli.NewContext(nil, fs, nil)
 }

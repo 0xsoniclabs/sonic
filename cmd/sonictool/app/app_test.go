@@ -266,7 +266,7 @@ func TestSonicTool_genesis_ExportImport_WithBundles(t *testing.T) {
 		"bundle info mismatch after genesis export-import")
 
 	// run more blocks than the maximum block range of a bundle; processed
-	// bundles are retained beyond it (see gossip.ProcessedBundlesRetention),
+	// bundles are retained beyond it (see gossip.DefaultProcessedBundlesRetention),
 	// so the node can still be healed to an earlier epoch.
 	generateNBlocks(t, net, int(bundle.MaxBlockRangeLength)+10)
 

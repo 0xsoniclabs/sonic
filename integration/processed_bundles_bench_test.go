@@ -31,7 +31,7 @@ import (
 // BenchmarkStore_HasBundleRecentlyBeenProcessed measures the lookup the tx
 // pool performs per bundle-only transaction, on the DB stack of a node holding
 // processed bundles for the maximum block range of a bundle. Bundles are
-// retained longer (see gossip.ProcessedBundlesRetention), so none of them are
+// retained longer (see gossip.DefaultProcessedBundlesRetention), so none of them are
 // pruned.
 func BenchmarkStore_HasBundleRecentlyBeenProcessed(b *testing.B) {
 	const bundlesPerBlock = 10
