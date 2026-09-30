@@ -411,6 +411,10 @@ func (c *CarmenStateDB) EndBlock(number uint64) (carmen.StagedBlock, error) {
 	if err != nil {
 		return nil, err
 	}
+	// defensive: a committable StateDB should never returns a nil staged block
+	if staged == nil {
+		return nil, fmt.Errorf("StateDB returned no staged block for block %d", number)
+	}
 
 	// clear snapshot list since the block-sealing invalidates all snapshots
 	c.interTxSnapshots = c.interTxSnapshots[:0]

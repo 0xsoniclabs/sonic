@@ -153,6 +153,20 @@ func TestCarmenStateDB_EndBlock_FailsIfNotConvertibleToCarmenStateDB(t *testing.
 	require.ErrorContains(err, "StateDB does not support EndBlock")
 }
 
+func TestCarmenStateDB_EndBlock_FailsIfStateDBReturnsNilStagedBlock(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+
+	db := carmen.NewMockStateDB(ctrl)
+	db.EXPECT().EndBlock(uint64(123)).Return(nil, nil)
+
+	state := &CarmenStateDB{db: db, committable: true}
+
+	block, err := state.EndBlock(123)
+	require.Nil(block)
+	require.ErrorContains(err, "StateDB returned no staged block for block 123")
+}
+
 func TestCarmenStateDB_EndBlock_Committable_CallsEndBlockOnStateDB(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)

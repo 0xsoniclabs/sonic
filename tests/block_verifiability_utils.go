@@ -215,8 +215,10 @@ func (s *State) ApplyGenesis(genesis *makefakegenesis.GenesisJson) error {
 	if err != nil {
 		return fmt.Errorf("failed to commit genesis block: %w", err)
 	}
-	if err := handle.Wait(); err != nil {
-		return fmt.Errorf("failed to wait for genesis commit: %w", err)
+	if handle != nil {
+		if err := handle.Wait(); err != nil {
+			return fmt.Errorf("failed to wait for genesis commit: %w", err)
+		}
 	}
 	return s.db.Check()
 }
@@ -293,8 +295,10 @@ func (s *State) ApplyBlock(
 	if err != nil {
 		return nil, fmt.Errorf("failed to commit block %d: %w", block.NumberU64(), err)
 	}
-	if err := handle.Wait(); err != nil {
-		return nil, fmt.Errorf("failed to wait for commit of block %d: %w", block.NumberU64(), err)
+	if handle != nil {
+		if err := handle.Wait(); err != nil {
+			return nil, fmt.Errorf("failed to wait for commit of block %d: %w", block.NumberU64(), err)
+		}
 	}
 
 	return receipts, s.db.Check()
