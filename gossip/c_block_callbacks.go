@@ -121,6 +121,7 @@ func (s *Service) GetConsensusCallbacks() lachesis.ConsensusCallbacks {
 			&s.blockProcWg,
 			&s.blockBusyFlag,
 			s.store,
+			s.ledger,
 			s.blockProcModules,
 			s.config.TxIndex,
 			&s.feed,
@@ -138,6 +139,7 @@ func consensusCallbackBeginBlockFn(
 	wg *sync.WaitGroup,
 	blockBusyFlag *uint32,
 	store *Store,
+	ledger Ledger,
 	blockProc BlockProc,
 	txIndex bool,
 	feed *ServiceFeed,
@@ -167,12 +169,6 @@ func consensusCallbackBeginBlockFn(
 		// otherwise cheaters would get punished after a first block where cheaters were observed
 		bs.EpochCheaters = mergeCheaters(bs.EpochCheaters, cBlock.Cheaters)
 
-		// Get stateDB
-		statedb, err := store.evm.GetLiveStateDb(bs.FinalizedStateRoot)
-		if err != nil {
-			log.Crit("Failed to open StateDB", "err", err)
-		}
-		nonceSource := blockproc.NewNonceSource(statedb)
 		evmStateReader := &EvmStateReader{
 			ServiceFeed: feed,
 			store:       store,
@@ -223,9 +219,18 @@ func consensusCallbackBeginBlockFn(
 					},
 				)
 
-				// Start assembling the resulting block.
-				number := uint64(bs.LastBlock.Idx + 1)
-				lastBlockHeader := evmStateReader.Header(common.Hash{}, number-1)
+				// Start assembling the resulting block. The proposal is
+				// validated against the head the block is built on.
+				head, err := ledger.Head()
+				if err != nil {
+					log.Crit("Failed to read the ledger head", "err", err)
+				}
+				parent := head.Block()
+				number := parent.Number + 1
+				lastBlockHeader := evmStateReader.Header(
+					parent.Hash(),
+					parent.Number,
+				)
 
 				randao := computePrevRandao(confirmedEvents)
 				chainCfg := opera.CreateTransientEvmChainConfig(
@@ -347,6 +352,24 @@ func consensusCallbackBeginBlockFn(
 					)
 				}
 
+				sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
+				sealing := sealer.EpochSealing()
+				txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es)
+				onNewLogAll := func(l *core_types.Log) {
+					txListener.OnNewLog(l)
+					// Note: it's possible for logs to get indexed twice by BR and block processing
+					if verWatcher != nil {
+						verWatcher.OnNewLog(l)
+					}
+				}
+
+				// prepare block processing
+				executingBlock, err := head.BeginBlock(BlockParams{Number: number})
+				if err != nil {
+					log.Crit("Failed to begin block", "err", err)
+				}
+				statedb := executingBlock.stateDB()
+
 				// Apply the transaction priorities and reorder the (already
 				// filtered) transactions, identically in both legacy and
 				// single-proposer modes, overriding any proposer order.
@@ -365,18 +388,6 @@ func consensusCallbackBeginBlockFn(
 					priorityFailures,
 				)
 
-				sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
-				sealing := sealer.EpochSealing()
-				txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es)
-				onNewLogAll := func(l *core_types.Log) {
-					txListener.OnNewLog(l)
-					// Note: it's possible for logs to get indexed twice by BR and block processing
-					if verWatcher != nil {
-						verWatcher.OnNewLog(l)
-					}
-				}
-
-				// prepare block processing
 				evmProcessor := blockProc.EVMModule.Start(
 					blockCtx.Idx,
 					blockCtx.Time,
@@ -392,6 +403,7 @@ func consensusCallbackBeginBlockFn(
 				executionStart := time.Now()
 
 				// Execute pre-internal transactions
+				nonceSource := blockproc.NewNonceSource(statedb)
 				preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
 				preInternalProcessedTxs := evmProcessor.Execute(preInternalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
 				bs = txListener.Finalize()

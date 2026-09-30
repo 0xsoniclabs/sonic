@@ -216,8 +216,8 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 				if test.proposal != nil {
 					proposal := *test.proposal
 					// Fix some required fields in any proposal.
-					proposal.Number = 1
-					proposal.ParentHash = store.GetBlock(0).Hash()
+					proposal.Number = store.GetLatestBlockIndex() + 1
+					proposal.ParentHash = store.GetLatestBlock().Hash()
 					builder.SetPayload(inter.Payload{
 						Proposal: &proposal,
 					})
@@ -240,9 +240,7 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 
 			// Update the block and epoch state to match the test conditions.
 			bs := store.GetBlockState()
-			bs.LastBlock = iblockproc.BlockCtx{
-				Time: test.lastBlockTime,
-			}
+			bs.LastBlock.Time = test.lastBlockTime
 			es := store.GetEpochState()
 			es.Rules.Blocks.MaxEmptyBlockSkipPeriod = MaxEmptyBlockSkipPeriod
 			store.SetBlockEpochState(bs, es)
@@ -324,7 +322,7 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 			blockBusyFlag := uint32(0)
 			emitters := []*emitter.Emitter{}
 			beginBlock := consensusCallbackBeginBlockFn(
-				workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping,
+				workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store), proc, false, nil, &emitters, nil, &bootstrapping,
 			)
 
 			// Run a full consensus callback cycle for this block.
@@ -378,8 +376,8 @@ func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
 	proposalBuilder.SetMedianTime(blockTime)
 	proposalBuilder.SetPayload(inter.Payload{
 		Proposal: &inter.Proposal{
-			Number:     1,
-			ParentHash: store.GetBlock(0).Hash(),
+			Number:     store.GetLatestBlockIndex() + 1,
+			ParentHash: store.GetLatestBlock().Hash(),
 		},
 	})
 	proposalEvent := proposalBuilder.Build()
@@ -397,7 +395,7 @@ func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
 
 	// Update block and epoch state to match the test conditions.
 	bs := store.GetBlockState()
-	bs.LastBlock = iblockproc.BlockCtx{Time: lastBlockTime}
+	bs.LastBlock.Time = lastBlockTime
 	es := store.GetEpochState()
 	es.Rules.Blocks.MaxEmptyBlockSkipPeriod = maxEmptyBlockSkipPeriod
 	store.SetBlockEpochState(bs, es)
@@ -481,7 +479,7 @@ func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
 	blockBusyFlag := uint32(0)
 	emitters := []*emitter.Emitter{}
 	beginBlock := consensusCallbackBeginBlockFn(
-		workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping,
+		workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store), proc, false, nil, &emitters, nil, &bootstrapping,
 	)
 
 	callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
@@ -549,8 +547,8 @@ func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 	originBuilder.SetCreator(originCreator)
 	originBuilder.SetPayload(inter.Payload{
 		Proposal: &inter.Proposal{
-			Number:       1,
-			ParentHash:   store.GetBlock(0).Hash(),
+			Number:       store.GetLatestBlockIndex() + 1,
+			ParentHash:   store.GetLatestBlock().Hash(),
 			Transactions: types.Transactions{originTx},
 		},
 	})
@@ -569,7 +567,7 @@ func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 	}
 
 	bs := store.GetBlockState()
-	bs.LastBlock = iblockproc.BlockCtx{Time: lastBlockTime}
+	bs.LastBlock.Time = lastBlockTime
 	es := store.GetEpochState()
 	es.Rules.Blocks.MaxEmptyBlockSkipPeriod = maxEmptyBlockSkipPeriod
 	store.SetBlockEpochState(bs, es)
@@ -658,7 +656,7 @@ func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 	blockBusyFlag := uint32(0)
 	emitters := []*emitter.Emitter{}
 	beginBlock := consensusCallbackBeginBlockFn(
-		workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping,
+		workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store), proc, false, nil, &emitters, nil, &bootstrapping,
 	)
 
 	callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
@@ -804,7 +802,7 @@ func TestConsensusCallback_AppliesTransactionPriorities(t *testing.T) {
 	blockBusyFlag := uint32(0)
 	emitters := []*emitter.Emitter{}
 	beginBlock := consensusCallbackBeginBlockFn(
-		workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping,
+		workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store), proc, false, nil, &emitters, nil, &bootstrapping,
 	)
 
 	callbacks := beginBlock(&lachesis.Block{Atropos: event.ID()})
@@ -2286,7 +2284,7 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupWithBrio(t *te
 
 			// Update the block state to a known time.
 			blockState := store.GetBlockState()
-			blockState.LastBlock = iblockproc.BlockCtx{Time: inter.Timestamp(1000)}
+			blockState.LastBlock.Time = inter.Timestamp(1000)
 			epochState := store.GetEpochState()
 			store.SetBlockEpochState(blockState, epochState)
 
@@ -2369,7 +2367,7 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupWithBrio(t *te
 			blockBusyFlag := uint32(0)
 			emitters := []*emitter.Emitter{}
 			beginBlock := consensusCallbackBeginBlockFn(
-				workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping,
+				workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store), proc, false, nil, &emitters, nil, &bootstrapping,
 			)
 
 			callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
