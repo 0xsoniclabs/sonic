@@ -537,8 +537,10 @@ func EndBlockAndCommit(db state.StateDB, number uint64) error {
 	if err != nil {
 		return fmt.Errorf("failed to commit block %d: %w", number, err)
 	}
-	if err := done.Wait(); err != nil {
-		return fmt.Errorf("failed to update archive for block %d: %w", number, err)
+	if done != nil {
+		if err := done.Wait(); err != nil {
+			return fmt.Errorf("failed to update archive for block %d: %w", number, err)
+		}
 	}
 	return nil
 }

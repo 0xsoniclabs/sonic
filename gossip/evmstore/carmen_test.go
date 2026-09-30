@@ -17,6 +17,7 @@
 package evmstore
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -582,29 +583,49 @@ func TestEndBlockAndCommit_EndsCommitsAndWaits(t *testing.T) {
 	require.True(waitCalled)
 }
 
+func TestEndBlockAndCommit_EndCommitsAndDoesNotWaitForNilWaitHandle(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+
+	db := state.NewMockStateDB(ctrl)
+	staged := carmen.NewMockStagedBlock(ctrl)
+
+	db.EXPECT().EndBlock(uint64(7)).Return(staged, nil)
+	staged.EXPECT().Commit().Return(nil, nil)
+
+	// A wait() on a nil wait handle would panic
+	require.NotPanics(
+		func() {
+			require.NoError(EndBlockAndCommit(db, 7))
+		},
+	)
+}
+
 func TestEndBlockAndCommit_ReportsFailures(t *testing.T) {
-	injectedErr := fmt.Errorf("injected error")
+	const injectedString = "injected error"
+	injectedErr := errors.New(injectedString)
 	tests := map[string]struct {
 		setup   func(db *state.MockStateDB, staged *carmen.MockStagedBlock)
-		wantErr error // nil: any error is accepted
+		wantErr string
 	}{
 		"EndBlock fails": {
 			setup: func(db *state.MockStateDB, _ *carmen.MockStagedBlock) {
 				db.EXPECT().EndBlock(uint64(7)).Return(nil, injectedErr)
 			},
-			wantErr: injectedErr,
+			wantErr: injectedString,
 		},
 		"Nil staged block": {
 			setup: func(db *state.MockStateDB, _ *carmen.MockStagedBlock) {
 				db.EXPECT().EndBlock(uint64(7)).Return(nil, nil)
 			},
+			wantErr: "StateDB returned no staged block for block 7",
 		},
 		"Commit fails": {
 			setup: func(db *state.MockStateDB, staged *carmen.MockStagedBlock) {
 				db.EXPECT().EndBlock(uint64(7)).Return(staged, nil)
 				staged.EXPECT().Commit().Return(nil, injectedErr)
 			},
-			wantErr: injectedErr,
+			wantErr: injectedString,
 		},
 		"Wait fails": {
 			setup: func(db *state.MockStateDB, staged *carmen.MockStagedBlock) {
@@ -613,7 +634,7 @@ func TestEndBlockAndCommit_ReportsFailures(t *testing.T) {
 				db.EXPECT().EndBlock(uint64(7)).Return(staged, nil)
 				staged.EXPECT().Commit().Return(carmen.NewWaitHandle(done), nil)
 			},
-			wantErr: injectedErr,
+			wantErr: injectedString,
 		},
 	}
 
@@ -626,9 +647,7 @@ func TestEndBlockAndCommit_ReportsFailures(t *testing.T) {
 
 			err := EndBlockAndCommit(db, 7)
 			require.Error(t, err)
-			if test.wantErr != nil {
-				require.ErrorIs(t, err, test.wantErr)
-			}
+			require.ErrorContains(t, err, test.wantErr)
 		})
 	}
 }
