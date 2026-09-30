@@ -149,12 +149,6 @@ type (
 		EVM                 evmstore.StoreConfig
 		MaxNonFlushedSize   int
 		MaxNonFlushedPeriod time.Duration
-		// MaxRetainedProcessedBundles caps the number of processed bundles
-		// retained for healing beyond the replay protection window. When
-		// exceeded, the oldest blocks are pruned early, reducing the depth to
-		// which the node can be healed. Bundles of the replay protection
-		// window are always retained.
-		MaxRetainedProcessedBundles uint64
 	}
 )
 
@@ -315,10 +309,9 @@ func DefaultStoreConfig(scale cachescale.Func) StoreConfig {
 			LlrBlockVotesIndexes: scale.I(100),
 			LlrEpochVotesIndexes: scale.I(5),
 		},
-		EVM:                         evmstore.DefaultStoreConfig(scale),
-		MaxNonFlushedSize:           21*opt.MiB + scale.I(2*opt.MiB),
-		MaxNonFlushedPeriod:         30 * time.Minute,
-		MaxRetainedProcessedBundles: DefaultMaxRetainedProcessedBundles,
+		EVM:                 evmstore.DefaultStoreConfig(scale),
+		MaxNonFlushedSize:   21*opt.MiB + scale.I(2*opt.MiB),
+		MaxNonFlushedPeriod: 30 * time.Minute,
 	}
 }
 

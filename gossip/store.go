@@ -106,11 +106,9 @@ type Store struct {
 
 	// mutex for synchronizing access to processed bundles data
 	processedBundleMutex sync.Mutex
-	// number of processed bundles retained in the store, counted on first use
-	retainedBundles        uint64
-	retainedBundlesCounted bool
-	// time of the last warning about pruning caused by the bundles budget
-	lastBudgetWarning time.Time
+	// number of blocks for which processed bundles are retained, set to
+	// ProcessedBundlesRetention; overridden by tests only
+	processedBundlesRetention uint64
 }
 
 // NewMemStore creates temporary gossip store for testing purposes.
@@ -136,6 +134,8 @@ func NewStore(dbs kvdb.FlushableDBProducer, cfg StoreConfig) (*Store, error) {
 		Instance:      logger.New("gossip-store"),
 		prevFlushTime: atomic.Value{},
 		rlp:           rlpstore.Helper{Instance: logger.New("rlp")},
+
+		processedBundlesRetention: ProcessedBundlesRetention,
 	}
 	s.prevFlushTime.Store(time.Now())
 

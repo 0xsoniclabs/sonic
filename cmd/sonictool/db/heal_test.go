@@ -23,6 +23,8 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/Fantom-foundation/lachesis-base/kvdb/flushable"
+	"github.com/Fantom-foundation/lachesis-base/kvdb/memorydb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -109,4 +111,23 @@ func setEpochStarts(t *testing.T, store *gossip.Store, epochs idx.Epoch, blocksP
 		store.SetHistoryBlockEpochState(epoch, blockState, epochState)
 		store.SetBlockEpochState(blockState, epochState)
 	}
+}
+
+func TestHealGossipDb_ReportsError_WhenBundleHistoryIsTooShallow(t *testing.T) {
+	dbs := flushable.NewSyncedPool(memorydb.NewProducer(""), []byte{0})
+	cfg := gossip.MemTestStoreConfig(t.TempDir())
+	store, err := gossip.NewStore(dbs, cfg)
+	require.NoError(t, err)
+	store.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{{0x01}: {}})
+	for block := uint64(2); block <= 2*bundle.MaxBlockRangeLength; block++ {
+		store.AddProcessedBundles(block, nil)
+	}
+	setEpochStarts(t, store, 10, 200)
+	store.FlushBlockEpochState()
+	require.NoError(t, store.Commit())
+
+	// epoch 3 starts at block 600, which is before the earliest safe block
+	epoch := idx.Epoch(3)
+	_, _, err = healGossipDb(dbs, cfg, &epoch, 10_000)
+	require.ErrorContains(t, err, "epoch 3 (block 600) is too deep to heal safely")
 }

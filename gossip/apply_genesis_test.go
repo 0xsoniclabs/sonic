@@ -67,13 +67,14 @@ func TestImportProcessedBundles_RestoresHistoryHash_WhenNoBundlesAreRetained(t *
 
 	source, err := NewMemStore(t)
 	require.NoError(err)
+	source.processedBundlesRetention = bundle.MaxBlockRangeLength
 
 	// a bundle is executed and enough empty blocks are produced to prune it
 	// while the history hash keeps being updated for every block
 	source.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
 		{0x01}: {Offset: 0, Count: 1},
 	})
-	const lastBlock = ProcessedBundlesRetention + 100
+	const lastBlock = 1100
 	for block := uint64(2); block <= lastBlock; block++ {
 		source.AddProcessedBundles(block, nil)
 	}
@@ -169,10 +170,11 @@ func TestImportProcessedBundles_ReplaysFromOldestHash_WhenRangeExceedsRetentionW
 
 	source, err := NewMemStore(t)
 	require.NoError(err)
+	source.processedBundlesRetention = bundle.MaxBlockRangeLength
 	source.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
 		{0x01}: {Offset: 0, Count: 1},
 	})
-	const lastBlock = ProcessedBundlesRetention + 6
+	const lastBlock = 1030
 	for block := uint64(2); block <= lastBlock; block++ {
 		source.AddProcessedBundles(block, nil)
 	}
@@ -183,7 +185,7 @@ func TestImportProcessedBundles_ReplaysFromOldestHash_WhenRangeExceedsRetentionW
 	require.Len(exported.infos, 1)
 	require.GreaterOrEqual(
 		exported.historyHashes.Latest.BlockNumber-exported.historyHashes.Oldest.BlockNumber,
-		ProcessedBundlesRetention-1)
+		uint64(1023))
 
 	target, err := NewMemStore(t)
 	require.NoError(err)
@@ -232,26 +234,6 @@ func TestImportProcessedBundles_ReportsError_OnDuplicateExecutionPlan(t *testing
 	require.ErrorContains(t, err, "duplicate execution plan hash")
 }
 
-func TestImportProcessedBundles_ReportsError_OnDuplicateExecutionPlanInReplayedBlock(t *testing.T) {
-	store, err := NewMemStore(t)
-	require.NoError(t, err)
-
-	const base, block = 4, 5
-	bundles := fakeProcessedBundles{
-		infos: []bundle.ExecutionInfo{
-			{BlockNumber: block, ExecutionPlanHash: common.Hash{0x01}},
-			{BlockNumber: block, ExecutionPlanHash: common.Hash{0x01}},
-		},
-		historyHashes: &bundle.BundleGenesisHistoryHashes{
-			Oldest: bundle.HistoryHash{BlockNumber: base, Hash: common.Hash{0x42}},
-			Latest: bundle.HistoryHash{BlockNumber: block},
-		},
-	}
-	err = store.importProcessedBundles(bundles)
-	require.ErrorContains(t, err, "invalid processed bundles in genesis at block 5")
-	require.ErrorContains(t, err, "duplicate execution plan hash")
-}
-
 func TestImportProcessedBundles_ReportsError_WhenBundlesHaveNoHistoryHash(t *testing.T) {
 	store, _, _, _, _ := storeTableLogMocks(t)
 
@@ -262,96 +244,65 @@ func TestImportProcessedBundles_ReportsError_WhenBundlesHaveNoHistoryHash(t *tes
 	require.ErrorContains(t, err, "bundles were processed but no history hash was found in genesis")
 }
 
-func TestImportProcessedBundles_ReportsError_WhenRestoringHistoryBaseFails(t *testing.T) {
-	store, table, log, batch, _ := storeTableLogMocks(t)
-	log.EXPECT().Info(gomock.Any(), gomock.Any()).AnyTimes()
+func TestRestoreBundleHistoryBase_ReportsError_WhenPuttingHistoryHashFails(t *testing.T) {
+	store, table, _, batch, _ := storeTableLogMocks(t)
 
-	latest := bundle.HistoryHash{BlockNumber: 7, Hash: common.Hash{0x42}}
+	base := bundle.HistoryHash{BlockNumber: 7, Hash: common.Hash{0x42}}
 	injectedErr := errors.New("put error")
 	table.EXPECT().NewBatch().Return(batch)
-	batch.EXPECT().Put(nil, gomock.Any()).Return(nil)
-	batch.EXPECT().Put(getBundleHistoryHashKey(latest.BlockNumber), latest.Hash.Bytes()).
+	batch.EXPECT().Put(getBundleHistoryHashKey(base.BlockNumber), base.Hash.Bytes()).
 		Return(injectedErr)
 
-	bundles := fakeProcessedBundles{
-		historyHashes: &bundle.BundleGenesisHistoryHashes{Latest: latest, Oldest: latest},
-	}
-	err := store.importProcessedBundles(bundles)
+	err := store.restoreBundleHistoryBase(base, nil)
 	require.ErrorIs(t, err, injectedErr)
 }
 
-func TestImportProcessedBundles_ReportsError_WhenRestoringBundlesOfBaseFails(t *testing.T) {
-	store, table, log, batch, _ := storeTableLogMocks(t)
-	log.EXPECT().Info(gomock.Any(), gomock.Any()).AnyTimes()
-
-	const block = 5
-	injectedErr := errors.New("entry put error")
-	table.EXPECT().NewBatch().Return(batch)
-	batch.EXPECT().Put(getEntryKey(common.Hash{0x01}), gomock.Any()).Return(injectedErr)
-	batch.EXPECT().Put(getIndexKey(block, common.Hash{0x01}), gomock.Any()).Return(nil)
-	// no batch.Write() is expected
-
-	base := bundle.HistoryHash{BlockNumber: block, Hash: common.Hash{0x42}}
-	bundles := fakeProcessedBundles{
-		infos:         []bundle.ExecutionInfo{{BlockNumber: block, ExecutionPlanHash: common.Hash{0x01}}},
-		historyHashes: &bundle.BundleGenesisHistoryHashes{Latest: base, Oldest: base},
-	}
-	err := store.importProcessedBundles(bundles)
-	require.ErrorContains(t, err, "failed to restore processed bundles of block 5")
-	require.ErrorIs(t, err, injectedErr)
-}
-
-func TestImportProcessedBundles_ReportsError_WhenWritingHistoryBaseFails(t *testing.T) {
-	store, table, log, batch, _ := storeTableLogMocks(t)
-	log.EXPECT().Info(gomock.Any(), gomock.Any()).AnyTimes()
+func TestRestoreBundleHistoryBase_ReportsError_WhenWritingFails(t *testing.T) {
+	store, table, _, batch, _ := storeTableLogMocks(t)
 
 	injectedErr := errors.New("batch write error")
 	table.EXPECT().NewBatch().Return(batch)
-	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).Times(2)
+	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil)
 	batch.EXPECT().Write().Return(injectedErr)
 
 	base := bundle.HistoryHash{BlockNumber: 7, Hash: common.Hash{0x42}}
-	bundles := fakeProcessedBundles{
-		historyHashes: &bundle.BundleGenesisHistoryHashes{Latest: base, Oldest: base},
-	}
-	err := store.importProcessedBundles(bundles)
+	err := store.restoreBundleHistoryBase(base, nil)
 	require.ErrorIs(t, err, injectedErr)
 }
 
-func TestImportProcessedBundles_ReportsError_WhenReplayingBlockFails(t *testing.T) {
-	store, table, log, batch, it := storeTableLogMocks(t)
-	log.EXPECT().Info(gomock.Any(), gomock.Any()).AnyTimes()
+func TestImportProcessedBundles_RestoresBaseBlock_WhenRangeExceedsReplayProtectionWindow(t *testing.T) {
+	require := require.New(t)
 
-	injectedErr := errors.New("batch write error")
-	// the base is restored with a first batch, block 8 is replayed with a second one
-	table.EXPECT().NewBatch().Return(batch).Times(2)
-	// the retained bundles are recounted after restoring the base
-	table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it)
-	it.EXPECT().Next().Return(false)
-	it.EXPECT().Error().Return(nil)
-	it.EXPECT().Release()
-	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).Times(4)
-	gomock.InOrder(
-		batch.EXPECT().Write().Return(nil),
-		batch.EXPECT().Write().Return(injectedErr),
-	)
-	table.EXPECT().Get(gomock.Any()).Return([]byte{8 + 32 - 1: 0x42}, nil)
-
-	bundles := fakeProcessedBundles{
-		historyHashes: &bundle.BundleGenesisHistoryHashes{
-			Oldest: bundle.HistoryHash{BlockNumber: 7, Hash: common.Hash{0x42}},
-			Latest: bundle.HistoryHash{BlockNumber: 8, Hash: common.Hash{0x43}},
-		},
+	source, err := NewMemStore(t)
+	require.NoError(err)
+	source.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
+		{0x01}: {Offset: 0, Count: 1},
+	})
+	for block := uint64(2); block <= bundle.MaxBlockRangeLength+100; block++ {
+		source.AddProcessedBundles(block, nil)
 	}
-	err := store.importProcessedBundles(bundles)
-	require.ErrorContains(t, err, "failed to replay processed bundles of block 8")
-	require.ErrorIs(t, err, injectedErr)
+	exported := exportProcessedBundles(t, source)
+	require.Equal(uint64(1), exported.historyHashes.Oldest.BlockNumber)
+
+	target, err := NewMemStore(t)
+	require.NoError(err)
+	require.NoError(target.importProcessedBundles(exported))
+
+	// the bundles and the history hash of the base block are retained
+	require.Equal(source.GetBundleExecutionInfo(common.Hash{0x01}),
+		target.GetBundleExecutionInfo(common.Hash{0x01}))
+	earliest, earliestHash, found := target.GetEarliestBundleHistoryHash()
+	require.True(found)
+	require.Equal(exported.historyHashes.Oldest.BlockNumber, earliest)
+	require.Equal(exported.historyHashes.Oldest.Hash, earliestHash)
 }
 
-func TestImportProcessedBundles_ReplaysFromOldestHash_WhenSpanIsShortAndBaseIsNotZero(t *testing.T) {
-	// A genesis may start its history at any block, e.g. a pruned genesis or
-	// a genesis exported shortly after importing another one. The oldest hash
-	// is the base of the replay regardless of the span of the history.
+func TestImportProcessedBundles_Fails_WhenSpanIsShortAndBaseIsNotZero(t *testing.T) {
+	// A history shorter than the replay protection window is only complete if
+	// it starts with the first processed bundle. With a non-zero hash before
+	// its oldest block, bundles needed for the replay protection are missing,
+	// so the genesis has to be rejected; otherwise the node could re-execute
+	// a bundle and diverge from the consensus.
 	require := require.New(t)
 
 	source, err := NewMemStore(t)
@@ -381,17 +332,8 @@ func TestImportProcessedBundles_ReplaysFromOldestHash_WhenSpanIsShortAndBaseIsNo
 
 	target, err := NewMemStore(t)
 	require.NoError(err)
-	require.NoError(target.importProcessedBundles(exported))
-
-	_, gotHash := target.GetLatestProcessedBundleHistoryHash()
-	require.Equal(latestHash, gotHash)
-	require.True(target.HasBundleRecentlyBeenProcessed(common.Hash{0x02}))
-
-	// the base is retained, so the imported store can be exported and rolled back
-	earliest, gotBaseHash, found := target.GetEarliestBundleHistoryHash()
-	require.True(found)
-	require.Equal(base, earliest)
-	require.Equal(baseHash, gotBaseHash)
+	err = target.importProcessedBundles(exported)
+	require.ErrorContains(err, "reproduced latest bundle history hash does not match genesis")
 }
 
 func TestImportProcessedBundles_RetainsBundlesUpToOldestHash_ForReplayProtection(t *testing.T) {

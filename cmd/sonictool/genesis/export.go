@@ -276,13 +276,13 @@ func exportBundlesHash(ctx context.Context, gdb *gossip.Store, writer *unitWrite
 	return nil
 }
 
-func exportBundles(ctx context.Context, gdb *gossip.Store, writer *unitWriter, base uint64) error {
-	log.Info("Exporting processed bundles", "fromBlock", base)
+func exportBundles(ctx context.Context, gdb *gossip.Store, writer *unitWriter, fromBlock uint64) error {
+	log.Info("Exporting processed bundles", "fromBlock", fromBlock)
 
 	// write the execution info of the bundles processed since the base block.
 	count := 0
 	for _, info := range gdb.EnumerateProcessedBundles() {
-		if info.BlockNumber < base {
+		if info.BlockNumber < fromBlock {
 			continue
 		}
 		b := MustRlpEncodeToByte(info)

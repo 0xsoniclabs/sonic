@@ -163,13 +163,8 @@ func groupBundlesByBlock(bundles genesis.ProcessedBundles) map[uint64][]bundle.E
 	return bundlesByBlock
 }
 
-// replayProcessedBundles replays the retained processed bundles on top of the
-// oldest history hash of the genesis. The history hash chain is recomputed for
-// every later block and verified against the latest genesis record.
-//
-// The history hash is updated for every block even if no bundles are retained,
-// so it is replayed even without bundles to produce the correct epoch state
-// hash at the next epoch sealing.
+// replayProcessedBundles replays the retained processed bundles,
+// the history hash chain is computed and verified against the genesis record.
 func (s *Store) replayProcessedBundles(
 	historyHashes bundle.BundleGenesisHistoryHashes,
 	hasHistory bool,
@@ -183,63 +178,56 @@ func (s *Store) replayProcessedBundles(
 		"oldestBlockNum", historyHashes.Oldest.BlockNumber, "oldestHash", historyHashes.Oldest.Hash,
 		"latestBlockNum", historyHashes.Latest.BlockNumber, "latestHash", historyHashes.Latest.Hash)
 
-	base := historyHashes.Oldest
-	if err := s.restoreBundleHistoryBase(base, bundlesByBlock); err != nil {
-		return err
-	}
-
 	// replay blocks to latest and add retained bundles
 	// the execution plan chain is updated block by block
-	for block := base.BlockNumber + 1; block <= historyHashes.Latest.BlockNumber; block++ {
+	startBlock := s.initBundleHistoryReplay(historyHashes)
+	if oldest := historyHashes.Oldest; startBlock > oldest.BlockNumber {
+		if err := s.restoreBundleHistoryBase(oldest, bundlesByBlock[oldest.BlockNumber]); err != nil {
+			return err
+		}
+	}
+	for block := startBlock; block <= historyHashes.Latest.BlockNumber; block++ {
 		bundlesPerBlock, err := positionsByExecutionPlan(bundlesByBlock[block])
 		if err != nil {
 			return fmt.Errorf("invalid processed bundles in genesis at block %d: %w", block, err)
 		}
-		if err := s.addProcessedBundles(block, bundlesPerBlock); err != nil {
-			return fmt.Errorf("failed to replay processed bundles of block %d: %w", block, err)
-		}
+		s.AddProcessedBundles(block, bundlesPerBlock)
 	}
 
 	return s.verifyBundleHistoryHash(historyHashes.Latest)
 }
 
-// restoreBundleHistoryBase stores the given history hash as the base of the
-// replay, together with the bundles processed up to the base block. The oldest
-// genesis hash is the history hash after its block, so bundles up to that
-// block are only retained for replay protection and do not affect the hash.
-func (s *Store) restoreBundleHistoryBase(
-	base bundle.HistoryHash,
-	bundlesByBlock map[uint64][]bundle.ExecutionInfo,
-) error {
-	s.processedBundleMutex.Lock()
-	defer s.processedBundleMutex.Unlock()
-
-	batch := s.table.ProcessedBundles.NewBatch()
-	for block, infos := range bundlesByBlock {
-		if block > base.BlockNumber {
-			continue
-		}
-		positions, err := positionsByExecutionPlan(infos)
-		if err != nil {
-			return fmt.Errorf("invalid processed bundles in genesis at block %d: %w", block, err)
-		}
-		if _, err := s.addNewBundles(block, positions, batch); err != nil {
-			return fmt.Errorf("failed to restore processed bundles of block %d: %w", block, err)
-		}
+// initBundleHistoryReplay returns the first block to replay.
+// The oldest hash is used as the base for a range of 1024+ blocks (the retained window, inclusive);
+// otherwise the replay starts from a zero hash. We know the previous history hash is zero
+// because there have been less than 1024 blocks since the first block which contains processed bundles.
+// A shorter history with a non-zero previous hash would lack bundles needed for the replay
+// protection, so it is rejected by the verification of the latest hash.
+func (s *Store) initBundleHistoryReplay(historyHashes bundle.BundleGenesisHistoryHashes) uint64 {
+	oldest, latest := historyHashes.Oldest, historyHashes.Latest
+	if latest.BlockNumber-oldest.BlockNumber < 1023 {
+		return oldest.BlockNumber
 	}
+	s.SetProcessedBundlesHistoryHash(oldest.BlockNumber, oldest.Hash)
+	return oldest.BlockNumber + 1
+}
 
-	err := errors.Join(
-		putLatestBundleHistoryHash(batch, base.BlockNumber, base.Hash),
-		batch.Put(getBundleHistoryHashKey(base.BlockNumber), base.Hash.Bytes()),
-	)
+// restoreBundleHistoryBase restores the bundles processed in the base block of
+// the replay and its per-block history hash. The bundles are already covered by
+// the base hash, so they are retained only for replay protection; together with
+// the per-block hash, they allow to heal and export the imported node as deep as
+// the source node.
+func (s *Store) restoreBundleHistoryBase(base bundle.HistoryHash, infos []bundle.ExecutionInfo) error {
+	positions, err := positionsByExecutionPlan(infos)
 	if err != nil {
+		return fmt.Errorf("invalid processed bundles in genesis at block %d: %w", base.BlockNumber, err)
+	}
+	batch := s.table.ProcessedBundles.NewBatch()
+	s.addNewBundles(base.BlockNumber, positions, batch)
+	if err := batch.Put(getBundleHistoryHashKey(base.BlockNumber), base.Hash.Bytes()); err != nil {
 		return fmt.Errorf("failed to restore bundle history base: %w", err)
 	}
-	if err := batch.Write(); err != nil {
-		return err
-	}
-	s.retainedBundlesCounted = false // < recount the restored bundles on next use
-	return nil
+	return batch.Write()
 }
 
 // positionsByExecutionPlan indexes the positions of the bundles processed in a single block
