@@ -38,10 +38,19 @@ import (
 
 //go:generate go tool mockgen -source=evm.go -destination=evm_mock.go -package=evmmodule
 
-type EVMModule struct{}
+type EVMModule struct {
+	// Whether the module is used for replaying blocks or for head state processing.
+	forReplay bool
+}
 
+// New creates an EVM module for head state processing.
 func New() *EVMModule {
 	return &EVMModule{}
+}
+
+// NewForReplay creates an EVM module for replaying blocks.
+func NewForReplay() *EVMModule {
+	return &EVMModule{forReplay: true}
 }
 
 func (p *EVMModule) Start(
@@ -87,6 +96,7 @@ func (p *EVMModule) Start(
 		gasBaseFee:       baseFee,
 		processorFactory: stateProcessorFactory{},
 		metrics:          metrics,
+		forReplay:        p.forReplay,
 	}
 }
 
@@ -111,6 +121,9 @@ type OperaEVMProcessor struct {
 	processorFactory _stateProcessorFactory
 
 	metrics evmcore.BlockExecutionMetrics
+
+	// Whether the processor is used for replaying blocks or for head state processing.
+	forReplay bool
 }
 
 func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlock {
@@ -152,7 +165,12 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 }
 
 func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64, sizeLimit uint64) evmcore.ProcessSummary {
-	evmProcessor := p.processorFactory.NewStateProcessorForHeadState(p.evmCfg, p.reader, p.rules.Upgrades, p.metrics)
+	var evmProcessor _stateProcessor
+	if p.forReplay {
+		evmProcessor = p.processorFactory.NewStateProcessorForReplay(p.evmCfg, p.reader, p.rules.Upgrades)
+	} else {
+		evmProcessor = p.processorFactory.NewStateProcessorForHeadState(p.evmCfg, p.reader, p.rules.Upgrades, p.metrics)
+	}
 	trueTxsOffset := int(0)
 	for _, tx := range p.processedTxs {
 		if tx.Receipt != nil {
