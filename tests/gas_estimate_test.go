@@ -20,13 +20,17 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/data_reader"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -225,6 +229,40 @@ func doTestEstimate(
 			gasUsed := receipt.GasUsed
 			assert.LessOrEqual(t, gasUsed, gasEstimation,
 				"Gas used shall be less than or equal to gas estimation")
+		})
+	}
+}
+
+func TestEstimateGas_StateOverridesAreCommittedBeforeTheCall(t *testing.T) {
+	for upgradeName, upgrade := range opera.GetAllHardForksInOrder() {
+		t.Run(upgradeName, func(t *testing.T) {
+			session := getIntegrationTestNetSession(t, upgrade)
+			t.Parallel()
+
+			client, err := session.GetClient()
+			require.NoError(t, err)
+			defer client.Close()
+
+			target := common.Address{0x42}
+			code := hexutil.Bytes{byte(vm.PUSH1), 0x02, byte(vm.PUSH1), 0x00, byte(vm.SSTORE), byte(vm.STOP)}
+			storage := map[common.Hash]common.Hash{{}: common.BigToHash(big.NewInt(1))}
+
+			// Overwriting a committed non-zero slot is charged a full storage reset.
+			want := params.TxGas + 2*vm.GasFastestStep + params.SstoreResetGasEIP2200
+
+			overrides := map[string]ethapi.OverrideAccount{
+				"state":     {Code: &code, State: &storage},
+				"stateDiff": {Code: &code, StateDiff: &storage},
+			}
+			for kind, account := range overrides {
+				t.Run(kind, func(t *testing.T) {
+					var got hexutil.Uint64
+					err := client.Client().CallContext(t.Context(), &got, "eth_estimateGas",
+						ethapi.TransactionArgs{To: &target}, "latest", ethapi.StateOverride{target: account})
+					require.NoError(t, err)
+					require.Equal(t, want, uint64(got))
+				})
+			}
 		})
 	}
 }
