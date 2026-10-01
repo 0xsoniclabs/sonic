@@ -54,6 +54,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 
+	"github.com/0xsoniclabs/carmen/go/database/mpt"
 	mptIo "github.com/0xsoniclabs/carmen/go/database/mpt/io"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 )
@@ -132,6 +133,11 @@ func (b *GenesisBuilder) CurrentHash() hash.Hash {
 	er := b.epochs[len(b.epochs)-1]
 	return er.Hash()
 }
+
+// exportNodeCacheCapacity is the node cache capacity used while exporting the genesis
+// state. Exporting is a read-only sequential scan, so the Carmen minimum is enough;
+// the default would reserve slots for 10M nodes (~600MB) per opened trie.
+const exportNodeCacheCapacity = 2_000
 
 // CacheSizes are the Carmen cache sizes a genesis builder runs with. The zero value asks for the
 // minimum, which is what a genesis of a few hundred accounts needs.
@@ -423,7 +429,15 @@ func (b *GenesisBuilder) Build(head genesis.Header) (*genesisstore.Store, error)
 					retErr = errors.Join(retErr, scratchDir.Cleanup())
 				}()
 
-				err = mptIo.ExportArchive(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "archive"), buf, scratchDir.Path())
+				err = mptIo.ExportArchiveWithConfig(
+					context.Background(),
+					mptIo.NewLog(),
+					filepath.Join(b.carmenDir, "archive"),
+					buf,
+					scratchDir.Path(),
+					mpt.NodeCacheConfig{Capacity: exportNodeCacheCapacity},
+					mpt.ArchiveConfig{},
+				)
 				if err != nil {
 					return nil, err
 				}
