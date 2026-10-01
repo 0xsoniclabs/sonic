@@ -594,7 +594,7 @@ func TestOperaEVMProcessor_Finalize_TerminatesProcess_OnFatalErrors(t *testing.T
 				done <- injectedErr
 				stagedBlock.EXPECT().Commit().Return(carmen_state.NewWaitHandle(done), nil)
 			},
-			message: "Failed to finalize block",
+			message: "Failed to finalize block on archive",
 		},
 	}
 

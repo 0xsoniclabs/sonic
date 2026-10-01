@@ -274,7 +274,7 @@ func TestCarmenStateDB_EndBlock_NotCommittable_ReturnsError(t *testing.T) {
 
 	block, err := state.EndBlock(0)
 	require.Nil(block)
-	require.Error(err)
+	require.ErrorContains(err, "called EndBlock on a non-committable StateDB")
 }
 
 func TestCarmenStateDB_EndBlock_SnapshotListIsReset(t *testing.T) {
