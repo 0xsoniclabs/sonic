@@ -38,7 +38,9 @@ import (
 // causing the entire proposal to be rejected.
 //
 // Steps can be nested into groups with optional oneOf and tolerateFailures
-// semantics. An example of the JSON representation:
+// semantics. The top-level object is the root group of the plan; its oneOf and
+// tolerateFailures flags apply to that group. An example of the JSON
+// representation:
 //
 //	{
 //	  "blockRange": {
@@ -88,7 +90,7 @@ type RPCExecutionStepProposal struct {
 // UnmarshalJSON implements json.Unmarshaler for RPCExecutionProposal.
 // Steps []any requires custom handling: each element is either an
 // RPCExecutionStepProposal (leaf, no "steps" key) or an RPCExecutionPlanGroup
-// (has "steps" key), resolved by unmarshalProposalStep.
+// (has "steps" key), resolved by unmarshalBundleGroup.
 func (p *RPCExecutionProposal) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		BlockRange       *RPCRange         `json:"blockRange,omitempty"`
@@ -104,7 +106,7 @@ func (p *RPCExecutionProposal) UnmarshalJSON(data []byte) error {
 	p.TolerateFailures = raw.TolerateFailures
 	p.Steps = make([]any, len(raw.Steps))
 	for i, rawStep := range raw.Steps {
-		step, empty, err := unmarshalBundleGroup[RPCExecutionStepProposal](rawStep, 0)
+		step, empty, err := unmarshalBundleGroup[RPCExecutionStepProposal](rawStep, 1)
 		if err != nil {
 			return err
 		}
@@ -138,17 +140,13 @@ func (s *RPCExecutionStepProposal) UnmarshalJSON(data []byte) error {
 // element can be optimized away and an error if the JSON is invalid. The optimization
 // boolean is used to indicate to the caller that the resulting group is empty.
 //
-// depth is the "steps" nesting depth of data, with 0 for the root proposal's
-// direct children (matching the root-is-depth-0 convention of validateStep,
+// depth is the nesting depth of data, with 0 for the root group, i.e. the
+// top-level object (matching the convention of validateStep,
 // gossip/blockproc/bundle/validate.go). It is checked against
 // bundle.MaxGroupNestingDepth before any parsing of data is attempted, so
 // maliciously deep input is rejected cheaply instead of costing quadratic
 // decode time (every recursion level re-parses the still fully nested
-// remainder of the input). Reusing MaxGroupNestingDepth directly, rather than
-// a separate decode-time constant, still leaves one level of slack versus the
-// precise rule validateStep enforces later: a transparent single-child
-// wrapper group collapses away in convertProposalToPlanInternal and so does
-// not count against MaxGroupNestingDepth in the final validated plan.
+// remainder of the input).
 func unmarshalBundleGroup[LeafType any](data []byte, depth int) (any, bool, error) {
 	if depth > bundle.MaxGroupNestingDepth {
 		return nil, false, fmt.Errorf(
@@ -380,15 +378,6 @@ func convertProposalToPlanInternal(signer types.Signer, proposalStep any) (bundl
 			return empty, fmt.Errorf("proposed group must include at least one step")
 		}
 
-		// A plain single-child group with no flags is a transparent wrapper;
-		// return the child's plan directly rather than wrapping it in another group.
-		if !step.OneOf && !step.TolerateFailures && len(step.Steps) == 1 {
-			switch step.Steps[0].(type) {
-			case RPCExecutionPlanGroup:
-				return convertProposalToPlanInternal(signer, step.Steps[0])
-			}
-		}
-
 		steps := make([]bundle.ExecutionStep, len(step.Steps))
 		for i, stepLevel := range step.Steps {
 			childStep, err := convertProposalToPlanInternal(signer, stepLevel)
@@ -396,10 +385,6 @@ func convertProposalToPlanInternal(signer types.Signer, proposalStep any) (bundl
 				return empty, fmt.Errorf("invalid execution plan level: %w", err)
 			}
 			steps[i] = childStep
-		}
-
-		if !step.TolerateFailures && len(steps) == 1 {
-			return steps[0], nil
 		}
 
 		group := bundle.NewGroupStep(step.OneOf, steps...)
@@ -442,7 +427,8 @@ func transform(
 	fn func(step RPCExecutionStepProposal) (RPCExecutionStepProposal, error),
 	depth int,
 ) (RPCExecutionProposal, error) {
-	if depth > bundle.MaxGroupNestingDepth {
+	// The steps of this group are one level deeper than the group itself.
+	if depth+1 > bundle.MaxGroupNestingDepth {
 		return proposal, fmt.Errorf(
 			"execution plan exceeds maximum nesting depth of %d", bundle.MaxGroupNestingDepth)
 	}
