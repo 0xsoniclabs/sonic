@@ -73,11 +73,13 @@ func unlockValidatorKey(sigCtx context.Context, cliCtx *cli.Context, pubKey vali
 	var err error
 	for trials := 0; trials < 3; trials++ {
 		prompt := fmt.Sprintf("Unlocking validator key %s | Attempt %d/%d", pubKey.String(), trials+1, 3)
-		passwordList, err := makeValidatorPasswordList(sigCtx, cliCtx)
+		var passwordList []string
+		passwordList, err = makeValidatorPasswordList(sigCtx, cliCtx)
 		if err != nil {
 			return err
 		}
-		password, err := GetPassPhrase(sigCtx, prompt, false, 0, passwordList)
+		var password string
+		password, err = GetPassPhrase(sigCtx, prompt, false, 0, passwordList)
 		if err != nil {
 			return err
 		}
