@@ -27,7 +27,7 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Fixed
 
-## [2.2.3] - 30 September 2026
+## [2.2.3] - 1 October 2026
 
 Version 2.2.3 is a stability release. Upgrading is recommended for all RPC operators.
 
