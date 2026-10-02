@@ -27,6 +27,20 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Fixed
 
+## [2.2.4] - 2 October 2026
+
+Version 2.2.4 is a stability release. Upgrading is recommended for all RPC operators.
+
+### Changed
+
+- The `executionPlan` returned by `sonic_prepareBundle` is now the root group of the plan itself, instead of an object holding the root group as its only step.
+- `sonic_prepareBundle` and `sonic_submitBundle` no longer collapse groups with a single step into that step.
+- The transaction pool now rejects bundles whose execution plan, or the plan of any bundle nested in it, has a single transaction as its root.
+
+### Fixed
+
+- Fixed `sonic_prepareBundle` building single-transaction bundles without an enclosing group, which let a failing transaction be dropped from the block without its effects rolled back.
+
 ## [2.2.3] - 1 October 2026
 
 Version 2.2.3 is a stability release. Upgrading is recommended for all RPC operators.
