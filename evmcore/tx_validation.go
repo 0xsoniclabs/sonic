@@ -543,8 +543,16 @@ func validateBundleTransactionsInternal(
 	}
 
 	// If the transaction is a bundle, validate its structure and content.
-	_, plan, err := bundle.ValidateEnvelope(signer, tx)
+	txBundle, plan, err := bundle.ValidateEnvelope(signer, tx)
 	if err != nil {
+		return errors.Join(ErrBundleTransactionInvalid, err)
+	}
+
+	// A plan with a bare transaction as root is valid for block processing,
+	// but a failure of that transaction does not revert its nonce and fee
+	// payment. Such bundles are only kept out of the pool, since rejecting
+	// them during block processing would be a hard fork.
+	if err := checkPlanRootsAreGroups(signer, txBundle); err != nil {
 		return errors.Join(ErrBundleTransactionInvalid, err)
 	}
 
@@ -566,6 +574,43 @@ func validateBundleTransactionsInternal(
 
 	return nil
 }
+
+// checkPlanRootsAreGroups returns an error if the execution plan of the given
+// bundle, or of any bundle nested in it, has a single transaction as its root.
+// The bundle must have passed bundle.ValidateEnvelope.
+func checkPlanRootsAreGroups(signer types.Signer, txBundle *bundle.TransactionBundle) error {
+	if err := txBundle.Plan.Root.Accept(&rootGroupVisitor{}); err != nil {
+		return err
+	}
+	for _, tx := range txBundle.Transactions {
+		if !bundle.IsEnvelope(tx) {
+			continue
+		}
+		nested, err := bundle.OpenEnvelope(signer, tx)
+		if err != nil {
+			return err
+		}
+		if err := checkPlanRootsAreGroups(signer, &nested); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// rootGroupVisitor fails on a transaction step visited outside of any group.
+type rootGroupVisitor struct {
+	inGroup bool
+}
+
+func (v *rootGroupVisitor) Step(bundle.ExecutionFlags, bundle.TxReference) error {
+	if !v.inGroup {
+		return errors.New("execution plan root must be a group")
+	}
+	return nil
+}
+
+func (v *rootGroupVisitor) BeginGroup(bool, bool) { v.inGroup = true }
+func (v *rootGroupVisitor) EndGroup()             {}
 
 // approvesMultiplePlans reports whether the transaction's bundle-only marker
 // lists more than one execution plan, counting duplicates.
