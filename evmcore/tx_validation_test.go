@@ -1419,13 +1419,13 @@ func TestValidateTxForPool_IgnoresBundleAndSponsoredTx_ForTipChecks(t *testing.T
 			})},
 		"bundle envelope": {
 			tx: bundle.NewBuilder().
-				With(bundle.Step(key, &types.DynamicFeeTx{})).
+				AllOf(bundle.Step(key, &types.DynamicFeeTx{})).
 				Build(),
 		},
 		"priced bundle envelope": {
 			tx: bundle.NewBuilder().
 				SetEnvelopeGasPrice(big.NewInt(1)). // not a sponsorship request as it has a gas price; keep it below minTip to exercise the bundle exemption
-				With(bundle.Step(key, &types.DynamicFeeTx{})).
+				AllOf(bundle.Step(key, &types.DynamicFeeTx{})).
 				Build(),
 		},
 	}
@@ -2088,7 +2088,7 @@ func Test_validateBundleTransactions_RejectsRecentlyProcessedBundles(t *testing.
 
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	envelope, plan := bundle.NewBuilder().
-		With(bundle.Step(key, &types.AccessListTx{})).
+		AllOf(bundle.Step(key, &types.AccessListTx{})).
 		BuildEnvelopeAndPlan()
 
 	require := require.New(t)
@@ -2148,7 +2148,7 @@ func Test_validateBundleTransactionsInternal_EvaluatesBundleUsingGetBundleState(
 
 			signer := types.LatestSignerForChainID(big.NewInt(1))
 			envelope := bundle.NewBuilder().
-				With(bundle.Step(key, &types.AccessListTx{})).
+				AllOf(bundle.Step(key, &types.AccessListTx{})).
 				Build()
 
 			err = validateBundleTransactionsInternal(envelope,
@@ -2184,7 +2184,7 @@ func Test_validateBundleTransactionsInternal_AccumulatesRejectionReasons(t *test
 
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	envelope := bundle.NewBuilder().
-		With(bundle.Step(key, &types.AccessListTx{})).
+		AllOf(bundle.Step(key, &types.AccessListTx{})).
 		Build()
 
 	reasons := []string{"reason1", "reason2"}
@@ -2524,7 +2524,7 @@ func Test_validateBundleTransactions_RejectsBundleOnlyTransactionsOfProcessedBun
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	txBundle, plan := bundle.NewBuilder().
 		WithSigner(signer).
-		With(bundle.Step(key, &types.AccessListTx{})).
+		AllOf(bundle.Step(key, &types.AccessListTx{})).
 		BuildBundleAndPlan()
 
 	bundleOnlyTx := txBundle.GetTransactionsInReferencedOrder()[0]
@@ -2621,6 +2621,42 @@ func Test_isBundleOnlyOfProcessedBundles_RequiresAllApprovedPlansToBeProcessed(t
 
 			tx := types.NewTx(&types.AccessListTx{AccessList: test.accessList})
 			require.Equal(t, test.expected, isBundleOnlyOfProcessedBundles(tx, stateDb))
+		})
+	}
+}
+
+func Test_checkPlanRootsAreGroups(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	step := func() bundle.BuilderStep { return bundle.Step(key, &types.AccessListTx{}) }
+	envelope := func(root bundle.BuilderStep) *types.Transaction {
+		return bundle.NewBuilder().WithSigner(signer).With(root).Build()
+	}
+
+	tests := map[string]struct {
+		root  bundle.BuilderStep
+		valid bool
+	}{
+		"bare tx":                      {root: step()},
+		"allOf group":                  {root: bundle.AllOf(step()), valid: true},
+		"oneOf group":                  {root: bundle.OneOf(step()), valid: true},
+		"nested envelope with bare tx": {root: bundle.AllOf(bundle.Step(key, envelope(step())))},
+		"nested envelope with group": {
+			root:  bundle.AllOf(bundle.Step(key, envelope(bundle.AllOf(step())))),
+			valid: true,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			txBundle, _ := bundle.NewBuilder().WithSigner(signer).With(test.root).BuildBundleAndPlan()
+			err := checkPlanRootsAreGroups(signer, txBundle)
+			if test.valid {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, "execution plan root must be a group")
+			}
 		})
 	}
 }
