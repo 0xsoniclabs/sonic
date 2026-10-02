@@ -28,6 +28,8 @@ import (
 // RPCExecutionPlanComposable is the JSON-serializable representation of the execution plan
 // that can be returned by the API. It is designed to be easily convertible to and from the internal bundle.ExecutionPlan structure, while also being flexible enough to accommodate
 // different representations of the execution steps (e.g. for proposals or for actual execution).
+// The top-level object is the root group of the plan; its oneOf and
+// tolerateFailures flags apply to that group.
 //
 // An example of the JSON structure of an RPCExecutionPlanComposable could be:
 //
@@ -151,11 +153,6 @@ func toBundleExecutionGroup(l RPCExecutionPlanGroup) (bundle.ExecutionStep, erro
 		steps[i] = step
 	}
 
-	// Single child without flags does not need to be in an extra group
-	if !l.TolerateFailures && len(steps) == 1 {
-		return steps[0], nil
-	}
-
 	group := bundle.NewGroupStep(l.OneOf, steps...)
 	if l.TolerateFailures {
 		group = group.WithFlags(bundle.EF_TolerateFailed)
@@ -178,7 +175,7 @@ func (t *RPCExecutionPlanComposable) UnmarshalJSON(data []byte) error {
 	t.TolerateFailures = raw.TolerateFailures
 	t.Steps = make([]any, len(raw.Steps))
 	for i, rawStep := range raw.Steps {
-		step, empty, err := unmarshalBundleGroup[RPCExecutionStepComposable](rawStep, 0)
+		step, empty, err := unmarshalBundleGroup[RPCExecutionStepComposable](rawStep, 1)
 		if err != nil {
 			return err
 		}
@@ -209,17 +206,16 @@ type toJsonExecutionPlanVisitor struct {
 }
 
 func (v *toJsonExecutionPlanVisitor) Step(flags bundle.ExecutionFlags, txRef bundle.TxReference) error {
+	if len(v.groupStack) == 0 {
+		return fmt.Errorf("root must be a group")
+	}
 	leaf, err := v.toLeaf(flags, txRef)
 	if err != nil {
 		return fmt.Errorf("failed to convert execution step: %w", err)
 	}
 
-	if len(v.groupStack) == 0 {
-		v.result.Steps = append(v.result.Steps, leaf)
-	} else {
-		currentGroup := v.groupStack[len(v.groupStack)-1]
-		currentGroup.Steps = append(currentGroup.Steps, leaf)
-	}
+	currentGroup := v.groupStack[len(v.groupStack)-1]
+	currentGroup.Steps = append(currentGroup.Steps, leaf)
 
 	return nil
 }
@@ -240,7 +236,7 @@ func (v *toJsonExecutionPlanVisitor) EndGroup() {
 		currentGroup := v.groupStack[len(v.groupStack)-1]
 		currentGroup.Steps = append(currentGroup.Steps, *closedGroup)
 	} else {
-		v.result.Steps = append(v.result.Steps, *closedGroup)
+		v.result = *closedGroup
 	}
 }
 

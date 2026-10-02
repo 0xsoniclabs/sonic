@@ -302,7 +302,7 @@ func Test_SubmitBundle_InvalidBlockRange_ReturnsError(t *testing.T) {
 				WithSigner(signer).
 				SetEarliest(1).
 				SetRangeLength(10).
-				With(bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas})).
+				AllOf(bundle.Step(key, &types.DynamicFeeTx{To: &addr, Gas: params.TxGas})).
 				BuildBundleAndPlan()
 
 			txsInOrder := tb.GetTransactionsInReferencedOrder()
@@ -432,18 +432,11 @@ func buildSubmitBundleArgs(
 		stepsWithFlags[i] = s.WithFlags(flags)
 	}
 
-	var root bundle.BuilderStep
-	if len(stepsWithFlags) == 1 {
-		root = stepsWithFlags[0]
-	} else {
-		root = bundle.AllOf(stepsWithFlags...)
-	}
-
 	tb, plan := bundle.NewBuilder().
 		WithSigner(signer).
 		SetEarliest(first).
 		SetRangeLength(length).
-		With(root).
+		AllOf(stepsWithFlags...).
 		BuildBundleAndPlan()
 
 	txsInOrder := tb.GetTransactionsInReferencedOrder()
