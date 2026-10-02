@@ -561,12 +561,8 @@ func Test_PrepareBundle_OneOfGroup_BuildsOneOfPlan(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Transactions, 2)
 
-	// Single root step is the OneOf group (unwrapped since root has 1 child with no modifiers).
-	require.Len(t, result.ExecutionPlan.Steps, 1)
-	oneOfGroup, ok := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
-	require.True(t, ok)
-	require.True(t, oneOfGroup.OneOf, "expected OneOf group")
-	require.Len(t, oneOfGroup.Steps, 2)
+	require.True(t, result.ExecutionPlan.OneOf)
+	require.Len(t, result.ExecutionPlan.Steps, 2)
 }
 
 func Test_PrepareBundle_TolerateFailed_Flag(t *testing.T) {
@@ -601,10 +597,7 @@ func Test_PrepareBundle_TolerateFailed_Flag(t *testing.T) {
 
 	result, err := api.PrepareBundle(t.Context(), args)
 	require.NoError(t, err)
-	require.Len(t, result.ExecutionPlan.Steps, 1)
-
-	stepGroup, ok := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
-	require.True(t, ok, "expected step group")
+	stepGroup := result.ExecutionPlan.RPCExecutionPlanGroup
 	require.Len(t, stepGroup.Steps, 2)
 
 	leafFailed, ok := stepGroup.Steps[0].(RPCExecutionStepComposable)
@@ -744,12 +737,8 @@ func Test_PrepareBundle_FlatTransactions_MultipleTxs(t *testing.T) {
 		require.True(t, found, "tx %d missing BundleOnly marker", i)
 	}
 
-	// Two-leaf AllOf: outer steps holds one AllOf group with two leaves
-	require.Len(t, result.ExecutionPlan.Steps, 1)
-	group, ok := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
-	require.True(t, ok)
-	require.False(t, group.OneOf)
-	require.Len(t, group.Steps, 2)
+	require.False(t, result.ExecutionPlan.OneOf)
+	require.Len(t, result.ExecutionPlan.Steps, 2)
 }
 
 func Test_PrepareBundle_FlatTransactions_OrderPreserved(t *testing.T) {
@@ -781,71 +770,38 @@ func Test_PrepareBundle_FlatTransactions_OrderPreserved(t *testing.T) {
 	require.Equal(t, &addr1, result.Transactions[1].To)
 }
 
-func Test_PrepareBundle_SingleChildGroup_TolerateFailures_NotUnwrapped(t *testing.T) {
+func Test_PrepareBundle_SingleChildGroup_NotUnwrapped(t *testing.T) {
 	addr1 := common.Address{1}
 	addr2 := common.Address{2}
-
-	be := rpctest.NewBackendBuilder(t).
-		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
-		Build()
-
-	api := NewPublicBundleAPI(be)
-
 	gas := hexutil.Uint64(21000)
-	args := RPCExecutionProposal{
-		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
-			Steps: []any{
-				groupEntryWithFlags(
-					false, true, txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Gas: &gas}),
-				),
-			},
-		},
+	tx := txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0), Gas: &gas})
+
+	tests := map[string]RPCExecutionPlanGroup{
+		"plain":               groupEntry(tx),
+		"one-of":              groupEntryWithFlags(true, false, tx),
+		"tolerating failures": groupEntryWithFlags(false, true, tx),
 	}
 
-	result, err := api.PrepareBundle(t.Context(), args)
-	require.NoError(t, err)
-	require.Len(t, result.Transactions, 1)
+	for name, group := range tests {
+		t.Run(name, func(t *testing.T) {
+			be := rpctest.NewBackendBuilder(t).
+				WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
+				Build()
+			api := NewPublicBundleAPI(be)
 
-	// TolerateFailures flag must prevent single-child unwrap.
-	require.Len(t, result.ExecutionPlan.Steps, 1)
-	group, ok := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
-	require.True(t, ok, "expected group, not leaf")
-	require.False(t, group.OneOf)
-	require.Len(t, group.Steps, 1)
-}
+			args := RPCExecutionProposal{RPCExecutionPlanGroup: groupEntry(group)}
+			result, err := api.PrepareBundle(t.Context(), args)
+			require.NoError(t, err)
+			require.Len(t, result.Transactions, 1)
 
-func Test_PrepareBundle_SingleChildGroup_Plain_IsUnwrapped(t *testing.T) {
-	addr1 := common.Address{1}
-	addr2 := common.Address{2}
-
-	be := rpctest.NewBackendBuilder(t).
-		WithAccount(addr1, rpctest.AccountState{Balance: big.NewInt(1e18)}).
-		Build()
-
-	api := NewPublicBundleAPI(be)
-
-	rpcGroup := RPCExecutionPlanGroup{
-		Steps: []any{
-			txEntry(ethapi.TransactionArgs{From: &addr1, To: &addr2, Nonce: rpctest.ToHexUint64(0)}),
-		},
+			require.Len(t, result.ExecutionPlan.Steps, 1)
+			got, ok := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
+			require.True(t, ok)
+			require.Equal(t, group.OneOf, got.OneOf)
+			require.Equal(t, group.TolerateFailures, got.TolerateFailures)
+			require.Len(t, got.Steps, 1)
+		})
 	}
-
-	args := RPCExecutionProposal{
-		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
-			Steps: []any{
-				rpcGroup,
-			},
-		},
-	}
-
-	result, err := api.PrepareBundle(t.Context(), args)
-	require.NoError(t, err)
-	require.Len(t, result.Transactions, 1)
-
-	// Plain group must collapse it's single child.
-	require.Len(t, result.ExecutionPlan.Steps, 1)
-	_, ok := result.ExecutionPlan.Steps[0].(RPCExecutionStepComposable)
-	require.True(t, ok, "expected group, not leaf")
 }
 
 // stripBundleMarker removes the BundleOnly access-list entry from txArgs so that
@@ -1010,7 +966,7 @@ func Test_PrepareBundle_PlanHashesMatchTransactions(t *testing.T) {
 			},
 			wantTxCount: 2,
 			extraCheck: func(t *testing.T, result *RPCPreparedBundle) {
-				group := result.ExecutionPlan.Steps[0].(RPCExecutionPlanGroup)
+				group := result.ExecutionPlan.RPCExecutionPlanGroup
 				leaf0 := group.Steps[0].(RPCExecutionStepComposable)
 				leaf1 := group.Steps[1].(RPCExecutionStepComposable)
 				require.True(t, leaf0.TolerateFailed)
@@ -1213,7 +1169,7 @@ func TestPrepareBundle_ReturnsError_WhenProposalDepthExceedsMaximum(t *testing.T
 		bundle.MaxGroupNestingDepth,
 		bundle.MaxGroupNestingDepth + 1,
 		1024,
-		4998, // maximum json encodable nesting, with 10k nested json groups
+		4999, // maximum json encodable nesting, with 10k nested json groups
 	} {
 		t.Run(fmt.Sprintf("depth=%d", depth), func(t *testing.T) {
 
@@ -1255,7 +1211,7 @@ func makeNestedBundleProposal(
 	tx ethapi.TransactionArgs,
 ) RPCExecutionProposal {
 	step := any(txEntry(tx))
-	for range depth {
+	for range depth - 1 {
 		step = groupEntry(step)
 	}
 

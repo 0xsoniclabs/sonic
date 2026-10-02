@@ -61,7 +61,21 @@ func Test_bundlesRPC_PrepareAndSubmit_PoolsValidBundles(t *testing.T) {
 					}
 			   ]
 			}`,
-			expectedBundle: "A",
+			expectedBundle: "AllOf(A)",
+		},
+		"one tx in a oneOf group": {
+			request: `{
+				"oneOf": true,
+				"steps": [
+					{
+						"from": "ACCOUNT1",
+						"to": "ACCOUNT2",
+						"nonce": "0x0",
+						"gas": "0x5208"
+					}
+				]
+			}`,
+			expectedBundle: "OneOf(A)",
 		},
 		"two independent steps": {
 			request: `{
@@ -182,6 +196,46 @@ func Test_bundlesRPC_PrepareAndSubmit_PoolsValidBundles(t *testing.T) {
 				]
 			}`,
 			expectedBundle: "OneOf(A,OneOf(B,A))",
+		},
+		"one tx in a nested group": {
+			request: `{
+				"steps": [
+					{
+						"steps": [
+							{
+								"from": "ACCOUNT1",
+								"to": "ACCOUNT2",
+								"nonce": "0x0"
+							}
+						]
+					}
+				]
+			}`,
+			expectedBundle: "AllOf(AllOf(A))",
+		},
+		"single-child group as oneOf alternative": {
+			request: `{
+				"oneOf": true,
+				"steps": [
+					{
+						"steps": [
+							{
+								"from": "ACCOUNT1",
+								"to": "ACCOUNT2",
+								"nonce": "0x0",
+								"gas": "0x5208"
+							}
+						]
+					},
+					{
+						"from": "ACCOUNT2",
+						"to": "ACCOUNT1",
+						"nonce": "0x0",
+						"gas": "0x5208"
+					}
+				]
+			}`,
+			expectedBundle: "OneOf(AllOf(A),B)",
 		},
 	}
 
