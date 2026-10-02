@@ -2104,6 +2104,28 @@ func Test_validateBundleTransactions_RejectsRecentlyProcessedBundles(t *testing.
 	require.ErrorIs(err, ErrBundleAlreadyProcessed)
 }
 
+func Test_validateBundleTransactions_RejectsBundlesWithBareTransactionRoot(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl) // < no calls expected, rejected before
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	envelope := bundle.NewBuilder().
+		With(bundle.Step(key, &types.AccessListTx{})).
+		Build()
+
+	bundlesEnabled := NetworkRules{
+		brio:               true,
+		transactionBundles: true,
+	}
+
+	err = validateBundleTransactions(envelope, bundlesEnabled, nil, nil, state, signer)
+	require.ErrorIs(t, err, ErrBundleTransactionInvalid)
+	require.ErrorContains(t, err, "execution plan root must be a group")
+}
+
 func Test_validateBundleTransactionsInternal_EvaluatesBundleUsingGetBundleState(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
