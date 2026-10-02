@@ -82,7 +82,7 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 		"simple bundle": {
 			bundle: bundle.NewBuilder().
 				WithSigner(signer).
-				With(bundle.Step(key, &types.AccessListTx{})).
+				AllOf(bundle.Step(key, &types.AccessListTx{})).
 				BuildBundle(),
 			json: fmt.Sprintf(`{
 				"blockRange":{"first":"0x0","length":"0x400"},
@@ -101,7 +101,7 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 				BuildBundle(),
 			json: fmt.Sprintf(`{
 				"blockRange":{"first":"0x0","length":"0x400"},
-				"steps":[{"steps":[%s,%s]}]
+				"steps":[%s,%s]
 			}`, s, s),
 		},
 		"nested bundle": {
@@ -117,7 +117,7 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 				BuildBundle(),
 			json: fmt.Sprintf(`{
 				"blockRange":{"first":"0x0","length":"0x400"},
-				"steps":[{"oneOf":true,"steps":[{"steps":[%s]}]}]
+				"oneOf":true,"steps":[{"steps":[%s]}]
 			}`, s),
 		},
 		"bundle with flags in transactions": {
@@ -136,7 +136,7 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 				BuildBundle(),
 			json: fmt.Sprintf(`{
 				"blockRange":{"first":"0x0","length":"0x400"},
-				"steps":[{"steps":[%s,%s,%s]}]
+				"steps":[%s,%s,%s]
 			}`, sTF, sTI, sTFI),
 		},
 		"bundle with flags in groups": {
@@ -161,12 +161,12 @@ func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
 				BuildBundle(),
 			json: fmt.Sprintf(`{
 				"blockRange":{"first":"0x0","length":"0x400"},
-				"steps":[{"steps":[
+				"steps":[
 					{"oneOf":true,"steps":[%s]},
 					{"tolerateFailures":true,"oneOf":true,"steps":[%s]},
 					{"steps":[%s]},
 					{"tolerateFailures":true,"steps":[%s]}
-				]}]
+				]
 			}`, s, s, s, s),
 		},
 	}
@@ -527,7 +527,7 @@ func TestCreateProposalRequestFromBundle(t *testing.T) {
 	})
 	bndl := bundle.NewBuilder().
 		WithSigner(signer).
-		With(bundle.Step(key, tx)).
+		AllOf(bundle.Step(key, tx)).
 		BuildBundle()
 
 	proposal, err := createProposalRequestFromBundle(signer, &bndl)
@@ -557,30 +557,41 @@ func TestCreateProposalRequestFromBundle(t *testing.T) {
 	proposal2, err := createProposalRequestFromBundle(signer, &nestedBndl)
 	require.NoError(t, err)
 	require.NotNil(t, proposal2)
-	require.Len(t, proposal2.Steps, 1)
+	require.Len(t, proposal2.Steps, 2)
 }
 
 func TestCreateProposalRequestFromBundle_CanYieldErrors(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
 
 	tests := map[string]struct {
-		bundle bundle.TransactionBundle
+		bundle  bundle.TransactionBundle
+		wantErr string
 	}{
 		"plan references missing transaction": {
 			bundle: bundle.TransactionBundle{
 				Plan: bundle.ExecutionPlan{
-					Root: bundle.NewTxStep(bundle.TxReference{
+					Root: bundle.NewAllOfStep(bundle.NewTxStep(bundle.TxReference{
 						Hash: common.Hash{123},
-					}),
+					})),
 				},
 			},
+			wantErr: "transaction reference not found",
+		},
+		"root is not a group": {
+			bundle: bundle.NewBuilder().
+				WithSigner(signer).
+				With(bundle.Step(key, &types.AccessListTx{})).
+				BuildBundle(),
+			wantErr: "root must be a group",
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			_, err := createProposalRequestFromBundle(signer, &tt.bundle)
-			require.Error(t, err)
+			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
 }
@@ -992,6 +1003,36 @@ func Test_transform_ReturnsErrors(t *testing.T) {
 	}
 }
 
+func Test_transform_ChecksNestingDepth(t *testing.T) {
+	identity := func(step RPCExecutionStepProposal) (RPCExecutionStepProposal, error) {
+		return step, nil
+	}
+
+	tests := map[string]struct {
+		leafDepth int
+		wantErr   bool
+	}{
+		"leaf at maximum depth":     {leafDepth: bundle.MaxGroupNestingDepth},
+		"leaf beyond maximum depth": {leafDepth: bundle.MaxGroupNestingDepth + 1, wantErr: true},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			step := any(RPCExecutionStepProposal{})
+			for range tc.leafDepth - 1 {
+				step = RPCExecutionPlanGroup{Steps: []any{step}}
+			}
+			proposal := RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{Steps: []any{step}}}
+			_, err := transform(proposal, identity, 0)
+			if tc.wantErr {
+				require.ErrorContains(t, err, "execution plan exceeds maximum nesting depth")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func Test_convertProposalToPlan(t *testing.T) {
 
 	signer := types.LatestSignerForChainID(big.NewInt(1))
@@ -1031,7 +1072,76 @@ func Test_convertProposalToPlan(t *testing.T) {
 			plan: bundle.NewBuilder().
 				SetEarliest(0).SetRangeLength(1023).
 				WithSigner(signer).
-				With(
+				AllOf(
+					bundle.Step(key1, &types.AccessListTx{
+						To:    &common.Address{123},
+						Nonce: 1,
+						Gas:   21000,
+					}),
+				).
+				BuildBundle().Plan,
+		},
+		"single step in nested plain group": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					First:  *rpctest.ToHexUint64(0),
+					Length: *rpctest.ToHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							Steps: []any{
+								RPCExecutionStepProposal{
+									TransactionArgs: ethapi.TransactionArgs{
+										From:  &address1,
+										To:    &common.Address{123},
+										Nonce: rpctest.ToHexUint64(1),
+										Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetRangeLength(1023).
+				WithSigner(signer).
+				AllOf(
+					bundle.AllOf(
+						bundle.Step(key1, &types.AccessListTx{
+							To:    &common.Address{123},
+							Nonce: 1,
+							Gas:   21000,
+						}),
+					),
+				).
+				BuildBundle().Plan,
+		},
+		"single step in one-of group": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					First:  *rpctest.ToHexUint64(0),
+					Length: *rpctest.ToHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					OneOf: true,
+					Steps: []any{
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								From:  &address1,
+								To:    &common.Address{123},
+								Nonce: rpctest.ToHexUint64(1),
+								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+							},
+						},
+					},
+				},
+			},
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetRangeLength(1023).
+				WithSigner(signer).
+				OneOf(
 					bundle.Step(key1, &types.AccessListTx{
 						To:    &common.Address{123},
 						Nonce: 1,
@@ -1140,26 +1250,22 @@ func Test_convertProposalToPlan(t *testing.T) {
 					Length: *rpctest.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					OneOf: true,
 					Steps: []any{
-						RPCExecutionPlanGroup{
-							OneOf: true,
-							Steps: []any{
-								RPCExecutionStepProposal{
-									TransactionArgs: ethapi.TransactionArgs{
-										From:  &address1,
-										To:    &common.Address{123},
-										Nonce: rpctest.ToHexUint64(1),
-										Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
-									},
-								},
-								RPCExecutionStepProposal{
-									TransactionArgs: ethapi.TransactionArgs{
-										From:  &address2,
-										To:    &common.Address{1},
-										Nonce: rpctest.ToHexUint64(2),
-										Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
-									},
-								},
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								From:  &address1,
+								To:    &common.Address{123},
+								Nonce: rpctest.ToHexUint64(1),
+								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+							},
+						},
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								From:  &address2,
+								To:    &common.Address{1},
+								Nonce: rpctest.ToHexUint64(2),
+								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
 							},
 						},
 					},
@@ -1190,29 +1296,25 @@ func Test_convertProposalToPlan(t *testing.T) {
 					Length: *rpctest.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					OneOf: true,
 					Steps: []any{
-						RPCExecutionPlanGroup{
-							OneOf: true,
-							Steps: []any{
-								RPCExecutionStepProposal{
-									TransactionArgs: ethapi.TransactionArgs{
-										From:  &address1,
-										To:    &common.Address{123},
-										Nonce: rpctest.ToHexUint64(1),
-										Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
-									},
-									TolerateFailed: true,
-								},
-								RPCExecutionStepProposal{
-									TransactionArgs: ethapi.TransactionArgs{
-										From:  &address2,
-										To:    &common.Address{1},
-										Nonce: rpctest.ToHexUint64(2),
-										Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
-									},
-									TolerateInvalid: true,
-								},
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								From:  &address1,
+								To:    &common.Address{123},
+								Nonce: rpctest.ToHexUint64(1),
+								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
 							},
+							TolerateFailed: true,
+						},
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								From:  &address2,
+								To:    &common.Address{1},
+								Nonce: rpctest.ToHexUint64(2),
+								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+							},
+							TolerateInvalid: true,
 						},
 					},
 				},
@@ -1241,26 +1343,22 @@ func Test_convertProposalToPlan(t *testing.T) {
 					Length: *rpctest.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					TolerateFailures: true,
 					Steps: []any{
-						RPCExecutionPlanGroup{
-							TolerateFailures: true,
-							Steps: []any{
-								RPCExecutionStepProposal{
-									TransactionArgs: ethapi.TransactionArgs{
-										From:  &address1,
-										To:    &common.Address{123},
-										Nonce: rpctest.ToHexUint64(1),
-										Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
-									},
-								},
-								RPCExecutionStepProposal{
-									TransactionArgs: ethapi.TransactionArgs{
-										From:  &address2,
-										To:    &common.Address{1},
-										Nonce: rpctest.ToHexUint64(2),
-										Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
-									},
-								},
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								From:  &address1,
+								To:    &common.Address{123},
+								Nonce: rpctest.ToHexUint64(1),
+								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+							},
+						},
+						RPCExecutionStepProposal{
+							TransactionArgs: ethapi.TransactionArgs{
+								From:  &address2,
+								To:    &common.Address{1},
+								Nonce: rpctest.ToHexUint64(2),
+								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
 							},
 						},
 					},
@@ -1536,11 +1634,11 @@ func Test_RPCExecutionProposal_UnmarshalJSON_RejectsExcessivelyDeepNesting(t *te
 		bundle.MaxGroupNestingDepth + 1,
 		bundle.MaxGroupNestingDepth + 2,
 		1000,
-		4998, // maximum depth that encoding/json will accept
+		4999, // maximum depth that encoding/json will accept
 	} {
 		t.Run(fmt.Sprintf("depth=%d", depth), func(t *testing.T) {
 			var proposal RPCExecutionProposal
-			rawJSON := nestedStepsProposalJSON(depth)
+			rawJSON := nestedStepsJSON(depth)
 			err := json.Unmarshal(rawJSON, &proposal)
 			require.ErrorContains(t, err, "nesting depth")
 		})
@@ -1549,19 +1647,19 @@ func Test_RPCExecutionProposal_UnmarshalJSON_RejectsExcessivelyDeepNesting(t *te
 
 func Test_RPCExecutionProposal_UnmarshalJSON_AcceptsNestingAtLimit(t *testing.T) {
 	var proposal RPCExecutionProposal
-	require.NoError(t, json.Unmarshal(nestedStepsProposalJSON(bundle.MaxGroupNestingDepth), &proposal))
+	require.NoError(t, json.Unmarshal(nestedStepsJSON(bundle.MaxGroupNestingDepth), &proposal))
 }
 
-// nestedStepsProposalJSON builds a JSON execution-proposal document with
-// `depth` levels of nested "steps" groups wrapping a single leaf transaction step.
-func nestedStepsProposalJSON(depth int) []byte {
-	// depth +1 levels are created because the empty proposal is already a group.
+// nestedStepsJSON builds a JSON execution proposal or plan whose single leaf
+// step is at the given depth, with the top-level object being the root group
+// at depth 0.
+func nestedStepsJSON(depth int) []byte {
 	var b strings.Builder
-	for range depth + 1 {
+	for range depth {
 		b.WriteString(`{"steps":[`)
 	}
 	b.WriteString(`{"from":"0x0000000000000000000000000000000000000001"}`)
-	for range depth + 1 {
+	for range depth {
 		b.WriteString(`]}`)
 	}
 	return []byte(b.String())
