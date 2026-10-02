@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/api/sonicapi"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/revert"
 	"github.com/ethereum/go-ethereum"
@@ -173,4 +174,75 @@ func testSingleTxBundleRevertLeavesNoTrace(
 	}
 	t.Logf("%d of %d bundles reverted during block processing", reverted, N)
 	require.NotZero(reverted, "no bundle was reverted during block processing")
+}
+
+// TestBundle_SingleTxBundleWithBareRoot_IsRejectedBySendRawTransaction checks
+// that the pool rejects a hand-built envelope(tx) bundle sent as a raw
+// transaction. The transaction always succeeds, so the shape of the plan is
+// the only reason for the rejection.
+func TestBundle_SingleTxBundleWithBareRoot_IsRejectedBySendRawTransaction(t *testing.T) {
+	require := require.New(t)
+	net := GetIntegrationTestNetWithBundlesEnabled(t)
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	sender := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	blockNumber, err := client.BlockNumber(t.Context())
+	require.NoError(err)
+
+	envelope := bundle.NewBuilder().
+		WithSigner(types.LatestSignerForChainID(net.GetChainId())).
+		SetEarliest(blockNumber).
+		With(Step(t, net, sender, newBurnMoneyTransaction())).
+		Build()
+
+	require.ErrorContains(client.SendTransaction(t.Context(), envelope), "execution plan root must be a group")
+}
+
+// TestBundle_SingleTxBundleWithBareRoot_IsRejectedBySubmitBundle checks that
+// transactions signed for a hand-built envelope(tx) plan cannot be submitted
+// through sonic_submitBundle. The RPC plan format always has a group as root,
+// so the submitted plan cannot match the plan approved by the transactions.
+func TestBundle_SingleTxBundleWithBareRoot_IsRejectedBySubmitBundle(t *testing.T) {
+	require := require.New(t)
+	net := GetIntegrationTestNetWithBundlesEnabled(t)
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	sender := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	blockNumber, err := client.BlockNumber(t.Context())
+	require.NoError(err)
+
+	txBundle, plan := bundle.NewBuilder().
+		WithSigner(types.LatestSignerForChainID(net.GetChainId())).
+		SetEarliest(blockNumber).
+		With(Step(t, net, sender, newBurnMoneyTransaction())).
+		BuildBundleAndPlan()
+
+	_, err = sonicapi.NewRPCExecutionPlanComposable(plan)
+	require.ErrorContains(err, "root must be a group")
+
+	refs := plan.Root.GetTransactionReferencesInReferencedOrder()
+	require.Len(refs, 1)
+	encoded, err := txBundle.Transactions[refs[0]].MarshalBinary()
+	require.NoError(err)
+
+	executionPlan := fmt.Sprintf(`{
+		"blockRange": {"first": %q, "length": %q},
+		"steps": [{"from": %q, "hash": %q}]
+	}`,
+		hexutil.EncodeUint64(plan.Range.First), hexutil.EncodeUint64(plan.Range.Length),
+		refs[0].From.Hex(), refs[0].Hash.Hex(),
+	)
+
+	var planHash common.Hash
+	err = client.Client().CallContext(t.Context(), &planHash, "sonic_submitBundle",
+		map[string]any{
+			"signedTransactions": []hexutil.Bytes{encoded},
+			"executionPlan":      json.RawMessage(executionPlan),
+		},
+	)
+	require.ErrorContains(err, "not approving the execution plan")
 }
