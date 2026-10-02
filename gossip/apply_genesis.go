@@ -235,10 +235,7 @@ func (s *Store) restoreBundleHistoryBase(
 	if err != nil {
 		return fmt.Errorf("failed to restore bundle history base: %w", err)
 	}
-	if err := batch.Write(); err != nil {
-		return err
-	}
-	return nil
+	return batch.Write()
 }
 
 // positionsByExecutionPlan indexes the positions of the bundles processed in a single block
