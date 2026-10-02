@@ -30,8 +30,11 @@ import (
 
 	"github.com/0xsoniclabs/sonic/api/sonicapi"
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
+	sonictooldb "github.com/0xsoniclabs/sonic/cmd/sonictool/db"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
+	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/integration"
 	"github.com/0xsoniclabs/sonic/opera"
 	ogenesis "github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
@@ -39,12 +42,14 @@ import (
 	"github.com/0xsoniclabs/sonic/tests/bundles"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/prompt"
+	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 	"go.uber.org/mock/gomock"
 )
 
@@ -265,15 +270,18 @@ func TestSonicTool_genesis_ExportImport_WithBundles(t *testing.T) {
 	require.Equal(t, originalInfo1, info1,
 		"bundle info mismatch after genesis export-import")
 
-	// run enough blocks to make sure that the history hash is pruned.
+	// run more blocks than the maximum block range of a bundle; processed
+	// bundles are retained beyond it (see gossip.DefaultProcessedBundlesRetention),
+	// so the node can still be healed to an earlier epoch.
 	generateNBlocks(t, net, int(bundle.MaxBlockRangeLength)+10)
 
 	// run another bundle
 	bundleHash2, originalInfo2 := runBundle(t, net)
 
-	// check that the first bundle is pruned and the second bundle is still there after pruning
-	_, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
-	require.ErrorContains(t, err, "not found")
+	// check that both bundles are still retained
+	info1, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
+	require.NoError(t, err)
+	require.Equal(t, originalInfo1, info1)
 	info2, err := bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash2)
 	require.NoError(t, err)
 	require.Equal(t, originalInfo2, info2)
@@ -284,9 +292,11 @@ func TestSonicTool_genesis_ExportImport_WithBundles(t *testing.T) {
 	client, err = net.GetClient()
 	require.NoError(t, err)
 
-	// check that the second bundle is available, but the first bundle is not, after the export-import process
-	_, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
-	require.ErrorContains(t, err, "not found")
+	// the archive genesis exports all retained bundles, so both bundles are
+	// still available after the export-import process
+	info1, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
+	require.NoError(t, err)
+	require.Equal(t, originalInfo1, info1)
 	info2, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash2)
 	require.NoError(t, err)
 	require.Equal(t, originalInfo2, info2)
@@ -307,6 +317,51 @@ func TestSonicTool_heal_ExecutesWithoutErrors(t *testing.T) {
 
 	_, err := executeSonicTool(t, "--datadir", net.GetDirectory()+"/state", "heal")
 	require.NoError(t, err)
+}
+
+func TestSonicTool_heal_ExecutesWithoutErrors_WithBundles(t *testing.T) {
+	// Create a history by running some transactions
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	net := tests.StartIntegrationTestNet(
+		t,
+		tests.IntegrationTestNetOptions{
+			Upgrades:             &upgrades,
+			ClientExtraArguments: []string{"--statedb.checkpointinterval", "1"},
+		},
+	)
+
+	// heal refuses targets less than a bundle replay protection window (the
+	// maximum bundle block range) past the first retained bundle history, so
+	// the chain has to grow beyond it after the first bundle
+	runBundle(t, net)
+	generateNBlocks(t, net, int(bundle.MaxBlockRangeLength))
+
+	// one bundle before and one after the end of an epoch
+	bundleBeforeEpochEnd, _ := runBundle(t, net)
+	net.AdvanceEpoch(t, 1)
+	// AdvanceEpoch leaves no-op transactions behind which may be dropped by
+	// the new epoch; a regular transaction settles the sponsor's nonce
+	generateNBlocks(t, net, 1)
+	bundleAfterEpochEnd, _ := runBundle(t, net)
+	net.Stop()
+
+	// the heal is expected to revert to the state at the beginning of the
+	// current epoch, the processed bundles history has to follow
+	datadir := net.GetDirectory() + "/state"
+	targetBlock, expectedHash := bundlesHistoryHashAtEpochStart(t, datadir)
+
+	_, err := executeSonicTool(t, "--datadir", datadir, "heal")
+	require.NoError(t, err)
+
+	store := openGossipStore(t, datadir)
+	defer caution.CloseAndReportError(new(error), store, "failed to close store")
+
+	block, hash := store.GetLatestProcessedBundleHistoryHash()
+	require.Equal(t, targetBlock, block)
+	require.Equal(t, expectedHash, hash)
+	require.True(t, store.HasBundleRecentlyBeenProcessed(bundleBeforeEpochEnd))
+	require.False(t, store.HasBundleRecentlyBeenProcessed(bundleAfterEpochEnd))
 }
 
 func TestSonicTool_config_ExecutesWithoutErrors(t *testing.T) {
@@ -688,4 +743,35 @@ func runBundle(t *testing.T, net *tests.IntegrationTestNet) (
 	require.NoError(t, err)
 
 	return plan.Hash(), info
+}
+
+// bundlesHistoryHashAtEpochStart returns the first block of the current epoch
+// of a stopped node and the processed bundles history hash at that block. The
+// store is closed before returning, so the node can be healed afterwards.
+func bundlesHistoryHashAtEpochStart(t *testing.T, datadir string) (uint64, common.Hash) {
+	t.Helper()
+	store := openGossipStore(t, datadir)
+	defer caution.CloseAndReportError(new(error), store, "failed to close store")
+
+	blockState, _ := store.GetHistoryBlockEpochState(store.GetEpoch())
+	require.NotNil(t, blockState, "no history state of the current epoch")
+	block := uint64(blockState.LastBlock.Idx)
+	hash, found := store.GetProcessedBundleHistoryHash(block)
+	require.True(t, found, "no bundles history hash for block %d", block)
+	return block, hash
+}
+
+// openGossipStore opens the gossip store of a stopped node, the same way as
+// the heal command does.
+func openGossipStore(t *testing.T, datadir string) *gossip.Store {
+	t.Helper()
+	producer := &sonictooldb.DummyScopedProducer{
+		IterableDBProducer: integration.GetRawDbProducer(
+			datadir+"/chaindata",
+			integration.DBCacheConfig{Cache: 64 * opt.MiB, Fdlimit: 100},
+		),
+	}
+	store, err := gossip.NewStore(producer, gossip.DefaultStoreConfig(cachescale.Identity))
+	require.NoError(t, err)
+	return store
 }

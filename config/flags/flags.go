@@ -430,6 +430,13 @@ var (
 			"is recommended. Setting this to <1 will automatically set the cache capacity to a DB defined default value.",
 		Value: 0,
 	}
+	ProcessedBundlesRetentionFlag = cli.Uint64Flag{
+		Name: "bundles.retention",
+		Usage: "The number of blocks for which processed bundles are retained. It bounds the " +
+			"depth to which the node can be healed. Values below the bundle replay protection " +
+			"window are raised to it.",
+		Value: gossip.DefaultProcessedBundlesRetention,
+	}
 	StateDbCheckPointInterval = cli.IntFlag{
 		Name:   "statedb.checkpointinterval",
 		Hidden: true, // Intended for testing

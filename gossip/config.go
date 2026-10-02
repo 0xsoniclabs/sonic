@@ -149,6 +149,11 @@ type (
 		EVM                 evmstore.StoreConfig
 		MaxNonFlushedSize   int
 		MaxNonFlushedPeriod time.Duration
+		// ProcessedBundlesRetention is the number of blocks for which processed
+		// bundles are retained. It bounds the depth to which the node can be
+		// healed. Values below the replay protection window
+		// (bundle.MaxBlockRangeLength) are raised to it.
+		ProcessedBundlesRetention uint64
 	}
 )
 
@@ -309,9 +314,10 @@ func DefaultStoreConfig(scale cachescale.Func) StoreConfig {
 			LlrBlockVotesIndexes: scale.I(100),
 			LlrEpochVotesIndexes: scale.I(5),
 		},
-		EVM:                 evmstore.DefaultStoreConfig(scale),
-		MaxNonFlushedSize:   21*opt.MiB + scale.I(2*opt.MiB),
-		MaxNonFlushedPeriod: 30 * time.Minute,
+		EVM:                       evmstore.DefaultStoreConfig(scale),
+		MaxNonFlushedSize:         21*opt.MiB + scale.I(2*opt.MiB),
+		MaxNonFlushedPeriod:       30 * time.Minute,
+		ProcessedBundlesRetention: DefaultProcessedBundlesRetention,
 	}
 }
 
