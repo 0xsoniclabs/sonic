@@ -19,6 +19,7 @@ package app_test
 import (
 	"fmt"
 
+	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"io"
@@ -27,6 +28,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/api/sonicapi"
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
@@ -307,6 +309,54 @@ func TestSonicTool_heal_ExecutesWithoutErrors(t *testing.T) {
 
 	_, err := executeSonicTool(t, "--datadir", net.GetDirectory()+"/state", "heal")
 	require.NoError(t, err)
+}
+
+func TestSonicTool_heal_RestoresProcessedBundles(t *testing.T) {
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	upgrades.SingleProposerBlockFormation = true
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+		// the network keeps going without the healed node, which follows
+		// only if it agrees on the epoch hashes
+		ValidatorsStake:      []uint64{1_000, 10_000},
+		ClientExtraArguments: []string{"--statedb.checkpointinterval", "1"},
+	})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	// bundles on both sides of the seal of the target epoch
+	runBundle(t, net)
+	net.AdvanceEpoch(t, 1)
+	var target hexutil.Uint64
+	require.NoError(t, client.Client().Call(&target, "eth_currentEpoch"))
+	generateNBlocks(t, net, 1) // < settles the sponsor's nonce after the epoch change
+	runBundle(t, net)
+	net.AdvanceEpoch(t, 1)
+	generateNBlocks(t, net, 1) // < needs events of the epoch after the target
+	head, err := client.BlockNumber(t.Context())
+	require.NoError(t, err)
+	client.Close()
+
+	net.Stop()
+	_, err = executeSonicTool(t,
+		"--datadir", net.GetDirectory()+"/state",
+		"heal", "--epoch", fmt.Sprint(uint64(target)))
+	require.NoError(t, err)
+	require.NoError(t, net.Restart())
+
+	// the healed node accepts the events past the target's seal only if it
+	// agrees on the epoch hash
+	client, err = net.GetClient()
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
+	require.NoError(t, tests.WaitFor(ctx, func(ctx context.Context) (bool, error) {
+		current, err := client.BlockNumber(ctx)
+		return current >= head, err
+	}))
 }
 
 func TestSonicTool_config_ExecutesWithoutErrors(t *testing.T) {

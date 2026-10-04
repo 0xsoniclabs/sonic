@@ -33,6 +33,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/flushable"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -131,6 +132,13 @@ func healGossipDb(
 			"state for epoch %d is not available, requires block %d, latest available is %d",
 			epochId, firstBlockOfEpoch, lastCarmenBlock,
 		)
+	}
+
+	// the processed bundles feed into the next epoch hash; restore them first,
+	// so a failure leaves the database untouched
+	log.Info("Restoring processed bundles", "block", blockState.LastBlock.Idx)
+	if err := gdb.RestoreProcessedBundles(blockState.LastBlock.Idx, common.Hash(epochState.EpochEndExecutionPlanChainHash)); err != nil {
+		return nil, 0, fmt.Errorf("failed to restore processed bundles: %w", err)
 	}
 
 	// set the historic state to be the current
