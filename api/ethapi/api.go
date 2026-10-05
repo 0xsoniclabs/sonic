@@ -2560,15 +2560,17 @@ type PublicDebugAPI struct {
 	b               Backend
 	maxResponseSize int // in bytes
 	structLogLimit  int
+	allowJSTracers  bool // only built-in tracers enabled when false
 }
 
 // NewPublicDebugAPI creates a new API definition for the public debug methods
 // of the Ethereum service.
-func NewPublicDebugAPI(b Backend, maxResponseSize int, structLogLimit int) *PublicDebugAPI {
+func NewPublicDebugAPI(b Backend, maxResponseSize int, structLogLimit int, allowJSTracers bool) *PublicDebugAPI {
 	return &PublicDebugAPI{
 		b:               b,
 		maxResponseSize: maxResponseSize,
 		structLogLimit:  structLogLimit,
+		allowJSTracers:  allowJSTracers,
 	}
 }
 
@@ -2631,6 +2633,32 @@ func (api *PublicDebugAPI) TraceTransaction(ctx context.Context, hash common.Has
 	return api.traceTx(ctx, tx, msg, txctx, block.Header(), statedb, config, nil)
 }
 
+func isTracerWhitelisted(name string) bool {
+	switch name {
+	case
+		// native tracers
+		"callTracer",
+		"flatCallTracer",
+		"prestateTracer",
+		"4byteTracer",
+		"noopTracer",
+		"keccak256PreimageTracer",
+		"erc7562Tracer",
+		// built-in JS tracers
+		"bigramTracer",
+		"trigramTracer",
+		"unigramTracer",
+		"opcountTracer",
+		"evmdisTracer",
+		"4byteTracerLegacy",
+		"callTracerLegacy",
+		"noopTracerLegacy",
+		"prestateTracerLegacy":
+		return true
+	}
+	return false
+}
+
 // traceTx configures a new tracer according to the provided configuration, and
 // executes the given message in the provided environment. The return value will
 // be tracer dependent.
@@ -2674,6 +2702,9 @@ func (api *PublicDebugAPI) traceTx(
 			Stop:      logger.Stop,
 		}
 	} else {
+		if !api.allowJSTracers && !isTracerWhitelisted(*config.Tracer) {
+			return nil, fmt.Errorf("custom tracer is not permitted")
+		}
 		tracer, err = tracers.DefaultDirectory.New(*config.Tracer, txctx, config.TracerConfig, chainConfig)
 		if err != nil {
 			return nil, err
