@@ -22,7 +22,7 @@ tool go.uber.org/mock/mockgen
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20260925152836-62f625a466a9
-	github.com/0xsoniclabs/tosca v0.0.0-20260429071638-3f4119284c42
+	github.com/0xsoniclabs/tosca v0.0.0-20261006082751-39dec245cca5
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
 	github.com/consensys/gnark-crypto v0.20.1
