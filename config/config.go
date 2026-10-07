@@ -256,6 +256,9 @@ func gossipConfigWithFlags(ctx *cli.Context, src gossip.Config) gossip.Config {
 	if ctx.IsSet(flags.StructLogLimitFlag.Name) {
 		cfg.StructLogLimit = ctx.GlobalInt(flags.StructLogLimitFlag.Name)
 	}
+	if ctx.IsSet(flags.AllowJSTracersFlag.Name) {
+		cfg.AllowJSTracers = ctx.GlobalBool(flags.AllowJSTracersFlag.Name)
+	}
 	if ctx.GlobalIsSet(flags.RPCLogQueryParameterLimit.Name) {
 		cfg.FilterAPI.LogQueryParameterLimit = ctx.GlobalUint(flags.RPCLogQueryParameterLimit.Name)
 	}

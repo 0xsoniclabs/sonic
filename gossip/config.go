@@ -113,6 +113,11 @@ type (
 		// StructLogLimit is a limit for maximum number of logs in structured EVM debug log
 		StructLogLimit int
 
+		// AllowJSTracers permits custom (user-supplied) JavaScript tracers in the
+		// debug_trace* endpoints. When false (the default), only the built-in
+		// tracers are accepted. Enabling it is unsafe on publicly exposed nodes.
+		AllowJSTracers bool `toml:",omitempty"`
+
 		RPCBlockExt bool
 
 		// EnableTestOnlyApi enables the test-only API, which provides methods that

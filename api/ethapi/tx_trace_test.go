@@ -645,7 +645,7 @@ func TestTraceCalls_MissingBlock_ReportHeaderNotFound(t *testing.T) {
 			return err
 		},
 		"debug_traceCall": func(b Backend, blockNrOrHash rpc.BlockNumberOrHash) error {
-			_, err := NewPublicDebugAPI(b, 0, 0).TraceCall(t.Context(), TransactionArgs{}, blockNrOrHash, nil)
+			_, err := NewPublicDebugAPI(b, 0, 0, false).TraceCall(t.Context(), TransactionArgs{}, blockNrOrHash, nil)
 			return err
 		},
 	}
