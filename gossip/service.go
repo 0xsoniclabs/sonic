@@ -558,7 +558,7 @@ func (s *Service) APIs() []rpc.API {
 		}, {
 			Namespace: "debug",
 			Version:   "1.0",
-			Service:   ethapi.NewPublicDebugAPI(s.EthAPI, s.config.MaxResponseSize, s.config.StructLogLimit),
+			Service:   ethapi.NewPublicDebugAPI(s.EthAPI, s.config.MaxResponseSize, s.config.StructLogLimit, s.config.AllowJSTracers),
 			Public:    true,
 		}, {
 			Namespace: "trace",

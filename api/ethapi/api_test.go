@@ -43,6 +43,12 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/eth/tracers"
+	// Register the native and built-in JS tracers into tracers.DefaultDirectory,
+	// mirroring the blank imports in cmd/sonicd/app/launcher.go. The production
+	// binary registers them there; the test binary must do so itself.
+	_ "github.com/ethereum/go-ethereum/eth/tracers/js"
+	_ "github.com/ethereum/go-ethereum/eth/tracers/native"
+
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -413,10 +419,67 @@ func TestReplayTransactionOnEmptyBlock(t *testing.T) {
 	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
 	setExpectedStateCalls(mockState)
 
-	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+	api := NewPublicDebugAPI(mockBackend, 10000, 10000, false)
 
 	_, err := api.TraceCall(context.Background(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(5), &TraceCallConfig{})
 	require.NoError(t, err, "must be possible to replay tx on empty block")
+}
+
+func TestTraceCall_RestrictsTracersToWhitelist(t *testing.T) {
+	const customJS = "{step:function(){},result:function(){return 0}}"
+	whitelisted := "callTracer"
+
+	newAPI := func(t *testing.T, allowJSTracers bool) *PublicDebugAPI {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		mockBackend := NewMockBackend(ctrl)
+		mockState := state.NewMockStateDB(ctrl)
+
+		block := &evmcore.EvmBlock{}
+		block.Number = big.NewInt(5)
+		any := gomock.Any()
+		mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+		mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
+		mockBackend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
+		mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
+		mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+		mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
+		setExpectedStateCalls(mockState)
+
+		return NewPublicDebugAPI(mockBackend, 10000, 10000, allowJSTracers)
+	}
+
+	trace := func(t *testing.T, api *PublicDebugAPI, tracer string) error {
+		cfg := &TraceCallConfig{}
+		cfg.Tracer = &tracer
+		_, err := api.TraceCall(context.Background(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(5), cfg)
+		return err
+	}
+
+	t.Run("whitelisted tracer passes the whitelist check by default", func(t *testing.T) {
+		// It gets past the whitelist and into the tracer; any error here comes
+		// from the mocked EVM, not from the whitelist rejection.
+		err := trace(t, newAPI(t, false), whitelisted)
+		if err != nil {
+			require.NotContains(t, err.Error(), "not permitted")
+		}
+	})
+	t.Run("custom JS tracer is rejected by default", func(t *testing.T) {
+		err := trace(t, newAPI(t, false), customJS)
+		require.ErrorContains(t, err, "not permitted")
+	})
+	t.Run("muxTracer is rejected by default", func(t *testing.T) {
+		err := trace(t, newAPI(t, false), "muxTracer")
+		require.ErrorContains(t, err, "not permitted")
+	})
+	t.Run("custom JS tracer is accepted with flag", func(t *testing.T) {
+		// Does not return the whitelist error; it proceeds into the tracer.
+		err := trace(t, newAPI(t, true), customJS)
+		if err != nil {
+			require.NotContains(t, err.Error(), "not permitted")
+		}
+	})
 }
 
 type noBaseFeeMatcher struct {
@@ -487,7 +550,7 @@ func TestReplayInternalTransaction(t *testing.T) {
 	setExpectedStateCalls(mockState)
 
 	// Replay transaction
-	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+	api := NewPublicDebugAPI(mockBackend, 10000, 10000, false)
 	_, err := api.TraceTransaction(context.Background(), common.Hash{}, &tracers.TraceConfig{})
 	require.NoError(t, err, "must be possible to trace internal transaction on index 0 and 1 with zero gas price")
 }
@@ -539,7 +602,7 @@ func TestBlockStateOverrides(t *testing.T) {
 	}
 
 	// Check block overrides on debug api with debug_traceCall rpc function
-	apiDebug := NewPublicDebugAPI(mockBackend, 10000, 10000)
+	apiDebug := NewPublicDebugAPI(mockBackend, 10000, 10000, false)
 	traceConfig := &TraceCallConfig{
 		BlockOverrides: blockOverrides,
 		StateOverrides: stateOverrides,
@@ -1499,7 +1562,7 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 			Nonce:      0,
 			BlobHashes: []common.Hash{},
 		}))
-		api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+		api := NewPublicDebugAPI(mockBackend, 10000, 10000, false)
 
 		// replay tx
 		_, err := api.TraceTransaction(context.Background(), common.Hash{}, &tracers.TraceConfig{})
@@ -1521,7 +1584,7 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 			Nonce:      0,
 			BlobHashes: []common.Hash{{0x01}},
 		}))
-		api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+		api := NewPublicDebugAPI(mockBackend, 10000, 10000, false)
 
 		// replay tx
 		_, err := api.TraceTransaction(context.Background(), common.Hash{}, &tracers.TraceConfig{})

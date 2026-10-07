@@ -162,6 +162,7 @@ func initFlags() {
 		flags.MaxResponseSizeFlag,
 		flags.MaxTraceFilterRangeFlag,
 		flags.StructLogLimitFlag,
+		flags.AllowJSTracersFlag,
 	}
 
 	metricsFlags = []cli.Flag{
