@@ -38,8 +38,8 @@ import (
 // defaultBlobGasPrice Sonic does not support blobs, so this price is constant
 var defaultBlobGasPrice = big.NewInt(1) // TODO issue #147
 
-func indexRawReceipts(s *Store, receiptsForStorage []*types.ReceiptForStorage, txs types.Transactions, blockIdx idx.Block, blockHash common.Hash, config *params.ChainConfig, time uint64, baseFee *big.Int, blobGasPrice *big.Int) (types.Receipts, error) {
-	s.evm.SetRawReceipts(blockIdx, receiptsForStorage)
+func indexRawReceipts(s *Store, receiptsForStorage []*types.ReceiptForStorage, gasUsedOverrides []ibr.GasUsedOverride, txs types.Transactions, blockIdx idx.Block, blockHash common.Hash, config *params.ChainConfig, time uint64, baseFee *big.Int, blobGasPrice *big.Int) (types.Receipts, error) {
+	s.evm.SetRawReceiptsWithGasUsedOverrides(blockIdx, receiptsForStorage, gasUsedOverrides)
 
 	receipts, err := evmstore.UnwrapStorageReceipts(receiptsForStorage, blockIdx, config, blockHash, time, baseFee, blobGasPrice, txs)
 	if err != nil {
@@ -61,7 +61,7 @@ func (s *Store) WriteFullBlockRecord(br ibr.LlrIdxFullBlockRecord) (err error) {
 	if len(br.Receipts) != 0 {
 		// Note: it's possible for receipts to get indexed twice by BR and block processing
 		decodedReceipts, err = indexRawReceipts(
-			s, br.Receipts, br.Txs,
+			s, br.Receipts, br.GasUsedOverrides, br.Txs,
 			br.Idx, common.Hash(br.BlockHash),
 			s.GetEvmChainConfig(br.Idx),
 			uint64(br.Time.Unix()),

@@ -33,7 +33,9 @@ func (s *Store) GetFullBlockRecord(n idx.Block) *ibr.LlrFullBlockRecord {
 	if receipts == nil {
 		receipts = []*types.ReceiptForStorage{}
 	}
-	return ibr.FullBlockRecordFor(block, txs, receipts)
+	record := ibr.FullBlockRecordFor(block, txs, receipts)
+	record.GasUsedOverrides = s.EvmStore().GetGasUsedOverrides(n)
+	return record
 }
 
 func (s *Store) GetFullEpochRecord(epoch idx.Epoch) *ier.LlrFullEpochRecord {

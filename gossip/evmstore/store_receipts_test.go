@@ -20,12 +20,15 @@ import (
 	"testing"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/logger"
 )
 
@@ -125,13 +128,24 @@ func fakeReceipts() (idx.Block, []*types.ReceiptForStorage) {
 func TestFindGasUsedOverrides(t *testing.T) {
 	tests := map[string]struct {
 		receipts types.Receipts
-		expected []gasUsedOverride
+		expected []ibr.GasUsedOverride
 	}{
 		"no receipts": {},
+		"single consistent receipt": {
+			receipts: types.Receipts{
+				{GasUsed: 10, CumulativeGasUsed: 10},
+			},
+		},
 		"consistent gas": {
 			receipts: types.Receipts{
 				{GasUsed: 10, CumulativeGasUsed: 10},
 				{GasUsed: 20, CumulativeGasUsed: 30},
+			},
+		},
+		"zero gas receipts are consistent": {
+			receipts: types.Receipts{
+				{GasUsed: 0, CumulativeGasUsed: 0},
+				{GasUsed: 0, CumulativeGasUsed: 0},
 			},
 		},
 		"surplus gas before first receipt": {
@@ -139,7 +153,7 @@ func TestFindGasUsedOverrides(t *testing.T) {
 				{GasUsed: 10, CumulativeGasUsed: 15},
 				{GasUsed: 20, CumulativeGasUsed: 35},
 			},
-			expected: []gasUsedOverride{{Index: 0, GasUsed: 10}},
+			expected: []ibr.GasUsedOverride{{Index: 0, GasUsed: 10}},
 		},
 		"surplus gas between receipts": {
 			receipts: types.Receipts{
@@ -148,13 +162,51 @@ func TestFindGasUsedOverrides(t *testing.T) {
 				{GasUsed: 5, CumulativeGasUsed: 40},
 				{GasUsed: 5, CumulativeGasUsed: 55},
 			},
-			expected: []gasUsedOverride{{Index: 1, GasUsed: 20}, {Index: 3, GasUsed: 5}},
+			expected: []ibr.GasUsedOverride{{Index: 1, GasUsed: 20}, {Index: 3, GasUsed: 5}},
+		},
+		"surplus gas before every receipt": {
+			receipts: types.Receipts{
+				{GasUsed: 10, CumulativeGasUsed: 11},
+				{GasUsed: 20, CumulativeGasUsed: 32},
+				{GasUsed: 30, CumulativeGasUsed: 63},
+			},
+			expected: []ibr.GasUsedOverride{
+				{Index: 0, GasUsed: 10},
+				{Index: 1, GasUsed: 20},
+				{Index: 2, GasUsed: 30},
+			},
+		},
+		"surplus gas before receipt without gas used": {
+			receipts: types.Receipts{
+				{GasUsed: 10, CumulativeGasUsed: 10},
+				{GasUsed: 0, CumulativeGasUsed: 50},
+			},
+			expected: []ibr.GasUsedOverride{{Index: 1, GasUsed: 0}},
+		},
+		"surplus gas after last receipt is not detectable": {
+			receipts: types.Receipts{
+				{GasUsed: 10, CumulativeGasUsed: 10},
+			},
+		},
+		"gas used larger than derived value is ignored": {
+			receipts: types.Receipts{
+				{GasUsed: 30, CumulativeGasUsed: 10},
+				{GasUsed: 20, CumulativeGasUsed: 30},
+			},
 		},
 		"decreasing cumulative gas is ignored": {
 			receipts: types.Receipts{
 				{GasUsed: 10, CumulativeGasUsed: 10},
 				{GasUsed: 20, CumulativeGasUsed: 5},
 			},
+		},
+		"recovers after decreasing cumulative gas": {
+			receipts: types.Receipts{
+				{GasUsed: 10, CumulativeGasUsed: 10},
+				{GasUsed: 20, CumulativeGasUsed: 5},
+				{GasUsed: 20, CumulativeGasUsed: 30},
+			},
+			expected: []ibr.GasUsedOverride{{Index: 2, GasUsed: 20}},
 		},
 	}
 	for name, test := range tests {
@@ -164,141 +216,378 @@ func TestFindGasUsedOverrides(t *testing.T) {
 	}
 }
 
+// makeTestReceipts creates receipts with the given gas used and cumulative gas
+// used values, together with matching transactions.
+func makeTestReceipts(gasUsed, cumulativeGasUsed []uint64) (types.Receipts, types.Transactions) {
+	to := common.Address{1}
+	receipts := make(types.Receipts, len(gasUsed))
+	txs := make(types.Transactions, len(gasUsed))
+	for i := range gasUsed {
+		receipts[i] = &types.Receipt{
+			Type:              types.LegacyTxType,
+			GasUsed:           gasUsed[i],
+			CumulativeGasUsed: cumulativeGasUsed[i],
+		}
+		txs[i] = types.NewTx(&types.LegacyTx{To: &to, Nonce: uint64(i)})
+	}
+	return receipts, txs
+}
+
+func gasUsedOf(receipts types.Receipts) []uint64 {
+	var res []uint64
+	for _, r := range receipts {
+		res = append(res, r.GasUsed)
+	}
+	return res
+}
+
+func cumulativeGasUsedOf(receipts types.Receipts) []uint64 {
+	var res []uint64
+	for _, r := range receipts {
+		res = append(res, r.CumulativeGasUsed)
+	}
+	return res
+}
+
 func TestStoreGetReceipts_RestoresGasUsedAfterGasSurplus(t *testing.T) {
-	logger.SetTestMode(t)
+	tests := map[string]struct {
+		gasUsed           []uint64
+		cumulativeGasUsed []uint64
+		overridesStored   bool
+	}{
+		"empty block": {},
+		"no surplus": {
+			gasUsed:           []uint64{10, 20},
+			cumulativeGasUsed: []uint64{10, 30},
+		},
+		"surplus before first receipt": {
+			gasUsed:           []uint64{10, 20},
+			cumulativeGasUsed: []uint64{110, 130},
+			overridesStored:   true,
+		},
+		"surplus between receipts": {
+			gasUsed:           []uint64{10, 20},
+			cumulativeGasUsed: []uint64{10, 130}, // 100 surplus
+			overridesStored:   true,
+		},
+		"multiple surpluses": {
+			gasUsed:           []uint64{10, 20, 30, 40},
+			cumulativeGasUsed: []uint64{10, 80, 110, 190}, // 50 and 40 surplus
+			overridesStored:   true,
+		},
+		"surplus before every receipt": {
+			gasUsed:           []uint64{10, 20, 30},
+			cumulativeGasUsed: []uint64{11, 32, 63},
+			overridesStored:   true,
+		},
+		"surplus before receipt without gas used": {
+			gasUsed:           []uint64{10, 0, 30},
+			cumulativeGasUsed: []uint64{10, 50, 80},
+			overridesStored:   true,
+		},
+	}
 
-	for name, store := range map[string]*Store{
-		"cached":    cachedStore(),
-		"nonCached": nonCachedStore(),
-	} {
-		t.Run(name, func(t *testing.T) {
-			block := idx.Block(1)
-			to := common.Address{1}
-			txs := types.Transactions{
-				types.NewTx(&types.LegacyTx{To: &to}),
-				types.NewTx(&types.LegacyTx{To: &to}),
-			}
-			// 100 units of surplus gas precede the second receipt.
-			receipts := types.Receipts{
-				{Type: types.LegacyTxType, GasUsed: 10, CumulativeGasUsed: 10},
-				{Type: types.LegacyTxType, GasUsed: 20, CumulativeGasUsed: 130},
-			}
-			store.SetReceipts(block, receipts)
+	stores := map[string]func() *Store{
+		"cached":    cachedStore,
+		"nonCached": nonCachedStore,
+	}
 
-			// Evict the in-memory copy to force loading from the database.
-			store.cache.Receipts.Remove(block)
+	for name, test := range tests {
+		for storeName, newStore := range stores {
+			t.Run(name+"/"+storeName, func(t *testing.T) {
+				logger.SetTestMode(t)
+				store := newStore()
+				block := idx.Block(1)
+				receipts, txs := makeTestReceipts(test.gasUsed, test.cumulativeGasUsed)
 
-			got := store.GetReceipts(block, params.TestChainConfig, common.Hash{}, 0, nil, nil, txs)
-			require.Len(t, got, 2)
-			assert.Equal(t, uint64(10), got[0].GasUsed)
-			assert.Equal(t, uint64(20), got[1].GasUsed)
-			assert.Equal(t, uint64(10), got[0].CumulativeGasUsed)
-			assert.Equal(t, uint64(130), got[1].CumulativeGasUsed)
-		})
+				store.SetReceipts(block, receipts)
+
+				has, err := store.table.ReceiptGasUsedOverrides.Has(block.Bytes())
+				require.NoError(t, err)
+				require.Equal(t, test.overridesStored, has)
+
+				// Read through the cache (if any) first, and then again after
+				// evicting the cached value to force a load from the database.
+				// Loading from the database populates the cache, so a third
+				// read covers the cache hit on a restored value.
+				store.cache.Receipts.Remove(block)
+				for _, read := range []string{"database", "cache"} {
+					got := store.GetReceipts(block, params.TestChainConfig, common.Hash{}, 0, nil, nil, txs)
+					require.Len(t, got, len(test.gasUsed), read)
+					require.Equal(t, gasUsedOf(receipts), gasUsedOf(got), read)
+					require.Equal(t, test.cumulativeGasUsed, cumulativeGasUsedOf(got), read)
+				}
+			})
+		}
 	}
 }
 
 func TestStoreSetReceipts_ReplacesOverridesOfPreviousExecution(t *testing.T) {
-	logger.SetTestMode(t)
+	tests := map[string]struct {
+		first, second     []uint64 // cumulative gas used
+		gasUsed           []uint64
+		overridesStored   bool
+		expectedGasUsed   []uint64
+		expectedOverrides []ibr.GasUsedOverride
+	}{
+		"overrides are removed": {
+			first:           []uint64{110, 130},
+			second:          []uint64{10, 30},
+			gasUsed:         []uint64{10, 20},
+			expectedGasUsed: []uint64{10, 20},
+		},
+		"overrides are added": {
+			first:             []uint64{10, 30},
+			second:            []uint64{110, 130},
+			gasUsed:           []uint64{10, 20},
+			overridesStored:   true,
+			expectedGasUsed:   []uint64{10, 20},
+			expectedOverrides: []ibr.GasUsedOverride{{Index: 0, GasUsed: 10}},
+		},
+		"overrides are replaced": {
+			first:             []uint64{110, 130},
+			second:            []uint64{10, 130},
+			gasUsed:           []uint64{10, 20},
+			overridesStored:   true,
+			expectedGasUsed:   []uint64{10, 20},
+			expectedOverrides: []ibr.GasUsedOverride{{Index: 1, GasUsed: 20}},
+		},
+	}
 
-	store := nonCachedStore()
-	block := idx.Block(1)
-	to := common.Address{1}
-	txs := types.Transactions{types.NewTx(&types.LegacyTx{To: &to})}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			logger.SetTestMode(t)
+			store := nonCachedStore()
+			block := idx.Block(1)
 
-	store.SetReceipts(block, types.Receipts{
-		{Type: types.LegacyTxType, GasUsed: 10, CumulativeGasUsed: 110},
-	})
-	store.SetReceipts(block, types.Receipts{
-		{Type: types.LegacyTxType, GasUsed: 10, CumulativeGasUsed: 10},
-	})
+			first, _ := makeTestReceipts(test.gasUsed, test.first)
+			second, txs := makeTestReceipts(test.gasUsed, test.second)
+			store.SetReceipts(block, first)
+			store.SetReceipts(block, second)
 
-	got := store.GetReceipts(block, params.TestChainConfig, common.Hash{}, 0, nil, nil, txs)
-	require.Len(t, got, 1)
-	assert.Equal(t, uint64(10), got[0].GasUsed)
+			buf, err := store.table.ReceiptGasUsedOverrides.Get(block.Bytes())
+			require.NoError(t, err)
+			if !test.overridesStored {
+				require.Empty(t, buf)
+			} else {
+				var overrides []ibr.GasUsedOverride
+				require.NoError(t, rlp.DecodeBytes(buf, &overrides))
+				require.Equal(t, test.expectedOverrides, overrides)
+			}
+
+			got := store.GetReceipts(block, params.TestChainConfig, common.Hash{}, 0, nil, nil, txs)
+			require.Equal(t, test.expectedGasUsed, gasUsedOf(got))
+		})
+	}
 }
 
-func TestStoreGetReceipts_RestoresGasUsedAfterMultipleGasSurpluses(t *testing.T) {
+func TestStoreGetReceipts_OverridesAreScopedToTheirBlock(t *testing.T) {
 	logger.SetTestMode(t)
-
 	store := nonCachedStore()
+
+	withSurplus, txs1 := makeTestReceipts([]uint64{10}, []uint64{110})
+	withoutSurplus, txs2 := makeTestReceipts([]uint64{10}, []uint64{10})
+	store.SetReceipts(1, withSurplus)
+	store.SetReceipts(2, withoutSurplus)
+
+	got1 := store.GetReceipts(1, params.TestChainConfig, common.Hash{}, 0, nil, nil, txs1)
+	got2 := store.GetReceipts(2, params.TestChainConfig, common.Hash{}, 0, nil, nil, txs2)
+	require.Equal(t, []uint64{10}, gasUsedOf(got1))
+	require.Equal(t, []uint64{10}, gasUsedOf(got2))
+
+	has, err := store.table.ReceiptGasUsedOverrides.Has(idx.Block(2).Bytes())
+	require.NoError(t, err)
+	require.False(t, has)
+}
+
+func TestStoreGetReceipts_IgnoresOutOfRangeOverrides(t *testing.T) {
+	tests := map[string]struct {
+		overrides []ibr.GasUsedOverride
+		expected  []uint64
+	}{
+		"index beyond receipts": {
+			overrides: []ibr.GasUsedOverride{{Index: 5, GasUsed: 1}},
+			expected:  []uint64{10},
+		},
+		"index equal to number of receipts": {
+			overrides: []ibr.GasUsedOverride{{Index: 1, GasUsed: 1}},
+			expected:  []uint64{10},
+		},
+		"out of range does not stop valid overrides": {
+			overrides: []ibr.GasUsedOverride{{Index: 5, GasUsed: 1}, {Index: 0, GasUsed: 7}},
+			expected:  []uint64{7},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			logger.SetTestMode(t)
+			store := nonCachedStore()
+			block := idx.Block(1)
+			receipts, txs := makeTestReceipts([]uint64{10}, []uint64{10})
+
+			store.SetReceipts(block, receipts)
+			store.SetGasUsedOverrides(block, test.overrides)
+
+			got := store.GetReceipts(block, params.TestChainConfig, common.Hash{}, 0, nil, nil, txs)
+			require.Equal(t, test.expected, gasUsedOf(got))
+		})
+	}
+}
+
+func TestStoreGetGasUsedOverrides(t *testing.T) {
+	emptyList, err := rlp.EncodeToBytes([]ibr.GasUsedOverride{})
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		stored   []byte
+		expected []ibr.GasUsedOverride
+	}{
+		"nothing stored": {},
+		"empty list stored": {
+			stored: emptyList,
+		},
+		"overrides stored": {
+			stored:   mustEncodeOverrides(t, []ibr.GasUsedOverride{{Index: 1, GasUsed: 2}, {Index: 3, GasUsed: 4}}),
+			expected: []ibr.GasUsedOverride{{Index: 1, GasUsed: 2}, {Index: 3, GasUsed: 4}},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			logger.SetTestMode(t)
+			store := nonCachedStore()
+			block := idx.Block(1)
+			if test.stored != nil {
+				require.NoError(t, store.table.ReceiptGasUsedOverrides.Put(block.Bytes(), test.stored))
+			}
+			// Results are compared with Equal, which distinguishes nil from
+			// empty, since the latter alters genesis block records.
+			require.Equal(t, test.expected, store.GetGasUsedOverrides(block))
+		})
+	}
+}
+
+func mustEncodeOverrides(t *testing.T, overrides []ibr.GasUsedOverride) []byte {
+	t.Helper()
+	buf, err := rlp.EncodeToBytes(overrides)
+	require.NoError(t, err)
+	return buf
+}
+
+// recordingStore records writes to a table, and runs a hook after each of them.
+type recordingStore struct {
+	kvdb.Store
+	name     string
+	writes   *[]string
+	afterPut func()
+}
+
+func (r *recordingStore) Put(key, value []byte) error {
+	err := r.Store.Put(key, value)
+	*r.writes = append(*r.writes, r.name+":put")
+	if r.afterPut != nil {
+		r.afterPut()
+	}
+	return err
+}
+
+func (r *recordingStore) Delete(key []byte) error {
+	err := r.Store.Delete(key)
+	*r.writes = append(*r.writes, r.name+":delete")
+	return err
+}
+
+func TestStoreSetReceipts_WritesOverridesBeforeReceipts(t *testing.T) {
+	writers := map[string]func(*Store, idx.Block, types.Receipts){
+		"SetReceipts": func(s *Store, n idx.Block, r types.Receipts) {
+			s.SetReceipts(n, r)
+		},
+		"SetRawReceiptsWithGasUsedOverrides": func(s *Store, n idx.Block, r types.Receipts) {
+			raw := make([]*types.ReceiptForStorage, len(r))
+			for i := range r {
+				raw[i] = (*types.ReceiptForStorage)(r[i])
+			}
+			s.SetRawReceiptsWithGasUsedOverrides(n, raw, findGasUsedOverrides(r))
+		},
+	}
+
+	tests := map[string]struct {
+		previous []uint64 // cumulative gas used of a previous execution, if any
+		current  []uint64 // cumulative gas used
+		expected []string
+	}{
+		"overrides are added": {
+			current:  []uint64{10, 130},
+			expected: []string{"overrides:put", "receipts:put"},
+		},
+		"overrides are replaced": {
+			previous: []uint64{110, 130},
+			current:  []uint64{10, 130},
+			expected: []string{"overrides:put", "receipts:put"},
+		},
+		"overrides are removed": {
+			previous: []uint64{110, 130},
+			current:  []uint64{10, 30},
+			expected: []string{"overrides:delete", "receipts:put"},
+		},
+		"no overrides": {
+			current:  []uint64{10, 30},
+			expected: []string{"receipts:put"},
+		},
+	}
+
+	for writerName, write := range writers {
+		for name, test := range tests {
+			t.Run(writerName+"/"+name, func(t *testing.T) {
+				logger.SetTestMode(t)
+				store := nonCachedStore()
+				block := idx.Block(1)
+				gasUsed := []uint64{10, 20}
+
+				if test.previous != nil {
+					previous, _ := makeTestReceipts(gasUsed, test.previous)
+					write(store, block, previous)
+				}
+
+				var writes []string
+				store.table.Receipts = &recordingStore{Store: store.table.Receipts, name: "receipts", writes: &writes}
+				store.table.ReceiptGasUsedOverrides = &recordingStore{Store: store.table.ReceiptGasUsedOverrides, name: "overrides", writes: &writes}
+
+				current, _ := makeTestReceipts(gasUsed, test.current)
+				write(store, block, current)
+
+				require.Equal(t, test.expected, writes)
+			})
+		}
+	}
+}
+
+// A reader seeing new receipts must also see their overrides. Otherwise, it
+// could derive and cache wrong gas used values for them.
+func TestStoreSetReceipts_ReaderSeesOverridesOfNewReceipts(t *testing.T) {
+	logger.SetTestMode(t)
+	store := cachedStore()
 	block := idx.Block(1)
-	to := common.Address{1}
-	txs := make(types.Transactions, 4)
-	for i := range txs {
-		txs[i] = types.NewTx(&types.LegacyTx{To: &to})
+	receipts, txs := makeTestReceipts([]uint64{10, 20}, []uint64{10, 130})
+
+	var writes []string
+	var seenByReader []uint64
+	store.table.ReceiptGasUsedOverrides = &recordingStore{Store: store.table.ReceiptGasUsedOverrides, name: "overrides", writes: &writes}
+	store.table.Receipts = &recordingStore{
+		Store:  store.table.Receipts,
+		name:   "receipts",
+		writes: &writes,
+		// Runs right after the new receipts became visible in the database.
+		afterPut: func() {
+			got := store.GetReceipts(block, params.TestChainConfig, common.Hash{}, 0, nil, nil, txs)
+			seenByReader = gasUsedOf(got)
+		},
 	}
-	receipts := types.Receipts{
-		{Type: types.LegacyTxType, GasUsed: 10, CumulativeGasUsed: 10},
-		{Type: types.LegacyTxType, GasUsed: 20, CumulativeGasUsed: 80}, // 50 surplus
-		{Type: types.LegacyTxType, GasUsed: 30, CumulativeGasUsed: 110},
-		{Type: types.LegacyTxType, GasUsed: 40, CumulativeGasUsed: 190}, // 40 surplus
-	}
+
 	store.SetReceipts(block, receipts)
 
+	require.Equal(t, []uint64{10, 20}, seenByReader)
 	got := store.GetReceipts(block, params.TestChainConfig, common.Hash{}, 0, nil, nil, txs)
-	require.Len(t, got, 4)
-	for i, want := range []uint64{10, 20, 30, 40} {
-		assert.Equal(t, want, got[i].GasUsed, "receipt %d", i)
-	}
-	for i, want := range []uint64{10, 80, 110, 190} {
-		assert.Equal(t, want, got[i].CumulativeGasUsed, "receipt %d", i)
-	}
-}
-
-func TestStoreGetReceipts_NoOverrideForGasSurplusAfterLastReceipt(t *testing.T) {
-	logger.SetTestMode(t)
-
-	store := nonCachedStore()
-	block := idx.Block(1)
-	to := common.Address{1}
-	txs := types.Transactions{types.NewTx(&types.LegacyTx{To: &to})}
-
-	// Surplus gas after the last receipt is only visible in the block header
-	// and does not affect any receipt.
-	store.SetReceipts(block, types.Receipts{
-		{Type: types.LegacyTxType, GasUsed: 10, CumulativeGasUsed: 10},
-	})
-
-	has, err := store.table.ReceiptGasUsedOverrides.Has(block.Bytes())
-	require.NoError(t, err)
-	assert.False(t, has)
-
-	got := store.GetReceipts(block, params.TestChainConfig, common.Hash{}, 0, nil, nil, txs)
-	require.Len(t, got, 1)
-	assert.Equal(t, uint64(10), got[0].GasUsed)
-}
-
-func TestStoreGetReceipts_IgnoresOutOfRangeOverride(t *testing.T) {
-	logger.SetTestMode(t)
-
-	store := nonCachedStore()
-	block := idx.Block(1)
-	to := common.Address{1}
-	txs := types.Transactions{types.NewTx(&types.LegacyTx{To: &to})}
-
-	store.SetReceipts(block, types.Receipts{
-		{Type: types.LegacyTxType, GasUsed: 10, CumulativeGasUsed: 10},
-	})
-	store.setGasUsedOverrides(block, []gasUsedOverride{{Index: 5, GasUsed: 1}})
-
-	got := store.GetReceipts(block, params.TestChainConfig, common.Hash{}, 0, nil, nil, txs)
-	require.Len(t, got, 1)
-	assert.Equal(t, uint64(10), got[0].GasUsed)
-}
-
-func TestStoreSetReceipts_EmptyReceiptsStoreNoOverrides(t *testing.T) {
-	logger.SetTestMode(t)
-
-	store := nonCachedStore()
-	block := idx.Block(1)
-
-	store.SetReceipts(block, types.Receipts{})
-
-	has, err := store.table.ReceiptGasUsedOverrides.Has(block.Bytes())
-	require.NoError(t, err)
-	assert.False(t, has)
-
-	got := store.GetReceipts(block, params.TestChainConfig, common.Hash{}, 0, nil, nil, types.Transactions{})
-	assert.Empty(t, got)
+	require.Equal(t, []uint64{10, 20}, gasUsedOf(got))
 }
