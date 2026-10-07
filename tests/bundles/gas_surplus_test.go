@@ -53,63 +53,67 @@ func TestBundle_GasSurplusDoesNotAffectGasUsedOfFollowingReceipts(t *testing.T) 
 
 	const transferGas = 21_000
 
-	// Whether the transfer follows the bundle within the block is up to the
-	// network, so the experiment is repeated until it does.
-	const maxAttempts = 10
-	var transferHash common.Hash
-	var gasSurplus uint64
-	for attempt := 0; attempt < maxAttempts && gasSurplus == 0; attempt++ {
-		accounts := tests.MakeAccountsWithBalance(t, net, 2, big.NewInt(1e18))
-		bundleSender, transferSender := accounts[0], accounts[1]
+	// The transaction order within a block is scrambled by the transaction
+	// hashes, except for transactions of the same sender, which are ordered by
+	// nonce and, for equal nonces, by descending gas price. The envelope is thus
+	// sent from the transfer's sender with the same nonce and a higher gas price,
+	// which makes the bundle precede the transfer in the block. An envelope does
+	// not consume the nonce of its sender.
+	accounts := tests.MakeAccountsWithBalance(t, net, 2, big.NewInt(1e18))
+	bundleSender, transferSender := accounts[0], accounts[1]
 
-		blockNumber, err := client.BlockNumber(t.Context())
-		require.NoError(t, err)
+	blockNumber, err := client.BlockNumber(t.Context())
+	require.NoError(t, err)
 
-		envelope, txBundle, plan := bundle.NewBuilder().
-			WithSigner(signer).
-			SetEarliest(blockNumber).
-			With(Step(t, net, bundleSender, &types.AccessListTx{
-				To:   &revertAddress,
-				Gas:  1_000_000,
-				Data: revertInput,
-			})).
-			BuildEnvelopeBundleAndPlan()
+	nonce, err := client.PendingNonceAt(t.Context(), transferSender.Address())
+	require.NoError(t, err)
 
-		transfer := tests.CreateTransaction(t, net, &types.LegacyTx{
-			To:  &common.Address{0x42},
-			Gas: transferGas,
-		}, transferSender)
+	envelope, txBundle, plan := bundle.NewBuilder().
+		WithSigner(signer).
+		SetEnvelopeSenderKey(transferSender.PrivateKey).
+		SetEnvelopeNonce(nonce).
+		SetEnvelopeGasPrice(big.NewInt(1e12)).
+		SetEarliest(blockNumber).
+		With(Step(t, net, bundleSender, &types.AccessListTx{
+			To:   &revertAddress,
+			Gas:  1_000_000,
+			Data: revertInput,
+		})).
+		BuildEnvelopeBundleAndPlan()
 
-		// Proposing both together places them in the same block, in this order.
-		_, err = net.ForceEmitAll(t.Context(), []*types.Transaction{envelope, transfer})
-		require.NoError(t, err)
+	transfer := tests.CreateTransaction(t, net, &types.LegacyTx{
+		Nonce: nonce,
+		To:    &common.Address{0x42},
+		Gas:   transferGas,
+	}, transferSender)
 
-		info, err := WaitForBundleExecution(t.Context(), client.Client(), plan.Hash())
-		require.NoError(t, err)
-		require.Zero(t, int(info.Count))
+	// Both are proposed in a single event, and thus end up in the same block.
+	_, err = net.ForceEmitAll(t.Context(), []*types.Transaction{envelope, transfer})
+	require.NoError(t, err)
 
-		receipt, err := net.GetReceipt(transfer.Hash())
-		require.NoError(t, err)
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	info, err := WaitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+	require.NoError(t, err)
+	require.Zero(t, int(info.Count))
 
-		// The failed transaction of the bundle is not part of the block.
-		_, err = client.TransactionReceipt(t.Context(), txBundle.GetTransactionsInReferencedOrder()[0].Hash())
-		require.Error(t, err)
+	receipt, err := net.GetReceipt(transfer.Hash())
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	require.Equal(t, int64(info.Block), receipt.BlockNumber.Int64(),
+		"the bundle and the transfer must be in the same block")
 
-		if receipt.BlockNumber.Int64() != int64(info.Block) {
-			continue
-		}
+	// The failed transaction of the bundle is not part of the block.
+	_, err = client.TransactionReceipt(t.Context(), txBundle.GetTransactionsInReferencedOrder()[0].Hash())
+	require.Error(t, err)
 
-		// The gas of the failed transaction is part of the cumulative gas used.
-		previous := uint64(0)
-		if receipt.TransactionIndex > 0 {
-			receipts := getBlockReceipts(t, client, receipt.BlockNumber)
-			previous = receipts[receipt.TransactionIndex-1].CumulativeGasUsed
-		}
-		gasSurplus = receipt.CumulativeGasUsed - previous - transferGas
-		transferHash = transfer.Hash()
+	// The gas of the failed transaction is part of the cumulative gas used.
+	previous := uint64(0)
+	if receipt.TransactionIndex > 0 {
+		receipts := getBlockReceipts(t, client, receipt.BlockNumber)
+		previous = receipts[receipt.TransactionIndex-1].CumulativeGasUsed
 	}
-	require.NotZero(t, gasSurplus, "no block with a bundle followed by a transfer found")
+	gasSurplus := receipt.CumulativeGasUsed - previous - transferGas
+	require.NotZero(t, gasSurplus, "the transfer must follow the failed bundle")
+	transferHash := transfer.Hash()
 
 	// Reading from the database after a restart must not report the surplus
 	// gas as part of the transfer's gas used.
@@ -118,7 +122,7 @@ func TestBundle_GasSurplusDoesNotAffectGasUsedOfFollowingReceipts(t *testing.T) 
 	require.NoError(t, err)
 	defer client2.Close()
 
-	receipt, err := client2.TransactionReceipt(t.Context(), transferHash)
+	receipt, err = client2.TransactionReceipt(t.Context(), transferHash)
 	require.NoError(t, err)
 	require.Equal(t, uint64(transferGas), receipt.GasUsed)
 	require.GreaterOrEqual(t, receipt.CumulativeGasUsed, receipt.GasUsed+gasSurplus)
