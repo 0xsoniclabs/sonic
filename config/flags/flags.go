@@ -339,6 +339,10 @@ var (
 		Usage: "Limit maximum number of debug logs for structured EVM logs, 0=unlimited, negative value means no log results",
 		Value: gossip.DefaultConfig(cachescale.Identity).StructLogLimit,
 	}
+	AllowJSTracersFlag = cli.BoolFlag{
+		Name:  "rpc.allow-js-tracers",
+		Usage: "Allow custom (user-supplied) JavaScript debug tracers (unsafe); default permits only built-in tracers",
+	}
 	ModeFlag = cli.StringFlag{
 		Name:  "mode",
 		Usage: `Mode of the node ("rpc" or "validator")`,
