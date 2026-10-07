@@ -17,6 +17,7 @@
 package evmstore
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -27,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/logger"
@@ -590,4 +592,114 @@ func TestStoreSetReceipts_ReaderSeesOverridesOfNewReceipts(t *testing.T) {
 	require.Equal(t, []uint64{10, 20}, seenByReader)
 	got := store.GetReceipts(block, params.TestChainConfig, common.Hash{}, 0, nil, nil, txs)
 	require.Equal(t, []uint64{10, 20}, gasUsedOf(got))
+}
+
+// failingStore fails the selected operations of a table with the given error.
+type failingStore struct {
+	kvdb.Store
+	err        error
+	failHas    bool
+	failGet    bool
+	failPut    bool
+	failDelete bool
+}
+
+func (f *failingStore) Has(key []byte) (bool, error) {
+	if f.failHas {
+		return false, f.err
+	}
+	return f.Store.Has(key)
+}
+
+func (f *failingStore) Get(key []byte) ([]byte, error) {
+	if f.failGet {
+		return nil, f.err
+	}
+	return f.Store.Get(key)
+}
+
+func (f *failingStore) Put(key, value []byte) error {
+	if f.failPut {
+		return f.err
+	}
+	return f.Store.Put(key, value)
+}
+
+func (f *failingStore) Delete(key []byte) error {
+	if f.failDelete {
+		return f.err
+	}
+	return f.Store.Delete(key)
+}
+
+// In production, a Crit log call causes the logger to exit the process. To
+// prevent the tests from exiting, the mock logger panics with the message.
+func expectCrit(log *logger.MockLogger, msg string, ctx ...any) {
+	log.EXPECT().Crit(msg, ctx...).
+		Do(func(msg string, _ ...any) { panic(msg) })
+}
+
+func TestStoreGasUsedOverrides_DatabaseFailuresAreFatal(t *testing.T) {
+	injectedErr := errors.New("injected error")
+	block := idx.Block(1)
+	overrides := []ibr.GasUsedOverride{{Index: 1, GasUsed: 2}}
+
+	tests := map[string]struct {
+		table   *failingStore
+		stored  []byte // written to the table before the operation, if not nil
+		crit    string
+		critCtx []any
+		run     func(*Store)
+	}{
+		"check for stale overrides fails": {
+			table:   &failingStore{failHas: true},
+			crit:    "Failed to check key",
+			critCtx: []any{"err", injectedErr},
+			run:     func(s *Store) { s.SetGasUsedOverrides(block, nil) },
+		},
+		"deletion of stale overrides fails": {
+			table:   &failingStore{failDelete: true},
+			stored:  mustEncodeOverrides(t, overrides),
+			crit:    "Failed to delete key",
+			critCtx: []any{"err", injectedErr},
+			run:     func(s *Store) { s.SetGasUsedOverrides(block, nil) },
+		},
+		"storing overrides fails": {
+			table:   &failingStore{failPut: true},
+			crit:    "Failed to put key-value",
+			critCtx: []any{"err", injectedErr},
+			run:     func(s *Store) { s.SetGasUsedOverrides(block, overrides) },
+		},
+		"loading overrides fails": {
+			table:   &failingStore{failGet: true},
+			crit:    "Failed to get key-value",
+			critCtx: []any{"err", injectedErr},
+			run:     func(s *Store) { s.GetGasUsedOverrides(block) },
+		},
+		"stored overrides are corrupt": {
+			table:   &failingStore{},
+			stored:  []byte{0xff, 0x01},
+			crit:    "Failed to decode rlp",
+			critCtx: []any{"err", gomock.Any(), "size", 2},
+			run:     func(s *Store) { s.GetGasUsedOverrides(block) },
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			store := nonCachedStore()
+			if test.stored != nil {
+				require.NoError(t, store.table.ReceiptGasUsedOverrides.Put(block.Bytes(), test.stored))
+			}
+			test.table.Store = store.table.ReceiptGasUsedOverrides
+			test.table.err = injectedErr
+			store.table.ReceiptGasUsedOverrides = test.table
+
+			log := logger.NewMockLogger(gomock.NewController(t))
+			store.Log = log
+			expectCrit(log, test.crit, test.critCtx...)
+
+			require.PanicsWithValue(t, test.crit, func() { test.run(store) })
+		})
+	}
 }
