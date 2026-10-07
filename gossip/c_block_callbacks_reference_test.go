@@ -1,0 +1,1071 @@
+// Copyright 2026 Sonic Operations Ltd
+// This file is part of the Sonic Client
+//
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
+// This file is a copy of c_block_callbacks.go at commit
+// ef8313dfc9953a6c1befb406b09ca6d52f073220,
+// the reference implementation for FuzzBeginBlockFn. Top-level identifiers are
+// prefixed with ref or Ref, the go:generate directive is removed and the
+// histogram is renamed to avoid a duplicate registration.
+
+package gossip
+
+import (
+	"bytes"
+	"cmp"
+	"fmt"
+	"math"
+	"math/big"
+	"slices"
+	"sort"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/Fantom-foundation/lachesis-base/inter/dag"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/Fantom-foundation/lachesis-base/lachesis"
+	"github.com/Fantom-foundation/lachesis-base/utils/workers"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/params"
+
+	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
+	"github.com/0xsoniclabs/sonic/gossip/emitter"
+	"github.com/0xsoniclabs/sonic/gossip/evmstore"
+	"github.com/0xsoniclabs/sonic/gossip/gasprice"
+	"github.com/0xsoniclabs/sonic/gossip/randao"
+	"github.com/0xsoniclabs/sonic/gossip/scrambler"
+	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/inter/iblockproc"
+	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/inter/validatorpk"
+	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
+)
+
+var (
+	// Ethereum compatible metrics set (see go-ethereum/core)
+
+	refHeadBlockGauge     = metrics.GetOrRegisterGauge("chain/head/block", nil)
+	refHeadHeaderGauge    = metrics.GetOrRegisterGauge("chain/head/header", nil)
+	refHeadFastBlockGauge = metrics.GetOrRegisterGauge("chain/head/receipt", nil)
+
+	refBlockExecutionTimer             = metrics.GetOrRegisterResettingTimer("chain/execution", nil)
+	refBlockExecutionNonResettingTimer = metrics.GetOrRegisterTimer("chain/execution/nonresetting", nil)
+	refBlockAgeGauge                   = metrics.GetOrRegisterGauge("chain/block/age", nil)
+
+	refProcessedTxsMeter = metrics.GetOrRegisterMeter("chain/txs/processed", nil)
+	refSkippedTxsMeter   = metrics.GetOrRegisterMeter("chain/txs/skipped", nil)
+	refInvalidTxsMeter   = metrics.GetOrRegisterMeter("chain/txs/invalid", nil)
+
+	refPriorityFailures = refPriorityFailureMeters{
+		config: metrics.GetOrRegisterMeter("chain/priorities/config/failed", nil), // priority config query failed, the default config is used
+		txs:    metrics.GetOrRegisterMeter("chain/priorities/txs/failed", nil),    // per-transaction query failed, the tx is not prioritized
+	}
+
+	refConfirmedEventsMeter = metrics.GetOrRegisterMeter("chain/events/confirmed", nil) // events received from lachesis
+	refSpilledEventsMeter   = metrics.GetOrRegisterMeter("chain/events/spilled", nil)   // tx excluded because of MaxBlockGas
+
+	refSonicFeaturesMetrics = &evmcore.SonicBlockExecutionMetrics{
+		SponsoredTxs:        utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/sponsored", nil)),
+		SkippedSponsoredTxs: utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/sponsored/skipped", nil)),
+		ExecutedBundles:     utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles", nil)),
+		RolledBackBundles:   utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles/rolledback", nil)),
+		InvalidBundles:      utils.MetricsCounter(metrics.GetOrRegisterCounter("chain/bundles/invalid", nil)),
+		BundleEfficiency: utils.MetricsHistogram(utils.NewPrometheusHistogram(prometheus.HistogramOpts{
+			Name:    "chain_bundle_gas_effective_ref",
+			Help:    "Effective gas usage ratio for a bundle transaction",
+			Buckets: prometheus.LinearBuckets(0.00, 0.01, 100), // Buckets [0.00, 0.01, ..., 0.99, +inf]
+		})),
+	}
+)
+
+// refPriorityFailureMeters collects the meters reporting silently degraded
+// transaction prioritization.
+type refPriorityFailureMeters struct {
+	config refMetricCounter // config query failed, the default config is used
+	txs    refMetricCounter // per-transaction query failed, the tx is not prioritized
+}
+
+type RefExtendedTxPosition struct {
+	evmstore.TxPosition
+	EventCreator idx.ValidatorID
+}
+
+// RefGetConsensusCallbacks returns single (for Service) callback instance.
+func (s *Service) RefGetConsensusCallbacks() lachesis.ConsensusCallbacks {
+	return lachesis.ConsensusCallbacks{
+		BeginBlock: refConsensusCallbackBeginBlockFn(
+			s.blockProcTasks,
+			&s.blockProcWg,
+			&s.blockBusyFlag,
+			s.store,
+			s.blockProcModules,
+			s.config.TxIndex,
+			&s.feed,
+			&s.emitters,
+			s.verWatcher,
+			&s.bootstrapping,
+		),
+	}
+}
+
+// refConsensusCallbackBeginBlockFn takes only necessaries for block processing and
+// makes lachesis.BeginBlockFn.
+func refConsensusCallbackBeginBlockFn(
+	parallelTasks *workers.Workers,
+	wg *sync.WaitGroup,
+	blockBusyFlag *uint32,
+	store *Store,
+	blockProc BlockProc,
+	txIndex bool,
+	feed *ServiceFeed,
+	emitters *[]*emitter.Emitter,
+	verWatcher *verwatcher.VersionWatcher,
+	bootstrapping *bool,
+) lachesis.BeginBlockFn {
+	return func(cBlock *lachesis.Block) lachesis.BlockCallbacks {
+		if *bootstrapping {
+			// ignore block processing during bootstrapping
+			return lachesis.BlockCallbacks{
+				ApplyEvent: func(dag.Event) {},
+				EndBlock: func() *pos.Validators {
+					return nil
+				},
+			}
+		}
+		wg.Wait()
+		start := time.Now()
+
+		// Note: take copies to avoid race conditions with API calls
+		bs := store.GetBlockState().Copy()
+		es := store.GetEpochState().Copy()
+
+		// merge cheaters to ensure that every cheater will get punished even if only previous (not current) Atropos observed a doublesign
+		// this feature is needed because blocks may be skipped even if cheaters list isn't empty
+		// otherwise cheaters would get punished after a first block where cheaters were observed
+		bs.EpochCheaters = refMergeCheaters(bs.EpochCheaters, cBlock.Cheaters)
+
+		// Get stateDB
+		statedb, err := store.evm.GetLiveStateDb(bs.FinalizedStateRoot)
+		if err != nil {
+			log.Crit("Failed to open StateDB", "err", err)
+		}
+		nonceSource := blockproc.NewNonceSource(statedb)
+		evmStateReader := &EvmStateReader{
+			ServiceFeed: feed,
+			store:       store,
+		}
+
+		eventProcessor := blockProc.EventsModule.Start(bs, es)
+
+		atroposTime := bs.LastBlock.Time + 1
+		atroposDegenerate := true
+		// events with txs
+		confirmedEvents := make(hash.OrderedEvents, 0, 3*es.Validators.Len())
+
+		return lachesis.BlockCallbacks{
+			ApplyEvent: func(_e dag.Event) {
+				e := _e.(inter.EventI)
+				if cBlock.Atropos == e.ID() {
+					atroposTime = e.MedianTime()
+					atroposDegenerate = false
+				}
+				if e.AnyTxs() || e.HasProposal() {
+					confirmedEvents = append(confirmedEvents, e.ID())
+				}
+				eventProcessor.ProcessConfirmedEvent(e)
+				for _, em := range *emitters {
+					em.OnEventConfirmed(e)
+				}
+				refConfirmedEventsMeter.Mark(1)
+			},
+			EndBlock: func() (newValidators *pos.Validators) {
+
+				// Fix the rules to be used by this block.
+				thisBlocksRules := es.Rules.Copy()
+
+				// sort events by Lamport time
+				sort.Sort(confirmedEvents)
+				maxBlockGas := thisBlocksRules.Blocks.MaxBlockGas
+				blockEvents := refSpillBlockEvents(confirmedEvents, maxBlockGas,
+					func(id hash.Event) inter.EventPayloadI {
+						// Note: currently, GetEventPayload returns a pointer to struct,
+						// conversion to interface may yield a broken interface if
+						// the value is nil.
+						// Adding a nil check to return a nil interface would
+						// solve that, but at this point in the code, every event
+						// must have a known payload, and getting a nil would be a
+						// critical error. We will let it panic if that happens,
+						// as there is no recovery from it.
+						return store.GetEventPayload(id)
+					},
+				)
+
+				// Start assembling the resulting block.
+				number := uint64(bs.LastBlock.Idx + 1)
+				lastBlockHeader := evmStateReader.Header(common.Hash{}, number-1)
+
+				randao := computePrevRandao(confirmedEvents)
+				chainCfg := opera.CreateTransientEvmChainConfig(
+					thisBlocksRules.NetworkID,
+					store.GetUpgradeHeights(),
+					idx.Block(number),
+				)
+
+				// The maximum amount of gas to be used for non-internal
+				// transactions in the resulting block. Note that this gas limit
+				// is different than the official BlockGasLimit, which is
+				// announced as part of the block, constant over the duration of
+				// a block, and must be large enough to include internal
+				// transactions. In Sonic, the Block's GasLimit is a network
+				// rule parameter.
+				// The limit defined here is the dynamically adjusted gas limit
+				// used to regulate the traffic on the network. Block proposals
+				// made in the single-proposer mode are expected to honor this
+				// gas limit. With this parameter, this limit is enforced.
+				userTransactionGasLimit := maxBlockGas
+
+				signer := types.LatestSignerForChainID(chainCfg.ChainID)
+
+				// Get a proposal for the block to be created.
+				proposal := inter.Proposal{
+					Number:     idx.Block(number),
+					ParentHash: lastBlockHeader.Hash,
+				}
+				blockTime := atroposTime
+				if thisBlocksRules.Upgrades.SingleProposerBlockFormation {
+					if proposed, proposer, time := refExtractProposalForNextBlock(lastBlockHeader, blockEvents, log.Root()); proposed != nil {
+						proposal = *proposed
+						// Copy the transactions so that the cached event they
+						// are shared with is not modified in place.
+						proposal.Transactions = slices.Clone(proposal.Transactions)
+						blockTime = time
+						validatorKeys := readEpochPubKeys(store, cBlock.Atropos.Epoch())
+						randao = refResolveRandaoMix(
+							proposal.RandaoReveal, proposer,
+							validatorKeys.PubKeys,
+							lastBlockHeader.PrevRandao, randao,
+							log.Root(),
+						)
+
+						userTransactionGasLimit = inter.GetEffectiveGasLimit(
+							blockTime.Time().Sub(lastBlockHeader.Time.Time()),
+							thisBlocksRules.Economy.ShortGasPower.AllocPerSec,
+							maxBlockGas,
+						)
+					}
+					// Notice that empty blocks follow non-SingleBlockFormation
+					// rules, regarding block times and randao values. This
+					// facilitates the utilization of the same mechanisms to
+					// process or skip empty blocks.
+				} else {
+					// Collect transactions from events and schedule them.
+					unorderedTxs := make(types.Transactions, 0, len(blockEvents)*10)
+					for _, e := range blockEvents {
+						unorderedTxs = append(unorderedTxs, e.Transactions()...)
+					}
+
+					proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, thisBlocksRules.Upgrades.Sonic)
+				}
+
+				// Filter invalid transactions from the proposal.
+				proposal.Transactions = refFilterNonPermissibleTransactions(
+					proposal.Transactions, &thisBlocksRules, signer, log.Root(), refInvalidTxsMeter,
+				)
+
+				// Make sure the new block time is after the last block time.
+				if blockTime <= bs.LastBlock.Time {
+					blockTime = bs.LastBlock.Time + 1
+				}
+
+				blockCtx := iblockproc.BlockCtx{
+					Idx:     proposal.Number,
+					Time:    blockTime,
+					Atropos: cBlock.Atropos,
+				}
+
+				// Note:
+				// it's possible that a previous Atropos observes current Atropos (1)
+				// (even stronger statement is true - it's possible that current Atropos is equal to a previous Atropos).
+				// (1) is true when and only when ApplyEvent wasn't called.
+				// In other words, we should assume that every non-cheater root may be elected as an Atropos in any order,
+				// even if typically every previous Atropos happened-before current Atropos
+				// We have to skip block in case (1) to ensure that every block ID is unique.
+				// If Atropos ID wasn't used as a block ID, it wouldn't be required.
+				skipBlock := atroposDegenerate
+				// Check if empty block should be pruned
+				emptyBlock := confirmedEvents.Len() == 0 && cBlock.Cheaters.Len() == 0
+				if thisBlocksRules.Upgrades.SingleProposerBlockFormation {
+					// Just checking for the number of confirmed events is not
+					// enough in the SingleProposer mode, because proposals may
+					// be empty or may have been found invalid (wrong block
+					// number or wrong parent hash). Thus, just checking for
+					// the number of confirmed events is not enough. However,
+					// we can check the actual number of transactions to be
+					// included in the block. If there are none -- and there are
+					// no cheaters resulting in internal transactions to be
+					// included -- the resulting block would be empty, and should
+					// in general be skipped.
+					emptyBlock = cBlock.Cheaters.Len() == 0 && len(proposal.Transactions) == 0
+				}
+				skipBlock = skipBlock || (emptyBlock && blockCtx.Time < bs.LastBlock.Time+thisBlocksRules.Blocks.MaxEmptyBlockSkipPeriod)
+				// Finalize the progress of eventProcessor
+				bs = eventProcessor.Finalize(blockCtx, skipBlock) // TODO: refactor to not mutate the bs, it is unclear
+				if skipBlock {
+					// save the latest block state even if block is skipped
+					store.SetBlockEpochState(bs, es)
+					log.Debug("Frame is skipped", "atropos", cBlock.Atropos.String())
+					return nil
+				}
+				if emptyBlock {
+					log.Debug(
+						"Deliberately producing empty block",
+						"idx", blockCtx.Idx,
+						"time_since_last", time.Duration(blockCtx.Time-bs.LastBlock.Time),
+					)
+				}
+
+				// Apply the transaction priorities and reorder the (already
+				// filtered) transactions, identically in both legacy and
+				// single-proposer modes, overriding any proposer order.
+				// It is a no-op while the feature is disabled.
+				proposal.Transactions = refApplyTransactionPriorities(
+					proposal.Transactions,
+					thisBlocksRules,
+					chainCfg,
+					statedb,
+					evmStateReader,
+					signer,
+					blockCtx.Idx,
+					blockCtx.Time,
+					randao,
+					lastBlockHeader,
+					refPriorityFailures,
+				)
+
+				sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
+				sealing := sealer.EpochSealing()
+				txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es)
+				onNewLogAll := func(l *core_types.Log) {
+					txListener.OnNewLog(l)
+					// Note: it's possible for logs to get indexed twice by BR and block processing
+					if verWatcher != nil {
+						verWatcher.OnNewLog(l)
+					}
+				}
+
+				// prepare block processing
+				evmProcessor := blockProc.EVMModule.Start(
+					blockCtx.Idx,
+					blockCtx.Time,
+					blockCtx.Atropos.Epoch(),
+					statedb,
+					evmStateReader,
+					onNewLogAll,
+					thisBlocksRules,
+					chainCfg,
+					randao,
+					refSonicFeaturesMetrics,
+				)
+				executionStart := time.Now()
+
+				// Execute pre-internal transactions
+				preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
+				preInternalProcessedTxs := evmProcessor.Execute(preInternalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
+				bs = txListener.Finalize()
+				for _, tx := range preInternalProcessedTxs {
+					if tx.Receipt == nil || tx.Receipt.Status == 0 {
+						log.Warn("Pre-internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
+					}
+				}
+
+				// Seal epoch if requested
+				if sealing {
+					sealer.Update(bs, es)
+					prevUpg := es.Rules.Upgrades
+
+					_, execPlanChainHash := store.GetLatestProcessedBundleHistoryHash()
+
+					bs, es = sealer.SealEpoch(
+						hash.Hash(lastBlockHeader.Hash),
+						hash.Hash(execPlanChainHash),
+						preInternalTxs,
+					) // TODO: refactor to not mutate the bs, it is unclear
+					if es.Rules.Upgrades != prevUpg {
+						store.AddUpgradeHeight(opera.UpgradeHeight{
+							Upgrades: es.Rules.Upgrades,
+							Height:   blockCtx.Idx + 1,
+							Time:     blockCtx.Time + 1,
+						})
+					}
+					store.SetBlockEpochState(bs, es)
+					newValidators = es.Validators
+					txListener.Update(bs, es)
+				}
+
+				// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
+				blockFn := func() {
+
+					blockDuration := time.Duration(blockCtx.Time - bs.LastBlock.Time)
+					blockBuilder := inter.NewBlockBuilder().
+						WithEpoch(blockCtx.Atropos.Epoch()).
+						WithNumber(number).
+						WithParentHash(proposal.ParentHash).
+						WithTime(blockCtx.Time).
+						WithPrevRandao(randao).
+						WithGasLimit(maxBlockGas).
+						WithDuration(blockDuration)
+
+					// With the transition from v2.0 to v2.1, the handling of
+					// block-gas-limit updates has changed. In v2.0, epoch
+					// sealing blocks used to already adapt the new gas limit,
+					// while in v2.1 the old gas limit is kept and only the
+					// first block after the sealing block is adapting the new
+					// gas limit. As the list of transactions for the sealing
+					// block is assembled by validators using the rules of the
+					// current epoch, using the ending epoch's gas limit is
+					// matching the assumptions made by the validators.
+					//
+					// However, in the past, there was one epoch-sealing block
+					// (8054923) in which the gas limit was adapted. To support
+					// this one-time exception, we add a special case for
+					// this block here to ensure backward compatibility.
+					if thisBlocksRules.NetworkID == 146 && number == 8054923 {
+						blockBuilder.WithGasLimit(es.Rules.Blocks.MaxBlockGas)
+					}
+
+					for _, cur := range preInternalProcessedTxs {
+						if cur.Receipt != nil {
+							blockBuilder.AddTransaction(
+								cur.Transaction,
+								cur.Receipt,
+							)
+						}
+					}
+
+					// Execute post-internal transactions
+					internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
+					internalProcessedTxs := evmProcessor.Execute(internalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
+					for _, tx := range internalProcessedTxs {
+						if tx.Receipt == nil || tx.Receipt.Status == 0 {
+							log.Warn("Internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
+						}
+					}
+
+					for _, cur := range internalProcessedTxs {
+						if cur.Receipt != nil {
+							blockBuilder.AddTransaction(
+								cur.Transaction,
+								cur.Receipt,
+							)
+						}
+					}
+
+					txCausedBy := refProcessUserTransactions(
+						evmProcessor,
+						blockBuilder,
+						proposal.Transactions,
+						userTransactionGasLimit,
+						thisBlocksRules.Upgrades,
+					)
+
+					evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
+
+					// Add results of the transaction processing to the block.
+					blockBuilder.
+						WithStateRoot(common.Hash(evmBlock.Root)).
+						WithGasUsed(evmBlock.GasUsed).
+						WithBaseFee(evmBlock.BaseFee)
+
+					// Complete the block.
+					block := blockBuilder.Build()
+					evmBlock.Hash = block.Hash()
+					evmBlock.Duration = blockDuration
+
+					// Update block-hash and -time values in receipts and logs.
+					for i := range allReceipts {
+						allReceipts[i].BlockHash = block.Hash()
+						for j := range allReceipts[i].Logs {
+							allReceipts[i].Logs[j].BlockHash = block.Hash()
+							allReceipts[i].Logs[j].BlockTimestamp = uint64(block.Time.Unix())
+						}
+					}
+
+					// memorize the event creator of each tx
+					txPositions := make(map[common.Hash]RefExtendedTxPosition)
+					for _, e := range blockEvents {
+						for _, tx := range e.Transactions() {
+							// If tx was met in multiple events, then assign to first ordered event
+							if _, ok := txPositions[tx.Hash()]; ok {
+								continue
+							}
+							txPositions[tx.Hash()] = RefExtendedTxPosition{
+								EventCreator: e.Creator(),
+							}
+						}
+					}
+					// memorize block position of each tx
+					for i, tx := range evmBlock.Transactions {
+						// not skipped txs only
+						position := txPositions[tx.Hash()]
+						position.Block = blockCtx.Idx
+						position.BlockOffset = uint32(i)
+						txPositions[tx.Hash()] = position
+					}
+
+					// call OnNewReceipt
+					for i, r := range allReceipts {
+						originTx := r.TxHash
+						if thisBlocksRules.Upgrades.Brio {
+							if origin, found := txCausedBy[r.TxHash]; found {
+								originTx = origin
+							}
+						}
+						creator := txPositions[originTx].EventCreator
+						if creator != 0 && es.Validators.Get(creator) == 0 {
+							creator = 0
+						}
+						txListener.OnNewReceipt(evmBlock.Transactions[i], r, creator, evmBlock.BaseFee, evmBlock.BlobBaseFee)
+					}
+					bs = txListener.Finalize() // TODO: refactor to not mutate the bs
+					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
+					// At this point, block state is finalized
+
+					// Store the transaction bodies before indexing their
+					// positions, such that readers finding a position always
+					// find the corresponding body as well.
+					for _, tx := range blockBuilder.GetTransactions() {
+						store.evm.SetTx(tx.Hash(), tx)
+					}
+
+					// Build index for not skipped txs
+					if txIndex {
+						for _, tx := range evmBlock.Transactions {
+							// not skipped txs only
+							store.evm.SetTxPosition(tx.Hash(), txPositions[tx.Hash()].TxPosition)
+						}
+
+						// Index receipts
+						// Note: it's possible for receipts to get indexed twice by BR and block processing
+						if allReceipts.Len() != 0 {
+							store.evm.SetReceipts(blockCtx.Idx, allReceipts)
+							for _, r := range allReceipts {
+								store.evm.IndexLogs(r.Logs...)
+							}
+						}
+					}
+
+					bs.LastBlock = blockCtx
+					bs.CheatersWritten = uint32(bs.EpochCheaters.Len())
+					if sealing {
+						store.SetHistoryBlockEpochState(es.Epoch, bs, es)
+						store.SetEpochBlock(blockCtx.Idx+1, es.Epoch)
+					}
+
+					store.SetBlock(blockCtx.Idx, block)
+					store.SetBlockIndex(block.Hash(), blockCtx.Idx)
+					store.SetBlockEpochState(bs, es)
+					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
+
+					// Update the metrics touched during block processing
+					executionTime := time.Since(executionStart)
+					refBlockExecutionTimer.Update(executionTime)
+					refBlockExecutionNonResettingTimer.Update(executionTime)
+
+					// Update the metrics touched by new block
+					refHeadBlockGauge.Update(int64(blockCtx.Idx))
+					refHeadHeaderGauge.Update(int64(blockCtx.Idx))
+					refHeadFastBlockGauge.Update(int64(blockCtx.Idx))
+
+					// Notify about new block
+					if feed != nil {
+						var logs []*types.Log
+						for _, r := range allReceipts {
+							logs = append(logs, r.Logs...)
+						}
+						feed.notifyAboutNewBlock(evmBlock, logs)
+					}
+
+					now := time.Now()
+					blockAge := now.Sub(block.Time.Time())
+					log.Info("New block",
+						"index", blockCtx.Idx,
+						"id", block.Hash(),
+						"gas_used", evmBlock.GasUsed,
+						"gas_rate", float64(evmBlock.GasUsed)/blockDuration.Seconds(),
+						"base_fee", evmBlock.BaseFee.String(),
+						"txs", fmt.Sprintf("%d/%d", len(evmBlock.Transactions), numSkippedTxs),
+						"age", utils.PrettyDuration(blockAge),
+						"t", utils.PrettyDuration(now.Sub(start)),
+						"epoch", evmBlock.Epoch,
+					)
+					refBlockAgeGauge.Update(int64(blockAge.Nanoseconds()))
+
+					refProcessedTxsMeter.Mark(int64(len(evmBlock.Transactions)))
+					refSkippedTxsMeter.Mark(int64(numSkippedTxs))
+				}
+				if confirmedEvents.Len() != 0 {
+					atomic.StoreUint32(blockBusyFlag, 1)
+					wg.Add(1)
+					err := parallelTasks.Enqueue(func() {
+						defer atomic.StoreUint32(blockBusyFlag, 0)
+						defer wg.Done()
+						blockFn()
+					})
+					if err != nil {
+						panic(err)
+					}
+				} else {
+					blockFn()
+				}
+
+				return newValidators
+			},
+		}
+	}
+}
+
+// refRlpEncodedMaxHeaderSizeInBytes is an upper bound of the EVM block header size
+// used for block size calculations.
+const refRlpEncodedMaxHeaderSizeInBytes = 1024
+
+// refProcessUserTransactions executes user transactions in order, adding them to
+// the block until all transactions are processed or the gas/block size limit is
+// reached. The function returns a map linking the hashes of accepted
+// transactions to the transaction they are derived from in the given list.
+func refProcessUserTransactions(
+	evmProcessor blockproc.EVMProcessor,
+	blockBuilder *inter.BlockBuilder,
+	orderedTxs []*types.Transaction,
+	userTransactionGasLimit uint64,
+	upgrades opera.Upgrades,
+) (
+	causedBy map[common.Hash]common.Hash,
+) {
+	remainingSize := uint64(math.MaxUint64)
+	if upgrades.Brio {
+		remainingSize = uint64(params.MaxBlockSize - refRlpEncodedMaxHeaderSizeInBytes)
+		for _, tx := range blockBuilder.GetTransactions() {
+			txSize := tx.Size()
+			if txSize > remainingSize {
+				// Still call evmProcessor execute with 0 remaining size to track skipped transactions correctly.
+				log.Warn("block filled with only internal transactions")
+				remainingSize = 0
+				break
+			}
+			remainingSize -= txSize
+		}
+	}
+
+	summary := evmProcessor.Execute(orderedTxs, userTransactionGasLimit, remainingSize)
+	for _, processed := range summary.ProcessedTransactions {
+		if processed.Receipt != nil { // < nil if skipped
+			blockBuilder.AddTransaction(
+				processed.Transaction,
+				processed.Receipt,
+			)
+		}
+	}
+
+	return summary.CausedBy
+}
+
+// refResolveRandaoMix computes the randao mix to be used by the block processor
+// when using single block proposal.
+//
+// If randao reveal cannot be verified, this block will be computed using the
+// event derived randao value. This can happen if the randao reveal value
+// was not created according to specification. This fallback mechanism will
+// increase the entropy of the system by introducing an un-biased random value
+// reproducible by all nodes.
+func refResolveRandaoMix(
+	reveal randao.RandaoReveal,
+	proposer idx.ValidatorID,
+	validatorKeys map[idx.ValidatorID]validatorpk.PubKey,
+	lastBlockRandao common.Hash,
+	fallbackRandao common.Hash,
+	logger log.Logger,
+) common.Hash {
+	blockProposalRandao, ok := reveal.VerifyAndGetRandao(lastBlockRandao, validatorKeys[proposer])
+	if ok {
+		return blockProposalRandao
+	} else {
+		logger.Warn("Failed to verify randao reveal, using DAG randomization", "proposer validator", proposer)
+		//  TODO: instrument a prometheus metric for this case (#209)
+		return fallbackRandao
+	}
+}
+
+// refSpillBlockEvents excludes first events which exceed MaxBlockGas
+func refSpillBlockEvents(
+	events hash.OrderedEvents,
+	maxBlockGas uint64,
+	getEventPayload func(id hash.Event) inter.EventPayloadI,
+) []inter.EventPayloadI {
+	fullEvents := make([]inter.EventPayloadI, len(events))
+	if len(events) == 0 {
+		return fullEvents
+	}
+	gasPowerUsedSum := uint64(0)
+	// iterate in reversed order
+	for i := len(events) - 1; i >= 0; i-- {
+		id := events[i]
+		e := getEventPayload(id)
+		fullEvents[i] = e
+		gasPowerUsedSum += e.GasPowerUsed()
+		// stop if limit is exceeded, erase [:i] events
+		if gasPowerUsedSum > maxBlockGas {
+			// spill
+			refSpilledEventsMeter.Mark(int64(len(fullEvents) - (i + 1)))
+			fullEvents = fullEvents[i+1:]
+			break
+		}
+	}
+	return fullEvents
+}
+
+func refMergeCheaters(a, b lachesis.Cheaters) lachesis.Cheaters {
+	if len(b) == 0 {
+		return a
+	}
+	if len(a) == 0 {
+		return b
+	}
+	aSet := a.Set()
+	merged := make(lachesis.Cheaters, 0, len(b)+len(a))
+	merged = append(merged, a...)
+	for _, v := range b {
+		if _, ok := aSet[v]; !ok {
+			merged = append(merged, v)
+		}
+	}
+	return merged
+}
+
+// refExtractProposalForNextBlock attempts to obtain the canonical block proposal for
+// the next block in the given events. A proposal is considered valid, if
+//   - it has the correct block number (last block number + 1), and
+//   - it has the correct parent hash (last block hash)
+//
+// If multiple valid proposals are found, the one proposed in the lowest turn
+// is returned. If there are multiple proposals with the same turn, the one with
+// the lowest hash is returned.
+//
+// If no valid proposals are found, nil is returned. In such a case, no or an
+// empty block should be produced.
+func refExtractProposalForNextBlock(
+	lastBlock *evmcore.EvmHeader,
+	events []inter.EventPayloadI,
+	logger log.Logger,
+) (*inter.Proposal, idx.ValidatorID, inter.Timestamp) {
+
+	desiredBlockNumber := idx.Block(lastBlock.Number.Uint64() + 1)
+	parentHash := lastBlock.Hash
+
+	type PayloadInfo struct {
+		Payload  *inter.Payload
+		Proposer idx.ValidatorID
+		Time     inter.Timestamp
+	}
+
+	// Collect all payloads from events proposing the desired block.
+	payloads := []PayloadInfo{}
+	for _, e := range events {
+		payload := e.Payload()
+		if proposal := payload.Proposal; proposal != nil {
+			if proposal.Number != desiredBlockNumber {
+				logger.Warn(
+					"Confirmed events contains proposal with wrong block number",
+					"wanted", desiredBlockNumber,
+					"got", proposal.Number,
+					"creator", e.Creator(),
+				)
+				continue
+			}
+			if proposal.ParentHash != parentHash {
+				logger.Warn(
+					"Confirmed events contains proposal with wrong parent hash",
+					"wanted", parentHash,
+					"got", proposal.ParentHash,
+					"creator", e.Creator(),
+				)
+				continue
+			}
+
+			payloads = append(payloads, PayloadInfo{
+				Payload:  payload,
+				Proposer: e.Creator(),
+				Time:     e.MedianTime(),
+			})
+		}
+	}
+	if len(payloads) > 1 {
+		logger.Warn("Found multiple proposals for the same block",
+			"block", desiredBlockNumber,
+			"proposals", len(payloads),
+		)
+	}
+
+	if len(payloads) == 0 {
+		return nil, 0, 0
+	}
+
+	if len(payloads) == 1 {
+		return payloads[0].Payload.Proposal, payloads[0].Proposer, payloads[0].Time
+	}
+
+	best := payloads[0]
+	for _, p := range payloads {
+		switch cmp.Compare(p.Payload.LastSeenProposalTurn, best.Payload.LastSeenProposalTurn) {
+		case -1:
+			best = p
+		case 0:
+			// The validation of events should not allow multiple proposals
+			// with the same turn number in a forkless DAG, and forks should
+			// be ignored by the consensus when producing confirmed events.
+			// However, to be conservative, we consider the possibility of
+			// two proposals with the same turn number and use the proposal
+			// hash as a tie breaker.
+			a := p.Payload.Proposal.Hash()
+			b := best.Payload.Proposal.Hash()
+			if bytes.Compare(a[:], b[:]) < 0 {
+				best = p
+			}
+		case 1:
+		}
+	}
+	return best.Payload.Proposal, best.Proposer, best.Time
+}
+
+// refFilterNonPermissibleTransactions filters out transactions that are not allowed
+// to be included in a block according to the network rules. It returns a slice
+// of permissible transactions, filtering the given slice in place. For
+// encountered non-permissible transactions log messages are emitted and the
+// number of such transactions is reported to the provided metric counter.
+func refFilterNonPermissibleTransactions(
+	transactions []*types.Transaction,
+	rules *opera.Rules,
+	signer types.Signer,
+	log log.Logger,
+	counter refMetricCounter,
+) []*types.Transaction {
+
+	// This filter is only enabled with the Allegro upgrade.
+	if !rules.Upgrades.Allegro {
+		return transactions
+	}
+	return slices.DeleteFunc(transactions, func(tx *types.Transaction) bool {
+		if err := refIsPermissible(tx, rules, signer); err != nil {
+			if log != nil {
+				log.Warn("Non-permissible transaction in the proposal", "tx", tx.Hash(), "issue", err)
+			}
+			if counter != nil {
+				counter.Mark(1)
+			}
+			return true
+		}
+		return false
+	})
+}
+
+// refIsPermissible checks whether a transaction is allowed to be included in a
+// block according to the network rules. It is used to control the set of
+// supported transaction types and their properties on the block chain.
+//
+// Rejected transactions are considered non-permissible transactions.
+// Honest validators should not suggest non-permissible transactions.
+//
+// Permissible transactions may still be rejected by the block processor due to
+// nonce or balance issues. In such cases, the transaction is considered a
+// skipped transaction. Skips should be minimized, but can not be completely
+// avoided.
+func refIsPermissible(
+	tx *types.Transaction,
+	rules *opera.Rules,
+	signer types.Signer,
+) error {
+	return refIsPermissibleInternal(tx, rules, signer, false)
+}
+
+func refIsPermissibleInternal(
+	tx *types.Transaction,
+	rules *opera.Rules,
+	signer types.Signer,
+	isInBundle bool,
+) error {
+	if tx == nil {
+		return fmt.Errorf("nil transaction")
+	}
+
+	// -- Check static properties --
+
+	// TODO: verify whether the static checks are backward compatible to allow
+	// this to be enabled before Brio as well.
+	if rules.Upgrades.Brio {
+		if err := evmcore.ValidateTxStatic(tx); err != nil {
+			return err
+		}
+	}
+
+	// -- Check transaction type --
+
+	maxTxType := uint8(types.BlobTxType)
+	if rules.Upgrades.Allegro {
+		maxTxType = types.SetCodeTxType
+	}
+	if tx.Type() > maxTxType {
+		return fmt.Errorf("unsupported transaction type %d, max supported is %d", tx.Type(), maxTxType)
+	}
+
+	// -- Check Type specific properties --
+
+	if tx.Type() == types.BlobTxType {
+		if have := len(tx.BlobHashes()); have > 0 {
+			return fmt.Errorf(
+				"blob transaction with blob hashes is not supported, got %d",
+				have,
+			)
+		}
+	}
+
+	if tx.Type() == types.SetCodeTxType {
+		if have := len(tx.SetCodeAuthorizations()); have == 0 {
+			return fmt.Errorf(
+				"set code transaction without authorizations is not supported",
+			)
+		}
+	}
+
+	// Starting with Brio, rules for bundled transactions are introduced.
+	if rules.Upgrades.Brio {
+		// Bundle-only transactions must not be included in blocks stand-alone.
+		if !isInBundle && bundle.IsBundleOnly(tx) {
+			return fmt.Errorf("bundle-only transactions are not supported")
+		}
+
+		// Deal with envelopes.
+		if bundle.IsEnvelope(tx) {
+			// Envelopes delivering bundles are ignored if feature is disabled.
+			if !rules.Upgrades.TransactionBundles {
+				return fmt.Errorf("bundle transactions are disabled")
+			}
+
+			// Make sure the envelope does not contain non-permissible transactions.
+			txBundle, err := bundle.OpenEnvelope(signer, tx)
+			if err != nil {
+				return fmt.Errorf("invalid bundle envelope: %w", err)
+			}
+			for _, inner := range txBundle.Transactions {
+				if err := refIsPermissibleInternal(inner, rules, signer, true); err != nil {
+					return fmt.Errorf("bundle contains non-permissible transaction: %w", err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// refApplyTransactionPriorities reorders the (already base-ordered and filtered)
+// transactions of a block according to the on-chain priority registry. It is the
+// single authoritative ordering step and is applied identically in both legacy
+// and single-proposer modes (so a proposer's order is overridden).
+//
+// It is a no-op unless the TransactionPriorities upgrade is active. Every
+// registry query is run against the block-start state through a snapshot that is
+// immediately reverted, so the queries leave no residue in the state used for
+// block execution. The query EVM context is derived exclusively from consensus
+// inputs, so every validator reproduces the same ordering. Query errors never
+// abort the block formation: a failed config query falls back to
+// priorities.FallbackConfig, a failed transaction query is treated as
+// "not prioritized".
+func refApplyTransactionPriorities(
+	txs types.Transactions,
+	rules opera.Rules,
+	chainCfg *params.ChainConfig,
+	statedb state.StateDB,
+	reader evmcore.DummyChain,
+	signer types.Signer,
+	blockIdx idx.Block,
+	blockTime inter.Timestamp,
+	randao common.Hash,
+	parent *evmcore.EvmHeader,
+	failures refPriorityFailureMeters,
+) types.Transactions {
+	if !rules.Upgrades.TransactionPriorities || len(txs) == 0 {
+		return txs
+	}
+
+	header := refPriorityQueryHeader(rules, blockIdx, blockTime, randao, parent)
+	blockContext := evmcore.NewEVMBlockContext(header, reader, nil)
+	evm := vm.NewEVM(blockContext, statedb, chainCfg, opera.GetVmConfig(rules))
+
+	snapshot := statedb.InterTxSnapshot()
+	cfg := priorities.GetConfigOrFallback(rules.Upgrades, evm, failures.config)
+	statedb.RevertToInterTxSnapshot(snapshot)
+
+	classifier := priorities.NewEvmClassifier(rules.Upgrades, evm, signer, statedb, failures.txs)
+	return priorities.Prioritize(txs, classifier, signer, statedb, cfg)
+}
+
+// refPriorityQueryHeader builds the EVM header used for priority registry queries.
+// It mirrors the Sonic path of the header construction in the EVM module
+// (evmmodule.Start and evmmodule.evmBlockWith) contrained to only the
+// consensus-derived inputs, so the query context matches the block being
+// formed and is identical across validators.
+func refPriorityQueryHeader(
+	rules opera.Rules,
+	blockIdx idx.Block,
+	blockTime inter.Timestamp,
+	randao common.Hash,
+	parent *evmcore.EvmHeader,
+) *evmcore.EvmHeader {
+	baseFee := gasprice.GetBaseFeeForNextBlock(gasprice.ParentBlockInfo{
+		BaseFee:  parent.BaseFee,
+		Duration: parent.Duration,
+		GasUsed:  parent.GasUsed,
+	}, rules.Economy)
+
+	return &evmcore.EvmHeader{
+		Number:      new(big.Int).SetUint64(uint64(blockIdx)),
+		ParentHash:  parent.Hash,
+		Time:        blockTime,
+		Coinbase:    evmcore.GetCoinbase(),
+		GasLimit:    rules.Blocks.MaxBlockGas,
+		BaseFee:     baseFee,
+		BlobBaseFee: evmcore.GetBlobBaseFee().ToBig(),
+		PrevRandao:  randao,
+	}
+}
+
+// refMetricCounter is an abstraction of the *metrics.Meter type to facilitate
+// mocking in tests.
+type refMetricCounter interface {
+	Mark(int64)
+}
