@@ -496,6 +496,46 @@ func TestFilter_FilterLogs_ReturnsCorrectedTransactionIndexes(t *testing.T) {
 	}
 }
 
+func TestFilter_FilterLogs_DoesNotModifyBackendLogs(t *testing.T) {
+	header := &evmcore.EvmHeader{Number: big.NewInt(1)}
+	tests := map[string]struct {
+		filter    *Filter
+		primeMock func(*MockBackend)
+	}{
+		"filter by block hash": {
+			filter: &Filter{block: common.Hash{0x01}},
+			primeMock: func(backend *MockBackend) {
+				backend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).Return(header, nil)
+			},
+		},
+		"filter by block range (unindexed)": {
+			filter: &Filter{begin: 1, end: 1},
+			primeMock: func(backend *MockBackend) {
+				backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(header, nil).Times(2)
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			backend := NewMockBackend(ctrl)
+			test.primeMock(backend)
+			shared := &types.Log{TxHash: common.Hash{0x02}, TxIndex: 1}
+			backend.EXPECT().GetLogs(gomock.Any(), gomock.Any()).Return([][]*types.Log{{shared}}, nil)
+			backend.EXPECT().GetTxPosition(shared.TxHash).Return(&evmstore.TxPosition{BlockOffset: 2})
+
+			test.filter.backend = backend
+			test.filter.config = testConfig()
+			logs, err := test.filter.Logs(t.Context())
+			require.NoError(t, err)
+			require.Len(t, logs, 1)
+			require.EqualValues(t, 2, logs[0].TxIndex)
+			require.EqualValues(t, 1, shared.TxIndex)
+		})
+	}
+}
+
 func TestFilter_FilterLogs_QueriedHashDoesNotExist_ReturnsError(t *testing.T) {
 
 	tests := map[string]struct {
