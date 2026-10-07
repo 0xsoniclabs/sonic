@@ -42,6 +42,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
@@ -814,6 +815,82 @@ func TestConsensusCallback_AppliesTransactionPriorities(t *testing.T) {
 	// The prioritized transaction is hoisted ahead of the plain one, overriding
 	// the order of the proposal.
 	require.Equal(types.Transactions{prioritizedTx, plainTx}, executedTxs)
+}
+
+func TestEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransaction(t *testing.T) {
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.SingleProposerBlockFormation = true
+	env := newTestEnvWithUpgrades(2, 1, upgrades, t)
+	t.Cleanup(func() { require.NoError(t, env.Close()) })
+
+	store := env.store
+	rules := store.GetRules()
+	signer := env.EthAPI.signer
+
+	permissibleTx := makeSignedTx(t, signer)
+	nonPermissibleTx := makeSignedSetCodeTxWithoutAuthorizations(t, signer, rules.NetworkID)
+	require.NoError(t, isPermissible(permissibleTx, &rules, signer))
+	require.Error(t, isPermissible(nonPermissibleTx, &rules, signer))
+
+	// The first event of the validator whose turn it is to propose the next
+	// block of the epoch, proposing the non-permissible transaction followed by
+	// a permissible one.
+	epoch := store.GetEpoch()
+	proposer, err := inter.GetProposer(store.GetValidators(), epoch, 1)
+	require.NoError(t, err)
+	blockNumber := store.GetBlockState().LastBlock.Idx + 1
+
+	builder := &inter.MutableEventPayload{}
+	builder.SetVersion(3)
+	builder.SetEpoch(epoch)
+	builder.SetSeq(1)
+	builder.SetFrame(1)
+	builder.SetLamport(1)
+	builder.SetCreator(proposer)
+	builder.SetCreationTime(2000)
+	builder.SetMedianTime(2000)
+	builder.SetPayload(inter.Payload{
+		ProposalSyncState: inter.ProposalSyncState{LastSeenProposalTurn: 1, LastSeenProposalFrame: 1},
+		Proposal: &inter.Proposal{
+			Number:       blockNumber,
+			ParentHash:   store.GetLatestBlock().Hash(),
+			Transactions: types.Transactions{nonPermissibleTx, permissibleTx},
+		},
+	})
+
+	// Fill in the consensus-derived gas fields, then sign the event with the
+	// proposer's key, yielding an event that differs from an honestly built one
+	// only in the content of its proposal.
+	gasUsed, err := epochcheck.CalcGasPowerUsed(builder, rules)
+	require.NoError(t, err)
+	builder.SetGasPowerUsed(gasUsed)
+	gasPower, err := env.checkers.Gaspowercheck.CalcGasPower(builder, nil)
+	require.NoError(t, err)
+	for i := range gasPower.Gas {
+		gasPower.Gas[i] -= gasUsed
+	}
+	builder.SetGasPowerLeft(gasPower)
+	hashToSign := builder.HashToSign()
+	signature, err := crypto.Sign(hashToSign[:], makefakegenesis.FakeKey(proposer))
+	require.NoError(t, err)
+	builder.SetSig(inter.BytesToSignature(signature[:inter.SigSize]))
+	event := builder.Build()
+
+	// The node's event-validation pipeline accepts the event.
+	require.NoError(t, env.checkers.Validate(event, nil))
+
+	// Processing the confirmed event as a block runs the node's real block
+	// processing on the proposal.
+	store.SetEvent(event)
+	callbacks := env.GetConsensusCallbacks().BeginBlock(&lachesis.Block{Atropos: event.ID()})
+	callbacks.ApplyEvent(event)
+	callbacks.EndBlock()
+	env.WaitBlockEnd()
+
+	// The block is produced and the proposal of the cached event is unchanged.
+	require.NotNil(t, store.GetBlock(blockNumber))
+	require.Equal(t, []*types.Transaction{nonPermissibleTx, permissibleTx},
+		store.GetEventPayload(event.ID()).Payload().Proposal.Transactions)
 }
 
 func TestExtractProposalForNextBlock_NoEvents_ReturnsNoProposal(t *testing.T) {
@@ -2548,6 +2625,19 @@ func makeSignedTx(t *testing.T, signer types.Signer) *types.Transaction {
 		To:       &to,
 		Gas:      21000,
 		GasPrice: big.NewInt(1),
+	})
+}
+
+// makeSignedSetCodeTxWithoutAuthorizations creates a set-code transaction with
+// an empty authorization list, signed by a fresh key. Such a transaction is
+// non-permissible.
+func makeSignedSetCodeTxWithoutAuthorizations(t *testing.T, signer types.Signer, chainID uint64) *types.Transaction {
+	t.Helper()
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	return types.MustSignNewTx(key, signer, &types.SetCodeTx{
+		ChainID: uint256.NewInt(chainID),
+		Gas:     21_000,
 	})
 }
 

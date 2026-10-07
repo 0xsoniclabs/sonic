@@ -258,6 +258,9 @@ func consensusCallbackBeginBlockFn(
 				if thisBlocksRules.Upgrades.SingleProposerBlockFormation {
 					if proposed, proposer, time := extractProposalForNextBlock(lastBlockHeader, blockEvents, log.Root()); proposed != nil {
 						proposal = *proposed
+						// Copy the transactions so that the cached event they
+						// are shared with is not modified in place.
+						proposal.Transactions = slices.Clone(proposal.Transactions)
 						blockTime = time
 						validatorKeys := readEpochPubKeys(store, cBlock.Atropos.Epoch())
 						randao = resolveRandaoMix(
@@ -858,9 +861,9 @@ func extractProposalForNextBlock(
 
 // filterNonPermissibleTransactions filters out transactions that are not allowed
 // to be included in a block according to the network rules. It returns a slice
-// of permissible transactions. For encountered non-permissible transactions
-// log messages are emitted and the number of such transactions is reported to
-// the provided metric counter.
+// of permissible transactions, filtering the given slice in place. For
+// encountered non-permissible transactions log messages are emitted and the
+// number of such transactions is reported to the provided metric counter.
 func filterNonPermissibleTransactions(
 	transactions []*types.Transaction,
 	rules *opera.Rules,
