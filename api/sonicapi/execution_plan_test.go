@@ -47,7 +47,7 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 	}{
 		"plan with single step": {
 			plan: bundle.ExecutionPlan{
-				Root:   step1,
+				Root:   bundle.NewAllOfStep(step1),
 				Period: bundle.MakeUnrestrictedTimePeriod(),
 			},
 			expectedJson: `{
@@ -61,7 +61,7 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 		},
 		"plan with different single step": {
 			plan: bundle.ExecutionPlan{
-				Root:   step2,
+				Root:   bundle.NewAllOfStep(step2),
 				Period: bundle.MakeUnrestrictedTimePeriod(),
 			},
 			expectedJson: `{
@@ -75,7 +75,7 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 		},
 		"plan with single step and execution flags 1": {
 			plan: bundle.ExecutionPlan{
-				Root:   step1.WithFlags(bundle.EF_TolerateFailed),
+				Root:   bundle.NewAllOfStep(step1.WithFlags(bundle.EF_TolerateFailed)),
 				Period: bundle.MakeUnrestrictedTimePeriod(),
 			},
 			expectedJson: `{
@@ -90,7 +90,7 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 		},
 		"plan with single step and execution flags 2": {
 			plan: bundle.ExecutionPlan{
-				Root:   step1.WithFlags(bundle.EF_TolerateInvalid),
+				Root:   bundle.NewAllOfStep(step1.WithFlags(bundle.EF_TolerateInvalid)),
 				Period: bundle.MakeUnrestrictedTimePeriod(),
 			},
 			expectedJson: `{
@@ -105,7 +105,7 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 		},
 		"plan with single step and execution flags 3": {
 			plan: bundle.ExecutionPlan{
-				Root:   step2.WithFlags(bundle.EF_TolerateFailed | bundle.EF_TolerateInvalid),
+				Root:   bundle.NewAllOfStep(step2.WithFlags(bundle.EF_TolerateFailed | bundle.EF_TolerateInvalid)),
 				Period: bundle.MakeUnrestrictedTimePeriod(),
 			},
 			expectedJson: `{
@@ -127,16 +127,12 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			expectedJson: `{
 		 		"steps": [
 					{
-						"steps":[
-							{
-								"from":"0x0100000000000000000000000000000000000000",
-								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
-							},
-							{
-								"from":"0x0300000000000000000000000000000000000000",
-								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
-							}
-						]
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					},
+					{
+						"from":"0x0300000000000000000000000000000000000000",
+						"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
 					}
 				]
 		 	}`,
@@ -149,17 +145,13 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			expectedJson: `{
 		  		"steps":[
 					{
-		  				"steps":[
-		  					{
-								"from":"0x0300000000000000000000000000000000000000",
-								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
-		  					},
-		  					{
-								"from":"0x0100000000000000000000000000000000000000",
-								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
-		  					}
-		  				]
-		  			}
+						"from":"0x0300000000000000000000000000000000000000",
+						"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+					},
+					{
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					}
 		  		]
 		  	}`,
 		},
@@ -169,19 +161,15 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 				Period: bundle.MakeUnrestrictedTimePeriod(),
 			},
 			expectedJson: `{
+				"tolerateFailures":true,
 				"steps":[
 					{
-						"tolerateFailures":true,
-						"steps":[
-							{
-								"from":"0x0100000000000000000000000000000000000000",
-								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
-							},
-							{
-								"from":"0x0300000000000000000000000000000000000000",
-								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
-							}
-						]
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					},
+					{
+						"from":"0x0300000000000000000000000000000000000000",
+						"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
 					}
 				]
 			}`,
@@ -192,19 +180,15 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 				Period: bundle.MakeUnrestrictedTimePeriod(),
 			},
 			expectedJson: `{
+				"oneOf":true,
 				"steps":[
 					{
-						"oneOf":true,
-						"steps":[
-							{
-								"from":"0x0100000000000000000000000000000000000000",
-								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
-							},
-							{
-								"from":"0x0300000000000000000000000000000000000000",
-								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
-							}
-						]
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					},
+					{
+						"from":"0x0300000000000000000000000000000000000000",
+						"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
 					}
 				]
 			}`,
@@ -215,19 +199,15 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 				Period: bundle.MakeUnrestrictedTimePeriod(),
 			},
 			expectedJson: `{
+				"oneOf":true,
 				"steps":[
 					{
-						"oneOf":true,
-						"steps":[
-							{
-								"from":"0x0300000000000000000000000000000000000000",
-								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
-							},
-							{
-								"from":"0x0100000000000000000000000000000000000000",
-								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
-							}
-						]
+						"from":"0x0300000000000000000000000000000000000000",
+						"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+					},
+					{
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
 					}
 				]
 			}`,
@@ -238,20 +218,16 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 				Period: bundle.MakeUnrestrictedTimePeriod(),
 			},
 			expectedJson: `{
+				"tolerateFailures":true,
+				"oneOf":true,
 				"steps":[
 					{
-						"tolerateFailures":true,
-						"oneOf":true,
-						"steps":[
-							{
-								"from":"0x0100000000000000000000000000000000000000",
-								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
-							},
-							{
-								"from":"0x0300000000000000000000000000000000000000",
-								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
-							}
-						]
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					},
+					{
+						"from":"0x0300000000000000000000000000000000000000",
+						"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
 					}
 				]
 			}`,
@@ -265,33 +241,29 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 				Period: bundle.MakeUnrestrictedTimePeriod(),
 			},
 			expectedJson: `{
+				"oneOf":true,
 				"steps":[
 					{
-						"oneOf":true,
 						"steps":[
 							{
-								"steps":[
-									{
-										"from":"0x0100000000000000000000000000000000000000",
-										"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
-									},
-									{
-										"from":"0x0300000000000000000000000000000000000000",
-										"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
-									}
-								]
+								"from":"0x0100000000000000000000000000000000000000",
+								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
 							},
 							{
-								"steps":[
-									{
-										"from":"0x0300000000000000000000000000000000000000",
-										"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
-									},
-									{
-										"from":"0x0100000000000000000000000000000000000000",
-										"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
-									}
-								]
+								"from":"0x0300000000000000000000000000000000000000",
+								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+							}
+						]
+					},
+					{
+						"steps":[
+							{
+								"from":"0x0300000000000000000000000000000000000000",
+								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+							},
+							{
+								"from":"0x0100000000000000000000000000000000000000",
+								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
 							}
 						]
 					}
@@ -307,33 +279,29 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 				Period: bundle.MakeUnrestrictedTimePeriod(),
 			},
 			expectedJson: `{
+				"oneOf":true,
 				"steps":[
 					{
-						"oneOf":true,
 						"steps":[
 							{
-								"steps":[
-									{
-										"from":"0x0300000000000000000000000000000000000000",
-										"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
-									},
-									{
-										"from":"0x0100000000000000000000000000000000000000",
-										"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
-									}
-								]
+								"from":"0x0300000000000000000000000000000000000000",
+								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
 							},
 							{
-								"steps":[
-									{
-										"from":"0x0100000000000000000000000000000000000000",
-										"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
-									},
-									{
-										"from":"0x0300000000000000000000000000000000000000",
-										"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
-									}
-								]
+								"from":"0x0100000000000000000000000000000000000000",
+								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+							}
+						]
+					},
+					{
+						"steps":[
+							{
+								"from":"0x0100000000000000000000000000000000000000",
+								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+							},
+							{
+								"from":"0x0300000000000000000000000000000000000000",
+								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
 							}
 						]
 					}
@@ -342,7 +310,7 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 		},
 		"plan with block range": {
 			plan: bundle.ExecutionPlan{
-				Root:   step1,
+				Root:   bundle.NewAllOfStep(step1),
 				Range:  bundle.BlockRange{First: 10, Length: 20},
 				Period: bundle.MakeUnrestrictedTimePeriod(),
 			},
@@ -358,7 +326,7 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 		},
 		"plan with different start": {
 			plan: bundle.ExecutionPlan{
-				Root:   step1,
+				Root:   bundle.NewAllOfStep(step1),
 				Range:  bundle.BlockRange{First: 11, Length: 20},
 				Period: bundle.MakeUnrestrictedTimePeriod(),
 			},
@@ -374,7 +342,7 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 		},
 		"plan with different end": {
 			plan: bundle.ExecutionPlan{
-				Root:   step1,
+				Root:   bundle.NewAllOfStep(step1),
 				Range:  bundle.BlockRange{First: 10, Length: 21},
 				Period: bundle.MakeUnrestrictedTimePeriod(),
 			},
@@ -384,6 +352,31 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 					{
 						"from":"0x0100000000000000000000000000000000000000",
 						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					}
+				]
+			}`,
+		},
+		"plan with nested single-child groups": {
+			plan: bundle.ExecutionPlan{
+				Root: bundle.NewAllOfStep(
+					bundle.NewOneOfStep(bundle.NewAllOfStep(step1)),
+				),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+				"steps":[
+					{
+						"oneOf":true,
+						"steps":[
+							{
+								"steps":[
+									{
+										"from":"0x0100000000000000000000000000000000000000",
+										"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+									}
+								]
+							}
+						]
 					}
 				]
 			}`,
@@ -402,27 +395,23 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 			},
 			expectedJson: `{
 				"blockRange":{"first":"0xbc614e","length":"0xbc61b2"},
+				"oneOf":true,
 				"steps":[
 					{
-						"oneOf":true,
+						"tolerateFailed":true,
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					},
+					{
 						"steps":[
 							{
-								"tolerateFailed":true,
 								"from":"0x0100000000000000000000000000000000000000",
 								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
 							},
 							{
-								"steps":[
-									{
-										"from":"0x0100000000000000000000000000000000000000",
-										"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
-									},
-									{
-										"tolerateInvalid":true,
-										"from":"0x0300000000000000000000000000000000000000",
-										"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
-									}
-								]
+								"tolerateInvalid":true,
+								"from":"0x0300000000000000000000000000000000000000",
+								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
 							}
 						]
 					}
@@ -452,16 +441,29 @@ func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
 }
 
 func Test_toJsonExecutionPlanVisitor_CanReturnErrors(t *testing.T) {
-
-	visitor := &toJsonExecutionPlanVisitor{
-		toLeaf: func(flags bundle.ExecutionFlags, txRef bundle.TxReference) (any, error) {
-			return nil, fmt.Errorf("test error")
-		},
+	tests := map[string]struct {
+		beginGroup bool
+		wantErr    string
+	}{
+		"leaf conversion fails": {beginGroup: true, wantErr: "test error"},
+		"root is not a group":   {wantErr: "root must be a group"},
 	}
 
-	err := visitor.Step(0, bundle.TxReference{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "test error")
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			visitor := &toJsonExecutionPlanVisitor{
+				toLeaf: func(flags bundle.ExecutionFlags, txRef bundle.TxReference) (any, error) {
+					return nil, fmt.Errorf("test error")
+				},
+			}
+			if tc.beginGroup {
+				visitor.BeginGroup(false, false)
+			}
+
+			err := visitor.Step(0, bundle.TxReference{})
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
 }
 
 func Test_toBundleExecutionPlan_CanReturnErrors(t *testing.T) {
@@ -483,13 +485,21 @@ func Test_toBundleExecutionPlan_CanReturnErrors(t *testing.T) {
 }
 
 func TestNewRPCExecutionPlanComposable_ReturnsErrorWithInvalidPlan(t *testing.T) {
+	tests := map[string]struct {
+		root    bundle.ExecutionStep
+		wantErr string
+	}{
+		"invalid step":        {wantErr: "invalid execution plan"},
+		"root is not a group": {root: bundle.NewTxStep(bundle.TxReference{}), wantErr: "root must be a group"},
+	}
 
-	plan := bundle.ExecutionPlan{}
-
-	_, err := NewRPCExecutionPlanComposable(plan)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "failed to convert execution plan")
-	require.Contains(t, err.Error(), "invalid execution plan")
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := NewRPCExecutionPlanComposable(bundle.ExecutionPlan{Root: tc.root})
+			require.ErrorContains(t, err, "failed to convert execution plan")
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
 }
 
 func expectCanBeDeserialized[T any](t testing.TB, result *T, jsonValue string) {
@@ -563,6 +573,28 @@ func Test_RPCExecutionPlanComposable_UnmarshalJSON_FailsOnInvalidNestedLevelStep
 			var plan RPCExecutionPlanComposable
 			err := json.Unmarshal([]byte(input), &plan)
 			require.Error(t, err)
+		})
+	}
+}
+
+func Test_RPCExecutionPlanComposable_UnmarshalJSON_ChecksNestingDepth(t *testing.T) {
+	tests := map[string]struct {
+		depth   int
+		wantErr bool
+	}{
+		"leaf at maximum depth":     {depth: bundle.MaxGroupNestingDepth},
+		"leaf beyond maximum depth": {depth: bundle.MaxGroupNestingDepth + 1, wantErr: true},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			var plan RPCExecutionPlanComposable
+			err := json.Unmarshal(nestedStepsJSON(tc.depth), &plan)
+			if tc.wantErr {
+				require.ErrorContains(t, err, "execution plan exceeds maximum nesting depth")
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }
