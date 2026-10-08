@@ -1259,7 +1259,7 @@ func (s *Session) TrySendAll(tx []*types.Transaction) ([]common.Hash, map[common
 // batch has reached the pool. The transactions are ordered by the emitter as
 // usual. It returns the transaction hashes in input order.
 func (s *Session) SendAllToPool(ctx context.Context, txs []*types.Transaction) ([]common.Hash, error) {
-	return s.callWithEncodedTxs(ctx, "test_addTransactions", txs)
+	return s.callWithEncodedTxs(ctx, 0, "test_addTransactions", txs)
 }
 
 func (s *Session) ForceEmit(
@@ -1274,11 +1274,17 @@ func (s *Session) ForceEmit(
 }
 
 func (s *Session) ForceEmitAll(ctx context.Context, txs []*types.Transaction) ([]common.Hash, error) {
-	return s.callWithEncodedTxs(ctx, "test_proposeTransactions", txs)
+	return s.ForceEmitAllOnNode(ctx, 0, txs)
 }
 
-func (s *Session) callWithEncodedTxs(ctx context.Context, method string, txs []*types.Transaction) ([]common.Hash, error) {
-	client, err := s.GetClient()
+// ForceEmitAllOnNode is ForceEmitAll with the given node of the network
+// emitting the transactions.
+func (s *Session) ForceEmitAllOnNode(ctx context.Context, node int, txs []*types.Transaction) ([]common.Hash, error) {
+	return s.callWithEncodedTxs(ctx, node, "test_proposeTransactions", txs)
+}
+
+func (s *Session) callWithEncodedTxs(ctx context.Context, node int, method string, txs []*types.Transaction) ([]common.Hash, error) {
+	client, err := s.GetClientConnectedToNode(node)
 	if err != nil {
 		return nil, err
 	}
