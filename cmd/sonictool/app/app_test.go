@@ -26,6 +26,7 @@ import (
 	"math/big"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -42,6 +43,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/bundles"
+	"github.com/0xsoniclabs/sonic/tests/contracts/revert"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/prompt"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -52,6 +54,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"go.uber.org/mock/gomock"
@@ -399,6 +402,92 @@ func TestSonicTool_heal_RefusesEpochsAfterDivergedBundleHistory(t *testing.T) {
 	require.NoError(t, net.Restart())
 
 	healAndCatchUp(t, net, "--epoch", fmt.Sprint(current-1))
+}
+
+func TestSonicTool_heal_RestoresRevertedBundles(t *testing.T) {
+	net := startHealableBundlesNet(t)
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	// envelope(group(tx)) bundles calling a contract that reverts depending on
+	// the sender and the call history, for each bundle with a chance of 1/2
+	revertAddress := tests.MustDeployContract(t, net, revert.DeployRevert)
+	revertAbi, err := revert.RevertMetaData.GetAbi()
+	require.NoError(t, err)
+	block, err := client.BlockNumber(t.Context())
+	require.NoError(t, err)
+
+	const N = 16
+	signer := types.LatestSignerForChainID(net.GetChainId())
+	accounts := tests.MakeAccountsWithBalance(t, net, N, big.NewInt(1e18))
+	envelopes := make([]*types.Transaction, N)
+	plans := make([]common.Hash, N)
+	for i, account := range accounts {
+		envelope, plan := bundle.NewBuilder().
+			WithSigner(signer).
+			SetEarliest(block).
+			AllOf(bundle.Step(account.PrivateKey, tests.SetTransactionDefaults(t, net, &types.AccessListTx{
+				To:   &revertAddress,
+				Data: revertAbi.Methods["probabilisticRevert"].ID,
+				Gas:  100_000,
+			}, account))).
+			BuildEnvelopeAndPlan()
+		envelopes[i], plans[i] = envelope, plan.Hash()
+	}
+
+	// The pool rejects bundles failing a trial run, emission does not.
+	forceEmitByStakedNode(t, net, envelopes...)
+	executed, err := bundles.WaitForBundleExecutions(t.Context(), client.Client(), plans)
+	require.NoError(t, err)
+	require.True(t, slices.ContainsFunc(executed, func(info *sonicapi.RPCBundleInfo) bool {
+		return info.Count == 0
+	}), "no bundle reverted") // < fails with a chance of 2^-16
+
+	// The copies emitted after the target's seal are processed again by the
+	// healed node, which has to skip them like the network did. A transfer
+	// emitted with them shows that their event got confirmed.
+	net.AdvanceEpoch(t, 1)
+	var target hexutil.Uint64
+	require.NoError(t, client.Client().Call(&target, "eth_currentEpoch"))
+	sender := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	transfer := tests.CreateTransaction(t, net, &types.LegacyTx{To: &common.Address{0x42}, Gas: 21_000}, sender)
+	forceEmitByStakedNode(t, net, append(slices.Clone(envelopes), transfer)...)
+	_, err = net.GetReceipt(transfer.Hash())
+	require.NoError(t, err)
+	net.AdvanceEpoch(t, 1)
+	generateNBlocks(t, net, 1) // < needs events of the epoch after the target for verification
+
+	healAndCatchUp(t, net, "--epoch", fmt.Sprint(target))
+
+	// Heal restores reverted bundles at position zero, as they leave no trace
+	// of the position they would have taken in the block.
+	client, err = net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+	for i, plan := range plans {
+		info, err := bundles.GetBundleInfo(t.Context(), client.Client(), plan)
+		require.NoError(t, err)
+		if executed[i].Count == 0 {
+			executed[i].Position = 0
+		}
+		require.Equal(t, executed[i], info, "bundle %d", i)
+	}
+}
+
+// forceEmitByStakedNode makes the high-stake validator of the healable
+// network emit the given transactions, bypassing its transaction pool.
+func forceEmitByStakedNode(t *testing.T, net *tests.IntegrationTestNet, txs ...*types.Transaction) {
+	t.Helper()
+	client, err := net.GetClientConnectedToNode(1)
+	require.NoError(t, err)
+	defer client.Close()
+	encoded := make([][]byte, len(txs))
+	for i, tx := range txs {
+		encoded[i], err = rlp.EncodeToBytes(tx)
+		require.NoError(t, err)
+	}
+	require.NoError(t, client.Client().CallContext(t.Context(), nil, "test_proposeTransactions", encoded))
 }
 
 // startHealableBundlesNet starts a network with transaction bundles in which
