@@ -27,6 +27,16 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Fixed
 
+## [2.2.5] - 7 October 2026
+
+### Added
+
+- Add `rpc.allow-js-tracers` flag that allows custom JavaScript tracers in the `debug_trace*` RPC methods. This is unsafe on publicly exposed nodes.
+
+### Changed
+
+- `debug_trace*` RPC methods only accept built-in tracers by default. A request with a custom JavaScript tracer now fails with `custom tracer is not permitted` unless `rpc.allow-js-tracers` is set.º
+
 ## [2.2.4] - 2 October 2026
 
 Version 2.2.4 is a stability release. Upgrading is recommended for all RPC operators.
