@@ -127,7 +127,11 @@ func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
 	}
 
 	// Update TxIndex for each log
-	for _, l := range logs {
+	for i := range logs {
+		// Logs may be shared with other requests through the receipts cache;
+		// copy them so that neither this update nor callers modify the shared ones.
+		l := *logs[i]
+		logs[i] = &l
 		pos := f.backend.GetTxPosition(l.TxHash)
 
 		if pos != nil {

@@ -17,14 +17,19 @@
 package blockbyhash
 
 import (
+	"errors"
 	"math/big"
 	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter_event_emitter"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 )
 
@@ -91,6 +96,92 @@ func TestRPCGetLogs_BlockWithSkippedTransaction_HasCorrectTxIndexes(t *testing.T
 
 			tx := blockByHash.Transactions()[txIndex]
 			require.Equal(t, tx.Hash().Hex(), log["transactionHash"].(string))
+		}
+	}
+}
+
+// Logs of the by-hash and unindexed queries are served from the receipts
+// cache and therefore shared between requests. Run with -race to detect
+// requests mutating them.
+func TestRPCGetLogs_ConcurrentQueries_HaveCorrectTxIndexes(t *testing.T) {
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: tests.AsPointer(opera.GetBrioUpgrades()),
+	})
+
+	contract, receipt, err := tests.DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
+	require.NoError(t, err)
+	address := receipt.ContractAddress
+
+	// Propose the transactions together so that the block holds logs of
+	// several transaction indexes.
+	accounts := tests.MakeAccountsWithBalance(t, net, 5, big.NewInt(1e18))
+	txs := make([]*types.Transaction, len(accounts))
+	for i, account := range accounts {
+		opts, err := net.GetTransactOptions(account)
+		require.NoError(t, err)
+		opts.NoSend = true
+		txs[i], err = contract.Increment(opts)
+		require.NoError(t, err)
+	}
+	hashes, err := net.ForceEmitAll(t.Context(), txs)
+	require.NoError(t, err)
+	receipts, err := net.GetReceipts(hashes)
+	require.NoError(t, err)
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	block, err := client.BlockByNumber(t.Context(), receipts[0].BlockNumber)
+	require.NoError(t, err)
+	require.Len(t, block.Transactions(), len(txs))
+	hash, number := block.Hash(), block.Number()
+
+	queries := []func() ([]types.Log, error){
+		func() ([]types.Log, error) {
+			return client.FilterLogs(t.Context(), ethereum.FilterQuery{BlockHash: &hash})
+		},
+		func() ([]types.Log, error) {
+			return client.FilterLogs(t.Context(), ethereum.FilterQuery{FromBlock: number, ToBlock: number})
+		},
+		func() ([]types.Log, error) {
+			return client.FilterLogs(t.Context(), ethereum.FilterQuery{
+				FromBlock: number, ToBlock: number, Addresses: []common.Address{address},
+			})
+		},
+		func() ([]types.Log, error) {
+			blockReceipts, err := client.BlockReceipts(t.Context(), rpc.BlockNumberOrHashWithHash(hash, false))
+			var logs []types.Log
+			for _, r := range blockReceipts {
+				for _, l := range r.Logs {
+					logs = append(logs, *l)
+				}
+			}
+			return logs, err
+		},
+	}
+
+	const numWorkers, numQueries = 16, 40
+	results := make([][]types.Log, numWorkers)
+	errs := make([]error, numWorkers)
+	var wg sync.WaitGroup
+	for w := range numWorkers {
+		wg.Go(func() {
+			for q := range numQueries {
+				logs, err := queries[(w+q)%len(queries)]()
+				results[w] = append(results[w], logs...)
+				errs[w] = errors.Join(errs[w], err)
+			}
+		})
+	}
+	wg.Wait()
+	require.NoError(t, errors.Join(errs...))
+
+	for _, logs := range results {
+		for _, log := range logs {
+			require.Equal(t, number.Uint64(), log.BlockNumber)
+			require.Less(t, log.TxIndex, uint(len(block.Transactions())))
+			require.Equal(t, block.Transactions()[log.TxIndex].Hash(), log.TxHash)
 		}
 	}
 }
