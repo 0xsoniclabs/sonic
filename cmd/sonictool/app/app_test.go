@@ -19,6 +19,7 @@ package app_test
 import (
 	"fmt"
 
+	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"io"
@@ -27,6 +28,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/api/sonicapi"
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
@@ -307,6 +309,99 @@ func TestSonicTool_heal_ExecutesWithoutErrors(t *testing.T) {
 
 	_, err := executeSonicTool(t, "--datadir", net.GetDirectory()+"/state", "heal")
 	require.NoError(t, err)
+}
+
+func TestSonicTool_heal_RestoresProcessedBundles(t *testing.T) {
+	net := startHealableBundlesNet(t)
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	// bundles on both sides of the seal of the target epoch
+	runBundle(t, net)
+	net.AdvanceEpoch(t, 1)
+	var target hexutil.Uint64
+	require.NoError(t, client.Client().Call(&target, "eth_currentEpoch"))
+	generateNBlocks(t, net, 1) // < settles the sponsor's nonce after the epoch change
+	runBundle(t, net)
+	net.AdvanceEpoch(t, 1)
+	generateNBlocks(t, net, 1) // < needs events of the epoch after the target
+
+	healAndCatchUp(t, net, "--epoch", fmt.Sprint(target))
+}
+
+func TestSonicTool_heal_RestoresProcessedBundlesBeyondRetainedHistory(t *testing.T) {
+	net := startHealableBundlesNet(t)
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	// a bundle whose range starts before the window of the target but which
+	// is executed inside it, and one whose range starts inside the window
+	current, err := client.BlockNumber(t.Context())
+	require.NoError(t, err)
+	runBundleWithEarliest(t, net, current-(bundle.MaxBlockRangeLength-16))
+	runBundle(t, net)
+	generateNBlocks(t, net, 16) // < moves the target's seal past the first range
+	net.AdvanceEpoch(t, 1)
+	var target hexutil.Uint64
+	require.NoError(t, client.Client().Call(&target, "eth_currentEpoch"))
+	generateNBlocks(t, net, 1) // < settles the sponsor's nonce after the epoch change
+	runBundle(t, net)
+
+	// the store prunes the history hashes around the target's seal
+	generateNBlocks(t, net, int(bundle.MaxBlockRangeLength)+2)
+	net.AdvanceEpoch(t, 1)
+	generateNBlocks(t, net, 1) // < needs events of the epoch after the target
+
+	healAndCatchUp(t, net, "--epoch", fmt.Sprint(target))
+}
+
+// startHealableBundlesNet starts a network with transaction bundles in which
+// the first node can be healed while the network keeps going without it. The
+// network runs past the replay protection window of its genesis, which heal
+// refuses to reach back to.
+func startHealableBundlesNet(t *testing.T) *tests.IntegrationTestNet {
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	upgrades.SingleProposerBlockFormation = false
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades:             &upgrades,
+		ValidatorsStake:      []uint64{1_000, 10_000},
+		ClientExtraArguments: []string{"--statedb.checkpointinterval", "1"},
+	})
+	generateNBlocks(t, net, int(bundle.MaxBlockRangeLength))
+	net.AdvanceEpoch(t, 1)
+	generateNBlocks(t, net, 1) // < settles the sponsor's nonce after the epoch change
+	return net
+}
+
+// healAndCatchUp heals the first node with the given heal arguments and waits
+// for it to catch up with the head of the network. The healed node accepts the
+// events past the target's seal only if it agrees on the epoch hash.
+func healAndCatchUp(t *testing.T, net *tests.IntegrationTestNet, healArgs ...string) {
+	t.Helper()
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	head, err := client.BlockNumber(t.Context())
+	require.NoError(t, err)
+	client.Close()
+
+	net.Stop()
+	_, err = executeSonicTool(t, append([]string{
+		"--datadir", net.GetDirectory() + "/state", "heal"}, healArgs...)...)
+	require.NoError(t, err)
+	require.NoError(t, net.Restart())
+
+	client, err = net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
+	require.NoError(t, tests.WaitFor(ctx, func(ctx context.Context) (bool, error) {
+		current, err := client.BlockNumber(ctx)
+		return current >= head, err
+	}))
 }
 
 func TestSonicTool_config_ExecutesWithoutErrors(t *testing.T) {
@@ -655,16 +750,28 @@ func runBundle(t *testing.T, net *tests.IntegrationTestNet) (
 	t.Helper()
 	client, err := net.GetClient()
 	require.NoError(t, err)
+	block, err := client.BlockNumber(t.Context())
+	require.NoError(t, err)
+	client.Close()
+	return runBundleWithEarliest(t, net, block)
+}
+
+// runBundleWithEarliest is runBundle with a plan whose block range starts at
+// the given block.
+func runBundleWithEarliest(t *testing.T, net *tests.IntegrationTestNet, earliest uint64) (
+	common.Hash,
+	*sonicapi.RPCBundleInfo,
+) {
+	t.Helper()
+	client, err := net.GetClient()
+	require.NoError(t, err)
 	defer client.Close()
 
 	signer := types.LatestSignerForChainID(net.GetChainId())
 
-	block, err := client.BlockNumber(t.Context())
-	require.NoError(t, err)
-
 	envelope, plan := bundle.NewBuilder().
 		WithSigner(signer).
-		SetEarliest(block).
+		SetEarliest(earliest).
 		AllOf(
 			bundle.Step(
 				net.GetSessionSponsor().PrivateKey,
