@@ -32,8 +32,11 @@ import (
 
 	"github.com/0xsoniclabs/sonic/api/sonicapi"
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
+	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
+	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/integration"
 	"github.com/0xsoniclabs/sonic/opera"
 	ogenesis "github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
@@ -41,12 +44,16 @@ import (
 	"github.com/0xsoniclabs/sonic/tests/bundles"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/prompt"
+	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 	"go.uber.org/mock/gomock"
 )
 
@@ -355,6 +362,43 @@ func TestSonicTool_heal_RestoresProcessedBundlesBeyondRetainedHistory(t *testing
 	generateNBlocks(t, net, 1) // < needs events of the epoch after the target
 
 	healAndCatchUp(t, net, "--epoch", fmt.Sprint(target))
+}
+
+func TestSonicTool_heal_RefusesEpochsAfterDivergedBundleHistory(t *testing.T) {
+	net := startHealableBundlesNet(t)
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	runBundle(t, net)
+	net.AdvanceEpoch(t, 1)
+	generateNBlocks(t, net, 1) // < settles the sponsor's nonce after the epoch change
+	runBundle(t, net)
+	net.AdvanceEpoch(t, 1)
+	generateNBlocks(t, net, 1)
+	var current hexutil.Uint64
+	require.NoError(t, client.Client().Call(&current, "eth_currentEpoch"))
+
+	// A node diverged by an earlier heal records a bundle history hash the
+	// network does not share.
+	net.Stop()
+	chaindata := net.GetDirectory() + "/state/chaindata"
+	producer := &db.DummyScopedProducer{IterableDBProducer: integration.GetRawDbProducer(chaindata, integration.DBCacheConfig{
+		Cache: 64 * opt.MiB, Fdlimit: 100,
+	})}
+	gdb, err := gossip.NewStore(producer, gossip.DefaultStoreConfig(cachescale.Identity))
+	require.NoError(t, err)
+	bs, es := gdb.GetHistoryBlockEpochState(idx.Epoch(current))
+	require.NotNil(t, bs)
+	es.EpochEndExecutionPlanChainHash = hash.Hash{0x42}
+	gdb.SetHistoryBlockEpochState(idx.Epoch(current), *bs, *es)
+	require.NoError(t, gdb.Close())
+
+	_, err = executeSonicTool(t, "--datadir", net.GetDirectory()+"/state", "heal")
+	require.ErrorContains(t, err, "diverged")
+	require.NoError(t, net.Restart())
+
+	healAndCatchUp(t, net, "--epoch", fmt.Sprint(current-1))
 }
 
 // startHealableBundlesNet starts a network with transaction bundles in which
