@@ -56,6 +56,13 @@ import (
 // The hash can be used to verify that validators remain aligned on their bundle
 // processing history.
 
+// processedBundlesRetention is the number of blocks for which processed
+// bundles and bundle history hashes are retained. Beyond protecting against
+// replayed bundles, which requires bundle.MaxBlockRangeLength blocks, the
+// retention bounds how far back the processed bundles can be rolled back when
+// healing a node. The value to be overridden by tests only.
+var processedBundlesRetention uint64 = 1 << 15
+
 // AddProcessedBundles adds the given bundle execution information for the given
 // block number. This should be called after every block, listing the bundles
 // that got accepted in the block.
@@ -135,11 +142,11 @@ func (s *Store) addNewBundles(
 func (s *Store) deleteOutdatedBundles(finishedBlock uint64, batch kvdb.Batch) {
 	nextBlock := finishedBlock + 1
 
-	if nextBlock < bundle.MaxBlockRangeLength {
+	if nextBlock < processedBundlesRetention {
 		return
 	}
 
-	highestOutdatedBlockNumber := nextBlock - bundle.MaxBlockRangeLength
+	highestOutdatedBlockNumber := nextBlock - processedBundlesRetention
 
 	// Prune bundle-index and entries keys ('i', 'e').
 	// key layout for 'i': 1 byte prefix + 8 bytes blockNum + 32 bytes execPlanHash
