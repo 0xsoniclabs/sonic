@@ -46,7 +46,7 @@ func TestExportBundles_WritesIntoWriter(t *testing.T) {
 
 	writer := newDryRunWriter(t)
 
-	err := exportBundles(context.Background(), store, writer, 10)
+	err := exportBundles(context.Background(), store, writer, 1)
 	require.NoError(t, err)
 	// Even with no bundles, the history hash is always written.
 	require.Greater(t, writer.uncompressedSize, uint64(0),
@@ -64,7 +64,7 @@ func TestExportBundles_ContextCancelledImmediately(t *testing.T) {
 	cancel()
 
 	writer := newDryRunWriter(t)
-	err := exportBundles(ctx, store, writer, 10)
+	err := exportBundles(ctx, store, writer, 1)
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -83,7 +83,7 @@ func TestExportBundles_ContextCancelledAfterFirstBundle(t *testing.T) {
 	}
 
 	writer := newDryRunWriter(t)
-	err := exportBundles(ctx, store, writer, 10)
+	err := exportBundles(ctx, store, writer, 1)
 	require.ErrorIs(t, err, context.Canceled)
 	require.Greater(t, writer.uncompressedSize, uint64(0),
 		"some data should have been written before cancellation")
@@ -101,10 +101,10 @@ func TestBundles_WriteError(t *testing.T) {
 			return &failingTmpWriter{}
 		},
 	)
-	err := exportBundlesHash(context.Background(), store, writer, 10)
+	err := exportBundlesHash(context.Background(), store, writer, 1)
 	require.Error(t, err)
 
-	err = exportBundles(context.Background(), store, writer, 10)
+	err = exportBundles(context.Background(), store, writer, 1)
 	require.Error(t, err)
 }
 
@@ -144,12 +144,12 @@ func TestBundles_RoundTrip(t *testing.T) {
 
 	err = writer.Start(header, "bh", tmpDir)
 	require.NoError(t, err)
-	err = exportBundlesHash(context.Background(), store, writer, 10)
+	err = exportBundlesHash(context.Background(), store, writer, 1)
 	require.NoError(t, err)
 
 	err = writer.Start(header, "bundles", tmpDir)
 	require.NoError(t, err)
-	err = exportBundles(context.Background(), store, writer, 10)
+	err = exportBundles(context.Background(), store, writer, 1)
 	require.NoError(t, err)
 
 	// Re-open the file and read back through genesisstore.
@@ -181,7 +181,7 @@ func TestBundles_RoundTrip(t *testing.T) {
 func TestBundles_DeterministicOutput(t *testing.T) {
 	// Running export twice with the same data should produce the same hash.
 
-	exporter := []func(context.Context, *gossip.Store, *unitWriter, idx.Block) error{
+	exporter := []func(context.Context, *gossip.Store, *unitWriter, uint64) error{
 		exportBundlesHash,
 		exportBundles,
 	}
@@ -195,17 +195,38 @@ func TestBundles_DeterministicOutput(t *testing.T) {
 			s.SetProcessedBundlesHistoryHash(1, common.Hash{0x42})
 
 			hashWriter1 := newDryRunWriter(t)
-			err := exp(context.Background(), s, hashWriter1, 10)
+			err := exp(context.Background(), s, hashWriter1, 1)
 			require.NoError(t, err)
 
 			hashWriter2 := newDryRunWriter(t)
-			err = exp(context.Background(), s, hashWriter2, 10)
+			err = exp(context.Background(), s, hashWriter2, 1)
 			require.NoError(t, err)
 
 			require.Equal(t, hashWriter1.fileshasher.Root(), hashWriter2.fileshasher.Root(),
 				"same input should produce same output hash")
 		})
 	}
+}
+
+func TestBundleExportBase_LimitsExportToReplayProtectionWindow(t *testing.T) {
+	window := idx.Block(bundle.MaxBlockRangeLength)
+	require.Equal(t, uint64(1), bundleExportBase(1, window),
+		"history shorter than the window is exported whole")
+	require.Equal(t, uint64(1), bundleExportBase(1, window+1))
+	require.Equal(t, uint64(500), bundleExportBase(1, window+500),
+		"longer history is cut to the replay protection window")
+}
+
+func TestExportBundles_SkipsBundlesBeforeBase(t *testing.T) {
+	store := setupBundleStore(t)
+	store.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{{0x01}: {Offset: 0, Count: 1}})
+	store.AddProcessedBundles(2, map[common.Hash]bundle.PositionInBlock{{0x02}: {Offset: 0, Count: 1}})
+
+	all := newDryRunWriter(t)
+	require.NoError(t, exportBundles(context.Background(), store, all, 1))
+	partial := newDryRunWriter(t)
+	require.NoError(t, exportBundles(context.Background(), store, partial, 2))
+	require.Less(t, partial.uncompressedSize, all.uncompressedSize)
 }
 
 func TestMustRlpEncodeToByte_PanicsOnError(t *testing.T) {

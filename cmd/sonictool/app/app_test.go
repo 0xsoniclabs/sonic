@@ -271,9 +271,10 @@ func TestSonicTool_genesis_ExportImport_WithBundles(t *testing.T) {
 	// run another bundle
 	bundleHash2, originalInfo2 := runBundle(t, net)
 
-	// check that the first bundle is pruned and the second bundle is still there after pruning
-	_, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
-	require.ErrorContains(t, err, "not found")
+	// check that both bundles are still retained
+	info1, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
+	require.NoError(t, err)
+	require.Equal(t, originalInfo1, info1)
 	info2, err := bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash2)
 	require.NoError(t, err)
 	require.Equal(t, originalInfo2, info2)
