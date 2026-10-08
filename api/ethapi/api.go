@@ -1180,6 +1180,8 @@ func (diff *StateOverride) Apply(state state.StateDB) error {
 			}
 		}
 	}
+	// Calls must see the overrides as committed state of a preceding transaction.
+	state.EndTransaction()
 	return nil
 }
 
@@ -1261,11 +1263,6 @@ func DoCall(
 		<-ctx.Done()
 		evm.Cancel()
 	}()
-
-	// execute EIP-2935 HistoryStorage contract.
-	if evm.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(block.ParentHash, evm, state)
-	}
 
 	// Add sufficient gas to the pool.
 	gp := core.NewGasPool(math.MaxUint64)
@@ -2806,6 +2803,26 @@ func (api *PublicDebugAPI) TraceBlockByHash(ctx context.Context, hash common.Has
 	return api.traceBlock(ctx, block, config)
 }
 
+// applyPreBlockSystemCalls executes the system calls which have to be applied on
+// top of the parent state before any transaction of the given block can be executed.
+func applyPreBlockSystemCalls(ctx context.Context, b Backend, block *evmcore.EvmBlock, statedb state.StateDB) (*vm.EVM, error) {
+	cfg, err := GetVmConfig(ctx, b, idx.Block(block.NumberU64()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vm config: %w", err)
+	}
+	cfg.NoBaseFee = true
+	vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &cfg, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// execute EIP-2935 HistoryStorage contract.
+	if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
+		evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
+	}
+	return vmenv, nil
+}
+
 // traceBlock configures a new tracer according to the provided configuration, and
 // executes all the transactions contained within. The return value will be one item
 // per transaction, dependent on the requested tracer.
@@ -2819,6 +2836,10 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 	}
 	defer statedb.Release()
 
+	if _, err := applyPreBlockSystemCalls(ctx, api.b, block, statedb); err != nil {
+		return nil, err
+	}
+
 	var (
 		chainConfig   = api.b.ChainConfig(idx.Block(block.Header().Number.Uint64()))
 		txs           = block.Transactions
@@ -2827,7 +2848,10 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 		resultsLength int
 	)
 	for i, tx := range txs {
-		msg, _ := evmcore.TxAsMessage(tx, signer, block.BaseFee)
+		msg, err := evmcore.TxAsMessage(tx, signer, block.BaseFee)
+		if err != nil {
+			return nil, fmt.Errorf("cannot get message from transaction %s: %w", tx.Hash(), err)
+		}
 		txctx := &tracers.Context{
 			BlockHash:   block.Hash,
 			BlockNumber: block.Number,
@@ -2841,7 +2865,7 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 		results[i] = &txTraceResult{TxHash: tx.Hash(), Result: res}
 		resultsLength += len(res)
 
-		statedb.EndTransaction()
+		// Note: statedb.EndTransaction() already included in ApplyTransactionWithEVM
 
 		// limit the response size.
 		if api.maxResponseSize > 0 && resultsLength > api.maxResponseSize {
@@ -2852,7 +2876,7 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 }
 
 // stateAtTransaction returns the execution environment of a certain transaction.
-func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex int, b Backend) (*core.Message, state.StateDB, error) {
+func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex int, b Backend) (_ *core.Message, _ state.StateDB, err error) {
 	// Short circuit if it's genesis block.
 	if block.NumberU64() == 0 {
 		return nil, nil, errors.New("no transaction in genesis")
@@ -2869,26 +2893,19 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 	if err != nil {
 		return nil, nil, err
 	}
+	defer func() {
+		if err != nil {
+			statedb.Release()
+		}
+	}()
 
-	if txIndex == 0 && len(block.Transactions) == 0 {
-		return nil, statedb, nil
-	}
-
-	// Use the block's VM config for replaying transactions with possible no base fee
-	cfg, err := GetVmConfig(ctx, b, idx.Block(block.NumberU64()))
+	vmenv, err := applyPreBlockSystemCalls(ctx, b, block, statedb)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get vm config: %w", err)
-	}
-	cfg.NoBaseFee = true
-	vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &cfg, nil)
-	if err != nil {
-		statedb.Release()
 		return nil, nil, err
 	}
 
-	// execute EIP-2935 HistoryStorage contract.
-	if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
+	if txIndex == 0 && len(block.Transactions) == 0 {
+		return nil, statedb, nil
 	}
 
 	// Recompute transactions up to the target index.
@@ -2915,13 +2932,11 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 
 		statedb.SetTxContext(tx.Hash(), idx)
 		if _, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(tx.Gas())); err != nil {
-			statedb.Release()
 			return nil, nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
 		}
 		// Ensure any modifications are committed to the state
 		statedb.EndTransaction()
 	}
-	statedb.Release()
 	return nil, nil, fmt.Errorf("transaction index %d out of range for block %#x", txIndex, block.Hash)
 }
 
