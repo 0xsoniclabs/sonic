@@ -63,6 +63,7 @@ func exportProcessedBundles(t *testing.T, store *Store) fakeProcessedBundles {
 }
 
 func TestImportProcessedBundles_RestoresHistoryHash_WhenNoBundlesAreRetained(t *testing.T) {
+	setProcessedBundlesRetention(t, bundle.MaxBlockRangeLength+10)
 	require := require.New(t)
 
 	source, err := NewMemStore(t)
@@ -165,6 +166,7 @@ func TestPositionsByExecutionPlan_RejectsDuplicateExecutionPlans(t *testing.T) {
 }
 
 func TestImportProcessedBundles_ReplaysFromOldestHash_WhenRangeExceedsRetentionWindow(t *testing.T) {
+	setProcessedBundlesRetention(t, bundle.MaxBlockRangeLength+3)
 	require := require.New(t)
 
 	source, err := NewMemStore(t)
