@@ -210,10 +210,10 @@ func TestPublicFilterAPI_Subscribe_InstallsFeedBeforeReturning(t *testing.T) {
 			api := NewPublicFilterAPI(backend, testConfig())
 
 			// Release the event loop no matter how this test ends: while it is
-			// occupied, api.Stop waits for the in-flight broadcast, so a
+			// occupied, StopPublicFilterAPI waits for the in-flight broadcast, so a
 			// failure would otherwise hang instead of reporting.
 			releaseLoop := sync.OnceFunc(func() { close(backend.release) })
-			defer api.Stop()
+			defer StopPublicFilterAPI(api)
 			defer releaseLoop()
 
 			server := rpc.NewServer()
@@ -270,7 +270,7 @@ func TestPublicFilterAPI_LogQueryParameterLimit_IsEnforcedOnAllPaths(t *testing.
 	addresses := []common.Address{{1}, {2}, {3}}
 
 	api := NewPublicFilterAPI(newTestBackend(), cfg)
-	defer api.Stop()
+	defer StopPublicFilterAPI(api)
 	server := rpc.NewServer()
 	if err := server.RegisterName("eth", api); err != nil {
 		t.Fatalf("failed to register API: %v", err)
