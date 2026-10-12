@@ -18,6 +18,7 @@ package config
 
 import (
 	"fmt"
+
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -32,13 +33,15 @@ const (
 
 // NodeDefaultConfig contains reasonable default settings.
 var NodeDefaultConfig = node.Config{
-	HTTPPort:            DefaultHTTPPort,
-	HTTPModules:         []string{},
-	HTTPVirtualHosts:    []string{"localhost"},
-	HTTPTimeouts:        rpc.DefaultHTTPTimeouts,
-	WSPort:              DefaultWSPort,
-	WSModules:           []string{},
-	GraphQLVirtualHosts: []string{"localhost"},
+	HTTPPort:             DefaultHTTPPort,
+	HTTPModules:          []string{},
+	HTTPVirtualHosts:     []string{"localhost"},
+	HTTPTimeouts:         rpc.DefaultHTTPTimeouts,
+	WSPort:               DefaultWSPort,
+	WSModules:            []string{},
+	GraphQLVirtualHosts:  []string{"localhost"},
+	BatchRequestLimit:    node.DefaultConfig.BatchRequestLimit,
+	BatchResponseMaxSize: node.DefaultConfig.BatchResponseMaxSize,
 	P2P: p2p.Config{
 		NoDiscovery: false, // enable discovery by default
 		DiscoveryV4: false, // disable discovery v4 by default

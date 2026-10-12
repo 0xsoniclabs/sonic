@@ -51,7 +51,7 @@ var (
 	}
 	FakeUpgrades = cli.StringFlag{
 		Name:  "upgrades",
-		Usage: "Feature set enabled in the fake network, sonic|allegro.",
+		Usage: "Feature set enabled in the fake network, sonic|allegro|brio|canto.",
 		Value: "sonic",
 	}
 )

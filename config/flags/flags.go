@@ -28,7 +28,6 @@ import (
 	pcsclite "github.com/gballet/go-libpcsclite"
 	"gopkg.in/urfave/cli.v1"
 
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/node"
 )
 
@@ -165,7 +164,7 @@ var (
 	HTTPListenAddrFlag = cli.StringFlag{
 		Name:  "http.addr",
 		Usage: "HTTP-RPC server listening interface",
-		Value: node.DefaultHTTPHost,
+		Value: "127.0.0.1",
 	}
 	HTTPPortFlag = cli.IntFlag{
 		Name:  "http.port",
@@ -199,7 +198,7 @@ var (
 	WSListenAddrFlag = cli.StringFlag{
 		Name:  "ws.addr",
 		Usage: "WS-RPC server listening interface",
-		Value: node.DefaultWSHost,
+		Value: "127.0.0.1",
 	}
 	WSPortFlag = cli.IntFlag{
 		Name:  "ws.port",
@@ -318,12 +317,12 @@ var (
 	RPCTxSyncDefaultTimeoutFlag = &cli.DurationFlag{
 		Name:  "rpc.txsync.defaulttimeout",
 		Usage: "Default timeout for eth_sendRawTransactionSync (e.g. 2s, 500ms)",
-		Value: ethconfig.Defaults.TxSyncDefaultTimeout,
+		Value: gossip.DefaultConfig(cachescale.Identity).TxSyncDefaultTimeout,
 	}
 	RPCTxSyncMaxTimeoutFlag = &cli.DurationFlag{
 		Name:  "rpc.txsync.maxtimeout",
 		Usage: "Maximum allowed timeout for eth_sendRawTransactionSync (e.g. 5m)",
-		Value: ethconfig.Defaults.TxSyncMaxTimeout,
+		Value: gossip.DefaultConfig(cachescale.Identity).TxSyncMaxTimeout,
 	}
 	BatchRequestLimit = &cli.IntFlag{
 		Name:  "rpc.batch-request-limit",
