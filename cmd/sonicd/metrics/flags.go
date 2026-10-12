@@ -120,7 +120,7 @@ func SetupMetrics(ctx *cli.Context) error {
 
 		if enableExport || enableExportV2 {
 			if ctx.GlobalIsSet(MetricsEnableInfluxDBFlag.Name) && ctx.GlobalIsSet(MetricsEnableInfluxDBV2Flag.Name) {
-				return fmt.Errorf("flags --%s and %s can't be used at the same time", MetricsEnableInfluxDBFlag.Name, MetricsEnableInfluxDBV2Flag.Name)
+				return fmt.Errorf("flags --%s and --%s can't be used at the same time", MetricsEnableInfluxDBFlag.Name, MetricsEnableInfluxDBV2Flag.Name)
 			}
 
 			v1FlagIsSet := ctx.GlobalIsSet(MetricsInfluxDBUsernameFlag.Name) ||
@@ -131,9 +131,9 @@ func SetupMetrics(ctx *cli.Context) error {
 				ctx.GlobalIsSet(MetricsInfluxDBBucketFlag.Name)
 
 			if enableExport && v2FlagIsSet {
-				return fmt.Errorf("flags --influxdb.metrics.organization, --influxdb.metrics.token, --influxdb.metrics.bucket are only available for influxdb-v2")
+				return fmt.Errorf("flags --%s, --%s, --%s are only available for influxdb-v2 (--%s)", MetricsInfluxDBOrganizationFlag.Name, MetricsInfluxDBTokenFlag.Name, MetricsInfluxDBBucketFlag.Name, MetricsEnableInfluxDBV2Flag.Name)
 			} else if enableExportV2 && v1FlagIsSet {
-				return fmt.Errorf("flags --influxdb.metrics.username, --influxdb.metrics.password are only available for influxdb-v1")
+				return fmt.Errorf("flags --%s, --%s are only available for influxdb-v1 (--%s)", MetricsInfluxDBUsernameFlag.Name, MetricsInfluxDBPasswordFlag.Name, MetricsEnableInfluxDBFlag.Name)
 			}
 		}
 

@@ -286,7 +286,7 @@ var (
 	}
 	RPCGlobalGasCapFlag = cli.Uint64Flag{
 		Name:  "rpc.gascap",
-		Usage: "Sets a cap on gas that can be used in ftm_call/estimateGas (0=infinite)",
+		Usage: "Sets a cap on gas that can be used in eth_call/estimateGas (0=infinite)",
 		Value: gossip.DefaultConfig(cachescale.Identity).RPCGasCap,
 	}
 	RPCGlobalEVMTimeoutFlag = &cli.DurationFlag{
@@ -296,7 +296,7 @@ var (
 	}
 	RPCGlobalTxFeeCapFlag = cli.Float64Flag{
 		Name:  "rpc.txfeecap",
-		Usage: "Sets a cap on transaction fee (in FTM) that can be sent via the RPC APIs (0 = no cap)",
+		Usage: "Sets a cap on transaction fee (in S) that can be sent via the RPC APIs (0 = no cap)",
 		Value: gossip.DefaultConfig(cachescale.Identity).RPCTxFeeCap,
 	}
 	RPCGlobalTimeoutFlag = cli.DurationFlag{
@@ -380,7 +380,7 @@ var (
 	}
 	ValidatorPasswordFlag = cli.StringFlag{
 		Name:  "validator.password",
-		Usage: "Password to unlock validator private key",
+		Usage: "Path to a file containing the password to unlock the validator private key",
 		Value: "",
 	}
 
