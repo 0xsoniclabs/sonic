@@ -387,7 +387,7 @@ var (
 	// Event Emission Throttling
 	EnableThrottlingFlag = cli.BoolTFlag{
 		Name:  "event-throttler",
-		Usage: "Enable event emission throttling based on network conditions.",
+		Usage: "Enable event emission throttling based on network conditions (default = true, use --event-throttler=false to disable).",
 	}
 	ThrottlingDominantThresholdFlag = cli.Float64Flag{
 		Name:  "event-throttler.dominant-threshold",
