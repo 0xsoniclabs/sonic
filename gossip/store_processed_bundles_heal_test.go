@@ -17,13 +17,17 @@
 package gossip
 
 import (
+	"errors"
 	"math/big"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -53,6 +57,10 @@ func TestBlockScan_MarksBundlesPassingPreExecutionChecks(t *testing.T) {
 	outOfRange, _, _ := makeBundle(block + 1)
 	beforeWindow, beforeWindowTxs, _ := makeBundle(block - 1500)
 	processed, _, processedPlan := makeBundle(block - 20)
+	misfueled, _, _ := makeBundle(block - 30)
+	misfueled = types.MustSignNewTx(key, signer, &types.AccessListTx{
+		To: misfueled.To(), Gas: misfueled.Gas() + 1, Data: misfueled.Data(),
+	})
 
 	scan := blockScan{
 		number: block,
@@ -66,7 +74,7 @@ func TestBlockScan_MarksBundlesPassingPreExecutionChecks(t *testing.T) {
 	}
 
 	marks, err := scan.scan([]*types.Transaction{
-		executed, reverted, outOfRange, beforeWindow, processed, reverted,
+		executed, reverted, outOfRange, beforeWindow, processed, reverted, misfueled,
 	})
 	require.NoError(t, err)
 	require.Equal(t, map[common.Hash]bundle.PositionInBlock{
@@ -139,7 +147,15 @@ func TestBlockScan_RefusesNestedBundles(t *testing.T) {
 }
 
 func TestStore_RestoreProcessedBundles_VerifiesEpochHistoryHash(t *testing.T) {
-	for name, corrupt := range map[string]bool{"reproducible": false, "diverged": true} {
+	tests := map[string]struct {
+		corrupt, retained bool
+		err               string
+	}{
+		"reproducible":           {},
+		"diverged":               {corrupt: true, err: "diverged"},
+		"retained hash diverges": {retained: true, err: "store holds"},
+	}
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			store, err := NewMemStore(t)
 			require.NoError(t, err)
@@ -159,7 +175,7 @@ func TestStore_RestoreProcessedBundles_VerifiesEpochHistoryHash(t *testing.T) {
 			for block := uint64(2000); block < 2010; block++ {
 				anchor = nextBundleHistoryHash(anchor, nil, block)
 			}
-			if corrupt {
+			if test.corrupt {
 				anchor = common.Hash{2}
 			}
 			for epoch, state := range map[idx.Epoch]struct {
@@ -176,16 +192,20 @@ func TestStore_RestoreProcessedBundles_VerifiesEpochHistoryHash(t *testing.T) {
 			}
 
 			// a stale table left by the head
+			if test.retained {
+				store.AddProcessedBundles(2010, map[common.Hash]bundle.PositionInBlock{{4}: {}})
+			}
 			store.AddProcessedBundles(2025, map[common.Hash]bundle.PositionInBlock{{3}: {}})
 			_, staleHash := store.GetLatestProcessedBundleHistoryHash()
 
+			require.ErrorContains(t, store.RestoreProcessedBundles(4), "not available")
 			// the window of epoch 1's seal reaches back to the genesis
 			require.ErrorContains(t, store.RestoreProcessedBundles(2), "re-sync")
 
 			err = store.RestoreProcessedBundles(3)
 			_, latest := store.GetLatestProcessedBundleHistoryHash()
-			if corrupt {
-				require.ErrorContains(t, err, "diverged")
+			if test.err != "" {
+				require.ErrorContains(t, err, test.err)
 				require.Equal(t, staleHash, latest)
 				return
 			}
@@ -194,4 +214,137 @@ func TestStore_RestoreProcessedBundles_VerifiesEpochHistoryHash(t *testing.T) {
 			require.Equal(t, nextBundleHistoryHash(anchor, nil, 2010), latest)
 		})
 	}
+}
+
+func TestStore_RestoreProcessedBundles_ClearsTableWithoutBundleHistory(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	store.SetHistoryBlockEpochState(1,
+		iblockproc.BlockState{LastBlock: iblockproc.BlockCtx{Idx: 2000}},
+		iblockproc.EpochState{Epoch: 1, Validators: pos.NewBuilder().Build()})
+	store.AddProcessedBundles(2025, map[common.Hash]bundle.PositionInBlock{{3}: {}})
+
+	require.NoError(t, store.RestoreProcessedBundles(1))
+	require.Empty(t, store.EnumerateProcessedBundles())
+	_, found := store.GetProcessedBundleHistoryHash(2025)
+	require.False(t, found)
+}
+
+func TestStore_ReplayEpochBlocks_ReproducesStoredBlocks(t *testing.T) {
+	store, first, last := newBundleReplayStore(t)
+
+	// The replay yields the inputs of each block, which repeat transactions
+	// already executed; the user transactions of the block are among them.
+	for _, window := range [][2]uint64{{first, last}, {first + 2, last - 1}} {
+		var visited []uint64
+		executed := 0
+		err := store.replayEpochBlocks(2, window[0], window[1], func(number uint64, time inter.Timestamp, _ *opera.Rules, _ types.Signer, txs types.Transactions) error {
+			visited = append(visited, number)
+			block := store.GetBlock(idx.Block(number))
+			require.Equal(t, block.Time, time)
+			for _, tx := range store.GetBlockTxs(idx.Block(number), block) {
+				if r, _, _ := tx.RawSignatureValues(); r.Sign() == 0 {
+					continue // < internal transaction
+				}
+				require.True(t, slices.ContainsFunc(txs, func(input *types.Transaction) bool {
+					return input.Hash() == tx.Hash()
+				}), "block %d misses %x", number, tx.Hash())
+				executed++
+			}
+			return nil
+		})
+		require.NoError(t, err)
+		var expected []uint64
+		for n := window[0]; n <= window[1]; n++ {
+			expected = append(expected, n)
+		}
+		require.Equal(t, expected, visited)
+		require.NotZero(t, executed)
+	}
+
+	marks, err := store.collectProcessedBundles(first, last)
+	require.NoError(t, err)
+	require.Empty(t, marks)
+}
+
+func TestStore_ReplayEpochBlocks_RefusesStoresItCannotReproduce(t *testing.T) {
+	ignore := func(uint64, inter.Timestamp, *opera.Rules, types.Signer, types.Transactions) error { return nil }
+	tests := map[string]struct {
+		tamper func(*Store, uint64)
+		err    string
+	}{
+		"block time differs": {
+			tamper: func(store *Store, last uint64) {
+				block := *store.GetBlock(idx.Block(last))
+				block.Time++
+				store.SetBlock(idx.Block(last), &block)
+			},
+			err: "consensus replay yields block",
+		},
+		"single proposer": {
+			tamper: func(store *Store, last uint64) {
+				bs, es := store.GetHistoryBlockEpochState(2)
+				es.Rules.Upgrades.SingleProposerBlockFormation = true
+				store.SetHistoryBlockEpochState(2, *bs, *es)
+			},
+			err: "single-proposer",
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			store, first, last := newBundleReplayStore(t)
+			test.tamper(store, last)
+			_, err := store.collectProcessedBundles(first, last)
+			require.ErrorContains(t, err, test.err)
+		})
+	}
+
+	t.Run("epoch seals later", func(t *testing.T) {
+		store, first, last := newBundleReplayStore(t)
+		bs, es := store.GetHistoryBlockEpochState(3)
+		bs.LastBlock.Idx += 5
+		store.SetHistoryBlockEpochState(3, *bs, *es)
+		err := store.replayEpochBlocks(2, first, last+5, ignore)
+		require.ErrorContains(t, err, "consensus replay of epoch 2 ends at block")
+	})
+
+	t.Run("visit fails", func(t *testing.T) {
+		store, first, last := newBundleReplayStore(t)
+		failure := errors.New("visit failed")
+		err := store.replayEpochBlocks(2, first, last, func(uint64, inter.Timestamp, *opera.Rules, types.Signer, types.Transactions) error {
+			return failure
+		})
+		require.ErrorIs(t, err, failure)
+	})
+
+	t.Run("next epoch missing", func(t *testing.T) {
+		store, first, last := newBundleReplayStore(t)
+		require.ErrorContains(t, store.replayEpochBlocks(3, first, last, ignore), "epoch 3 is not available")
+		_, err := store.collectProcessedBundles(first, last+100)
+		require.ErrorContains(t, err, "not available")
+	})
+
+	t.Run("event missing", func(t *testing.T) {
+		store, _, _ := newBundleReplayStore(t)
+		require.Nil(t, eventSource{store}.GetEvent(hash.Event{}))
+	})
+}
+
+// newBundleReplayStore returns the store of a chain with transaction bundles
+// whose epoch 2 holds the blocks [first, last] and is sealed.
+func newBundleReplayStore(t *testing.T) (store *Store, first, last uint64) {
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	upgrades.SingleProposerBlockFormation = false
+	env := newTestEnvWithUpgrades(2, 3, upgrades, t)
+	t.Cleanup(func() { require.NoError(t, env.Close()) })
+
+	for _, spent := range []time.Duration{sameEpoch, sameEpoch, nextEpoch, sameEpoch} {
+		_, err := env.ApplyTxs(spent, env.Transfer(1, 2, utils.ToFtm(1)))
+		require.NoError(t, err)
+	}
+	start, _ := env.store.GetHistoryBlockEpochState(2)
+	end, _ := env.store.GetHistoryBlockEpochState(3)
+	require.NotNil(t, end)
+	return env.store, uint64(start.LastBlock.Idx) + 1, uint64(end.LastBlock.Idx)
 }
