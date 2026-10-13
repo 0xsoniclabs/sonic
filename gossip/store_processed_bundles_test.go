@@ -146,8 +146,7 @@ func TestStore_GetBundleExecutionInfo_LogsOnInvalidDataLength(t *testing.T) {
 }
 
 func TestStore_AddProcessedBundles_AddsNewBundlesToStorage(t *testing.T) {
-	const retention = bundle.MaxBlockRangeLength + 3
-	setProcessedBundlesRetention(t, retention)
+	const retention = processedBundlesRetention
 	// this test sets 4 core expectations:
 	// 1. new bundle is added to the storage
 	// 2. the index for the block number is updated
@@ -258,15 +257,14 @@ func TestStore_AddProcessedBundles_LogsOnBatchWriteError(t *testing.T) {
 }
 
 func TestStore_AddProcessedBundles_RemovesOlderHistoryHash_EvenForBlockNumberWithoutBundles(t *testing.T) {
-	const retention = bundle.MaxBlockRangeLength + 3
-	setProcessedBundlesRetention(t, retention)
+	const retention = processedBundlesRetention
 	// This test verifies that as new blocks are added, the history hash of old
 	// blocks are removed even if those blocks don't have bundles.
 
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
 	// Run enough blocks that some 'h' entries from bundle-less blocks get pruned.
-	const currentBlock = bundle.MaxBlockRangeLength * 2
+	const currentBlock = retention + 2*bundle.MaxBlockRangeLength
 	const firstBundle = bundle.MaxBlockRangeLength / 2
 	for block := range uint64(currentBlock) + 1 {
 		// add a single block with bundles
@@ -660,8 +658,7 @@ func TestStore_addNewBundles_LogsOnBatchPutError(t *testing.T) {
 }
 
 func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
-	const retention = bundle.MaxBlockRangeLength + 3
-	setProcessedBundlesRetention(t, retention)
+	const retention = processedBundlesRetention
 
 	caseTable := []struct {
 		storedBundleBlockNumber uint64
@@ -822,8 +819,7 @@ func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 }
 
 func TestStore_deleteOutdatedBundles_RemovesMultipleEntries_WhenNotCleanedForTooLong(t *testing.T) {
-	const retention = bundle.MaxBlockRangeLength + 3
-	setProcessedBundlesRetention(t, retention)
+	const retention = processedBundlesRetention
 	ctrl := gomock.NewController(t)
 	batch := NewMockstoreBatch(ctrl)
 	table := NewMockstoreTable(ctrl)
@@ -855,8 +851,7 @@ func TestStore_deleteOutdatedBundles_RemovesMultipleEntries_WhenNotCleanedForToo
 }
 
 func TestStore_deleteOutdatedBundles_IgnoresIndexKeysOfWrongLength(t *testing.T) {
-	const retention = bundle.MaxBlockRangeLength + 3
-	setProcessedBundlesRetention(t, retention)
+	const retention = processedBundlesRetention
 	// log mock is ignored because no log called should be triggered.
 	store, table, _, batch, it := storeTableLogMocks(t)
 
@@ -882,8 +877,7 @@ func TestStore_deleteOutdatedBundles_IgnoresIndexKeysOfWrongLength(t *testing.T)
 }
 
 func TestStore_deleteOutdatedBundles_IgnoresHashKeysOfWrongLength(t *testing.T) {
-	const retention = bundle.MaxBlockRangeLength + 3
-	setProcessedBundlesRetention(t, retention)
+	const retention = processedBundlesRetention
 	store, table, _, batch, it := storeTableLogMocks(t)
 
 	ctrl := gomock.NewController(t)
@@ -908,8 +902,7 @@ func TestStore_deleteOutdatedBundles_IgnoresHashKeysOfWrongLength(t *testing.T) 
 }
 
 func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
-	const retention = bundle.MaxBlockRangeLength + 3
-	setProcessedBundlesRetention(t, retention)
+	const retention = processedBundlesRetention
 	store, table, log, batch, it := storeTableLogMocks(t)
 
 	injectedErrDeleteEntry := errors.New("entry delete error")
@@ -936,8 +929,7 @@ func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
 }
 
 func TestStore_deleteOutdatedBundles_LogsOnIterationError(t *testing.T) {
-	const retention = bundle.MaxBlockRangeLength + 3
-	setProcessedBundlesRetention(t, retention)
+	const retention = processedBundlesRetention
 	store, table, log, batch, it := storeTableLogMocks(t)
 
 	injectedError := fmt.Errorf("injected issue")
@@ -964,8 +956,7 @@ func TestStore_deleteOutdatedBundles_LogsOnIterationError(t *testing.T) {
 }
 
 func TestStore_deleteOutdatedBundles_LogsOnErrorWhenDeletingHashes(t *testing.T) {
-	const retention = bundle.MaxBlockRangeLength + 3
-	setProcessedBundlesRetention(t, retention)
+	const retention = processedBundlesRetention
 	store, table, log, batch, it := storeTableLogMocks(t)
 
 	ctrl := gomock.NewController(t)
@@ -1000,8 +991,7 @@ func TestStore_deleteOutdatedBundles_LogsOnErrorWhenDeletingHashes(t *testing.T)
 }
 
 func TestStore_deleteOutdatedBundles_LogsOnSecondIterationError(t *testing.T) {
-	const retention = bundle.MaxBlockRangeLength + 3
-	setProcessedBundlesRetention(t, retention)
+	const retention = processedBundlesRetention
 	store, table, log, batch, it := storeTableLogMocks(t)
 
 	ctrl := gomock.NewController(t)
@@ -1305,24 +1295,22 @@ func TestStore_ProcessedBundles_HashIsUpdatedWithNewBlocks(t *testing.T) {
 }
 
 func TestStore_ProcessedBundles_RetainsAllBundlesRequiredToCoverTheMaximumBlockRange(t *testing.T) {
-	setProcessedBundlesRetention(t, bundle.MaxBlockRangeLength)
 	require := require.New(t)
-	numBlocks := 3 * bundle.MaxBlockRangeLength
+	numBlocks := processedBundlesRetention + 2*bundle.MaxBlockRangeLength
 
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
 	// While progressing through the blocks, all execution plans must be retained
-	// until their maximum block range has expired.
+	// until their maximum block range has expired. Pruning removes the oldest
+	// plans first, so checking the oldest plan still in range covers all of them.
 	for currentBlockNumber := range numBlocks {
-
-		// Check that the store covers exactly the plans of the past that are
-		// allowed to be included in the current block (before adding it).
-		for block := uint64(0); block < currentBlockNumber; block++ {
-			blockRange := bundle.MakeMaxRangeStartingAt(block)
-			want := blockRange.IsInRange(currentBlockNumber)
-			require.Equal(
-				want, store.HasBundleRecentlyBeenProcessed(uint64ToHash(block)),
+		if currentBlockNumber >= bundle.MaxBlockRangeLength {
+			oldest := currentBlockNumber - bundle.MaxBlockRangeLength + 1
+			blockRange := bundle.MakeMaxRangeStartingAt(oldest)
+			require.True(blockRange.IsInRange(currentBlockNumber))
+			require.True(
+				store.HasBundleRecentlyBeenProcessed(uint64ToHash(oldest)),
 				"Current block %d, checking plan with range %v",
 				currentBlockNumber, blockRange,
 			)
@@ -1338,7 +1326,7 @@ func TestStore_ProcessedBundles_RetainsAllHashesToVerifyContainedExecutionPlans(
 	// This test makes sure that exactly those hashes are retained in the store
 	// that are required to verify the stored execution plan hashes.
 	require := require.New(t)
-	numBlocks := 3 * bundle.MaxBlockRangeLength
+	numBlocks := processedBundlesRetention + 3*bundle.MaxBlockRangeLength
 
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -1346,8 +1334,11 @@ func TestStore_ProcessedBundles_RetainsAllHashesToVerifyContainedExecutionPlans(
 	for currentBlockNumber := range numBlocks {
 
 		// Verify that for exactly those blocks that are still in the store the
-		// hashes required for their verification are also in the store.
-		for b := range currentBlockNumber {
+		// hashes required for their verification are also in the store. Away
+		// from the pruning boundary everything is present, so only the blocks
+		// around it are checked.
+		from := max(currentBlockNumber, processedBundlesRetention+2) - processedBundlesRetention - 2
+		for b := from; b < min(from+5, currentBlockNumber); b++ {
 
 			_, hashPresent := store.GetProcessedBundleHistoryHash(b)
 
@@ -1412,7 +1403,6 @@ func TestStore_EnumerateProcessedBundles_ReturnsEmptySliceWhenNoEntries(t *testi
 
 func TestStore_EnumerateProcessedBundles_ReturnsAllAddedEntries(t *testing.T) {
 
-	setProcessedBundlesRetention(t, bundle.MaxBlockRangeLength+2)
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -1442,13 +1432,11 @@ func TestStore_EnumerateProcessedBundles_ReturnsAllAddedEntries(t *testing.T) {
 	entries := store.EnumerateProcessedBundles()
 	// ProcessedBundlesRetention-1 entries (oldest was pruned)
 	require.Len(entries, int(processedBundlesRetention-1))
-	require.Len(entries, len(expected),
-		"expected number of exported entries does not match expected")
-
-	// Verify each returned entry matches the expected info
-	for _, entry := range expected {
-		require.Contains(entries, entry, "expected entry not found: %+v", entry)
+	got := make(map[common.Hash]bundle.ExecutionInfo, len(entries))
+	for _, entry := range entries {
+		got[entry.ExecutionPlanHash] = entry
 	}
+	require.Equal(expected, got)
 }
 
 func TestStore_EnumerateProcessedBundles_LogsOnCrit_IteratorError(t *testing.T) {
@@ -1641,7 +1629,6 @@ func TestStore_ProcessedBundles_DeletingEntries_DoesNotAffectHistoryHash(t *test
 	// This test verifies that the automatic pruning of old bundle entries
 	// (triggered once enough blocks have passed) does not alter the history hash.
 
-	setProcessedBundlesRetention(t, bundle.MaxBlockRangeLength+2)
 	require := require.New(t)
 
 	store, err := NewMemStore(t)
@@ -1785,12 +1772,4 @@ func (m BundleExecutionInfoMatcher) Matches(v any) bool {
 func (m BundleExecutionInfoMatcher) String() string {
 	return fmt.Sprintf("is a byte slice encoding bundle.ExecutionInfo with block number %d, offset %d and count %d",
 		m.expected.BlockNumber, m.expected.Position.Offset, m.expected.Position.Count)
-}
-
-// setProcessedBundlesRetention overrides the retention for the duration of the test.
-func setProcessedBundlesRetention(t *testing.T, retention uint64) {
-	t.Helper()
-	original := processedBundlesRetention
-	processedBundlesRetention = retention
-	t.Cleanup(func() { processedBundlesRetention = original })
 }

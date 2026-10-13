@@ -60,8 +60,8 @@ import (
 // bundles and bundle history hashes are retained. Beyond protecting against
 // replayed bundles, which requires bundle.MaxBlockRangeLength blocks, the
 // retention bounds how far back the processed bundles can be rolled back when
-// healing a node. The value to be overridden by tests only.
-var processedBundlesRetention uint64 = 1 << 15
+// healing a node.
+const processedBundlesRetention uint64 = 1 << 15
 
 // AddProcessedBundles adds the given bundle execution information for the given
 // block number. This should be called after every block, listing the bundles
