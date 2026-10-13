@@ -22,6 +22,7 @@ import (
 	"runtime"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
@@ -198,7 +199,14 @@ func testLargeTransactionLoadTest(
 	// load peak.
 	slices.Reverse(transactions)
 
-	receipts, err := net.RunAll(transactions)
+	hashes, rejected, err := net.TrySendAll(transactions)
+	require.NoError(err, "failed to send transactions")
+	require.Empty(rejected, "transactions rejected")
+
+	// The flood is processed by all nodes in this single process, which on a
+	// contended CI agent takes several times longer than locally. The test is
+	// about the network not stalling, so the budget is generous.
+	receipts, err := net.TryGetReceipts(5*time.Minute, hashes)
 	require.NoError(err, "failed to run transactions")
 	for _, receipt := range receipts {
 		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
