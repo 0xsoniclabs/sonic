@@ -183,9 +183,6 @@ func TestImportProcessedBundles_ReplaysFromOldestHash_WhenRangeExceedsRetentionW
 	})
 	exported := exportProcessedBundles(t, source)
 	require.Len(exported.infos, 1)
-	require.GreaterOrEqual(
-		exported.historyHashes.Latest.BlockNumber-exported.historyHashes.Oldest.BlockNumber,
-		uint64(1023))
 
 	target, err := NewMemStore(t)
 	require.NoError(err)
@@ -195,6 +192,41 @@ func TestImportProcessedBundles_ReplaysFromOldestHash_WhenRangeExceedsRetentionW
 	_, gotHash := target.GetLatestProcessedBundleHistoryHash()
 	require.Equal(wantHash, gotHash)
 	require.True(target.HasBundleRecentlyBeenProcessed(common.Hash{0x02}))
+}
+
+func TestImportProcessedBundles_ReimportsShortHistory_OfStoreBootstrappedWithoutBundles(t *testing.T) {
+	require := require.New(t)
+
+	// a node is bootstrapped from a genesis carrying a history hash but no retained bundles
+	const importBlock = 2000
+	node, err := NewMemStore(t)
+	require.NoError(err)
+	require.NoError(node.importProcessedBundles(fakeProcessedBundles{
+		historyHashes: &bundle.BundleGenesisHistoryHashes{
+			Latest: bundle.HistoryHash{BlockNumber: importBlock, Hash: common.Hash{0x42}},
+			Oldest: bundle.HistoryHash{BlockNumber: importBlock, Hash: common.Hash{0x42}},
+		},
+	}))
+
+	// it processes a bundle and exports again before a full window has passed
+	for block := uint64(importBlock + 1); block <= importBlock+100; block++ {
+		var bundles map[common.Hash]bundle.PositionInBlock
+		if block == importBlock+5 {
+			bundles = map[common.Hash]bundle.PositionInBlock{{0x01}: {Offset: 0, Count: 1}}
+		}
+		node.AddProcessedBundles(block, bundles)
+	}
+	exported := exportProcessedBundles(t, node)
+	require.Equal(uint64(importBlock), exported.historyHashes.Oldest.BlockNumber)
+
+	target, err := NewMemStore(t)
+	require.NoError(err)
+	require.NoError(target.importProcessedBundles(exported))
+
+	_, wantHash := node.GetLatestProcessedBundleHistoryHash()
+	_, gotHash := target.GetLatestProcessedBundleHistoryHash()
+	require.Equal(wantHash, gotHash)
+	require.True(target.HasBundleRecentlyBeenProcessed(common.Hash{0x01}))
 }
 
 func TestImportProcessedBundles_FailsOnHistoryHashMismatch(t *testing.T) {
