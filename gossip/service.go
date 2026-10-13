@@ -659,7 +659,7 @@ func (s *Service) Stop() error {
 
 	// Must stop before the store is closed to avoid reading from a closed store.
 	if s.filterAPI != nil {
-		s.filterAPI.Stop()
+		filters.StopPublicFilterAPI(s.filterAPI)
 	}
 	s.feed.Stop()
 	s.gpo.Stop()

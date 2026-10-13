@@ -268,19 +268,19 @@ func TestEventSystem_Stop_Idempotent(t *testing.T) {
 	es.Stop()
 }
 
-func TestPublicFilterAPI_Stop(t *testing.T) {
+func TestStopPublicFilterAPI(t *testing.T) {
 	api := NewPublicFilterAPI(newTestBackend(), testConfig())
 
 	done := make(chan struct{})
 	go func() {
-		api.Stop()
+		StopPublicFilterAPI(api)
 		close(done)
 	}()
 
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("PublicFilterAPI.Stop did not return")
+		t.Fatal("StopPublicFilterAPI did not return")
 	}
 }
 
