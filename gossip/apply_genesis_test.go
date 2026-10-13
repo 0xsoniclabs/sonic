@@ -292,3 +292,20 @@ func TestImportProcessedBundles_ReportsError_WhenRestoringHistoryHashFails(t *te
 	err := store.importProcessedBundles(bundles)
 	require.ErrorIs(t, err, injectedErr)
 }
+
+func TestCheckBundleHistoryBlock_RequiresLatestHistoryHashAtLastGenesisBlock(t *testing.T) {
+	const lastBlock = 100
+	historyAt := func(block uint64) fakeProcessedBundles {
+		return fakeProcessedBundles{historyHashes: &bundle.BundleGenesisHistoryHashes{
+			Latest: bundle.HistoryHash{BlockNumber: block, Hash: common.Hash{0x42}},
+		}}
+	}
+
+	require.NoError(t, checkBundleHistoryBlock(historyAt(lastBlock), lastBlock))
+	require.NoError(t, checkBundleHistoryBlock(fakeProcessedBundles{}, lastBlock),
+		"a genesis without bundle history has nothing to check")
+	for _, block := range []uint64{lastBlock - 1, lastBlock + 1} {
+		require.ErrorContains(t, checkBundleHistoryBlock(historyAt(block), lastBlock),
+			"latest bundle history hash is at block")
+	}
+}

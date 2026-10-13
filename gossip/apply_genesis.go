@@ -26,6 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/utils/dbutil/autocompact"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/batched"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -133,9 +134,23 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 	s.Log.Info("StateDB imported successfully, stateRoot matches", "index", lastBlock.Idx, "root", lastBlock.StateRoot)
 
 	if g.ProcessedBundles != nil {
+		if err := checkBundleHistoryBlock(g.ProcessedBundles, lastBlock.Idx); err != nil {
+			return err
+		}
 		if err := s.importProcessedBundles(g.ProcessedBundles); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// checkBundleHistoryBlock ensures the latest bundle history hash belongs to the last
+// block of the genesis, as the node continues the history hash chain from that block.
+func checkBundleHistoryBlock(bundles genesis.ProcessedBundles, lastBlock idx.Block) error {
+	historyHashes, hasHistory := bundles.GetHistoryHashes()
+	if hasHistory && historyHashes.Latest.BlockNumber != uint64(lastBlock) {
+		return fmt.Errorf("latest bundle history hash is at block %d, but genesis ends at block %d",
+			historyHashes.Latest.BlockNumber, lastBlock)
 	}
 	return nil
 }
