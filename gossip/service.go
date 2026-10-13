@@ -55,7 +55,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/drivermodule"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/eventmodule"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/sealmodule"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
@@ -196,7 +195,6 @@ type BlockProc struct {
 	PreTxTransactor  blockproc.TxTransactor
 	PostTxTransactor blockproc.TxTransactor
 	EventsModule     blockproc.ConfirmedEventsModule
-	EVMModule        blockproc.EVM
 }
 
 func DefaultBlockProc() BlockProc {
@@ -206,7 +204,6 @@ func DefaultBlockProc() BlockProc {
 		PreTxTransactor:  drivermodule.NewDriverTxPreTransactor(),
 		PostTxTransactor: drivermodule.NewDriverTxTransactor(),
 		EventsModule:     eventmodule.New(),
-		EVMModule:        evmmodule.New(),
 	}
 }
 
@@ -362,8 +359,15 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	svc.txpool = newTxPool(stateReader)
 	svc.gpo.SetReader(&GPOBackend{svc.store, svc.txpool})
 
-	// create the long-lived ledger driven by the consensus block callback
-	svc.ledger = NewLedger(svc.store)
+	// create the long-lived ledger driven by the consensus block callback. It
+	// derives its own state reader (without the gas-price oracle) from the store
+	// and feed.
+	svc.ledger = NewLedger(
+		svc.store,
+		LedgerConfig{
+			Feed: &svc.feed,
+		},
+	)
 
 	// init dialCandidates
 	dnsclient := dnsdisc.NewClient(dnsdisc.Config{})

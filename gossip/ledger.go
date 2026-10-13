@@ -19,26 +19,79 @@ package gossip
 import (
 	"errors"
 	"fmt"
+	"math"
+	"time"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 )
 
-// BlockParams holds the header inputs for the next block.
+// BlockParams holds the inputs for executing the next block.
 type BlockParams struct {
+	// Must follow the head's number.
 	Number uint64
+	// Block timestamp.
+	Time inter.Timestamp
+	// Consensus epoch the block belongs to (recorded on the block).
+	Epoch      idx.Epoch
+	PrevRandao common.Hash
+	// Announced block gas limit (also the system batch budget).
+	GasLimit uint64
+	// Per-batch gas budget for user transactions.
+	UserGasLimit uint64
+	// Block-start rules snapshot, used unchanged for the whole block.
+	Rules opera.Rules
 }
 
 // Ledger is the consensus-agnostic block processing component.
 type Ledger struct {
-	store *Store
+	evmModule blockproc.EVM
+	store     *Store
+	config    LedgerConfig
 }
 
-// NewLedger creates a Ledger over the given store.
-func NewLedger(store *Store) *Ledger {
-	return &Ledger{store: store}
+// LedgerConfig groups the configuration a Ledger needs beyond the store: the
+// new-block feed (reader input, may be nil) and the block-execution metrics
+// sink (may be nil, in which case NewLedger uses the default sink).
+type LedgerConfig struct {
+	Feed             *ServiceFeed
+	ExecutionMetrics evmcore.BlockExecutionMetrics
+}
+
+// NewLedger creates a Ledger over the given store, backed by the production EVM
+// implementation. A nil config.ExecutionMetrics defaults to the shared
+// block-execution metrics sink.
+func NewLedger(store *Store, config LedgerConfig) *Ledger {
+	if config.ExecutionMetrics == nil {
+		config.ExecutionMetrics = sonicFeaturesMetrics
+	}
+	return newLedgerInternal(store, config, evmmodule.New())
+}
+
+// newLedgerInternal creates a ledger with an explicit EVM module. It exists so
+// tests can inject an EVM mock; production code uses NewLedger.
+func newLedgerInternal(
+	store *Store,
+	config LedgerConfig,
+	evm blockproc.EVM,
+) *Ledger {
+	return &Ledger{
+		evmModule: evm,
+		store:     store,
+		config:    config,
+	}
 }
 
 // Head returns a handle to the block the consensus head pointer points to,
@@ -67,16 +120,21 @@ func (h *Head) Block() *inter.Block {
 	return h.block
 }
 
-// BeginBlock opens the live state at the head's state root. It fails if
-// a block was already begun on this head, params.Number does not follow
-// the head, the head is stale, or the live state does not match it.
-func (h *Head) BeginBlock(params BlockParams) (*ExecutingBlock, error) {
+// BeginBlock opens the live state at the head's state root and starts
+// executing the next block on it, forwarding emitted logs to onNewLog.
+func (h *Head) BeginBlock(
+	params BlockParams,
+	onNewLog func(*core_types.Log),
+) (*ExecutingBlock, error) {
 	if h.consumed {
 		return nil, errors.New("head already consumed")
 	}
 	if params.Number != h.block.Number+1 {
 		return nil, fmt.Errorf("block %d does not follow head %d",
 			params.Number, h.block.Number)
+	}
+	if params.Time <= h.block.Time {
+		return nil, fmt.Errorf("block time %d is not after head time %d", params.Time, h.block.Time)
 	}
 
 	latest := h.ledger.store.GetLatestBlock()
@@ -89,16 +147,186 @@ func (h *Head) BeginBlock(params BlockParams) (*ExecutingBlock, error) {
 		return nil, err
 	}
 	h.consumed = true
-	return &ExecutingBlock{statedb: statedb}, nil
+	evmCfg := opera.CreateTransientEvmChainConfig(
+		params.Rules.NetworkID,
+		h.ledger.store.GetUpgradeHeights(),
+		idx.Block(params.Number),
+	)
+	return &ExecutingBlock{
+		ledger:  h.ledger,
+		params:  params,
+		statedb: statedb,
+		evmProcessor: h.ledger.evmModule.Start(
+			idx.Block(params.Number),
+			params.Time,
+			params.Epoch,
+			statedb,
+			&EvmStateReader{ServiceFeed: h.ledger.config.Feed, store: h.ledger.store},
+			onNewLog,
+			params.Rules,
+			evmCfg,
+			params.PrevRandao,
+			h.ledger.config.ExecutionMetrics,
+		),
+		blockBuilder: inter.NewBlockBuilder().
+			WithEpoch(params.Epoch).
+			WithNumber(params.Number).
+			WithParentHash(h.block.Hash()).
+			WithTime(params.Time).
+			WithPrevRandao(params.PrevRandao).
+			WithGasLimit(params.GasLimit).
+			WithDuration(time.Duration(params.Time - h.block.Time)),
+	}, nil
 }
 
 // ExecutingBlock is a block being executed. It owns the live state.
 type ExecutingBlock struct {
-	statedb state.StateDB
+	ledger       *Ledger
+	params       BlockParams
+	statedb      state.StateDB
+	evmProcessor blockproc.EVMProcessor
+	blockBuilder *inter.BlockBuilder
+	finalized    bool
 }
 
 // stateDB returns the block's live state. It is unexported so that only
 // the gossip package can reach it, e.g. for the consensus callback.
 func (eb *ExecutingBlock) stateDB() state.StateDB {
+	if eb.finalized {
+		panic("stateDB called after Finalize")
+	}
 	return eb.statedb
+}
+
+// Run executes a batch of user transactions in order, adding the accepted ones
+// to the block while honoring the block's user gas limit and the block size
+// limit, and returns the execution summary so the caller can react to the
+// resulting receipts and logs.
+func (eb *ExecutingBlock) Run(txs types.Transactions) evmcore.ProcessSummary {
+	if eb.finalized {
+		panic("Run called after Finalize")
+	}
+	remainingSize := uint64(math.MaxUint64)
+	if eb.params.Rules.Upgrades.Brio {
+		remainingSize = uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
+		for _, tx := range eb.blockBuilder.GetTransactions() {
+			txSize := tx.Size()
+			if txSize > remainingSize {
+				// Still call evmProcessor execute with 0 remaining size to
+				// track skipped transactions correctly.
+				log.Warn("block filled with only internal transactions")
+				remainingSize = 0
+				break
+			}
+			remainingSize -= txSize
+		}
+	}
+
+	summary := eb.evmProcessor.Execute(txs, eb.params.UserGasLimit, remainingSize)
+	for _, processed := range summary.ProcessedTransactions {
+		if processed.Receipt != nil { // < nil if skipped
+			eb.blockBuilder.AddTransaction(
+				processed.Transaction,
+				processed.Receipt,
+			)
+		}
+	}
+
+	return summary
+}
+
+// runInternal executes a batch of system (consensus-internal) transactions with
+// an unlimited gas and size budget, adds the accepted ones to the block, and
+// returns the execution summary.
+func (eb *ExecutingBlock) runInternal(txs types.Transactions) evmcore.ProcessSummary {
+	if eb.finalized {
+		panic("runInternal called after Finalize")
+	}
+	summary := eb.evmProcessor.Execute(txs, eb.params.GasLimit, math.MaxUint64)
+	for _, processed := range summary.ProcessedTransactions {
+		if processed.Receipt != nil {
+			eb.blockBuilder.AddTransaction(processed.Transaction, processed.Receipt)
+		}
+	}
+	return summary
+}
+
+// BlockCandidate is a processed-but-unpublished block produced by Finalize.
+type BlockCandidate struct {
+	Block      *inter.Block
+	EvmBlock   *evmcore.EvmBlock
+	Receipts   types.Receipts
+	NumSkipped int
+}
+
+// sonicMainnetBlock8054923GasLimit is the canonical header gas limit
+// (0x12a05f200) of the single Sonic mainnet epoch-sealing block (8054923, hash
+// 0x14a024348f821220ac90dc28422ca367ed7e47cf0c491d97e9a4834925cb4c90) that
+// adopted the post-seal MaxBlockGas in its own header. It is a fixed historical
+// value, deliberately not derived from any rule parameter, so historical replay
+// stays stable regardless of future rule defaults.
+const sonicMainnetBlock8054923GasLimit = 0x12a05f200 // 5,000,000,000
+
+// Finalize completes the block: it applies the Sonic mainnet header gas-limit
+// exception, finalizes EVM execution to obtain the state root, assembles and
+// hashes the block, stamps the block hash and time onto the receipts and their
+// logs, and returns the finalized block.
+func (eb *ExecutingBlock) Finalize() *FinalizedBlock {
+	if eb.finalized {
+		panic("Finalize called twice")
+	}
+	eb.finalized = true
+
+	// In the past, there was one epoch-sealing block (8054923 on Sonic mainnet)
+	// in which the block gas limit was adapted in the sealing block itself
+	// rather than in the following block. Every other block keeps the
+	// block-start gas limit, so this one-time exception is reproduced by
+	// stamping the canonical header gas limit of that block as a fixed
+	// historical constant. The value is hard-coded (rather than read from the
+	// post-seal rules) so the ledger never needs to observe the epoch's sealed
+	// rules.
+	if eb.params.Rules.NetworkID == 146 && eb.params.Number == 8054923 {
+		eb.blockBuilder.WithGasLimit(sonicMainnetBlock8054923GasLimit)
+	}
+
+	evmBlock, numSkipped, receipts := eb.evmProcessor.Finalize()
+
+	// Add results of the transaction processing to the block.
+	eb.blockBuilder.
+		WithStateRoot(common.Hash(evmBlock.Root)).
+		WithGasUsed(evmBlock.GasUsed).
+		WithBaseFee(evmBlock.BaseFee)
+
+	// Complete the block.
+	block := eb.blockBuilder.Build()
+	evmBlock.Hash = block.Hash()
+	evmBlock.Duration = time.Duration(block.Duration)
+
+	// Update block-hash and -time values in receipts and logs.
+	for i := range receipts {
+		receipts[i].BlockHash = block.Hash()
+		for j := range receipts[i].Logs {
+			receipts[i].Logs[j].BlockHash = block.Hash()
+			receipts[i].Logs[j].BlockTimestamp = uint64(block.Time.Unix())
+		}
+	}
+
+	return &FinalizedBlock{
+		candidate: &BlockCandidate{
+			Block:      block,
+			EvmBlock:   evmBlock,
+			Receipts:   receipts,
+			NumSkipped: numSkipped,
+		},
+	}
+}
+
+// FinalizedBlock is an assembled and hashed block that is not yet persisted.
+type FinalizedBlock struct {
+	candidate *BlockCandidate
+}
+
+// Candidate returns the assembled block and its execution results.
+func (fb *FinalizedBlock) Candidate() *BlockCandidate {
+	return fb.candidate
 }
