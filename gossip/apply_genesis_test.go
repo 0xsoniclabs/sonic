@@ -63,7 +63,6 @@ func exportProcessedBundles(t *testing.T, store *Store) fakeProcessedBundles {
 }
 
 func TestImportProcessedBundles_RestoresHistoryHash_WhenNoBundlesAreRetained(t *testing.T) {
-	setProcessedBundlesRetention(t, bundle.MaxBlockRangeLength+10)
 	require := require.New(t)
 
 	source, err := NewMemStore(t)
@@ -74,7 +73,7 @@ func TestImportProcessedBundles_RestoresHistoryHash_WhenNoBundlesAreRetained(t *
 	source.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
 		{0x01}: {Offset: 0, Count: 1},
 	})
-	const lastBlock = 1100
+	const lastBlock = processedBundlesRetention + 100
 	for block := uint64(2); block <= lastBlock; block++ {
 		source.AddProcessedBundles(block, nil)
 	}
@@ -166,7 +165,6 @@ func TestPositionsByExecutionPlan_RejectsDuplicateExecutionPlans(t *testing.T) {
 }
 
 func TestImportProcessedBundles_ReplaysFromOldestHash_WhenRangeExceedsRetentionWindow(t *testing.T) {
-	setProcessedBundlesRetention(t, bundle.MaxBlockRangeLength+3)
 	require := require.New(t)
 
 	source, err := NewMemStore(t)
@@ -174,7 +172,7 @@ func TestImportProcessedBundles_ReplaysFromOldestHash_WhenRangeExceedsRetentionW
 	source.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
 		{0x01}: {Offset: 0, Count: 1},
 	})
-	const lastBlock = 1030
+	const lastBlock = processedBundlesRetention + 6
 	for block := uint64(2); block <= lastBlock; block++ {
 		source.AddProcessedBundles(block, nil)
 	}
