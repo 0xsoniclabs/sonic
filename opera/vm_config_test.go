@@ -49,6 +49,18 @@ func TestGetVmConfig_SingleProposerModeDisablesExcessGasCharging(t *testing.T) {
 	}
 }
 
+func TestGetVmConfig_InsufficientBalanceIsAnErrorStartingWithCanto(t *testing.T) {
+	for name, upgrades := range opera.GetAllHardForksInOrder() {
+		t.Run(name, func(t *testing.T) {
+			rules := opera.Rules{Upgrades: upgrades}
+
+			vmConfig := opera.GetVmConfig(rules)
+
+			require.Equal(t, !upgrades.Canto, vmConfig.InsufficientBalanceIsNotAnError)
+		})
+	}
+}
+
 func TestGetVmConfig_NonBrioUpgrade_DoesNotSetMaxTxGas(t *testing.T) {
 
 	rules := opera.Rules{
