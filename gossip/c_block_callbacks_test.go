@@ -136,6 +136,18 @@ func testConsensusCallback(t *testing.T, upgrades opera.Upgrades) {
 
 func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testing.T) {
 	t.Parallel()
+	for name, upgrades := range map[string]opera.Upgrades{
+		"Allegro": opera.GetAllegroUpgrades(),
+		"Dolce":   opera.GetDolceUpgrades(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t, upgrades)
+		})
+	}
+}
+
+func testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testing.T, upgrades opera.Upgrades) {
+	t.Parallel()
 	MaxEmptyBlockSkipPeriod := inter.Timestamp(10_000)
 
 	tests := map[string]struct {
@@ -202,7 +214,7 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 			// proposal given in the test, the other being the atropos.
 
 			// Create a store with an applied genesis.
-			upgrades := opera.GetAllegroUpgrades()
+			upgrades := upgrades
 			upgrades.SingleProposerBlockFormation = true
 			store := newInMemoryStoreWithGenesisData(t, upgrades, 1, 2)
 
@@ -358,6 +370,18 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 // finite, Brio-derived limit proves the start rules were used.
 func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
 	t.Parallel()
+	for name, upgrades := range map[string]opera.Upgrades{
+		"Brio":  opera.GetBrioUpgrades(),
+		"Dolce": opera.GetDolceUpgrades(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t, upgrades)
+		})
+	}
+}
+
+func testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T, upgrades opera.Upgrades) {
+	t.Parallel()
 	require := require.New(t)
 
 	const maxEmptyBlockSkipPeriod = inter.Timestamp(10_000)
@@ -366,7 +390,6 @@ func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
 	const blockTime = lastBlockTime + maxEmptyBlockSkipPeriod + 1
 
 	// Start the block with the Brio rules enabled, using single-proposer mode.
-	upgrades := opera.GetBrioUpgrades()
 	upgrades.SingleProposerBlockFormation = true
 	store := newInMemoryStoreWithGenesisData(t, upgrades, 1, 2)
 
@@ -521,6 +544,18 @@ func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
 // buggy (post-seal) behavior would report validator 0.
 func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testing.T) {
 	t.Parallel()
+	for name, upgrades := range map[string]opera.Upgrades{
+		"Brio":  opera.GetBrioUpgrades(),
+		"Dolce": opera.GetDolceUpgrades(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t, upgrades)
+		})
+	}
+}
+
+func testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testing.T, upgrades opera.Upgrades) {
+	t.Parallel()
 	require := require.New(t)
 
 	const maxEmptyBlockSkipPeriod = inter.Timestamp(10_000)
@@ -530,7 +565,6 @@ func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 	const originCreator = idx.ValidatorID(1)
 
 	// Start the block with the Brio rules enabled, using single-proposer mode.
-	upgrades := opera.GetBrioUpgrades()
 	upgrades.SingleProposerBlockFormation = true
 	store := newInMemoryStoreWithGenesisData(t, upgrades, 1, 2)
 
@@ -687,9 +721,20 @@ func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 // that its result is what gets executed.
 func TestConsensusCallback_AppliesTransactionPriorities(t *testing.T) {
 	t.Parallel()
+	for name, upgrades := range map[string]opera.Upgrades{
+		"Brio":  opera.GetBrioUpgrades(),
+		"Dolce": opera.GetDolceUpgrades(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			testConsensusCallback_AppliesTransactionPriorities(t, upgrades)
+		})
+	}
+}
+
+func testConsensusCallback_AppliesTransactionPriorities(t *testing.T, upgrades opera.Upgrades) {
+	t.Parallel()
 	require := require.New(t)
 
-	upgrades := opera.GetBrioUpgrades()
 	upgrades.SingleProposerBlockFormation = true
 	upgrades.TransactionPriorities = true
 
@@ -818,7 +863,17 @@ func TestConsensusCallback_AppliesTransactionPriorities(t *testing.T) {
 }
 
 func TestEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransaction(t *testing.T) {
-	upgrades := opera.GetBrioUpgrades()
+	for name, upgrades := range map[string]opera.Upgrades{
+		"Brio":  opera.GetBrioUpgrades(),
+		"Dolce": opera.GetDolceUpgrades(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			testEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransaction(t, upgrades)
+		})
+	}
+}
+
+func testEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransaction(t *testing.T, upgrades opera.Upgrades) {
 	upgrades.SingleProposerBlockFormation = true
 	env := newTestEnvWithUpgrades(2, 1, upgrades, t)
 	t.Cleanup(func() { require.NoError(t, env.Close()) })
@@ -2233,6 +2288,10 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupWithBrio(t *te
 	}{
 		"with Brio, derived tx uses origin tx's event creator": {
 			upgrades:             opera.GetBrioUpgrades(),
+			wantDerivedTxCreator: idx.ValidatorID(1),
+		},
+		"with Dolce, derived tx uses origin tx's event creator": {
+			upgrades:             opera.GetDolceUpgrades(),
 			wantDerivedTxCreator: idx.ValidatorID(1),
 		},
 		"without Brio, derived tx uses its own txPosition (zero, not in any event)": {
