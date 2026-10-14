@@ -21,13 +21,37 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBundle_BlocksWithBundlesCanBeReplayedAndVerified(t *testing.T) {
-	net := GetIntegrationTestNetWithBundlesEnabled(t)
+	for name, upgrades := range opera.GetAllHardForksInOrder() {
+		if !upgrades.Brio {
+			continue
+		}
+		t.Run(name, func(t *testing.T) {
+			single := upgrades
+			single.SingleProposerBlockFormation = true
+			distributed := upgrades
+			distributed.SingleProposerBlockFormation = false
+			t.Run("single", func(t *testing.T) {
+				testBlocksWithBundlesCanBeReplayedAndVerified(t, single)
+			})
+			t.Run("distributed", func(t *testing.T) {
+				testBlocksWithBundlesCanBeReplayedAndVerified(t, distributed)
+			})
+		})
+	}
+}
+
+func testBlocksWithBundlesCanBeReplayedAndVerified(t *testing.T, upgrades opera.Upgrades) {
+	upgrades.TransactionBundles = true
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
 
 	client, err := net.GetClient()
 	require.NoError(t, err)

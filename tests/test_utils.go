@@ -384,12 +384,16 @@ func _cartesianProductRecursion[T any](current []T, elements [][]T, callback fun
 // - return (false, err) when the predicate function encountered an error
 // - return (true, nil) when the stopping condition is satisfied
 //
-// Total wait time is hard-coded to a very generous 100 seconds, this is to allow
-// tests with -race not to timeout because their very slow progress. This value is
+// If the given context has a deadline, it bounds the total wait time. Otherwise
+// the wait time defaults to a very generous 100 seconds, this is to allow tests
+// with -race not to timeout because their very slow progress. This value is
 // arbitrary and was selected by the previous version of this algorithm.
 func WaitFor(ctx context.Context, predicate func(context.Context) (bool, error)) error {
 
-	timedContext, cancel := context.WithTimeout(ctx, 100*time.Second)
+	timedContext, cancel := context.WithCancel(ctx)
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		timedContext, cancel = context.WithTimeout(ctx, 100*time.Second)
+	}
 	defer cancel()
 
 	// implement some backoff strategy: sleeps get longer the longer it

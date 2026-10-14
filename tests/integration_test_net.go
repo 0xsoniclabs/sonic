@@ -1395,9 +1395,33 @@ func (s *Session) TryGetReceipts(timeout time.Duration, txHash []common.Hash) ([
 		},
 	)
 	if err != nil {
-		return nil, err
+		missing := 0
+		for _, receipt := range res {
+			if receipt == nil {
+				missing++
+			}
+		}
+		return nil, fmt.Errorf("%d of %d receipts missing, %s: %w",
+			missing, len(res), s.describeLatestBlock(), err)
 	}
 	return res, nil
+}
+
+// describeLatestBlock reports the latest block of the network for diagnosing
+// a failed wait, distinguishing a stalled network from a slow one.
+func (s *Session) describeLatestBlock() string {
+	client, err := s.net.GetClient()
+	if err != nil {
+		return fmt.Sprintf("latest block unknown: %v", err)
+	}
+	defer client.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	latest, err := client.BlockNumber(ctx)
+	if err != nil {
+		return fmt.Sprintf("latest block unknown: %v", err)
+	}
+	return fmt.Sprintf("latest block %d", latest)
 }
 
 // waitUntilBlockStateIsLatest blocks until the node the given client is
@@ -1408,19 +1432,24 @@ func (s *Session) TryGetReceipts(timeout time.Duration, txHash []common.Hash) ([
 func waitUntilBlockStateIsLatest(ctx context.Context, client *PooledEhtClient, blockNumber *big.Int) error {
 	var lastErr error
 	err := WaitFor(ctx, func(ctx context.Context) (bool, error) {
-		latest, err := client.BlockNumber(ctx)
-		if err != nil {
-			lastErr = fmt.Errorf("failed to get latest block number: %w", err)
+		fail := func(err error) (bool, error) {
+			// A probe cut by the expiring context carries no information, keep
+			// the reason of the last probe that completed instead.
+			if lastErr == nil || ctx.Err() == nil {
+				lastErr = err
+			}
 			return false, nil
 		}
+		latest, err := client.BlockNumber(ctx)
+		if err != nil {
+			return fail(fmt.Errorf("failed to get latest block number: %w", err))
+		}
 		if latest < blockNumber.Uint64() {
-			lastErr = fmt.Errorf("latest block %d is behind block %d", latest, blockNumber)
-			return false, nil
+			return fail(fmt.Errorf("latest block %d is behind block %d", latest, blockNumber))
 		}
 		// State queries for a block whose state is not yet available fail.
 		if _, err := client.BalanceAt(ctx, common.Address{}, blockNumber); err != nil {
-			lastErr = fmt.Errorf("state of block %d is not available: %w", blockNumber, err)
-			return false, nil
+			return fail(fmt.Errorf("state of block %d is not available: %w", blockNumber, err))
 		}
 		return true, nil
 	})
