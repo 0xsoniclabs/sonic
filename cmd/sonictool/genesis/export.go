@@ -99,11 +99,13 @@ func ExportGenesis(ctx context.Context, gdb *gossip.Store, includeArchive bool, 
 	}
 
 	// bundles hash
+	earliest, _, _ := gdb.GetEarliestBundleHistoryHash()
+	bundlesBase := bundleExportBase(earliest, lastBlock)
 	writer = newUnitWriter(out)
 	if err := writer.Start(header, "bh", tmpPath); err != nil {
 		return err
 	}
-	if err := exportBundlesHash(ctx, gdb, writer, lastBlock); err != nil {
+	if err := exportBundlesHash(ctx, gdb, writer, bundlesBase); err != nil {
 		return err
 	}
 
@@ -112,7 +114,7 @@ func ExportGenesis(ctx context.Context, gdb *gossip.Store, includeArchive bool, 
 	if err := writer.Start(header, "bundles", tmpPath); err != nil {
 		return err
 	}
-	if err := exportBundles(ctx, gdb, writer, lastBlock); err != nil {
+	if err := exportBundles(ctx, gdb, writer, bundlesBase); err != nil {
 		return err
 	}
 
@@ -224,11 +226,23 @@ func exportFwaSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter
 	return nil
 }
 
-func exportBundlesHash(ctx context.Context, gdb *gossip.Store, writer *unitWriter, lastBlock idx.Block) error {
+// bundleExportBase returns the block whose bundle history hash is exported as
+// the base of the processed bundles history; bundles processed since that
+// block are exported. Only the replay protection window of bundle.MaxBlockRangeLength
+// blocks is exported, even if the store retains a longer history.
+func bundleExportBase(earliest uint64, lastBlock idx.Block) uint64 {
+	if uint64(lastBlock) < bundle.MaxBlockRangeLength {
+		return earliest
+	}
+	return max(earliest, uint64(lastBlock)-bundle.MaxBlockRangeLength)
+}
+
+func exportBundlesHash(ctx context.Context, gdb *gossip.Store, writer *unitWriter, base uint64) error {
 	log.Info("Exporting processed bundles history hash")
 
 	latestBlockNum, latestHash := gdb.GetLatestProcessedBundleHistoryHash()
-	oldestBlockNum, oldestHash, ok := gdb.GetEarliestBundleHistoryHash()
+	oldestBlockNum := base
+	oldestHash, ok := gdb.GetProcessedBundleHistoryHash(base)
 
 	if !ok {
 		log.Info("No processed bundles history hash found in genesis, skipping export")
@@ -260,12 +274,15 @@ func exportBundlesHash(ctx context.Context, gdb *gossip.Store, writer *unitWrite
 	return nil
 }
 
-func exportBundles(ctx context.Context, gdb *gossip.Store, writer *unitWriter, lastBlock idx.Block) error {
-	log.Info("Exporting processed bundles")
+func exportBundles(ctx context.Context, gdb *gossip.Store, writer *unitWriter, fromBlock uint64) error {
+	log.Info("Exporting processed bundles", "fromBlock", fromBlock)
 
-	// write all the execution info from the store.
+	// write the execution info of the bundles processed since the base block.
 	count := 0
 	for _, info := range gdb.EnumerateProcessedBundles() {
+		if info.BlockNumber < fromBlock {
+			continue
+		}
 		b := MustRlpEncodeToByte(info)
 		if _, err := writer.Write(b); err != nil {
 			return err
