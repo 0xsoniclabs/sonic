@@ -21,7 +21,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/node"
 	"github.com/stretchr/testify/require"
 	cli "gopkg.in/urfave/cli.v1"
 
@@ -118,15 +117,6 @@ func TestMakeAllConfigs_EventThrottler_FlagOverridesConfigFileOverridesDefault(t
 			require.Equal(t, test.expected, cfg.Emitter.ThrottlerConfig.Enabled)
 		})
 	}
-}
-
-func TestMakeAllConfigs_RpcBatchLimits_DefaultsMatchGethDefaults(t *testing.T) {
-	cfg := makeAllConfigsFromArgs(t, "")
-
-	require.NotZero(t, node.DefaultConfig.BatchRequestLimit)
-	require.NotZero(t, node.DefaultConfig.BatchResponseMaxSize)
-	require.Equal(t, node.DefaultConfig.BatchRequestLimit, cfg.Node.BatchRequestLimit)
-	require.Equal(t, node.DefaultConfig.BatchResponseMaxSize, cfg.Node.BatchResponseMaxSize)
 }
 
 func TestMakeAllConfigs_RpcBatchLimits_FlagDefaultsMatchConfigDefaults(t *testing.T) {
