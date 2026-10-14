@@ -330,7 +330,7 @@ func testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 			blockBusyFlag := uint32(0)
 			emitters := []*emitter.Emitter{}
 			beginBlock := consensusCallbackBeginBlockFn(
-				workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store, evmModule, nil), proc, false, nil, &emitters, nil, &bootstrapping,
+				workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store, evmModule, nil, false), proc, false, nil, &emitters, nil, &bootstrapping,
 			)
 
 			// Run a full consensus callback cycle for this block.
@@ -490,7 +490,7 @@ func testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T, u
 	blockBusyFlag := uint32(0)
 	emitters := []*emitter.Emitter{}
 	beginBlock := consensusCallbackBeginBlockFn(
-		workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store, evmModule, nil), proc, false, nil, &emitters, nil, &bootstrapping,
+		workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store, evmModule, nil, false), proc, false, nil, &emitters, nil, &bootstrapping,
 	)
 
 	callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
@@ -548,7 +548,7 @@ func TestConsensusCallback_UsesLedgerFromTheBlockAfterTheOneEnablingDolce(t *tes
 	produceBlock()
 	require.True(t, store.GetEpochState().Rules.Upgrades.Dolce)
 
-	ledger.EXPECT().Head().DoAndReturn(NewLedger(store, evmmodule.New(), nil).Head)
+	ledger.EXPECT().Head().DoAndReturn(NewLedger(store, evmmodule.New(), nil, false).Head)
 	produceBlock()
 }
 
@@ -589,7 +589,7 @@ func TestConsensusCallback_BeginsBlockWithParamsFromConsensusAndLogsToTxListener
 	}
 
 	ctrl := gomock.NewController(t)
-	realHead, err := NewLedger(store, evmmodule.New(), nil).Head()
+	realHead, err := NewLedger(store, evmmodule.New(), nil, false).Head()
 	require.NoError(t, err)
 	newLog := &core_types.Log{}
 	head := NewMockHead(ctrl)
@@ -786,7 +786,7 @@ func testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 	blockBusyFlag := uint32(0)
 	emitters := []*emitter.Emitter{}
 	beginBlock := consensusCallbackBeginBlockFn(
-		workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store, evmModule, nil), proc, false, nil, &emitters, nil, &bootstrapping,
+		workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store, evmModule, nil, false), proc, false, nil, &emitters, nil, &bootstrapping,
 	)
 
 	callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
@@ -936,7 +936,7 @@ func testConsensusCallback_AppliesTransactionPriorities(t *testing.T, upgrades o
 	blockBusyFlag := uint32(0)
 	emitters := []*emitter.Emitter{}
 	beginBlock := consensusCallbackBeginBlockFn(
-		workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store, evmModule, nil), proc, false, nil, &emitters, nil, &bootstrapping,
+		workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store, evmModule, nil, false), proc, false, nil, &emitters, nil, &bootstrapping,
 	)
 
 	callbacks := beginBlock(&lachesis.Block{Atropos: event.ID()})
@@ -1017,7 +1017,7 @@ func TestConsensusCallback_InconsistentHead_TerminatesProcess(t *testing.T) {
 				blockBusyFlag := uint32(0)
 				emitters := []*emitter.Emitter{}
 				beginBlock := consensusCallbackBeginBlockFn(
-					nil, &wg, &blockBusyFlag, store, NewLedger(store, evmmodule.New(), nil), BlockProc{EventsModule: eventsModule, TxListenerModule: txListenerModule}, false, nil, &emitters, nil, &bootstrapping,
+					nil, &wg, &blockBusyFlag, store, NewLedger(store, evmmodule.New(), nil, false), BlockProc{EventsModule: eventsModule, TxListenerModule: txListenerModule}, false, nil, &emitters, nil, &bootstrapping,
 				)
 				callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
 				callbacks.ApplyEvent(atropos)
@@ -1055,7 +1055,7 @@ func TestConsensusCallback_SkippedBlock_OpensLiveStateOnlyBeforeDolce(t *testing
 			t.Parallel()
 			store := newInMemoryStoreWithGenesisData(t, test.upgrades, 1, 2)
 			beginBlock := consensusCallbackBeginBlockFn(
-				nil, new(sync.WaitGroup), new(uint32), store, NewLedger(store, evmmodule.New(), nil), DefaultBlockProc(), false, nil, &[]*emitter.Emitter{}, nil, new(bool),
+				nil, new(sync.WaitGroup), new(uint32), store, NewLedger(store, evmmodule.New(), nil, false), DefaultBlockProc(), false, nil, &[]*emitter.Emitter{}, nil, new(bool),
 			)
 
 			// Opening the live state on a missing EVM store panics.
@@ -1154,6 +1154,62 @@ func testEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransact
 	require.NotNil(t, store.GetBlock(blockNumber))
 	require.Equal(t, []*types.Transaction{nonPermissibleTx, permissibleTx},
 		store.GetEventPayload(event.ID()).Payload().Proposal.Transactions)
+}
+
+func TestConsensusCallback_CommitsThenAdvancesHeadThenPublishes(t *testing.T) {
+	t.Parallel()
+	store := newInMemoryStoreWithGenesisData(t, opera.GetDolceUpgrades(), 1, 2)
+
+	atropos := (&inter.MutableEventPayload{}).Build()
+
+	// The block has no transactions; it is produced instead of skipped only
+	// without an empty-block skip period.
+	es := store.GetEpochState()
+	es.Rules.Blocks.MaxEmptyBlockSkipPeriod = 0
+	store.SetBlockEpochState(store.GetBlockState(), es)
+
+	ctrl := gomock.NewController(t)
+	_any := gomock.Any()
+
+	head := store.GetLatestBlockIndex()
+	committed := NewMockCommittedBlock(ctrl)
+	finalized := NewMockFinalizedBlock(ctrl)
+	finalized.EXPECT().Candidate().Return(&BlockCandidate{Block: inter.NewBlockBuilder().Build(), EvmBlock: &evmcore.EvmBlock{}})
+	gomock.InOrder(
+		finalized.EXPECT().Commit().DoAndReturn(func() CommittedBlock {
+			// The head has not advanced yet.
+			require.Equal(t, head, store.GetLatestBlockIndex())
+			return committed
+		}),
+		committed.EXPECT().Publish().Do(func() {
+			// The head has advanced to the new block.
+			require.Equal(t, head+1, store.GetLatestBlockIndex())
+		}),
+	)
+	executing := NewMockExecutingBlock(ctrl)
+	executing.EXPECT().stateDB()
+	executing.EXPECT().runInternal(_any).Times(2)
+	executing.EXPECT().Run(_any)
+	executing.EXPECT().Finalize().Return(finalized)
+	ledgerHead := NewMockHead(ctrl)
+	ledgerHead.EXPECT().Block().Return(store.GetLatestBlock())
+	ledgerHead.EXPECT().BeginBlock(_any, _any).Return(executing, nil)
+	ledger := NewMockLedger(ctrl)
+	ledger.EXPECT().Head().Return(ledgerHead, nil)
+
+	// Without confirmed events carrying transactions, the block is processed
+	// synchronously within EndBlock, so no workers are needed.
+	var callbackWaitGroup sync.WaitGroup
+	bootstrapping := false
+	blockBusyFlag := uint32(0)
+	emitters := []*emitter.Emitter{}
+	beginBlock := consensusCallbackBeginBlockFn(
+		nil, &callbackWaitGroup, &blockBusyFlag, store, ledger, DefaultBlockProc(), false, nil, &emitters, nil, &bootstrapping,
+	)
+
+	callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
+	callbacks.ApplyEvent(atropos)
+	callbacks.EndBlock()
 }
 
 func TestExtractProposalForNextBlock_NoEvents_ReturnsNoProposal(t *testing.T) {
@@ -2630,7 +2686,7 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupFromBrio(t *te
 			blockBusyFlag := uint32(0)
 			emitters := []*emitter.Emitter{}
 			beginBlock := consensusCallbackBeginBlockFn(
-				workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store, evmModule, nil), proc, false, nil, &emitters, nil, &bootstrapping,
+				workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store, evmModule, nil, false), proc, false, nil, &emitters, nil, &bootstrapping,
 			)
 
 			callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})

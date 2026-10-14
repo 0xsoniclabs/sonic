@@ -218,11 +218,8 @@ func consensusCallbackBeginBlockFn(
 						store,
 						ledger,
 						blockProc,
-						txIndex,
-						feed,
 						verWatcher,
 						cBlock,
-						start,
 						bs,
 						es,
 						evmStateReader,
@@ -731,11 +728,8 @@ func endBlock(
 	store *Store,
 	ledger Ledger,
 	blockProc BlockProc,
-	txIndex bool,
-	feed *ServiceFeed,
 	verWatcher *verwatcher.VersionWatcher,
 	cBlock *lachesis.Block,
-	start time.Time,
 	bs iblockproc.BlockState,
 	es iblockproc.EpochState,
 	evmStateReader *EvmStateReader,
@@ -994,32 +988,23 @@ func endBlock(
 
 		txCausedBy := executingBlock.Run(proposal.Transactions).CausedBy
 
-		candidate := executingBlock.Finalize().Candidate()
+		finalizedBlock := executingBlock.Finalize()
+		candidate := finalizedBlock.Candidate()
 		block := candidate.Block
 		evmBlock := candidate.EvmBlock
 		allReceipts := candidate.Receipts
 		numSkippedTxs := candidate.NumSkipped
 
 		// memorize the event creator of each tx
-		txPositions := make(map[common.Hash]ExtendedTxPosition)
+		txCreators := make(map[common.Hash]idx.ValidatorID)
 		for _, e := range blockEvents {
 			for _, tx := range e.Transactions() {
 				// If tx was met in multiple events, then assign to first ordered event
-				if _, ok := txPositions[tx.Hash()]; ok {
+				if _, ok := txCreators[tx.Hash()]; ok {
 					continue
 				}
-				txPositions[tx.Hash()] = ExtendedTxPosition{
-					EventCreator: e.Creator(),
-				}
+				txCreators[tx.Hash()] = e.Creator()
 			}
-		}
-		// memorize block position of each tx
-		for i, tx := range evmBlock.Transactions {
-			// not skipped txs only
-			position := txPositions[tx.Hash()]
-			position.Block = blockCtx.Idx
-			position.BlockOffset = uint32(i)
-			txPositions[tx.Hash()] = position
 		}
 
 		// call OnNewReceipt
@@ -1030,7 +1015,7 @@ func endBlock(
 					originTx = origin
 				}
 			}
-			creator := txPositions[originTx].EventCreator
+			creator := txCreators[originTx]
 			if creator != 0 && es.Validators.Get(creator) == 0 {
 				creator = 0
 			}
@@ -1040,30 +1025,6 @@ func endBlock(
 		bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
 		// At this point, block state is finalized
 
-		// Store the transaction bodies before indexing their
-		// positions, such that readers finding a position always
-		// find the corresponding body as well.
-		for _, tx := range evmBlock.Transactions {
-			store.evm.SetTx(tx.Hash(), tx)
-		}
-
-		// Build index for not skipped txs
-		if txIndex {
-			for _, tx := range evmBlock.Transactions {
-				// not skipped txs only
-				store.evm.SetTxPosition(tx.Hash(), txPositions[tx.Hash()].TxPosition)
-			}
-
-			// Index receipts
-			// Note: it's possible for receipts to get indexed twice by BR and block processing
-			if allReceipts.Len() != 0 {
-				store.evm.SetReceipts(blockCtx.Idx, allReceipts)
-				for _, r := range allReceipts {
-					store.evm.IndexLogs(r.Logs...)
-				}
-			}
-		}
-
 		bs.LastBlock = blockCtx
 		bs.CheatersWritten = uint32(bs.EpochCheaters.Len())
 		if sealing {
@@ -1071,10 +1032,11 @@ func endBlock(
 			store.SetEpochBlock(blockCtx.Idx+1, es.Epoch)
 		}
 
-		store.SetBlock(blockCtx.Idx, block)
-		store.SetBlockIndex(block.Hash(), blockCtx.Idx)
+		// Persist the block, its transactions, receipts, logs and indices.
+		committedBlock := finalizedBlock.Commit()
+
+		// Set the head to the new block, which makes the new block visible.
 		store.SetBlockEpochState(bs, es)
-		store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
 
 		// Update the metrics touched during block processing
 		executionTime := time.Since(executionStart)
@@ -1086,28 +1048,10 @@ func endBlock(
 		headHeaderGauge.Update(int64(blockCtx.Idx))
 		headFastBlockGauge.Update(int64(blockCtx.Idx))
 
-		// Notify about new block
-		if feed != nil {
-			var logs []*types.Log
-			for _, r := range allReceipts {
-				logs = append(logs, r.Logs...)
-			}
-			feed.notifyAboutNewBlock(evmBlock, logs)
-		}
+		// Publish the new block to the RPC layer.
+		committedBlock.Publish()
 
-		now := time.Now()
-		blockAge := now.Sub(block.Time.Time())
-		log.Info("New block",
-			"index", blockCtx.Idx,
-			"id", block.Hash(),
-			"gas_used", evmBlock.GasUsed,
-			"gas_rate", float64(evmBlock.GasUsed)/time.Duration(block.Duration).Seconds(),
-			"base_fee", evmBlock.BaseFee.String(),
-			"txs", fmt.Sprintf("%d/%d", len(evmBlock.Transactions), numSkippedTxs),
-			"age", utils.PrettyDuration(blockAge),
-			"t", utils.PrettyDuration(now.Sub(start)),
-			"epoch", evmBlock.Epoch,
-		)
+		blockAge := time.Since(block.Time.Time())
 		blockAgeGauge.Update(int64(blockAge.Nanoseconds()))
 
 		processedTxsMeter.Mark(int64(len(evmBlock.Transactions)))

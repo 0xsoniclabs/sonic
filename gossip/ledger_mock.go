@@ -229,3 +229,53 @@ func (mr *MockFinalizedBlockMockRecorder) Candidate() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Candidate", reflect.TypeOf((*MockFinalizedBlock)(nil).Candidate))
 }
+
+// Commit mocks base method.
+func (m *MockFinalizedBlock) Commit() CommittedBlock {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Commit")
+	ret0, _ := ret[0].(CommittedBlock)
+	return ret0
+}
+
+// Commit indicates an expected call of Commit.
+func (mr *MockFinalizedBlockMockRecorder) Commit() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockFinalizedBlock)(nil).Commit))
+}
+
+// MockCommittedBlock is a mock of CommittedBlock interface.
+type MockCommittedBlock struct {
+	ctrl     *gomock.Controller
+	recorder *MockCommittedBlockMockRecorder
+	isgomock struct{}
+}
+
+// MockCommittedBlockMockRecorder is the mock recorder for MockCommittedBlock.
+type MockCommittedBlockMockRecorder struct {
+	mock *MockCommittedBlock
+}
+
+// NewMockCommittedBlock creates a new mock instance.
+func NewMockCommittedBlock(ctrl *gomock.Controller) *MockCommittedBlock {
+	mock := &MockCommittedBlock{ctrl: ctrl}
+	mock.recorder = &MockCommittedBlockMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockCommittedBlock) EXPECT() *MockCommittedBlockMockRecorder {
+	return m.recorder
+}
+
+// Publish mocks base method.
+func (m *MockCommittedBlock) Publish() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Publish")
+}
+
+// Publish indicates an expected call of Publish.
+func (mr *MockCommittedBlockMockRecorder) Publish() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Publish", reflect.TypeOf((*MockCommittedBlock)(nil).Publish))
+}
