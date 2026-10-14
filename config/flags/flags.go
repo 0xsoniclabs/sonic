@@ -164,7 +164,7 @@ var (
 	HTTPListenAddrFlag = cli.StringFlag{
 		Name:  "http.addr",
 		Usage: "HTTP-RPC server listening interface",
-		Value: node.DefaultHTTPHost,
+		Value: "127.0.0.1",
 	}
 	HTTPPortFlag = cli.IntFlag{
 		Name:  "http.port",
@@ -198,7 +198,7 @@ var (
 	WSListenAddrFlag = cli.StringFlag{
 		Name:  "ws.addr",
 		Usage: "WS-RPC server listening interface",
-		Value: node.DefaultWSHost,
+		Value: "127.0.0.1",
 	}
 	WSPortFlag = cli.IntFlag{
 		Name:  "ws.port",
@@ -286,7 +286,7 @@ var (
 	}
 	RPCGlobalGasCapFlag = cli.Uint64Flag{
 		Name:  "rpc.gascap",
-		Usage: "Sets a cap on gas that can be used in ftm_call/estimateGas (0=infinite)",
+		Usage: "Sets a cap on gas that can be used in eth_call/estimateGas (0=infinite)",
 		Value: gossip.DefaultConfig(cachescale.Identity).RPCGasCap,
 	}
 	RPCGlobalEVMTimeoutFlag = &cli.DurationFlag{
@@ -296,7 +296,7 @@ var (
 	}
 	RPCGlobalTxFeeCapFlag = cli.Float64Flag{
 		Name:  "rpc.txfeecap",
-		Usage: "Sets a cap on transaction fee (in FTM) that can be sent via the RPC APIs (0 = no cap)",
+		Usage: "Sets a cap on transaction fee (in S) that can be sent via the RPC APIs (0 = no cap)",
 		Value: gossip.DefaultConfig(cachescale.Identity).RPCTxFeeCap,
 	}
 	RPCGlobalTimeoutFlag = cli.DurationFlag{
@@ -316,13 +316,13 @@ var (
 	}
 	BatchRequestLimit = &cli.IntFlag{
 		Name:  "rpc.batch-request-limit",
-		Usage: "Maximum number of requests in a batch",
-		Value: node.DefaultConfig.BatchRequestLimit,
+		Usage: "Maximum number of requests in a batch (0 for unlimited)",
+		Value: 0,
 	}
 	BatchResponseMaxSize = &cli.IntFlag{
 		Name:  "rpc.batch-response-max-size",
-		Usage: "Maximum number of bytes returned from a batched call",
-		Value: node.DefaultConfig.BatchResponseMaxSize,
+		Usage: "Maximum number of bytes returned from a batched call (0 for unlimited)",
+		Value: 0,
 	}
 	MaxResponseSizeFlag = cli.IntFlag{
 		Name:  "rpc.maxresponsesize",
@@ -370,14 +370,14 @@ var (
 	}
 	ValidatorPasswordFlag = cli.StringFlag{
 		Name:  "validator.password",
-		Usage: "Password to unlock validator private key",
+		Usage: "Path to a file containing the password to unlock the validator private key",
 		Value: "",
 	}
 
 	// Event Emission Throttling
 	EnableThrottlingFlag = cli.BoolTFlag{
 		Name:  "event-throttler",
-		Usage: "Enable event emission throttling based on network conditions.",
+		Usage: "Enable event emission throttling based on network conditions (default = true, use --event-throttler=false to disable).",
 	}
 	ThrottlingDominantThresholdFlag = cli.Float64Flag{
 		Name:  "event-throttler.dominant-threshold",
