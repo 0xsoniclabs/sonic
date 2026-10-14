@@ -26,76 +26,51 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 )
 
-// Ledger is the consensus-agnostic block processing component.
-type Ledger interface {
-	// Head returns a handle to the block the consensus head pointer points to,
-	// through which the next block is begun. It fails if that block is not in
-	// the store.
-	Head() (Head, error)
-}
-
-// Head is a handle to the head block and the only way to begin the next one,
-// so the next block is built on the same parent the consensus validated
-// against.
-type Head interface {
-	// Block returns the head block.
-	Block() *inter.Block
-
-	// BeginBlock opens the live state at the head's state root. It fails if
-	// a block was already begun on this head, params.Number does not follow
-	// the head, the head is stale, or the live state does not match it.
-	BeginBlock(params BlockParams) (ExecutingBlock, error)
-}
-
-// ExecutingBlock is a block being executed. It owns the live state.
-type ExecutingBlock interface {
-	// stateDB returns the block's live state. It is unexported so that only
-	// the gossip package can reach it, e.g. for the consensus callback.
-	stateDB() state.StateDB
-}
-
-var (
-	_ Ledger         = (*ledger)(nil)
-	_ Head           = (*head)(nil)
-	_ ExecutingBlock = (*executingBlock)(nil)
-)
-
 // BlockParams holds the header inputs for the next block.
 type BlockParams struct {
 	Number uint64
 }
 
-// ledger is the main implementation of Ledger.
-type ledger struct {
+// Ledger is the consensus-agnostic block processing component.
+type Ledger struct {
 	store *Store
 }
 
 // NewLedger creates a Ledger over the given store.
-func NewLedger(store *Store) Ledger {
-	return &ledger{store: store}
+func NewLedger(store *Store) *Ledger {
+	return &Ledger{store: store}
 }
 
-func (l *ledger) Head() (Head, error) {
+// Head returns a handle to the block the consensus head pointer points to,
+// through which the next block is begun. It fails if that block is not in
+// the store.
+func (l *Ledger) Head() (*Head, error) {
 	headIdx := l.store.GetLatestBlockIndex()
 	block := l.store.GetBlock(headIdx)
 	if block == nil {
 		return nil, fmt.Errorf("head block %d not found in store", headIdx)
 	}
-	return &head{ledger: l, block: block}, nil
+	return &Head{ledger: l, block: block}, nil
 }
 
-// head is the main implementation of Head.
-type head struct {
-	ledger   *ledger
+// Head is a handle to the head block and the only way to begin the next one,
+// so the next block is built on the same parent the consensus validated
+// against.
+type Head struct {
+	ledger   *Ledger
 	block    *inter.Block
 	consumed bool
 }
 
-func (h *head) Block() *inter.Block {
+// Block returns the head block.
+func (h *Head) Block() *inter.Block {
 	return h.block
 }
 
-func (h *head) BeginBlock(params BlockParams) (ExecutingBlock, error) {
+// BeginBlock opens the live state at the head's state root. It fails if
+// a block was already begun on this head, params.Number does not follow
+// the head, the head is stale, or the live state does not match it.
+func (h *Head) BeginBlock(params BlockParams) (*ExecutingBlock, error) {
 	if h.consumed {
 		return nil, errors.New("head already consumed")
 	}
@@ -114,14 +89,16 @@ func (h *head) BeginBlock(params BlockParams) (ExecutingBlock, error) {
 		return nil, err
 	}
 	h.consumed = true
-	return &executingBlock{statedb: statedb}, nil
+	return &ExecutingBlock{statedb: statedb}, nil
 }
 
-// executingBlock is the main implementation of ExecutingBlock.
-type executingBlock struct {
+// ExecutingBlock is a block being executed. It owns the live state.
+type ExecutingBlock struct {
 	statedb state.StateDB
 }
 
-func (eb *executingBlock) stateDB() state.StateDB {
+// stateDB returns the block's live state. It is unexported so that only
+// the gossip package can reach it, e.g. for the consensus callback.
+func (eb *ExecutingBlock) stateDB() state.StateDB {
 	return eb.statedb
 }

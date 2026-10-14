@@ -139,7 +139,7 @@ func consensusCallbackBeginBlockFn(
 	wg *sync.WaitGroup,
 	blockBusyFlag *uint32,
 	store *Store,
-	ledger Ledger,
+	ledger *Ledger,
 	blockProc BlockProc,
 	txIndex bool,
 	feed *ServiceFeed,

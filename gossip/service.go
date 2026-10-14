@@ -253,7 +253,7 @@ type Service struct {
 
 	// ledger owns the consensus-agnostic block-execution infrastructure and is
 	// driven by the consensus block callback, one block at a time.
-	ledger Ledger
+	ledger *Ledger
 
 	blockBusyFlag uint32
 	eventBusyFlag uint32

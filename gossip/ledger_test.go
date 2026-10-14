@@ -84,17 +84,17 @@ func TestHead_BeginBlock_FailedCallDoesNotConsumeHead(t *testing.T) {
 
 func TestHead_BeginBlock_RejectsBlockNotOnTheLedgerHead(t *testing.T) {
 	tests := map[string]struct {
-		setup   func(l *ledger, h Head) BlockParams
+		setup   func(l *Ledger, h *Head) BlockParams
 		wantErr string
 	}{
 		"number does not follow the head": {
-			setup: func(_ *ledger, h Head) BlockParams {
+			setup: func(_ *Ledger, h *Head) BlockParams {
 				return BlockParams{Number: h.Block().Number + 2}
 			},
 			wantErr: "does not follow head",
 		},
 		"head pointer moved on": {
-			setup: func(l *ledger, h Head) BlockParams {
+			setup: func(l *Ledger, h *Head) BlockParams {
 				bs := l.store.GetBlockState()
 				bs.LastBlock.Idx++
 				l.store.SetBlockEpochState(bs, l.store.GetEpochState())
@@ -103,7 +103,7 @@ func TestHead_BeginBlock_RejectsBlockNotOnTheLedgerHead(t *testing.T) {
 			wantErr: "no longer the ledger's head",
 		},
 		"head block replaced": {
-			setup: func(l *ledger, h Head) BlockParams {
+			setup: func(l *Ledger, h *Head) BlockParams {
 				number := h.Block().Number
 				l.store.SetBlock(idx.Block(number), inter.NewBlockBuilder().
 					WithNumber(number).
@@ -113,13 +113,13 @@ func TestHead_BeginBlock_RejectsBlockNotOnTheLedgerHead(t *testing.T) {
 			wantErr: "no longer the ledger's head",
 		},
 		"live state does not match the head": {
-			setup: func(l *ledger, h Head) BlockParams {
+			setup: func(l *Ledger, h *Head) BlockParams {
 				block := inter.NewBlockBuilder().
 					WithNumber(h.Block().Number).
 					WithStateRoot(common.Hash{1}).
 					Build()
 				l.store.SetBlock(idx.Block(block.Number), block)
-				h.(*head).block = block
+				h.block = block
 				return BlockParams{Number: block.Number + 1}
 			},
 			wantErr: "unexpected state root",
@@ -131,7 +131,7 @@ func TestHead_BeginBlock_RejectsBlockNotOnTheLedgerHead(t *testing.T) {
 			store := newInMemoryStoreWithGenesisData(
 				t, opera.GetSonicUpgrades(), 1, 2,
 			)
-			l := &ledger{store: store}
+			l := &Ledger{store: store}
 			head, err := l.Head()
 			require.NoError(t, err)
 
