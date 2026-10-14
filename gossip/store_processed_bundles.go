@@ -56,6 +56,13 @@ import (
 // The hash can be used to verify that validators remain aligned on their bundle
 // processing history.
 
+// processedBundlesRetention is the number of blocks for which processed
+// bundles and bundle history hashes are retained. Beyond protecting against
+// replayed bundles, which requires bundle.MaxBlockRangeLength blocks, the
+// retention bounds how far back the processed bundles can be rolled back when
+// healing a node.
+const processedBundlesRetention uint64 = 1 << 15
+
 // AddProcessedBundles adds the given bundle execution information for the given
 // block number. This should be called after every block, listing the bundles
 // that got accepted in the block.
@@ -135,11 +142,11 @@ func (s *Store) addNewBundles(
 func (s *Store) deleteOutdatedBundles(finishedBlock uint64, batch kvdb.Batch) {
 	nextBlock := finishedBlock + 1
 
-	if nextBlock < bundle.MaxBlockRangeLength {
+	if nextBlock < processedBundlesRetention {
 		return
 	}
 
-	highestOutdatedBlockNumber := nextBlock - bundle.MaxBlockRangeLength
+	highestOutdatedBlockNumber := nextBlock - processedBundlesRetention
 
 	// Prune bundle-index and entries keys ('i', 'e').
 	// key layout for 'i': 1 byte prefix + 8 bytes blockNum + 32 bytes execPlanHash
@@ -219,7 +226,7 @@ func computeNewBundleStateHash(
 // the same bundle multiple times.
 //
 // Note: the store only keeps track of the bundles being executed in the last
-// bundle.MaxBlockRange blocks, so this function returns false for bundles
+// processedBundlesRetention blocks, so this function returns false for bundles
 // that were processed too far in the past and have been cleaned up from the
 // store.
 func (s *Store) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
@@ -232,7 +239,7 @@ func (s *Store) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
 
 // GetBundleExecutionInfo returns the execution info for a processed execution
 // plan, if it is present in the store. Note that execution info is being
-// automatically removed from the store after bundle.MaxBlockRange blocks,
+// automatically removed from the store after processedBundlesRetention blocks,
 // so this function returns nil for bundles that were processed too far in the
 // past.
 func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) *bundle.ExecutionInfo {
