@@ -365,7 +365,8 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	svc.ledger = NewLedger(
 		svc.store,
 		LedgerConfig{
-			Feed: &svc.feed,
+			Feed:              &svc.feed,
+			IndexTransactions: config.TxIndex,
 		},
 	)
 

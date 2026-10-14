@@ -49,7 +49,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/priorities"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
-	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/gossip/scrambler"
@@ -107,11 +106,6 @@ type priorityFailureMeters struct {
 	txs    metricCounter // per-transaction query failed, the tx is not prioritized
 }
 
-type ExtendedTxPosition struct {
-	evmstore.TxPosition
-	EventCreator idx.ValidatorID
-}
-
 // GetConsensusCallbacks returns single (for Service) callback instance.
 func (s *Service) GetConsensusCallbacks() lachesis.ConsensusCallbacks {
 	return lachesis.ConsensusCallbacks{
@@ -122,7 +116,6 @@ func (s *Service) GetConsensusCallbacks() lachesis.ConsensusCallbacks {
 			s.store,
 			s.ledger,
 			s.blockProcModules,
-			s.config.TxIndex,
 			&s.feed,
 			&s.emitters,
 			s.verWatcher,
@@ -140,7 +133,6 @@ func consensusCallbackBeginBlockFn(
 	store *Store,
 	ledger *Ledger,
 	blockProc BlockProc,
-	txIndex bool,
 	feed *ServiceFeed,
 	emitters *[]*emitter.Emitter,
 	verWatcher *verwatcher.VersionWatcher,
@@ -157,7 +149,6 @@ func consensusCallbackBeginBlockFn(
 			}
 		}
 		wg.Wait()
-		start := time.Now()
 
 		// Note: take copies to avoid race conditions with API calls
 		bs := store.GetBlockState().Copy()
@@ -447,32 +438,25 @@ func consensusCallbackBeginBlockFn(
 
 					// Finalize the block: commit state, assemble and hash the block,
 					// and stamp the block hash/time onto the receipts and logs.
-					candidate := executingBlock.Finalize().Candidate()
+					finalized := executingBlock.Finalize()
+					candidate := finalized.Candidate()
 					block := candidate.Block
 					evmBlock := candidate.EvmBlock
 					allReceipts := candidate.Receipts
 					numSkippedTxs := candidate.NumSkipped
 
-					// memorize the event creator of each tx
-					txPositions := make(map[common.Hash]ExtendedTxPosition)
+					// memorize the creating validator of each tx, used below to
+					// attribute receipts. Tx positions are persisted by the ledger
+					// in Commit.
+					txCreators := make(map[common.Hash]idx.ValidatorID)
 					for _, e := range blockEvents {
 						for _, tx := range e.Transactions() {
 							// If tx was met in multiple events, then assign to first ordered event
-							if _, ok := txPositions[tx.Hash()]; ok {
+							if _, ok := txCreators[tx.Hash()]; ok {
 								continue
 							}
-							txPositions[tx.Hash()] = ExtendedTxPosition{
-								EventCreator: e.Creator(),
-							}
+							txCreators[tx.Hash()] = e.Creator()
 						}
-					}
-					// memorize block position of each tx
-					for i, tx := range evmBlock.Transactions {
-						// not skipped txs only
-						position := txPositions[tx.Hash()]
-						position.Block = blockCtx.Idx
-						position.BlockOffset = uint32(i)
-						txPositions[tx.Hash()] = position
 					}
 
 					// call OnNewReceipt
@@ -483,7 +467,7 @@ func consensusCallbackBeginBlockFn(
 								originTx = origin
 							}
 						}
-						creator := txPositions[originTx].EventCreator
+						creator := txCreators[originTx]
 						if creator != 0 && es.Validators.Get(creator) == 0 {
 							creator = 0
 						}
@@ -493,30 +477,6 @@ func consensusCallbackBeginBlockFn(
 					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
 					// At this point, block state is finalized
 
-					// Store the transaction bodies before indexing their
-					// positions, such that readers finding a position always
-					// find the corresponding body as well.
-					for _, tx := range evmBlock.Transactions {
-						store.evm.SetTx(tx.Hash(), tx)
-					}
-
-					// Build index for not skipped txs
-					if txIndex {
-						for _, tx := range evmBlock.Transactions {
-							// not skipped txs only
-							store.evm.SetTxPosition(tx.Hash(), txPositions[tx.Hash()].TxPosition)
-						}
-
-						// Index receipts
-						// Note: it's possible for receipts to get indexed twice by BR and block processing
-						if allReceipts.Len() != 0 {
-							store.evm.SetReceipts(blockCtx.Idx, allReceipts)
-							for _, r := range allReceipts {
-								store.evm.IndexLogs(r.Logs...)
-							}
-						}
-					}
-
 					bs.LastBlock = blockCtx
 					bs.CheatersWritten = uint32(bs.EpochCheaters.Len())
 					if sealing {
@@ -524,10 +484,13 @@ func consensusCallbackBeginBlockFn(
 						store.SetEpochBlock(blockCtx.Idx+1, es.Epoch)
 					}
 
-					store.SetBlock(blockCtx.Idx, block)
-					store.SetBlockIndex(block.Hash(), blockCtx.Idx)
+					// Persist the block, its transactions, receipt/log indexes, and
+					// cached EVM block via the ledger (no RPC notification yet).
+					committed := finalized.Commit()
+
+					// Advance the consensus head pointer before publishing, so the
+					// RPC head and the new-block notification observe it.
 					store.SetBlockEpochState(bs, es)
-					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
 
 					// Update the metrics touched during block processing
 					executionTime := time.Since(executionStart)
@@ -539,28 +502,11 @@ func consensusCallbackBeginBlockFn(
 					headHeaderGauge.Update(int64(blockCtx.Idx))
 					headFastBlockGauge.Update(int64(blockCtx.Idx))
 
-					// Notify about new block
-					if feed != nil {
-						var logs []*types.Log
-						for _, r := range allReceipts {
-							logs = append(logs, r.Logs...)
-						}
-						feed.notifyAboutNewBlock(evmBlock, logs)
-					}
+					// Publish the new block to the RPC layer.
+					committed.Publish()
 
 					now := time.Now()
 					blockAge := now.Sub(block.Time.Time())
-					log.Info("New block",
-						"index", blockCtx.Idx,
-						"id", block.Hash(),
-						"gas_used", evmBlock.GasUsed,
-						"gas_rate", float64(evmBlock.GasUsed)/time.Duration(block.Duration).Seconds(),
-						"base_fee", evmBlock.BaseFee.String(),
-						"txs", fmt.Sprintf("%d/%d", len(evmBlock.Transactions), numSkippedTxs),
-						"age", utils.PrettyDuration(blockAge),
-						"t", utils.PrettyDuration(now.Sub(start)),
-						"epoch", evmBlock.Epoch,
-					)
 					blockAgeGauge.Update(int64(blockAge.Nanoseconds()))
 
 					processedTxsMeter.Mark(int64(len(evmBlock.Transactions)))

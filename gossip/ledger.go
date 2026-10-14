@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -33,9 +34,11 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
+	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 )
 
 // BlockParams holds the inputs for executing the next block.
@@ -55,19 +58,26 @@ type BlockParams struct {
 	Rules opera.Rules
 }
 
-// Ledger is the consensus-agnostic block processing component.
+// Ledger is the consensus-agnostic block processing component. Of the blocks
+// it processes, it only tracks whether one is open; the per-block state lives
+// on the handles.
 type Ledger struct {
 	evmModule blockproc.EVM
 	store     *Store
 	config    LedgerConfig
+
+	mu   sync.Mutex
+	open bool // a block has begun and is not published yet
 }
 
 // LedgerConfig groups the configuration a Ledger needs beyond the store: the
-// new-block feed (reader input, may be nil) and the block-execution metrics
-// sink (may be nil, in which case NewLedger uses the default sink).
+// new-block feed (publish target and reader input, may be nil), whether to
+// index transactions, and the block-execution metrics sink (may be nil, in
+// which case NewLedger uses the default sink).
 type LedgerConfig struct {
-	Feed             *ServiceFeed
-	ExecutionMetrics evmcore.BlockExecutionMetrics
+	Feed              *ServiceFeed
+	IndexTransactions bool
+	ExecutionMetrics  evmcore.BlockExecutionMetrics
 }
 
 // NewLedger creates a Ledger over the given store, backed by the production EVM
@@ -126,6 +136,7 @@ func (h *Head) BeginBlock(
 	params BlockParams,
 	onNewLog func(*core_types.Log),
 ) (*ExecutingBlock, error) {
+	start := time.Now()
 	if h.consumed {
 		return nil, errors.New("head already consumed")
 	}
@@ -137,6 +148,11 @@ func (h *Head) BeginBlock(
 		return nil, fmt.Errorf("block time %d is not after head time %d", params.Time, h.block.Time)
 	}
 
+	h.ledger.mu.Lock()
+	defer h.ledger.mu.Unlock()
+	if h.ledger.open {
+		return nil, errors.New("another block is open")
+	}
 	latest := h.ledger.store.GetLatestBlock()
 	if latest == nil || latest.Hash() != h.block.Hash() {
 		return nil, fmt.Errorf("block %d is no longer the ledger's head",
@@ -152,6 +168,7 @@ func (h *Head) BeginBlock(
 		h.ledger.store.GetUpgradeHeights(),
 		idx.Block(params.Number),
 	)
+	h.ledger.open = true
 	return &ExecutingBlock{
 		ledger:  h.ledger,
 		params:  params,
@@ -176,6 +193,7 @@ func (h *Head) BeginBlock(
 			WithPrevRandao(params.PrevRandao).
 			WithGasLimit(params.GasLimit).
 			WithDuration(time.Duration(params.Time - h.block.Time)),
+		start: start,
 	}, nil
 }
 
@@ -187,6 +205,10 @@ type ExecutingBlock struct {
 	evmProcessor blockproc.EVMProcessor
 	blockBuilder *inter.BlockBuilder
 	finalized    bool
+
+	// start is the wall-clock time the block processing started, used to
+	// measure and log the block processing latency.
+	start time.Time
 }
 
 // stateDB returns the block's live state. It is unexported so that only
@@ -312,6 +334,7 @@ func (eb *ExecutingBlock) Finalize() *FinalizedBlock {
 	}
 
 	return &FinalizedBlock{
+		block: eb,
 		candidate: &BlockCandidate{
 			Block:      block,
 			EvmBlock:   evmBlock,
@@ -323,10 +346,96 @@ func (eb *ExecutingBlock) Finalize() *FinalizedBlock {
 
 // FinalizedBlock is an assembled and hashed block that is not yet persisted.
 type FinalizedBlock struct {
+	block     *ExecutingBlock
 	candidate *BlockCandidate
+	committed bool
 }
 
 // Candidate returns the assembled block and its execution results.
 func (fb *FinalizedBlock) Candidate() *BlockCandidate {
 	return fb.candidate
+}
+
+// Commit persists the finalized block: the receipt and log indexes and the
+// transaction positions (when transaction indexing is enabled), the transaction
+// bodies, the block and its hash index, and the cached EVM block. It does not
+// notify the RPC layer; the consensus advances its head pointer between Commit
+// and Publish.
+func (fb *FinalizedBlock) Commit() *CommittedBlock {
+	if fb.committed {
+		panic("Commit called twice")
+	}
+	fb.committed = true
+
+	c := fb.candidate
+	l := fb.block.ledger
+	blockIdx := idx.Block(fb.block.params.Number)
+
+	if l.config.IndexTransactions && c.Receipts.Len() != 0 {
+		l.store.evm.SetReceipts(blockIdx, c.Receipts)
+		for _, r := range c.Receipts {
+			l.store.evm.IndexLogs(r.Logs...)
+		}
+	}
+
+	for i, tx := range fb.block.blockBuilder.GetTransactions() {
+		l.store.evm.SetTx(tx.Hash(), tx)
+		if l.config.IndexTransactions {
+			l.store.evm.SetTxPosition(tx.Hash(), evmstore.TxPosition{
+				Block:       blockIdx,
+				BlockOffset: uint32(i),
+			})
+		}
+	}
+
+	l.store.SetBlock(blockIdx, c.Block)
+	l.store.SetBlockIndex(c.Block.Hash(), blockIdx)
+	l.store.EvmStore().SetCachedEvmBlock(blockIdx, c.EvmBlock)
+	return &CommittedBlock{finalized: fb}
+}
+
+// CommittedBlock is a persisted block whose head pointer the consensus has to
+// advance before publishing it.
+type CommittedBlock struct {
+	finalized *FinalizedBlock
+	published bool
+}
+
+// Publish logs the committed block and notifies the RPC layer of it, feeding
+// the new-block subscriptions, and then closes the block so the next one can
+// begin. It is called after the consensus has advanced its head pointer.
+func (cb *CommittedBlock) Publish() {
+	if cb.published {
+		panic("Publish called twice")
+	}
+	cb.published = true
+
+	c := cb.finalized.candidate
+	l := cb.finalized.block.ledger
+	blockDuration := time.Duration(c.Block.Duration)
+	now := time.Now()
+	blockAge := now.Sub(c.Block.Time.Time())
+	log.Info("New block",
+		"index", c.Block.Number,
+		"id", c.Block.Hash(),
+		"gas_used", c.EvmBlock.GasUsed,
+		"gas_rate", float64(c.EvmBlock.GasUsed)/blockDuration.Seconds(),
+		"base_fee", c.EvmBlock.BaseFee.String(),
+		"txs", fmt.Sprintf("%d/%d", len(c.EvmBlock.Transactions), c.NumSkipped),
+		"age", utils.PrettyDuration(blockAge),
+		"t", utils.PrettyDuration(now.Sub(cb.finalized.block.start)),
+		"epoch", c.EvmBlock.Epoch,
+	)
+
+	if l.config.Feed != nil {
+		var logs []*types.Log
+		for _, r := range c.Receipts {
+			logs = append(logs, r.Logs...)
+		}
+		l.config.Feed.notifyAboutNewBlock(c.EvmBlock, logs)
+	}
+
+	l.mu.Lock()
+	l.open = false
+	l.mu.Unlock()
 }

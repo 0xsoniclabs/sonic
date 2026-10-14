@@ -24,8 +24,29 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
+	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+func TestNewService_ConfiguresLedgerTransactionIndexing(t *testing.T) {
+	for _, txIndex := range []bool{true, false} {
+		t.Run(fmt.Sprint(txIndex), func(t *testing.T) {
+			store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
+			engine, vecClock := makeTestEngine(store)
+			config := DefaultConfig(cachescale.Identity)
+			config.TxIndex = txIndex
+
+			svc, err := newService(config, store, DefaultBlockProc(), engine, vecClock, func(evmcore.StateReader) TxPool {
+				return &dummyTxPool{}
+			}, enode.ID{})
+			require.NoError(t, err)
+			require.Equal(t, txIndex, svc.ledger.config.IndexTransactions)
+		})
+	}
+}
 
 func TestServiceFeed_SubscribeNewBlock(t *testing.T) {
 	ctrl := gomock.NewController(t)

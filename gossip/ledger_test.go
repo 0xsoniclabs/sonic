@@ -17,12 +17,18 @@
 package gossip
 
 import (
+	"bytes"
 	"math"
 	"math/big"
+	"slices"
 	"testing"
 	"time"
 
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/Fantom-foundation/lachesis-base/kvdb"
+	"github.com/Fantom-foundation/lachesis-base/kvdb/flushable"
+	"github.com/Fantom-foundation/lachesis-base/kvdb/memorydb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -36,6 +42,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
+	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -154,6 +161,7 @@ func TestHead_BeginBlock_StartsEvmAndBlockBuilderFromParamsAndHead(t *testing.T)
 		return evmProcessor
 	})
 
+	before := time.Now()
 	eb, err := head.BeginBlock(blockParams, func(log *core_types.Log) { gotLog = log })
 	require.NoError(err)
 	require.Same(newLog, gotLog)
@@ -161,6 +169,7 @@ func TestHead_BeginBlock_StartsEvmAndBlockBuilderFromParamsAndHead(t *testing.T)
 	require.Same(startedOn, eb.stateDB())
 	require.Same(evmProcessor, eb.evmProcessor)
 	require.Equal(blockParams, eb.params)
+	require.WithinRange(eb.start, before, time.Now())
 
 	block := eb.blockBuilder.Build()
 	require.Equal(idx.Epoch(7), block.Epoch)
@@ -208,6 +217,14 @@ func TestHead_BeginBlock_RejectsBlockNotOnTheLedgerHead(t *testing.T) {
 			},
 			wantErr: "no longer the ledger's head",
 		},
+		"another block is open": {
+			setup: func(l *Ledger, h *Head) BlockParams {
+				other, _ := l.Head()
+				_, _ = other.BeginBlock(BlockParams{Number: h.Block().Number + 1, Time: h.Block().Time + 1}, nil)
+				return BlockParams{Number: h.Block().Number + 1, Time: h.Block().Time + 1}
+			},
+			wantErr: "another block is open",
+		},
 		"live state does not match the head": {
 			setup: func(l *Ledger, h *Head) BlockParams {
 				block := inter.NewBlockBuilder().
@@ -227,7 +244,7 @@ func TestHead_BeginBlock_RejectsBlockNotOnTheLedgerHead(t *testing.T) {
 			store := newInMemoryStoreWithGenesisData(
 				t, opera.GetSonicUpgrades(), 1, 2,
 			)
-			l := newLedgerInternal(store, LedgerConfig{}, nil)
+			l := NewLedger(store, LedgerConfig{})
 			head, err := l.Head()
 			require.NoError(t, err)
 
@@ -236,6 +253,25 @@ func TestHead_BeginBlock_RejectsBlockNotOnTheLedgerHead(t *testing.T) {
 			require.Nil(t, executing)
 		})
 	}
+}
+
+func TestHead_BeginBlock_FailureLeavesTheLedgerClosed(t *testing.T) {
+	store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
+	l := NewLedger(store, LedgerConfig{})
+	original := store.GetLatestBlock()
+	params := BlockParams{Number: original.Number + 1, Time: original.Time + 1}
+
+	store.SetBlock(idx.Block(original.Number), inter.NewBlockBuilder().WithNumber(original.Number).WithStateRoot(common.Hash{1}).Build())
+	head, err := l.Head()
+	require.NoError(t, err)
+	_, err = head.BeginBlock(params, nil)
+	require.ErrorContains(t, err, "unexpected state root")
+
+	store.SetBlock(idx.Block(original.Number), original)
+	head, err = l.Head()
+	require.NoError(t, err)
+	_, err = head.BeginBlock(params, nil)
+	require.NoError(t, err)
 }
 
 func TestExecutingBlock_Run_ForwardsBlockGasLimitToEVMProcessor(t *testing.T) {
@@ -872,4 +908,191 @@ func TestExecutingBlock_AfterFinalize_Panics(t *testing.T) {
 			require.Panics(t, func() { call(executing) })
 		})
 	}
+}
+
+func TestFinalizedBlock_Commit_PersistsBlockAndIndexesTransactionsWhenEnabled(t *testing.T) {
+	const number = 5
+	tests := map[string]struct {
+		indexTransactions bool
+		wantReceipts      int
+		wantLogs          int
+		wantPositions     []*evmstore.TxPosition
+	}{
+		"with transaction indexing": {
+			indexTransactions: true,
+			wantReceipts:      2,
+			wantLogs:          1,
+			wantPositions:     []*evmstore.TxPosition{{Block: number, BlockOffset: 0}, {Block: number, BlockOffset: 1}},
+		},
+		"without transaction indexing": {
+			indexTransactions: false,
+			wantPositions:     []*evmstore.TxPosition{nil, nil},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			store, err := NewMemStore(t)
+			require.NoError(err)
+			t.Cleanup(func() { require.NoError(store.Close()) })
+
+			txs := types.Transactions{types.NewTx(&types.LegacyTx{Nonce: 0}), types.NewTx(&types.LegacyTx{Nonce: 1})}
+			receipts := types.Receipts{
+				{TxHash: txs[0].Hash()},
+				{TxHash: txs[1].Hash(), Logs: []*types.Log{{BlockNumber: number, Topics: []common.Hash{{1}}, TxHash: txs[1].Hash()}}},
+			}
+			builder := inter.NewBlockBuilder().WithNumber(number)
+			for i, tx := range txs {
+				builder.AddTransaction(tx, receipts[i])
+			}
+			block := builder.Build()
+			evmBlock := &evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Number: big.NewInt(number), TxHash: common.Hash{1}}}
+
+			finalized := &FinalizedBlock{
+				block: &ExecutingBlock{
+					ledger:       &Ledger{store: store, config: LedgerConfig{IndexTransactions: test.indexTransactions}},
+					params:       BlockParams{Number: number},
+					blockBuilder: builder,
+				},
+				candidate: &BlockCandidate{Block: block, EvmBlock: evmBlock, Receipts: receipts},
+			}
+			finalized.Commit()
+
+			require.Equal(block.Hash(), store.GetBlock(number).Hash())
+			require.Equal(idx.Block(number), *store.GetBlockIndex(hash.Event(block.Hash())))
+			require.Same(evmBlock, store.EvmStore().GetCachedEvmBlock(number))
+			for i, tx := range txs {
+				require.Equal(tx.Hash(), store.evm.GetTx(tx.Hash()).Hash())
+				require.Equal(test.wantPositions[i], store.evm.GetTxPosition(tx.Hash()))
+			}
+
+			storedReceipts, _ := store.evm.GetRawReceipts(number)
+			require.Len(storedReceipts, test.wantReceipts)
+			logs, err := store.evm.EvmLogs.FindInBlocks(t.Context(), number, number, [][]common.Hash{nil, {{1}}}, 0)
+			require.NoError(err)
+			require.Len(logs, test.wantLogs)
+		})
+	}
+}
+
+func TestFinalizedBlock_Commit_StoresTransactionBodiesBeforeTheirPositions(t *testing.T) {
+	var keys [][]byte
+	dbs := recordingDBProducer{FlushableDBProducer: flushable.NewSyncedPool(memorydb.NewProducer(""), []byte{0}), keys: &keys}
+	store, err := NewStore(dbs, MemTestStoreConfig(t.TempDir()))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+
+	txs := types.Transactions{types.NewTx(&types.LegacyTx{Nonce: 0}), types.NewTx(&types.LegacyTx{Nonce: 1})}
+	builder := inter.NewBlockBuilder()
+	for _, tx := range txs {
+		builder.AddTransaction(tx, &types.Receipt{TxHash: tx.Hash()})
+	}
+	finalized := &FinalizedBlock{
+		block: &ExecutingBlock{
+			ledger:       &Ledger{store: store, config: LedgerConfig{IndexTransactions: true}},
+			blockBuilder: builder,
+		},
+		candidate: &BlockCandidate{
+			Block:    builder.Build(),
+			EvmBlock: &evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{TxHash: common.Hash{1}}},
+		},
+	}
+	finalized.Commit()
+
+	indexOf := func(table string, tx *types.Transaction) int {
+		return slices.IndexFunc(keys, func(key []byte) bool {
+			return bytes.Equal(key, append([]byte(table), tx.Hash().Bytes()...))
+		})
+	}
+	for _, tx := range txs {
+		body, position := indexOf("X", tx), indexOf("x", tx)
+		require.NotEqual(t, -1, body)
+		require.Less(t, body, position)
+	}
+}
+
+func TestFinalizedBlock_Commit_Twice_Panics(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	finalized := &FinalizedBlock{
+		block: &ExecutingBlock{ledger: &Ledger{store: store}, blockBuilder: inter.NewBlockBuilder()},
+		candidate: &BlockCandidate{
+			Block:    inter.NewBlockBuilder().Build(),
+			EvmBlock: &evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{TxHash: common.Hash{1}}},
+		},
+	}
+
+	finalized.Commit()
+	require.Panics(t, func() { finalized.Commit() })
+}
+
+func TestCommittedBlock_Publish_NotifiesFeedOfBlockAndItsLogs(t *testing.T) {
+	updates := make(chan feedUpdate, 1)
+	logs := []*types.Log{{Index: 0}, {Index: 1}, {Index: 2}}
+	evmBlock := &evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{BaseFee: big.NewInt(0)}}
+
+	committed := &CommittedBlock{finalized: &FinalizedBlock{
+		block: &ExecutingBlock{ledger: &Ledger{config: LedgerConfig{Feed: &ServiceFeed{incomingUpdates: updates}}}},
+		candidate: &BlockCandidate{
+			Block:    inter.NewBlockBuilder().Build(),
+			EvmBlock: evmBlock,
+			Receipts: types.Receipts{{Logs: logs[:2]}, {}, {Logs: logs[2:]}},
+		},
+	}}
+	committed.Publish()
+
+	require.Len(t, updates, 1)
+	update := <-updates
+	require.Same(t, evmBlock, update.block)
+	require.Equal(t, logs, update.logs)
+}
+
+func TestCommittedBlock_Publish_WithoutFeed_DoesNotPanic(t *testing.T) {
+	committed := &CommittedBlock{finalized: &FinalizedBlock{
+		block: &ExecutingBlock{ledger: &Ledger{}},
+		candidate: &BlockCandidate{
+			Block:    inter.NewBlockBuilder().Build(),
+			EvmBlock: &evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{BaseFee: big.NewInt(0)}},
+		},
+	}}
+	require.NotPanics(t, committed.Publish)
+}
+
+func TestCommittedBlock_Publish_ClosesTheBlockOnlyOnce(t *testing.T) {
+	l := &Ledger{open: true}
+	committed := &CommittedBlock{finalized: &FinalizedBlock{
+		block: &ExecutingBlock{ledger: l},
+		candidate: &BlockCandidate{
+			Block:    inter.NewBlockBuilder().Build(),
+			EvmBlock: &evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{BaseFee: big.NewInt(0)}},
+		},
+	}}
+
+	committed.Publish()
+	require.False(t, l.open)
+	require.Panics(t, committed.Publish)
+}
+
+// recordingDBProducer records the keys put into the databases it opens, in the
+// order they are put.
+type recordingDBProducer struct {
+	kvdb.FlushableDBProducer
+	keys *[][]byte
+}
+
+func (p recordingDBProducer) OpenDB(name string) (kvdb.Store, error) {
+	db, err := p.FlushableDBProducer.OpenDB(name)
+	return recordingDB{Store: db, keys: p.keys}, err
+}
+
+type recordingDB struct {
+	kvdb.Store
+	keys *[][]byte
+}
+
+func (db recordingDB) Put(key []byte, value []byte) error {
+	*db.keys = append(*db.keys, slices.Clone(key))
+	return db.Store.Put(key, value)
 }
