@@ -1359,6 +1359,162 @@ func TestStateAtTransaction_ReleasesStateOnTxAsMessageError(t *testing.T) {
 	require.Nil(t, statedb)
 }
 
+func TestApplyPreBlockSystemCalls(t *testing.T) {
+	errNetworkRules := errors.New("network rules error")
+	errGetEVM := errors.New("get evm error")
+
+	tests := map[string]struct {
+		rulesErr error
+		evmErr   error
+		wantErr  string
+	}{
+		"success": {},
+		"vm config error": {
+			rulesErr: errNetworkRules,
+			wantErr:  "failed to get vm config: network rules error",
+		},
+		"get evm error": {
+			evmErr:  errGetEVM,
+			wantErr: errGetEVM.Error(),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			any := gomock.Any()
+
+			backend := NewMockBackend(ctrl)
+			if test.rulesErr != nil {
+				backend.EXPECT().GetNetworkRules(any, any).Return(nil, test.rulesErr)
+			} else {
+				backend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil)
+			}
+			if test.evmErr != nil {
+				backend.EXPECT().GetEVM(any, any, any, any, any).Return(nil, nil, test.evmErr)
+			} else if test.rulesErr == nil {
+				backend.EXPECT().GetEVM(any, any, any, any, any).
+					DoAndReturn(makeTestEVM(opera.GetSonicUpgrades()))
+			}
+
+			block := newTracingTestBlock()
+			vmenv, err := applyPreBlockSystemCalls(t.Context(), backend, block, state.NewMockStateDB(ctrl))
+			if test.wantErr != "" {
+				require.ErrorContains(t, err, test.wantErr)
+				require.Nil(t, vmenv)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, vmenv)
+		})
+	}
+}
+
+func TestStateAtTransaction_ReleasesStateOnPreBlockSystemCallsError(t *testing.T) {
+	block := newTracingTestBlock(types.NewTx(&types.LegacyTx{}), types.NewTx(&types.LegacyTx{}))
+	backend, _ := newTracingTestBackend(t, block, errors.New("network rules error"))
+
+	msg, statedb, err := stateAtTransaction(t.Context(), block, 1, backend)
+	require.ErrorContains(t, err, "network rules error")
+	require.Nil(t, msg)
+	require.Nil(t, statedb)
+	// gomock verifies on cleanup that the state was released exactly once
+}
+
+func TestTraceBlock_Errors(t *testing.T) {
+	errNetworkRules := errors.New("network rules error")
+
+	tests := map[string]struct {
+		tx       *types.Transaction
+		rulesErr error
+		wantErr  string
+	}{
+		"pre-block system calls error": {
+			tx:       types.NewTx(&types.LegacyTx{}),
+			rulesErr: errNetworkRules,
+			wantErr:  errNetworkRules.Error(),
+		},
+		"transaction cannot be converted to a message": {
+			tx:      newTxWithInvalidSignature(),
+			wantErr: "cannot get message from transaction",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			block := newTracingTestBlock(test.tx)
+			backend, _ := newTracingTestBackend(t, block, test.rulesErr)
+
+			api := NewPublicDebugAPI(backend, 10000, 10000, false)
+			_, err := api.TraceBlockByNumber(t.Context(), rpc.BlockNumber(block.NumberU64()), &tracers.TraceConfig{})
+			require.ErrorContains(t, err, test.wantErr)
+		})
+	}
+}
+
+func TestReplayBlock_PreBlockSystemCallsError(t *testing.T) {
+	block := newTracingTestBlock(types.NewTx(&types.LegacyTx{}))
+	backend, _ := newTracingTestBackend(t, block, errors.New("network rules error"))
+
+	api := PublicTxTraceAPI{b: backend}
+	_, err := api.replayBlock(t.Context(), block, nil, nil)
+	require.ErrorContains(t, err, "cannot apply pre-block system calls for block 5")
+}
+
+// newTracingTestBlock creates a block at height 5 holding the given transactions.
+func newTracingTestBlock(txs ...*types.Transaction) *evmcore.EvmBlock {
+	return &evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			Number:     big.NewInt(5),
+			BaseFee:    big.NewInt(10000000),
+			ParentHash: common.Hash{0x1},
+		},
+		Transactions: txs,
+	}
+}
+
+// newTxWithInvalidSignature creates a transaction which cannot be converted into
+// a message, since recovering its sender fails.
+func newTxWithInvalidSignature() *types.Transaction {
+	return types.NewTx(&types.LegacyTx{
+		Gas:      21000,
+		GasPrice: big.NewInt(10000000),
+		V:        big.NewInt(0),
+		R:        big.NewInt(1),
+		S:        big.NewInt(1),
+	})
+}
+
+// newTracingTestBackend creates a backend serving the given block with a working
+// EVM. If rulesErr is not nil, GetNetworkRules fails with it, which makes the
+// preparation of the pre-block system calls fail. The returned state expects to be
+// released exactly once.
+func newTracingTestBackend(
+	t *testing.T,
+	block *evmcore.EvmBlock,
+	rulesErr error,
+) (*MockBackend, *state.MockStateDB) {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	any := gomock.Any()
+
+	mockState := state.NewMockStateDB(ctrl)
+	mockState.EXPECT().Release().Times(1)
+
+	backend := NewMockBackend(ctrl)
+	if rulesErr != nil {
+		backend.EXPECT().GetNetworkRules(any, any).Return(nil, rulesErr).AnyTimes()
+	} else {
+		backend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+	}
+	backend.EXPECT().GetEVM(any, any, any, any, any).
+		DoAndReturn(makeTestEVM(opera.GetSonicUpgrades())).AnyTimes()
+	backend.EXPECT().ChainConfig(any).Return(makeChainConfig(opera.GetSonicUpgrades())).AnyTimes()
+	backend.EXPECT().BlockByNumber(any, rpc.BlockNumber(block.NumberU64())).Return(block, nil).AnyTimes()
+	backend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(mockState, block, nil).AnyTimes()
+	return backend, mockState
+}
+
 // makeChainConfig allows to create a chain config with a given set of features
 func makeChainConfig(upgrades opera.Upgrades) *params.ChainConfig {
 	return opera.CreateTransientEvmChainConfig(
