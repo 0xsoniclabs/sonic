@@ -656,6 +656,7 @@ type latestBlockProbeService struct {
 	block           uint64 // the block the probe is waiting for
 	behindCalls     int    // number of eth_blockNumber calls reporting block-1
 	noStateCalls    int    // number of eth_getBalance calls failing
+	hang            bool   // eth_getBalance calls beyond noStateCalls block until canceled
 	blockNumberSeen int    // number of eth_blockNumber calls received
 	getBalanceSeen  int    // number of eth_getBalance calls received
 }
@@ -670,13 +671,18 @@ func (s *latestBlockProbeService) BlockNumber() hexutil.Uint64 {
 	return hexutil.Uint64(s.block)
 }
 
-func (s *latestBlockProbeService) GetBalance(_ context.Context, _ common.Address, block rpc.BlockNumberOrHash) (*hexutil.Big, error) {
+func (s *latestBlockProbeService) GetBalance(ctx context.Context, _ common.Address, block rpc.BlockNumberOrHash) (*hexutil.Big, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.getBalanceSeen++
-	if s.getBalanceSeen <= s.noStateCalls {
+	noState, hang := s.getBalanceSeen <= s.noStateCalls, s.hang
+	s.mu.Unlock()
+	if noState {
 		number, _ := block.Number()
 		return nil, fmt.Errorf("block %d is not present in the archive", number)
+	}
+	if hang {
+		<-ctx.Done()
+		return nil, ctx.Err()
 	}
 	return (*hexutil.Big)(big.NewInt(0)), nil
 }
@@ -777,6 +783,7 @@ func TestWaitUntilBlockStateIsLatest_ReportsContextAndLastProbeError(t *testing.
 		makeContext   func(t *testing.T) context.Context
 		behindCalls   int
 		noStateCalls  int
+		hang          bool
 		expectedError error
 		expectedText  string
 	}{
@@ -789,6 +796,13 @@ func TestWaitUntilBlockStateIsLatest_ReportsContextAndLastProbeError(t *testing.
 		"state never available": {
 			makeContext:   deadlineContext,
 			noStateCalls:  never,
+			expectedError: context.DeadlineExceeded,
+			expectedText:  "state of block 42 is not available: block 42 is not present in the archive",
+		},
+		"probe cut by the deadline": {
+			makeContext:   deadlineContext,
+			noStateCalls:  1,
+			hang:          true,
 			expectedError: context.DeadlineExceeded,
 			expectedText:  "state of block 42 is not available: block 42 is not present in the archive",
 		},
@@ -807,6 +821,7 @@ func TestWaitUntilBlockStateIsLatest_ReportsContextAndLastProbeError(t *testing.
 				block:        block,
 				behindCalls:  test.behindCalls,
 				noStateCalls: test.noStateCalls,
+				hang:         test.hang,
 			}
 			client := newLatestBlockProbeClient(t, service)
 
