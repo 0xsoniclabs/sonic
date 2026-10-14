@@ -265,13 +265,14 @@ func TestSonicTool_genesis_ExportImport_WithBundles(t *testing.T) {
 	require.Equal(t, originalInfo1, info1,
 		"bundle info mismatch after genesis export-import")
 
-	// run enough blocks to make sure that the history hash is pruned.
+	// run enough blocks to move the first bundle out of the replay protection
+	// window; it is still retained by the store, but no longer exported.
 	generateNBlocks(t, net, int(bundle.MaxBlockRangeLength)+10)
 
 	// run another bundle
 	bundleHash2, originalInfo2 := runBundle(t, net)
 
-	// check that both bundles are still retained
+	// check that both bundles are still retained by the store
 	info1, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
 	require.NoError(t, err)
 	require.Equal(t, originalInfo1, info1)

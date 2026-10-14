@@ -210,11 +210,21 @@ func TestBundles_DeterministicOutput(t *testing.T) {
 
 func TestBundleExportBase_LimitsExportToReplayProtectionWindow(t *testing.T) {
 	window := idx.Block(bundle.MaxBlockRangeLength)
-	require.Equal(t, uint64(1), bundleExportBase(1, window),
-		"history shorter than the window is exported whole")
-	require.Equal(t, uint64(1), bundleExportBase(1, window+1))
-	require.Equal(t, uint64(500), bundleExportBase(1, window+500),
-		"longer history is cut to the replay protection window")
+	tests := map[string]struct {
+		lastBlock idx.Block
+		want      uint64
+	}{
+		"chain shorter than the window":  {lastBlock: window - 1, want: 1},
+		"chain as long as the window":    {lastBlock: window, want: 1},
+		"history within the window":      {lastBlock: window + 1, want: 1},
+		"history longer than the window": {lastBlock: window + 2, want: 2},
+		"much longer history":            {lastBlock: window + 500, want: 500},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.want, bundleExportBase(1, test.lastBlock))
+		})
+	}
 }
 
 func TestExportBundles_SkipsBundlesBeforeBase(t *testing.T) {

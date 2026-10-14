@@ -47,7 +47,8 @@ func (f fakeProcessedBundles) GetHistoryHashes() (bundle.BundleGenesisHistoryHas
 	return *f.historyHashes, true
 }
 
-// exportProcessedBundles mirrors the genesis export of processed bundles.
+// exportProcessedBundles mirrors the genesis export of processed bundles: only
+// the replay protection window preceding the latest block is exported.
 func exportProcessedBundles(t *testing.T, store *Store) fakeProcessedBundles {
 	t.Helper()
 	res := fakeProcessedBundles{infos: store.EnumerateProcessedBundles()}

@@ -226,7 +226,7 @@ func computeNewBundleStateHash(
 // the same bundle multiple times.
 //
 // Note: the store only keeps track of the bundles being executed in the last
-// bundle.MaxBlockRange blocks, so this function returns false for bundles
+// processedBundlesRetention blocks, so this function returns false for bundles
 // that were processed too far in the past and have been cleaned up from the
 // store.
 func (s *Store) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
@@ -239,7 +239,7 @@ func (s *Store) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
 
 // GetBundleExecutionInfo returns the execution info for a processed execution
 // plan, if it is present in the store. Note that execution info is being
-// automatically removed from the store after bundle.MaxBlockRange blocks,
+// automatically removed from the store after processedBundlesRetention blocks,
 // so this function returns nil for bundles that were processed too far in the
 // past.
 func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) *bundle.ExecutionInfo {
