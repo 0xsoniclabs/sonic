@@ -384,8 +384,8 @@ func (s *Store) RollbackProcessedBundles(block uint64) error {
 		blockNum := binary.BigEndian.Uint64(key[1 : 1+8])
 		planHash := common.BytesToHash(key[1+8:])
 		err := errors.Join(
-			batch.Delete(getIndexKey(blockNum, planHash)),
-			batch.Delete(getEntryKey(planHash)),
+			batch.Delete(getIndexKey(blockNum, planHash)), // deletion of 'i' table entry
+			batch.Delete(getEntryKey(planHash)),           // deletion of 'e' table entry
 		)
 		if err != nil {
 			return fmt.Errorf("failed to delete processed bundle: %w", err)
@@ -399,11 +399,13 @@ func (s *Store) RollbackProcessedBundles(block uint64) error {
 	it2 := s.table.ProcessedBundles.NewIterator([]byte{'h'}, start)
 	defer it2.Release()
 	for it2.Next() {
-		if key := it2.Key(); len(key) == 1+8 {
-			blockNum := binary.BigEndian.Uint64(key[1:])
-			if err := batch.Delete(getBundleHistoryHashKey(blockNum)); err != nil {
-				return fmt.Errorf("failed to delete block history hash: %w", err)
-			}
+		key := it2.Key()
+		if len(key) != 1+8 {
+			continue
+		}
+		blockNum := binary.BigEndian.Uint64(key[1:])
+		if err := batch.Delete(getBundleHistoryHashKey(blockNum)); err != nil {
+			return fmt.Errorf("failed to delete block history hash: %w", err)
 		}
 	}
 	if err := it2.Error(); err != nil {
