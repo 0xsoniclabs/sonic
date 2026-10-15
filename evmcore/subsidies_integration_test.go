@@ -50,6 +50,8 @@ func TestSubsidiesIntegration_SubsidiesCheckerCanExecuteContracts(t *testing.T) 
 	// Expect contract to be executed
 	any := gomock.Any()
 	state.EXPECT().GetCode(registry.GetAddress()).Return(registry.GetCode()).MinTimes(1)
+	state.EXPECT().GetCodeHash(registry.GetAddress()).Return(crypto.Keccak256Hash(registry.GetCode())).AnyTimes()
+	state.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
 	state.EXPECT().SlotInAccessList(registry.GetAddress(), any).MinTimes(1)
 	state.EXPECT().AddSlotToAccessList(registry.GetAddress(), any).MinTimes(1)
 
@@ -92,6 +94,7 @@ func TestSubsidiesIntegration_SubsidiesCheckerReturnsFalseIfContractIsNotDeploye
 
 	// Contract execution fails when the contract is not deployed
 	state.EXPECT().GetCode(registry.GetAddress()).Return(nil)
+	state.EXPECT().GetCodeHash(gomock.Any()).Return(types.EmptyCodeHash).AnyTimes()
 
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 
@@ -134,7 +137,6 @@ func makeHappyStateDb(
 	state := state.NewMockStateDB(ctrl)
 	state.EXPECT().GetNonce(any).Return(uint64(0)).AnyTimes()
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)).AnyTimes()
-	state.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
 
 	state.EXPECT().Snapshot().MinTimes(1)
 	state.EXPECT().Exist(any).Return(true).AnyTimes()
