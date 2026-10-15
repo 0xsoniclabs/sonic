@@ -42,11 +42,11 @@ func TestCodeSizeLimit_MaxInitCodeSizeIsUpdatedWithBrio(t *testing.T) {
 		},
 		"Brio below limit": {
 			upgrades:     opera.GetBrioUpgrades(),
-			initCodeSize: opera.SonicPostAllegroMaxInitCodeSize,
+			initCodeSize: opera.SonicBrioMaxInitCodeSize,
 		},
 		"Brio above limit": {
 			upgrades:     opera.GetBrioUpgrades(),
-			initCodeSize: opera.SonicPostAllegroMaxInitCodeSize + 1,
+			initCodeSize: opera.SonicBrioMaxInitCodeSize + 1,
 			errorMessage: "max initcode size exceeded: code size 98305, limit 98304",
 		},
 	}
@@ -96,12 +96,12 @@ func TestCodeSizeLimits_MaxContractCodeSizeIsUpdatedWithBrio(t *testing.T) {
 		},
 		"Brio below limit": {
 			upgrades:      opera.GetBrioUpgrades(),
-			codeSize:      opera.SonicPostAllegroMaxCodeSize,
+			codeSize:      opera.SonicBrioMaxCodeSize,
 			receiptStatus: types.ReceiptStatusSuccessful,
 		},
 		"Brio above limit": {
 			upgrades:      opera.GetBrioUpgrades(),
-			codeSize:      opera.SonicPostAllegroMaxCodeSize + 1,
+			codeSize:      opera.SonicBrioMaxCodeSize + 1,
 			receiptStatus: types.ReceiptStatusFailed,
 		},
 	}

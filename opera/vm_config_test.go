@@ -20,16 +20,10 @@ package opera_test
 
 import (
 	"fmt"
-	"math"
-	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestGetVmConfig_SingleProposerModeDisablesExcessGasCharging(t *testing.T) {
@@ -94,68 +88,6 @@ func TestGetVmConfig_BrioUpgrade_CopiesMaxEventGasValue(t *testing.T) {
 	require.False(t, &rules.Economy.Gas.MaxEventGas == vmConfig.MaxTxGas)
 }
 
-func TestGetVmConfig_BrioUpgradeFromLfvmToSfvmInterpreter(t *testing.T) {
-	tests := map[string]struct {
-		brioEnabled bool
-	}{
-		"Allegro": {brioEnabled: false},
-		"Brio":    {brioEnabled: true},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			rules := opera.Rules{
-				Upgrades: opera.Upgrades{
-					Sonic:   true,
-					Allegro: true,
-					Brio:    test.brioEnabled,
-				},
-			}
-
-			vmConfig := opera.GetVmConfig(rules)
-			require.NotNil(t, vmConfig.Interpreter)
-
-			// create a contract with code size exceeding the LFVM code size limit
-			contract := vm.Contract{
-				Code: make([]byte, math.MaxUint16+1),
-			}
-
-			// tosca VMs only support Istanbul and later
-			zero := big.NewInt(0)
-			chainConfig := &params.ChainConfig{
-				HomesteadBlock:      zero,
-				DAOForkBlock:        zero,
-				EIP150Block:         zero,
-				EIP155Block:         zero,
-				EIP158Block:         zero,
-				ByzantiumBlock:      zero,
-				ConstantinopleBlock: zero,
-				PetersburgBlock:     zero,
-				IstanbulBlock:       zero,
-			}
-
-			ctrl := gomock.NewController(t)
-			stateDb := state.NewMockStateDB(ctrl)
-			stateDb.EXPECT().AddRefund(gomock.Any())
-			stateDb.EXPECT().GetRefund().Return(uint64(0))
-			stateDb.EXPECT().SubRefund(gomock.Any())
-			if test.brioEnabled {
-				stateDb.EXPECT().AddRefund(gomock.Any())
-			}
-
-			evm := vm.NewEVM(vm.BlockContext{BlockNumber: big.NewInt(1)}, stateDb, chainConfig, vmConfig)
-			_, err := vmConfig.Interpreter(evm).Interpret(&contract, []byte{}, false)
-
-			// verify that no code size limit is enforced when Brio (SFVM) is enabled
-			if test.brioEnabled {
-				require.NoError(t, err)
-			} else {
-				require.ErrorContains(t, err, "max code size exceeded")
-			}
-		})
-	}
-}
-
 func TestCodeSizeLimits_BrioSetsCustomCodeSizeLimits(t *testing.T) {
 	tests := map[string]bool{
 		"Allegro": false,
@@ -177,8 +109,8 @@ func TestCodeSizeLimits_BrioSetsCustomCodeSizeLimits(t *testing.T) {
 			if brioEnabled {
 				require.NotNil(t, vmConfig.MaxCodeSize)
 				require.NotNil(t, vmConfig.MaxInitCodeSize)
-				require.Equal(t, opera.SonicPostAllegroMaxCodeSize, *vmConfig.MaxCodeSize)
-				require.Equal(t, opera.SonicPostAllegroMaxInitCodeSize, *vmConfig.MaxInitCodeSize)
+				require.Equal(t, opera.SonicBrioMaxCodeSize, *vmConfig.MaxCodeSize)
+				require.Equal(t, opera.SonicBrioMaxInitCodeSize, *vmConfig.MaxInitCodeSize)
 			} else {
 				require.Nil(t, vmConfig.MaxCodeSize)
 				require.Nil(t, vmConfig.MaxInitCodeSize)

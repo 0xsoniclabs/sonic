@@ -19,27 +19,31 @@ package opera
 import (
 	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
 	"github.com/0xsoniclabs/tosca/go/geth_adapter"
-	"github.com/0xsoniclabs/tosca/go/interpreter/lfvm"
 	"github.com/0xsoniclabs/tosca/go/interpreter/sfvm"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
 )
 
 const (
-	SonicPostAllegroMaxCodeSize     = 1<<15 + 1<<14                   // 48 KiB
-	SonicPostAllegroMaxInitCodeSize = SonicPostAllegroMaxCodeSize * 2 // 96 KiB
+	SonicBrioMaxCodeSize     = 1<<15 + 1<<14            // 48 KiB
+	SonicBrioMaxInitCodeSize = SonicBrioMaxCodeSize * 2 // 96 KiB
 )
 
 // sonicVmConfig is the initial Ethereum VM configuration used for processing
 // transactions on a Sonic chain using the Sonic hard-fork.
 var sonicVmConfig = func() vm.Config {
 
-	// For transaction processing, Tosca's LFVM is used.
-	interpreter, err := lfvm.NewInterpreter(lfvm.Config{})
+	// For transaction processing, Tosca's SFVM is used.
+	interpreter, err := sfvm.NewInterpreter(sfvm.Config{
+		WithShaCache:      true,
+		WithAnalysisCache: true,
+		AnalysisCacheSize: 1 << 28, // 256 MiB
+		MaxCachedCodeSize: SonicBrioMaxCodeSize,
+	})
 	if err != nil {
 		panic(err)
 	}
-	lfvmFactory := geth_adapter.NewGethInterpreterFactory(interpreter)
+	sfvmFactory := geth_adapter.NewGethInterpreterFactory(interpreter)
 
 	// For tracing, Geth's EVM is used.
 	gethFactory := func(evm *vm.EVM) vm.Interpreter {
@@ -50,7 +54,7 @@ var sonicVmConfig = func() vm.Config {
 		StatePrecompiles: map[common.Address]vm.PrecompiledStateContract{
 			evmwriter.ContractAddress: &evmwriter.PreCompiledContract{},
 		},
-		Interpreter:           lfvmFactory,
+		Interpreter:           sfvmFactory,
 		InterpreterForTracing: gethFactory,
 
 		// Fantom/Sonic modifications
@@ -59,22 +63,6 @@ var sonicVmConfig = func() vm.Config {
 		InsufficientBalanceIsNotAnError: true,
 		SkipTipPaymentToCoinbase:        true,
 	}
-}()
-
-// sfvmFactory is a factory for creating a SFVM interpreter,
-// starting from the Brio upgrade it is used as the default interpreter.
-var sfvmFactory = func() vm.InterpreterFactory {
-	config := sfvm.Config{
-		WithShaCache:      true,
-		WithAnalysisCache: true,
-		AnalysisCacheSize: 1 << 28, // 256 MiB
-		MaxCachedCodeSize: SonicPostAllegroMaxCodeSize,
-	}
-	interpreter, err := sfvm.NewInterpreter(config)
-	if err != nil {
-		panic(err)
-	}
-	return geth_adapter.NewGethInterpreterFactory(interpreter)
 }()
 
 // GetVmConfig returns the VM configuration to be used for processing
@@ -92,12 +80,9 @@ func GetVmConfig(rules Rules) vm.Config {
 		rulesMaxTxGas := rules.Economy.Gas.MaxEventGas
 		res.MaxTxGas = &rulesMaxTxGas
 
-		// use the SFVM interpreter starting from the Brio upgrade
-		res.Interpreter = sfvmFactory
-
 		// Starting from Brio, sonic enforces its own code size limits.
-		maxCodeSize := SonicPostAllegroMaxCodeSize
-		maxInitCodeSize := SonicPostAllegroMaxInitCodeSize
+		maxCodeSize := SonicBrioMaxCodeSize
+		maxInitCodeSize := SonicBrioMaxInitCodeSize
 		res.MaxCodeSize = &maxCodeSize
 		res.MaxInitCodeSize = &maxInitCodeSize
 	}
