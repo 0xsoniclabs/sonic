@@ -26,6 +26,8 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 )
 
+//go:generate go tool mockgen -source=ledger.go -package=gossip -destination=ledger_mock.go
+
 // Ledger is the consensus-agnostic block processing component.
 type Ledger interface {
 	// Head returns a handle to the block the consensus head pointer points to,

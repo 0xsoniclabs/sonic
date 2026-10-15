@@ -511,6 +511,48 @@ func testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T, u
 		"user transactions must be executed with the block's start rules (Brio enabled), got size limits %v", executeSizeLimits)
 }
 
+func TestConsensusCallback_UsesLedgerFromTheBlockAfterTheOneEnablingDolce(t *testing.T) {
+	t.Parallel()
+
+	store := newInMemoryStoreWithGenesisData(t, opera.GetCantoUpgrades(), 1, 2)
+
+	// Let the next block seal the epoch and enable Dolce.
+	bs, es := store.GetBlockState(), store.GetEpochState()
+	rules := es.Rules.Copy()
+	rules.Upgrades.Dolce = true
+	bs.DirtyRules = &rules
+	bs.AdvanceEpochs = 1
+	store.SetBlockEpochState(bs, es)
+
+	// Any ledger call without an expectation fails the test.
+	ledger := NewMockLedger(gomock.NewController(t))
+
+	beginBlock := consensusCallbackBeginBlockFn(
+		nil, new(sync.WaitGroup), new(uint32), store, ledger, DefaultBlockProc(), false, nil, &[]*emitter.Emitter{}, nil, new(bool),
+	)
+
+	// Produces an empty block, late enough not to be skipped.
+	produceBlock := func() {
+		number := store.GetLatestBlockIndex() + 1
+		atroposBuilder := inter.MutableEventPayload{}
+		atroposBuilder.SetCreator(1)
+		atroposBuilder.SetMedianTime(store.GetBlockState().LastBlock.Time +
+			store.GetEpochState().Rules.Blocks.MaxEmptyBlockSkipPeriod + 1)
+		atropos := atroposBuilder.Build()
+
+		callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
+		callbacks.ApplyEvent(atropos)
+		callbacks.EndBlock()
+		require.Equal(t, number, store.GetLatestBlockIndex())
+	}
+
+	produceBlock()
+	require.True(t, store.GetEpochState().Rules.Upgrades.Dolce)
+
+	ledger.EXPECT().Head().DoAndReturn(NewLedger(store).Head)
+	produceBlock()
+}
+
 // TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking verifies
 // that the receipt origin tracking performed at the end of block processing
 // uses the network rules in effect at the start of the block, even though
