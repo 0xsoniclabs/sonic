@@ -169,6 +169,7 @@ func TestSonicTool_genesis_CreatesDataDirWithAllowedUpgrades(t *testing.T) {
 		"allegro",
 		"brio",
 		"canto",
+		"dolce",
 	}
 
 	for _, upgradeName := range upgrades {
@@ -191,7 +192,7 @@ func TestSonicTool_genesis_ReturnsErrorIfHardforkIsInvalid(t *testing.T) {
 		"genesis", "fake",
 		"--upgrades", "invalid",
 		"1")
-	require.ErrorContains(t, err, "invalid profile invalid - must be 'sonic', 'allegro', 'brio', or 'canto'")
+	require.ErrorContains(t, err, "invalid profile invalid - must be 'sonic', 'allegro', 'brio', 'canto', or 'dolce'")
 }
 
 func TestSonicTool_genesis_ExportsAndSigns_WithoutErrors(t *testing.T) {
