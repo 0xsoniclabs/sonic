@@ -196,7 +196,6 @@ type BlockProc struct {
 	PreTxTransactor  blockproc.TxTransactor
 	PostTxTransactor blockproc.TxTransactor
 	EventsModule     blockproc.ConfirmedEventsModule
-	EVMModule        blockproc.EVM
 }
 
 func DefaultBlockProc() BlockProc {
@@ -206,7 +205,6 @@ func DefaultBlockProc() BlockProc {
 		PreTxTransactor:  drivermodule.NewDriverTxPreTransactor(),
 		PostTxTransactor: drivermodule.NewDriverTxTransactor(),
 		EventsModule:     eventmodule.New(),
-		EVMModule:        evmmodule.New(),
 	}
 }
 
@@ -363,7 +361,7 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	svc.gpo.SetReader(&GPOBackend{svc.store, svc.txpool})
 
 	// create the long-lived ledger driven by the consensus block callback
-	svc.ledger = NewLedger(svc.store, blockProc.EVMModule, &svc.feed, config.TxIndex)
+	svc.ledger = NewLedger(svc.store, evmmodule.New(), &svc.feed, config.TxIndex)
 
 	// init dialCandidates
 	dnsclient := dnsdisc.NewClient(dnsdisc.Config{})
