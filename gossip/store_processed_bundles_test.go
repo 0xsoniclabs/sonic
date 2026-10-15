@@ -1873,28 +1873,112 @@ func TestStore_RollbackProcessedBundles_Fails_WhenHistoryHashOfBlockIsNotRetaine
 	require.Equal(t, head, block)
 }
 
-func TestStore_RollbackProcessedBundles_ReportsError_WhenWritingFails(t *testing.T) {
-	store, table, _, batch, it := storeTableLogMocks(t)
-	ctrl := gomock.NewController(t)
-	earliestIt := NewMockdbIterator(ctrl)
-	hashesIt := NewMockdbIterator(ctrl)
-
+func TestStore_RollbackProcessedBundles_HandlesStoreAccess(t *testing.T) {
 	const earliest = uint64(5)
 	const block = earliest + bundle.MaxBlockRangeLength
-	injectedErr := errors.New("batch write error")
-	expectHistoryHashOf(table, earliestIt, earliest, block)
-	table.EXPECT().NewBatch().Return(batch)
-	for prefix, iterator := range map[byte]*MockdbIterator{'i': it, 'h': hashesIt} {
-		table.EXPECT().NewIterator([]byte{prefix}, bigendian.Uint64ToBytes(block+1)).Return(iterator)
-		iterator.EXPECT().Next().Return(false)
-		iterator.EXPECT().Error().Return(nil)
-		iterator.EXPECT().Release()
-	}
-	batch.EXPECT().Put(nil, gomock.Any()).Return(nil)
-	batch.EXPECT().Write().Return(injectedErr)
+	planHash := common.Hash{0x01}
+	indexKey := getIndexKey(block+1, planHash)
+	historyKey := getBundleHistoryHashKey(block + 1)
+	injectedErr := errors.New("injected error")
 
-	err := store.RollbackProcessedBundles(block)
-	require.ErrorIs(t, err, injectedErr)
+	// expectKeys sets up the iterator to yield the given keys and then
+	// finish with the given iteration error.
+	expectKeys := func(it *MockdbIterator, iterErr error, keys ...[]byte) {
+		for _, key := range keys {
+			it.EXPECT().Next().Return(true)
+			it.EXPECT().Key().Return(key)
+		}
+		it.EXPECT().Next().Return(false)
+		it.EXPECT().Error().Return(iterErr)
+	}
+
+	tests := map[string]struct {
+		// setup configures the iterators over the 'i' and 'h' tables and the
+		// batch, while the history hash lookup and batch creation are shared.
+		setup   func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator)
+		wantErr error
+	}{
+		"skips keys of invalid length": {
+			setup: func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
+				expectKeys(indexIt, nil, indexKey[:len(indexKey)-1])
+				expectKeys(historyIt, nil, historyKey[:len(historyKey)-1])
+				batch.EXPECT().Put(nil, gomock.Any()).Return(nil)
+				batch.EXPECT().Write().Return(nil)
+			},
+		},
+		"deleting processed bundle fails": {
+			setup: func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
+				indexIt.EXPECT().Next().Return(true)
+				indexIt.EXPECT().Key().Return(indexKey)
+				batch.EXPECT().Delete(indexKey).Return(injectedErr)
+				batch.EXPECT().Delete(getEntryKey(planHash)).Return(nil)
+			},
+			wantErr: injectedErr,
+		},
+		"iterating processed bundles fails": {
+			setup: func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
+				expectKeys(indexIt, injectedErr)
+			},
+			wantErr: injectedErr,
+		},
+		"deleting history hash fails": {
+			setup: func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
+				expectKeys(indexIt, nil)
+				historyIt.EXPECT().Next().Return(true)
+				historyIt.EXPECT().Key().Return(historyKey)
+				batch.EXPECT().Delete(historyKey).Return(injectedErr)
+			},
+			wantErr: injectedErr,
+		},
+		"iterating history hashes fails": {
+			setup: func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
+				expectKeys(indexIt, nil)
+				expectKeys(historyIt, injectedErr)
+			},
+			wantErr: injectedErr,
+		},
+		"updating latest history hash fails": {
+			setup: func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
+				expectKeys(indexIt, nil)
+				expectKeys(historyIt, nil)
+				batch.EXPECT().Put(nil, gomock.Any()).Return(injectedErr)
+			},
+			wantErr: injectedErr,
+		},
+		"writing batch fails": {
+			setup: func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
+				expectKeys(indexIt, nil)
+				expectKeys(historyIt, nil)
+				batch.EXPECT().Put(nil, gomock.Any()).Return(nil)
+				batch.EXPECT().Write().Return(injectedErr)
+			},
+			wantErr: injectedErr,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			store, table, _, batch, indexIt := storeTableLogMocks(t)
+			ctrl := gomock.NewController(t)
+			earliestIt := NewMockdbIterator(ctrl)
+			historyIt := NewMockdbIterator(ctrl)
+
+			expectHistoryHashOf(table, earliestIt, earliest, block)
+			table.EXPECT().NewBatch().Return(batch)
+			table.EXPECT().NewIterator([]byte{'i'}, bigendian.Uint64ToBytes(block+1)).Return(indexIt)
+			indexIt.EXPECT().Release()
+			table.EXPECT().NewIterator([]byte{'h'}, bigendian.Uint64ToBytes(block+1)).Return(historyIt).AnyTimes()
+			historyIt.EXPECT().Release().AnyTimes()
+			test.setup(table, batch, indexIt, historyIt)
+
+			err := store.RollbackProcessedBundles(block)
+			if test.wantErr == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, test.wantErr)
+			}
+		})
+	}
 }
 
 // expectHistoryHashOf sets up the table to retain the history hashes from the

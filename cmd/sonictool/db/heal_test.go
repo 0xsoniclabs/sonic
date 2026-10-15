@@ -32,7 +32,7 @@ import (
 
 func TestHealGossipDb_RevertsProcessedBundles(t *testing.T) {
 	require := require.New(t)
-	dbs, cfg := newDbsWithBundleHistory(t)
+	dbs, cfg := newDbsWithBundleHistory(t, addCompleteBundleHistory)
 
 	// epoch 6 starts at block 1200, which is after the earliest safe block
 	store, err := gossip.NewStore(dbs, cfg)
@@ -53,29 +53,60 @@ func TestHealGossipDb_RevertsProcessedBundles(t *testing.T) {
 	require.Equal(wantHash, gotHash)
 }
 
-func TestHealGossipDb_ReportsError_WhenBundleHistoryIsTooShallow(t *testing.T) {
-	dbs, cfg := newDbsWithBundleHistory(t)
+func TestHealGossipDb_ReportsError_WhenBundleHistoryIsIncomplete(t *testing.T) {
+	dbs, cfg := newDbsWithBundleHistory(t, addIncompleteBundleHistory)
 
-	// epoch 3 starts at block 600, which is before the earliest safe block
+	// epoch 3 starts at block 600, for which the bundles processed in the
+	// preceding replay protection window are no longer retained
 	epoch := idx.Epoch(3)
 	_, _, err := healGossipDb(dbs, cfg, &epoch, 10_000)
 	require.ErrorContains(t, err, "cannot revert processed bundles history to epoch 3")
 	require.ErrorContains(t, err, "earliest safe block is 1025")
 }
 
-// newDbsWithBundleHistory creates databases of a node which processed a bundle
-// at block 1 and empty blocks up to block 2048, with epoch e starting at block
-// 200*e for 10 epochs. The earliest safe block for a rollback is 1025.
-func newDbsWithBundleHistory(t *testing.T) (kvdb.FlushableDBProducer, gossip.StoreConfig) {
+func TestHealGossipDb_ReportsError_WhenTargetIsWithinFirstWindowAfterFirstBundle(t *testing.T) {
+	dbs, cfg := newDbsWithBundleHistory(t, addCompleteBundleHistory)
+
+	// epoch 3 starts at block 600; although the complete history is retained,
+	// healing to the first bundle.MaxBlockRangeLength blocks after the first
+	// bundle of the chain is intentionally not supported
+	epoch := idx.Epoch(3)
+	_, _, err := healGossipDb(dbs, cfg, &epoch, 10_000)
+	require.ErrorContains(t, err, "cannot revert processed bundles history to epoch 3")
+	require.ErrorContains(t, err, "earliest safe block is 1025")
+}
+
+// addCompleteBundleHistory adds the history of a chain which processed its
+// first bundle at block 1 and empty blocks up to block 2048.
+func addCompleteBundleHistory(store *gossip.Store) {
+	store.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{{0x01}: {}})
+	for block := uint64(2); block <= 2*bundle.MaxBlockRangeLength; block++ {
+		store.AddProcessedBundles(block, nil)
+	}
+}
+
+// addIncompleteBundleHistory adds the history of blocks 1 to 2048 continuing
+// a history hash of earlier blocks, whose processed bundles are not retained.
+func addIncompleteBundleHistory(store *gossip.Store) {
+	store.SetProcessedBundlesHistoryHash(0, common.Hash{0x01})
+	for block := uint64(1); block <= 2*bundle.MaxBlockRangeLength; block++ {
+		store.AddProcessedBundles(block, nil)
+	}
+}
+
+// newDbsWithBundleHistory creates databases of a node with the bundle history
+// added by the given function, with epoch e starting at block 200*e for
+// 10 epochs. The earliest safe block for a rollback is 1025.
+func newDbsWithBundleHistory(
+	t *testing.T,
+	addBundleHistory func(*gossip.Store),
+) (kvdb.FlushableDBProducer, gossip.StoreConfig) {
 	t.Helper()
 	dbs := flushable.NewSyncedPool(memorydb.NewProducer(""), []byte{0})
 	cfg := gossip.MemTestStoreConfig(t.TempDir())
 	store, err := gossip.NewStore(dbs, cfg)
 	require.NoError(t, err)
-	store.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{{0x01}: {}})
-	for block := uint64(2); block <= 2*bundle.MaxBlockRangeLength; block++ {
-		store.AddProcessedBundles(block, nil)
-	}
+	addBundleHistory(store)
 	for epoch := idx.Epoch(1); epoch <= 10; epoch++ {
 		blockState := iblockproc.BlockState{
 			LastBlock: iblockproc.BlockCtx{Idx: idx.Block(200 * uint64(epoch))},
