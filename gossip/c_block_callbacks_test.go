@@ -136,14 +136,7 @@ func testConsensusCallback(t *testing.T, upgrades opera.Upgrades) {
 
 func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testing.T) {
 	t.Parallel()
-	for name, upgrades := range map[string]opera.Upgrades{
-		"Allegro": opera.GetAllegroUpgrades(),
-		"Dolce":   opera.GetDolceUpgrades(),
-	} {
-		t.Run(name, func(t *testing.T) {
-			testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t, upgrades)
-		})
-	}
+	runPreAndPostDolce(t, opera.GetAllegroUpgrades(), testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly)
 }
 
 func testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testing.T, upgrades opera.Upgrades) {
@@ -370,14 +363,7 @@ func testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 // finite, Brio-derived limit proves the start rules were used.
 func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
 	t.Parallel()
-	for name, upgrades := range map[string]opera.Upgrades{
-		"Brio":  opera.GetBrioUpgrades(),
-		"Dolce": opera.GetDolceUpgrades(),
-	} {
-		t.Run(name, func(t *testing.T) {
-			testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t, upgrades)
-		})
-	}
+	runPreAndPostDolce(t, opera.GetBrioUpgrades(), testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing)
 }
 
 func testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T, upgrades opera.Upgrades) {
@@ -544,14 +530,7 @@ func testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T, u
 // buggy (post-seal) behavior would report validator 0.
 func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testing.T) {
 	t.Parallel()
-	for name, upgrades := range map[string]opera.Upgrades{
-		"Brio":  opera.GetBrioUpgrades(),
-		"Dolce": opera.GetDolceUpgrades(),
-	} {
-		t.Run(name, func(t *testing.T) {
-			testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t, upgrades)
-		})
-	}
+	runPreAndPostDolce(t, opera.GetBrioUpgrades(), testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking)
 }
 
 func testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testing.T, upgrades opera.Upgrades) {
@@ -721,14 +700,7 @@ func testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 // that its result is what gets executed.
 func TestConsensusCallback_AppliesTransactionPriorities(t *testing.T) {
 	t.Parallel()
-	for name, upgrades := range map[string]opera.Upgrades{
-		"Brio":  opera.GetBrioUpgrades(),
-		"Dolce": opera.GetDolceUpgrades(),
-	} {
-		t.Run(name, func(t *testing.T) {
-			testConsensusCallback_AppliesTransactionPriorities(t, upgrades)
-		})
-	}
+	runPreAndPostDolce(t, opera.GetBrioUpgrades(), testConsensusCallback_AppliesTransactionPriorities)
 }
 
 func testConsensusCallback_AppliesTransactionPriorities(t *testing.T, upgrades opera.Upgrades) {
@@ -863,14 +835,7 @@ func testConsensusCallback_AppliesTransactionPriorities(t *testing.T, upgrades o
 }
 
 func TestEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransaction(t *testing.T) {
-	for name, upgrades := range map[string]opera.Upgrades{
-		"Brio":  opera.GetBrioUpgrades(),
-		"Dolce": opera.GetDolceUpgrades(),
-	} {
-		t.Run(name, func(t *testing.T) {
-			testEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransaction(t, upgrades)
-		})
-	}
+	runPreAndPostDolce(t, opera.GetBrioUpgrades(), testEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransaction)
 }
 
 func testEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransaction(t *testing.T, upgrades opera.Upgrades) {
@@ -2281,7 +2246,7 @@ func TestSpillBlockEvents(t *testing.T) {
 	}
 }
 
-func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupWithBrio(t *testing.T) {
+func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupFromBrio(t *testing.T) {
 	tests := map[string]struct {
 		upgrades             opera.Upgrades
 		wantDerivedTxCreator idx.ValidatorID
@@ -2713,4 +2678,15 @@ func packSenderPriority(level, weight, id uint64) common.Hash {
 	v.Or(v, new(uint256.Int).Lsh(uint256.NewInt(weight), 64))
 	v.Or(v, new(uint256.Int).Lsh(uint256.NewInt(id), 128))
 	return common.Hash(v.Bytes32())
+}
+
+func runPreAndPostDolce(t *testing.T, pre opera.Upgrades, test func(*testing.T, opera.Upgrades)) {
+	for name, upgrades := range map[string]opera.Upgrades{
+		"pre-Dolce": pre,
+		"Dolce":     opera.GetDolceUpgrades(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			test(t, upgrades)
+		})
+	}
 }
