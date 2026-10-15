@@ -234,7 +234,7 @@ Events are fully verified.`,
 			Action:      dumpConfig,
 			Name:        "dumpconfig",
 			Usage:       "Show configuration values",
-			ArgsUsage:   "<filename>",
+			ArgsUsage:   "[<filename>]",
 			Category:    "MISCELLANEOUS COMMANDS",
 			Description: `The dumpconfig command shows configuration values.`,
 		},
@@ -319,12 +319,7 @@ for a passphrase to unlock the account and another to save the updated file.
 This same command can therefore be used to migrate an account of a deprecated
 format to the newest format or change the password for an account.
 
-For non-interactive use the passphrase can be specified with the --password flag:
-
-    sonictool account update --password=file <address>
-
-Since only one password can be given, only format update can be performed,
-changing your password is only possible interactively.
+This command is interactive only, passphrases cannot be supplied via a password file.
 `,
 				},
 				{
@@ -403,7 +398,9 @@ The key is saved in encrypted format, you are prompted for a passphrase.
 
 You must remember this passphrase to unlock your key in the future.
 
-For non-interactive use the passphrase can be specified with the --validator.password flag:
+For non-interactive use the passphrase can be specified with the --password flag:
+
+    sonictool validator new --password=file
 
 Note, this is meant to be used for testing only, it is a bad idea to save your
 password to file or expose in any other way.

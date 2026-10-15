@@ -18,6 +18,7 @@ package config
 
 import (
 	"fmt"
+
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
