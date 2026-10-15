@@ -251,8 +251,9 @@ func consensusCallbackBeginBlockFn(
 	}
 }
 
-// endBlock produces the block of a consensus block from Dolce on.
-func endBlock(
+// endBlockPreDolce produces the block of a consensus block before Dolce. It
+// is frozen so that blocks before Dolce are produced as they always were.
+func endBlockPreDolce(
 	parallelTasks *workers.Workers,
 	wg *sync.WaitGroup,
 	blockBusyFlag *uint32,
@@ -715,9 +716,8 @@ func endBlock(
 	return newValidators
 }
 
-// endBlockPreDolce produces the block of a consensus block before Dolce. It
-// is frozen so that blocks before Dolce are produced as they always were.
-func endBlockPreDolce(
+// endBlock produces the block of a consensus block from Dolce on.
+func endBlock(
 	parallelTasks *workers.Workers,
 	wg *sync.WaitGroup,
 	blockBusyFlag *uint32,
