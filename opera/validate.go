@@ -297,6 +297,16 @@ func validateUpgrades(old, new Upgrades) error {
 		issues = append(issues, errors.New("Canto upgrade cannot be disabled"))
 	}
 
+	if new.Dolce && !new.Canto {
+		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
+		issues = append(issues, errors.New("Dolce upgrade requires Canto"))
+	}
+
+	if old.Dolce && !new.Dolce {
+		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
+		issues = append(issues, errors.New("Dolce upgrade cannot be disabled"))
+	}
+
 	// The GasSubsidies feature can be freely modified.
 
 	// The TransactionPriorities feature can be freely modified.

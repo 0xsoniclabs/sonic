@@ -200,6 +200,11 @@ func TestRules_Copy_CopiesAreDisjoint(t *testing.T) {
 				rule.Upgrades.Canto = !rule.Upgrades.Canto
 			},
 		},
+		"upgrade Upgrades.Dolce": {
+			update: func(rule *Rules) {
+				rule.Upgrades.Dolce = !rule.Upgrades.Dolce
+			},
+		},
 		"upgrade Upgrades.GasSubsidies": {
 			update: func(rule *Rules) {
 				rule.Upgrades.GasSubsidies = !rule.Upgrades.GasSubsidies

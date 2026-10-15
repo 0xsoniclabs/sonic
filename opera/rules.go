@@ -45,6 +45,7 @@ const (
 	_unused    = 1 << 5 // reserved, do not use
 	brioBit    = 1 << 6
 	cantoBit   = 1 << 7
+	dolceBit   = 1 << 8
 
 	// optional features
 	singleProposerBlockFormationBit = 1 << 63
@@ -221,6 +222,7 @@ type Upgrades struct {
 	Allegro bool // < first hard fork of the Sonic chain, introducing Prague features
 	Brio    bool // < second hard fork of the Sonic chain, introducing Osaka features
 	Canto   bool // < third hard fork of the Sonic chain, introducing Amsterdam features
+	Dolce   bool // < fourth hard fork of the Sonic chain
 
 	// -- Optional Features --
 

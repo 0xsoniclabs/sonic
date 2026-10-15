@@ -28,6 +28,7 @@ func TestGetAllHardForksInOrder_ReturnsOrderedEntries(t *testing.T) {
 		"Allegro",
 		"Brio",
 		"Canto",
+		"Dolce",
 	}
 
 	var actualOrder []string
