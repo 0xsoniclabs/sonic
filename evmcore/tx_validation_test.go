@@ -865,11 +865,11 @@ func TestValidateTxForNetwork_CustomSonicCodeSizeLimitIsEnforced(t *testing.T) {
 		},
 		"Brio below limit": {
 			customSize:   true,
-			initCodeSize: opera.SonicPostAllegroMaxInitCodeSize,
+			initCodeSize: opera.SonicBrioMaxInitCodeSize,
 		},
 		"Brio above limit": {
 			customSize:   true,
-			initCodeSize: opera.SonicPostAllegroMaxInitCodeSize + 1,
+			initCodeSize: opera.SonicBrioMaxInitCodeSize + 1,
 			errorMessage: "max initcode size exceeded: code size 98305, limit 98304",
 		},
 	}

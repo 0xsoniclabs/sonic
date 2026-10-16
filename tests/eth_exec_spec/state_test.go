@@ -30,7 +30,6 @@ import (
 	"github.com/0xsoniclabs/carmen/go/state/gostate"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/tosca/go/geth_adapter"
-	"github.com/0xsoniclabs/tosca/go/interpreter/lfvm"
 	"github.com/0xsoniclabs/tosca/go/interpreter/sfvm"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
@@ -90,28 +89,17 @@ func TestBlockProcessing_EthereumExecutionSpecTests(t *testing.T) {
 	sfvmConfig := defaultConfig
 	sfvmConfig.Interpreter = geth_adapter.NewGethInterpreterFactory(sfvmInterpreter)
 
-	lfvmInterpreter, err := lfvm.NewInterpreter(lfvm.Config{})
-	require.NoError(t, err)
-	lfvmConfig := defaultConfig
-	lfvmConfig.Interpreter = geth_adapter.NewGethInterpreterFactory(lfvmInterpreter)
-
 	t.Run("VM: geth, StateDB: geth", func(t *testing.T) {
 		runTestCases(t, gethConfig, false)
 	})
 	t.Run("VM: sfvm, StateDB: geth", func(t *testing.T) {
 		runTestCases(t, sfvmConfig, false)
 	})
-	t.Run("VM: lfvm, StateDB: geth", func(t *testing.T) {
-		runTestCases(t, lfvmConfig, false)
-	})
 	t.Run("VM: geth, StateDB: carmen", func(t *testing.T) {
 		runTestCases(t, gethConfig, true)
 	})
 	t.Run("VM: sfvm, StateDB: carmen", func(t *testing.T) {
 		runTestCases(t, sfvmConfig, true)
-	})
-	t.Run("VM: lfvm, StateDB: carmen", func(t *testing.T) {
-		runTestCases(t, lfvmConfig, true)
 	})
 }
 

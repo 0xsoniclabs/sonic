@@ -797,7 +797,6 @@ func Test_trialRunBundle_UsesRandomPrevRandaoValue(t *testing.T) {
 	db.EXPECT().AddBalance(any, any, any).AnyTimes()
 	db.EXPECT().Snapshot().AnyTimes()
 	db.EXPECT().RevertToSnapshot(any).AnyTimes()
-	db.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
 	db.EXPECT().Exist(any).Return(true).AnyTimes()
 	db.EXPECT().GetRefund().AnyTimes()
 	db.EXPECT().AddRefund(any).AnyTimes()
@@ -813,7 +812,9 @@ func Test_trialRunBundle_UsesRandomPrevRandaoValue(t *testing.T) {
 
 	// The critical parts causing the code execution:
 	db.EXPECT().GetCode(targetAddress).Return(code).AnyTimes()
+	db.EXPECT().GetCodeHash(targetAddress).Return(crypto.Keccak256Hash(code)).AnyTimes()
 	db.EXPECT().GetCode(any).AnyTimes()
+	db.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
 
 	// Track values being stored into values
 	seenHashes := map[common.Hash]struct{}{}
