@@ -202,449 +202,982 @@ func consensusCallbackBeginBlockFn(
 				confirmedEventsMeter.Mark(1)
 			},
 			EndBlock: func() (newValidators *pos.Validators) {
-
-				// Fix the rules to be used by this block.
-				thisBlocksRules := es.Rules.Copy()
-
-				// sort events by Lamport time
-				sort.Sort(confirmedEvents)
-				maxBlockGas := thisBlocksRules.Blocks.MaxBlockGas
-				blockEvents := spillBlockEvents(confirmedEvents, maxBlockGas,
-					func(id hash.Event) inter.EventPayloadI {
-						// Note: currently, GetEventPayload returns a pointer to struct,
-						// conversion to interface may yield a broken interface if
-						// the value is nil.
-						// Adding a nil check to return a nil interface would
-						// solve that, but at this point in the code, every event
-						// must have a known payload, and getting a nil would be a
-						// critical error. We will let it panic if that happens,
-						// as there is no recovery from it.
-						return store.GetEventPayload(id)
-					},
-				)
-
-				// Start assembling the resulting block.
-				number := uint64(bs.LastBlock.Idx + 1)
-				lastBlockHeader := evmStateReader.Header(common.Hash{}, number-1)
-
-				randao := computePrevRandao(confirmedEvents)
-				chainCfg := opera.CreateTransientEvmChainConfig(
-					thisBlocksRules.NetworkID,
-					store.GetUpgradeHeights(),
-					idx.Block(number),
-				)
-
-				// The maximum amount of gas to be used for non-internal
-				// transactions in the resulting block. Note that this gas limit
-				// is different than the official BlockGasLimit, which is
-				// announced as part of the block, constant over the duration of
-				// a block, and must be large enough to include internal
-				// transactions. In Sonic, the Block's GasLimit is a network
-				// rule parameter.
-				// The limit defined here is the dynamically adjusted gas limit
-				// used to regulate the traffic on the network. Block proposals
-				// made in the single-proposer mode are expected to honor this
-				// gas limit. With this parameter, this limit is enforced.
-				userTransactionGasLimit := maxBlockGas
-
-				signer := types.LatestSignerForChainID(chainCfg.ChainID)
-
-				// Get a proposal for the block to be created.
-				proposal := inter.Proposal{
-					Number:     idx.Block(number),
-					ParentHash: lastBlockHeader.Hash,
-				}
-				blockTime := atroposTime
-				if thisBlocksRules.Upgrades.SingleProposerBlockFormation {
-					if proposed, proposer, time := extractProposalForNextBlock(lastBlockHeader, blockEvents, log.Root()); proposed != nil {
-						proposal = *proposed
-						// Copy the transactions so that the cached event they
-						// are shared with is not modified in place.
-						proposal.Transactions = slices.Clone(proposal.Transactions)
-						blockTime = time
-						validatorKeys := readEpochPubKeys(store, cBlock.Atropos.Epoch())
-						randao = resolveRandaoMix(
-							proposal.RandaoReveal, proposer,
-							validatorKeys.PubKeys,
-							lastBlockHeader.PrevRandao, randao,
-							log.Root(),
-						)
-
-						userTransactionGasLimit = inter.GetEffectiveGasLimit(
-							blockTime.Time().Sub(lastBlockHeader.Time.Time()),
-							thisBlocksRules.Economy.ShortGasPower.AllocPerSec,
-							maxBlockGas,
-						)
-					}
-					// Notice that empty blocks follow non-SingleBlockFormation
-					// rules, regarding block times and randao values. This
-					// facilitates the utilization of the same mechanisms to
-					// process or skip empty blocks.
-				} else {
-					// Collect transactions from events and schedule them.
-					unorderedTxs := make(types.Transactions, 0, len(blockEvents)*10)
-					for _, e := range blockEvents {
-						unorderedTxs = append(unorderedTxs, e.Transactions()...)
-					}
-
-					proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, thisBlocksRules.Upgrades.Sonic)
-				}
-
-				// Filter invalid transactions from the proposal.
-				proposal.Transactions = filterNonPermissibleTransactions(
-					proposal.Transactions, &thisBlocksRules, signer, log.Root(), invalidTxsMeter,
-				)
-
-				// Make sure the new block time is after the last block time.
-				if blockTime <= bs.LastBlock.Time {
-					blockTime = bs.LastBlock.Time + 1
-				}
-
-				blockCtx := iblockproc.BlockCtx{
-					Idx:     proposal.Number,
-					Time:    blockTime,
-					Atropos: cBlock.Atropos,
-				}
-
-				// Note:
-				// it's possible that a previous Atropos observes current Atropos (1)
-				// (even stronger statement is true - it's possible that current Atropos is equal to a previous Atropos).
-				// (1) is true when and only when ApplyEvent wasn't called.
-				// In other words, we should assume that every non-cheater root may be elected as an Atropos in any order,
-				// even if typically every previous Atropos happened-before current Atropos
-				// We have to skip block in case (1) to ensure that every block ID is unique.
-				// If Atropos ID wasn't used as a block ID, it wouldn't be required.
-				skipBlock := atroposDegenerate
-				// Check if empty block should be pruned
-				emptyBlock := confirmedEvents.Len() == 0 && cBlock.Cheaters.Len() == 0
-				if thisBlocksRules.Upgrades.SingleProposerBlockFormation {
-					// Just checking for the number of confirmed events is not
-					// enough in the SingleProposer mode, because proposals may
-					// be empty or may have been found invalid (wrong block
-					// number or wrong parent hash). Thus, just checking for
-					// the number of confirmed events is not enough. However,
-					// we can check the actual number of transactions to be
-					// included in the block. If there are none -- and there are
-					// no cheaters resulting in internal transactions to be
-					// included -- the resulting block would be empty, and should
-					// in general be skipped.
-					emptyBlock = cBlock.Cheaters.Len() == 0 && len(proposal.Transactions) == 0
-				}
-				skipBlock = skipBlock || (emptyBlock && blockCtx.Time < bs.LastBlock.Time+thisBlocksRules.Blocks.MaxEmptyBlockSkipPeriod)
-				// Finalize the progress of eventProcessor
-				bs = eventProcessor.Finalize(blockCtx, skipBlock) // TODO: refactor to not mutate the bs, it is unclear
-				if skipBlock {
-					// save the latest block state even if block is skipped
-					store.SetBlockEpochState(bs, es)
-					log.Debug("Frame is skipped", "atropos", cBlock.Atropos.String())
-					return nil
-				}
-				if emptyBlock {
-					log.Debug(
-						"Deliberately producing empty block",
-						"idx", blockCtx.Idx,
-						"time_since_last", time.Duration(blockCtx.Time-bs.LastBlock.Time),
+				if es.Rules.Upgrades.Dolce {
+					return endBlock(
+						parallelTasks,
+						wg,
+						blockBusyFlag,
+						store,
+						blockProc,
+						txIndex,
+						feed,
+						verWatcher,
+						cBlock,
+						start,
+						bs,
+						es,
+						statedb,
+						nonceSource,
+						evmStateReader,
+						eventProcessor,
+						atroposTime,
+						atroposDegenerate,
+						confirmedEvents,
 					)
 				}
-
-				// Apply the transaction priorities and reorder the (already
-				// filtered) transactions, identically in both legacy and
-				// single-proposer modes, overriding any proposer order.
-				// It is a no-op while the feature is disabled.
-				proposal.Transactions = applyTransactionPriorities(
-					proposal.Transactions,
-					thisBlocksRules,
-					chainCfg,
+				return endBlockPreDolce(
+					parallelTasks,
+					wg,
+					blockBusyFlag,
+					store,
+					blockProc,
+					txIndex,
+					feed,
+					verWatcher,
+					cBlock,
+					start,
+					bs,
+					es,
 					statedb,
+					nonceSource,
 					evmStateReader,
-					signer,
-					blockCtx.Idx,
-					blockCtx.Time,
-					randao,
-					lastBlockHeader,
-					priorityFailures,
+					eventProcessor,
+					atroposTime,
+					atroposDegenerate,
+					confirmedEvents,
 				)
-
-				sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
-				sealing := sealer.EpochSealing()
-				txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es)
-				onNewLogAll := func(l *core_types.Log) {
-					txListener.OnNewLog(l)
-					// Note: it's possible for logs to get indexed twice by BR and block processing
-					if verWatcher != nil {
-						verWatcher.OnNewLog(l)
-					}
-				}
-
-				// prepare block processing
-				evmProcessor := blockProc.EVMModule.Start(
-					blockCtx.Idx,
-					blockCtx.Time,
-					blockCtx.Atropos.Epoch(),
-					statedb,
-					evmStateReader,
-					onNewLogAll,
-					thisBlocksRules,
-					chainCfg,
-					randao,
-					sonicFeaturesMetrics,
-				)
-				executionStart := time.Now()
-
-				// Execute pre-internal transactions
-				preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
-				preInternalProcessedTxs := evmProcessor.Execute(preInternalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
-				bs = txListener.Finalize()
-				for _, tx := range preInternalProcessedTxs {
-					if tx.Receipt == nil || tx.Receipt.Status == 0 {
-						log.Warn("Pre-internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
-					}
-				}
-
-				// Seal epoch if requested
-				if sealing {
-					sealer.Update(bs, es)
-					prevUpg := es.Rules.Upgrades
-
-					_, execPlanChainHash := store.GetLatestProcessedBundleHistoryHash()
-
-					bs, es = sealer.SealEpoch(
-						hash.Hash(lastBlockHeader.Hash),
-						hash.Hash(execPlanChainHash),
-						preInternalTxs,
-					) // TODO: refactor to not mutate the bs, it is unclear
-					if es.Rules.Upgrades != prevUpg {
-						store.AddUpgradeHeight(opera.UpgradeHeight{
-							Upgrades: es.Rules.Upgrades,
-							Height:   blockCtx.Idx + 1,
-							Time:     blockCtx.Time + 1,
-						})
-					}
-					store.SetBlockEpochState(bs, es)
-					newValidators = es.Validators
-					txListener.Update(bs, es)
-				}
-
-				// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
-				blockFn := func() {
-
-					blockDuration := time.Duration(blockCtx.Time - bs.LastBlock.Time)
-					blockBuilder := inter.NewBlockBuilder().
-						WithEpoch(blockCtx.Atropos.Epoch()).
-						WithNumber(number).
-						WithParentHash(proposal.ParentHash).
-						WithTime(blockCtx.Time).
-						WithPrevRandao(randao).
-						WithGasLimit(maxBlockGas).
-						WithDuration(blockDuration)
-
-					// With the transition from v2.0 to v2.1, the handling of
-					// block-gas-limit updates has changed. In v2.0, epoch
-					// sealing blocks used to already adapt the new gas limit,
-					// while in v2.1 the old gas limit is kept and only the
-					// first block after the sealing block is adapting the new
-					// gas limit. As the list of transactions for the sealing
-					// block is assembled by validators using the rules of the
-					// current epoch, using the ending epoch's gas limit is
-					// matching the assumptions made by the validators.
-					//
-					// However, in the past, there was one epoch-sealing block
-					// (8054923) in which the gas limit was adapted. To support
-					// this one-time exception, we add a special case for
-					// this block here to ensure backward compatibility.
-					if thisBlocksRules.NetworkID == 146 && number == 8054923 {
-						blockBuilder.WithGasLimit(es.Rules.Blocks.MaxBlockGas)
-					}
-
-					for _, cur := range preInternalProcessedTxs {
-						if cur.Receipt != nil {
-							blockBuilder.AddTransaction(
-								cur.Transaction,
-								cur.Receipt,
-							)
-						}
-					}
-
-					// Execute post-internal transactions
-					internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
-					internalProcessedTxs := evmProcessor.Execute(internalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
-					for _, tx := range internalProcessedTxs {
-						if tx.Receipt == nil || tx.Receipt.Status == 0 {
-							log.Warn("Internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
-						}
-					}
-
-					for _, cur := range internalProcessedTxs {
-						if cur.Receipt != nil {
-							blockBuilder.AddTransaction(
-								cur.Transaction,
-								cur.Receipt,
-							)
-						}
-					}
-
-					txCausedBy := processUserTransactions(
-						evmProcessor,
-						blockBuilder,
-						proposal.Transactions,
-						userTransactionGasLimit,
-						thisBlocksRules.Upgrades,
-					)
-
-					evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
-
-					// Add results of the transaction processing to the block.
-					blockBuilder.
-						WithStateRoot(common.Hash(evmBlock.Root)).
-						WithGasUsed(evmBlock.GasUsed).
-						WithBaseFee(evmBlock.BaseFee)
-
-					// Complete the block.
-					block := blockBuilder.Build()
-					evmBlock.Hash = block.Hash()
-					evmBlock.Duration = blockDuration
-
-					// Update block-hash and -time values in receipts and logs.
-					for i := range allReceipts {
-						allReceipts[i].BlockHash = block.Hash()
-						for j := range allReceipts[i].Logs {
-							allReceipts[i].Logs[j].BlockHash = block.Hash()
-							allReceipts[i].Logs[j].BlockTimestamp = uint64(block.Time.Unix())
-						}
-					}
-
-					// memorize the event creator of each tx
-					txPositions := make(map[common.Hash]ExtendedTxPosition)
-					for _, e := range blockEvents {
-						for _, tx := range e.Transactions() {
-							// If tx was met in multiple events, then assign to first ordered event
-							if _, ok := txPositions[tx.Hash()]; ok {
-								continue
-							}
-							txPositions[tx.Hash()] = ExtendedTxPosition{
-								EventCreator: e.Creator(),
-							}
-						}
-					}
-					// memorize block position of each tx
-					for i, tx := range evmBlock.Transactions {
-						// not skipped txs only
-						position := txPositions[tx.Hash()]
-						position.Block = blockCtx.Idx
-						position.BlockOffset = uint32(i)
-						txPositions[tx.Hash()] = position
-					}
-
-					// call OnNewReceipt
-					for i, r := range allReceipts {
-						originTx := r.TxHash
-						if thisBlocksRules.Upgrades.Brio {
-							if origin, found := txCausedBy[r.TxHash]; found {
-								originTx = origin
-							}
-						}
-						creator := txPositions[originTx].EventCreator
-						if creator != 0 && es.Validators.Get(creator) == 0 {
-							creator = 0
-						}
-						txListener.OnNewReceipt(evmBlock.Transactions[i], r, creator, evmBlock.BaseFee, evmBlock.BlobBaseFee)
-					}
-					bs = txListener.Finalize() // TODO: refactor to not mutate the bs
-					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
-					// At this point, block state is finalized
-
-					// Store the transaction bodies before indexing their
-					// positions, such that readers finding a position always
-					// find the corresponding body as well.
-					for _, tx := range blockBuilder.GetTransactions() {
-						store.evm.SetTx(tx.Hash(), tx)
-					}
-
-					// Build index for not skipped txs
-					if txIndex {
-						for _, tx := range evmBlock.Transactions {
-							// not skipped txs only
-							store.evm.SetTxPosition(tx.Hash(), txPositions[tx.Hash()].TxPosition)
-						}
-
-						// Index receipts
-						// Note: it's possible for receipts to get indexed twice by BR and block processing
-						if allReceipts.Len() != 0 {
-							store.evm.SetReceipts(blockCtx.Idx, allReceipts)
-							for _, r := range allReceipts {
-								store.evm.IndexLogs(r.Logs...)
-							}
-						}
-					}
-
-					bs.LastBlock = blockCtx
-					bs.CheatersWritten = uint32(bs.EpochCheaters.Len())
-					if sealing {
-						store.SetHistoryBlockEpochState(es.Epoch, bs, es)
-						store.SetEpochBlock(blockCtx.Idx+1, es.Epoch)
-					}
-
-					store.SetBlock(blockCtx.Idx, block)
-					store.SetBlockIndex(block.Hash(), blockCtx.Idx)
-					store.SetBlockEpochState(bs, es)
-					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
-
-					// Update the metrics touched during block processing
-					executionTime := time.Since(executionStart)
-					blockExecutionTimer.Update(executionTime)
-					blockExecutionNonResettingTimer.Update(executionTime)
-
-					// Update the metrics touched by new block
-					headBlockGauge.Update(int64(blockCtx.Idx))
-					headHeaderGauge.Update(int64(blockCtx.Idx))
-					headFastBlockGauge.Update(int64(blockCtx.Idx))
-
-					// Notify about new block
-					if feed != nil {
-						var logs []*types.Log
-						for _, r := range allReceipts {
-							logs = append(logs, r.Logs...)
-						}
-						feed.notifyAboutNewBlock(evmBlock, logs)
-					}
-
-					now := time.Now()
-					blockAge := now.Sub(block.Time.Time())
-					log.Info("New block",
-						"index", blockCtx.Idx,
-						"id", block.Hash(),
-						"gas_used", evmBlock.GasUsed,
-						"gas_rate", float64(evmBlock.GasUsed)/blockDuration.Seconds(),
-						"base_fee", evmBlock.BaseFee.String(),
-						"txs", fmt.Sprintf("%d/%d", len(evmBlock.Transactions), numSkippedTxs),
-						"age", utils.PrettyDuration(blockAge),
-						"t", utils.PrettyDuration(now.Sub(start)),
-						"epoch", evmBlock.Epoch,
-					)
-					blockAgeGauge.Update(int64(blockAge.Nanoseconds()))
-
-					processedTxsMeter.Mark(int64(len(evmBlock.Transactions)))
-					skippedTxsMeter.Mark(int64(numSkippedTxs))
-				}
-				if confirmedEvents.Len() != 0 {
-					atomic.StoreUint32(blockBusyFlag, 1)
-					wg.Add(1)
-					err := parallelTasks.Enqueue(func() {
-						defer atomic.StoreUint32(blockBusyFlag, 0)
-						defer wg.Done()
-						blockFn()
-					})
-					if err != nil {
-						panic(err)
-					}
-				} else {
-					blockFn()
-				}
-
-				return newValidators
 			},
 		}
 	}
+}
+
+// endBlockPreDolce produces the block of a consensus block before Dolce. It
+// is frozen so that blocks before Dolce are produced as they always were.
+func endBlockPreDolce(
+	parallelTasks *workers.Workers,
+	wg *sync.WaitGroup,
+	blockBusyFlag *uint32,
+	store *Store,
+	blockProc BlockProc,
+	txIndex bool,
+	feed *ServiceFeed,
+	verWatcher *verwatcher.VersionWatcher,
+	cBlock *lachesis.Block,
+	start time.Time,
+	bs iblockproc.BlockState,
+	es iblockproc.EpochState,
+	statedb state.StateDB,
+	nonceSource blockproc.NonceSource,
+	evmStateReader *EvmStateReader,
+	eventProcessor blockproc.ConfirmedEventsProcessor,
+	atroposTime inter.Timestamp,
+	atroposDegenerate bool,
+	confirmedEvents hash.OrderedEvents,
+) (newValidators *pos.Validators) {
+
+	// Fix the rules to be used by this block.
+	thisBlocksRules := es.Rules.Copy()
+
+	// sort events by Lamport time
+	sort.Sort(confirmedEvents)
+	maxBlockGas := thisBlocksRules.Blocks.MaxBlockGas
+	blockEvents := spillBlockEvents(confirmedEvents, maxBlockGas,
+		func(id hash.Event) inter.EventPayloadI {
+			// Note: currently, GetEventPayload returns a pointer to struct,
+			// conversion to interface may yield a broken interface if
+			// the value is nil.
+			// Adding a nil check to return a nil interface would
+			// solve that, but at this point in the code, every event
+			// must have a known payload, and getting a nil would be a
+			// critical error. We will let it panic if that happens,
+			// as there is no recovery from it.
+			return store.GetEventPayload(id)
+		},
+	)
+
+	// Start assembling the resulting block.
+	number := uint64(bs.LastBlock.Idx + 1)
+	lastBlockHeader := evmStateReader.Header(common.Hash{}, number-1)
+
+	randao := computePrevRandao(confirmedEvents)
+	chainCfg := opera.CreateTransientEvmChainConfig(
+		thisBlocksRules.NetworkID,
+		store.GetUpgradeHeights(),
+		idx.Block(number),
+	)
+
+	// The maximum amount of gas to be used for non-internal
+	// transactions in the resulting block. Note that this gas limit
+	// is different than the official BlockGasLimit, which is
+	// announced as part of the block, constant over the duration of
+	// a block, and must be large enough to include internal
+	// transactions. In Sonic, the Block's GasLimit is a network
+	// rule parameter.
+	// The limit defined here is the dynamically adjusted gas limit
+	// used to regulate the traffic on the network. Block proposals
+	// made in the single-proposer mode are expected to honor this
+	// gas limit. With this parameter, this limit is enforced.
+	userTransactionGasLimit := maxBlockGas
+
+	signer := types.LatestSignerForChainID(chainCfg.ChainID)
+
+	// Get a proposal for the block to be created.
+	proposal := inter.Proposal{
+		Number:     idx.Block(number),
+		ParentHash: lastBlockHeader.Hash,
+	}
+	blockTime := atroposTime
+	if thisBlocksRules.Upgrades.SingleProposerBlockFormation {
+		if proposed, proposer, time := extractProposalForNextBlock(lastBlockHeader, blockEvents, log.Root()); proposed != nil {
+			proposal = *proposed
+			// Copy the transactions so that the cached event they
+			// are shared with is not modified in place.
+			proposal.Transactions = slices.Clone(proposal.Transactions)
+			blockTime = time
+			validatorKeys := readEpochPubKeys(store, cBlock.Atropos.Epoch())
+			randao = resolveRandaoMix(
+				proposal.RandaoReveal, proposer,
+				validatorKeys.PubKeys,
+				lastBlockHeader.PrevRandao, randao,
+				log.Root(),
+			)
+
+			userTransactionGasLimit = inter.GetEffectiveGasLimit(
+				blockTime.Time().Sub(lastBlockHeader.Time.Time()),
+				thisBlocksRules.Economy.ShortGasPower.AllocPerSec,
+				maxBlockGas,
+			)
+		}
+		// Notice that empty blocks follow non-SingleBlockFormation
+		// rules, regarding block times and randao values. This
+		// facilitates the utilization of the same mechanisms to
+		// process or skip empty blocks.
+	} else {
+		// Collect transactions from events and schedule them.
+		unorderedTxs := make(types.Transactions, 0, len(blockEvents)*10)
+		for _, e := range blockEvents {
+			unorderedTxs = append(unorderedTxs, e.Transactions()...)
+		}
+
+		proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, thisBlocksRules.Upgrades.Sonic)
+	}
+
+	// Filter invalid transactions from the proposal.
+	proposal.Transactions = filterNonPermissibleTransactions(
+		proposal.Transactions, &thisBlocksRules, signer, log.Root(), invalidTxsMeter,
+	)
+
+	// Make sure the new block time is after the last block time.
+	if blockTime <= bs.LastBlock.Time {
+		blockTime = bs.LastBlock.Time + 1
+	}
+
+	blockCtx := iblockproc.BlockCtx{
+		Idx:     proposal.Number,
+		Time:    blockTime,
+		Atropos: cBlock.Atropos,
+	}
+
+	// Note:
+	// it's possible that a previous Atropos observes current Atropos (1)
+	// (even stronger statement is true - it's possible that current Atropos is equal to a previous Atropos).
+	// (1) is true when and only when ApplyEvent wasn't called.
+	// In other words, we should assume that every non-cheater root may be elected as an Atropos in any order,
+	// even if typically every previous Atropos happened-before current Atropos
+	// We have to skip block in case (1) to ensure that every block ID is unique.
+	// If Atropos ID wasn't used as a block ID, it wouldn't be required.
+	skipBlock := atroposDegenerate
+	// Check if empty block should be pruned
+	emptyBlock := confirmedEvents.Len() == 0 && cBlock.Cheaters.Len() == 0
+	if thisBlocksRules.Upgrades.SingleProposerBlockFormation {
+		// Just checking for the number of confirmed events is not
+		// enough in the SingleProposer mode, because proposals may
+		// be empty or may have been found invalid (wrong block
+		// number or wrong parent hash). Thus, just checking for
+		// the number of confirmed events is not enough. However,
+		// we can check the actual number of transactions to be
+		// included in the block. If there are none -- and there are
+		// no cheaters resulting in internal transactions to be
+		// included -- the resulting block would be empty, and should
+		// in general be skipped.
+		emptyBlock = cBlock.Cheaters.Len() == 0 && len(proposal.Transactions) == 0
+	}
+	skipBlock = skipBlock || (emptyBlock && blockCtx.Time < bs.LastBlock.Time+thisBlocksRules.Blocks.MaxEmptyBlockSkipPeriod)
+	// Finalize the progress of eventProcessor
+	bs = eventProcessor.Finalize(blockCtx, skipBlock) // TODO: refactor to not mutate the bs, it is unclear
+	if skipBlock {
+		// save the latest block state even if block is skipped
+		store.SetBlockEpochState(bs, es)
+		log.Debug("Frame is skipped", "atropos", cBlock.Atropos.String())
+		return nil
+	}
+	if emptyBlock {
+		log.Debug(
+			"Deliberately producing empty block",
+			"idx", blockCtx.Idx,
+			"time_since_last", time.Duration(blockCtx.Time-bs.LastBlock.Time),
+		)
+	}
+
+	// Apply the transaction priorities and reorder the (already
+	// filtered) transactions, identically in both legacy and
+	// single-proposer modes, overriding any proposer order.
+	// It is a no-op while the feature is disabled.
+	proposal.Transactions = applyTransactionPriorities(
+		proposal.Transactions,
+		thisBlocksRules,
+		chainCfg,
+		statedb,
+		evmStateReader,
+		signer,
+		blockCtx.Idx,
+		blockCtx.Time,
+		randao,
+		lastBlockHeader,
+		priorityFailures,
+	)
+
+	sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
+	sealing := sealer.EpochSealing()
+	txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es)
+	onNewLogAll := func(l *core_types.Log) {
+		txListener.OnNewLog(l)
+		// Note: it's possible for logs to get indexed twice by BR and block processing
+		if verWatcher != nil {
+			verWatcher.OnNewLog(l)
+		}
+	}
+
+	// prepare block processing
+	evmProcessor := blockProc.EVMModule.Start(
+		blockCtx.Idx,
+		blockCtx.Time,
+		blockCtx.Atropos.Epoch(),
+		statedb,
+		evmStateReader,
+		onNewLogAll,
+		thisBlocksRules,
+		chainCfg,
+		randao,
+		sonicFeaturesMetrics,
+	)
+	executionStart := time.Now()
+
+	// Execute pre-internal transactions
+	preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
+	preInternalProcessedTxs := evmProcessor.Execute(preInternalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
+	bs = txListener.Finalize()
+	for _, tx := range preInternalProcessedTxs {
+		if tx.Receipt == nil || tx.Receipt.Status == 0 {
+			log.Warn("Pre-internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
+		}
+	}
+
+	// Seal epoch if requested
+	if sealing {
+		sealer.Update(bs, es)
+		prevUpg := es.Rules.Upgrades
+
+		_, execPlanChainHash := store.GetLatestProcessedBundleHistoryHash()
+
+		bs, es = sealer.SealEpoch(
+			hash.Hash(lastBlockHeader.Hash),
+			hash.Hash(execPlanChainHash),
+			preInternalTxs,
+		) // TODO: refactor to not mutate the bs, it is unclear
+		if es.Rules.Upgrades != prevUpg {
+			store.AddUpgradeHeight(opera.UpgradeHeight{
+				Upgrades: es.Rules.Upgrades,
+				Height:   blockCtx.Idx + 1,
+				Time:     blockCtx.Time + 1,
+			})
+		}
+		store.SetBlockEpochState(bs, es)
+		newValidators = es.Validators
+		txListener.Update(bs, es)
+	}
+
+	// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
+	blockFn := func() {
+
+		blockDuration := time.Duration(blockCtx.Time - bs.LastBlock.Time)
+		blockBuilder := inter.NewBlockBuilder().
+			WithEpoch(blockCtx.Atropos.Epoch()).
+			WithNumber(number).
+			WithParentHash(proposal.ParentHash).
+			WithTime(blockCtx.Time).
+			WithPrevRandao(randao).
+			WithGasLimit(maxBlockGas).
+			WithDuration(blockDuration)
+
+		// With the transition from v2.0 to v2.1, the handling of
+		// block-gas-limit updates has changed. In v2.0, epoch
+		// sealing blocks used to already adapt the new gas limit,
+		// while in v2.1 the old gas limit is kept and only the
+		// first block after the sealing block is adapting the new
+		// gas limit. As the list of transactions for the sealing
+		// block is assembled by validators using the rules of the
+		// current epoch, using the ending epoch's gas limit is
+		// matching the assumptions made by the validators.
+		//
+		// However, in the past, there was one epoch-sealing block
+		// (8054923) in which the gas limit was adapted. To support
+		// this one-time exception, we add a special case for
+		// this block here to ensure backward compatibility.
+		if thisBlocksRules.NetworkID == 146 && number == 8054923 {
+			blockBuilder.WithGasLimit(es.Rules.Blocks.MaxBlockGas)
+		}
+
+		for _, cur := range preInternalProcessedTxs {
+			if cur.Receipt != nil {
+				blockBuilder.AddTransaction(
+					cur.Transaction,
+					cur.Receipt,
+				)
+			}
+		}
+
+		// Execute post-internal transactions
+		internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
+		internalProcessedTxs := evmProcessor.Execute(internalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
+		for _, tx := range internalProcessedTxs {
+			if tx.Receipt == nil || tx.Receipt.Status == 0 {
+				log.Warn("Internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
+			}
+		}
+
+		for _, cur := range internalProcessedTxs {
+			if cur.Receipt != nil {
+				blockBuilder.AddTransaction(
+					cur.Transaction,
+					cur.Receipt,
+				)
+			}
+		}
+
+		txCausedBy := processUserTransactions(
+			evmProcessor,
+			blockBuilder,
+			proposal.Transactions,
+			userTransactionGasLimit,
+			thisBlocksRules.Upgrades,
+		)
+
+		evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
+
+		// Add results of the transaction processing to the block.
+		blockBuilder.
+			WithStateRoot(common.Hash(evmBlock.Root)).
+			WithGasUsed(evmBlock.GasUsed).
+			WithBaseFee(evmBlock.BaseFee)
+
+		// Complete the block.
+		block := blockBuilder.Build()
+		evmBlock.Hash = block.Hash()
+		evmBlock.Duration = blockDuration
+
+		// Update block-hash and -time values in receipts and logs.
+		for i := range allReceipts {
+			allReceipts[i].BlockHash = block.Hash()
+			for j := range allReceipts[i].Logs {
+				allReceipts[i].Logs[j].BlockHash = block.Hash()
+				allReceipts[i].Logs[j].BlockTimestamp = uint64(block.Time.Unix())
+			}
+		}
+
+		// memorize the event creator of each tx
+		txPositions := make(map[common.Hash]ExtendedTxPosition)
+		for _, e := range blockEvents {
+			for _, tx := range e.Transactions() {
+				// If tx was met in multiple events, then assign to first ordered event
+				if _, ok := txPositions[tx.Hash()]; ok {
+					continue
+				}
+				txPositions[tx.Hash()] = ExtendedTxPosition{
+					EventCreator: e.Creator(),
+				}
+			}
+		}
+		// memorize block position of each tx
+		for i, tx := range evmBlock.Transactions {
+			// not skipped txs only
+			position := txPositions[tx.Hash()]
+			position.Block = blockCtx.Idx
+			position.BlockOffset = uint32(i)
+			txPositions[tx.Hash()] = position
+		}
+
+		// call OnNewReceipt
+		for i, r := range allReceipts {
+			originTx := r.TxHash
+			if thisBlocksRules.Upgrades.Brio {
+				if origin, found := txCausedBy[r.TxHash]; found {
+					originTx = origin
+				}
+			}
+			creator := txPositions[originTx].EventCreator
+			if creator != 0 && es.Validators.Get(creator) == 0 {
+				creator = 0
+			}
+			txListener.OnNewReceipt(evmBlock.Transactions[i], r, creator, evmBlock.BaseFee, evmBlock.BlobBaseFee)
+		}
+		bs = txListener.Finalize() // TODO: refactor to not mutate the bs
+		bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
+		// At this point, block state is finalized
+
+		// Store the transaction bodies before indexing their
+		// positions, such that readers finding a position always
+		// find the corresponding body as well.
+		for _, tx := range blockBuilder.GetTransactions() {
+			store.evm.SetTx(tx.Hash(), tx)
+		}
+
+		// Build index for not skipped txs
+		if txIndex {
+			for _, tx := range evmBlock.Transactions {
+				// not skipped txs only
+				store.evm.SetTxPosition(tx.Hash(), txPositions[tx.Hash()].TxPosition)
+			}
+
+			// Index receipts
+			// Note: it's possible for receipts to get indexed twice by BR and block processing
+			if allReceipts.Len() != 0 {
+				store.evm.SetReceipts(blockCtx.Idx, allReceipts)
+				for _, r := range allReceipts {
+					store.evm.IndexLogs(r.Logs...)
+				}
+			}
+		}
+
+		bs.LastBlock = blockCtx
+		bs.CheatersWritten = uint32(bs.EpochCheaters.Len())
+		if sealing {
+			store.SetHistoryBlockEpochState(es.Epoch, bs, es)
+			store.SetEpochBlock(blockCtx.Idx+1, es.Epoch)
+		}
+
+		store.SetBlock(blockCtx.Idx, block)
+		store.SetBlockIndex(block.Hash(), blockCtx.Idx)
+		store.SetBlockEpochState(bs, es)
+		store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
+
+		// Update the metrics touched during block processing
+		executionTime := time.Since(executionStart)
+		blockExecutionTimer.Update(executionTime)
+		blockExecutionNonResettingTimer.Update(executionTime)
+
+		// Update the metrics touched by new block
+		headBlockGauge.Update(int64(blockCtx.Idx))
+		headHeaderGauge.Update(int64(blockCtx.Idx))
+		headFastBlockGauge.Update(int64(blockCtx.Idx))
+
+		// Notify about new block
+		if feed != nil {
+			var logs []*types.Log
+			for _, r := range allReceipts {
+				logs = append(logs, r.Logs...)
+			}
+			feed.notifyAboutNewBlock(evmBlock, logs)
+		}
+
+		now := time.Now()
+		blockAge := now.Sub(block.Time.Time())
+		log.Info("New block",
+			"index", blockCtx.Idx,
+			"id", block.Hash(),
+			"gas_used", evmBlock.GasUsed,
+			"gas_rate", float64(evmBlock.GasUsed)/blockDuration.Seconds(),
+			"base_fee", evmBlock.BaseFee.String(),
+			"txs", fmt.Sprintf("%d/%d", len(evmBlock.Transactions), numSkippedTxs),
+			"age", utils.PrettyDuration(blockAge),
+			"t", utils.PrettyDuration(now.Sub(start)),
+			"epoch", evmBlock.Epoch,
+		)
+		blockAgeGauge.Update(int64(blockAge.Nanoseconds()))
+
+		processedTxsMeter.Mark(int64(len(evmBlock.Transactions)))
+		skippedTxsMeter.Mark(int64(numSkippedTxs))
+	}
+	if confirmedEvents.Len() != 0 {
+		atomic.StoreUint32(blockBusyFlag, 1)
+		wg.Add(1)
+		err := parallelTasks.Enqueue(func() {
+			defer atomic.StoreUint32(blockBusyFlag, 0)
+			defer wg.Done()
+			blockFn()
+		})
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		blockFn()
+	}
+
+	return newValidators
+}
+
+// endBlock produces the block of a consensus block from Dolce on.
+func endBlock(
+	parallelTasks *workers.Workers,
+	wg *sync.WaitGroup,
+	blockBusyFlag *uint32,
+	store *Store,
+	blockProc BlockProc,
+	txIndex bool,
+	feed *ServiceFeed,
+	verWatcher *verwatcher.VersionWatcher,
+	cBlock *lachesis.Block,
+	start time.Time,
+	bs iblockproc.BlockState,
+	es iblockproc.EpochState,
+	statedb state.StateDB,
+	nonceSource blockproc.NonceSource,
+	evmStateReader *EvmStateReader,
+	eventProcessor blockproc.ConfirmedEventsProcessor,
+	atroposTime inter.Timestamp,
+	atroposDegenerate bool,
+	confirmedEvents hash.OrderedEvents,
+) (newValidators *pos.Validators) {
+
+	// Fix the rules to be used by this block.
+	thisBlocksRules := es.Rules.Copy()
+
+	// sort events by Lamport time
+	sort.Sort(confirmedEvents)
+	maxBlockGas := thisBlocksRules.Blocks.MaxBlockGas
+	blockEvents := spillBlockEvents(confirmedEvents, maxBlockGas,
+		func(id hash.Event) inter.EventPayloadI {
+			// Note: currently, GetEventPayload returns a pointer to struct,
+			// conversion to interface may yield a broken interface if
+			// the value is nil.
+			// Adding a nil check to return a nil interface would
+			// solve that, but at this point in the code, every event
+			// must have a known payload, and getting a nil would be a
+			// critical error. We will let it panic if that happens,
+			// as there is no recovery from it.
+			return store.GetEventPayload(id)
+		},
+	)
+
+	// Start assembling the resulting block.
+	number := uint64(bs.LastBlock.Idx + 1)
+	lastBlockHeader := evmStateReader.Header(common.Hash{}, number-1)
+
+	randao := computePrevRandao(confirmedEvents)
+	chainCfg := opera.CreateTransientEvmChainConfig(
+		thisBlocksRules.NetworkID,
+		store.GetUpgradeHeights(),
+		idx.Block(number),
+	)
+
+	// The maximum amount of gas to be used for non-internal
+	// transactions in the resulting block. Note that this gas limit
+	// is different than the official BlockGasLimit, which is
+	// announced as part of the block, constant over the duration of
+	// a block, and must be large enough to include internal
+	// transactions. In Sonic, the Block's GasLimit is a network
+	// rule parameter.
+	// The limit defined here is the dynamically adjusted gas limit
+	// used to regulate the traffic on the network. Block proposals
+	// made in the single-proposer mode are expected to honor this
+	// gas limit. With this parameter, this limit is enforced.
+	userTransactionGasLimit := maxBlockGas
+
+	signer := types.LatestSignerForChainID(chainCfg.ChainID)
+
+	// Get a proposal for the block to be created.
+	proposal := inter.Proposal{
+		Number:     idx.Block(number),
+		ParentHash: lastBlockHeader.Hash,
+	}
+	blockTime := atroposTime
+	if thisBlocksRules.Upgrades.SingleProposerBlockFormation {
+		if proposed, proposer, time := extractProposalForNextBlock(lastBlockHeader, blockEvents, log.Root()); proposed != nil {
+			proposal = *proposed
+			// Copy the transactions so that the cached event they
+			// are shared with is not modified in place.
+			proposal.Transactions = slices.Clone(proposal.Transactions)
+			blockTime = time
+			validatorKeys := readEpochPubKeys(store, cBlock.Atropos.Epoch())
+			randao = resolveRandaoMix(
+				proposal.RandaoReveal, proposer,
+				validatorKeys.PubKeys,
+				lastBlockHeader.PrevRandao, randao,
+				log.Root(),
+			)
+
+			userTransactionGasLimit = inter.GetEffectiveGasLimit(
+				blockTime.Time().Sub(lastBlockHeader.Time.Time()),
+				thisBlocksRules.Economy.ShortGasPower.AllocPerSec,
+				maxBlockGas,
+			)
+		}
+		// Notice that empty blocks follow non-SingleBlockFormation
+		// rules, regarding block times and randao values. This
+		// facilitates the utilization of the same mechanisms to
+		// process or skip empty blocks.
+	} else {
+		// Collect transactions from events and schedule them.
+		unorderedTxs := make(types.Transactions, 0, len(blockEvents)*10)
+		for _, e := range blockEvents {
+			unorderedTxs = append(unorderedTxs, e.Transactions()...)
+		}
+
+		proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, thisBlocksRules.Upgrades.Sonic)
+	}
+
+	// Filter invalid transactions from the proposal.
+	proposal.Transactions = filterNonPermissibleTransactions(
+		proposal.Transactions, &thisBlocksRules, signer, log.Root(), invalidTxsMeter,
+	)
+
+	// Make sure the new block time is after the last block time.
+	if blockTime <= bs.LastBlock.Time {
+		blockTime = bs.LastBlock.Time + 1
+	}
+
+	blockCtx := iblockproc.BlockCtx{
+		Idx:     proposal.Number,
+		Time:    blockTime,
+		Atropos: cBlock.Atropos,
+	}
+
+	// Note:
+	// it's possible that a previous Atropos observes current Atropos (1)
+	// (even stronger statement is true - it's possible that current Atropos is equal to a previous Atropos).
+	// (1) is true when and only when ApplyEvent wasn't called.
+	// In other words, we should assume that every non-cheater root may be elected as an Atropos in any order,
+	// even if typically every previous Atropos happened-before current Atropos
+	// We have to skip block in case (1) to ensure that every block ID is unique.
+	// If Atropos ID wasn't used as a block ID, it wouldn't be required.
+	skipBlock := atroposDegenerate
+	// Check if empty block should be pruned
+	emptyBlock := confirmedEvents.Len() == 0 && cBlock.Cheaters.Len() == 0
+	if thisBlocksRules.Upgrades.SingleProposerBlockFormation {
+		// Just checking for the number of confirmed events is not
+		// enough in the SingleProposer mode, because proposals may
+		// be empty or may have been found invalid (wrong block
+		// number or wrong parent hash). Thus, just checking for
+		// the number of confirmed events is not enough. However,
+		// we can check the actual number of transactions to be
+		// included in the block. If there are none -- and there are
+		// no cheaters resulting in internal transactions to be
+		// included -- the resulting block would be empty, and should
+		// in general be skipped.
+		emptyBlock = cBlock.Cheaters.Len() == 0 && len(proposal.Transactions) == 0
+	}
+	skipBlock = skipBlock || (emptyBlock && blockCtx.Time < bs.LastBlock.Time+thisBlocksRules.Blocks.MaxEmptyBlockSkipPeriod)
+	// Finalize the progress of eventProcessor
+	bs = eventProcessor.Finalize(blockCtx, skipBlock) // TODO: refactor to not mutate the bs, it is unclear
+	if skipBlock {
+		// save the latest block state even if block is skipped
+		store.SetBlockEpochState(bs, es)
+		log.Debug("Frame is skipped", "atropos", cBlock.Atropos.String())
+		return nil
+	}
+	if emptyBlock {
+		log.Debug(
+			"Deliberately producing empty block",
+			"idx", blockCtx.Idx,
+			"time_since_last", time.Duration(blockCtx.Time-bs.LastBlock.Time),
+		)
+	}
+
+	// Apply the transaction priorities and reorder the (already
+	// filtered) transactions, identically in both legacy and
+	// single-proposer modes, overriding any proposer order.
+	// It is a no-op while the feature is disabled.
+	proposal.Transactions = applyTransactionPriorities(
+		proposal.Transactions,
+		thisBlocksRules,
+		chainCfg,
+		statedb,
+		evmStateReader,
+		signer,
+		blockCtx.Idx,
+		blockCtx.Time,
+		randao,
+		lastBlockHeader,
+		priorityFailures,
+	)
+
+	sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
+	sealing := sealer.EpochSealing()
+	txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es)
+	onNewLogAll := func(l *core_types.Log) {
+		txListener.OnNewLog(l)
+		// Note: it's possible for logs to get indexed twice by BR and block processing
+		if verWatcher != nil {
+			verWatcher.OnNewLog(l)
+		}
+	}
+
+	// prepare block processing
+	evmProcessor := blockProc.EVMModule.Start(
+		blockCtx.Idx,
+		blockCtx.Time,
+		blockCtx.Atropos.Epoch(),
+		statedb,
+		evmStateReader,
+		onNewLogAll,
+		thisBlocksRules,
+		chainCfg,
+		randao,
+		sonicFeaturesMetrics,
+	)
+	executionStart := time.Now()
+
+	// Execute pre-internal transactions
+	preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
+	preInternalProcessedTxs := evmProcessor.Execute(preInternalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
+	bs = txListener.Finalize()
+	for _, tx := range preInternalProcessedTxs {
+		if tx.Receipt == nil || tx.Receipt.Status == 0 {
+			log.Warn("Pre-internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
+		}
+	}
+
+	// Seal epoch if requested
+	if sealing {
+		sealer.Update(bs, es)
+		prevUpg := es.Rules.Upgrades
+
+		_, execPlanChainHash := store.GetLatestProcessedBundleHistoryHash()
+
+		bs, es = sealer.SealEpoch(
+			hash.Hash(lastBlockHeader.Hash),
+			hash.Hash(execPlanChainHash),
+			preInternalTxs,
+		) // TODO: refactor to not mutate the bs, it is unclear
+		if es.Rules.Upgrades != prevUpg {
+			store.AddUpgradeHeight(opera.UpgradeHeight{
+				Upgrades: es.Rules.Upgrades,
+				Height:   blockCtx.Idx + 1,
+				Time:     blockCtx.Time + 1,
+			})
+		}
+		store.SetBlockEpochState(bs, es)
+		newValidators = es.Validators
+		txListener.Update(bs, es)
+	}
+
+	// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
+	blockFn := func() {
+
+		blockDuration := time.Duration(blockCtx.Time - bs.LastBlock.Time)
+		blockBuilder := inter.NewBlockBuilder().
+			WithEpoch(blockCtx.Atropos.Epoch()).
+			WithNumber(number).
+			WithParentHash(proposal.ParentHash).
+			WithTime(blockCtx.Time).
+			WithPrevRandao(randao).
+			WithGasLimit(maxBlockGas).
+			WithDuration(blockDuration)
+
+		// With the transition from v2.0 to v2.1, the handling of
+		// block-gas-limit updates has changed. In v2.0, epoch
+		// sealing blocks used to already adapt the new gas limit,
+		// while in v2.1 the old gas limit is kept and only the
+		// first block after the sealing block is adapting the new
+		// gas limit. As the list of transactions for the sealing
+		// block is assembled by validators using the rules of the
+		// current epoch, using the ending epoch's gas limit is
+		// matching the assumptions made by the validators.
+		//
+		// However, in the past, there was one epoch-sealing block
+		// (8054923) in which the gas limit was adapted. To support
+		// this one-time exception, we add a special case for
+		// this block here to ensure backward compatibility.
+		if thisBlocksRules.NetworkID == 146 && number == 8054923 {
+			blockBuilder.WithGasLimit(es.Rules.Blocks.MaxBlockGas)
+		}
+
+		for _, cur := range preInternalProcessedTxs {
+			if cur.Receipt != nil {
+				blockBuilder.AddTransaction(
+					cur.Transaction,
+					cur.Receipt,
+				)
+			}
+		}
+
+		// Execute post-internal transactions
+		internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
+		internalProcessedTxs := evmProcessor.Execute(internalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
+		for _, tx := range internalProcessedTxs {
+			if tx.Receipt == nil || tx.Receipt.Status == 0 {
+				log.Warn("Internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
+			}
+		}
+
+		for _, cur := range internalProcessedTxs {
+			if cur.Receipt != nil {
+				blockBuilder.AddTransaction(
+					cur.Transaction,
+					cur.Receipt,
+				)
+			}
+		}
+
+		txCausedBy := processUserTransactions(
+			evmProcessor,
+			blockBuilder,
+			proposal.Transactions,
+			userTransactionGasLimit,
+			thisBlocksRules.Upgrades,
+		)
+
+		evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
+
+		// Add results of the transaction processing to the block.
+		blockBuilder.
+			WithStateRoot(common.Hash(evmBlock.Root)).
+			WithGasUsed(evmBlock.GasUsed).
+			WithBaseFee(evmBlock.BaseFee)
+
+		// Complete the block.
+		block := blockBuilder.Build()
+		evmBlock.Hash = block.Hash()
+		evmBlock.Duration = blockDuration
+
+		// Update block-hash and -time values in receipts and logs.
+		for i := range allReceipts {
+			allReceipts[i].BlockHash = block.Hash()
+			for j := range allReceipts[i].Logs {
+				allReceipts[i].Logs[j].BlockHash = block.Hash()
+				allReceipts[i].Logs[j].BlockTimestamp = uint64(block.Time.Unix())
+			}
+		}
+
+		// memorize the event creator of each tx
+		txPositions := make(map[common.Hash]ExtendedTxPosition)
+		for _, e := range blockEvents {
+			for _, tx := range e.Transactions() {
+				// If tx was met in multiple events, then assign to first ordered event
+				if _, ok := txPositions[tx.Hash()]; ok {
+					continue
+				}
+				txPositions[tx.Hash()] = ExtendedTxPosition{
+					EventCreator: e.Creator(),
+				}
+			}
+		}
+		// memorize block position of each tx
+		for i, tx := range evmBlock.Transactions {
+			// not skipped txs only
+			position := txPositions[tx.Hash()]
+			position.Block = blockCtx.Idx
+			position.BlockOffset = uint32(i)
+			txPositions[tx.Hash()] = position
+		}
+
+		// call OnNewReceipt
+		for i, r := range allReceipts {
+			originTx := r.TxHash
+			if thisBlocksRules.Upgrades.Brio {
+				if origin, found := txCausedBy[r.TxHash]; found {
+					originTx = origin
+				}
+			}
+			creator := txPositions[originTx].EventCreator
+			if creator != 0 && es.Validators.Get(creator) == 0 {
+				creator = 0
+			}
+			txListener.OnNewReceipt(evmBlock.Transactions[i], r, creator, evmBlock.BaseFee, evmBlock.BlobBaseFee)
+		}
+		bs = txListener.Finalize() // TODO: refactor to not mutate the bs
+		bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
+		// At this point, block state is finalized
+
+		// Store the transaction bodies before indexing their
+		// positions, such that readers finding a position always
+		// find the corresponding body as well.
+		for _, tx := range blockBuilder.GetTransactions() {
+			store.evm.SetTx(tx.Hash(), tx)
+		}
+
+		// Build index for not skipped txs
+		if txIndex {
+			for _, tx := range evmBlock.Transactions {
+				// not skipped txs only
+				store.evm.SetTxPosition(tx.Hash(), txPositions[tx.Hash()].TxPosition)
+			}
+
+			// Index receipts
+			// Note: it's possible for receipts to get indexed twice by BR and block processing
+			if allReceipts.Len() != 0 {
+				store.evm.SetReceipts(blockCtx.Idx, allReceipts)
+				for _, r := range allReceipts {
+					store.evm.IndexLogs(r.Logs...)
+				}
+			}
+		}
+
+		bs.LastBlock = blockCtx
+		bs.CheatersWritten = uint32(bs.EpochCheaters.Len())
+		if sealing {
+			store.SetHistoryBlockEpochState(es.Epoch, bs, es)
+			store.SetEpochBlock(blockCtx.Idx+1, es.Epoch)
+		}
+
+		store.SetBlock(blockCtx.Idx, block)
+		store.SetBlockIndex(block.Hash(), blockCtx.Idx)
+		store.SetBlockEpochState(bs, es)
+		store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
+
+		// Update the metrics touched during block processing
+		executionTime := time.Since(executionStart)
+		blockExecutionTimer.Update(executionTime)
+		blockExecutionNonResettingTimer.Update(executionTime)
+
+		// Update the metrics touched by new block
+		headBlockGauge.Update(int64(blockCtx.Idx))
+		headHeaderGauge.Update(int64(blockCtx.Idx))
+		headFastBlockGauge.Update(int64(blockCtx.Idx))
+
+		// Notify about new block
+		if feed != nil {
+			var logs []*types.Log
+			for _, r := range allReceipts {
+				logs = append(logs, r.Logs...)
+			}
+			feed.notifyAboutNewBlock(evmBlock, logs)
+		}
+
+		now := time.Now()
+		blockAge := now.Sub(block.Time.Time())
+		log.Info("New block",
+			"index", blockCtx.Idx,
+			"id", block.Hash(),
+			"gas_used", evmBlock.GasUsed,
+			"gas_rate", float64(evmBlock.GasUsed)/blockDuration.Seconds(),
+			"base_fee", evmBlock.BaseFee.String(),
+			"txs", fmt.Sprintf("%d/%d", len(evmBlock.Transactions), numSkippedTxs),
+			"age", utils.PrettyDuration(blockAge),
+			"t", utils.PrettyDuration(now.Sub(start)),
+			"epoch", evmBlock.Epoch,
+		)
+		blockAgeGauge.Update(int64(blockAge.Nanoseconds()))
+
+		processedTxsMeter.Mark(int64(len(evmBlock.Transactions)))
+		skippedTxsMeter.Mark(int64(numSkippedTxs))
+	}
+	if confirmedEvents.Len() != 0 {
+		atomic.StoreUint32(blockBusyFlag, 1)
+		wg.Add(1)
+		err := parallelTasks.Enqueue(func() {
+			defer atomic.StoreUint32(blockBusyFlag, 0)
+			defer wg.Done()
+			blockFn()
+		})
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		blockFn()
+	}
+
+	return newValidators
 }
 
 // rlpEncodedMaxHeaderSizeInBytes is an upper bound of the EVM block header size

@@ -56,6 +56,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/contract/netinit100"
 	"github.com/0xsoniclabs/sonic/gossip/contract/sfc100"
 	"github.com/0xsoniclabs/sonic/logger"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
@@ -65,10 +66,14 @@ import (
 )
 
 func TestSFC(t *testing.T) {
+	runPreAndPostDolce(t, opera.GetSonicUpgrades(), testSFC)
+}
+
+func testSFC(t *testing.T, upgrades opera.Upgrades) {
 	logger.SetTestMode(t)
 	logger.SetLevel("debug")
 
-	env := newTestEnv(2, 3, t)
+	env := newTestEnvWithUpgrades(2, 3, upgrades, t)
 	t.Cleanup(func() {
 		err := env.Close()
 		require.NoError(t, err)
