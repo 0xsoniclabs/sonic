@@ -377,7 +377,7 @@ func (s *Store) RollbackProcessedBundles(block uint64) error {
 			block, earliestSafe)
 	}
 	hash, ok := s.GetProcessedBundleHistoryHash(block)
-	beforeFirstBundle := !ok && complete && block < earliest
+	beforeFirstBundle := complete && block < earliest
 	if !ok && !beforeFirstBundle {
 		return fmt.Errorf("no processed bundles history hash retained for block %d", block)
 	}
