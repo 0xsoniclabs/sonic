@@ -21,11 +21,24 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Added
 
+- Add the `--rpc.engine` flag. The default `module` serves the HTTP, WebSocket and IPC JSON-RPC interfaces from the new in-process RPC module. `--rpc.engine=legacy` selects the previous implementation for one release.
+- Add Prometheus metrics of the RPC module: `rpc_requests_total`, `rpc_duration_seconds`, `rpc_response_bytes`, `rpc_connections`, `rpc_inflight`, `rpc_subscriptions`, `rpc_subscription_events_total`, `rpc_head_served`, `rpc_head_lag`, `rpc_panics_total` and `rpc_loop_restarts_total`.
+
 ### Changed
+
+- The JSON-RPC interfaces are served by a new RPC module with its own dispatcher and transports. Methods, parameters, results and error messages are those of release 2.2.4, with the differences listed here.
+- A request reads one consistent `latest` block: the block that the module serves as `latest` never moves back and is never ahead of the blocks in the archive.
+- `eth_getEpochBlock`, `eth_getEpochStats`, `ftm_getEpochBlock`, `ftm_getEpochStats`, the wallet methods (`eth_accounts`, `eth_sign`, `eth_signTransaction`, `eth_sendTransaction`, `eth_fillTransaction`, `eth_resend` and their `ftm_` twins) and `debug_chaindbProperty`, `debug_chaindbCompact`, `debug_setHead` are served on the IPC socket only. Over HTTP and WebSocket they answer `-32601`. `dag_*`, `abft_*`, `admin_*` and `personal_*` stay IPC-only as before.
+- `eth_getRules` accepts an optional block selector.
+- A panic in a method handler answers `-32603` and does not stop the node.
+- A WebSocket or IPC connection that cannot keep up with its subscriptions is closed instead of delaying the node.
+- `eth_call`, `debug_*` and `trace_*` that run the Tosca interpreter stop at the gas cap (`--rpc.gascap`), not at `--rpc.evmtimeout`: only calls that use the go-ethereum interpreter observe the EVM timeout. This is the behavior of 2.2.4.
 
 ### Removed
 
 ### Fixed
+
+- `trace_callMany` returns an error trace for a call that cannot pay for its gas, as in 2.2.4.
 
 ## [2.2.5] - 7 October 2026
 

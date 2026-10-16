@@ -324,23 +324,23 @@ func setNodesConnected(t *testing.T, net *tests.IntegrationTestNet, connected bo
 		var info struct {
 			Enode string `json:"enode"`
 		}
-		require.NoError(t, client.Client().Call(&info, "admin_nodeInfo"))
+		require.NoError(t, client.LegacyCall(&info, "admin_nodeInfo"))
 		enodes[i] = info.Enode
 	}
 
 	if connected {
-		require.NoError(t, clients[1].Client().Call(nil, "admin_addPeer", enodes[0]))
+		require.NoError(t, clients[1].LegacyCall(nil, "admin_addPeer", enodes[0]))
 	} else {
 		// Removing the peer on both sides also stops the dialer from redialing.
 		for i, client := range clients {
-			require.NoError(t, client.Client().Call(nil, "admin_removePeer", enodes[1-i]))
+			require.NoError(t, client.LegacyCall(nil, "admin_removePeer", enodes[1-i]))
 		}
 	}
 
 	for i, client := range clients {
 		require.Eventually(t, func() bool {
 			var peers []map[string]any
-			err := client.Client().Call(&peers, "admin_peers")
+			err := client.LegacyCall(&peers, "admin_peers")
 			return err == nil && (len(peers) > 0) == connected
 		}, 30*time.Second, 100*time.Millisecond,
 			"node %d should have connected=%v", i, connected,

@@ -1,0 +1,600 @@
+// Copyright 2026 Sonic Operations Ltd
+// This file is part of the Sonic Client
+//
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
+package sonic
+
+import (
+	"encoding/json"
+	"fmt"
+	"testing"
+
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/require"
+)
+
+func Test_NewRPCExecutionPlanComposable_FromBundleExecutionPlan(t *testing.T) {
+
+	ref1 := bundle.TxReference{
+		From: common.Address{1},
+		Hash: common.Hash{2},
+	}
+
+	ref2 := bundle.TxReference{
+		From: common.Address{3},
+		Hash: common.Hash{4},
+	}
+
+	step1 := bundle.NewTxStep(ref1)
+	step2 := bundle.NewTxStep(ref2)
+
+	tests := map[string]struct {
+		plan         bundle.ExecutionPlan
+		expectedJson string
+	}{
+		"plan with single step": {
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewAllOfStep(step1),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+    			"steps":[
+					{
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					}
+				]
+			}`,
+		},
+		"plan with different single step": {
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewAllOfStep(step2),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+		 		"steps":[
+		 			{
+		 				"from":"0x0300000000000000000000000000000000000000",
+		 				"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+		 			}
+		 		]
+		 	}`,
+		},
+		"plan with single step and execution flags 1": {
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewAllOfStep(step1.WithFlags(bundle.EF_TolerateFailed)),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+		 		"steps":[
+		 			{
+		 				"tolerateFailed":true,
+		 				"from":"0x0100000000000000000000000000000000000000",
+		 				"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+		 			}
+		 		]
+		 	}`,
+		},
+		"plan with single step and execution flags 2": {
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewAllOfStep(step1.WithFlags(bundle.EF_TolerateInvalid)),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+		 		"steps":[
+		 			{
+		 				"tolerateInvalid":true,
+		 				"from":"0x0100000000000000000000000000000000000000",
+		 				"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+		 			}
+		 		]
+		 	}`,
+		},
+		"plan with single step and execution flags 3": {
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewAllOfStep(step2.WithFlags(bundle.EF_TolerateFailed | bundle.EF_TolerateInvalid)),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+		 		"steps":[
+		 			{
+		 				"tolerateFailed":true,
+		 				"tolerateInvalid":true,
+		 				"from":"0x0300000000000000000000000000000000000000",
+		 				"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+		 			}
+		 		]
+		 	}`,
+		},
+		"plan with all-of group": {
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewAllOfStep(step1, step2),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+		 		"steps": [
+					{
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					},
+					{
+						"from":"0x0300000000000000000000000000000000000000",
+						"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+					}
+				]
+		 	}`,
+		},
+		"plan with different all-of group": {
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewAllOfStep(step2, step1),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+		  		"steps":[
+					{
+						"from":"0x0300000000000000000000000000000000000000",
+						"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+					},
+					{
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					}
+		  		]
+		  	}`,
+		},
+		"plan with all-of group tolerating failed": {
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewAllOfStep(step1, step2).WithFlags(bundle.EF_TolerateFailed),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+				"tolerateFailures":true,
+				"steps":[
+					{
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					},
+					{
+						"from":"0x0300000000000000000000000000000000000000",
+						"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+					}
+				]
+			}`,
+		},
+		"plan with one-of group": {
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewOneOfStep(step1, step2),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+				"oneOf":true,
+				"steps":[
+					{
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					},
+					{
+						"from":"0x0300000000000000000000000000000000000000",
+						"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+					}
+				]
+			}`,
+		},
+		"plan with different one-of group": {
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewOneOfStep(step2, step1),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+				"oneOf":true,
+				"steps":[
+					{
+						"from":"0x0300000000000000000000000000000000000000",
+						"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+					},
+					{
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					}
+				]
+			}`,
+		},
+		"plan with one-of group and tolerating failed": {
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewOneOfStep(step1, step2).WithFlags(bundle.EF_TolerateFailed),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+				"tolerateFailures":true,
+				"oneOf":true,
+				"steps":[
+					{
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					},
+					{
+						"from":"0x0300000000000000000000000000000000000000",
+						"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+					}
+				]
+			}`,
+		},
+		"plan with nested groups": {
+			plan: bundle.ExecutionPlan{
+				Root: bundle.NewOneOfStep(
+					bundle.NewAllOfStep(step1, step2),
+					bundle.NewAllOfStep(step2, step1),
+				),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+				"oneOf":true,
+				"steps":[
+					{
+						"steps":[
+							{
+								"from":"0x0100000000000000000000000000000000000000",
+								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+							},
+							{
+								"from":"0x0300000000000000000000000000000000000000",
+								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+							}
+						]
+					},
+					{
+						"steps":[
+							{
+								"from":"0x0300000000000000000000000000000000000000",
+								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+							},
+							{
+								"from":"0x0100000000000000000000000000000000000000",
+								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+							}
+						]
+					}
+				]
+			}`,
+		},
+		"plan with different nested groups": {
+			plan: bundle.ExecutionPlan{
+				Root: bundle.NewOneOfStep(
+					bundle.NewAllOfStep(step2, step1),
+					bundle.NewAllOfStep(step1, step2),
+				),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+				"oneOf":true,
+				"steps":[
+					{
+						"steps":[
+							{
+								"from":"0x0300000000000000000000000000000000000000",
+								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+							},
+							{
+								"from":"0x0100000000000000000000000000000000000000",
+								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+							}
+						]
+					},
+					{
+						"steps":[
+							{
+								"from":"0x0100000000000000000000000000000000000000",
+								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+							},
+							{
+								"from":"0x0300000000000000000000000000000000000000",
+								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+							}
+						]
+					}
+				]
+			}`,
+		},
+		"plan with block range": {
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewAllOfStep(step1),
+				Range:  bundle.BlockRange{First: 10, Length: 20},
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+				"blockRange":{"first":"0xa","length":"0x14"},
+				"steps":[
+					{
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					}
+				]
+			}`,
+		},
+		"plan with different start": {
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewAllOfStep(step1),
+				Range:  bundle.BlockRange{First: 11, Length: 20},
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+				"blockRange":{"first":"0xb","length":"0x14"},
+				"steps":[
+					{
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					}
+				]
+			}`,
+		},
+		"plan with different end": {
+			plan: bundle.ExecutionPlan{
+				Root:   bundle.NewAllOfStep(step1),
+				Range:  bundle.BlockRange{First: 10, Length: 21},
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+				"blockRange":{"first":"0xa","length":"0x15"},
+				"steps":[
+					{
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					}
+				]
+			}`,
+		},
+		"plan with nested single-child groups": {
+			plan: bundle.ExecutionPlan{
+				Root: bundle.NewAllOfStep(
+					bundle.NewOneOfStep(bundle.NewAllOfStep(step1)),
+				),
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+				"steps":[
+					{
+						"oneOf":true,
+						"steps":[
+							{
+								"steps":[
+									{
+										"from":"0x0100000000000000000000000000000000000000",
+										"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+									}
+								]
+							}
+						]
+					}
+				]
+			}`,
+		},
+		"mixed": {
+			plan: bundle.ExecutionPlan{
+				Root: bundle.NewOneOfStep(
+					bundle.NewTxStep(ref1).WithFlags(bundle.EF_TolerateFailed),
+					bundle.NewAllOfStep(
+						bundle.NewTxStep(ref1),
+						bundle.NewTxStep(ref2).WithFlags(bundle.EF_TolerateInvalid),
+					),
+				),
+				Range:  bundle.BlockRange{First: 12345678, Length: 12345778},
+				Period: bundle.MakeUnrestrictedTimePeriod(),
+			},
+			expectedJson: `{
+				"blockRange":{"first":"0xbc614e","length":"0xbc61b2"},
+				"oneOf":true,
+				"steps":[
+					{
+						"tolerateFailed":true,
+						"from":"0x0100000000000000000000000000000000000000",
+						"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+					},
+					{
+						"steps":[
+							{
+								"from":"0x0100000000000000000000000000000000000000",
+								"hash":"0x0200000000000000000000000000000000000000000000000000000000000000"
+							},
+							{
+								"tolerateInvalid":true,
+								"from":"0x0300000000000000000000000000000000000000",
+								"hash":"0x0400000000000000000000000000000000000000000000000000000000000000"
+							}
+						]
+					}
+				]
+			}`,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			rpcPlan, err := NewRPCExecutionPlanComposable(tc.plan)
+			require.NoError(t, err)
+
+			expectJsonEqual(t, tc.expectedJson, rpcPlan)
+
+			recreated, err := ToBundleExecutionPlan(rpcPlan)
+			require.NoError(t, err)
+			require.Equal(t, recreated, tc.plan)
+			require.Equal(t, recreated.Hash(), tc.plan.Hash())
+
+			var deserialized RPCExecutionPlanComposable
+			expectCanBeDeserialized(t, &deserialized, tc.expectedJson)
+
+			require.Equal(t, rpcPlan, deserialized)
+		})
+	}
+}
+
+func Test_toJsonExecutionPlanVisitor_CanReturnErrors(t *testing.T) {
+	tests := map[string]struct {
+		beginGroup bool
+		wantErr    string
+	}{
+		"leaf conversion fails": {beginGroup: true, wantErr: "test error"},
+		"root is not a group":   {wantErr: "root must be a group"},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			visitor := &toJsonExecutionPlanVisitor{
+				toLeaf: func(flags bundle.ExecutionFlags, txRef bundle.TxReference) (any, error) {
+					return nil, fmt.Errorf("test error")
+				},
+			}
+			if tc.beginGroup {
+				visitor.BeginGroup(false, false)
+			}
+
+			err := visitor.Step(0, bundle.TxReference{})
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
+func Test_toBundleExecutionPlan_CanReturnErrors(t *testing.T) {
+
+	invalidStep := map[string]any{
+		"unexpectedField": "unexpectedValue",
+	}
+
+	rpcPlan := RPCExecutionPlanComposable{
+		BlockRange: RPCRange{First: 10, Length: 20},
+		RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+			Steps: []any{invalidStep},
+		},
+	}
+
+	_, err := ToBundleExecutionPlan(rpcPlan)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid execution plan level: must have either executionStep or group")
+}
+
+func TestNewRPCExecutionPlanComposable_ReturnsErrorWithInvalidPlan(t *testing.T) {
+	tests := map[string]struct {
+		root    bundle.ExecutionStep
+		wantErr string
+	}{
+		"invalid step":        {wantErr: "invalid execution plan"},
+		"root is not a group": {root: bundle.NewTxStep(bundle.TxReference{}), wantErr: "root must be a group"},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := NewRPCExecutionPlanComposable(bundle.ExecutionPlan{Root: tc.root})
+			require.ErrorContains(t, err, "failed to convert execution plan")
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
+func expectCanBeDeserialized[T any](t testing.TB, result *T, jsonValue string) {
+	t.Helper()
+	err := json.Unmarshal([]byte(jsonValue), result)
+	require.NoError(t, err, "failed to unmarshal JSON into %T", result)
+}
+
+func Test_RPCExecutionPlanComposable_UnmarshalJSON_FailsOnInvalidTopLevel(t *testing.T) {
+	// Top-level structure cannot be deserialized (not valid JSON at all, or
+	// wrong types for known fields).
+	tests := map[string]string{
+		"not json at all":        `not json`,
+		"top level is an array":  `[]`,
+		"blockRange wrong type":  `{"blockRange": "invalid"}`,
+		"steps is not an array":  `{"steps": 123}`,
+		"oneOf is not a boolean": `{"oneOf": "yes", "steps": []}`,
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			var plan RPCExecutionPlanComposable
+			err := json.Unmarshal([]byte(input), &plan)
+			require.Error(t, err)
+		})
+	}
+}
+
+func Test_RPCExecutionPlanComposable_UnmarshalJSON_FailsOnInvalidFirstLevelStep(t *testing.T) {
+	// A step at the first level of "steps" cannot be deserialized.
+	tests := map[string]string{
+		"step is not an object": `{
+			"steps": [123]
+		}`,
+		"step has invalid from field": `{
+			"steps": [{"from": "not-an-address", "hash": "0x0000000000000000000000000000000000000000000000000000000000000000"}]
+		}`,
+		"step has invalid hash field": `{
+			"steps": [{"from": "0x0000000000000000000000000000000000000000", "hash": "not-a-hash"}]
+		}`,
+		"step has nested steps with invalid content": `{
+			"steps": [{"steps": [true]}]
+		}`,
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			var plan RPCExecutionPlanComposable
+			err := json.Unmarshal([]byte(input), &plan)
+			require.Error(t, err)
+		})
+	}
+}
+
+func Test_RPCExecutionPlanComposable_UnmarshalJSON_FailsOnInvalidNestedLevelStep(t *testing.T) {
+	// A step at a deeper nested level cannot be deserialized.
+	tests := map[string]string{
+		"nested group contains non-object element": `{
+			"steps": [{"steps": [{"steps": [42]}]}]
+		}`,
+		"nested group contains invalid leaf": `{
+			"steps": [{"steps": [{"steps": [{"from": "bad", "hash": "0x00"}]}]}]
+		}`,
+		"deeply nested group has malformed steps array": `{
+			"steps": [{"steps": [{"steps": "not-an-array"}]}]
+		}`,
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			var plan RPCExecutionPlanComposable
+			err := json.Unmarshal([]byte(input), &plan)
+			require.Error(t, err)
+		})
+	}
+}
+
+func Test_RPCExecutionPlanComposable_UnmarshalJSON_ChecksNestingDepth(t *testing.T) {
+	tests := map[string]struct {
+		depth   int
+		wantErr bool
+	}{
+		"leaf at maximum depth":     {depth: bundle.MaxGroupNestingDepth},
+		"leaf beyond maximum depth": {depth: bundle.MaxGroupNestingDepth + 1, wantErr: true},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			var plan RPCExecutionPlanComposable
+			err := json.Unmarshal(nestedStepsJSON(tc.depth), &plan)
+			if tc.wantErr {
+				require.ErrorContains(t, err, "execution plan exceeds maximum nesting depth")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

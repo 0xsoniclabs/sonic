@@ -126,7 +126,7 @@ func getAllEventsOfCurrentEpoch(t *testing.T, net *IntegrationTestNet) []EventDa
 			ExtraData hexutil.Bytes   `json:"extraData"`
 			// other fields are ignored
 		}
-		err := client.Client().Call(&result, "dag_getEvent", eventID.Hex())
+		err := client.LegacyCall(&result, "dag_getEvent", eventID.Hex())
 		require.NoError(t, err)
 
 		event := EventData{

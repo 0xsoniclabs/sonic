@@ -249,7 +249,7 @@ func TestIntegrationTestNet_CanRunMultipleNodes(t *testing.T) {
 
 				// by asking for the managed accounts, nodes can be identified
 				res := []string{}
-				require.NoError(t, client.Client().Call(&res, "eth_accounts"))
+				require.NoError(t, client.LegacyCall(&res, "eth_accounts"))
 				require.NotEmpty(t, res)
 				accounts[i] = res[0]
 			}

@@ -77,7 +77,7 @@ func TestConnectP2PNetwork_TrustedPeersBypassBan(t *testing.T) {
 		defer client.Close()
 
 		var peers []map[string]any
-		require.NoError(client.Client().Call(&peers, "admin_peers"))
+		require.NoError(client.LegacyCall(&peers, "admin_peers"))
 		require.NotEmpty(peers, "node %d should have peers after restart", i)
 	}
 }
@@ -94,7 +94,7 @@ func getNodeIDs(t *testing.T, net *IntegrationTestNet) []enode.ID {
 		var info struct {
 			Enode string `json:"enode"`
 		}
-		require.NoError(t, client.Client().Call(&info, "admin_nodeInfo"))
+		require.NoError(t, client.LegacyCall(&info, "admin_nodeInfo"))
 
 		node, err := enode.ParseV4(info.Enode)
 		require.NoError(t, err)

@@ -160,6 +160,15 @@ type IntegrationTestNetSession interface {
 	// be kept apart since their behavior is different.
 	GetWebSocketClient() (*ethClient, error)
 
+	// GetIpcClient provides raw access to a fresh connection to the IPC socket of
+	// the first node. The IPC transport is the only one that serves the admin_,
+	// test_, dag_ and abft_ namespaces and the wallet methods. The resulting
+	// client must be closed after use.
+	GetIpcClient() (*rpc.Client, error)
+
+	// GetIpcClientConnectedToNode is GetIpcClient for the selected node.
+	GetIpcClientConnectedToNode(node int) (*rpc.Client, error)
+
 	// NumNodes returns the number of nodes in the test network.
 	NumNodes() int
 
@@ -258,6 +267,7 @@ type IntegrationTestNet struct {
 type integrationTestNode struct {
 	directory string
 	httpPort  int
+	ipcPath   string
 	shutdown  chan<- struct{}
 	done      <-chan struct{}
 
@@ -546,15 +556,15 @@ func (n *IntegrationTestNet) start() error {
 		done := make(chan struct{})
 		n.nodes[i].shutdown = stop
 		n.nodes[i].done = done
+		// MacOS uses other temporary directories than Linux, which is a too long name for the Unix domain socket.
+		// Since /tmp is also available on MacOS, we can use it as a short temporary directory.
+		tmp, err := os.MkdirTemp("/tmp", "sonic_integration_test_*")
+		if err != nil {
+			return fmt.Errorf("failed to create temporary directory: %w", err)
+		}
+		n.nodes[i].ipcPath = filepath.Join(tmp, "sonic.ipc")
 		go func() {
 			defer close(done)
-
-			// MacOS uses other temporary directories than Linux, which is a too long name for the Unix domain socket.
-			// Since /tmp is also available on MacOS, we can use it as a short temporary directory.
-			tmp, err := os.MkdirTemp("/tmp", "sonic_integration_test_*")
-			if err != nil {
-				panic(fmt.Sprintf("Failed to create temporary directory: %v", err))
-			}
 			defer func() {
 				if err := os.RemoveAll(tmp); err != nil {
 					fmt.Printf("Failed to remove temporary directory: %v\n", err)
@@ -597,7 +607,7 @@ func (n *IntegrationTestNet) start() error {
 				"--statedb.archivecache", fmt.Sprintf("%d", caches.ArchiveBytes),
 				"--statedb.cache", fmt.Sprintf("%d", caches.StateDbItems),
 
-				"--ipcpath", fmt.Sprintf("%s/sonic.ipc", tmp),
+				"--ipcpath", n.nodes[i].ipcPath,
 
 				// enable test-only API
 				"--enable-test-only-api",
@@ -670,7 +680,7 @@ func (n *IntegrationTestNet) start() error {
 				if err != nil {
 					return nil
 				}
-				sharedClient := PooledEhtClient{*client, n.nodes[i].clients}
+				sharedClient := PooledEhtClient{*client, n.nodes[i].clients, n.nodes[i].ipcPath}
 				return &sharedClient
 			},
 		}
@@ -740,13 +750,13 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 	// discfilter.Ban(), after which postHandshakeChecks rejects further
 	// connection attempts. Trusted peers are exempt from that check.
 	for i := range n.nodes {
-		client, err := n.GetClientConnectedToNode(i)
+		client, err := n.GetIpcClientConnectedToNode(i)
 		if err != nil {
-			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+			return fmt.Errorf("failed to connect to the IPC socket: %w", err)
 		}
 
 		enode := enodes[(i+1)%len(n.nodes)]
-		err = client.Client().Call(nil, "admin_addTrustedPeer", enode)
+		err = client.Call(nil, "admin_addTrustedPeer", enode)
 		client.Close()
 		if err != nil {
 			return fmt.Errorf("failed to add trusted peer on node %d: %v", i, err)
@@ -756,12 +766,12 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 	// Then dial, once per pair of nodes, see ringDialEdges.
 	for _, edge := range ringDialEdges(len(n.nodes)) {
 		dialer, target := edge[0], edge[1]
-		client, err := n.GetClientConnectedToNode(dialer)
+		client, err := n.GetIpcClientConnectedToNode(dialer)
 		if err != nil {
-			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+			return fmt.Errorf("failed to connect to the IPC socket: %w", err)
 		}
 
-		err = client.Client().Call(nil, "admin_addPeer", enodes[target])
+		err = client.Call(nil, "admin_addPeer", enodes[target])
 		client.Close()
 		if err != nil {
 			return fmt.Errorf("failed to add peer on node %d: %v", dialer, err)
@@ -770,7 +780,7 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 
 	// Now wait for each node to have the expected number of connections.
 	for i := range n.nodes {
-		client, err := n.GetClientConnectedToNode(i)
+		client, err := n.GetIpcClientConnectedToNode(i)
 		if err != nil {
 			return fmt.Errorf("failed to connect to the client: %w", err)
 		}
@@ -779,7 +789,7 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 		err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
 			// Fetch the list of connected peers
 			var res []map[string]any
-			if err := client.Client().Call(&res, "admin_peers"); err != nil {
+			if err := client.Call(&res, "admin_peers"); err != nil {
 				return false, fmt.Errorf("failed to query peers on node %d: %v", i, err)
 			}
 
@@ -850,6 +860,25 @@ func (n *IntegrationTestNet) GetClient() (*PooledEhtClient, error) {
 	return n.GetClientConnectedToNode(0)
 }
 
+// GetIpcClient provides raw access to a fresh connection to the IPC socket of
+// the first node. The resulting client must be closed after use.
+func (n *IntegrationTestNet) GetIpcClient() (*rpc.Client, error) {
+	return n.GetIpcClientConnectedToNode(0)
+}
+
+// GetIpcClientConnectedToNode provides raw access to a fresh connection to the
+// IPC socket of a selected node. The resulting client must be closed after use.
+func (n *IntegrationTestNet) GetIpcClientConnectedToNode(i int) (*rpc.Client, error) {
+	if i < 0 || i >= len(n.nodes) {
+		return nil, fmt.Errorf("node index out of bounds: %d", i)
+	}
+	client, err := rpc.DialIPC(context.Background(), n.nodes[i].ipcPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to the IPC socket: %w", err)
+	}
+	return client, nil
+}
+
 // GetChainId returns the chain ID of the network.
 func (n *IntegrationTestNet) GetChainId() *big.Int {
 	return big.NewInt(int64(opera.FakeNetworkID))
@@ -869,7 +898,7 @@ func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*PooledEhtClient, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 	}
-	return &PooledEhtClient{*ethclient, n.nodes[i].clients}, nil
+	return &PooledEhtClient{*ethclient, n.nodes[i].clients, n.nodes[i].ipcPath}, nil
 }
 
 // GetWebSocketClient provides raw access to a fresh connection to the network
@@ -1278,7 +1307,7 @@ func (s *Session) ForceEmitAll(ctx context.Context, txs []*types.Transaction) ([
 }
 
 func (s *Session) callWithEncodedTxs(ctx context.Context, method string, txs []*types.Transaction) ([]common.Hash, error) {
-	client, err := s.GetClient()
+	client, err := s.GetIpcClient()
 	if err != nil {
 		return nil, err
 	}
@@ -1293,7 +1322,7 @@ func (s *Session) callWithEncodedTxs(ctx context.Context, method string, txs []*
 		data[i] = encoded
 	}
 
-	if err := client.Client().CallContext(ctx, nil, method, data); err != nil {
+	if err := client.CallContext(ctx, nil, method, data); err != nil {
 		return nil, err
 	}
 
@@ -1554,6 +1583,18 @@ func (s *Session) GetWebSocketClient() (*ethClient, error) {
 	return s.net.GetWebSocketClient()
 }
 
+// GetIpcClient provides raw access to a fresh connection to the IPC socket of
+// the first node. The resulting client must be closed after use.
+func (s *Session) GetIpcClient() (*rpc.Client, error) {
+	return s.net.GetIpcClient()
+}
+
+// GetIpcClientConnectedToNode provides raw access to a fresh connection to the
+// IPC socket of a selected node. The resulting client must be closed after use.
+func (s *Session) GetIpcClientConnectedToNode(i int) (*rpc.Client, error) {
+	return s.net.GetIpcClientConnectedToNode(i)
+}
+
 func (s *Session) NumNodes() int {
 	return s.net.NumNodes()
 }
@@ -1659,6 +1700,20 @@ type PooledEhtClient struct {
 	// Keeping a reference to the pool allows the shared client to be compliant
 	// with the ethclient.Client close signature.
 	pool *sync.Pool
+	// ipcPath is the IPC socket of the node the client is connected to.
+	ipcPath string
+}
+
+// LegacyCall calls a method of the namespaces only the IPC transport serves
+// (admin_, test_, dag_, abft_, personal_ and the wallet methods) on the node
+// the client is connected to.
+func (s *PooledEhtClient) LegacyCall(result any, method string, args ...any) error {
+	client, err := rpc.DialIPC(context.Background(), s.ipcPath)
+	if err != nil {
+		return fmt.Errorf("failed to connect to the IPC socket: %w", err)
+	}
+	defer client.Close()
+	return client.Call(result, method, args...)
 }
 
 // Close returns the shared client to the pool it was generated from.

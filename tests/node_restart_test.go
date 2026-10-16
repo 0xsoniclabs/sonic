@@ -17,9 +17,13 @@
 package tests
 
 import (
+	"context"
 	"math/big"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -67,4 +71,61 @@ func TestNodeRestart_CanRestartAndRestoreItsState(t *testing.T) {
 			require.Equal(got, receipt.TxHash, "block %d, tx %d", i, position)
 		}
 	}
+}
+
+// Q1: a node stops within a bounded time while clients keep requesting, and the
+// requests it cannot finish fail instead of hanging.
+func TestNodeRestart_StopsUnderRPCLoad(t *testing.T) {
+	net := StartIntegrationTestNet(t)
+
+	_, err := net.EndowAccount(common.Address{42}, big.NewInt(100))
+	require.NoError(t, err)
+
+	httpClient, err := net.GetClient()
+	require.NoError(t, err)
+	defer httpClient.Close()
+	wsClient, err := net.GetWebSocketClient()
+	require.NoError(t, err)
+	defer wsClient.Close()
+
+	heads := make(chan *types.Header, 16)
+	sub, err := wsClient.SubscribeNewHead(t.Context(), heads)
+	require.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				// Errors are expected once the node is going down; hanging is not.
+				ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+				_, _ = httpClient.BlockByNumber(ctx, nil)
+				_, _ = httpClient.FilterLogs(ctx, ethereum.FilterQuery{FromBlock: big.NewInt(0), ToBlock: big.NewInt(1)})
+				cancel()
+			}
+		}()
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	start := time.Now()
+	require.NoError(t, net.Restart())
+	require.Less(t, time.Since(start), 2*time.Minute)
+
+	close(stop)
+	wg.Wait()
+
+	// The node serves again after the restart.
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+	_, err = client.BlockNumber(t.Context())
+	require.NoError(t, err)
 }

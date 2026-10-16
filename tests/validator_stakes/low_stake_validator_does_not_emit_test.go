@@ -195,7 +195,7 @@ func collectEventsAncestry(
 // fetchEvent retrieves the event details for the given event ID.
 func fetchEvent(t *testing.T, client *tests.PooledEhtClient, eventID hash.Event) testEvent {
 	var result map[string]any
-	err := client.Client().Call(&result, "dag_getEvent", eventID.Hex())
+	err := client.LegacyCall(&result, "dag_getEvent", eventID.Hex())
 	require.NoError(t, err)
 
 	var event testEvent

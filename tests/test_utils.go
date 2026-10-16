@@ -490,7 +490,7 @@ func GetEventHeads(t *testing.T, client *PooledEhtClient) []hash.Event {
 
 	// Get the head res of the given epoch.
 	res := []string{}
-	err := client.Client().Call(&res, "dag_getHeads", rpc.BlockNumber(epoch))
+	err := client.LegacyCall(&res, "dag_getHeads", rpc.BlockNumber(epoch))
 	require.NoError(t, err)
 
 	events := make([]hash.Event, len(res))

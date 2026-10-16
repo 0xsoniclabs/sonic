@@ -39,6 +39,12 @@ import (
 // The flags are defined here so their names and help texts
 // are the same for all commands.
 
+// Values of the --rpc.engine flag.
+const (
+	RPCEngineModule = "module"
+	RPCEngineLegacy = "legacy"
+)
+
 var (
 	// General settings
 	DataDirFlag = cli.StringFlag{
@@ -353,6 +359,12 @@ var (
 	AllowJSTracersFlag = cli.BoolFlag{
 		Name:  "rpc.allow-js-tracers",
 		Usage: "Allow custom (user-supplied) JavaScript debug tracers (unsafe); default permits only built-in tracers",
+	}
+	RPCEngineFlag = cli.StringFlag{
+		Name: "rpc.engine",
+		Usage: `RPC engine: "module" serves RPC with the node's RPC module, "legacy" with the handlers of the previous releases ` +
+			`(an escape hatch for one release)`,
+		Value: RPCEngineModule,
 	}
 	ModeFlag = cli.StringFlag{
 		Name:  "mode",

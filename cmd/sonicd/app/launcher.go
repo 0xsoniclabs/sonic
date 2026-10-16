@@ -163,6 +163,7 @@ func initFlags() {
 		flags.MaxTraceFilterRangeFlag,
 		flags.StructLogLimitFlag,
 		flags.AllowJSTracersFlag,
+		flags.RPCEngineFlag,
 	}
 
 	metricsFlags = []cli.Flag{
@@ -296,7 +297,17 @@ func lachesisMainInternal(
 	sigCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	node, _, nodeClose, err := config.MakeNode(sigCtx, ctx, cfg)
+	var takeover *rpcTakeover
+	switch engine := ctx.GlobalString(flags.RPCEngineFlag.Name); engine {
+	case flags.RPCEngineModule:
+		takeover = takeOverRPC(&cfg.Node)
+	case flags.RPCEngineLegacy:
+		log.Warn("The legacy RPC engine is deprecated and will be removed in the next release")
+		takeover = &rpcTakeover{legacyEngine: true}
+	default:
+		return fmt.Errorf("--%s must be %q or %q, not %q", flags.RPCEngineFlag.Name, flags.RPCEngineModule, flags.RPCEngineLegacy, engine)
+	}
+	node, svc, nodeClose, err := config.MakeNode(sigCtx, ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize the node: %w", err)
 	}
@@ -306,7 +317,12 @@ func lachesisMainInternal(
 		// At this point the node is fully configured,
 		// if the dump-config flag is set, dump the config into the file and exit
 		outputConfigFile := ctx.GlobalString(flags.DumpConfigFileFlag.Name)
+		takeover.restore(&cfg.Node)
 		return config.SaveAllConfigs(outputConfigFile, cfg)
+	}
+
+	if err := takeover.attach(node, svc, cfg); err != nil {
+		return err
 	}
 
 	startFreeDiskSpaceMonitor(sigCtx, ctx, cancel, node.InstanceDir())
@@ -321,7 +337,7 @@ func lachesisMainInternal(
 		}
 
 		if control.HttpPortAnnouncement != nil {
-			control.HttpPortAnnouncement <- node.HTTPEndpoint()
+			control.HttpPortAnnouncement <- takeover.httpEndpoint(node)
 		}
 
 		if control.Shutdown != nil {

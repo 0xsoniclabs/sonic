@@ -273,14 +273,14 @@ func getUsedEventVersion(
 
 	// Get the head events of the current epoch.
 	heads := []hexutil.Bytes{}
-	err = client.Client().Call(&heads, "dag_getHeads", rpc.BlockNumber(block.Epoch))
+	err = client.LegacyCall(&heads, "dag_getHeads", rpc.BlockNumber(block.Epoch))
 	require.NoError(err)
 
 	// Download one of the head events and fetch the version.
 	event := struct {
 		Version hexutil.Uint64
 	}{}
-	err = client.Client().Call(&event, "dag_getEvent", heads[0].String())
+	err = client.LegacyCall(&event, "dag_getEvent", heads[0].String())
 	require.NoError(err)
 
 	return int(event.Version)

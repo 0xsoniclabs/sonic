@@ -24,6 +24,9 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
+	rpccore "github.com/0xsoniclabs/sonic/rpc/core"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"go.uber.org/mock/gomock"
 )
 
@@ -191,4 +194,60 @@ func TestServiceFeed_ArchiveState(t *testing.T) {
 			feed.Stop()
 		})
 	}
+}
+
+func TestServiceFeed_SubscribeHead_DeliversBlocksWithTheirLogsInOrder(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	store := NewMockArchiveBlockHeightSource(ctrl)
+	store.EXPECT().GetArchiveBlockHeight().Return(uint64(12), false, nil).AnyTimes()
+
+	feed := ServiceFeed{}
+	feed.Start(store)
+	defer feed.Stop()
+
+	events := make(chan rpccore.HeadEvent, 4)
+	sub := feed.SubscribeHead(events)
+	defer sub.Unsubscribe()
+
+	log := &types.Log{Address: common.Address{1}, BlockNumber: 11}
+	for _, number := range []int64{11, 12} {
+		feed.notifyAboutNewBlock(&evmcore.EvmBlock{
+			EvmHeader: evmcore.EvmHeader{Number: big.NewInt(number)},
+		}, []*types.Log{log})
+	}
+
+	for _, number := range []int64{11, 12} {
+		select {
+		case event := <-events:
+			if event.Block.Number.Int64() != number {
+				t.Fatalf("expected block %d, got %d", number, event.Block.Number)
+			}
+			if len(event.Logs) != 1 || event.Logs[0] != log {
+				t.Fatalf("expected the logs of block %d, got %v", number, event.Logs)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatalf("block %d was not delivered", number)
+		}
+	}
+}
+
+func TestServiceFeed_SubscribeHead_AfterStopIsEnded(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	store := NewMockArchiveBlockHeightSource(ctrl)
+	store.EXPECT().GetArchiveBlockHeight().Return(uint64(0), true, nil).AnyTimes()
+
+	feed := ServiceFeed{}
+	feed.Start(store)
+	feed.Stop()
+
+	sub := feed.SubscribeHead(make(chan rpccore.HeadEvent))
+	select {
+	case _, open := <-sub.Err():
+		if open {
+			t.Fatal("expected the error channel of an ended subscription to be closed")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the subscription made after Stop is not ended")
+	}
+	sub.Unsubscribe()
 }
