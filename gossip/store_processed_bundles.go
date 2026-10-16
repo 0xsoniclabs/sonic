@@ -442,7 +442,7 @@ func (s *Store) RollbackProcessedBundles(block uint64) error {
 // continues the zero hash, which proves no bundle was processed before the
 // block. This requires the processed bundles of the block to be retained.
 func (s *Store) isFirstBundleBlock(block uint64, hash common.Hash) (bool, error) {
-	added := common.Hash{}
+	added, hasBundle := common.Hash{}, false
 	// key layout for 'i': 1 byte prefix + 8 bytes blockNum + 32 bytes execPlanHash
 	it := s.table.ProcessedBundles.NewIterator(append([]byte{'i'}, bigendian.Uint64ToBytes(block)...), nil)
 	defer it.Release()
@@ -452,11 +452,13 @@ func (s *Store) isFirstBundleBlock(block uint64, hash common.Hash) (bool, error)
 			continue
 		}
 		added = xorHash(added, common.BytesToHash(key[1+8:]))
+		hasBundle = true
 	}
 	if err := it.Error(); err != nil {
 		return false, fmt.Errorf("failed to iterate processed bundles: %w", err)
 	}
-	return computeNewBundleStateHash(common.Hash{}, added, block) == hash, nil
+	// the first bundle block must hold at least one bundle
+	return hasBundle && computeNewBundleStateHash(common.Hash{}, added, block) == hash, nil
 }
 
 // EnumerateProcessedBundles returns a list of all recently processed bundle
