@@ -33,7 +33,7 @@ import (
 func TestHealGossipDb_RevertsProcessedBundles(t *testing.T) {
 	// epoch e starts at block 200*e
 	// a complete history retains all bundles since the first one of the chain,
-	// a full window retains the bundle.MaxBlockRangeLength blocks before the target
+	// a full window retains the bundle.MaxBlockRangeLength-1 blocks up to the target
 	// in the drawings:
 	// - B is the first bundle of the chain
 	// - B... is the first bundle of the chain in history pruned from the store
@@ -61,7 +61,7 @@ func TestHealGossipDb_RevertsProcessedBundles(t *testing.T) {
 		"incomplete history, partial window before target": {
 			firstBlock: 200, complete: false, epoch: 4, wantBlock: 2048,
 			wantErr: "cannot revert processed bundles history to epoch 4: " +
-				"not enough processed bundles history to roll back to block 800, earliest safe block is 1224",
+				"not enough processed bundles history to roll back to block 800, earliest safe block is 1223",
 		},
 		//     [B--------------------------T----------]
 		//     200                         1600    2048
