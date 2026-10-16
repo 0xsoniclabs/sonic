@@ -1787,6 +1787,7 @@ func TestStore_RollbackProcessedBundles_RestoresStateOfEarlierBlock(t *testing.T
 	tests := map[string]struct {
 		firstBlock uint64 // first block of the retained history, holding the first bundle
 		target     uint64
+		zeroXor    bool // the execution plan hashes of the first bundle block XOR to zero
 	}{
 		//     [B--------------------------T----------]
 		//     200                         1600    2048
@@ -1803,6 +1804,12 @@ func TestStore_RollbackProcessedBundles_RestoresStateOfEarlierBlock(t *testing.T
 		"complete history, target before first bundle": {
 			firstBlock: 1000, target: 800,
 		},
+		"complete history, zero XOR of first bundles, partial window before target": {
+			firstBlock: 200, target: 800, zeroXor: true,
+		},
+		"complete history, zero XOR of first bundles, target before first bundle": {
+			firstBlock: 1000, target: 800, zeroXor: true,
+		},
 	}
 
 	for name, test := range tests {
@@ -1812,6 +1819,9 @@ func TestStore_RollbackProcessedBundles_RestoresStateOfEarlierBlock(t *testing.T
 				bundlesOf := func(block uint64) map[common.Hash]bundle.PositionInBlock {
 					if block < test.firstBlock || (block-test.firstBlock)%3 != 0 {
 						return nil
+					}
+					if test.zeroXor && block == test.firstBlock {
+						return zeroXorBundles
 					}
 					return map[common.Hash]bundle.PositionInBlock{uint64ToHash(block): {}, uint64ToHash(block + 1): {}}
 				}
@@ -1879,6 +1889,16 @@ func TestStore_RollbackProcessedBundles_LeavesStoreUnchanged_WhenFailingOrNothin
 		"pruned history, partial window before target": {
 			history: processFirstBundle(processedBundlesRetention + 10),
 			target:  beforeEarliestSafe,
+			wantErr: notEnoughHistory,
+		},
+		"pruned history, zero XOR of first bundles, partial window before target": {
+			history: processZeroXorFirstBundleUpToPruningBoundary,
+			target:  beforeEarliestSafe,
+			wantErr: notEnoughHistory,
+		},
+		"pruned history, zero XOR of first bundles, target before history": {
+			history: processZeroXorFirstBundleUpToPruningBoundary,
+			target:  func(earliest uint64) uint64 { return earliest - 1 },
 			wantErr: notEnoughHistory,
 		},
 		"imported incomplete history, target before history": {
@@ -2135,6 +2155,25 @@ func processFirstBundle(head uint64) func(*testing.T, *Store) {
 		for block := uint64(2); block <= head; block++ {
 			store.AddProcessedBundles(block, nil)
 		}
+	}
+}
+
+// zeroXorBundles are distinct execution plans whose hashes XOR to zero, so
+// they do not change the history hash beyond the block number.
+var zeroXorBundles = map[common.Hash]bundle.PositionInBlock{{0x01}: {}, {0x02}: {}, {0x03}: {}}
+
+// processZeroXorFirstBundleUpToPruningBoundary processes the first bundles of
+// the chain, whose hashes XOR to zero, up to the block at which they are
+// pruned while the history hash of their block is still retained.
+func processZeroXorFirstBundleUpToPruningBoundary(t *testing.T, store *Store) {
+	store.AddProcessedBundles(1, zeroXorBundles)
+	for block := uint64(2); block <= processedBundlesRetention; block++ {
+		store.AddProcessedBundles(block, nil)
+	}
+	earliest, _, _ := store.GetEarliestBundleHistoryHash()
+	require.Equal(t, uint64(1), earliest, "history hash of the first bundle block should be retained")
+	for hash := range zeroXorBundles {
+		require.False(t, store.HasBundleRecentlyBeenProcessed(hash), "first bundles should be pruned")
 	}
 }
 
