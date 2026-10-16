@@ -31,115 +31,104 @@ import (
 )
 
 func TestHealGossipDb_RevertsProcessedBundles(t *testing.T) {
-	require := require.New(t)
-	dbs, cfg := newDbsWithBundleHistory(t, addCompleteBundleHistory(1))
+	// epoch e starts at block 200*e
+	// a complete history retains all bundles since the first one of the chain,
+	// a full window retains the bundle.MaxBlockRangeLength blocks before the target
+	// in the drawings:
+	// - B is the first bundle of the chain
+	// - B... is the first bundle of the chain in history pruned from the store
+	// - [ ] is the history retained by the store up to block 2048
+	// - T is the heal target
+	tests := map[string]struct {
+		firstBlock uint64 // first block of the retained history
+		complete   bool   // whether the retained history starts with the first bundle
+		epoch      idx.Epoch
+		wantBlock  uint64 // latest history block after healing, 0 if none
+		wantErr    string
+	}{
+		//                  T   [B--------------------]
+		//                800   1000               2048
+		"complete history, target before first bundle": {
+			firstBlock: 1000, complete: true, epoch: 4, wantBlock: 0,
+		},
+		//     [B-----------T-------------------------]
+		//     200          800                    2048
+		"complete history, partial window before target": {
+			firstBlock: 200, complete: true, epoch: 4, wantBlock: 800,
+		},
+		// B...[------------T-------------------------]
+		//     200          800                    2048
+		"incomplete history, partial window before target": {
+			firstBlock: 200, complete: false, epoch: 4, wantBlock: 2048,
+			wantErr: "cannot revert processed bundles history to epoch 4: " +
+				"not enough processed bundles history to roll back to block 800, earliest safe block is 1224",
+		},
+		//     [B--------------------------T----------]
+		//     200                         1600    2048
+		"complete history, full window before target": {
+			firstBlock: 200, complete: true, epoch: 8, wantBlock: 1600,
+		},
+		// B...[---------------------------T----------]
+		//     200                         1600    2048
+		"incomplete history, full window before target": {
+			firstBlock: 200, complete: false, epoch: 8, wantBlock: 1600,
+		},
+	}
 
-	// epoch 6 starts at block 1200, which is after the earliest safe block
-	store, err := gossip.NewStore(dbs, cfg)
-	require.NoError(err)
-	wantHash, found := store.GetProcessedBundleHistoryHash(1200)
-	require.True(found)
-	require.NoError(store.Close())
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			dbs, cfg := newDbsWithBundleHistory(t, test.firstBlock, test.complete)
 
-	epoch := idx.Epoch(6)
-	_, lastBlock, err := healGossipDb(dbs, cfg, &epoch, 10_000)
-	require.NoError(err)
-	require.Equal(idx.Block(1200), lastBlock)
+			store, err := gossip.NewStore(dbs, cfg)
+			require.NoError(err)
+			wantHash, found := store.GetProcessedBundleHistoryHash(test.wantBlock)
+			require.Equal(test.wantBlock != 0, found)
+			require.NoError(store.Close())
 
-	store, err = gossip.NewStore(dbs, cfg)
-	require.NoError(err)
-	gotBlock, gotHash := store.GetLatestProcessedBundleHistoryHash()
-	require.Equal(uint64(1200), gotBlock)
-	require.Equal(wantHash, gotHash)
-}
+			_, lastBlock, err := healGossipDb(dbs, cfg, &test.epoch, 10_000)
+			if test.wantErr != "" {
+				require.EqualError(err, test.wantErr)
+			} else {
+				require.NoError(err)
+				require.Equal(idx.Block(200*test.epoch), lastBlock)
+			}
 
-func TestHealGossipDb_ReportsError_WhenBundleHistoryIsIncomplete(t *testing.T) {
-	dbs, cfg := newDbsWithBundleHistory(t, addIncompleteBundleHistory)
-
-	// epoch 3 starts at block 600, for which the bundles processed in the
-	// preceding replay protection window are no longer retained
-	epoch := idx.Epoch(3)
-	_, _, err := healGossipDb(dbs, cfg, &epoch, 10_000)
-	require.ErrorContains(t, err, "cannot revert processed bundles history to epoch 3")
-	require.ErrorContains(t, err, "earliest safe block is 1025")
-}
-
-func TestHealGossipDb_RevertsProcessedBundles_WhenTargetIsWithinFirstWindowAfterFirstBundle(t *testing.T) {
-	require := require.New(t)
-	dbs, cfg := newDbsWithBundleHistory(t, addCompleteBundleHistory(1))
-
-	// epoch 3 starts at block 600, which is within the first window after the
-	// first bundle of the chain, for which the complete history is retained
-	store, err := gossip.NewStore(dbs, cfg)
-	require.NoError(err)
-	wantHash, found := store.GetProcessedBundleHistoryHash(600)
-	require.True(found)
-	require.NoError(store.Close())
-
-	epoch := idx.Epoch(3)
-	_, lastBlock, err := healGossipDb(dbs, cfg, &epoch, 10_000)
-	require.NoError(err)
-	require.Equal(idx.Block(600), lastBlock)
-
-	store, err = gossip.NewStore(dbs, cfg)
-	require.NoError(err)
-	gotBlock, gotHash := store.GetLatestProcessedBundleHistoryHash()
-	require.Equal(uint64(600), gotBlock)
-	require.Equal(wantHash, gotHash)
-}
-
-func TestHealGossipDb_RevertsProcessedBundles_WhenTargetPrecedesFirstBundle(t *testing.T) {
-	require := require.New(t)
-	dbs, cfg := newDbsWithBundleHistory(t, addCompleteBundleHistory(700))
-
-	// epoch 3 starts at block 600, before the first bundle of the chain
-	epoch := idx.Epoch(3)
-	_, lastBlock, err := healGossipDb(dbs, cfg, &epoch, 10_000)
-	require.NoError(err)
-	require.Equal(idx.Block(600), lastBlock)
-
-	store, err := gossip.NewStore(dbs, cfg)
-	require.NoError(err)
-	gotBlock, gotHash := store.GetLatestProcessedBundleHistoryHash()
-	require.Zero(gotBlock)
-	require.Equal(common.Hash{}, gotHash)
-	require.False(store.HasBundleRecentlyBeenProcessed(common.Hash{0x01}))
-}
-
-// addCompleteBundleHistory returns a function adding the history of a chain
-// which processed its first bundle at the given block and empty blocks up to
-// block 2048.
-func addCompleteBundleHistory(firstBundleBlock uint64) func(*gossip.Store) {
-	return func(store *gossip.Store) {
-		store.AddProcessedBundles(firstBundleBlock, map[common.Hash]bundle.PositionInBlock{{0x01}: {}})
-		for block := firstBundleBlock + 1; block <= 2*bundle.MaxBlockRangeLength; block++ {
-			store.AddProcessedBundles(block, nil)
-		}
+			store, err = gossip.NewStore(dbs, cfg)
+			require.NoError(err)
+			gotBlock, gotHash := store.GetLatestProcessedBundleHistoryHash()
+			require.Equal(test.wantBlock, gotBlock)
+			require.Equal(wantHash, gotHash)
+			wantBundle := test.complete && test.wantBlock != 0
+			require.Equal(wantBundle, store.HasBundleRecentlyBeenProcessed(common.Hash{0x01}))
+		})
 	}
 }
 
-// addIncompleteBundleHistory adds the history of blocks 1 to 2048 continuing
-// a history hash of earlier blocks, whose processed bundles are not retained.
-func addIncompleteBundleHistory(store *gossip.Store) {
-	store.SetProcessedBundlesHistoryHash(0, common.Hash{0x01})
-	for block := uint64(1); block <= 2*bundle.MaxBlockRangeLength; block++ {
-		store.AddProcessedBundles(block, nil)
-	}
-}
-
-// newDbsWithBundleHistory creates databases of a node with the bundle history
-// added by the given function, with epoch e starting at block 200*e for
-// 10 epochs.
+// newDbsWithBundleHistory creates databases of a node with epoch e starting at
+// block 200*e for 10 epochs, retaining the bundle history from firstBlock to
+// block 2048. A complete history starts with the first bundle of the chain at
+// firstBlock; an incomplete one continues the history hash of pruned blocks.
 func newDbsWithBundleHistory(
 	t *testing.T,
-	addBundleHistory func(*gossip.Store),
+	firstBlock uint64,
+	complete bool,
 ) (kvdb.FlushableDBProducer, gossip.StoreConfig) {
 	t.Helper()
 	dbs := flushable.NewSyncedPool(memorydb.NewProducer(""), []byte{0})
 	cfg := gossip.MemTestStoreConfig(t.TempDir())
 	store, err := gossip.NewStore(dbs, cfg)
 	require.NoError(t, err)
-	addBundleHistory(store)
+	if !complete {
+		store.SetProcessedBundlesHistoryHash(firstBlock-1, common.Hash{0x01})
+	}
+	for block := firstBlock; block <= 2*bundle.MaxBlockRangeLength; block++ {
+		var bundles map[common.Hash]bundle.PositionInBlock
+		if complete && block == firstBlock {
+			bundles = map[common.Hash]bundle.PositionInBlock{{0x01}: {}}
+		}
+		store.AddProcessedBundles(block, bundles)
+	}
 	for epoch := idx.Epoch(1); epoch <= 10; epoch++ {
 		blockState := iblockproc.BlockState{
 			LastBlock: iblockproc.BlockCtx{Idx: idx.Block(200 * uint64(epoch))},
