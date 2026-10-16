@@ -39,6 +39,20 @@ type LlrFullBlockRecord struct {
 	Epoch      idx.Epoch
 	Txs        types.Transactions
 	Receipts   []*types.ReceiptForStorage
+
+	// GasUsedOverrides lists receipts whose gas used can not be derived from
+	// the cumulative gas used stored in Receipts. It is optional to keep the
+	// encoding of records without overrides unchanged, and thereby the hash
+	// of genesis sections containing them.
+	GasUsedOverrides []GasUsedOverride `rlp:"optional"`
+}
+
+// GasUsedOverride is the gas used of the receipt at the given index in a block,
+// for receipts whose gas used differs from the delta of their cumulative gas
+// used and the one of their predecessor.
+type GasUsedOverride struct {
+	Index   uint64
+	GasUsed uint64
 }
 
 type LlrIdxFullBlockRecord struct {

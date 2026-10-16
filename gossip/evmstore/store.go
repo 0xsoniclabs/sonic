@@ -43,6 +43,10 @@ type Store struct {
 		Receipts    kvdb.Store `table:"r"`
 		TxPositions kvdb.Store `table:"x"`
 		Txs         kvdb.Store `table:"X"`
+
+		// Gas used values of receipts that can not be derived from the stored
+		// cumulative gas used, see findGasUsedOverrides.
+		ReceiptGasUsedOverrides kvdb.Store `table:"R"`
 	}
 
 	EvmLogs topicsdb.Index
