@@ -1774,311 +1774,189 @@ func (m BundleExecutionInfoMatcher) String() string {
 		m.expected.BlockNumber, m.expected.Position.Offset, m.expected.Position.Count)
 }
 
-func TestStore_RollbackProcessedBundles_RefusesTarget_WhenReplayProtectionWindowIsNotRetained(t *testing.T) {
-	require := require.New(t)
-	store, err := NewMemStore(t)
-	require.NoError(err)
-	const earliest, head = uint64(10), 10 + bundle.MaxBlockRangeLength + 5
-	// the history continues a hash of earlier blocks whose bundles are not retained
-	store.SetProcessedBundlesHistoryHash(earliest-1, common.Hash{0x01})
-	store.AddProcessedBundles(earliest, map[common.Hash]bundle.PositionInBlock{{0x01}: {}})
-	for block := earliest + 1; block <= head; block++ {
-		store.AddProcessedBundles(block, nil)
-	}
-
-	const earliestSafe = earliest + bundle.MaxBlockRangeLength
-	err = store.RollbackProcessedBundles(earliestSafe - 1)
-	require.ErrorContains(err, fmt.Sprintf(
-		"not enough processed bundles history to roll back to block %d, earliest safe block is %d",
-		earliestSafe-1, earliestSafe))
-
-	// the store is left untouched
-	block, _ := store.GetLatestProcessedBundleHistoryHash()
-	require.Equal(head, block)
-
-	require.NoError(store.RollbackProcessedBundles(earliestSafe))
-	block, _ = store.GetLatestProcessedBundleHistoryHash()
-	require.Equal(earliestSafe, block)
-}
-
-func TestStore_RollbackProcessedBundles_AllowsTargetWithinFirstWindow_WhenHistoryIsComplete(t *testing.T) {
-	require := require.New(t)
-	bundlesOf := func(block uint64) map[common.Hash]bundle.PositionInBlock {
-		if block%3 != 0 {
-			return nil
-		}
-		return map[common.Hash]bundle.PositionInBlock{uint64ToHash(block): {}}
-	}
-	const rollbackBlock, headBlock = uint64(100), 2 * bundle.MaxBlockRangeLength
-
-	reference, err := NewMemStore(t)
-	require.NoError(err)
-	for block := uint64(1); block <= rollbackBlock; block++ {
-		reference.AddProcessedBundles(block, bundlesOf(block))
-	}
-
-	store, err := NewMemStore(t)
-	require.NoError(err)
-	for block := uint64(1); block <= headBlock; block++ {
-		store.AddProcessedBundles(block, bundlesOf(block))
-	}
-	require.NoError(store.RollbackProcessedBundles(rollbackBlock))
-
-	require.Equal(reference.EnumerateProcessedBundles(), store.EnumerateProcessedBundles())
-	wantBlock, wantHash := reference.GetLatestProcessedBundleHistoryHash()
-	gotBlock, gotHash := store.GetLatestProcessedBundleHistoryHash()
-	require.Equal(wantBlock, gotBlock)
-	require.Equal(wantHash, gotHash)
-}
-
-func TestStore_RollbackProcessedBundles_RestoresZeroHistory_WhenTargetPrecedesFirstBundle(t *testing.T) {
-	require := require.New(t)
-	const firstBundleBlock, rollbackBlock, headBlock = uint64(700), uint64(600), uint64(2048)
-	bundlesOf := func(block uint64) map[common.Hash]bundle.PositionInBlock {
-		if block < firstBundleBlock || block%3 != 0 {
-			return nil
-		}
-		return map[common.Hash]bundle.PositionInBlock{uint64ToHash(block): {}, uint64ToHash(block + 1): {}}
-	}
-
-	store, err := NewMemStore(t)
-	require.NoError(err)
-	for block := uint64(1); block <= headBlock; block++ {
-		store.AddProcessedBundles(block, bundlesOf(block))
-	}
-	require.NoError(store.RollbackProcessedBundles(rollbackBlock))
-
-	// the store looks as if no bundle has ever been processed
-	requireEmptyProcessedBundlesTable(t, store)
-
-	// re-processing the rolled back blocks yields the same history as a fresh store
-	reference, err := NewMemStore(t)
-	require.NoError(err)
-	for block := uint64(1); block <= headBlock; block++ {
-		reference.AddProcessedBundles(block, bundlesOf(block))
-		if block > rollbackBlock {
-			store.AddProcessedBundles(block, bundlesOf(block))
-		}
-	}
-	wantBlock, wantHash := reference.GetLatestProcessedBundleHistoryHash()
-	gotBlock, gotHash := store.GetLatestProcessedBundleHistoryHash()
-	require.Equal(wantBlock, gotBlock)
-	require.Equal(wantHash, gotHash)
-	require.Equal(reference.EnumerateProcessedBundles(), store.EnumerateProcessedBundles())
-}
-
-func TestStore_RollbackProcessedBundles_RefusesTarget_WhenFirstBundleIsPruned(t *testing.T) {
-	require := require.New(t)
-	store, err := NewMemStore(t)
-	require.NoError(err)
-	const headBlock = processedBundlesRetention + 10
-	store.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{{0x01}: {}})
-	for block := uint64(2); block <= headBlock; block++ {
-		store.AddProcessedBundles(block, nil)
-	}
-
-	// the history hash retained for the earliest block can no longer be
-	// verified against its pruned bundles, so the window is enforced
-	earliest, _, found := store.GetEarliestBundleHistoryHash()
-	require.True(found)
-	require.Greater(earliest, uint64(1))
-	earliestSafe := earliest + bundle.MaxBlockRangeLength
-	err = store.RollbackProcessedBundles(earliestSafe - 1)
-	require.ErrorContains(err, fmt.Sprintf("earliest safe block is %d", earliestSafe))
-	require.NoError(store.RollbackProcessedBundles(earliestSafe))
-}
-
-func TestStore_RollbackProcessedBundles_IsNoop_WhenTargetIsLatestImportedBlock(t *testing.T) {
-	require := require.New(t)
-	const importBlock = uint64(2000)
-	store, err := NewMemStore(t)
-	require.NoError(err)
-	require.NoError(store.importProcessedBundles(fakeProcessedBundles{
-		historyHashes: &bundle.BundleGenesisHistoryHashes{
-			Latest: bundle.HistoryHash{BlockNumber: importBlock, Hash: common.Hash{0x42}},
-			Oldest: bundle.HistoryHash{BlockNumber: importBlock, Hash: common.Hash{0x42}},
-		},
-	}))
-
-	require.NoError(store.RollbackProcessedBundles(importBlock))
-	block, hash := store.GetLatestProcessedBundleHistoryHash()
-	require.Equal(importBlock, block)
-	require.Equal(common.Hash{0x42}, hash)
-
-	err = store.RollbackProcessedBundles(importBlock - 1)
-	require.ErrorContains(err, "not enough processed bundles history")
-}
-
-func TestStore_RollbackProcessedBundles_RefusesTargetBeforeImportedHistory_WhenItContinuesEarlierHistory(t *testing.T) {
-	require := require.New(t)
-	source, err := NewMemStore(t)
-	require.NoError(err)
-	const headBlock = processedBundlesRetention + 10
-	source.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{{0x01}: {}})
-	for block := uint64(2); block <= headBlock; block++ {
-		var bundles map[common.Hash]bundle.PositionInBlock
-		if block%100 == 0 {
-			bundles = map[common.Hash]bundle.PositionInBlock{uint64ToHash(block): {}}
-		}
-		source.AddProcessedBundles(block, bundles)
-	}
-
-	store, err := NewMemStore(t)
-	require.NoError(err)
-	require.NoError(store.importProcessedBundles(exportProcessedBundles(t, source)))
-
-	earliest, _, found := store.GetEarliestBundleHistoryHash()
-	require.True(found)
-	earliestSafe := earliest + bundle.MaxBlockRangeLength
-	err = store.RollbackProcessedBundles(earliest - 1)
-	require.ErrorContains(err, fmt.Sprintf("earliest safe block is %d", earliestSafe))
-	err = store.RollbackProcessedBundles(earliestSafe - 1)
-	require.ErrorContains(err, fmt.Sprintf("earliest safe block is %d", earliestSafe))
-	require.NoError(store.RollbackProcessedBundles(earliestSafe))
-}
-
-func TestStore_RollbackProcessedBundles_RestoresZeroHistory_WhenImportedHistoryStartsWithFirstBundle(t *testing.T) {
-	require := require.New(t)
-	source, err := NewMemStore(t)
-	require.NoError(err)
-	const firstBundleBlock, headBlock = uint64(5), uint64(100)
-	for block := firstBundleBlock; block <= headBlock; block++ {
-		source.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{uint64ToHash(block): {}})
-	}
-
-	store, err := NewMemStore(t)
-	require.NoError(err)
-	require.NoError(store.importProcessedBundles(exportProcessedBundles(t, source)))
-
-	require.NoError(store.RollbackProcessedBundles(firstBundleBlock + 10))
-	_, hash := store.GetLatestProcessedBundleHistoryHash()
-	wantHash, found := source.GetProcessedBundleHistoryHash(firstBundleBlock + 10)
-	require.True(found)
-	require.Equal(wantHash, hash)
-
-	require.NoError(store.RollbackProcessedBundles(firstBundleBlock - 1))
-	requireEmptyProcessedBundlesTable(t, store)
-}
-
-func TestStore_RollbackProcessedBundles_ReportsError_WhenDeletingLatestHistoryHashFails(t *testing.T) {
-	const earliest = uint64(100)
-	planHash := common.Hash{0x01}
-	injectedErr := errors.New("injected error")
-	store, table, _, batch, _ := storeTableLogMocks(t)
-	ctrl := gomock.NewController(t)
-
-	// the earliest block holds the first bundle of the chain
-	earliestIt := NewMockdbIterator(ctrl)
-	table.EXPECT().NewIterator([]byte{'h'}, nil).Return(earliestIt)
-	earliestIt.EXPECT().Next().Return(true)
-	earliestIt.EXPECT().Key().Return(getBundleHistoryHashKey(earliest))
-	earliestIt.EXPECT().Value().Return(computeNewBundleStateHash(common.Hash{}, planHash, earliest).Bytes())
-	earliestIt.EXPECT().Release()
-	table.EXPECT().Get(nil).Return(append(bigendian.Uint64ToBytes(earliest+10), make([]byte, 32)...), nil)
-	expectFirstBundleBlockCheck(table, NewMockdbIterator(ctrl), nil, earliest, getIndexKey(earliest, planHash))
-	table.EXPECT().Get(getBundleHistoryHashKey(earliest-1)).Return(nil, nil)
-
-	// all later entries are deleted, including the latest history hash
-	table.EXPECT().NewBatch().Return(batch)
-	for _, prefix := range []byte{'i', 'h'} {
-		it := NewMockdbIterator(ctrl)
-		table.EXPECT().NewIterator([]byte{prefix}, bigendian.Uint64ToBytes(earliest)).Return(it)
-		it.EXPECT().Next().Return(false)
-		it.EXPECT().Error().Return(nil)
-		it.EXPECT().Release()
-	}
-	batch.EXPECT().Delete(nil).Return(injectedErr)
-
-	err := store.RollbackProcessedBundles(earliest - 1)
-	require.ErrorIs(t, err, injectedErr)
-}
-
-// requireEmptyProcessedBundlesTable checks that the processed bundles table
-// contains no entries, as for a chain which has never processed a bundle.
-func requireEmptyProcessedBundlesTable(t *testing.T, store *Store) {
-	t.Helper()
-	it := store.table.ProcessedBundles.NewIterator(nil, nil)
-	defer it.Release()
-	require.False(t, it.Next(), "unexpected key %x", it.Key())
-	require.NoError(t, it.Error())
-
-	block, hash := store.GetLatestProcessedBundleHistoryHash()
-	require.Zero(t, block)
-	require.Equal(t, common.Hash{}, hash)
-}
-
 func TestStore_RollbackProcessedBundles_RestoresStateOfEarlierBlock(t *testing.T) {
-	require := require.New(t)
-	bundlesOf := func(block uint64) map[common.Hash]bundle.PositionInBlock {
-		if block%3 != 0 {
-			return nil
-		}
-		return map[common.Hash]bundle.PositionInBlock{uint64ToHash(block): {}}
+	// a complete history retains all bundles since the first one of the chain,
+	// a full window retains the bundle.MaxBlockRangeLength blocks before the target
+	// in the drawings:
+	// - B is the first bundle of the chain, followed by bundles in every third block
+	// - [ ] is the history retained by the store up to block 2048
+	// - { } is the history imported from a genesis export up to block 2048
+	// - T is the rollback target
+	const headBlock = 2 * bundle.MaxBlockRangeLength
+	tests := map[string]struct {
+		firstBlock uint64 // first block of the retained history, holding the first bundle
+		target     uint64
+		imported   bool // whether the store imports the history from a genesis export
+	}{
+		//     [B--------------------------T----------]
+		//     200                         1600    2048
+		"complete history, full window before target": {
+			firstBlock: 200, target: 1600,
+		},
+		//     [B-----------T-------------------------]
+		//     200          800                    2048
+		"complete history, partial window before target": {
+			firstBlock: 200, target: 800,
+		},
+		//                  T   [B--------------------]
+		//                800   1000               2048
+		"complete history, target before first bundle": {
+			firstBlock: 1000, target: 800,
+		},
+		//     {B-----------T-------------------------}
+		//     200          800                    2048
+		"imported complete history, partial window before target": {
+			firstBlock: 200, target: 800, imported: true,
+		},
+		//                  T   {B--------------------}
+		//                800   1000               2048
+		"imported complete history, target before first bundle": {
+			firstBlock: 1000, target: 800, imported: true,
+		},
 	}
-	const rollbackBlock = 1 + bundle.MaxBlockRangeLength + 30
-	const headBlock = rollbackBlock + 20
 
-	reference, err := NewMemStore(t)
-	require.NoError(err)
-	for block := uint64(1); block <= rollbackBlock; block++ {
-		reference.AddProcessedBundles(block, bundlesOf(block))
-	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			bundlesOf := func(block uint64) map[common.Hash]bundle.PositionInBlock {
+				if block < test.firstBlock || (block-test.firstBlock)%3 != 0 {
+					return nil
+				}
+				return map[common.Hash]bundle.PositionInBlock{uint64ToHash(block): {}, uint64ToHash(block + 1): {}}
+			}
+			reference, err := NewMemStore(t)
+			require.NoError(err)
+			store, err := NewMemStore(t)
+			require.NoError(err)
+			for block := uint64(1); block <= headBlock; block++ {
+				store.AddProcessedBundles(block, bundlesOf(block))
+				if block <= test.target {
+					reference.AddProcessedBundles(block, bundlesOf(block))
+				}
+			}
+			if test.imported {
+				source := store
+				store, err = NewMemStore(t)
+				require.NoError(err)
+				require.NoError(store.importProcessedBundles(exportProcessedBundles(t, source)))
+			}
 
-	store, err := NewMemStore(t)
-	require.NoError(err)
-	for block := uint64(1); block <= headBlock; block++ {
-		store.AddProcessedBundles(block, bundlesOf(block))
-	}
-	require.NoError(store.RollbackProcessedBundles(rollbackBlock))
+			require.NoError(store.RollbackProcessedBundles(test.target))
+			require.Equal(processedBundlesTable(t, reference), processedBundlesTable(t, store))
 
-	// the store looks as if it never processed blocks after the rollback block
-	require.Equal(reference.EnumerateProcessedBundles(), store.EnumerateProcessedBundles())
-	wantBlock, wantHash := reference.GetLatestProcessedBundleHistoryHash()
-	gotBlock, gotHash := store.GetLatestProcessedBundleHistoryHash()
-	require.Equal(wantBlock, gotBlock)
-	require.Equal(wantHash, gotHash)
-	for block := rollbackBlock + 1; block <= headBlock; block++ {
-		_, found := store.GetProcessedBundleHistoryHash(block)
-		require.False(found, "history hash of block %d should be removed", block)
-		require.False(store.HasBundleRecentlyBeenProcessed(uint64ToHash(block)))
+			// re-processing the rolled back blocks yields the same history
+			for block := test.target + 1; block <= headBlock; block++ {
+				reference.AddProcessedBundles(block, bundlesOf(block))
+				store.AddProcessedBundles(block, bundlesOf(block))
+			}
+			require.Equal(processedBundlesTable(t, reference), processedBundlesTable(t, store))
+		})
 	}
-
-	// re-processing the rolled back blocks yields the same history
-	for block := rollbackBlock + 1; block <= headBlock; block++ {
-		reference.AddProcessedBundles(block, bundlesOf(block))
-		store.AddProcessedBundles(block, bundlesOf(block))
-	}
-	_, wantHash = reference.GetLatestProcessedBundleHistoryHash()
-	_, gotHash = store.GetLatestProcessedBundleHistoryHash()
-	require.Equal(wantHash, gotHash)
 }
 
-func TestStore_RollbackProcessedBundles_IsNoop_WithoutHistory(t *testing.T) {
-	store, err := NewMemStore(t)
-	require.NoError(t, err)
+func TestStore_RollbackProcessedBundles_LeavesStoreUnchanged_WhenFailingOrNothingToRevert(t *testing.T) {
+	importLatestHistoryHash := func(t *testing.T, store *Store) {
+		latest := bundle.HistoryHash{BlockNumber: 2000, Hash: common.Hash{0x42}}
+		require.NoError(t, store.importProcessedBundles(fakeProcessedBundles{
+			historyHashes: &bundle.BundleGenesisHistoryHashes{Latest: latest, Oldest: latest},
+		}))
+	}
+	notEnoughHistory := func(target, earliest uint64) string {
+		return fmt.Sprintf("not enough processed bundles history to roll back to block %d, earliest safe block is %d",
+			target, earliest+bundle.MaxBlockRangeLength)
+	}
+	beforeEarliestSafe := func(earliest uint64) uint64 { return earliest + bundle.MaxBlockRangeLength - 1 }
 
-	require.NoError(t, store.RollbackProcessedBundles(5))
-
-	block, hash := store.GetLatestProcessedBundleHistoryHash()
-	require.Zero(t, block)
-	require.Equal(t, common.Hash{}, hash)
-}
-
-func TestStore_RollbackProcessedBundles_Fails_WhenHistoryHashOfBlockIsNotRetained(t *testing.T) {
-	store, err := NewMemStore(t)
-	require.NoError(t, err)
-	const head = 1 + bundle.MaxBlockRangeLength
-	store.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{{0x01}: {}})
-	for block := uint64(2); block <= head; block++ {
-		store.AddProcessedBundles(block, nil)
+	tests := map[string]struct {
+		history func(t *testing.T, store *Store)
+		target  func(earliest uint64) uint64
+		wantErr func(target, earliest uint64) string
+	}{
+		"no history": {
+			history: func(*testing.T, *Store) {},
+			target:  func(uint64) uint64 { return 5 },
+		},
+		"imported latest history hash, target at latest block": {
+			history: importLatestHistoryHash,
+			target:  func(earliest uint64) uint64 { return earliest },
+		},
+		"imported latest history hash, target before latest block": {
+			history: importLatestHistoryHash,
+			target:  func(earliest uint64) uint64 { return earliest - 1 },
+			wantErr: notEnoughHistory,
+		},
+		"incomplete history, partial window before target": {
+			history: processIncompleteHistory,
+			target:  beforeEarliestSafe,
+			wantErr: notEnoughHistory,
+		},
+		"pruned history, partial window before target": {
+			history: processFirstBundle(processedBundlesRetention + 10),
+			target:  beforeEarliestSafe,
+			wantErr: notEnoughHistory,
+		},
+		"imported incomplete history, target before history": {
+			history: importIncompleteHistory,
+			target:  func(earliest uint64) uint64 { return earliest - 1 },
+			wantErr: notEnoughHistory,
+		},
+		"imported incomplete history, partial window before target": {
+			history: importIncompleteHistory,
+			target:  beforeEarliestSafe,
+			wantErr: notEnoughHistory,
+		},
+		"complete history, target after latest block": {
+			history: processFirstBundle(1 + bundle.MaxBlockRangeLength),
+			target:  func(uint64) uint64 { return 2 + bundle.MaxBlockRangeLength },
+			wantErr: func(target, _ uint64) string {
+				return fmt.Sprintf("no processed bundles history hash retained for block %d", target)
+			},
+		},
 	}
 
-	err = store.RollbackProcessedBundles(head + 1)
-	require.ErrorContains(t, err, fmt.Sprintf("no processed bundles history hash retained for block %d", head+1))
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			store, err := NewMemStore(t)
+			require.NoError(t, err)
+			test.history(t, store)
+			earliest, _, _ := store.GetEarliestBundleHistoryHash()
+			want := processedBundlesTable(t, store)
 
-	// the store is left untouched
-	block, _ := store.GetLatestProcessedBundleHistoryHash()
-	require.Equal(t, head, block)
+			target := test.target(earliest)
+			err = store.RollbackProcessedBundles(target)
+			if test.wantErr == nil {
+				require.NoError(t, err)
+			} else {
+				require.EqualError(t, err, test.wantErr(target, earliest))
+			}
+			require.Equal(t, want, processedBundlesTable(t, store))
+		})
+	}
+}
+
+func TestStore_RollbackProcessedBundles_AcceptsEarliestSafeBlock(t *testing.T) {
+	tests := map[string]func(t *testing.T, store *Store){
+		"incomplete history":          processIncompleteHistory,
+		"pruned history":              processFirstBundle(processedBundlesRetention + 10),
+		"imported incomplete history": importIncompleteHistory,
+	}
+
+	for name, history := range tests {
+		t.Run(name, func(t *testing.T) {
+			store, err := NewMemStore(t)
+			require.NoError(t, err)
+			history(t, store)
+			earliest, _, _ := store.GetEarliestBundleHistoryHash()
+			earliestSafe := earliest + bundle.MaxBlockRangeLength
+			wantHash, found := store.GetProcessedBundleHistoryHash(earliestSafe)
+			require.True(t, found)
+
+			require.NoError(t, store.RollbackProcessedBundles(earliestSafe))
+			block, hash := store.GetLatestProcessedBundleHistoryHash()
+			require.Equal(t, earliestSafe, block)
+			require.Equal(t, wantHash, hash)
+		})
+	}
 }
 
 func TestStore_RollbackProcessedBundles_HandlesStoreAccess(t *testing.T) {
@@ -2103,18 +1981,21 @@ func TestStore_RollbackProcessedBundles_HandlesStoreAccess(t *testing.T) {
 	tests := map[string]struct {
 		// setup configures the iterators over the 'i' and 'h' tables and the
 		// batch, while the history hash lookup and batch creation are shared.
-		setup func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator)
+		setup func(batch *MockstoreBatch, indexIt, historyIt *MockdbIterator)
+		// beforeFirstBundle targets the block preceding the earliest block,
+		// which holds the first bundle of the chain
+		beforeFirstBundle bool
 		// firstBundleBlockErr fails the iteration verifying the earliest block
 		firstBundleBlockErr error
 		wantErr             error
 	}{
 		"verifying first bundle block fails": {
-			setup:               func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {},
+			setup:               func(batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {},
 			firstBundleBlockErr: injectedErr,
 			wantErr:             injectedErr,
 		},
 		"skips keys of invalid length": {
-			setup: func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
+			setup: func(batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
 				expectKeys(indexIt, nil, indexKey[:len(indexKey)-1])
 				expectKeys(historyIt, nil, historyKey[:len(historyKey)-1])
 				batch.EXPECT().Put(nil, gomock.Any()).Return(nil)
@@ -2122,7 +2003,7 @@ func TestStore_RollbackProcessedBundles_HandlesStoreAccess(t *testing.T) {
 			},
 		},
 		"deleting processed bundle fails": {
-			setup: func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
+			setup: func(batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
 				indexIt.EXPECT().Next().Return(true)
 				indexIt.EXPECT().Key().Return(indexKey)
 				batch.EXPECT().Delete(indexKey).Return(injectedErr)
@@ -2131,13 +2012,13 @@ func TestStore_RollbackProcessedBundles_HandlesStoreAccess(t *testing.T) {
 			wantErr: injectedErr,
 		},
 		"iterating processed bundles fails": {
-			setup: func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
+			setup: func(batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
 				expectKeys(indexIt, injectedErr)
 			},
 			wantErr: injectedErr,
 		},
 		"deleting history hash fails": {
-			setup: func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
+			setup: func(batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
 				expectKeys(indexIt, nil)
 				historyIt.EXPECT().Next().Return(true)
 				historyIt.EXPECT().Key().Return(historyKey)
@@ -2146,22 +2027,31 @@ func TestStore_RollbackProcessedBundles_HandlesStoreAccess(t *testing.T) {
 			wantErr: injectedErr,
 		},
 		"iterating history hashes fails": {
-			setup: func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
+			setup: func(batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
 				expectKeys(indexIt, nil)
 				expectKeys(historyIt, injectedErr)
 			},
 			wantErr: injectedErr,
 		},
 		"updating latest history hash fails": {
-			setup: func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
+			setup: func(batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
 				expectKeys(indexIt, nil)
 				expectKeys(historyIt, nil)
 				batch.EXPECT().Put(nil, gomock.Any()).Return(injectedErr)
 			},
 			wantErr: injectedErr,
 		},
+		"deleting latest history hash fails": {
+			setup: func(batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
+				expectKeys(indexIt, nil)
+				expectKeys(historyIt, nil)
+				batch.EXPECT().Delete(nil).Return(injectedErr)
+			},
+			beforeFirstBundle: true,
+			wantErr:           injectedErr,
+		},
 		"writing batch fails": {
-			setup: func(table *MockstoreTable, batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
+			setup: func(batch *MockstoreBatch, indexIt, historyIt *MockdbIterator) {
 				expectKeys(indexIt, nil)
 				expectKeys(historyIt, nil)
 				batch.EXPECT().Put(nil, gomock.Any()).Return(nil)
@@ -2178,20 +2068,25 @@ func TestStore_RollbackProcessedBundles_HandlesStoreAccess(t *testing.T) {
 			earliestIt := NewMockdbIterator(ctrl)
 			historyIt := NewMockdbIterator(ctrl)
 
-			expectHistoryHashOf(table, earliestIt, earliest, block)
+			target, earliestHash, targetHash := block, common.Hash{}, make([]byte, 32)
+			if test.beforeFirstBundle {
+				target, earliestHash, targetHash = earliest-1, computeNewBundleStateHash(common.Hash{}, planHash, earliest), nil
+			}
+
+			expectHistoryHashOf(table, earliestIt, earliest, earliestHash, target)
 			expectFirstBundleBlockCheck(table, NewMockdbIterator(ctrl), test.firstBundleBlockErr,
 				earliest, indexKey, indexKey[:len(indexKey)-1])
 			if test.firstBundleBlockErr == nil {
-				table.EXPECT().Get(getBundleHistoryHashKey(block)).Return(make([]byte, 32), nil)
+				table.EXPECT().Get(getBundleHistoryHashKey(target)).Return(targetHash, nil)
 				table.EXPECT().NewBatch().Return(batch)
-				table.EXPECT().NewIterator([]byte{'i'}, bigendian.Uint64ToBytes(block+1)).Return(indexIt)
+				table.EXPECT().NewIterator([]byte{'i'}, bigendian.Uint64ToBytes(target+1)).Return(indexIt)
 				indexIt.EXPECT().Release()
 			}
-			table.EXPECT().NewIterator([]byte{'h'}, bigendian.Uint64ToBytes(block+1)).Return(historyIt).AnyTimes()
+			table.EXPECT().NewIterator([]byte{'h'}, bigendian.Uint64ToBytes(target+1)).Return(historyIt).AnyTimes()
 			historyIt.EXPECT().Release().AnyTimes()
-			test.setup(table, batch, indexIt, historyIt)
+			test.setup(batch, indexIt, historyIt)
 
-			err := store.RollbackProcessedBundles(block)
+			err := store.RollbackProcessedBundles(target)
 			if test.wantErr == nil {
 				require.NoError(t, err)
 			} else {
@@ -2202,12 +2097,13 @@ func TestStore_RollbackProcessedBundles_HandlesStoreAccess(t *testing.T) {
 }
 
 // expectHistoryHashOf sets up the table to retain the history hashes from the
-// earliest block up to the latest block, which is after the given block.
-func expectHistoryHashOf(table *MockstoreTable, it *MockdbIterator, earliest, block uint64) {
+// earliest block, holding the given hash, up to the latest block, which is
+// after the given block.
+func expectHistoryHashOf(table *MockstoreTable, it *MockdbIterator, earliest uint64, earliestHash common.Hash, block uint64) {
 	table.EXPECT().NewIterator([]byte{'h'}, nil).Return(it)
 	it.EXPECT().Next().Return(true)
 	it.EXPECT().Key().Return(getBundleHistoryHashKey(earliest))
-	it.EXPECT().Value().Return(make([]byte, 32))
+	it.EXPECT().Value().Return(earliestHash.Bytes())
 	it.EXPECT().Release()
 	table.EXPECT().Get(nil).Return(append(bigendian.Uint64ToBytes(block+1), make([]byte, 32)...), nil)
 }
@@ -2224,4 +2120,53 @@ func expectFirstBundleBlockCheck(table *MockstoreTable, it *MockdbIterator, iter
 	it.EXPECT().Next().Return(false)
 	it.EXPECT().Error().Return(iterErr)
 	it.EXPECT().Release()
+}
+
+// processFirstBundle processes the first bundle of the chain in block 1 and
+// no bundles in the following blocks up to the given head block.
+func processFirstBundle(head uint64) func(*testing.T, *Store) {
+	return func(_ *testing.T, store *Store) {
+		store.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{{0x01}: {}})
+		for block := uint64(2); block <= head; block++ {
+			store.AddProcessedBundles(block, nil)
+		}
+	}
+}
+
+// processIncompleteHistory processes blocks continuing the history hash of
+// earlier blocks whose bundles are not retained.
+func processIncompleteHistory(_ *testing.T, store *Store) {
+	store.SetProcessedBundlesHistoryHash(9, common.Hash{0x01})
+	store.AddProcessedBundles(10, map[common.Hash]bundle.PositionInBlock{{0x01}: {}})
+	for block := uint64(11); block <= 15+bundle.MaxBlockRangeLength; block++ {
+		store.AddProcessedBundles(block, nil)
+	}
+}
+
+// importIncompleteHistory imports the retained history of a chain whose first
+// bundle has already been pruned.
+func importIncompleteHistory(t *testing.T, store *Store) {
+	source, err := NewMemStore(t)
+	require.NoError(t, err)
+	for block := uint64(1); block <= processedBundlesRetention+10; block++ {
+		var bundles map[common.Hash]bundle.PositionInBlock
+		if block == 1 || block%100 == 0 {
+			bundles = map[common.Hash]bundle.PositionInBlock{uint64ToHash(block): {}}
+		}
+		source.AddProcessedBundles(block, bundles)
+	}
+	require.NoError(t, store.importProcessedBundles(exportProcessedBundles(t, source)))
+}
+
+// processedBundlesTable returns all entries of the processed bundles table.
+func processedBundlesTable(t *testing.T, store *Store) map[string][]byte {
+	t.Helper()
+	it := store.table.ProcessedBundles.NewIterator(nil, nil)
+	defer it.Release()
+	entries := map[string][]byte{}
+	for it.Next() {
+		entries[string(it.Key())] = common.CopyBytes(it.Value())
+	}
+	require.NoError(t, it.Error())
+	return entries
 }
