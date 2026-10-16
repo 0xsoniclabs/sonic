@@ -352,10 +352,12 @@ func (s *Store) SetProcessedBundlesHistoryHash(blockNum uint64, hash common.Hash
 // RollbackProcessedBundles reverts the processed bundles to the state they had
 // after the given block; all bundles and history hashes of later blocks are
 // removed, and the history hash of the given block becomes the latest one.
-// Enforces keeping bundle.MaxBlockRangeLength blocks of processed bundles
-// preceding the given block, unless the retained history is complete, i.e. it
-// starts with the first bundle of the chain. Rolling back a complete history
-// before its first bundle removes all of it, as if no bundle was ever processed.
+// Unless the retained history is complete, i.e. it starts with the first bundle
+// of the chain, the bundles of the bundle.MaxBlockRangeLength-1 blocks up to the
+// given block must be retained, since they may still be replayed after it; the
+// bundles are retained for all blocks after the earliest retained history hash.
+// Rolling back a complete history before its first bundle removes all of it, as
+// if no bundle was ever processed.
 func (s *Store) RollbackProcessedBundles(block uint64) error {
 	s.processedBundleMutex.Lock()
 	defer s.processedBundleMutex.Unlock()
@@ -372,7 +374,7 @@ func (s *Store) RollbackProcessedBundles(block uint64) error {
 	if err != nil {
 		return err
 	}
-	if earliestSafe := earliest + bundle.MaxBlockRangeLength; !complete && block < earliestSafe {
+	if earliestSafe := earliest + bundle.MaxBlockRangeLength - 1; !complete && block < earliestSafe {
 		return fmt.Errorf("not enough processed bundles history to roll back to block %d, earliest safe block is %d",
 			block, earliestSafe)
 	}

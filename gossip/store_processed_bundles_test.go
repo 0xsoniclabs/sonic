@@ -1776,7 +1776,7 @@ func (m BundleExecutionInfoMatcher) String() string {
 
 func TestStore_RollbackProcessedBundles_RestoresStateOfEarlierBlock(t *testing.T) {
 	// a complete history retains all bundles since the first one of the chain,
-	// a full window retains the bundle.MaxBlockRangeLength blocks before the target
+	// a full window retains the bundle.MaxBlockRangeLength-1 blocks up to the target
 	// in the drawings:
 	// - B is the first bundle of the chain, followed by bundles in every third block
 	// - [ ] is the history retained by the store up to block 2048
@@ -1849,9 +1849,9 @@ func TestStore_RollbackProcessedBundles_LeavesStoreUnchanged_WhenFailingOrNothin
 	}
 	notEnoughHistory := func(target, earliest uint64) string {
 		return fmt.Sprintf("not enough processed bundles history to roll back to block %d, earliest safe block is %d",
-			target, earliest+bundle.MaxBlockRangeLength)
+			target, earliest+bundle.MaxBlockRangeLength-1)
 	}
-	beforeEarliestSafe := func(earliest uint64) uint64 { return earliest + bundle.MaxBlockRangeLength - 1 }
+	beforeEarliestSafe := func(earliest uint64) uint64 { return earliest + bundle.MaxBlockRangeLength - 2 }
 
 	tests := map[string]struct {
 		history func(t *testing.T, store *Store)
@@ -1933,7 +1933,7 @@ func TestStore_RollbackProcessedBundles_AcceptsEarliestSafeBlock(t *testing.T) {
 			require.NoError(t, err)
 			history(t, store)
 			earliest, _, _ := store.GetEarliestBundleHistoryHash()
-			earliestSafe := earliest + bundle.MaxBlockRangeLength
+			earliestSafe := earliest + bundle.MaxBlockRangeLength - 1
 			wantHash, found := store.GetProcessedBundleHistoryHash(earliestSafe)
 			require.True(t, found)
 
@@ -1942,6 +1942,25 @@ func TestStore_RollbackProcessedBundles_AcceptsEarliestSafeBlock(t *testing.T) {
 			require.Equal(t, earliestSafe, block)
 			require.Equal(t, wantHash, hash)
 		})
+	}
+}
+
+func TestStore_RollbackProcessedBundles_EarliestSafeBlockIsTight(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+	for block := uint64(1); block <= processedBundlesRetention+10; block++ {
+		store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{uint64ToHash(block): {}})
+	}
+	earliest, _, _ := store.GetEarliestBundleHistoryHash()
+	earliestSafe := earliest + bundle.MaxBlockRangeLength - 1
+	require.NoError(store.RollbackProcessedBundles(earliestSafe))
+
+	// the bundles of the earliest block are pruned, and one block earlier their
+	// range could still cover the next block
+	require.False(store.HasBundleRecentlyBeenProcessed(uint64ToHash(earliest)))
+	for block := earliest + 1; block <= earliestSafe; block++ {
+		require.True(store.HasBundleRecentlyBeenProcessed(uint64ToHash(block)))
 	}
 }
 
