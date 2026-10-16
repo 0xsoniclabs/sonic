@@ -22,6 +22,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestDefaultThrottlerConfig_IsEnabledByDefault(t *testing.T) {
+	require.True(t, DefaultThrottlerConfig().Enabled)
+	require.True(t, DefaultConfig().ThrottlerConfig.Enabled)
+}
+
 func TestEmitterConfig_ValidateConfig_ReportsError_ForInvalidDominatingThreshold(t *testing.T) {
 	cfg := DefaultThrottlerConfig()
 	for _, value := range []float64{-0.1, -1, 0.69, 1.1, 2} {

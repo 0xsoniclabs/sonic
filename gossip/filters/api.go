@@ -106,8 +106,8 @@ func NewPublicFilterAPI(backend Backend, cfg Config) *PublicFilterAPI {
 	return api
 }
 
-// Stop shuts down the API's event system and blocks until it has stopped.
-func (api *PublicFilterAPI) Stop() {
+// StopPublicFilterAPI shuts down the event system and blocks until it has stopped.
+func StopPublicFilterAPI(api *PublicFilterAPI) {
 	api.events.Stop()
 }
 

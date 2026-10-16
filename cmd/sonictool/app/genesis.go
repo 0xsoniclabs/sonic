@@ -51,7 +51,7 @@ var (
 	}
 	FakeUpgrades = cli.StringFlag{
 		Name:  "upgrades",
-		Usage: "Feature set enabled in the fake network, sonic|allegro.",
+		Usage: "Feature set enabled in the fake network, sonic|allegro|brio|canto.",
 		Value: "sonic",
 	}
 )
@@ -191,8 +191,10 @@ func fakeGenesisImport(ctx *cli.Context) (retErr error) {
 		upgrades = opera.GetBrioUpgrades()
 	case "canto":
 		upgrades = opera.GetCantoUpgrades()
+	case "dolce":
+		upgrades = opera.GetDolceUpgrades()
 	default:
-		return fmt.Errorf("invalid profile %v - must be 'sonic', 'allegro', 'brio', or 'canto'", upgradesString)
+		return fmt.Errorf("invalid profile %v - must be 'sonic', 'allegro', 'brio', 'canto', or 'dolce'", upgradesString)
 	}
 
 	tmpDir, err := futils.MakeTempDir(dataDir, "genesis-tmp")

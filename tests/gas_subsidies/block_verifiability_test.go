@@ -32,8 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBlockVerifiability(t *testing.T) {
-
+func TestGasSubsidies_BlocksWithSponsoredTransactionsCanBeReplayedAndVerified(t *testing.T) {
 	for name, upgrades := range opera.GetAllHardForksInOrder() {
 		t.Run(name, func(t *testing.T) {
 			single := upgrades
@@ -41,23 +40,22 @@ func TestBlockVerifiability(t *testing.T) {
 			distributed := upgrades
 			distributed.SingleProposerBlockFormation = false
 			t.Run("single", func(t *testing.T) {
-				testBlockVerifiability(t, single)
+				testBlocksWithSponsoredTransactionsCanBeReplayedAndVerified(t, single)
 			})
 			t.Run("distributed", func(t *testing.T) {
-				testBlockVerifiability(t, distributed)
+				testBlocksWithSponsoredTransactionsCanBeReplayedAndVerified(t, distributed)
 			})
 		})
 	}
 }
 
-func testBlockVerifiability(t *testing.T, upgrades opera.Upgrades) {
+func testBlocksWithSponsoredTransactionsCanBeReplayedAndVerified(t *testing.T, upgrades opera.Upgrades) {
 	const N = 250
 	require := require.New(t)
-	updates := opera.GetSonicUpgrades()
-	updates.GasSubsidies = true
+	upgrades.GasSubsidies = true
 
 	net := tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{
-		Upgrades: &updates,
+		Upgrades: &upgrades,
 	})
 
 	client, err := net.GetClient()
