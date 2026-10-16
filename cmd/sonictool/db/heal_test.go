@@ -32,7 +32,7 @@ import (
 
 func TestHealGossipDb_RevertsProcessedBundles(t *testing.T) {
 	require := require.New(t)
-	dbs, cfg := newDbsWithBundleHistory(t, addCompleteBundleHistory)
+	dbs, cfg := newDbsWithBundleHistory(t, addCompleteBundleHistory(1))
 
 	// epoch 6 starts at block 1200, which is after the earliest safe block
 	store, err := gossip.NewStore(dbs, cfg)
@@ -64,24 +64,57 @@ func TestHealGossipDb_ReportsError_WhenBundleHistoryIsIncomplete(t *testing.T) {
 	require.ErrorContains(t, err, "earliest safe block is 1025")
 }
 
-func TestHealGossipDb_ReportsError_WhenTargetIsWithinFirstWindowAfterFirstBundle(t *testing.T) {
-	dbs, cfg := newDbsWithBundleHistory(t, addCompleteBundleHistory)
+func TestHealGossipDb_RevertsProcessedBundles_WhenTargetIsWithinFirstWindowAfterFirstBundle(t *testing.T) {
+	require := require.New(t)
+	dbs, cfg := newDbsWithBundleHistory(t, addCompleteBundleHistory(1))
 
-	// epoch 3 starts at block 600; although the complete history is retained,
-	// healing to the first bundle.MaxBlockRangeLength blocks after the first
-	// bundle of the chain is intentionally not supported
+	// epoch 3 starts at block 600, which is within the first window after the
+	// first bundle of the chain, for which the complete history is retained
+	store, err := gossip.NewStore(dbs, cfg)
+	require.NoError(err)
+	wantHash, found := store.GetProcessedBundleHistoryHash(600)
+	require.True(found)
+	require.NoError(store.Close())
+
 	epoch := idx.Epoch(3)
-	_, _, err := healGossipDb(dbs, cfg, &epoch, 10_000)
-	require.ErrorContains(t, err, "cannot revert processed bundles history to epoch 3")
-	require.ErrorContains(t, err, "earliest safe block is 1025")
+	_, lastBlock, err := healGossipDb(dbs, cfg, &epoch, 10_000)
+	require.NoError(err)
+	require.Equal(idx.Block(600), lastBlock)
+
+	store, err = gossip.NewStore(dbs, cfg)
+	require.NoError(err)
+	gotBlock, gotHash := store.GetLatestProcessedBundleHistoryHash()
+	require.Equal(uint64(600), gotBlock)
+	require.Equal(wantHash, gotHash)
 }
 
-// addCompleteBundleHistory adds the history of a chain which processed its
-// first bundle at block 1 and empty blocks up to block 2048.
-func addCompleteBundleHistory(store *gossip.Store) {
-	store.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{{0x01}: {}})
-	for block := uint64(2); block <= 2*bundle.MaxBlockRangeLength; block++ {
-		store.AddProcessedBundles(block, nil)
+func TestHealGossipDb_RevertsProcessedBundles_WhenTargetPrecedesFirstBundle(t *testing.T) {
+	require := require.New(t)
+	dbs, cfg := newDbsWithBundleHistory(t, addCompleteBundleHistory(700))
+
+	// epoch 3 starts at block 600, before the first bundle of the chain
+	epoch := idx.Epoch(3)
+	_, lastBlock, err := healGossipDb(dbs, cfg, &epoch, 10_000)
+	require.NoError(err)
+	require.Equal(idx.Block(600), lastBlock)
+
+	store, err := gossip.NewStore(dbs, cfg)
+	require.NoError(err)
+	gotBlock, gotHash := store.GetLatestProcessedBundleHistoryHash()
+	require.Zero(gotBlock)
+	require.Equal(common.Hash{}, gotHash)
+	require.False(store.HasBundleRecentlyBeenProcessed(common.Hash{0x01}))
+}
+
+// addCompleteBundleHistory returns a function adding the history of a chain
+// which processed its first bundle at the given block and empty blocks up to
+// block 2048.
+func addCompleteBundleHistory(firstBundleBlock uint64) func(*gossip.Store) {
+	return func(store *gossip.Store) {
+		store.AddProcessedBundles(firstBundleBlock, map[common.Hash]bundle.PositionInBlock{{0x01}: {}})
+		for block := firstBundleBlock + 1; block <= 2*bundle.MaxBlockRangeLength; block++ {
+			store.AddProcessedBundles(block, nil)
+		}
 	}
 }
 
@@ -96,7 +129,7 @@ func addIncompleteBundleHistory(store *gossip.Store) {
 
 // newDbsWithBundleHistory creates databases of a node with the bundle history
 // added by the given function, with epoch e starting at block 200*e for
-// 10 epochs. The earliest safe block for a rollback is 1025.
+// 10 epochs.
 func newDbsWithBundleHistory(
 	t *testing.T,
 	addBundleHistory func(*gossip.Store),
