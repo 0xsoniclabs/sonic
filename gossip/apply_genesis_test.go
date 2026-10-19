@@ -75,7 +75,7 @@ func exportProcessedBundles(t *testing.T, store *Store) fakeProcessedBundles {
 	return res
 }
 
-func TestImportProcessedBundles_RestoresHistoryHash_WhenNoBundlesAreRetained(t *testing.T) {
+func TestImportProcessedBundles_ReplaysHistoryHashes_WhenNoBundlesAreRetained(t *testing.T) {
 	require := require.New(t)
 
 	source, err := NewMemStore(t)
@@ -104,6 +104,8 @@ func TestImportProcessedBundles_RestoresHistoryHash_WhenNoBundlesAreRetained(t *
 	gotBlock, gotHash := target.GetLatestProcessedBundleHistoryHash()
 	require.Equal(uint64(lastBlock), gotBlock)
 	require.Equal(wantHash, gotHash)
+	earliest, _, _ := target.GetEarliestBundleHistoryHash()
+	require.Equal(exported.historyHashes.Oldest.BlockNumber, earliest)
 
 	// the imported state can be exported again
 	require.Equal(exportProcessedBundles(t, target).historyHashes.Latest,
@@ -241,20 +243,31 @@ func TestImportProcessedBundles_ReimportsShortHistory_OfStoreBootstrappedWithout
 }
 
 func TestImportProcessedBundles_FailsOnHistoryHashMismatch(t *testing.T) {
-	require := require.New(t)
+	tests := map[string]struct {
+		head        uint64
+		wantBundles int
+	}{
+		"bundles retained":    {head: 1, wantBundles: 1},
+		"no bundles retained": {head: 2 * bundle.MaxBlockRangeLength},
+	}
 
-	source, err := NewMemStore(t)
-	require.NoError(err)
-	source.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
-		{0x01}: {Offset: 0, Count: 1},
-	})
-	exported := exportProcessedBundles(t, source)
-	exported.historyHashes.Latest.Hash = common.Hash{0x42}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
 
-	target, err := NewMemStore(t)
-	require.NoError(err)
-	err = target.importProcessedBundles(exported)
-	require.ErrorContains(err, "reproduced latest bundle history hash does not match genesis")
+			source, err := NewMemStore(t)
+			require.NoError(err)
+			processFirstBundle(test.head)(t, source)
+			exported := exportProcessedBundles(t, source)
+			require.Len(exported.infos, test.wantBundles)
+			exported.historyHashes.Latest.Hash = common.Hash{0x42}
+
+			target, err := NewMemStore(t)
+			require.NoError(err)
+			err = target.importProcessedBundles(exported)
+			require.ErrorContains(err, "reproduced latest bundle history hash does not match genesis")
+		})
+	}
 }
 
 func TestImportProcessedBundles_ReportsError_OnDuplicateExecutionPlan(t *testing.T) {
