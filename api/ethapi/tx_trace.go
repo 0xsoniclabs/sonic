@@ -850,7 +850,7 @@ func parseFilterArguments(b Backend, args FilterArgs, maxRange uint64) (fromBloc
 	blockHead := rpc.BlockNumber(b.CurrentBlock().NumberU64())
 
 	if args.FromBlock != nil {
-		blockNumber, err := b.ResolveRpcBlockNumberOrHash(context.Background(), rpc.BlockNumberOrHashWithNumber(*args.FromBlock.BlockNumber))
+		blockNumber, err := b.ResolveRpcBlockNumberOrHash(context.Background(), *args.FromBlock)
 		if err != nil {
 			return 0, 0, nil, nil, err
 		}
@@ -858,7 +858,7 @@ func parseFilterArguments(b Backend, args FilterArgs, maxRange uint64) (fromBloc
 	}
 
 	if args.ToBlock != nil {
-		blockNumber, err := b.ResolveRpcBlockNumberOrHash(context.Background(), rpc.BlockNumberOrHashWithNumber(*args.ToBlock.BlockNumber))
+		blockNumber, err := b.ResolveRpcBlockNumberOrHash(context.Background(), *args.ToBlock)
 		if err != nil {
 			return 0, 0, nil, nil, err
 		}
@@ -995,11 +995,11 @@ func getLogData(args FilterArgs, start time.Time) []interface{} {
 	var data []interface{}
 
 	if args.FromBlock != nil {
-		data = append(data, "fromBlock", args.FromBlock.BlockNumber.Int64())
+		data = append(data, "fromBlock", args.FromBlock.String())
 	}
 
 	if args.ToBlock != nil {
-		data = append(data, "toBlock", args.ToBlock.BlockNumber.Int64())
+		data = append(data, "toBlock", args.ToBlock.String())
 	}
 
 	if args.FromAddress != nil {
