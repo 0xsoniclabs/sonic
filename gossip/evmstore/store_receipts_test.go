@@ -17,12 +17,15 @@
 package evmstore
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/logger"
 )
@@ -56,6 +59,50 @@ func TestStoreGetNonCachedReceipts(t *testing.T) {
 
 	got, _ := store.GetRawReceipts(block)
 	equalStorageReceipts(t, expect, got)
+}
+
+func TestStore_GetReceipts_AmendsGasLeakedByFailedBundles(t *testing.T) {
+	logger.SetTestMode(t)
+
+	cases := map[string]struct {
+		cumulative []uint64
+		amended    bool
+	}{
+		"NoLeak":        {cumulative: []uint64{21_000, 42_000, 63_000}},
+		"LeakBeforeTx0": {cumulative: []uint64{71_000, 92_000, 113_000}, amended: true},
+		"LeakBeforeTx1": {cumulative: []uint64{21_000, 92_000, 113_000}, amended: true},
+	}
+
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			store := cachedStore()
+			block := idx.Block(1)
+
+			receipts := make(types.Receipts, len(c.cumulative))
+			txs := make(types.Transactions, len(c.cumulative))
+			for i, cumulative := range c.cumulative {
+				txs[i] = types.NewTx(&types.LegacyTx{Nonce: uint64(i), To: &common.Address{}, Gas: 21_000})
+				receipts[i] = &types.Receipt{
+					Status:            types.ReceiptStatusSuccessful,
+					CumulativeGasUsed: cumulative,
+					GasUsed:           21_000,
+					Logs:              []*types.Log{},
+				}
+			}
+			store.SetReceipts(block, receipts)
+
+			stored := store.rlp.Get(store.table.ReceiptGasAmendments, block.Bytes(), &[]ReceiptGasAmendment{})
+			require.Equal(t, c.amended, stored != nil)
+
+			// Drop the cached live receipts to read them back from storage.
+			store.cache.Receipts.Purge()
+			got := store.GetReceipts(block, params.TestChainConfig, common.Hash{}, 0, big.NewInt(1), nil, txs)
+			require.Len(t, got, len(txs))
+			for i, r := range got {
+				assert.EqualValues(t, 21_000, r.GasUsed, "receipt %d", i)
+			}
+		})
+	}
 }
 
 func BenchmarkStoreGetRawReceipts(b *testing.B) {

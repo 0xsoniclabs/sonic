@@ -21,10 +21,14 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/scrambler"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -101,4 +105,75 @@ func TestBundle_FailingRootStepLeavesNoStateBehind(t *testing.T) {
 			assert.Equal(t, initialBalance, balance)
 		})
 	}
+}
+
+func TestBundle_FailingBareRootBeforeCantoDoesNotInflateNextReceipt(t *testing.T) {
+	net := GetIntegrationTestNetWithBundlesEnabled(t)
+
+	revertAddress, revertInput := tests.MustDeployRevertContractAndGetMethodCallParameters(t, net)
+	accounts := tests.MakeAccountsWithBalance(t, net, 2, big.NewInt(1e18))
+	sender, marker := accounts[0], accounts[1]
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	blockNumber, err := client.BlockNumber(t.Context())
+	require.NoError(t, err)
+	client.Close()
+
+	signer := types.LatestSignerForChainID(net.GetChainId())
+	envelope, _, _ := bundle.NewBuilder().
+		WithSigner(signer).
+		SetEarliest(blockNumber).
+		With(Step(t, net, sender, &types.AccessListTx{
+			To:   &revertAddress,
+			Gas:  1_000_000,
+			Data: revertInput,
+		})).
+		BuildEnvelopeBundleAndPlan()
+
+	// The marker must follow the failing bundle in the same block, so its
+	// value is varied until the scrambler orders it after the envelope.
+	var markerTx *types.Transaction
+	for value := int64(1); ; value++ {
+		markerTx = tests.CreateTransaction(t, net, &types.LegacyTx{
+			To:    &common.Address{},
+			Value: big.NewInt(value),
+		}, marker)
+		order := scrambler.GetExecutionOrder(types.Transactions{envelope, markerTx}, signer, true)
+		if order[1] == markerTx {
+			break
+		}
+	}
+	_, err = net.ForceEmitAll(t.Context(), []*types.Transaction{envelope, markerTx})
+	require.NoError(t, err)
+
+	requireMarkerGasUsed := func() {
+		t.Helper()
+		client, err := net.GetClient()
+		require.NoError(t, err)
+		defer client.Close()
+
+		receipt, err := net.GetReceipt(markerTx.Hash())
+		require.NoError(t, err)
+		require.EqualValues(t, params.TxGas, receipt.GasUsed)
+
+		// The bundle's gas leaks into the block, but into no receipt.
+		header, err := client.HeaderByNumber(t.Context(), receipt.BlockNumber)
+		require.NoError(t, err)
+		receipts, err := client.BlockReceipts(t.Context(),
+			rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(receipt.BlockNumber.Int64())))
+		require.NoError(t, err)
+		receiptsGas := uint64(0)
+		for _, r := range receipts {
+			receiptsGas += r.GasUsed
+		}
+		require.Greater(t, header.GasUsed, receiptsGas)
+	}
+
+	// Live receipts are served from the cache, ...
+	requireMarkerGasUsed()
+
+	// ... after a restart they are derived from storage.
+	require.NoError(t, net.Restart())
+	requireMarkerGasUsed()
 }

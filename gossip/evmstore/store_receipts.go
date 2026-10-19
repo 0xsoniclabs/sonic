@@ -30,7 +30,17 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-// SetReceipts stores transaction receipts.
+// ReceiptGasAmendment corrects the GasUsed derived from storage for the
+// receipt at Index. Failed bare-root bundles before Canto leave their gas in
+// the block's gas counter, which inflates the CumulativeGasUsed of the next
+// receipt and thus the GasUsed derived for it.
+type ReceiptGasAmendment struct {
+	Index uint32
+	Gas   uint64
+}
+
+// SetReceipts stores transaction receipts, together with the gas amendments
+// needed to derive their original GasUsed when they are read back.
 func (s *Store) SetReceipts(n idx.Block, receipts types.Receipts) {
 	receiptsStorage := make([]*types.ReceiptForStorage, receipts.Len())
 	for i, r := range receipts {
@@ -38,6 +48,11 @@ func (s *Store) SetReceipts(n idx.Block, receipts types.Receipts) {
 	}
 
 	size := s.SetRawReceipts(n, receiptsStorage)
+
+	if amendments := findReceiptGasAmendments(receipts); len(amendments) > 0 {
+		s.Log.Warn("Block gas counter leaked by failed bundle", "block", n, "amendments", amendments)
+		s.rlp.Set(s.table.ReceiptGasAmendments, n.Bytes(), amendments)
+	}
 
 	// Add to LRU cache.
 	s.cache.Receipts.Add(n, receipts, uint(size))
@@ -106,9 +121,29 @@ func (s *Store) GetReceipts(n idx.Block, config *params.ChainConfig, hash common
 	if err != nil {
 		s.Log.Crit("Failed to derive receipts", "err", err)
 	}
+	if amendments, _ := s.rlp.Get(s.table.ReceiptGasAmendments, n.Bytes(), &[]ReceiptGasAmendment{}).(*[]ReceiptGasAmendment); amendments != nil {
+		for _, a := range *amendments {
+			receipts[a.Index].GasUsed -= a.Gas
+		}
+	}
 
 	// Add to LRU cache.
 	s.cache.Receipts.Add(n, receipts, uint(size))
 
 	return receipts
+}
+
+// findReceiptGasAmendments returns the amendments for all receipts whose
+// GasUsed differs from the one derived from their CumulativeGasUsed. The
+// arithmetic wraps, so applying an amendment restores GasUsed exactly.
+func findReceiptGasAmendments(receipts types.Receipts) []ReceiptGasAmendment {
+	var amendments []ReceiptGasAmendment
+	var prev uint64
+	for i, r := range receipts {
+		if leaked := r.CumulativeGasUsed - prev - r.GasUsed; leaked != 0 {
+			amendments = append(amendments, ReceiptGasAmendment{Index: uint32(i), Gas: leaked})
+		}
+		prev = r.CumulativeGasUsed
+	}
+	return amendments
 }
