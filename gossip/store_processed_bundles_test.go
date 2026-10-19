@@ -1955,6 +1955,26 @@ func TestStore_RollbackProcessedBundles_AcceptsEarliestSafeBlock(t *testing.T) {
 	}
 }
 
+func TestStore_RollbackProcessedBundles_AcceptsGenesisBlock_AfterImportingHistoryWithoutBundles(t *testing.T) {
+	require := require.New(t)
+	source, err := NewMemStore(t)
+	require.NoError(err)
+	processFirstBundle(2*bundle.MaxBlockRangeLength)(t, source)
+	exported := exportProcessedBundles(t, source)
+	require.Empty(exported.infos)
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+	require.NoError(store.importProcessedBundles(exported))
+	genesisBlock, genesisHash := store.GetLatestProcessedBundleHistoryHash()
+	store.AddProcessedBundles(genesisBlock+1, nil)
+
+	require.NoError(store.RollbackProcessedBundles(genesisBlock))
+	block, hash := store.GetLatestProcessedBundleHistoryHash()
+	require.Equal(genesisBlock, block)
+	require.Equal(genesisHash, hash)
+}
+
 func TestStore_RollbackProcessedBundles_EarliestSafeBlockIsTight(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
