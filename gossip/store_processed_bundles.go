@@ -440,7 +440,8 @@ func (s *Store) RollbackProcessedBundles(block uint64) error {
 
 // isFirstBundleBlock reports whether the given history hash of the given block
 // continues the zero hash, which proves no bundle was processed before the
-// block. This requires the processed bundles of the block to be retained.
+// block. Returns false if the processed bundles of the block are no longer
+// retained, since the hash cannot be verified without them.
 func (s *Store) isFirstBundleBlock(block uint64, hash common.Hash) (bool, error) {
 	added, hasBundle := common.Hash{}, false
 	// key layout for 'i': 1 byte prefix + 8 bytes blockNum + 32 bytes execPlanHash
@@ -457,7 +458,8 @@ func (s *Store) isFirstBundleBlock(block uint64, hash common.Hash) (bool, error)
 	if err := it.Error(); err != nil {
 		return false, fmt.Errorf("failed to iterate processed bundles: %w", err)
 	}
-	// the first bundle block must hold at least one bundle
+	// no bundles found means they may have been pruned while the history hash is
+	// retained; plan hashes XORing to zero would then match the empty set
 	return hasBundle && computeNewBundleStateHash(common.Hash{}, added, block) == hash, nil
 }
 
