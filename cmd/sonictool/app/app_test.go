@@ -19,11 +19,13 @@ package app_test
 import (
 	"fmt"
 
+	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"io"
 	"math/big"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -264,15 +266,17 @@ func TestSonicTool_genesis_ExportImport_WithBundles(t *testing.T) {
 	require.Equal(t, originalInfo1, info1,
 		"bundle info mismatch after genesis export-import")
 
-	// run enough blocks to make sure that the history hash is pruned.
+	// run enough blocks to move the first bundle out of the replay protection
+	// window; it is still retained by the store, but no longer exported.
 	generateNBlocks(t, net, int(bundle.MaxBlockRangeLength)+10)
 
 	// run another bundle
 	bundleHash2, originalInfo2 := runBundle(t, net)
 
-	// check that the first bundle is pruned and the second bundle is still there after pruning
-	_, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
-	require.ErrorContains(t, err, "not found")
+	// check that both bundles are still retained by the store
+	info1, err = bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash1)
+	require.NoError(t, err)
+	require.Equal(t, originalInfo1, info1)
 	info2, err := bundles.GetBundleInfo(t.Context(), client.Client(), bundleHash2)
 	require.NoError(t, err)
 	require.Equal(t, originalInfo2, info2)
@@ -306,6 +310,86 @@ func TestSonicTool_heal_ExecutesWithoutErrors(t *testing.T) {
 
 	_, err := executeSonicTool(t, "--datadir", net.GetDirectory()+"/state", "heal")
 	require.NoError(t, err)
+}
+
+func TestSonicTool_heal_RevertsToEpochAfterGenesisWithoutBundles(t *testing.T) {
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades:             &upgrades,
+		ClientExtraArguments: []string{"--statedb.checkpointinterval", "1"},
+	})
+
+	// move the only bundle out of the replay protection window of the genesis
+	runBundle(t, net)
+	generateNBlocks(t, net, int(bundle.MaxBlockRangeLength)+10)
+	require.NoError(t, net.RestartWithExportImport())
+
+	// the latest epoch starts within the replay protection window of the genesis
+	net.AdvanceEpoch(t, 1)
+	generateNBlocks(t, net, 3)
+	net.Stop()
+
+	_, err := executeSonicTool(t, "--datadir", net.GetDirectory()+"/state", "heal")
+	require.NoError(t, err)
+}
+
+func TestSonicTool_heal_HealedNodeReproducesProcessedBundlesHistory(t *testing.T) {
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades:             &upgrades,
+		NumNodes:             2,
+		ClientExtraArguments: []string{"--statedb.checkpointinterval", "1"},
+	})
+
+	// the first bundle is a full replay protection window before the start of
+	// the epoch healed to, the second bundle is processed within that epoch;
+	// bundles use their own sponsor, as AdvanceEpoch leaves no-ops pending
+	session := net.SpawnSession(t)
+	runBundle(t, session)
+	generateNBlocks(t, net, int(bundle.MaxBlockRangeLength)+10)
+	net.AdvanceEpoch(t, 1)
+	bundleHash, wantInfo := runBundle(t, session)
+	generateNBlocks(t, net, 5)
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	var epoch hexutil.Uint64
+	require.NoError(t, client.Client().Call(&epoch, "eth_currentEpoch"))
+	client.Close()
+	net.Stop()
+
+	healedDir := filepath.Join(filepath.Dir(net.GetDirectory()), "node1", "state")
+	_, err = executeSonicTool(t, "--datadir", healedDir, "heal", "--epoch", fmt.Sprint(epoch))
+	require.NoError(t, err)
+
+	// with two validators, no block is created in the next epoch unless both
+	// sealed the current one with the same processed bundles history hash
+	require.NoError(t, net.Restart())
+	net.AdvanceEpoch(t, 1)
+	generateNBlocks(t, net, 1)
+
+	peer, err := net.GetClientConnectedToNode(0)
+	require.NoError(t, err)
+	defer peer.Close()
+	healed, err := net.GetClientConnectedToNode(1)
+	require.NoError(t, err)
+	defer healed.Close()
+
+	head, err := peer.HeaderByNumber(t.Context(), nil)
+	require.NoError(t, err)
+	require.NoError(t, tests.WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+		block, err := healed.BlockNumber(ctx)
+		return block >= head.Number.Uint64(), err
+	}))
+	got, err := healed.HeaderByNumber(t.Context(), head.Number)
+	require.NoError(t, err)
+	require.Equal(t, head.Hash(), got.Hash())
+
+	gotInfo, err := bundles.GetBundleInfo(t.Context(), healed.Client(), bundleHash)
+	require.NoError(t, err)
+	require.Equal(t, wantInfo, gotInfo)
 }
 
 func TestSonicTool_config_ExecutesWithoutErrors(t *testing.T) {
@@ -647,7 +731,7 @@ func replaceUserPrompter(newPrompt prompt.UserPrompter) (cleanup func()) {
 
 // runBundle runs a simple bundle in the provided network and returns the hash
 // of the execution plan and the info about the execution of the bundle.
-func runBundle(t *testing.T, net *tests.IntegrationTestNet) (
+func runBundle(t *testing.T, net tests.IntegrationTestNetSession) (
 	common.Hash,
 	*sonicapi.RPCBundleInfo,
 ) {

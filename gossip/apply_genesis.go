@@ -26,6 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/utils/dbutil/autocompact"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/batched"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -133,9 +134,23 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 	s.Log.Info("StateDB imported successfully, stateRoot matches", "index", lastBlock.Idx, "root", lastBlock.StateRoot)
 
 	if g.ProcessedBundles != nil {
+		if err := checkBundleHistoryBlock(g.ProcessedBundles, lastBlock.Idx); err != nil {
+			return err
+		}
 		if err := s.importProcessedBundles(g.ProcessedBundles); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// checkBundleHistoryBlock ensures the latest bundle history hash belongs to the last
+// block of the genesis, as the node continues the history hash chain from that block.
+func checkBundleHistoryBlock(bundles genesis.ProcessedBundles, lastBlock idx.Block) error {
+	historyHashes, hasHistory := bundles.GetHistoryHashes()
+	if hasHistory && historyHashes.Latest.BlockNumber != uint64(lastBlock) {
+		return fmt.Errorf("latest bundle history hash is at block %d, but genesis ends at block %d",
+			historyHashes.Latest.BlockNumber, lastBlock)
 	}
 	return nil
 }
@@ -147,14 +162,13 @@ func (s *Store) importProcessedBundles(bundles genesis.ProcessedBundles) error {
 	historyHashes, hasHistory := bundles.GetHistoryHashes()
 
 	switch {
-	case len(bundlesByBlock) > 0 && hasHistory:
+	case hasHistory:
+		// the history hash is updated for every block even if no bundles are retained,
+		// we need to restore it to produce correct epoch state hash at the epoch sealing;
+		// replaying the window retains its history hashes to roll back to the genesis block
 		return s.replayProcessedBundles(historyHashes, bundlesByBlock)
 	case len(bundlesByBlock) > 0:
 		return errors.New("bundles were processed but no history hash was found in genesis")
-	case hasHistory:
-		// the history hash is updated for every block even if no bundles are retained,
-		// we need to restore it to produce correct epoch state hash at the epoch sealing
-		return s.restoreBundleHistoryHash(historyHashes.Latest)
 	default:
 		s.Log.Info("No processed bundles or bundle history in genesis, skipping bundle history import")
 		return nil
@@ -171,17 +185,17 @@ func groupBundlesByBlock(bundles genesis.ProcessedBundles) map[uint64][]bundle.E
 	return bundlesByBlock
 }
 
-// restoreBundleHistoryHash sets the latest bundle history hash without replaying any processed bundles
-// as the genesis does not contain any within the retained window.
-func (s *Store) restoreBundleHistoryHash(latest bundle.HistoryHash) error {
-	s.Log.Info("No processed bundles in genesis, restoring bundle history hash",
-		"latestBlockNum", latest.BlockNumber, "latestHash", latest.Hash)
-	s.SetProcessedBundlesHistoryHash(latest.BlockNumber, latest.Hash)
+// restoreBundleHistoryHash sets the bundle history hash of a block without replaying
+// any processed bundles.
+func (s *Store) restoreBundleHistoryHash(historyHash bundle.HistoryHash) error {
+	s.Log.Info("Restoring bundle history hash from genesis",
+		"blockNum", historyHash.BlockNumber, "hash", historyHash.Hash)
+	s.SetProcessedBundlesHistoryHash(historyHash.BlockNumber, historyHash.Hash)
 
 	// keep the per-block entry, so a genesis can be exported from this state
 	err := s.table.ProcessedBundles.Put(
-		getBundleHistoryHashKey(latest.BlockNumber),
-		latest.Hash.Bytes(),
+		getBundleHistoryHashKey(historyHash.BlockNumber),
+		historyHash.Hash.Bytes(),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to restore bundle history hash: %w", err)
@@ -189,8 +203,8 @@ func (s *Store) restoreBundleHistoryHash(latest bundle.HistoryHash) error {
 	return nil
 }
 
-// replayProcessedBundles replays the retained processed bundles,
-// the history hash chain is computed and verified against the genesis record.
+// replayProcessedBundles replays the history hash chain from the oldest history hash,
+// indexing the retained processed bundles, and verifies it against the genesis record.
 func (s *Store) replayProcessedBundles(
 	historyHashes bundle.BundleGenesisHistoryHashes,
 	bundlesByBlock map[uint64][]bundle.ExecutionInfo,
@@ -200,31 +214,29 @@ func (s *Store) replayProcessedBundles(
 		"oldestBlockNum", historyHashes.Oldest.BlockNumber, "oldestHash", historyHashes.Oldest.Hash,
 		"latestBlockNum", historyHashes.Latest.BlockNumber, "latestHash", historyHashes.Latest.Hash)
 
-	// replay blocks to latest and add retained bundles
-	// the execution plan chain is updated block by block
-	startBlock := s.initBundleHistoryReplay(historyHashes)
-	for block := startBlock; block <= historyHashes.Latest.BlockNumber; block++ {
+	// a stored history hash already accounts for the bundles of its block,
+	// so the oldest one seeds the chain and its bundles are only indexed
+	oldest := historyHashes.Oldest
+	if err := s.restoreBundleHistoryHash(oldest); err != nil {
+		return err
+	}
+	for block := oldest.BlockNumber; block <= historyHashes.Latest.BlockNumber; block++ {
 		bundlesPerBlock, err := positionsByExecutionPlan(bundlesByBlock[block])
 		if err != nil {
 			return fmt.Errorf("invalid processed bundles in genesis at block %d: %w", block, err)
+		}
+		if block == oldest.BlockNumber {
+			batch := s.table.ProcessedBundles.NewBatch()
+			s.addNewBundles(block, bundlesPerBlock, batch)
+			if err := batch.Write(); err != nil {
+				return fmt.Errorf("failed to index processed bundles at block %d: %w", block, err)
+			}
+			continue
 		}
 		s.AddProcessedBundles(block, bundlesPerBlock)
 	}
 
 	return s.verifyBundleHistoryHash(historyHashes.Latest)
-}
-
-// initBundleHistoryReplay returns the first block to replay.
-// The oldest hash is used as the base for a range of 1024+ blocks (the retained window, inclusive);
-// otherwise the replay starts from a zero hash. We know the previous history hash is zero
-// because there have been less than 1024 blocks since the first block which contains processed bundles.
-func (s *Store) initBundleHistoryReplay(historyHashes bundle.BundleGenesisHistoryHashes) uint64 {
-	oldest, latest := historyHashes.Oldest, historyHashes.Latest
-	if latest.BlockNumber-oldest.BlockNumber < 1023 {
-		return oldest.BlockNumber
-	}
-	s.SetProcessedBundlesHistoryHash(oldest.BlockNumber, oldest.Hash)
-	return oldest.BlockNumber + 1
 }
 
 // positionsByExecutionPlan indexes the positions of the bundles processed in a single block

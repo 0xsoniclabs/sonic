@@ -19,6 +19,7 @@ package gossip
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
@@ -55,6 +56,13 @@ import (
 //
 // The hash can be used to verify that validators remain aligned on their bundle
 // processing history.
+
+// processedBundlesRetention is the number of blocks for which processed
+// bundles and bundle history hashes are retained. Beyond protecting against
+// replayed bundles, which requires bundle.MaxBlockRangeLength blocks, the
+// retention bounds how far back the processed bundles can be rolled back when
+// healing a node.
+const processedBundlesRetention uint64 = 1 << 15
 
 // AddProcessedBundles adds the given bundle execution information for the given
 // block number. This should be called after every block, listing the bundles
@@ -135,11 +143,11 @@ func (s *Store) addNewBundles(
 func (s *Store) deleteOutdatedBundles(finishedBlock uint64, batch kvdb.Batch) {
 	nextBlock := finishedBlock + 1
 
-	if nextBlock < bundle.MaxBlockRangeLength {
+	if nextBlock < processedBundlesRetention {
 		return
 	}
 
-	highestOutdatedBlockNumber := nextBlock - bundle.MaxBlockRangeLength
+	highestOutdatedBlockNumber := nextBlock - processedBundlesRetention
 
 	// Prune bundle-index and entries keys ('i', 'e').
 	// key layout for 'i': 1 byte prefix + 8 bytes blockNum + 32 bytes execPlanHash
@@ -219,7 +227,7 @@ func computeNewBundleStateHash(
 // the same bundle multiple times.
 //
 // Note: the store only keeps track of the bundles being executed in the last
-// bundle.MaxBlockRange blocks, so this function returns false for bundles
+// processedBundlesRetention blocks, so this function returns false for bundles
 // that were processed too far in the past and have been cleaned up from the
 // store.
 func (s *Store) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
@@ -232,7 +240,7 @@ func (s *Store) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
 
 // GetBundleExecutionInfo returns the execution info for a processed execution
 // plan, if it is present in the store. Note that execution info is being
-// automatically removed from the store after bundle.MaxBlockRange blocks,
+// automatically removed from the store after processedBundlesRetention blocks,
 // so this function returns nil for bundles that were processed too far in the
 // past.
 func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) *bundle.ExecutionInfo {
@@ -339,6 +347,120 @@ func (s *Store) SetProcessedBundlesHistoryHash(blockNum uint64, hash common.Hash
 	if err != nil {
 		s.Log.Crit("failed to set hash of processed bundles", "error", err)
 	}
+}
+
+// RollbackProcessedBundles reverts the processed bundles to the state they had
+// after the given block; all bundles and history hashes of later blocks are
+// removed, and the history hash of the given block becomes the latest one.
+// Unless the retained history is complete, i.e. it starts with the first bundle
+// of the chain, the bundles of the bundle.MaxBlockRangeLength-1 blocks up to the
+// given block must be retained, since they may still be replayed after it; the
+// bundles are retained for all blocks after the earliest retained history hash.
+// Rolling back a complete history before its first bundle removes all of it, as
+// if no bundle was ever processed.
+func (s *Store) RollbackProcessedBundles(block uint64) error {
+	s.processedBundleMutex.Lock()
+	defer s.processedBundleMutex.Unlock()
+
+	earliest, earliestHash, ok := s.GetEarliestBundleHistoryHash()
+	if !ok {
+		return nil // no bundle has been processed yet, nothing to roll back
+	}
+	if latest, _ := s.GetLatestProcessedBundleHistoryHash(); block == latest {
+		return nil // nothing to revert (e.g. right after a history-only genesis import)
+	}
+
+	complete, err := s.isFirstBundleBlock(earliest, earliestHash)
+	if err != nil {
+		return err
+	}
+	if earliestSafe := earliest + bundle.MaxBlockRangeLength - 1; !complete && block < earliestSafe {
+		return fmt.Errorf("not enough processed bundles history to roll back to block %d, earliest safe block is %d",
+			block, earliestSafe)
+	}
+	hash, ok := s.GetProcessedBundleHistoryHash(block)
+	beforeFirstBundle := complete && block < earliest
+	if !ok && !beforeFirstBundle {
+		return fmt.Errorf("no processed bundles history hash retained for block %d", block)
+	}
+
+	batch := s.table.ProcessedBundles.NewBatch()
+	start := bigendian.Uint64ToBytes(block + 1)
+
+	// key layout for 'i': 1 byte prefix + 8 bytes blockNum + 32 bytes execPlanHash
+	it := s.table.ProcessedBundles.NewIterator([]byte{'i'}, start)
+	defer it.Release()
+	for it.Next() {
+		key := it.Key()
+		if len(key) != 1+8+32 {
+			continue
+		}
+		blockNum := binary.BigEndian.Uint64(key[1 : 1+8])
+		planHash := common.BytesToHash(key[1+8:])
+		err := errors.Join(
+			batch.Delete(getIndexKey(blockNum, planHash)), // deletion of 'i' table entry
+			batch.Delete(getEntryKey(planHash)),           // deletion of 'e' table entry
+		)
+		if err != nil {
+			return fmt.Errorf("failed to delete processed bundle: %w", err)
+		}
+	}
+	if err := it.Error(); err != nil {
+		return fmt.Errorf("failed to iterate processed bundles: %w", err)
+	}
+
+	// key layout for 'h': 1 byte prefix + 8 bytes blockNum
+	it2 := s.table.ProcessedBundles.NewIterator([]byte{'h'}, start)
+	defer it2.Release()
+	for it2.Next() {
+		key := it2.Key()
+		if len(key) != 1+8 {
+			continue
+		}
+		blockNum := binary.BigEndian.Uint64(key[1:])
+		if err := batch.Delete(getBundleHistoryHashKey(blockNum)); err != nil {
+			return fmt.Errorf("failed to delete block history hash: %w", err)
+		}
+	}
+	if err := it2.Error(); err != nil {
+		return fmt.Errorf("failed to iterate block history hashes: %w", err)
+	}
+
+	// update last block and hash, which do not exist before the first bundle of the chain
+	if beforeFirstBundle {
+		err = batch.Delete(nil)
+	} else {
+		err = batch.Put(nil, append(bigendian.Uint64ToBytes(block), hash.Bytes()...))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to set the last block and hash of processed bundles: %w", err)
+	}
+	return batch.Write()
+}
+
+// isFirstBundleBlock reports whether the given history hash of the given block
+// continues the zero hash, which proves no bundle was processed before the
+// block. Returns false if the processed bundles of the block are no longer
+// retained, since the hash cannot be verified without them.
+func (s *Store) isFirstBundleBlock(block uint64, hash common.Hash) (bool, error) {
+	added, hasBundle := common.Hash{}, false
+	// key layout for 'i': 1 byte prefix + 8 bytes blockNum + 32 bytes execPlanHash
+	it := s.table.ProcessedBundles.NewIterator(append([]byte{'i'}, bigendian.Uint64ToBytes(block)...), nil)
+	defer it.Release()
+	for it.Next() {
+		key := it.Key()
+		if len(key) != 1+8+32 {
+			continue
+		}
+		added = xorHash(added, common.BytesToHash(key[1+8:]))
+		hasBundle = true
+	}
+	if err := it.Error(); err != nil {
+		return false, fmt.Errorf("failed to iterate processed bundles: %w", err)
+	}
+	// no bundles found means they may have been pruned while the history hash is
+	// retained; plan hashes XORing to zero would then match the empty set
+	return hasBundle && computeNewBundleStateHash(common.Hash{}, added, block) == hash, nil
 }
 
 // EnumerateProcessedBundles returns a list of all recently processed bundle
