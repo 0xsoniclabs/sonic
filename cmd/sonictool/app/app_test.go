@@ -312,6 +312,28 @@ func TestSonicTool_heal_ExecutesWithoutErrors(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestSonicTool_heal_RevertsToEpochAfterGenesisWithoutBundles(t *testing.T) {
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades:             &upgrades,
+		ClientExtraArguments: []string{"--statedb.checkpointinterval", "1"},
+	})
+
+	// move the only bundle out of the replay protection window of the genesis
+	runBundle(t, net)
+	generateNBlocks(t, net, int(bundle.MaxBlockRangeLength)+10)
+	require.NoError(t, net.RestartWithExportImport())
+
+	// the latest epoch starts within the replay protection window of the genesis
+	net.AdvanceEpoch(t, 1)
+	generateNBlocks(t, net, 3)
+	net.Stop()
+
+	_, err := executeSonicTool(t, "--datadir", net.GetDirectory()+"/state", "heal")
+	require.NoError(t, err)
+}
+
 func TestSonicTool_config_ExecutesWithoutErrors(t *testing.T) {
 
 	net := tests.StartIntegrationTestNet(t)
