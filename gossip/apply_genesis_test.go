@@ -51,14 +51,26 @@ func (f fakeProcessedBundles) GetHistoryHashes() (bundle.BundleGenesisHistoryHas
 // the replay protection window preceding the latest block is exported.
 func exportProcessedBundles(t *testing.T, store *Store) fakeProcessedBundles {
 	t.Helper()
-	res := fakeProcessedBundles{infos: store.EnumerateProcessedBundles()}
-	oldestBlock, oldestHash, ok := store.GetEarliestBundleHistoryHash()
-	if ok {
-		latestBlock, latestHash := store.GetLatestProcessedBundleHistoryHash()
-		res.historyHashes = &bundle.BundleGenesisHistoryHashes{
-			Latest: bundle.HistoryHash{BlockNumber: latestBlock, Hash: latestHash},
-			Oldest: bundle.HistoryHash{BlockNumber: oldestBlock, Hash: oldestHash},
+	res := fakeProcessedBundles{}
+	earliest, _, ok := store.GetEarliestBundleHistoryHash()
+	if !ok {
+		return res
+	}
+	latestBlock, latestHash := store.GetLatestProcessedBundleHistoryHash()
+	oldestBlock := earliest
+	if latestBlock >= bundle.MaxBlockRangeLength {
+		oldestBlock = max(earliest, latestBlock-bundle.MaxBlockRangeLength)
+	}
+	oldestHash, found := store.GetProcessedBundleHistoryHash(oldestBlock)
+	require.True(t, found)
+	for _, info := range store.EnumerateProcessedBundles() {
+		if info.BlockNumber >= oldestBlock {
+			res.infos = append(res.infos, info)
 		}
+	}
+	res.historyHashes = &bundle.BundleGenesisHistoryHashes{
+		Latest: bundle.HistoryHash{BlockNumber: latestBlock, Hash: latestHash},
+		Oldest: bundle.HistoryHash{BlockNumber: oldestBlock, Hash: oldestHash},
 	}
 	return res
 }

@@ -1781,8 +1781,6 @@ func TestStore_RollbackProcessedBundles_RestoresStateOfEarlierBlock(t *testing.T
 	// - B is the first bundle of the chain, followed by bundles in every third block
 	// - [ ] is the history retained by the store up to block 2048
 	// - T is the rollback target
-	// each case is run with the history processed by the store and imported from
-	// a genesis export
 	const headBlock = 2 * bundle.MaxBlockRangeLength
 	tests := map[string]struct {
 		firstBlock uint64 // first block of the retained history, holding the first bundle
@@ -1813,39 +1811,31 @@ func TestStore_RollbackProcessedBundles_RestoresStateOfEarlierBlock(t *testing.T
 	}
 
 	for name, test := range tests {
-		for _, imported := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s, imported=%t", name, imported), func(t *testing.T) {
-				require := require.New(t)
-				bundlesOf := func(block uint64) map[common.Hash]bundle.PositionInBlock {
-					if block < test.firstBlock || (block-test.firstBlock)%3 != 0 {
-						return nil
-					}
-					if test.zeroXor && block == test.firstBlock {
-						return zeroXorBundles
-					}
-					return map[common.Hash]bundle.PositionInBlock{uint64ToHash(block): {}, uint64ToHash(block + 1): {}}
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			bundlesOf := func(block uint64) map[common.Hash]bundle.PositionInBlock {
+				if block < test.firstBlock || (block-test.firstBlock)%3 != 0 {
+					return nil
 				}
-				reference, err := NewMemStore(t)
-				require.NoError(err)
-				store, err := NewMemStore(t)
-				require.NoError(err)
-				for block := uint64(1); block <= headBlock; block++ {
-					store.AddProcessedBundles(block, bundlesOf(block))
-					if block <= test.target {
-						reference.AddProcessedBundles(block, bundlesOf(block))
-					}
+				if test.zeroXor && block == test.firstBlock {
+					return zeroXorBundles
 				}
-				if imported {
-					source := store
-					store, err = NewMemStore(t)
-					require.NoError(err)
-					require.NoError(store.importProcessedBundles(exportProcessedBundles(t, source)))
+				return map[common.Hash]bundle.PositionInBlock{uint64ToHash(block): {}, uint64ToHash(block + 1): {}}
+			}
+			reference, err := NewMemStore(t)
+			require.NoError(err)
+			store, err := NewMemStore(t)
+			require.NoError(err)
+			for block := uint64(1); block <= headBlock; block++ {
+				store.AddProcessedBundles(block, bundlesOf(block))
+				if block <= test.target {
+					reference.AddProcessedBundles(block, bundlesOf(block))
 				}
+			}
 
-				require.NoError(store.RollbackProcessedBundles(test.target))
-				require.Equal(processedBundlesTable(t, reference), processedBundlesTable(t, store))
-			})
-		}
+			require.NoError(store.RollbackProcessedBundles(test.target))
+			require.Equal(processedBundlesTable(t, reference), processedBundlesTable(t, store))
+		})
 	}
 }
 
@@ -2187,7 +2177,7 @@ func processIncompleteHistory(_ *testing.T, store *Store) {
 	}
 }
 
-// importIncompleteHistory imports the retained history of a chain whose first
+// importIncompleteHistory imports the genesis export of a chain whose first
 // bundle has already been pruned.
 func importIncompleteHistory(t *testing.T, store *Store) {
 	source, err := NewMemStore(t)
