@@ -927,7 +927,7 @@ func TestConsensusCallback_InconsistentHead_TerminatesProcess(t *testing.T) {
 				_any := gomock.Any()
 				eventProcessor := blockproc.NewMockConfirmedEventsProcessor(ctrl)
 				eventProcessor.EXPECT().ProcessConfirmedEvent(_any)
-				eventProcessor.EXPECT().Finalize(_any, _any).Return(store.GetBlockState()).AnyTimes()
+				eventProcessor.EXPECT().Finalize(_any, _any).Return(store.GetBlockState())
 				eventsModule := blockproc.NewMockConfirmedEventsModule(ctrl)
 				eventsModule.EXPECT().Start(_any, _any).Return(eventProcessor)
 

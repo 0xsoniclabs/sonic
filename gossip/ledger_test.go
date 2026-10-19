@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 
+	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 )
@@ -70,51 +71,80 @@ func TestHead_BeginBlock_SecondCallOnSameHead_ReportsError(t *testing.T) {
 }
 
 func TestHead_BeginBlock_FailedCallDoesNotConsumeHead(t *testing.T) {
-	store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
-	head, err := NewLedger(store).Head()
-	require.NoError(t, err)
-	bs := store.GetBlockState()
-	bs.LastBlock.Idx++
-	store.SetBlockEpochState(bs, store.GetEpochState())
-	_, err = head.BeginBlock()
-	require.ErrorContains(t, err, "is no longer the ledger's head")
-
-	bs.LastBlock.Idx--
-	store.SetBlockEpochState(bs, store.GetEpochState())
-	_, err = head.BeginBlock()
-	require.NoError(t, err)
-}
-
-func TestHead_BeginBlock_RejectsBlockNotOnTheLedgerHead(t *testing.T) {
 	tests := map[string]struct {
-		setup   func(l *ledger, h Head)
+		setup   func(l *ledger) (undo func())
 		wantErr string
 	}{
 		"head pointer moved on": {
-			setup: func(l *ledger, h Head) {
+			setup: func(l *ledger) func() {
+				bs := l.store.GetBlockState()
+				bs.LastBlock.Idx++
+				l.store.SetBlockEpochState(bs, l.store.GetEpochState())
+				return func() {
+					bs.LastBlock.Idx--
+					l.store.SetBlockEpochState(bs, l.store.GetEpochState())
+				}
+			},
+			wantErr: "is no longer the ledger's head",
+		},
+		"live state cannot be opened": {
+			setup: func(l *ledger) func() {
+				evm := l.store.evm
+				l.store.evm = &evmstore.Store{}
+				return func() { l.store.evm = evm }
+			},
+			wantErr: "EvmStore is not open",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
+			l := &ledger{store: store}
+			head, err := l.Head()
+			require.NoError(t, err)
+
+			undo := test.setup(l)
+			_, err = head.BeginBlock()
+			require.ErrorContains(t, err, test.wantErr)
+
+			undo()
+			_, err = head.BeginBlock()
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestHead_BeginBlock_NoLongerLedgerHeadOrLiveStateMismatch_ReportsError(t *testing.T) {
+	tests := map[string]struct {
+		beforeHead func(l *ledger)
+		afterHead  func(l *ledger, h Head)
+		wantErr    string
+	}{
+		"head pointer moved on": {
+			afterHead: func(l *ledger, h Head) {
 				bs := l.store.GetBlockState()
 				bs.LastBlock.Idx++
 				l.store.SetBlockEpochState(bs, l.store.GetEpochState())
 			},
-			wantErr: "no longer the ledger's head",
+			wantErr: "is no longer the ledger's head",
 		},
 		"head block replaced": {
-			setup: func(l *ledger, h Head) {
+			afterHead: func(l *ledger, h Head) {
 				number := h.Block().Number
 				l.store.SetBlock(idx.Block(number), inter.NewBlockBuilder().
 					WithNumber(number).
 					Build())
 			},
-			wantErr: "no longer the ledger's head",
+			wantErr: "is no longer the ledger's head",
 		},
 		"live state does not match the head": {
-			setup: func(l *ledger, h Head) {
-				block := inter.NewBlockBuilder().
-					WithNumber(h.Block().Number).
+			beforeHead: func(l *ledger) {
+				number := l.store.GetLatestBlockIndex()
+				l.store.SetBlock(number, inter.NewBlockBuilder().
+					WithNumber(uint64(number)).
 					WithStateRoot(common.Hash{1}).
-					Build()
-				l.store.SetBlock(idx.Block(block.Number), block)
-				h.(*head).block = block
+					Build())
 			},
 			wantErr: "unexpected state root",
 		},
@@ -122,14 +152,17 @@ func TestHead_BeginBlock_RejectsBlockNotOnTheLedgerHead(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			store := newInMemoryStoreWithGenesisData(
-				t, opera.GetSonicUpgrades(), 1, 2,
-			)
+			store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
 			l := &ledger{store: store}
+			if test.beforeHead != nil {
+				test.beforeHead(l)
+			}
 			head, err := l.Head()
 			require.NoError(t, err)
 
-			test.setup(l, head)
+			if test.afterHead != nil {
+				test.afterHead(l, head)
+			}
 			executing, err := head.BeginBlock()
 			require.ErrorContains(t, err, test.wantErr)
 			require.Nil(t, executing)

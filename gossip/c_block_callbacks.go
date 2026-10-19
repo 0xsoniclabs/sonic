@@ -776,10 +776,7 @@ func endBlock(
 			"head", parent.Number, "last_block", bs.LastBlock.Idx)
 	}
 	number := parent.Number + 1
-	lastBlockHeader := evmStateReader.Header(
-		parent.Hash(),
-		parent.Number,
-	)
+	lastBlockHeader := evmStateReader.Header(parent.Hash(), parent.Number)
 
 	randao := computePrevRandao(confirmedEvents)
 	chainCfg := opera.CreateTransientEvmChainConfig(
