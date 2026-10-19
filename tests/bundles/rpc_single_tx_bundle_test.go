@@ -71,12 +71,35 @@ func TestBundle_RPCSingleTxBundle_RevertLeavesNoTrace(t *testing.T) {
 	}
 }
 
+// testSingleTxBundleRevertLeavesNoTrace repeats rounds until a bundle reverted
+// during block processing. A revert needs several bundles passing the pool's
+// trial run against the same state to land in the same block. On slow runs,
+// e.g. with -race, the pool admits them one at a time, and each lands in a
+// block of its own, where it succeeds.
 func testSingleTxBundleRevertLeavesNoTrace(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
 	revertContract common.Address,
 	shape string,
 ) {
+	const maxRounds = 5
+	for range maxRounds {
+		if runSingleTxBundleRevertRound(t, net, revertContract, shape) > 0 {
+			return
+		}
+	}
+	t.Fatalf("no bundle was reverted during block processing in %d rounds", maxRounds)
+}
+
+// runSingleTxBundleRevertRound checks that no bundle of the round left a trace
+// unless its transaction was included in a block, and returns the number of
+// bundles reverted during block processing.
+func runSingleTxBundleRevertRound(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	revertContract common.Address,
+	shape string,
+) int {
 	const N = 100
 	require := require.New(t)
 
@@ -173,7 +196,7 @@ func testSingleTxBundleRevertLeavesNoTrace(
 			"sender %d: gas charged for a transaction not included in any block", i)
 	}
 	t.Logf("%d of %d bundles reverted during block processing", reverted, N)
-	require.NotZero(reverted, "no bundle was reverted during block processing")
+	return reverted
 }
 
 // TestBundle_SingleTxBundleWithBareRoot_IsRejectedBySendRawTransaction checks
