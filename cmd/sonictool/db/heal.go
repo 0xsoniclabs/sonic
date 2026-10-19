@@ -133,6 +133,12 @@ func healGossipDb(
 		)
 	}
 
+	// revert the processed bundles history, which feeds into the epoch hash
+	log.Info("Reverting processed bundles history", "block", blockState.LastBlock.Idx)
+	if err := gdb.RollbackProcessedBundles(uint64(blockState.LastBlock.Idx)); err != nil {
+		return nil, 0, fmt.Errorf("cannot revert processed bundles history to epoch %d: %w", epochId, err)
+	}
+
 	// set the historic state to be the current
 	log.Info("Reverting to epoch state", "epoch", epochId, "block", blockState.LastBlock.Idx)
 	gdb.SetBlockEpochState(*blockState, *epochState)
