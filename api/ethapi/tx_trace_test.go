@@ -26,6 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -679,4 +680,28 @@ func TestTraceCalls_MissingBlock_ReportHeaderNotFound(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestParseFilterArguments_AcceptsBlockHashes(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+
+	fromHash := common.Hash{1}
+	toHash := common.Hash{2}
+	from := rpc.BlockNumberOrHashWithHash(fromHash, false)
+	to := rpc.BlockNumberOrHashWithHash(toHash, false)
+
+	backend.EXPECT().CurrentBlock().Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Number: big.NewInt(100)}})
+	backend.EXPECT().ResolveRpcBlockNumberOrHash(gomock.Any(), from).Return(idx.Block(5), nil)
+	backend.EXPECT().ResolveRpcBlockNumberOrHash(gomock.Any(), to).Return(idx.Block(7), nil)
+
+	args := FilterArgs{FromBlock: &from, ToBlock: &to}
+	fromBlock, toBlock, _, _, err := parseFilterArguments(backend, args, 0)
+	require.NoError(t, err)
+	require.Equal(t, rpc.BlockNumber(5), fromBlock)
+	require.Equal(t, rpc.BlockNumber(7), toBlock)
+
+	data := getLogData(args, time.Now())
+	require.Contains(t, data, fromHash.String())
+	require.Contains(t, data, toHash.String())
 }
