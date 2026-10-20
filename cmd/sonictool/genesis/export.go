@@ -118,6 +118,15 @@ func ExportGenesis(ctx context.Context, gdb *gossip.Store, includeArchive bool, 
 		return err
 	}
 
+	// receipt gas amendments
+	writer = newUnitWriter(out)
+	if err := writer.Start(header, "rga", tmpPath); err != nil {
+		return err
+	}
+	if err := exportReceiptGasAmendments(ctx, gdb, writer, blocksExportBase(lastBlock, maxBlocks)); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -150,12 +159,18 @@ func exportEpochsSection(ctx context.Context, gdb *gossip.Store, writer *unitWri
 	return nil
 }
 
+// blocksExportBase returns the first block exported when exporting blocks up
+// to the given one, limited to maxBlocks blocks unless it is zero.
+func blocksExportBase(to idx.Block, maxBlocks int64) idx.Block {
+	if maxBlocks != 0 && int64(to) > 1+maxBlocks {
+		return to - idx.Block(maxBlocks)
+	}
+	return 0
+}
+
 func exportBlocksSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter, to idx.Block, maxBlocks int64) error {
 	toBlock := int64(to)
-	fromBlock := int64(0)
-	if maxBlocks != 0 && toBlock > 1+maxBlocks {
-		fromBlock = toBlock - maxBlocks
-	}
+	fromBlock := int64(blocksExportBase(to, maxBlocks))
 	log.Info("Exporting blocks", "from", fromBlock, "to", toBlock)
 	for i := toBlock; i >= fromBlock; i-- {
 		i := idx.Block(i)
@@ -300,6 +315,20 @@ func exportBundles(ctx context.Context, gdb *gossip.Store, writer *unitWriter, f
 	}
 	log.Info("Exported processed bundles", "count", count)
 	fmt.Printf("- Processed bundles hash: %v \n", hash.String())
+	return nil
+}
+
+func exportReceiptGasAmendments(ctx context.Context, gdb *gossip.Store, writer *unitWriter, from idx.Block) error {
+	log.Info("Exporting receipt gas amendments", "from", from)
+	if err := gdb.EvmStore().ExportReceiptGasAmendments(ctx, writer, from); err != nil {
+		return err
+	}
+	hash, err := writer.Flush()
+	if err != nil {
+		return err
+	}
+	log.Info("Exported receipt gas amendments")
+	fmt.Printf("- Receipt gas amendments hash: %v \n", hash.String())
 	return nil
 }
 

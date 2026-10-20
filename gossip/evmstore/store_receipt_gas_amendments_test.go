@@ -17,8 +17,11 @@
 package evmstore
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/big"
 	"testing"
@@ -256,6 +259,104 @@ func TestStore_SetReceipts_WritesAmendmentsBeforeReceipts(t *testing.T) {
 	store.SetReceipts(1, makeReceipts([]uint64{71_000}, []uint64{21_000}))
 }
 
+func TestStore_ExportReceiptGasAmendments_WritesBlocksFromGivenOneInOrder(t *testing.T) {
+	logger.SetTestMode(t)
+	store := cachedStore()
+	store.putReceiptGasAmendments(9, []ReceiptGasAmendment{{Index: 0, GasExcess: 9}})
+	store.putReceiptGasAmendments(1, []ReceiptGasAmendment{{Index: 0, GasExcess: 1}})
+	store.putReceiptGasAmendments(5, []ReceiptGasAmendment{{Index: 1, GasExcess: 5}, {Index: 2, GasExcess: 6}})
+
+	var out bytes.Buffer
+	require.NoError(t, store.ExportReceiptGasAmendments(t.Context(), &out, 5))
+
+	var got []receiptGasAmendmentsRecord
+	stream := rlp.NewStream(&out, 0)
+	for {
+		var record receiptGasAmendmentsRecord
+		if err := stream.Decode(&record); err != nil {
+			require.ErrorIs(t, err, io.EOF)
+			break
+		}
+		got = append(got, record)
+	}
+	want := []receiptGasAmendmentsRecord{
+		{Block: 5, Amendments: []ReceiptGasAmendment{{Index: 1, GasExcess: 5}, {Index: 2, GasExcess: 6}}},
+		{Block: 9, Amendments: []ReceiptGasAmendment{{Index: 0, GasExcess: 9}}},
+	}
+	require.Equal(t, want, got)
+}
+
+func TestStore_ImportReceiptGasAmendments_RestoresExportedAmendments(t *testing.T) {
+	logger.SetTestMode(t)
+	source := cachedStore()
+	want := map[idx.Block][]ReceiptGasAmendment{
+		0:                  {{Index: 0, GasExcess: 1}},
+		1:                  {{Index: 3, GasExcess: math.MaxUint64}},
+		math.MaxUint64:     {{Index: 1, GasExcess: 2}, {Index: 2, GasExcess: 3}},
+		math.MaxUint32 + 1: {{Index: math.MaxUint32, GasExcess: 4}},
+	}
+	for block, amendments := range want {
+		source.putReceiptGasAmendments(block, amendments)
+	}
+
+	var out bytes.Buffer
+	require.NoError(t, source.ExportReceiptGasAmendments(t.Context(), &out, 0))
+
+	target := cachedStore()
+	require.NoError(t, target.ImportReceiptGasAmendments(&out))
+	for block, amendments := range want {
+		require.Equal(t, amendments, target.getReceiptGasAmendments(block), "block %d", block)
+	}
+	require.Nil(t, target.getReceiptGasAmendments(2))
+}
+
+func TestStore_ImportReceiptGasAmendments_StoresNothingForEmptyStream(t *testing.T) {
+	store, _, _ := storeTableLogMocks(t)
+
+	// The mocked table and logger fail the test on any call.
+	require.NoError(t, store.ImportReceiptGasAmendments(bytes.NewReader(nil)))
+}
+
+func TestStore_ImportReceiptGasAmendments_ReturnsDecodeError(t *testing.T) {
+	logger.SetTestMode(t)
+	store := cachedStore()
+
+	err := store.ImportReceiptGasAmendments(bytes.NewReader([]byte{1, 2, 3}))
+	require.ErrorContains(t, err, "failed to decode receipt gas amendments")
+}
+
+func TestStore_ExportReceiptGasAmendments_ReturnsContextError(t *testing.T) {
+	logger.SetTestMode(t)
+	store := cachedStore()
+	store.putReceiptGasAmendments(1, []ReceiptGasAmendment{{Index: 0, GasExcess: 1}})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	var out bytes.Buffer
+	require.ErrorIs(t, store.ExportReceiptGasAmendments(ctx, &out, 0), context.Canceled)
+	require.Zero(t, out.Len())
+}
+
+func TestStore_ExportReceiptGasAmendments_ReturnsWriteError(t *testing.T) {
+	logger.SetTestMode(t)
+	store := cachedStore()
+	store.putReceiptGasAmendments(1, []ReceiptGasAmendment{{Index: 0, GasExcess: 1}})
+
+	injectedErr := errors.New("write error")
+	err := store.ExportReceiptGasAmendments(t.Context(), failingWriter{injectedErr}, 0)
+	require.ErrorIs(t, err, injectedErr)
+}
+
+func TestStore_ExportReceiptGasAmendments_ReturnsDecodeError(t *testing.T) {
+	logger.SetTestMode(t)
+	store := cachedStore()
+	require.NoError(t, store.table.ReceiptGasAmendments.Put(idx.Block(1).Bytes(), []byte{1, 2, 3}))
+
+	var out bytes.Buffer
+	err := store.ExportReceiptGasAmendments(t.Context(), &out, 0)
+	require.ErrorContains(t, err, "failed to decode receipt gas amendments of block 1")
+}
+
 func TestStore_GetReceipts_AmendsGasLeakedByFailedBundles(t *testing.T) {
 	logger.SetTestMode(t)
 
@@ -321,6 +422,14 @@ func deriveGasUsed(cumulative []uint64) []uint64 {
 		prev = c
 	}
 	return gasUsed
+}
+
+type failingWriter struct {
+	err error
+}
+
+func (w failingWriter) Write([]byte) (int, error) {
+	return 0, w.err
 }
 
 func storeTableLogMocks(t *testing.T) (*Store, *MockStore, *logger.MockLogger) {

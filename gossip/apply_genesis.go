@@ -84,6 +84,15 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 		return true
 	})
 
+	// write receipt gas amendments, which block records do not carry
+	if g.ReceiptGasAmendments != nil {
+		if reader, err := g.ReceiptGasAmendments.GetReader(); err != nil {
+			s.Log.Info("Receipt gas amendments not available in the genesis", "err", err)
+		} else if err := s.evm.ImportReceiptGasAmendments(reader); err != nil {
+			return fmt.Errorf("failed to import receipt gas amendments from genesis; %w", err)
+		}
+	}
+
 	// write EVM items
 	liveReader, err := g.FwsLiveSection.GetReader()
 	if err != nil {

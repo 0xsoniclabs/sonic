@@ -17,6 +17,10 @@
 package evmstore
 
 import (
+	"context"
+	"fmt"
+	"io"
+
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -30,7 +34,8 @@ import (
 // block, the difference between the live GasUsed of each receipt and the one
 // derived from storage, so that it can be subtracted after deriving.
 //
-// Consensus data, including the receipts root, is not affected.
+// Consensus data, including the receipts root, is not affected. The amendments
+// are carried in genesis files as a stream of receiptGasAmendmentsRecord.
 //
 // In the underlying table, the following keys are used:
 //  - key: <blockNum> -> rlp([]ReceiptGasAmendment)  // only for blocks with amendments
@@ -89,6 +94,50 @@ func (s *Store) applyReceiptGasAmendments(n idx.Block, receipts types.Receipts) 
 			continue
 		}
 		receipts[a.Index].GasUsed -= a.GasExcess
+	}
+}
+
+// receiptGasAmendmentsRecord is the genesis encoding of the gas amendments of
+// a block.
+type receiptGasAmendmentsRecord struct {
+	Block      idx.Block
+	Amendments []ReceiptGasAmendment
+}
+
+// ExportReceiptGasAmendments writes the gas amendments of all blocks from the
+// given one onwards to out, in ascending block order.
+func (s *Store) ExportReceiptGasAmendments(ctx context.Context, out io.Writer, from idx.Block) error {
+	it := s.table.ReceiptGasAmendments.NewIterator(nil, from.Bytes())
+	defer it.Release()
+	for it.Next() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		record := receiptGasAmendmentsRecord{Block: idx.BytesToBlock(it.Key())}
+		if err := rlp.DecodeBytes(it.Value(), &record.Amendments); err != nil {
+			return fmt.Errorf("failed to decode receipt gas amendments of block %d; %w", record.Block, err)
+		}
+		if err := rlp.Encode(out, &record); err != nil {
+			return err
+		}
+	}
+	return it.Error()
+}
+
+// ImportReceiptGasAmendments stores the gas amendments read from a stream
+// written by ExportReceiptGasAmendments.
+func (s *Store) ImportReceiptGasAmendments(in io.Reader) error {
+	stream := rlp.NewStream(in, 0)
+	for {
+		var record receiptGasAmendmentsRecord
+		err := stream.Decode(&record)
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("failed to decode receipt gas amendments; %w", err)
+		}
+		s.putReceiptGasAmendments(record.Block, record.Amendments)
 	}
 }
 
