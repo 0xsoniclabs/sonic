@@ -549,6 +549,12 @@ func consensusCallbackBeginBlockFn(
 					store.SetBlockEpochState(bs, es)
 					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
 
+					// The state now reflects exactly this block; remember the total
+					// supply for the sonic_totalSupply RPC.
+					if err := store.EvmStore().UpdateTotalSupply(blockCtx.Idx); err != nil {
+						log.Error("Failed to update total supply", "block", blockCtx.Idx, "err", err)
+					}
+
 					// Update the metrics touched during block processing
 					executionTime := time.Since(executionStart)
 					blockExecutionTimer.Update(executionTime)

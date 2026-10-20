@@ -18,6 +18,7 @@ import (
 	ethapi "github.com/0xsoniclabs/sonic/api/ethapi"
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	bundle "github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	evmstore "github.com/0xsoniclabs/sonic/gossip/evmstore"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
 	state "github.com/0xsoniclabs/sonic/inter/state"
@@ -408,6 +409,21 @@ func (m *MockBundleApiBackend) GetReceiptsByNumber(ctx context.Context, number r
 func (mr *MockBundleApiBackendMockRecorder) GetReceiptsByNumber(ctx, number any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetReceiptsByNumber", reflect.TypeOf((*MockBundleApiBackend)(nil).GetReceiptsByNumber), ctx, number)
+}
+
+// GetTotalSupply mocks base method.
+func (m *MockBundleApiBackend) GetTotalSupply() (*evmstore.TotalSupplySnapshot, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTotalSupply")
+	ret0, _ := ret[0].(*evmstore.TotalSupplySnapshot)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTotalSupply indicates an expected call of GetTotalSupply.
+func (mr *MockBundleApiBackendMockRecorder) GetTotalSupply() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTotalSupply", reflect.TypeOf((*MockBundleApiBackend)(nil).GetTotalSupply))
 }
 
 // GetTransaction mocks base method.

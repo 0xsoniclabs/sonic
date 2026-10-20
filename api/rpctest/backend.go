@@ -37,6 +37,7 @@ import (
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -395,6 +396,11 @@ func (b *fakeBackend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
 // UnprotectedAllowed returns false — only EIP-155 protected transactions allowed.
 func (b *fakeBackend) UnprotectedAllowed() bool {
 	return false
+}
+
+// GetTotalSupply is not supported by the fake backend.
+func (b *fakeBackend) GetTotalSupply() (*evmstore.TotalSupplySnapshot, error) {
+	return nil, evmstore.ErrTotalSupplyUnavailable
 }
 
 // GetBundleExecutionInfo returns nil — not used in fake backend tests.

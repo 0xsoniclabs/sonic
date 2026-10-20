@@ -19,6 +19,7 @@ package sonicapi
 import (
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -32,4 +33,8 @@ type BundleApiBackend interface {
 	// GetBundleExecutionInfo returns information about the execution of a transaction bundle, if available.
 	// If the bundle is unknown, it returns nil.
 	GetBundleExecutionInfo(common.Hash) *bundle.ExecutionInfo
+
+	// GetTotalSupply returns the total supply and the balances of the burn
+	// addresses, all taken from the state of the last processed block.
+	GetTotalSupply() (*evmstore.TotalSupplySnapshot, error)
 }

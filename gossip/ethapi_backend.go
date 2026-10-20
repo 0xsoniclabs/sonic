@@ -641,6 +641,10 @@ func (b *EthAPIBackend) GetUpgradeHeights() []opera.UpgradeHeight {
 	return b.svc.store.GetUpgradeHeights()
 }
 
+func (b *EthAPIBackend) GetTotalSupply() (*evmstore.TotalSupplySnapshot, error) {
+	return b.svc.store.evm.GetTotalSupply()
+}
+
 func (b *EthAPIBackend) GetBundleExecutionInfo(hash common.Hash) *bundle.ExecutionInfo {
 	return b.svc.store.GetBundleExecutionInfo(hash)
 }

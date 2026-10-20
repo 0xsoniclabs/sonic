@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/sonic/logger"
@@ -60,6 +61,9 @@ type Store struct {
 	parameters  carmen.Parameters
 	carmenState carmen.State
 	liveStateDb carmen.StateDB
+
+	// totalSupply is the snapshot of the last processed block, see UpdateTotalSupply
+	totalSupply atomic.Pointer[TotalSupplySnapshot]
 
 	processedBundleStore ProcessedBundleStore
 }

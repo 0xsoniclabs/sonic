@@ -587,6 +587,16 @@ func (s *Service) Start() error {
 		return errors.New("fullsync isn't possible because state root is missing")
 	}
 
+	// Initialize the total supply of the last block. The first computation on a
+	// database without a stored total supply traverses the whole state.
+	s.Log.Info("Initializing total supply, this may take a long time if it is computed for the first time", "block", blockState.LastBlock.Idx)
+	totalSupplyStart := time.Now()
+	if err := s.store.evm.UpdateTotalSupply(blockState.LastBlock.Idx); err != nil {
+		s.Log.Warn("Failed to initialize total supply", "err", err, "elapsed", time.Since(totalSupplyStart).Round(time.Millisecond))
+	} else {
+		s.Log.Info("Total supply initialized", "block", blockState.LastBlock.Idx, "elapsed", time.Since(totalSupplyStart).Round(time.Millisecond))
+	}
+
 	// start notification feeder
 	s.feed.Start(s.store.evm)
 
