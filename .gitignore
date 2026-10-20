@@ -60,3 +60,4 @@ testnet.g
 .#*
 
 **/coverage.txt
+**/coverage.out
