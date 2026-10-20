@@ -35,11 +35,13 @@ import (
 // In the underlying table, the following keys are used:
 //  - key: <blockNum> -> rlp([]ReceiptGasAmendment)  // only for blocks with amendments
 
-// ReceiptGasAmendment corrects the GasUsed derived from storage for the
-// receipt at Index by subtracting Gas from it.
+// ReceiptGasAmendment corrects the GasUsed derived from storage for a receipt.
 type ReceiptGasAmendment struct {
+	// Index is the position of the amended receipt within its block.
 	Index uint32
-	Gas   uint64
+	// GasExcess is the gas wrongly attributed to the receipt, to be subtracted
+	// from its derived GasUsed.
+	GasExcess uint64
 }
 
 // setReceiptGasAmendments stores the gas amendments needed to restore the
@@ -49,18 +51,15 @@ func (s *Store) setReceiptGasAmendments(n idx.Block, receipts types.Receipts) {
 	if len(amendments) == 0 {
 		return
 	}
-	s.Log.Warn("Block gas counter leaked by failed bundle", "block", n, "amendments", amendments)
+	s.Log.Warn("Receipt gas differs from cumulative gas", "block", n, "amendments", amendments)
 	s.putReceiptGasAmendments(n, amendments)
 }
 
 // putReceiptGasAmendments stores the given gas amendments for block n.
 func (s *Store) putReceiptGasAmendments(n idx.Block, amendments []ReceiptGasAmendment) {
-	buf, err := rlp.EncodeToBytes(amendments)
-	if err != nil {
-		s.Log.Crit("failed to encode receipt gas amendments", "error", err)
-	}
+	buf, _ := rlp.EncodeToBytes(amendments)
 	if err := s.table.ReceiptGasAmendments.Put(n.Bytes(), buf); err != nil {
-		s.Log.Crit("failed to store receipt gas amendments", "error", err)
+		s.Log.Crit("Failed to store receipt gas amendments", "err", err)
 	}
 }
 
@@ -69,14 +68,14 @@ func (s *Store) putReceiptGasAmendments(n idx.Block, amendments []ReceiptGasAmen
 func (s *Store) getReceiptGasAmendments(n idx.Block) []ReceiptGasAmendment {
 	buf, err := s.table.ReceiptGasAmendments.Get(n.Bytes())
 	if err != nil {
-		s.Log.Crit("failed to get receipt gas amendments", "error", err)
+		s.Log.Crit("Failed to get receipt gas amendments", "err", err)
 	}
 	if buf == nil {
 		return nil
 	}
 	var amendments []ReceiptGasAmendment
 	if err := rlp.DecodeBytes(buf, &amendments); err != nil {
-		s.Log.Crit("failed to decode receipt gas amendments", "error", err)
+		s.Log.Crit("Failed to decode receipt gas amendments", "err", err)
 	}
 	return amendments
 }
@@ -89,7 +88,7 @@ func (s *Store) applyReceiptGasAmendments(n idx.Block, receipts types.Receipts) 
 		if int(a.Index) >= len(receipts) {
 			continue
 		}
-		receipts[a.Index].GasUsed -= a.Gas
+		receipts[a.Index].GasUsed -= a.GasExcess
 	}
 }
 
@@ -101,7 +100,7 @@ func findReceiptGasAmendments(receipts types.Receipts) []ReceiptGasAmendment {
 	var prev uint64
 	for i, r := range receipts {
 		if leaked := r.CumulativeGasUsed - prev - r.GasUsed; leaked != 0 {
-			amendments = append(amendments, ReceiptGasAmendment{Index: uint32(i), Gas: leaked})
+			amendments = append(amendments, ReceiptGasAmendment{Index: uint32(i), GasExcess: leaked})
 		}
 		prev = r.CumulativeGasUsed
 	}
