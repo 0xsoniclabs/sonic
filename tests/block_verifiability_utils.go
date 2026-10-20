@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"os"
 	"testing"
+	"time"
 
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/amount"
@@ -131,6 +132,8 @@ func VerifyBlocks(
 type State struct {
 	db               carmen.StateDB
 	blockHashHistory *blockHashHistory
+	// processTime accumulates the time spent processing transactions in ApplyBlock.
+	processTime time.Duration
 }
 
 // StateParameters is a configuration struct for creating a new State instance.
@@ -265,6 +268,7 @@ func (s *State) ApplyBlock(
 
 	s.db.BeginBlock()
 	var usedGas uint64
+	start := time.Now()
 	processed := processor.Process(
 		evmBlock,
 		stateDb,
@@ -275,6 +279,7 @@ func (s *State) ApplyBlock(
 		nil,
 		math.MaxUint64, // the blocks have already been produced, the size limit is not relevant for the replay
 	).ProcessedTransactions
+	s.processTime += time.Since(start)
 
 	receipts := types.Receipts{}
 	for i, cur := range processed {

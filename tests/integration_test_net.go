@@ -205,6 +205,9 @@ type IntegrationTestNetOptions struct {
 	// will not be saved into the toml file, modifications will be ignored.
 	// Zero value means no modification.
 	ModifyConfig func(*config.Config)
+	// ModifyRules allows the caller to modify the network rules of the JSON
+	// genesis. The fake genesis does not support it.
+	ModifyRules func(*opera.Rules)
 	// Accounts to be deployed with the genesis.
 	Accounts []makefakegenesis.Account
 	// SkipCleanUp indicates whether the network should add its stop function
@@ -359,6 +362,8 @@ func StartIntegrationTestNetWithFakeGenesis(
 	require.NoError(t, err, "failed to validate and sanitize options")
 	require.Equal(t, 0, len(effectiveOptions.Accounts),
 		"fake genesis does not support custom accounts")
+	require.Nil(t, effectiveOptions.ModifyRules,
+		"fake genesis does not support modifying rules")
 
 	var upgrades string
 	if *effectiveOptions.Upgrades == opera.GetSonicUpgrades() {
@@ -433,6 +438,10 @@ func StartIntegrationTestNetWithJsonGenesis(
 	// start stalling if the bootstrap phase takes longer than StallThreshold,
 	// this can prevent consensus from being formed.
 	jsonGenesis.Rules.Emitter.StallThreshold = inter.Timestamp(1 * time.Hour)
+
+	if effectiveOptions.ModifyRules != nil {
+		effectiveOptions.ModifyRules(&jsonGenesis.Rules)
+	}
 
 	encoded, err := json.MarshalIndent(jsonGenesis, "", "  ")
 	require.NoError(t, err, "failed to marshal genesis json")

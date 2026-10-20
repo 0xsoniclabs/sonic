@@ -36,6 +36,8 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/dag"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/Fantom-foundation/lachesis-base/kvdb/flushable"
+	"github.com/Fantom-foundation/lachesis-base/kvdb/memorydb"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -172,7 +174,13 @@ func newTestEnvWithUpgrades(
 	upgrades opera.Upgrades,
 	tb testing.TB,
 ) *testEnv {
-	store := newInMemoryStoreWithGenesisData(tb, upgrades, validatorsNum, firstEpoch)
+	return newTestEnvWithStore(newInMemoryStoreWithGenesisData(tb, upgrades, validatorsNum, firstEpoch), tb)
+}
+
+// newTestEnvWithStore starts a test environment on the given store, with an
+// emitter for each of its validators.
+func newTestEnvWithStore(store *Store, tb testing.TB) *testEnv {
+	validatorsNum := store.GetValidators().Len()
 
 	// install blockProc callbacks
 	env := &testEnv{
@@ -240,6 +248,17 @@ func newInMemoryStoreWithGenesisData(
 	firstEpoch idx.Epoch,
 ) *Store {
 	tb.Helper()
+	return newInMemoryStoreWithGenesisDataAndConfig(tb, upgrades, numValidators, firstEpoch, MemTestStoreConfig(tb.TempDir()))
+}
+
+func newInMemoryStoreWithGenesisDataAndConfig(
+	tb testing.TB,
+	upgrades opera.Upgrades,
+	numValidators idx.Validator,
+	firstEpoch idx.Epoch,
+	cfg StoreConfig,
+) *Store {
+	tb.Helper()
 	require := require.New(tb)
 	rules := opera.FakeNetRules(upgrades)
 	rules.Epochs.MaxEpochDuration = inter.Timestamp(maxEpochDuration)
@@ -257,7 +276,7 @@ func newInMemoryStoreWithGenesisData(
 	require.NoError(err)
 	genesis := genStore.Genesis()
 
-	store, err := NewMemStore(tb)
+	store, err := NewStore(flushable.NewSyncedPool(memorydb.NewProducer(""), []byte{0}), cfg)
 	tb.Cleanup(func() {
 		if err := store.Close(); err != nil {
 			tb.Fatalf("failed to close test store: %v", err)
