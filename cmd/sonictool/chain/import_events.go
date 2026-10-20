@@ -69,7 +69,7 @@ func EventsImport(ctx *cli.Context, files ...string) error {
 	sigCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	node, svc, nodeClose, err := config.MakeNode(sigCtx, ctx, cfg)
+	node, svc, nodeClose, err := config.MakeNode(sigCtx, cancel, ctx, cfg)
 	if err != nil {
 		return err
 	}

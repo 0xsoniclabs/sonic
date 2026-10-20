@@ -46,14 +46,15 @@ func TestUnlockFlag(t *testing.T) {
 	initFakenetDatadir(datadir, 1)
 	cli := exec(t,
 		"--fakenet", "0/1", "--datadir", datadir, "--nat", "none", "--nodiscover", "--maxpeers", "0", "--port", "0",
-		"--unlock", "f466859ead1932d743d622cb74fc058882e8648a",
-		"--exitwhensynced.epoch", "1")
+		"--unlock", "f466859ead1932d743d622cb74fc058882e8648a")
 
 	cli.Expect(`
 Unlocking account f466859ead1932d743d622cb74fc058882e8648a | Attempt 1/3
 !! Unsupported terminal, password will be echoed.
 Passphrase: {{.InputLine "foobar"}}
 `)
+	waitForStderr(t, cli, "=0xf466859eAD1932D743d622CB74FC058882E8648A", 60*time.Second)
+	cli.Interrupt()
 	cli.ExpectExit()
 
 	wantMessages := []string{
@@ -96,8 +97,7 @@ func TestUnlockFlagMultiIndex(t *testing.T) {
 	initFakenetDatadir(datadir, 1)
 	cli := exec(t,
 		"--fakenet", "0/1", "--datadir", datadir, "--nat", "none", "--nodiscover", "--maxpeers", "0", "--port", "0",
-		"--unlock", "7EF5A6135f1FD6a02593eEdC869c6D41D934aef8,289d485D9771714CCe91D3393D764E1311907ACc",
-		"--exitwhensynced.epoch", "1")
+		"--unlock", "7EF5A6135f1FD6a02593eEdC869c6D41D934aef8,289d485D9771714CCe91D3393D764E1311907ACc")
 
 	cli.Expect(`
 Unlocking account 7EF5A6135f1FD6a02593eEdC869c6D41D934aef8 | Attempt 1/3
@@ -106,6 +106,8 @@ Passphrase: {{.InputLine "foobar"}}
 Unlocking account 289d485D9771714CCe91D3393D764E1311907ACc | Attempt 1/3
 Passphrase: {{.InputLine "foobar"}}
 `)
+	waitForStderr(t, cli, "=0x289d485D9771714CCe91D3393D764E1311907ACc", 60*time.Second)
+	cli.Interrupt()
 	cli.ExpectExit()
 
 	wantMessages := []string{
@@ -125,8 +127,10 @@ func TestUnlockFlagPasswordFile(t *testing.T) {
 	initFakenetDatadir(datadir, 1)
 	cli := exec(t,
 		"--fakenet", "0/1", "--datadir", datadir, "--nat", "none", "--nodiscover", "--maxpeers", "0", "--port", "0",
-		"--password", "testdata/passwords.txt", "--unlock", "7EF5A6135f1FD6a02593eEdC869c6D41D934aef8,289d485D9771714CCe91D3393D764E1311907ACc", "--exitwhensynced.epoch", "1")
+		"--password", "testdata/passwords.txt", "--unlock", "7EF5A6135f1FD6a02593eEdC869c6D41D934aef8,289d485D9771714CCe91D3393D764E1311907ACc")
 
+	waitForStderr(t, cli, "=0x289d485D9771714CCe91D3393D764E1311907ACc", 60*time.Second)
+	cli.Interrupt()
 	cli.ExpectExit()
 
 	wantMessages := []string{
@@ -164,7 +168,6 @@ func TestUnlockFlagAmbiguous(t *testing.T) {
 	cli := exec(t,
 		"--fakenet", "0/1", "--datadir", datadir, "--keystore", store, "--nat", "none", "--nodiscover", "--maxpeers", "0", "--port", "0",
 		"--unlock", "f466859ead1932d743d622cb74fc058882e8648a",
-		"--exitwhensynced.epoch", "1",
 		"--ipcdisable")
 
 	// Helper for the expect template, returns absolute keystore path.
@@ -184,6 +187,8 @@ Your passphrase unlocked keystore://{{keypath "1"}}
 In order to avoid this warning, you need to remove the following duplicate key files:
    keystore://{{keypath "2"}}
 `)
+	waitForStderr(t, cli, "=0xf466859eAD1932D743d622CB74FC058882E8648A", 60*time.Second)
+	cli.Interrupt()
 	cli.ExpectExit()
 
 	wantMessages := []string{

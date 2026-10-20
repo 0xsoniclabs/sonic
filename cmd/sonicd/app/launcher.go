@@ -296,7 +296,7 @@ func lachesisMainInternal(
 	sigCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	node, _, nodeClose, err := config.MakeNode(sigCtx, ctx, cfg)
+	node, _, nodeClose, err := config.MakeNode(sigCtx, cancel, ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize the node: %w", err)
 	}
@@ -348,7 +348,7 @@ func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error
 		// stop the node when the context is canceled
 		<-sigCtx.Done()
 		log.Info("Shutting down...")
-		if err := stack.Close(); err != nil {
+		if err := stack.Close(); err != nil && err != node.ErrNodeStopped {
 			log.Warn("Error during shutdown", "err", err)
 		}
 	}()

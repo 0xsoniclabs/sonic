@@ -47,7 +47,7 @@ var (
 	chainInfoGauge = metrics.GetOrRegisterGaugeInfo("chain/info", nil)
 )
 
-func MakeNode(sigCtx context.Context, ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(), error) {
+func MakeNode(sigCtx context.Context, stopNode context.CancelFunc, ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(), error) {
 	var success bool
 	var cleanup []func()
 	defer func() { // if the function fails, clean-up in defer, otherwise return cleaning function
@@ -163,10 +163,9 @@ func MakeNode(sigCtx context.Context, ctx *cli.Context, cfg *Config) (*node.Node
 		stop := ctx.GlobalIsSet(flags.ExitWhenAgeFlag.Name) && ctx.GlobalDuration(flags.ExitWhenAgeFlag.Name) >= time.Since(age)
 		stop = stop || ctx.GlobalIsSet(flags.ExitWhenEpochFlag.Name) && idx.Epoch(ctx.GlobalUint64(flags.ExitWhenEpochFlag.Name)) <= newEpoch
 		if stop {
-			go func() {
-				// do it in a separate thread to avoid deadlock
-				_ = stack.Close()
-			}()
+			// request the shutdown through the context, so it takes the same
+			// path as a signal; cancelling does not block, so no deadlock
+			stopNode()
 			return true
 		}
 		return false
