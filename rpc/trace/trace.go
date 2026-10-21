@@ -41,7 +41,6 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/rpc/core"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
 	"github.com/0xsoniclabs/sonic/txtrace"
@@ -433,22 +432,9 @@ func (a *api) traceCallExec(
 // contract is not written before the replay.
 func (a *api) block(ctx context.Context, ref dispatch.BlockRef) (*[]txtrace.ActionTrace, error) {
 	head := a.env.Chain.Head()
-	var blockNumber uint64
-	switch {
-	case ref.Number != nil:
-		n, err := a.env.Chain.Number(head, *ref.Number)
-		if err != nil {
-			return nil, err
-		}
-		blockNumber = n
-	case ref.Hash != nil:
-		n, ok := a.env.Core.BlockNumberByHash(*ref.Hash)
-		if !ok {
-			return nil, errors.New("block not found")
-		}
-		blockNumber = n
-	default:
-		return nil, errors.New("unknown header selector")
+	blockNumber, err := a.env.Chain.Resolve(head, ref)
+	if err != nil {
+		return nil, err
 	}
 
 	defer func(start time.Time) {
@@ -479,11 +465,11 @@ func (a *api) get(ctx context.Context, hash common.Hash, traceIndex []hexutil.Ui
 // traceTxHash looks for the block of this transaction hash and traces it.
 func (a *api) traceTxHash(ctx context.Context, hash common.Hash, traceIndex *[]hexutil.Uint) (*[]txtrace.ActionTrace, error) {
 	head := a.env.Chain.Head()
-	tx, blockNumber, _, err := a.env.Core.TxByHash(hash)
-	if err != nil && !errors.Is(err, core.ErrNotFound) {
+	tx, blockNumber, _, err := a.env.TxByHash(head, hash)
+	if err != nil {
 		return nil, fmt.Errorf("cannot get transaction %s: %v", hash.String(), err)
 	}
-	if err != nil || tx == nil || blockNumber > head.Number {
+	if tx == nil {
 		return nil, fmt.Errorf("transaction %s not found", hash.String())
 	}
 	block, err := a.env.BlockAt(head, blockNumber)
@@ -932,14 +918,14 @@ func addBlocksForProcessing(ctx context.Context, fromBlock, toBlock uint64, bloc
 // through here.
 func (a *api) parseFilterArguments(head dispatch.Head, args FilterArgs) (fromBlock, toBlock uint64, fromAddresses, toAddresses map[common.Address]struct{}, err error) {
 	if args.FromBlock != nil {
-		fromBlock, err = a.resolveBound(head, *args.FromBlock)
+		fromBlock, err = a.env.Chain.Resolve(head, *args.FromBlock)
 		if err != nil {
 			return 0, 0, nil, nil, err
 		}
 	}
 
 	if args.ToBlock != nil {
-		toBlock, err = a.resolveBound(head, *args.ToBlock)
+		toBlock, err = a.env.Chain.Resolve(head, *args.ToBlock)
 		if err != nil {
 			return 0, 0, nil, nil, err
 		}
@@ -964,22 +950,6 @@ func (a *api) parseFilterArguments(head dispatch.Head, args FilterArgs) (fromBlo
 		}
 	}
 	return fromBlock, toBlock, fromAddresses, toAddresses, nil
-}
-
-// resolveBound resolves the bound of a block range: tags to numbers, a hash to
-// the number of its block.
-func (a *api) resolveBound(head dispatch.Head, ref dispatch.BlockRef) (uint64, error) {
-	switch {
-	case ref.Number != nil:
-		return a.env.Chain.Number(head, *ref.Number)
-	case ref.Hash != nil:
-		n, ok := a.env.Core.BlockNumberByHash(*ref.Hash)
-		if !ok {
-			return 0, errors.New("block not found")
-		}
-		return n, nil
-	}
-	return 0, errors.New("unknown header selector")
 }
 
 // replayBlockWorker replays blocks in parallel and filters the replayed traces.

@@ -34,7 +34,7 @@ import (
 )
 
 // Handler serves one method. Methods registered with the typed helpers
-// (Add0 ... Add5) never see raw arguments; Handler is the form the dispatcher
+// (Add0 ... Add4) never see raw arguments; Handler is the form the dispatcher
 // stores them in.
 type Handler func(ctx context.Context, args Args) (any, error)
 
@@ -502,6 +502,3 @@ func (d *Dispatcher) Stop(grace time.Duration) {
 		d.tasks.Wait()
 	})
 }
-
-// Stopping reports whether Stop was called.
-func (d *Dispatcher) Stopping() bool { return d.stopping.Load() }

@@ -367,16 +367,16 @@ func isOsaka(env *Env, head dispatch.Head, ref dispatch.BlockRef, blockOverrides
 // reference. If the number or hash is invalid or does not exist, an error is
 // returned.
 func numberAndTime(env *Env, head dispatch.Head, ref dispatch.BlockRef) (uint64, uint64, error) {
-	var header *evmcore.EvmHeader
-	var err error
-
-	if ref.Number != nil {
-		header, err = env.HeaderByNumber(head, *ref.Number)
-	} else if ref.Hash != nil {
-		header, err = env.HeaderByHash(head, *ref.Hash)
-	} else {
+	n, err := env.Chain.Resolve(head, ref)
+	switch {
+	case errors.Is(err, dispatch.ErrNoSelector):
 		return 0, 0, errors.New("invalid block number or hash")
+	case errors.Is(err, dispatch.ErrUnknownHash):
+		return 0, 0, UnknownHashError(*ref.Hash)
+	case err != nil:
+		return 0, 0, errors.New("block does not exists")
 	}
+	header, err := env.HeaderAt(head, n)
 	if err != nil {
 		return 0, 0, err
 	}

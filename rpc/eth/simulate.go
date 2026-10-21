@@ -212,7 +212,7 @@ func (c *simDummyChain) Header(hash common.Hash, number uint64) *evmcore.EvmHead
 		}
 	}
 	// Fall back to the real chain.
-	header, err := c.env.HeaderByNumber(c.head, dispatch.BlockNumber(number))
+	header, err := c.env.HeaderAt(c.head, number)
 	if err != nil || header == nil || header.Hash != hash {
 		return nil
 	}

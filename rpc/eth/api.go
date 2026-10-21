@@ -130,61 +130,7 @@ func (a *API) syncing(context.Context) (any, error) {
 	}, nil
 }
 
-// -- block lookup, as the node's backend answered it --
-
-// blockAt returns the block with the number, nil if there is none.
-func (a *API) blockAt(head dispatch.Head, n uint64) (*evmcore.EvmBlock, error) {
-	if n > head.Number {
-		return nil, nil
-	}
-	block, err := a.core.Block(n)
-	if errors.Is(err, core.ErrNotFound) {
-		return nil, nil
-	}
-	return block, err
-}
-
-// headerAt returns the header of the block with the number, nil if there is none.
-func (a *API) headerAt(head dispatch.Head, n uint64) (*evmcore.EvmHeader, error) {
-	if n > head.Number {
-		return nil, nil
-	}
-	if n == head.Number && head.Header != nil {
-		return head.Header, nil
-	}
-	header, err := a.core.Header(n)
-	if errors.Is(err, core.ErrNotFound) {
-		return nil, nil
-	}
-	return header, err
-}
-
-// blockByNumber returns the block a number or tag names, nil if there is none.
-func (a *API) blockByNumber(head dispatch.Head, bn dispatch.BlockNumber) (*evmcore.EvmBlock, error) {
-	n, err := a.chain.Number(head, bn)
-	if err != nil {
-		return nil, nil
-	}
-	return a.blockAt(head, n)
-}
-
-// headerByNumber returns the header a number or tag names, nil if there is none.
-func (a *API) headerByNumber(head dispatch.Head, bn dispatch.BlockNumber) (*evmcore.EvmHeader, error) {
-	n, err := a.chain.Number(head, bn)
-	if err != nil {
-		return nil, nil
-	}
-	return a.headerAt(head, n)
-}
-
-// blockByHash returns the block with the hash, nil if there is none.
-func (a *API) blockByHash(head dispatch.Head, hash common.Hash) (*evmcore.EvmBlock, error) {
-	n, ok := a.core.BlockNumberByHash(hash)
-	if !ok {
-		return nil, nil
-	}
-	return a.blockAt(head, n)
-}
+// -- lookup of the receipts --
 
 // receiptsAt returns the receipts of a block; nil if the block is unknown.
 func (a *API) receiptsAt(n uint64) (types.Receipts, error) {
@@ -206,7 +152,7 @@ func (a *API) minGasPrice(head dispatch.Head) *big.Int { return a.env.MinGasPric
 
 func (a *API) getBlockByNumber(_ context.Context, number dispatch.BlockNumber, fullTx bool) (*evmcore.EvmBlockJson, error) {
 	head := a.chain.Head()
-	block, err := a.blockByNumber(head, number)
+	block, err := a.env.BlockByNumber(head, number)
 	if block == nil || err != nil {
 		return nil, err
 	}
@@ -215,7 +161,7 @@ func (a *API) getBlockByNumber(_ context.Context, number dispatch.BlockNumber, f
 
 func (a *API) getBlockByHash(_ context.Context, hash common.Hash, fullTx bool) (*evmcore.EvmBlockJson, error) {
 	head := a.chain.Head()
-	block, err := a.blockByHash(head, hash)
+	block, err := a.env.BlockByHash(head, hash)
 	if block == nil || err != nil {
 		return nil, err
 	}
@@ -234,7 +180,7 @@ func (a *API) marshalBlock(block *evmcore.EvmBlock, fullTx bool) (*evmcore.EvmBl
 // transactions of the block give: the headers are read with their blocks.
 func (a *API) getHeaderByNumber(_ context.Context, number dispatch.BlockNumber) (*evmcore.EvmHeaderJson, error) {
 	head := a.chain.Head()
-	block, err := a.blockByNumber(head, number)
+	block, err := a.env.BlockByNumber(head, number)
 	if block == nil || err != nil {
 		return nil, err
 	}
@@ -245,9 +191,9 @@ func (a *API) getHeaderByHash(_ context.Context, hash common.Hash) (*evmcore.Evm
 	head := a.chain.Head()
 	n, ok := a.core.BlockNumberByHash(hash)
 	if !ok {
-		return nil, fmt.Errorf("block with hash %s not found", hash.String())
+		return nil, exec.UnknownHashError(hash)
 	}
-	block, err := a.blockAt(head, n)
+	block, err := a.env.BlockAt(head, n)
 	if block == nil || err != nil {
 		return nil, err
 	}
@@ -264,7 +210,7 @@ func (a *API) headerWithReceipts(header *evmcore.EvmHeader) (*evmcore.EvmHeaderJ
 
 func (a *API) getBlockTransactionCountByNumber(_ context.Context, blockNr dispatch.BlockNumber) (*hexutil.Uint, error) {
 	head := a.chain.Head()
-	if block, _ := a.blockByNumber(head, blockNr); block != nil {
+	if block, _ := a.env.BlockByNumber(head, blockNr); block != nil {
 		n := hexutil.Uint(len(block.Transactions))
 		return &n, nil
 	}
@@ -273,7 +219,7 @@ func (a *API) getBlockTransactionCountByNumber(_ context.Context, blockNr dispat
 
 func (a *API) getBlockTransactionCountByHash(_ context.Context, blockHash common.Hash) (*hexutil.Uint, error) {
 	head := a.chain.Head()
-	if block, _ := a.blockByHash(head, blockHash); block != nil {
+	if block, _ := a.env.BlockByHash(head, blockHash); block != nil {
 		n := hexutil.Uint(len(block.Transactions))
 		return &n, nil
 	}
@@ -283,17 +229,17 @@ func (a *API) getBlockTransactionCountByHash(_ context.Context, blockHash common
 // Uncles do not exist: every block has none.
 
 func (a *API) getUncleByBlockNumberAndIndex(_ context.Context, blockNr dispatch.BlockNumber, _ hexutil.Uint) (map[string]any, error) {
-	_, err := a.blockByNumber(a.chain.Head(), blockNr)
+	_, err := a.env.BlockByNumber(a.chain.Head(), blockNr)
 	return nil, err
 }
 
 func (a *API) getUncleByBlockHashAndIndex(_ context.Context, blockHash common.Hash, _ hexutil.Uint) (map[string]any, error) {
-	_, err := a.blockByHash(a.chain.Head(), blockHash)
+	_, err := a.env.BlockByHash(a.chain.Head(), blockHash)
 	return nil, err
 }
 
 func (a *API) getUncleCountByBlockNumber(_ context.Context, blockNr dispatch.BlockNumber) (*hexutil.Uint, error) {
-	if block, _ := a.blockByNumber(a.chain.Head(), blockNr); block != nil {
+	if block, _ := a.env.BlockByNumber(a.chain.Head(), blockNr); block != nil {
 		n := hexutil.Uint(noUncles)
 		return &n, nil
 	}
@@ -301,7 +247,7 @@ func (a *API) getUncleCountByBlockNumber(_ context.Context, blockNr dispatch.Blo
 }
 
 func (a *API) getUncleCountByBlockHash(_ context.Context, blockHash common.Hash) (*hexutil.Uint, error) {
-	if block, _ := a.blockByHash(a.chain.Head(), blockHash); block != nil {
+	if block, _ := a.env.BlockByHash(a.chain.Head(), blockHash); block != nil {
 		n := hexutil.Uint(noUncles)
 		return &n, nil
 	}
@@ -311,55 +257,42 @@ func (a *API) getUncleCountByBlockHash(_ context.Context, blockHash common.Hash)
 // -- transactions --
 
 func (a *API) getTransactionByBlockNumberAndIndex(_ context.Context, blockNr dispatch.BlockNumber, index hexutil.Uint) (*RPCTransaction, error) {
-	if block, _ := a.blockByNumber(a.chain.Head(), blockNr); block != nil {
+	if block, _ := a.env.BlockByNumber(a.chain.Head(), blockNr); block != nil {
 		return newRPCTransactionFromBlockIndex(block, uint64(index), a.bigChainID()), nil
 	}
 	return nil, nil
 }
 
 func (a *API) getTransactionByBlockHashAndIndex(_ context.Context, blockHash common.Hash, index hexutil.Uint) (*RPCTransaction, error) {
-	if block, _ := a.blockByHash(a.chain.Head(), blockHash); block != nil {
+	if block, _ := a.env.BlockByHash(a.chain.Head(), blockHash); block != nil {
 		return newRPCTransactionFromBlockIndex(block, uint64(index), a.bigChainID()), nil
 	}
 	return nil, nil
 }
 
 func (a *API) getRawTransactionByBlockNumberAndIndex(_ context.Context, blockNr dispatch.BlockNumber, index hexutil.Uint) (hexutil.Bytes, error) {
-	if block, _ := a.blockByNumber(a.chain.Head(), blockNr); block != nil {
+	if block, _ := a.env.BlockByNumber(a.chain.Head(), blockNr); block != nil {
 		return newRPCRawTransactionFromBlockIndex(block, uint64(index)), nil
 	}
 	return nil, nil
 }
 
 func (a *API) getRawTransactionByBlockHashAndIndex(_ context.Context, blockHash common.Hash, index hexutil.Uint) (hexutil.Bytes, error) {
-	if block, _ := a.blockByHash(a.chain.Head(), blockHash); block != nil {
+	if block, _ := a.env.BlockByHash(a.chain.Head(), blockHash); block != nil {
 		return newRPCRawTransactionFromBlockIndex(block, uint64(index)), nil
 	}
 	return nil, nil
 }
 
-// txByHash looks a transaction up in the chain; nil if it is unknown.
-// Transactions of blocks the module does not serve yet are unknown.
-func (a *API) txByHash(head dispatch.Head, hash common.Hash) (tx *types.Transaction, block, index uint64, err error) {
-	tx, block, index, err = a.core.TxByHash(hash)
-	if errors.Is(err, core.ErrNotFound) || (err == nil && (tx == nil || block > head.Number)) {
-		return nil, 0, 0, nil
-	}
-	if err != nil {
-		return nil, 0, 0, err
-	}
-	return tx, block, index, nil
-}
-
 func (a *API) getTransactionByHash(_ context.Context, hash common.Hash) (*RPCTransaction, error) {
 	head := a.chain.Head()
 	// Try to return an already finalized transaction.
-	tx, blockNumber, index, err := a.txByHash(head, hash)
+	tx, blockNumber, index, err := a.env.TxByHash(head, hash)
 	if err != nil {
 		return nil, err
 	}
 	if tx != nil {
-		header, err := a.headerAt(head, blockNumber)
+		header, err := a.env.HeaderAt(head, blockNumber)
 		if header == nil || err != nil {
 			return nil, err
 		}
@@ -375,7 +308,7 @@ func (a *API) getTransactionByHash(_ context.Context, hash common.Hash) (*RPCTra
 
 func (a *API) getRawTransactionByHash(_ context.Context, hash common.Hash) (hexutil.Bytes, error) {
 	head := a.chain.Head()
-	tx, _, _, err := a.txByHash(head, hash)
+	tx, _, _, err := a.env.TxByHash(head, hash)
 	if err != nil {
 		return nil, err
 	}
@@ -390,11 +323,11 @@ func (a *API) getRawTransactionByHash(_ context.Context, hash common.Hash) (hexu
 
 func (a *API) getTransactionReceipt(_ context.Context, hash common.Hash) (map[string]any, error) {
 	head := a.chain.Head()
-	tx, blockNumber, index, err := a.txByHash(head, hash)
+	tx, blockNumber, index, err := a.env.TxByHash(head, hash)
 	if tx == nil || err != nil {
 		return nil, err
 	}
-	header, err := a.headerAt(head, blockNumber)
+	header, err := a.env.HeaderAt(head, blockNumber)
 	if header == nil || err != nil {
 		return nil, err
 	}
@@ -411,37 +344,27 @@ func (a *API) getTransactionReceipt(_ context.Context, hash common.Hash) (map[st
 func (a *API) getBlockReceipts(_ context.Context, ref dispatch.BlockRef) ([]map[string]any, error) {
 	head := a.chain.Head()
 
-	var (
-		number uint64
-		header *evmcore.EvmHeader
-	)
+	var header *evmcore.EvmHeader
+	number, err := a.chain.Resolve(head, ref)
 	switch {
-	case ref.Number != nil:
-		n, err := a.chain.Number(head, *ref.Number)
-		if err != nil {
-			return nil, nil
-		}
-		number = n
-		if header, err = a.headerAt(head, n); header == nil || err != nil {
+	case err == nil:
+		if header, err = a.env.HeaderAt(head, number); header == nil || err != nil {
 			return nil, err
 		}
-	case ref.Hash != nil:
-		n, ok := a.core.BlockNumberByHash(*ref.Hash)
-		if !ok {
-			return nil, fmt.Errorf("block with hash %s not found", ref.Hash.String())
-		}
-		number = n
-		var err error
-		if header, err = a.headerAt(head, n); header == nil || err != nil {
-			return nil, err
-		}
+	case errors.Is(err, dispatch.ErrNoSelector):
+		// As the reference does, a reference without number and hash reads
+		// the receipts of block 0.
+	case errors.Is(err, dispatch.ErrUnknownHash):
+		return nil, exec.UnknownHashError(*ref.Hash)
+	default:
+		return nil, nil
 	}
 
 	receipts, err := a.receiptsAt(number)
 	if receipts == nil || err != nil {
 		return nil, err
 	}
-	block, err := a.blockAt(head, number)
+	block, err := a.env.BlockAt(head, number)
 	if err != nil {
 		return nil, err
 	}

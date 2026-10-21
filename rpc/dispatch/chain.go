@@ -209,8 +209,16 @@ func (c *Chain) Latest() uint64 { return c.Head().Number }
 // Earliest returns the first block that is not pruned.
 func (c *Chain) Earliest() uint64 { return c.cfg.HistoryPruningCutoff }
 
-// ErrInvalidTag is returned for a negative block number that is no known tag.
-var ErrInvalidTag = errors.New("invalid block number tag")
+// The errors of Resolve and Number. Callers that answer with their own message
+// compare against them.
+var (
+	// ErrInvalidTag is returned for a negative block number that is no known tag.
+	ErrInvalidTag = errors.New("invalid block number tag")
+	// ErrNoSelector is returned for a reference that holds neither number nor hash.
+	ErrNoSelector = errors.New("unknown header selector")
+	// ErrUnknownHash is returned for a hash the node has no block for.
+	ErrUnknownHash = errors.New("block not found")
+)
 
 // Number resolves a block number or tag against the given head: the latest,
 // pending, safe and finalized tags are the head, earliest is the pruning
@@ -225,6 +233,25 @@ func (c *Chain) Number(head Head, bn BlockNumber) (uint64, error) {
 		return 0, ErrInvalidTag
 	}
 	return uint64(bn), nil
+}
+
+// Resolve resolves the block a reference names to its number: a number or tag
+// as Number does, a hash to the number of its block. The number comes first if
+// the reference holds both, which its JSON form does not allow. The result is
+// not checked against the head. A reference without number and hash gives
+// ErrNoSelector, a hash of no known block ErrUnknownHash.
+func (c *Chain) Resolve(head Head, ref BlockRef) (uint64, error) {
+	switch {
+	case ref.Number != nil:
+		return c.Number(head, *ref.Number)
+	case ref.Hash != nil:
+		n, ok := c.src.BlockNumberByHash(*ref.Hash)
+		if !ok {
+			return 0, ErrUnknownHash
+		}
+		return n, nil
+	}
+	return 0, ErrNoSelector
 }
 
 // HeadConsumer receives the blocks that become the head, with their logs. The

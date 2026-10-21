@@ -354,18 +354,6 @@ func (d *Dispatcher) Subscribe(ctx context.Context, ns string, allowed bool, par
 	return encoded, nil
 }
 
-// HasSubscriptions reports whether the namespace has subscription kinds.
-func (d *Dispatcher) HasSubscriptions(ns string) bool {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	for key := range d.subs {
-		if strings.HasPrefix(key, ns+"/") {
-			return true
-		}
-	}
-	return false
-}
-
 // AddSub0 registers a subscription kind without parameters.
 func AddSub0(d *Dispatcher, ns, kind string, h func(ctx context.Context) (string, error)) {
 	d.AddSubscription(ns, kind, func(ctx context.Context, args Args) (any, error) {

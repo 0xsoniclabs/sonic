@@ -125,34 +125,3 @@ func Add4[A, B, C, D, R any](d *Dispatcher, name string, h func(ctx context.Cont
 		return h(ctx, a, b, c, d)
 	}, params...)
 }
-
-// Add5 registers a method with 5 parameters.
-func Add5[A, B, C, D, E, R any](d *Dispatcher, name string, h func(ctx context.Context, a A, b B, c C, d D, e E) (R, error), params ...string) {
-	checkArity(name, 5, params)
-	d.Add(name, func(ctx context.Context, args Args) (any, error) {
-		a, err := decode[A](args, 0)
-		if err != nil {
-			return nil, err
-		}
-		b, err := decode[B](args, 1)
-		if err != nil {
-			return nil, err
-		}
-		c, err := decode[C](args, 2)
-		if err != nil {
-			return nil, err
-		}
-		d, err := decode[D](args, 3)
-		if err != nil {
-			return nil, err
-		}
-		e, err := decode[E](args, 4)
-		if err != nil {
-			return nil, err
-		}
-		if err := args.Check(); err != nil {
-			return nil, err
-		}
-		return h(ctx, a, b, c, d, e)
-	}, params...)
-}

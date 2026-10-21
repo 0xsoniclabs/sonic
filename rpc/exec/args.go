@@ -74,9 +74,6 @@ type CallArgs struct {
 // Sender retrieves the transaction sender address.
 func (args *CallArgs) Sender() common.Address { return args.from() }
 
-// Calldata retrieves the transaction calldata. Input field is preferred.
-func (args *CallArgs) Calldata() []byte { return args.data() }
-
 // from retrieves the transaction sender address.
 func (args *CallArgs) from() common.Address {
 	if args.From == nil {

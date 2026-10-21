@@ -71,7 +71,7 @@ Alerts to define (MON6):
 
 ## Developer notes
 
-- Add a method with `dispatch.Add0` … `Add5`. A parameter name ending in `?` is
+- Add a method with `dispatch.Add0` … `Add4`. A parameter name ending in `?` is
   optional. Handlers get a context that carries the request deadline; check it in
   every loop.
 - Take the head once per request (`chain.Head()`) and use it for every part of

@@ -62,20 +62,27 @@ func (e *Env) BlockByHash(head dispatch.Head, hash common.Hash) (*evmcore.EvmBlo
 	return e.BlockAt(head, n)
 }
 
+// ErrNoBlockSelector is the answer of the methods that look a block up by a
+// reference that holds neither number nor hash.
+var ErrNoBlockSelector = errors.New("invalid arguments; neither block number nor hash specified")
+
+// FindBlock returns the block a reference names; nil if there is none. A
+// reference without number and hash is an error.
+func (e *Env) FindBlock(head dispatch.Head, ref dispatch.BlockRef) (*evmcore.EvmBlock, error) {
+	n, err := e.Chain.Resolve(head, ref)
+	if errors.Is(err, dispatch.ErrNoSelector) {
+		return nil, ErrNoBlockSelector
+	}
+	if err != nil {
+		return nil, nil
+	}
+	return e.BlockAt(head, n)
+}
+
 // BlockByRef returns the block a reference names, "header not found" if there
 // is none.
 func (e *Env) BlockByRef(head dispatch.Head, ref dispatch.BlockRef) (*evmcore.EvmBlock, error) {
-	var (
-		block *evmcore.EvmBlock
-		err   error
-	)
-	if ref.Hash != nil {
-		block, err = e.BlockByHash(head, *ref.Hash)
-	} else if ref.Number != nil {
-		block, err = e.BlockByNumber(head, *ref.Number)
-	} else {
-		return nil, errors.New("invalid arguments; neither block number nor hash specified")
-	}
+	block, err := e.FindBlock(head, ref)
 	if err != nil {
 		return nil, err
 	}

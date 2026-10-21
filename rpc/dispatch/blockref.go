@@ -102,9 +102,6 @@ func (bn BlockNumber) String() string {
 // Int64 returns the block number as int64.
 func (bn BlockNumber) Int64() int64 { return int64(bn) }
 
-// IsTag reports whether the number is one of the tags.
-func (bn BlockNumber) IsTag() bool { return bn < 0 }
-
 // IsLatest reports whether the number selects the head: latest, pending,
 // safe or finalized.
 func (bn BlockNumber) IsLatest() bool {

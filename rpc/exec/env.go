@@ -23,6 +23,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
 
@@ -109,35 +110,20 @@ func (e *Env) VMConfig(number uint64) (vm.Config, error) {
 	return opera.GetVmConfig(*rules), nil
 }
 
-// ResolveNumber resolves the block number or tag of a reference against the
-// head; a hash resolves to the number of its block. The second result is
-// false if the reference names no block of the served chain.
-func (e *Env) ResolveNumber(head dispatch.Head, ref dispatch.BlockRef) (uint64, bool) {
-	switch {
-	case ref.Number != nil:
-		n, err := e.Chain.Number(head, *ref.Number)
-		if err != nil || n > head.Number {
-			return 0, false
-		}
-		return n, true
-	case ref.Hash != nil:
-		n, ok := e.Core.BlockNumberByHash(*ref.Hash)
-		if !ok || n > head.Number {
-			return 0, false
-		}
-		return n, true
-	}
-	return 0, false
+// UnknownHashError is the answer of the methods that read a header by the hash
+// of a block the node does not have.
+func UnknownHashError(hash common.Hash) error {
+	return fmt.Errorf("block with hash %s not found", hash.String())
 }
 
-// header returns the header of a block of the served chain; nil if there is none.
-func (e *Env) header(head dispatch.Head, number uint64) (*evmcore.EvmHeader, error) {
+// HeaderAt returns the header of a block of the served chain; nil if there is
+// none. The header of the head is the shared one: it must not be modified.
+func (e *Env) HeaderAt(head dispatch.Head, number uint64) (*evmcore.EvmHeader, error) {
 	if number > head.Number {
 		return nil, nil
 	}
 	if number == head.Number && head.Header != nil {
-		h := *head.Header
-		return &h, nil
+		return head.Header, nil
 	}
 	h, err := e.Core.Header(number)
 	if errors.Is(err, core.ErrNotFound) {
@@ -146,41 +132,40 @@ func (e *Env) header(head dispatch.Head, number uint64) (*evmcore.EvmHeader, err
 	return h, err
 }
 
-// HeaderByNumber returns the header a number or tag names; nil if there is none.
-func (e *Env) HeaderByNumber(head dispatch.Head, bn dispatch.BlockNumber) (*evmcore.EvmHeader, error) {
-	n, err := e.Chain.Number(head, bn)
+// TxByHash looks a transaction up in the chain; nil if it is unknown.
+// Transactions of blocks the module does not serve yet are unknown.
+func (e *Env) TxByHash(head dispatch.Head, hash common.Hash) (tx *types.Transaction, block, index uint64, err error) {
+	tx, block, index, err = e.Core.TxByHash(hash)
+	if errors.Is(err, core.ErrNotFound) || (err == nil && (tx == nil || block > head.Number)) {
+		return nil, 0, 0, nil
+	}
 	if err != nil {
-		return nil, nil
+		return nil, 0, 0, err
 	}
-	return e.header(head, n)
-}
-
-// HeaderByHash returns the header with a hash; unknown hashes are an error.
-func (e *Env) HeaderByHash(head dispatch.Head, hash common.Hash) (*evmcore.EvmHeader, error) {
-	n, ok := e.Core.BlockNumberByHash(hash)
-	if !ok {
-		return nil, fmt.Errorf("block with hash %s not found", hash.String())
-	}
-	return e.header(head, n)
+	return tx, block, index, nil
 }
 
 // StateAt opens the archived state of the block a reference names, together
 // with the header of the block. The caller owns the state and must release it
-// exactly once, on the line after the call.
+// exactly once, on the line after the call. The header is the caller's too.
 func (e *Env) StateAt(head dispatch.Head, ref dispatch.BlockRef) (state.StateDB, *evmcore.EvmHeader, error) {
-	n, ok := e.ResolveNumber(head, ref)
-	if !ok {
-		if ref.Number == nil && ref.Hash == nil {
-			return nil, nil, errors.New("unknown header selector")
-		}
+	n, err := e.Chain.Resolve(head, ref)
+	if errors.Is(err, dispatch.ErrNoSelector) {
+		return nil, nil, err
+	}
+	if err != nil || n > head.Number {
 		return nil, nil, ErrHeaderNotFound
 	}
-	header, err := e.header(head, n)
+	header, err := e.HeaderAt(head, n)
 	if err != nil {
 		return nil, nil, err
 	}
 	if header == nil {
 		return nil, nil, ErrHeaderNotFound
+	}
+	if n == head.Number {
+		h := *header
+		header = &h
 	}
 	st, err := e.Core.State(n)
 	if errors.Is(err, core.ErrNotFound) {
@@ -217,7 +202,7 @@ func (e *Env) getHash(head dispatch.Head, ref *evmcore.EvmHeader) vm.GetHashFunc
 			return hash
 		}
 		var hash common.Hash
-		if header, err := e.header(head, n); header != nil && err == nil {
+		if header, err := e.HeaderAt(head, n); header != nil && err == nil {
 			hash = header.Hash
 		}
 		hashes[n] = hash

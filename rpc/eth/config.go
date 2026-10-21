@@ -130,7 +130,7 @@ func (a *API) makeConfigFromUpgrade(info core.ChainInfo, upgradeHeight opera.Upg
 		return nil, fmt.Errorf("could not make fork id, %v", err)
 	}
 
-	header, err := a.headerAt(a.chain.Head(), uint64(upgradeHeight.Height))
+	header, err := a.env.HeaderAt(a.chain.Head(), uint64(upgradeHeight.Height))
 	if err != nil {
 		return nil, fmt.Errorf("could not get block %d to determine activation time, %v", upgradeHeight.Height, err)
 	}

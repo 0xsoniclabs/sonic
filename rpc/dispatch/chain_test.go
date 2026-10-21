@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 
@@ -87,6 +88,34 @@ func TestChain_Number(t *testing.T) {
 	}
 	_, err := chain.Number(head, dispatch.BlockNumber(-9))
 	require.ErrorIs(t, err, dispatch.ErrInvalidTag)
+}
+
+func TestChain_Resolve(t *testing.T) {
+	fc := tests.NewFakeCore(t, tests.WithBlocks(9))
+	_, chain := startChain(t, fc)
+	head := chain.Head()
+
+	for name, test := range map[string]struct {
+		ref  dispatch.BlockRef
+		want uint64
+	}{
+		"latest":                {dispatch.RefLatest(), 9},
+		"earliest":              {dispatch.RefNumber(dispatch.EarliestBlockNumber), 0},
+		"number":                {dispatch.RefNumber(4), 4},
+		"number above the head": {dispatch.RefNumber(100), 100}, // not checked against the head here
+		"hash":                  {dispatch.RefHash(fc.BlockAt(5).Hash), 5},
+	} {
+		got, err := chain.Resolve(head, test.ref)
+		require.NoError(t, err, name)
+		require.Equal(t, test.want, got, name)
+	}
+
+	_, err := chain.Resolve(head, dispatch.RefNumber(-9))
+	require.ErrorIs(t, err, dispatch.ErrInvalidTag)
+	_, err = chain.Resolve(head, dispatch.RefHash(common.Hash{9}))
+	require.ErrorIs(t, err, dispatch.ErrUnknownHash)
+	_, err = chain.Resolve(head, dispatch.BlockRef{})
+	require.ErrorIs(t, err, dispatch.ErrNoSelector)
 }
 
 func TestChain_StalledConsumerIsDroppedAndTheHeadAdvances(t *testing.T) {
