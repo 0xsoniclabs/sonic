@@ -419,7 +419,7 @@ parallel after step 1; none may add to `Core`.
    `tests/rpcs/send_raw_transaction_sync_test.go`, bundle tests.
 4. **Events** (M1). WebSocket and IPC transports (the module takes both over and
    the proxy goes), head and tx subscriptions, filters, `eth_getLogs`; one step,
-   because a subscription cannot be forwarded. Gates: I9, I11, I14, I16, D4–D6,
+   because a subscription cannot be forwarded. Gates: I9, I11, I14, I16, I17, D4–D6,
    V8, F6, F7, P8; lakme filter family; subscription tests over WS and IPC.
 5. **Tracing** (M1). `debug_*`, `trace_*`, `debug_getRaw*` (ADR7). Read
    `stateAtTransaction` before deciding where the EIP-2935 write goes (section 6).
@@ -463,6 +463,7 @@ M1 and M2; Q, O and G gate M2 alone.
 | I14 | The module advances its served head only after that block's logs are enqueued for subscribers, so `eth_getLogs` at `latest`, `eth_blockNumber` and log subscriptions never disagree | U, I (`log_subscription_test.go`) |
 | I15 | The head loop never blocks on a consumer: bounded per-consumer queues, a lagging consumer is dropped | U (stalled consumer, head still advances) |
 | I16 | Work that depends only on the event is done once per event, not once per consumer: the `newHeads` notification (the block's receipts and the encoded header) is built once per block and shared by every subscription. The reference did this in its filter system; a handler per subscription that reads `Receipts` multiplies block loads by the subscriber count. The benchmarks of 7.2 do not cover subscriptions, so this is a rule | U (N subscribers, one `Receipts` call per block) |
+| I17 | A polled filter costs nothing per event, and their number is bounded. The events of a kind (block hashes, pool transactions, logs) are kept once, in a journal shared by the filters of that kind; a filter keeps only the position up to which its client polled, and its criteria are applied when it polls, outside the lock. The journal keeps no more than the oldest live filter has not polled (at most `FilterTimeout` of events) and at most 2^20 events; a filter whose events were dropped before it polled is removed and answered `filter not found`, as if it had expired. The node holds at most 100,000 polled filters. The reference copied every event into every filter under one lock, for up to 5 minutes, with no bound on the filters: any client could make the node run out of memory | U (one copy of an event for 1000 filters; the cap; a filter that fell behind is removed while one that polled gets every event; the journal shrinks to what a live filter has not polled) |
 
 ### D. Dispatcher and transports
 
@@ -685,6 +686,8 @@ entry; a new row is added with its entry in the same change.
 |---|---|---|---|
 | any, undecodable parameter | `-32602` `invalid argument N: …` | `-32602` `parameter N (name): …` | D9; wording differs, code does not |
 | `eth_pendingTransactions` | only transactions of accounts the account manager holds, so `[]` | the pool's pending transactions | X1 removes the account manager |
+| `eth_newFilter`, `eth_newBlockFilter`, `eth_newPendingTransactionFilter` | any number of filters | `too many filters, the limit is 100000` above 100,000 filters on the node | I17; lakme never comes close |
+| `eth_getFilterChanges` | every event since the last poll, however many | `filter not found` for a filter whose events were dropped from the journal (over 2^20 events of its kind since it last polled) | I17; the filter is gone as if it had expired, and clients install a new one |
 | `eth_sendRawTransactionSync` | polls every 100 ms | waits on the head subscription | I9; the legacy message about an indexed but unarchived block cannot occur |
 | `eth_getAccount`, `eth_getProof` | block selector required; propagate `state.Error()` | selector optional (`latest`); do not propagate | consistent with the other state getters |
 | `debug_trace*` `timeout` | any duration accepted | `-32602` above `RPCEVMTimeout` or malformed; checked where the tracer is built | V6; lakme `rpc-module-tracer-timeout-limit` |
@@ -853,6 +856,7 @@ the legacy code before porting, not from the port afterwards.
 | Shutdown and admission races | requests do not race `Stop` | P7, a stress test under `-race` | a request admitted after `Stop` returned |
 | Mutation of shared values | one consumer per value | P8, a shared value is unchanged after the call, `-race` | `returnLogs` wrote topics into a log shared by all subscribers |
 | Cost multiplied by consumers | the benchmarks have one client | I16, `Core` calls counted with N consumers | `newHeads` loaded receipts once per subscriber |
+| State a client makes the node keep | a test installs a few filters and polls them | I17: every structure a request leaves behind has a cap, and its cost per event is measured with many of them | each polled filter copied every pool transaction for 5 minutes, under one lock, and nothing bounded the number of filters |
 | Cost of a coarse `Core` call | the answer is right | read what the legacy code read, per caller (I10) | the oracle tick walked every validator's last event |
 | Defaults written twice | they agree today | one definition (section 8) | the oracle's maximum gas price default in three places |
 | Cost a client chooses | the answers are right, and fast for the values honest clients send | V11: for every number a request carries (overrides, indexes, range ends), count the `Core` calls with hostile values: above the head, far below it, the maximum of the type | a block override `number` above the head made one BLOCKHASH read every header down to genesis (F8 table) |
@@ -882,6 +886,7 @@ shows the need).
 | `LogQueryParameterLimit` / `LogQueryResultLimit` | 1000 / 5000 | parameters (every filter path since 2.2.3) / results | `filters.Config` |
 | `IndexedLogsBlockRangeLimit` / `UnindexedLogsBlockRangeLimit` | effectively none / 100 | block span of indexed / block-scan log queries | `filters.Config` |
 | filter `deadline` | 5 min | unpolled filters are dropped | `filters/api.go` |
+| polled filters, journaled events | 100,000 per node, 2^20 per kind | new in the module (I17, ADR6): above them a filter is refused, or removed if its events were dropped before it polled | `maxFilters`, `journalLimit` in `rpc/filters` |
 | `BatchRequestLimit` / `BatchResponseMaxSize` | 1000 / 25 MB | batch limits | `config/node_config.go` |
 | HTTP body, WS message | 5 MiB, 32 MiB | transport limits | the fork's `rpc` package |
 | HTTP timeouts | read 30s, write 30s, idle 120s; at write − 100ms a running call is answered -32002 (section 3) | `net/http` | `config/defaults.go` |
@@ -910,7 +915,7 @@ and the p2p facts.
 | ID | Decision | Recommendation |
 |---|---|---|
 | ADR4 | One `latest` (archive head) for `eth_blockNumber` | Yes (I3). Annotate in lakme; a client that reads the number can always query it |
-| ADR6 | New semantic caps other clients have and we lack | `eth_simulateV1` block count: 256 (reth, nethermind). `trace_filter` is already capped (inherited); `eth_getLogs` stays unlimited-but-result-capped for compatibility |
+| ADR6 | New semantic caps other clients have and we lack | `eth_simulateV1` block count: 256 (reth, nethermind). `trace_filter` is already capped (inherited); `eth_getLogs` stays unlimited-but-result-capped for compatibility. Polled filters: 100,000 per node and 2^20 journaled events per kind (I17; geth has no bound, Erigon bounds what a filter keeps) |
 | ADR7 | `debug_getRaw{Block,Header,Receipts,Transaction}` | Add in step 5; fixtures exist and they are block reads |
 | ADR8 | lakme WebSocket side | Add after step 4, so subscriptions and filters over WS are compared; until then integration tests carry them |
 | ADR9 | The `GPO` config section (`MaxGasPrice`, `MinGasPrice`, `DefaultCertainty`; TOML only) once the legacy oracle is deleted | Keep all three and feed them to the module's oracle through `Config`. `MinGasPrice` is not ignored: it is the floor of the suggestion (`utils.BigMax(gpo.cfg.MinGasPrice, reactive, constructive)` in `Oracle.suggestTip`, `gossip/gasprice/gasprice.go`). An earlier execution read it as ignored, kept the key and dropped its effect, which a parse test does not see (O4). The loader rejects unknown fields, so removing a key is breaking; that is why the section stays |

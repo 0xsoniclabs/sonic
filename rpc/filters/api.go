@@ -45,6 +45,13 @@ const (
 	// headsCacheSize is the number of newHeads notifications kept for the
 	// subscriptions that are behind.
 	headsCacheSize = 16
+	// maxFilters bounds the polled filters of the node. Any client may install
+	// one, and a filter lives until it is not polled for FilterTimeout.
+	maxFilters = 100_000
+	// journalLimit bounds the events kept for the polled filters of one kind. A
+	// filter whose events were dropped before its client polled them is
+	// removed, as if it had expired.
+	journalLimit = 1 << 20
 )
 
 type filterKind int
@@ -55,17 +62,17 @@ const (
 	pendingTxsFilter
 )
 
-// filter is a polled filter: events accumulate until the client polls.
+// filter is a polled filter. The events are kept once, in the journal of the
+// filter's kind; the filter remembers up to where its client has them, and its
+// criteria are applied when the client polls. So an event costs the same
+// whatever the number of filters.
 type filter struct {
 	kind     filterKind
 	crit     Criteria
 	mode     logsMode
 	fullTxs  bool
 	lastPoll time.Time
-
-	hashes []common.Hash
-	logs   []*types.Log
-	txs    []*types.Transaction
+	cursor   uint64 // position in the journal of the kind
 }
 
 // API serves the filter and subscription methods of the eth_ namespace. One
@@ -77,8 +84,13 @@ type API struct {
 	core  core.Core
 	cfg   dispatch.Config
 
-	mu      sync.Mutex
-	filters map[string]*filter
+	mu         sync.Mutex
+	filters    map[string]*filter
+	counts     [3]int // the filters of each kind
+	blocks     journal[common.Hash]
+	logs       journal[*types.Log]
+	txs        journal[*types.Transaction]
+	maxFilters int
 
 	headsMu sync.Mutex
 	heads   *lru.Cache[common.Hash, json.RawMessage] // newHeads notifications by block hash
@@ -88,7 +100,11 @@ type API struct {
 func New(env *exec.Env) *API {
 	return &API{
 		env: env, chain: env.Chain, core: env.Core, cfg: env.Cfg, filters: map[string]*filter{},
-		heads: lru.NewCache[common.Hash, json.RawMessage](headsCacheSize),
+		blocks:     newJournal[common.Hash](journalLimit),
+		logs:       newJournal[*types.Log](journalLimit),
+		txs:        newJournal[*types.Transaction](journalLimit),
+		maxFilters: maxFilters,
+		heads:      lru.NewCache[common.Hash, json.RawMessage](headsCacheSize),
 	}
 }
 
@@ -108,33 +124,47 @@ func (a *API) Register(d *dispatch.Dispatcher, ns string) {
 	dispatch.AddSub1(d, ns, "newPendingTransactions", a.newPendingTransactions, "fullTx?")
 }
 
-// Start starts the loops that feed and expire the polled filters.
+// Start starts the loops that feed and expire the polled filters. The feeds
+// are followed from here on: a filter installed after Start returned misses no
+// event. A feed loop restarted after a panic follows them again.
 func (a *API) Start(d *dispatch.Dispatcher) {
-	d.Loop("filters-feed", a.feed)
+	heads := a.chain.SubscribeHeads(feedQueueSize)
+	txs := a.chain.SubscribeTxs(feedQueueSize)
+	d.Loop("filters-feed", func(ctx context.Context) {
+		if heads == nil {
+			heads = a.chain.SubscribeHeads(feedQueueSize)
+			txs = a.chain.SubscribeTxs(feedQueueSize)
+		}
+		defer func() {
+			heads.Close()
+			txs.Close()
+			heads, txs = nil, nil
+		}()
+		a.feed(ctx, &heads, &txs)
+	})
 	d.Loop("filters-expiry", a.expire)
 }
 
 // -- feeding the polled filters --
 
-func (a *API) feed(ctx context.Context) {
-	heads := a.chain.SubscribeHeads(feedQueueSize)
-	txs := a.chain.SubscribeTxs(feedQueueSize)
-	defer func() { heads.Close(); txs.Close() }()
+// feed hands the events of the feeds to the journals. It subscribes again to a
+// feed it fell behind.
+func (a *API) feed(ctx context.Context, heads **dispatch.HeadConsumer, txs **dispatch.Consumer[evmcore.NewTxsNotify]) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case ev, ok := <-heads.Events():
+		case ev, ok := <-(*heads).Events():
 			if !ok {
 				log.Warn("RPC filters fell behind the head; some events were lost")
-				heads = a.chain.SubscribeHeads(feedQueueSize)
+				*heads = a.chain.SubscribeHeads(feedQueueSize)
 				continue
 			}
 			a.onHead(ev)
-		case ev, ok := <-txs.Events():
+		case ev, ok := <-(*txs).Events():
 			if !ok {
 				log.Warn("RPC filters fell behind the pending transactions; some events were lost")
-				txs = a.chain.SubscribeTxs(feedQueueSize)
+				*txs = a.chain.SubscribeTxs(feedQueueSize)
 				continue
 			}
 			a.onTxs(ev)
@@ -142,35 +172,45 @@ func (a *API) feed(ctx context.Context) {
 	}
 }
 
+// onHead journals the hash and the logs of a new head, if a filter wants them.
 func (a *API) onHead(ev core.HeadEvent) {
 	if ev.Block == nil {
 		return
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for _, f := range a.filters {
-		switch f.kind {
-		case blocksFilter:
-			f.hashes = append(f.hashes, ev.Block.Hash)
-		case logsFilter:
-			if f.mode != minedLogs {
-				continue
-			}
-			if len(ev.Logs) > 0 {
-				f.logs = append(f.logs, filterLogs(ev.Logs, f.crit.FromBlock, f.crit.ToBlock, f.crit.Addresses, f.crit.Topics)...)
-			}
-		}
+	if a.counts[blocksFilter] > 0 {
+		a.blocks.append(ev.Block.Hash)
+	}
+	if a.counts[logsFilter] > 0 && len(ev.Logs) > 0 {
+		a.logs.append(ev.Logs...)
 	}
 }
 
+// onTxs journals the transactions entering the pool, if a filter wants them.
 func (a *API) onTxs(ev evmcore.NewTxsNotify) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for _, f := range a.filters {
-		if f.kind == pendingTxsFilter {
-			f.txs = append(f.txs, ev.Txs...)
-		}
+	if a.counts[pendingTxsFilter] > 0 {
+		a.txs.append(ev.Txs...)
 	}
+}
+
+// end returns the position after the newest event of the journal of a kind.
+func (a *API) end(kind filterKind) uint64 {
+	switch kind {
+	case blocksFilter:
+		return a.blocks.end()
+	case pendingTxsFilter:
+		return a.txs.end()
+	}
+	return a.logs.end()
+}
+
+// remove removes a filter. The caller holds the lock.
+func (a *API) remove(id string, f *filter) {
+	delete(a.filters, id)
+	a.counts[f.kind]--
 }
 
 // expire drops the filters that were not polled within the timeout.
@@ -191,24 +231,38 @@ func (a *API) expire(ctx context.Context) {
 	}
 }
 
+// removeExpired removes the filters that were not polled within the timeout,
+// and drops from each journal the events every remaining filter has polled.
 func (a *API) removeExpired(now time.Time, timeout time.Duration) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	polled := [3]uint64{logsFilter: a.logs.end(), blocksFilter: a.blocks.end(), pendingTxsFilter: a.txs.end()}
 	for id, f := range a.filters {
 		if now.Sub(f.lastPoll) > timeout {
-			delete(a.filters, id)
+			a.remove(id, f)
+			continue
 		}
+		polled[f.kind] = min(polled[f.kind], f.cursor)
 	}
+	a.logs.trim(polled[logsFilter])
+	a.blocks.trim(polled[blocksFilter])
+	a.txs.trim(polled[pendingTxsFilter])
 }
 
-// install adds a filter and returns its id.
-func (a *API) install(f *filter) string {
-	f.lastPoll = time.Now()
-	id := dispatch.NewFilterID()
+// install adds a filter and returns its id. It receives the events from here
+// on.
+func (a *API) install(f *filter) (string, error) {
 	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.filters) >= a.maxFilters {
+		return "", fmt.Errorf("too many filters, the limit is %d", a.maxFilters)
+	}
+	f.lastPoll = time.Now()
+	f.cursor = a.end(f.kind)
+	id := dispatch.NewFilterID()
 	a.filters[id] = f
-	a.mu.Unlock()
-	return id
+	a.counts[f.kind]++
+	return id, nil
 }
 
 // logsMode tells which logs a log filter or subscription receives.
@@ -270,26 +324,28 @@ func (a *API) newFilter(_ context.Context, crit Criteria) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return a.install(&filter{kind: logsFilter, crit: crit, mode: mode, logs: make([]*types.Log, 0)}), nil
+	return a.install(&filter{kind: logsFilter, crit: crit, mode: mode})
 }
 
 // newBlockFilter creates a filter that collects the hashes of the new blocks.
 func (a *API) newBlockFilter(context.Context) (string, error) {
-	return a.install(&filter{kind: blocksFilter, hashes: make([]common.Hash, 0)}), nil
+	return a.install(&filter{kind: blocksFilter})
 }
 
 // newPendingTransactionFilter creates a filter that collects the transactions
 // entering the pool, as hashes or, if fullTx is set, in full.
 func (a *API) newPendingTransactionFilter(_ context.Context, fullTxs *bool) (string, error) {
-	return a.install(&filter{kind: pendingTxsFilter, fullTxs: fullTxs != nil && *fullTxs}), nil
+	return a.install(&filter{kind: pendingTxsFilter, fullTxs: fullTxs != nil && *fullTxs})
 }
 
 // uninstallFilter removes the filter with the id.
 func (a *API) uninstallFilter(_ context.Context, id string) (bool, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	_, found := a.filters[id]
-	delete(a.filters, id)
+	f, found := a.filters[id]
+	if found {
+		a.remove(id, f)
+	}
 	return found, nil
 }
 
@@ -305,7 +361,7 @@ func (a *API) getFilterLogs(ctx context.Context, id string) ([]*types.Log, error
 	a.mu.Unlock()
 
 	if !found || f.kind != logsFilter {
-		return nil, fmt.Errorf("filter not found")
+		return nil, errFilterNotFound
 	}
 	q, err := a.newQuery(crit)
 	if err != nil {
@@ -318,46 +374,70 @@ func (a *API) getFilterLogs(ctx context.Context, id string) ([]*types.Log, error
 	return returnLogs(logs), nil
 }
 
-// getFilterChanges returns what the filter collected since it was last polled.
+// getFilterChanges returns what happened since the filter was last polled.
 // Pending transaction and block filters answer hashes (or transactions), log
-// filters logs.
+// filters logs. A filter whose events were dropped from the journal before
+// this poll is removed and not found, as if it had expired.
 func (a *API) getFilterChanges(_ context.Context, id string) (any, error) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if f, found := a.filters[id]; found {
-		f.lastPoll = time.Now()
-
-		switch f.kind {
-		case blocksFilter:
-			hashes := f.hashes
-			f.hashes = nil
-			return returnHashes(hashes), nil
-		case pendingTxsFilter:
-			return a.pendingTransactionChanges(f), nil
-		case logsFilter:
-			logs := f.logs
-			f.logs = nil
-			return returnLogs(logs), nil
-		}
+	f, found := a.filters[id]
+	if !found {
+		a.mu.Unlock()
+		return []any{}, errFilterNotFound
 	}
-	return []any{}, fmt.Errorf("filter not found")
+	f.lastPoll = time.Now()
+	var (
+		hashes []common.Hash
+		txs    []*types.Transaction
+		logs   []*types.Log
+		kept   bool
+	)
+	switch f.kind {
+	case blocksFilter:
+		hashes, kept = a.blocks.since(f.cursor)
+	case pendingTxsFilter:
+		txs, kept = a.txs.since(f.cursor)
+	case logsFilter:
+		logs, kept = a.logs.since(f.cursor)
+	}
+	f.cursor = a.end(f.kind)
+	if !kept {
+		a.remove(id, f)
+	}
+	kind, crit, mode, fullTxs := f.kind, f.crit, f.mode, f.fullTxs
+	a.mu.Unlock()
+
+	// The events are read without the lock: the journal never writes them again.
+	if !kept {
+		return []any{}, errFilterNotFound
+	}
+	switch kind {
+	case blocksFilter:
+		return returnHashes(hashes), nil
+	case pendingTxsFilter:
+		return a.pendingTransactionChanges(txs, fullTxs), nil
+	}
+	if mode != minedLogs {
+		return returnLogs(nil), nil
+	}
+	return returnLogs(filterLogs(logs, crit.FromBlock, crit.ToBlock, crit.Addresses, crit.Topics)), nil
 }
 
-// pendingTransactionChanges serves the transactions collected by a filter. The
+var errFilterNotFound = errors.New("filter not found")
+
+// pendingTransactionChanges serves the transactions a filter receives. The
 // whole transactions carry no block fields and are priced by their own gas
 // price. With nothing new the answer is null, as it always was.
-func (a *API) pendingTransactionChanges(f *filter) any {
+func (a *API) pendingTransactionChanges(txs []*types.Transaction, fullTxs bool) any {
 	var result []any
 	chainID := new(big.Int).SetUint64(a.core.ChainInfo().ChainID)
-	for _, tx := range f.txs {
-		if f.fullTxs {
+	for _, tx := range txs {
+		if fullTxs {
 			result = append(result, eth.NewRPCPendingTransaction(tx, tx.GasPrice(), chainID))
 		} else {
 			result = append(result, tx.Hash())
 		}
 	}
-	f.txs = nil
 	return result
 }
 

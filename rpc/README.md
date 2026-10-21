@@ -33,6 +33,11 @@ and the requirement ids (I, D, P, Q, V, F, S, O, MON, X, G, T) are in
 - The Tosca interpreter does not observe `--rpc.evmtimeout`. A call that does
   not run on the go-ethereum interpreter stops at the gas cap
   (`--rpc.gascap`). Keep the gas cap set on public nodes.
+- The node holds at most 100,000 polled filters (`eth_newFilter`,
+  `eth_newBlockFilter`, `eth_newPendingTransactionFilter`); beyond that a new
+  filter is refused. Their events are kept once for all of them, at most 2^20
+  of a kind; a filter not polled before its events were dropped is answered
+  `filter not found`, as an expired one.
 - A request that panics is answered with `-32603` and counted in
   `rpc_panics_total`. A loop of the module that panics is restarted and counted
   in `rpc_loop_restarts_total`.

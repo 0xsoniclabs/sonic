@@ -390,3 +390,144 @@ func TestSubscriptions_NeedAConnection(t *testing.T) {
 		require.NotNil(t, err, kind)
 	}
 }
+
+// pendingTxs returns n signed transactions for the pool.
+func pendingTxs(t *testing.T, n int) []*types.Transaction {
+	t.Helper()
+	alice := tests.NewAccount(t, nil, nil)
+	txs := make([]*types.Transaction, n)
+	for i := range txs {
+		txs[i] = alice.Transfer(t, uint64(i), common.Address{1}, 1)
+	}
+	return txs
+}
+
+// journaled waits until the journal of the pool holds n transactions.
+func journaled(t *testing.T, api *API, n uint64) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		api.mu.Lock()
+		defer api.mu.Unlock()
+		return api.txs.end() >= n
+	}, 2*time.Second, time.Millisecond)
+}
+
+func TestFilters_AnEventIsKeptOnceWhateverTheNumberOfFilters(t *testing.T) {
+	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
+	h, api := newHarness(t, fc)
+	ids := make([]string, 1000)
+	for i := range ids {
+		h.Into(&ids[i], "eth_newPendingTransactionFilter")
+	}
+	tx := pendingTxs(t, 1)[0]
+	fc.AddPoolTransaction(tx)
+	journaled(t, api, 1)
+	api.mu.Lock()
+	require.Len(t, api.txs.items, 1)
+	api.mu.Unlock()
+	for _, id := range ids {
+		var hashes []common.Hash
+		h.Into(&hashes, "eth_getFilterChanges", id)
+		require.Equal(t, []common.Hash{tx.Hash()}, hashes)
+	}
+}
+
+func TestFilters_AreBoundedPerNode(t *testing.T) {
+	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
+	h, api := newHarness(t, fc)
+	require.Equal(t, maxFilters, api.maxFilters)
+	api.maxFilters = 3
+
+	var ids [3]string
+	h.Into(&ids[0], "eth_newBlockFilter")
+	h.Into(&ids[1], "eth_newPendingTransactionFilter")
+	h.Into(&ids[2], "ftm_newFilter", map[string]any{})
+	require.Equal(t, "too many filters, the limit is 3", h.Fails("eth_newBlockFilter").Message)
+	require.Equal(t, "too many filters, the limit is 3", h.Fails("eth_newPendingTransactionFilter").Message)
+	require.Equal(t, "too many filters, the limit is 3", h.Fails("eth_newFilter", map[string]any{}).Message)
+
+	// An uninstalled filter makes room.
+	var found bool
+	h.Into(&found, "eth_uninstallFilter", ids[0])
+	require.True(t, found)
+	h.Into(&ids[0], "eth_newBlockFilter")
+}
+
+func TestGetFilterChanges_AFilterWhoseEventsWereDroppedIsRemoved(t *testing.T) {
+	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
+	h, api := newHarness(t, fc)
+	api.mu.Lock()
+	api.txs = newJournal[*types.Transaction](8)
+	api.mu.Unlock()
+
+	var idle, polled string
+	h.Into(&idle, "eth_newPendingTransactionFilter")
+	h.Into(&polled, "eth_newPendingTransactionFilter")
+	txs := pendingTxs(t, 20)
+	var want, got []common.Hash
+	for i, tx := range txs {
+		want = append(want, tx.Hash())
+		fc.AddPoolTransaction(tx)
+		journaled(t, api, uint64(i+1))
+		var hashes []common.Hash
+		h.Into(&hashes, "eth_getFilterChanges", polled)
+		got = append(got, hashes...)
+	}
+	// The filter polled in time received every transaction; the idle one lost
+	// some and is gone.
+	require.Equal(t, want, got)
+	require.Equal(t, "filter not found", h.Fails("eth_getFilterChanges", idle).Message)
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	require.Len(t, api.filters, 1)
+	require.LessOrEqual(t, len(api.txs.items), 8)
+}
+
+func TestFilters_TheJournalKeepsOnlyWhatALiveFilterHasNotPolled(t *testing.T) {
+	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
+	h, api := newHarness(t, fc)
+	kept := func() (blocks, logs int) {
+		api.mu.Lock()
+		defer api.mu.Unlock()
+		return len(api.blocks.items), len(api.logs.items)
+	}
+
+	var idle, polled, logFilter string
+	h.Into(&idle, "eth_newBlockFilter")
+	h.Into(&polled, "eth_newBlockFilter")
+	for range 3 {
+		block := fc.AddBlockSilently()
+		fc.Publish(core.HeadEvent{Block: block})
+	}
+	require.Eventually(t, func() bool { blocks, _ := kept(); return blocks == 3 }, 2*time.Second, time.Millisecond)
+
+	var hashes []common.Hash
+	h.Into(&hashes, "eth_getFilterChanges", polled)
+	require.Len(t, hashes, 3)
+	api.removeExpired(time.Now(), time.Hour)
+	blocks, _ := kept()
+	require.Equal(t, 3, blocks, "the idle filter has not polled them")
+
+	h.Into(&hashes, "eth_getFilterChanges", idle)
+	require.Len(t, hashes, 3)
+	api.removeExpired(time.Now(), time.Hour)
+	blocks, _ = kept()
+	require.Zero(t, blocks)
+
+	// Without a block filter the hashes are not kept; the logs of the same
+	// head are, for the log filter.
+	var found bool
+	h.Into(&found, "eth_uninstallFilter", idle)
+	h.Into(&found, "eth_uninstallFilter", polled)
+	h.Into(&logFilter, "eth_newFilter", map[string]any{})
+	block := fc.AddBlockSilently()
+	fc.Publish(core.HeadEvent{Block: block, Logs: []*types.Log{{Address: addrA, BlockNumber: block.NumberU64()}}})
+	require.Eventually(t, func() bool { _, logs := kept(); return logs == 1 }, 2*time.Second, time.Millisecond)
+	blocks, _ = kept()
+	require.Zero(t, blocks)
+
+	// An expired filter takes its events with it.
+	api.removeExpired(time.Now().Add(2*time.Hour), time.Hour)
+	_, logs := kept()
+	require.Zero(t, logs)
+}
