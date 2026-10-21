@@ -129,10 +129,22 @@ func (c *rpcCore) Receipts(number uint64) (types.Receipts, error) {
 	return c.svc.EthAPI.FetchReceiptsForBlock(block), nil
 }
 
+// block returns the stored block with the number, nil if there is none or the
+// block is not public yet: like EvmStateReader.Header, it serves nothing above
+// the latest block index. It is for the answers that need no more than the
+// fields the header of the block is made of, and so not the header itself.
+func (c *rpcCore) block(number uint64) *inter.Block {
+	n := idx.Block(number)
+	if n > c.svc.store.GetLatestBlockIndex() {
+		return nil
+	}
+	return c.svc.store.GetBlock(n)
+}
+
 func (c *rpcCore) Rules(number uint64) (*opera.Rules, error) {
 	var epoch idx.Epoch
-	if header := c.reader.Header(common.Hash{}, number); header != nil {
-		epoch = idx.Epoch(header.Epoch)
+	if block := c.block(number); block != nil {
+		epoch = idx.Epoch(block.Epoch)
 	} else if number == uint64(c.svc.store.GetLatestBlockIndex())+1 {
 		// The block is not there yet: it will belong to the open epoch, which
 		// is the epoch after the sealing block of the previous one.
@@ -199,11 +211,11 @@ func (c *rpcCore) SubscribeHead(ch chan<- rpccore.HeadEvent) rpccore.Subscriptio
 // -- StateProvider --
 
 func (c *rpcCore) State(number uint64) (state.StateDB, error) {
-	header := c.reader.Header(common.Hash{}, number)
-	if header == nil {
+	block := c.block(number)
+	if block == nil {
 		return nil, rpccore.ErrNotFound
 	}
-	return c.reader.BlockStateDB(header.Number, header.Root)
+	return c.reader.BlockStateDB(new(big.Int).SetUint64(block.Number), block.StateRoot)
 }
 
 // -- Pool --

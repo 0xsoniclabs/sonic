@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -119,6 +120,52 @@ func TestRPCCore_MissingBlocksAreNotFound(t *testing.T) {
 
 	_, found := c.BundleInfo(common.Hash{7})
 	require.False(t, found)
+}
+
+func TestRPCCore_StateAndRulesAreThoseOfTheHeaderOfTheBlock(t *testing.T) {
+	env, c := newRPCCoreEnv(t)
+	_, err := env.ApplyTxs(time.Second, env.Transfer(1, 2, utils.ToFtm(1)))
+	require.NoError(t, err)
+
+	latest := uint64(env.store.GetLatestBlockIndex())
+	require.NotZero(t, latest)
+	found := 0
+	for n := uint64(0); n <= latest; n++ {
+		header, err := c.Header(n)
+		if err != nil {
+			// A block the store lacks has neither state nor rules.
+			require.ErrorIs(t, err, rpccore.ErrNotFound, n)
+			_, err = c.State(n)
+			require.ErrorIs(t, err, rpccore.ErrNotFound, n)
+			_, err = c.Rules(n)
+			require.ErrorIs(t, err, rpccore.ErrNotFound, n)
+			continue
+		}
+		found++
+
+		_, es := env.store.GetHistoryBlockEpochState(idx.Epoch(header.Epoch))
+		rules, err := c.Rules(n)
+		require.NoError(t, err, n)
+		require.Equal(t, es.Rules, *rules, n)
+
+		// The state is the one the header of the block names, whether the
+		// archive holds it or not.
+		state, err := c.State(n)
+		want, wantErr := c.(*rpcCore).reader.BlockStateDB(header.Number, header.Root)
+		require.Equal(t, wantErr == nil, err == nil, n)
+		if err == nil {
+			state.Release()
+			want.Release()
+		}
+	}
+	require.NotZero(t, found)
+	state, err := c.State(latest)
+	require.NoError(t, err)
+	state.Release()
+
+	// A block is public once the latest block index reaches it.
+	_, err = c.State(latest + 1)
+	require.ErrorIs(t, err, rpccore.ErrNotFound)
 }
 
 func TestRPCCore_HeadFollowsTheArchive(t *testing.T) {
