@@ -33,13 +33,21 @@ import (
 
 // node is a fixed set of inputs of the oracle.
 type node struct {
-	inputs core.OracleInputs
-	heads  []core.PendingHead
+	inputs      core.OracleInputs
+	heads       []core.PendingHead
+	inputsCalls int
 }
 
-func (n *node) OracleInputs() core.OracleInputs     { return n.inputs }
+func (n *node) OracleInputs() core.OracleInputs {
+	n.inputsCalls++
+	return n.inputs
+}
 func (n *node) PendingHeads(int) []core.PendingHead { return n.heads }
 func (n *node) Progress() core.Progress             { return core.Progress{} }
+func (n *node) Rules(uint64) (*opera.Rules, error) {
+	rules := n.inputs.Rules
+	return &rules, nil
+}
 
 func newNode() *node {
 	rules := opera.FakeNetRules(opera.GetBrioUpgrades())
@@ -90,6 +98,21 @@ func TestSuggestTip_MinTipIsAFloor(t *testing.T) {
 	n := newNode()
 	n.inputs.MinTip = big.NewInt(12345678901)
 	require.Equal(t, big.NewInt(12345678901), New(Config{}, n).SuggestTip(0))
+}
+
+func TestSuggestTip_MinGasPriceIsAFloor(t *testing.T) {
+	n := newNode() // all gas power is free: the lowest tip
+	require.Equal(t, big.NewInt(5_000_000), New(Config{}, n).SuggestTip(0))
+	floor := new(big.Int).Add(orZero(n.inputs.Rules.Economy.MinGasPrice), big.NewInt(7_000_000_000))
+	require.Equal(t, big.NewInt(7_000_000_000), New(Config{MinGasPrice: floor}, n).SuggestTip(0))
+}
+
+func TestTick_ReadsOnlyTheRulesOfTheNode(t *testing.T) {
+	n := newNode()
+	n.heads = []core.PendingHead{tx(1, 2, 21000)}
+	o := New(Config{}, n)
+	o.tick()
+	require.Zero(t, n.inputsCalls, "the pool is sampled without the full oracle inputs")
 }
 
 func TestSuggestTip_ReactsToThePool(t *testing.T) {

@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 
+	"github.com/0xsoniclabs/sonic/rpc/core"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
 	"github.com/0xsoniclabs/sonic/rpc/oracle"
@@ -318,6 +319,26 @@ func TestGetFilterLogs_RunsTheQueryOfTheFilter(t *testing.T) {
 
 	err := h.Fails("eth_getFilterLogs", "0xdead")
 	require.Equal(t, "filter not found", err.Message)
+}
+
+func TestGetFilterChanges_LeavesTheLogsOfTheHeadAlone(t *testing.T) {
+	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
+	h, _ := newHarness(t, fc)
+	var id string
+	h.Into(&id, "eth_newFilter", map[string]any{})
+
+	// A LOG0 log has no topics; the head event is shared by all consumers.
+	block := fc.AddBlockSilently()
+	shared := &types.Log{Address: addrA, BlockNumber: block.NumberU64(), BlockHash: block.Hash}
+	fc.Publish(core.HeadEvent{Block: block, Logs: []*types.Log{shared}})
+
+	var changes []map[string]any
+	require.Eventually(t, func() bool {
+		h.Into(&changes, "eth_getFilterChanges", id)
+		return len(changes) > 0
+	}, time.Second, time.Millisecond)
+	require.Equal(t, []any{}, changes[0]["topics"])
+	require.Nil(t, shared.Topics)
 }
 
 func TestFilters_AreSharedBetweenEthAndFtm(t *testing.T) {

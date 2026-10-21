@@ -19,6 +19,8 @@ package transport
 import (
 	"context"
 	"encoding/json"
+	"sync"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 )
@@ -109,35 +111,109 @@ func (e *Endpoint) handleBatch(ctx context.Context, msgs []*Message, w writer) {
 	if len(calls) == 0 {
 		return
 	}
-	responses := make([]*Message, 0, len(calls))
+	parent := ctx
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	b := &batchResponses{calls: calls}
+	// The calls still unanswered when the time of the request is up get a
+	// timeout error at once, as with go-ethereum's server.
+	var timer *time.Timer
+	if timeout, ok := requestTimeout(ctx); ok {
+		timer = time.AfterFunc(timeout, func() {
+			cancel()
+			b.respondWithError(parent, w, requestTimedOut())
+		})
+	}
 	size := 0
-	for i, msg := range calls {
-		if ctx.Err() != nil {
+	for ctx.Err() == nil {
+		msg := b.next()
+		if msg == nil {
 			break
 		}
 		resp := e.handleCallMsg(ctx, msg)
-		if resp != nil {
-			responses = append(responses, resp)
-		}
+		b.push(resp)
 		if resp != nil && e.cfg.BatchResponseMax != 0 {
 			size += len(resp.Result)
 			if size > e.cfg.BatchResponseMax {
-				err := dispatch.NewError(dispatch.CodeTooLarge, "response too large")
-				for _, rest := range calls[i+1:] {
-					if !rest.isNotification() {
-						responses = append(responses, rest.errorResponse(err))
-					}
-				}
-				_ = w.write(ctx, responses, true)
-				activate(responses)
-				return
+				b.respondWithError(parent, w, dispatch.NewError(dispatch.CodeTooLarge, "response too large"))
+				break
 			}
 		}
 	}
-	if len(responses) > 0 {
-		_ = w.write(ctx, responses, false)
-		activate(responses)
+	if timer != nil {
+		timer.Stop()
 	}
+	b.write(parent, w)
+	b.activate()
+}
+
+// batchResponses collects the answers of a batch. They are written once: all
+// of them, or, if the batch is cut short, those so far with an error for every
+// call without an answer, the running one included.
+type batchResponses struct {
+	mu    sync.Mutex
+	calls []*Message // the calls without an answer; the first may be running
+	resp  []*Message
+	wrote bool
+}
+
+// next returns the call to run next, nil if there is none.
+func (b *batchResponses) next() *Message {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.wrote || len(b.calls) == 0 {
+		return nil
+	}
+	return b.calls[0]
+}
+
+// push adds the answer of the call next returned.
+func (b *batchResponses) push(resp *Message) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if resp != nil {
+		b.resp = append(b.resp, resp)
+	}
+	b.calls = b.calls[1:]
+}
+
+// respondWithError answers the calls without an answer with the error and
+// writes the responses.
+func (b *batchResponses) respondWithError(ctx context.Context, w writer, err *dispatch.Error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.wrote {
+		return
+	}
+	for _, msg := range b.calls {
+		if !msg.isNotification() {
+			b.resp = append(b.resp, msg.errorResponse(err))
+		}
+	}
+	b.flush(ctx, w, true)
+}
+
+// write writes the responses unless they were written already.
+func (b *batchResponses) write(ctx context.Context, w writer) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.flush(ctx, w, false)
+}
+
+func (b *batchResponses) flush(ctx context.Context, w writer, isError bool) {
+	if b.wrote {
+		return
+	}
+	b.wrote = true
+	if len(b.resp) > 0 {
+		_ = w.write(ctx, b.resp, isError)
+	}
+}
+
+func (b *batchResponses) activate() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	activate(b.resp)
 }
 
 // activate lets the notifications of the subscriptions created by the
@@ -150,16 +226,66 @@ func activate(responses []*Message) {
 	}
 }
 
-// handleMsg answers a single message.
+// handleMsg answers a single message. A call still running when the time of
+// the request is up is answered with a timeout error at once and its late
+// answer is dropped, as with go-ethereum's server.
 func (e *Endpoint) handleMsg(ctx context.Context, msg *Message, w writer) {
 	if msg.isResponse() {
 		return
 	}
+	parent := ctx
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var responded sync.Once
+	var timer *time.Timer
+	if timeout, ok := requestTimeout(ctx); ok {
+		timer = time.AfterFunc(timeout, func() {
+			cancel()
+			responded.Do(func() {
+				_ = w.write(parent, msg.errorResponse(requestTimedOut()), true)
+			})
+		})
+	}
 	resp := e.handleCallMsg(ctx, msg)
+	if timer != nil {
+		timer.Stop()
+	}
+	// Taken even without an answer: a timeout error being written is done
+	// before the transport finishes the request.
+	responded.Do(func() {
+		if resp != nil {
+			_ = w.write(parent, resp, resp.Error != nil)
+		}
+	})
 	if resp != nil {
-		_ = w.write(ctx, resp, resp.Error != nil)
 		activate([]*Message{resp})
 	}
+}
+
+type requestTimeoutKey struct{}
+
+// withRequestTimeout sets the time a transport allows for a request: its
+// answer has to be written before the transport cuts the connection.
+func withRequestTimeout(ctx context.Context, timeout time.Duration) context.Context {
+	return context.WithValue(ctx, requestTimeoutKey{}, timeout)
+}
+
+// requestTimeout returns how long a request may run before it is answered
+// with a timeout error: the earlier of the deadline of the context and the
+// time the transport allows.
+func requestTimeout(ctx context.Context) (time.Duration, bool) {
+	timeout, ok := ctx.Value(requestTimeoutKey{}).(time.Duration)
+	if deadline, has := ctx.Deadline(); has {
+		if left := time.Until(deadline); !ok || left < timeout {
+			timeout, ok = left, true
+		}
+	}
+	return timeout, ok
+}
+
+// requestTimedOut is the error of a call that ran out of time.
+func requestTimedOut() *dispatch.Error {
+	return dispatch.NewError(dispatch.CodeTimeout, "request timed out")
 }
 
 // handleCallMsg executes a call message and returns the answer; notifications

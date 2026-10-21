@@ -61,12 +61,17 @@ type ChainReader interface {
 	// committed head.
 	Block(number uint64) (*evmcore.EvmBlock, error)
 	BlockNumberByHash(hash common.Hash) (uint64, bool)
+	// Receipts returns the receipts of a block. It fails if the node does
+	// not index transactions.
 	Receipts(number uint64) (types.Receipts, error)
 	// Rules returns the rules in force at a block. For the block after the
 	// newest one it returns the rules of the open epoch, which the next block
 	// is processed with.
 	Rules(number uint64) (*opera.Rules, error)
-	TxByHash(hash common.Hash) (tx *types.Transaction, block, index uint64, ok bool)
+	// TxByHash returns a transaction with its block and position; ErrNotFound
+	// for an unknown transaction. It fails if the node does not index
+	// transactions.
+	TxByHash(hash common.Hash) (tx *types.Transaction, block, index uint64, err error)
 	BundleInfo(executionPlanHash common.Hash) (BundleInfo, bool)
 }
 

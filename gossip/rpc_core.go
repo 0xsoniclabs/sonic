@@ -111,7 +111,17 @@ func (c *rpcCore) BlockNumberByHash(h common.Hash) (uint64, bool) {
 	return uint64(*index), true
 }
 
+// The errors of a node that does not index transactions are those of the
+// reference.
+var (
+	errReceiptsNotIndexed = errors.New("transactions index is disabled (enable TxIndex and re-process the DAGs)")
+	errTxsNotIndexed      = errors.New("transactions index is disabled (enable TxIndex and re-process the DAG)")
+)
+
 func (c *rpcCore) Receipts(number uint64) (types.Receipts, error) {
+	if !c.svc.config.TxIndex {
+		return nil, errReceiptsNotIndexed
+	}
 	block := c.reader.Block(common.Hash{}, number)
 	if block == nil {
 		return nil, rpccore.ErrNotFound
@@ -138,16 +148,19 @@ func (c *rpcCore) Rules(number uint64) (*opera.Rules, error) {
 	return &rules, nil
 }
 
-func (c *rpcCore) TxByHash(h common.Hash) (tx *types.Transaction, block, index uint64, ok bool) {
+func (c *rpcCore) TxByHash(h common.Hash) (tx *types.Transaction, block, index uint64, err error) {
+	if !c.svc.config.TxIndex {
+		return nil, 0, 0, errTxsNotIndexed
+	}
 	position := c.svc.EthAPI.GetTxPosition(h)
 	if position == nil {
-		return nil, 0, 0, false
+		return nil, 0, 0, rpccore.ErrNotFound
 	}
 	tx = c.svc.store.evm.GetTx(h)
 	if tx == nil {
-		return nil, 0, 0, false
+		return nil, 0, 0, rpccore.ErrNotFound
 	}
-	return tx, uint64(position.Block), uint64(position.BlockOffset), true
+	return tx, uint64(position.Block), uint64(position.BlockOffset), nil
 }
 
 func (c *rpcCore) BundleInfo(executionPlanHash common.Hash) (rpccore.BundleInfo, bool) {

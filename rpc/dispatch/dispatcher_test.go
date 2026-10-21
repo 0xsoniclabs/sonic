@@ -22,6 +22,7 @@ import (
 	"errors"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -332,6 +333,39 @@ func TestDispatcher_StopDrainsRequestsAndJoinsGoroutines(t *testing.T) {
 	require.False(t, d.Go("late", func(context.Context) {}))
 	require.False(t, d.Loop("late", func(context.Context) {}))
 	requireNoModuleGoroutines(t)
+}
+
+func TestDispatcher_NoRequestRunsAfterStopReturns(t *testing.T) {
+	for range 200 {
+		d := New(DefaultConfig(), NewMetrics(nil))
+		var stopped atomic.Bool
+		var late atomic.Int32
+		Add0(d, "t_work", func(context.Context) (int, error) {
+			if stopped.Load() {
+				late.Add(1)
+			}
+			return 0, nil
+		})
+		var wg sync.WaitGroup
+		for range 8 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for !stopped.Load() {
+					_, _ = d.Serve(context.Background(), "t_work", nil)
+					d.Go("t_task", func(context.Context) {
+						if stopped.Load() {
+							late.Add(1)
+						}
+					})
+				}
+			}()
+		}
+		d.Stop(time.Second)
+		stopped.Store(true)
+		wg.Wait()
+		require.Zero(t, late.Load(), "work admitted after Stop returned")
+	}
 }
 
 func TestDispatcher_StopCancelsRequestsAfterTheGracePeriod(t *testing.T) {

@@ -131,22 +131,13 @@ func (f *Front) Call(ctx context.Context, method string, params json.RawMessage)
 	if f.d.Has(method) {
 		return f.d.Serve(ctx, method, params)
 	}
-	ns, _, _ := cutNamespace(method)
+	ns := namespaceOf(method)
 	forward := !f.denied[method] && f.legacy != nil &&
 		(f.allMethods[method] || isIPC(ctx) && (f.ipcNamespaces[ns] || f.ipcMethods[method]))
 	if !forward {
 		return f.d.Serve(ctx, method, params) // unknown: -32601, counted as other
 	}
 	return f.legacy.Forward(ctx, method, params)
-}
-
-func cutNamespace(method string) (ns, rest string, found bool) {
-	for i := 0; i < len(method); i++ {
-		if method[i] == '_' {
-			return method[:i], method[i+1:], true
-		}
-	}
-	return method, "", false
 }
 
 // Subscribe serves an eth_subscribe request of a namespace.

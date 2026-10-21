@@ -338,20 +338,27 @@ func (a *API) getRawTransactionByBlockHashAndIndex(_ context.Context, blockHash 
 	return nil, nil
 }
 
-// txByHash looks a transaction up in the chain; transactions of blocks the
-// module does not serve yet are unknown.
-func (a *API) txByHash(head dispatch.Head, hash common.Hash) (tx *types.Transaction, block, index uint64, ok bool) {
-	tx, block, index, ok = a.core.TxByHash(hash)
-	if !ok || tx == nil || block > head.Number {
-		return nil, 0, 0, false
+// txByHash looks a transaction up in the chain; nil if it is unknown.
+// Transactions of blocks the module does not serve yet are unknown.
+func (a *API) txByHash(head dispatch.Head, hash common.Hash) (tx *types.Transaction, block, index uint64, err error) {
+	tx, block, index, err = a.core.TxByHash(hash)
+	if errors.Is(err, core.ErrNotFound) || (err == nil && (tx == nil || block > head.Number)) {
+		return nil, 0, 0, nil
 	}
-	return tx, block, index, true
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	return tx, block, index, nil
 }
 
 func (a *API) getTransactionByHash(_ context.Context, hash common.Hash) (*RPCTransaction, error) {
 	head := a.chain.Head()
 	// Try to return an already finalized transaction.
-	if tx, blockNumber, index, ok := a.txByHash(head, hash); ok {
+	tx, blockNumber, index, err := a.txByHash(head, hash)
+	if err != nil {
+		return nil, err
+	}
+	if tx != nil {
 		header, err := a.headerAt(head, blockNumber)
 		if header == nil || err != nil {
 			return nil, err
@@ -368,8 +375,11 @@ func (a *API) getTransactionByHash(_ context.Context, hash common.Hash) (*RPCTra
 
 func (a *API) getRawTransactionByHash(_ context.Context, hash common.Hash) (hexutil.Bytes, error) {
 	head := a.chain.Head()
-	tx, _, _, ok := a.txByHash(head, hash)
-	if !ok {
+	tx, _, _, err := a.txByHash(head, hash)
+	if err != nil {
+		return nil, err
+	}
+	if tx == nil {
 		if tx = a.core.PoolTransaction(hash); tx == nil {
 			// Transaction not found anywhere.
 			return nil, nil
@@ -380,9 +390,9 @@ func (a *API) getRawTransactionByHash(_ context.Context, hash common.Hash) (hexu
 
 func (a *API) getTransactionReceipt(_ context.Context, hash common.Hash) (map[string]any, error) {
 	head := a.chain.Head()
-	tx, blockNumber, index, ok := a.txByHash(head, hash)
-	if !ok {
-		return nil, nil
+	tx, blockNumber, index, err := a.txByHash(head, hash)
+	if tx == nil || err != nil {
+		return nil, err
 	}
 	header, err := a.headerAt(head, blockNumber)
 	if header == nil || err != nil {

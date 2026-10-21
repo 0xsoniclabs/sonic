@@ -54,8 +54,9 @@ type Config struct {
 	// FilterTimeout is how long an unpolled filter lives.
 	FilterTimeout time.Duration
 
-	// Gas price oracle.
+	// Gas price oracle. A nil OracleMaxGasPrice is the oracle's default.
 	OracleMaxGasPrice      *big.Int
+	OracleMinGasPrice      *big.Int
 	OracleDefaultCertainty uint64
 
 	// HistoryPruningCutoff is the first block that is not pruned; "earliest".
@@ -81,7 +82,7 @@ func DefaultConfig() Config {
 		UnindexedLogsBlockRangeLimit: 100,
 		FilterTimeout:                5 * time.Minute,
 
-		OracleMaxGasPrice:      big.NewInt(10_000_000 * 1_000_000_000),
+		OracleMinGasPrice:      new(big.Int),
 		OracleDefaultCertainty: 500_000, // 0.5 * piecefunc.DecimalUnit
 	}
 }

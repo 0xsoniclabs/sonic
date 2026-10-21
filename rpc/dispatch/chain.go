@@ -79,7 +79,19 @@ func (c *Chain) Start(d *Dispatcher) error {
 	}
 	c.setHead(block)
 	d.Loop("head", func(ctx context.Context) {
-		defer sub.Unsubscribe()
+		if sub == nil {
+			// The loop restarts after a panic: subscribe again and catch up
+			// with the blocks missed meanwhile.
+			events = make(chan core.HeadEvent, 16)
+			sub = c.src.SubscribeHead(events)
+			if block, err := c.src.Head(); err == nil {
+				c.setHead(block)
+			}
+		}
+		defer func() {
+			sub.Unsubscribe()
+			sub = nil
+		}()
 		c.follow(ctx, events, sub)
 	})
 
@@ -88,7 +100,14 @@ func (c *Chain) Start(d *Dispatcher) error {
 	txEvents := make(chan evmcore.NewTxsNotify, 256)
 	txSub := c.src.SubscribeTxs(txEvents)
 	d.Loop("pending-txs", func(ctx context.Context) {
-		defer txSub.Unsubscribe()
+		if txSub == nil {
+			txEvents = make(chan evmcore.NewTxsNotify, 256)
+			txSub = c.src.SubscribeTxs(txEvents)
+		}
+		defer func() {
+			txSub.Unsubscribe()
+			txSub = nil
+		}()
 		subErr := txSub.Err()
 		for {
 			select {

@@ -17,11 +17,9 @@
 package gasprice
 
 import (
-	"math"
 	"math/big"
 
-	"github.com/Fantom-foundation/lachesis-base/utils/piecefunc"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/0xsoniclabs/sonic/rpc/oracle"
 )
 
 // DefaultMaxGasPrice provides the recommended default maximum gas price
@@ -31,12 +29,12 @@ import (
 // Use this function when initializing Oracle configs or as a safe default
 // in gas price logic.
 func DefaultMaxGasPrice() *big.Int {
-	return big.NewInt(10000000 * params.GWei)
+	return oracle.DefaultMaxGasPrice()
 }
 
 const (
-	AsDefaultCertainty = math.MaxUint64
-	DecimalUnit        = piecefunc.DecimalUnit
+	AsDefaultCertainty = oracle.AsDefaultCertainty
+	DecimalUnit        = oracle.DecimalUnit
 )
 
 // Config is the "GPO" section of the configuration file. The gas price oracle

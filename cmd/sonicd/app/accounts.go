@@ -28,8 +28,10 @@ import (
 	"gopkg.in/urfave/cli.v1"
 )
 
-// unlockAccounts unlocks any account specifically requested.
-func unlockAccounts(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error {
+// unlockAccounts unlocks any account specifically requested. extRPC tells
+// whether HTTP or WebSocket RPC is served: the RPC module serves them, so the
+// node's own configuration does not show it.
+func unlockAccounts(sigCtx context.Context, ctx *cli.Context, stack *node.Node, extRPC bool) error {
 	var unlocks []string
 	inputs := strings.Split(ctx.GlobalString(flags.UnlockedAccountFlag.Name), ",")
 	for _, input := range inputs {
@@ -43,7 +45,7 @@ func unlockAccounts(sigCtx context.Context, ctx *cli.Context, stack *node.Node) 
 	}
 	// If insecure account unlocking is not allowed if node's APIs are exposed to external.
 	// Print warning log to user and skip unlocking.
-	if !stack.Config().InsecureUnlockAllowed && stack.Config().ExtRPCEnabled() {
+	if !stack.Config().InsecureUnlockAllowed && (extRPC || stack.Config().ExtRPCEnabled()) {
 		return fmt.Errorf("account unlock with HTTP access is forbidden")
 	}
 	ks := stack.AccountManager().Backends(keystore.KeyStoreType)[0].(*keystore.KeyStore)

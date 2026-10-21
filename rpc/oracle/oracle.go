@@ -31,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/rpc/core"
 	"github.com/0xsoniclabs/sonic/utils"
 )
@@ -63,18 +64,29 @@ func DefaultMaxGasPrice() *big.Int {
 	return big.NewInt(10000000 * params.GWei)
 }
 
-// Config configures the oracle. Both fields are sanitized to defaults when
-// unset or out of range.
+// Config configures the oracle. The fields are sanitized to defaults when out
+// of range; an unset MaxGasPrice or MinGasPrice is the default.
 type Config struct {
-	MaxGasPrice      *big.Int
+	MaxGasPrice *big.Int
+	// MinGasPrice is the lowest gas price the oracle suggests.
+	MinGasPrice      *big.Int
 	DefaultCertainty uint64
+}
+
+// Node is what the oracle reads of the node.
+type Node interface {
+	core.NodeInfo
+	// Rules returns the rules in force at a block; for the block after the
+	// newest one, the rules of the open epoch.
+	Rules(number uint64) (*opera.Rules, error)
 }
 
 // Oracle recommends gas prices based on the transactions pending in the pool
 // and on the unused gas power of the validators. The inputs are the node's
-// OracleInputs and PendingHeads; the oracle never reads the node otherwise.
+// OracleInputs and PendingHeads, and the rules of the open epoch while it
+// samples the pool; the oracle never reads the node otherwise.
 type Oracle struct {
-	node core.NodeInfo
+	node Node
 	cfg  Config
 
 	c      circularTxpoolStats
@@ -103,8 +115,15 @@ func sanitize(val, min, max, _default *big.Int, name string) *big.Int {
 }
 
 // New creates an oracle over the node. It samples nothing until Run is called.
-func New(cfg Config, node core.NodeInfo) *Oracle {
+func New(cfg Config, node Node) *Oracle {
+	if cfg.MaxGasPrice == nil {
+		cfg.MaxGasPrice = DefaultMaxGasPrice()
+	}
+	if cfg.MinGasPrice == nil {
+		cfg.MinGasPrice = new(big.Int)
+	}
 	cfg.MaxGasPrice = sanitize(cfg.MaxGasPrice, nil, nil, DefaultMaxGasPrice(), "MaxGasPrice")
+	cfg.MinGasPrice = sanitize(cfg.MinGasPrice, nil, nil, new(big.Int), "MinGasPrice")
 	cfg.DefaultCertainty = sanitize(new(big.Int).SetUint64(cfg.DefaultCertainty), big.NewInt(0), decimalUnitBn,
 		big.NewInt(DecimalUnit/2), "DefaultCertainty").Uint64()
 	return &Oracle{node: node, cfg: cfg, tCache: lru.NewCache[uint64, tipCache](100)}
@@ -176,7 +195,7 @@ func (o *Oracle) suggestTip(certainty uint64) *big.Int {
 	constructive := o.constructiveGasPrice(in, o.c.totalGas(), 0.005*DecimalUnit+certainty/25, adjustedMinGasPrice)
 
 	combined := utils.BigMin(
-		utils.BigMax(new(big.Int), reactive, constructive),
+		utils.BigMax(o.cfg.MinGasPrice, reactive, constructive),
 		o.cfg.MaxGasPrice,
 	)
 
@@ -185,6 +204,16 @@ func (o *Oracle) suggestTip(certainty uint64) *big.Int {
 		return new(big.Int).Set(in.MinTip)
 	}
 	return tip
+}
+
+// minGasPrice returns the minimum gas price of the open epoch, the rules of
+// the block after the newest one; the sampling of the pool needs nothing else
+// of the oracle inputs. It falls back to the inputs if the node moved on.
+func (o *Oracle) minGasPrice() *big.Int {
+	if rules, err := o.node.Rules(o.node.Progress().CurrentBlock + 1); err == nil && rules != nil {
+		return orZero(rules.Economy.MinGasPrice)
+	}
+	return orZero(o.node.OracleInputs().Rules.Economy.MinGasPrice)
 }
 
 // orZero is zero for an absent number.
@@ -414,7 +443,7 @@ func (o *Oracle) calcTxpoolStat() txpoolStat {
 		return s
 	}
 
-	minGasPrice := orZero(o.node.OracleInputs().Rules.Economy.MinGasPrice)
+	minGasPrice := o.minGasPrice()
 	minGasPriceU256 := utils.BigIntToUint256Clamped(minGasPrice)
 	// txs are sorted from large price to small
 	sorted := txs

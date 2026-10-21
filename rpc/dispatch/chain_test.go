@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -149,6 +150,28 @@ func TestChain_LossOfTheSubscriptionKeepsTheLastHead(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	require.EqualValues(t, 2, chain.Latest())
 	require.Equal(t, fc.BlockAt(2).Hash, chain.Head().Hash)
+}
+
+func TestChain_RestartAfterAPanicFollowsTheHeadAgain(t *testing.T) {
+	fc := tests.NewFakeCore(t, tests.WithBlocks(2))
+	d, chain := startChain(t, fc)
+	// The lag of the head is measured every second; the measurement panics.
+	fc.Inject("Progress", tests.Panic)
+	restarted := func() bool {
+		var m dto.Metric
+		_ = d.Metrics().LoopRestarts.WithLabelValues("head").Write(&m)
+		return m.GetCounter().GetValue() >= 1
+	}
+	require.Eventually(t, restarted, 3*time.Second, time.Millisecond)
+	fc.Inject("Progress", tests.Normal)
+
+	// The restarted loop has a subscription of its own.
+	require.Eventually(t, func() bool { return fc.Calls("SubscribeHead") >= 2 }, time.Second, time.Millisecond)
+	fc.AddBlock()
+	require.Eventually(t, func() bool { return chain.Latest() == 3 }, time.Second, time.Millisecond)
+	fc.AddBlock()
+	require.Eventually(t, func() bool { return chain.Latest() == 4 }, time.Second, time.Millisecond)
+	require.Equal(t, fc.BlockAt(4).Hash, chain.Head().Hash)
 }
 
 func TestChain_StartFailsIfTheHeadIsUnavailable(t *testing.T) {

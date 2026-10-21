@@ -41,6 +41,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/rpc/core"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
 )
@@ -200,8 +201,11 @@ func (a *api) getRawReceipts(_ context.Context, ref dispatch.BlockRef) ([]hexuti
 // getRawTransaction returns the binary encoding of a transaction.
 func (a *api) getRawTransaction(_ context.Context, hash common.Hash) (hexutil.Bytes, error) {
 	head := a.env.Chain.Head()
-	tx, block, _, ok := a.env.Core.TxByHash(hash)
-	if !ok || tx == nil || block > head.Number {
+	tx, block, _, err := a.env.Core.TxByHash(hash)
+	if err != nil && !errors.Is(err, core.ErrNotFound) {
+		return nil, err
+	}
+	if err != nil || tx == nil || block > head.Number {
 		if tx = a.env.Core.PoolTransaction(hash); tx == nil {
 			return nil, nil
 		}
@@ -215,8 +219,11 @@ func (a *api) getRawTransaction(_ context.Context, hash common.Hash) (hexutil.By
 // the transaction.
 func (a *api) traceTransaction(ctx context.Context, hash common.Hash, config *tracers.TraceConfig) (any, error) {
 	head := a.env.Chain.Head()
-	tx, blockNumber, index, ok := a.env.Core.TxByHash(hash)
-	if !ok || tx == nil || blockNumber > head.Number {
+	tx, blockNumber, index, err := a.env.Core.TxByHash(hash)
+	if err != nil && !errors.Is(err, core.ErrNotFound) {
+		return nil, err
+	}
+	if err != nil || tx == nil || blockNumber > head.Number {
 		return nil, fmt.Errorf("transaction %s not found", hash.Hex())
 	}
 	// It shouldn't happen in practice.

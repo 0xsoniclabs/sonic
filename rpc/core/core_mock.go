@@ -367,13 +367,13 @@ func (mr *MockCoreMockRecorder) SubscribeTxs(ch any) *gomock.Call {
 }
 
 // TxByHash mocks base method.
-func (m *MockCore) TxByHash(hash common.Hash) (*types.Transaction, uint64, uint64, bool) {
+func (m *MockCore) TxByHash(hash common.Hash) (*types.Transaction, uint64, uint64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "TxByHash", hash)
 	ret0, _ := ret[0].(*types.Transaction)
 	ret1, _ := ret[1].(uint64)
 	ret2, _ := ret[2].(uint64)
-	ret3, _ := ret[3].(bool)
+	ret3, _ := ret[3].(error)
 	return ret0, ret1, ret2, ret3
 }
 
@@ -512,13 +512,13 @@ func (mr *MockChainReaderMockRecorder) Rules(number any) *gomock.Call {
 }
 
 // TxByHash mocks base method.
-func (m *MockChainReader) TxByHash(hash common.Hash) (*types.Transaction, uint64, uint64, bool) {
+func (m *MockChainReader) TxByHash(hash common.Hash) (*types.Transaction, uint64, uint64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "TxByHash", hash)
 	ret0, _ := ret[0].(*types.Transaction)
 	ret1, _ := ret[1].(uint64)
 	ret2, _ := ret[2].(uint64)
-	ret3, _ := ret[3].(bool)
+	ret3, _ := ret[3].(error)
 	return ret0, ret1, ret2, ret3
 }
 

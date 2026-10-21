@@ -71,10 +71,11 @@ func (e *Env) MinGasPrice(head dispatch.Head) *big.Int {
 	return oracle.SuggestedGasPrice(baseFee)
 }
 
-// MaxGasLimit is the largest gas limit of a transaction under the rules of the
-// head: the event gas limit less the gas an empty event costs.
+// MaxGasLimit is the largest gas limit of a transaction under the rules the
+// block after the head is processed with: the event gas limit less the gas an
+// empty event costs. An epoch sealed by the head applies at once.
 func (e *Env) MaxGasLimit(head dispatch.Head) uint64 {
-	rules, err := e.Core.Rules(head.Number)
+	rules, err := e.Core.Rules(head.Number + 1)
 	if err != nil || rules == nil {
 		return 0
 	}

@@ -309,10 +309,9 @@ type subscription struct {
 // transport has no kinds.
 func (d *Dispatcher) Subscribe(ctx context.Context, ns string, allowed bool, params json.RawMessage) (json.RawMessage, *Error) {
 	label := ns + "_subscribe"
-	if d.stopping.Load() {
+	if !d.admit(&d.inflight) {
 		return nil, NewError(CodeDefault, "server is shutting down")
 	}
-	d.inflight.Add(1)
 	defer d.inflight.Done()
 
 	raw, err := SplitParams(params)

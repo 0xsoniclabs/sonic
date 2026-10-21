@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
 	"github.com/0xsoniclabs/sonic/rpc/oracle"
@@ -40,6 +41,32 @@ func newEnv(t *testing.T, opts ...tests.Option) (*exec.Env, *tests.FakeCore) {
 	require.NoError(t, chain.Start(d))
 	t.Cleanup(func() { d.Stop(0) })
 	return exec.NewEnv(chain, oracle.New(oracle.Config{}, fc)), fc
+}
+
+func TestEnv_MaxGasLimitFollowsTheRulesOfTheNextBlock(t *testing.T) {
+	// The head (block 2) seals an epoch: block 3 has a larger event gas limit.
+	env, _ := newEnv(t, tests.WithRules(func(block uint64) opera.Rules {
+		rules := opera.FakeNetRules(opera.GetBrioUpgrades())
+		if block > 2 {
+			rules.Economy.Gas.MaxEventGas += 1_000_000
+		}
+		return rules
+	}))
+	head := env.Chain.Head()
+	require.EqualValues(t, 2, head.Number)
+	old, err := env.Core.Rules(head.Number)
+	require.NoError(t, err)
+	next, err := env.Core.Rules(head.Number + 1)
+	require.NoError(t, err)
+	require.Equal(t, old.Economy.Gas.MaxEventGas+1_000_000, next.Economy.Gas.MaxEventGas)
+	require.Equal(t, 1_000_000+maxGasLimitOf(old), env.MaxGasLimit(head))
+}
+
+func maxGasLimitOf(rules *opera.Rules) uint64 {
+	empty := rules.Economy.Gas.EventGas +
+		uint64(rules.Dag.MaxParents-rules.Dag.MaxFreeParents)*rules.Economy.Gas.ParentGas +
+		uint64(rules.Dag.MaxExtraData)*rules.Economy.Gas.ExtraDataGas
+	return rules.Economy.Gas.MaxEventGas - empty
 }
 
 func TestSetDefaults_RejectsGasPriceWithAuthorizationList(t *testing.T) {

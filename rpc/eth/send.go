@@ -169,7 +169,11 @@ func (a *API) sendRawTransactionSync(ctx context.Context, encodedTx hexutil.Byte
 	for {
 		// Check for confirmation: the fast path, which also handles an
 		// already confirmed transaction, and the check after each new head.
-		if confirmed, blockNumber, index, ok := a.core.TxByHash(txHash); ok && confirmed != nil && blockNumber <= latest {
+		confirmed, blockNumber, index, err := a.core.TxByHash(txHash)
+		if err != nil && !errors.Is(err, core.ErrNotFound) {
+			return nil, err
+		}
+		if err == nil && confirmed != nil && blockNumber <= latest {
 			return a.confirmedReceipt(txHash, confirmed, blockNumber, index)
 		}
 

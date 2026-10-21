@@ -18,6 +18,7 @@ package filters
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -25,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 
@@ -40,6 +42,9 @@ const (
 	feedQueueSize = 4096
 	// subscriptionQueueSize is the queue of a consumer behind one subscription.
 	subscriptionQueueSize = 256
+	// headsCacheSize is the number of newHeads notifications kept for the
+	// subscriptions that are behind.
+	headsCacheSize = 16
 )
 
 type filterKind int
@@ -74,11 +79,17 @@ type API struct {
 
 	mu      sync.Mutex
 	filters map[string]*filter
+
+	headsMu sync.Mutex
+	heads   *lru.Cache[common.Hash, json.RawMessage] // newHeads notifications by block hash
 }
 
 // New creates the API.
 func New(env *exec.Env) *API {
-	return &API{env: env, chain: env.Chain, core: env.Core, cfg: env.Cfg, filters: map[string]*filter{}}
+	return &API{
+		env: env, chain: env.Chain, core: env.Core, cfg: env.Cfg, filters: map[string]*filter{},
+		heads: lru.NewCache[common.Hash, json.RawMessage](headsCacheSize),
+	}
 }
 
 // Register registers the methods under the namespace "eth" or "ftm".
@@ -416,8 +427,11 @@ func (a *API) newHeads(ctx context.Context) (string, error) {
 					fellBehind(notifier, "new heads")
 					return
 				}
-				receipts, _ := a.core.Receipts(ev.Block.NumberU64())
-				if err := sub.Notify(ev.Block.ToJson(receipts)); err != nil {
+				head, err := a.newHeadsJSON(ev.Block)
+				if err != nil {
+					return
+				}
+				if err := sub.Notify(head); err != nil {
 					return
 				}
 			}
@@ -427,6 +441,27 @@ func (a *API) newHeads(ctx context.Context) (string, error) {
 		heads.Close()
 	}
 	return id, err
+}
+
+// newHeadsJSON returns the newHeads notification of a block. It is encoded
+// once per block for all subscriptions.
+func (a *API) newHeadsJSON(block *evmcore.EvmBlock) (json.RawMessage, error) {
+	a.headsMu.Lock()
+	defer a.headsMu.Unlock()
+	if head, ok := a.heads.Get(block.Hash); ok {
+		return head, nil
+	}
+	receipts, rerr := a.core.Receipts(block.NumberU64())
+	head, err := json.Marshal(block.ToJson(receipts))
+	if err != nil {
+		return nil, err
+	}
+	if rerr == nil {
+		// A header without its receipts is not kept: the next subscription
+		// tries again.
+		a.heads.Add(block.Hash, head)
+	}
+	return head, nil
 }
 
 // logsSubscription notifies the logs that match the criteria.

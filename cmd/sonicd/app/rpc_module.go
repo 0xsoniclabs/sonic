@@ -21,8 +21,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
@@ -93,7 +96,9 @@ func takeOverRPC(cfg *node.Config) *rpcTakeover {
 		}
 	}
 
-	wsShared := cfg.WSHost != "" && cfg.WSHost == cfg.HTTPHost && cfg.WSPort == cfg.HTTPPort
+	// As with the node's own servers, WebSocket shares the HTTP server if the
+	// ports are the same; the server then listens on the WebSocket host.
+	wsShared := cfg.HTTPHost != "" && cfg.WSHost != "" && cfg.WSPort == cfg.HTTPPort
 	if cfg.HTTPHost != "" {
 		t.http = &transport.HTTPConfig{
 			Host:             cfg.HTTPHost,
@@ -107,6 +112,7 @@ func takeOverRPC(cfg *node.Config) *rpcTakeover {
 			BatchResponseMax: cfg.BatchResponseMaxSize,
 		}
 		if wsShared {
+			t.http.Host = cfg.WSHost
 			t.http.WS = wsConfig()
 			t.http.WSPrefix = cfg.WSPathPrefix
 		}
@@ -164,7 +170,7 @@ func (t *rpcTakeover) attach(stack *node.Node, svc *gossip.Service, cfg *config.
 	svc.EthAPI.SetTipSuggester(module.SuggestTip)
 	svc.EthAPI.SetGasEstimator(estimateGasWith(module))
 	t.stack = stack
-	if t.http != nil || t.ws != nil {
+	if t.extRPCEnabled() {
 		// The node's own HTTP and WebSocket servers are off, but external RPC
 		// is enabled; the legacy handlers use this to refuse account unlocking.
 		svc.EthAPI.SetExtRPCEnabled(true)
@@ -173,24 +179,80 @@ func (t *rpcTakeover) attach(stack *node.Node, svc *gossip.Service, cfg *config.
 	return nil
 }
 
+// extRPCEnabled reports whether the module serves HTTP or WebSocket. The
+// node's configuration no longer shows it once the module took them over.
+func (t *rpcTakeover) extRPCEnabled() bool { return t.http != nil || t.ws != nil }
+
 // estimateGasWith returns the gas estimator of the node's legacy wallet methods:
 // the module answers eth_estimateGas for them, at the head.
 func estimateGasWith(module *rpc.Module) func(context.Context, legacy.TransactionArgs) (hexutil.Uint64, error) {
 	return func(ctx context.Context, args legacy.TransactionArgs) (hexutil.Uint64, error) {
-		params, err := json.Marshal([]any{args, "pending"})
-		if err != nil {
-			return 0, err
-		}
-		raw, rpcErr := module.Dispatcher().Serve(ctx, "eth_estimateGas", params)
-		if rpcErr != nil {
-			return 0, rpcErr
-		}
 		var gas hexutil.Uint64
-		if err := json.Unmarshal(raw, &gas); err != nil {
-			return 0, err
-		}
-		return gas, nil
+		err := callModule(ctx, module, &gas, "eth_estimateGas", args, "pending")
+		return gas, err
 	}
+}
+
+// callModule serves a method of the module in process and decodes its result.
+func callModule(ctx context.Context, module *rpc.Module, result any, method string, args ...any) error {
+	params, err := json.Marshal(args)
+	if err != nil {
+		return err
+	}
+	raw, rpcErr := module.Dispatcher().Serve(ctx, method, params)
+	if rpcErr != nil {
+		return rpcErr
+	}
+	return json.Unmarshal(raw, result)
+}
+
+// chainReader returns the chain state the node's wallets read when they derive
+// accounts. The node's own handler no longer serves the eth namespace: the
+// module answers.
+func (t *rpcTakeover) chainReader() ethereum.ChainStateReader {
+	return moduleChainReader{module: t.module}
+}
+
+// moduleChainReader reads the chain state through the module's dispatcher.
+type moduleChainReader struct {
+	module *rpc.Module
+}
+
+func (r moduleChainReader) BalanceAt(ctx context.Context, account common.Address, number *big.Int) (*big.Int, error) {
+	var balance hexutil.Big
+	if err := callModule(ctx, r.module, &balance, "eth_getBalance", account, blockArg(number)); err != nil {
+		return nil, err
+	}
+	return balance.ToInt(), nil
+}
+
+func (r moduleChainReader) StorageAt(ctx context.Context, account common.Address, key common.Hash, number *big.Int) ([]byte, error) {
+	var value hexutil.Bytes
+	err := callModule(ctx, r.module, &value, "eth_getStorageAt", account, key, blockArg(number))
+	return value, err
+}
+
+func (r moduleChainReader) CodeAt(ctx context.Context, account common.Address, number *big.Int) ([]byte, error) {
+	var code hexutil.Bytes
+	err := callModule(ctx, r.module, &code, "eth_getCode", account, blockArg(number))
+	return code, err
+}
+
+func (r moduleChainReader) NonceAt(ctx context.Context, account common.Address, number *big.Int) (uint64, error) {
+	var nonce hexutil.Uint64
+	err := callModule(ctx, r.module, &nonce, "eth_getTransactionCount", account, blockArg(number))
+	return uint64(nonce), err
+}
+
+// blockArg encodes a block number as ethclient does: nil is the latest block.
+func blockArg(number *big.Int) string {
+	if number == nil {
+		return "latest"
+	}
+	if number.Sign() >= 0 {
+		return hexutil.EncodeBig(number)
+	}
+	return gethrpc.BlockNumber(number.Int64()).String()
 }
 
 // httpEndpoint is the HTTP endpoint clients connect to.
@@ -291,6 +353,9 @@ func limitsFromConfig(g gossip.Config) dispatch.Config {
 	limits.UnindexedLogsBlockRangeLimit = uint64(g.FilterAPI.UnindexedLogsBlockRangeLimit)
 	if g.GPO.MaxGasPrice != nil {
 		limits.OracleMaxGasPrice = g.GPO.MaxGasPrice
+	}
+	if g.GPO.MinGasPrice != nil {
+		limits.OracleMinGasPrice = g.GPO.MinGasPrice
 	}
 	if g.GPO.DefaultCertainty != 0 {
 		limits.OracleDefaultCertainty = g.GPO.DefaultCertainty

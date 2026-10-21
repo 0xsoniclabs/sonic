@@ -330,9 +330,7 @@ func (s *HTTPServer) serveRPC(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// The response must go out before the server cuts the connection.
 	if wt := s.cfg.Timeouts.Write; wt > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, wt-100*time.Millisecond)
-		defer cancel()
+		ctx = withRequestTimeout(ctx, wt-100*time.Millisecond)
 	}
 
 	var raw json.RawMessage

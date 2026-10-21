@@ -575,17 +575,21 @@ func (f *FakeCore) Rules(number uint64) (*opera.Rules, error) {
 	return &rules, nil
 }
 
-func (f *FakeCore) TxByHash(hash common.Hash) (*types.Transaction, uint64, uint64, bool) {
-	if f.enter("TxByHash") != Normal {
-		return nil, 0, 0, false
+func (f *FakeCore) TxByHash(hash common.Hash) (*types.Transaction, uint64, uint64, error) {
+	switch mode := f.enter("TxByHash"); mode {
+	case Normal:
+	case Nil:
+		return nil, 0, 0, core.ErrNotFound
+	default:
+		return nil, 0, 0, mode.err()
 	}
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	pos, ok := f.txs[hash]
 	if !ok {
-		return nil, 0, 0, false
+		return nil, 0, 0, core.ErrNotFound
 	}
-	return f.blocks[pos.block].Transactions[pos.index], pos.block, pos.index, true
+	return f.blocks[pos.block].Transactions[pos.index], pos.block, pos.index, nil
 }
 
 func (f *FakeCore) BundleInfo(hash common.Hash) (core.BundleInfo, bool) {

@@ -138,6 +138,7 @@ func New(cfg Config, c core.Core, opts ...Option) (*Module, error) {
 
 	m.oracle = oracle.New(oracle.Config{
 		MaxGasPrice:      cfg.Limits.OracleMaxGasPrice,
+		MinGasPrice:      cfg.Limits.OracleMinGasPrice,
 		DefaultCertainty: cfg.Limits.OracleDefaultCertainty,
 	}, c)
 	env := exec.NewEnv(m.chain, m.oracle)

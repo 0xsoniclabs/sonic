@@ -60,6 +60,7 @@ type Dispatcher struct {
 
 	root     context.Context
 	cancel   context.CancelFunc
+	gate     sync.RWMutex // makes the stopping check and the count of new work atomic towards Stop
 	stopping atomic.Bool
 	inflight sync.WaitGroup // requests being served
 	tasks    sync.WaitGroup // goroutines started through Go and Loop
@@ -286,11 +287,10 @@ func (d *Dispatcher) Serve(ctx context.Context, name string, params json.RawMess
 	}
 	label := m.name
 
-	if d.stopping.Load() {
+	if !d.admit(&d.inflight) {
 		d.metrics.Requests.WithLabelValues(label, ResultRejected).Inc()
 		return nil, NewError(CodeDefault, "server is shutting down")
 	}
-	d.inflight.Add(1)
 	defer d.inflight.Done()
 	d.metrics.Inflight.Inc()
 	defer d.metrics.Inflight.Dec()
@@ -410,10 +410,9 @@ func (d *Dispatcher) run(ctx context.Context, m *method, args Args) (result any,
 // returns false and does not run fn when the dispatcher is stopping. Stop
 // waits for fn: it must return when the context of the dispatcher ends.
 func (d *Dispatcher) Go(name string, fn func(ctx context.Context)) bool {
-	if d.stopping.Load() {
+	if !d.admit(&d.tasks) {
 		return false
 	}
-	d.tasks.Add(1)
 	go func() {
 		defer d.tasks.Done()
 		defer func() {
@@ -430,10 +429,9 @@ func (d *Dispatcher) Go(name string, fn func(ctx context.Context)) bool {
 // backoff and counts in rpc_loop_restarts_total; a loop is never silently dead.
 // fn returns when its context ends.
 func (d *Dispatcher) Loop(name string, fn func(ctx context.Context)) bool {
-	if d.stopping.Load() {
+	if !d.admit(&d.tasks) {
 		return false
 	}
-	d.tasks.Add(1)
 	go func() {
 		defer d.tasks.Done()
 		backoff := 50 * time.Millisecond
@@ -465,6 +463,19 @@ func (d *Dispatcher) runLoop(name string, fn func(ctx context.Context)) (panicke
 	return false
 }
 
+// admit counts new work in the group unless the dispatcher is stopping. Once
+// Stop marked the dispatcher as stopping, no group grows any more, so Stop
+// never waits on a count that may still rise.
+func (d *Dispatcher) admit(group *sync.WaitGroup) bool {
+	d.gate.RLock()
+	defer d.gate.RUnlock()
+	if d.stopping.Load() {
+		return false
+	}
+	group.Add(1)
+	return true
+}
+
 // Context returns the context of the dispatcher; it ends when Stop begins to
 // cancel what is left in flight.
 func (d *Dispatcher) Context() context.Context { return d.root }
@@ -474,7 +485,9 @@ func (d *Dispatcher) Context() context.Context { return d.root }
 // soon as Stop is called.
 func (d *Dispatcher) Stop(grace time.Duration) {
 	d.stopOnce.Do(func() {
+		d.gate.Lock()
 		d.stopping.Store(true)
+		d.gate.Unlock()
 		drained := make(chan struct{})
 		go func() {
 			d.inflight.Wait()

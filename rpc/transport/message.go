@@ -74,8 +74,11 @@ func (m *Message) isSubscribe() bool { return strings.HasSuffix(m.Method, "_subs
 func (m *Message) isUnsubscribe() bool { return strings.HasSuffix(m.Method, "_unsubscribe") }
 
 // namespace returns the part of the method name before the first underscore.
-func (m *Message) namespace() string {
-	before, _, _ := strings.Cut(m.Method, "_")
+func (m *Message) namespace() string { return namespaceOf(m.Method) }
+
+// namespaceOf returns the part of a method name before the first underscore.
+func namespaceOf(method string) string {
+	before, _, _ := strings.Cut(method, "_")
 	return before
 }
 

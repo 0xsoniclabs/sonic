@@ -90,6 +90,24 @@ Passphrase: {{.InputLine "wrong3"}}
 	}
 }
 
+func TestUnlockFlagWithHTTPIsForbidden(t *testing.T) {
+	datadir := tmpDatadirWithKeystore(t)
+	initFakenetDatadir(datadir, 1)
+	cli := exec(t,
+		"--fakenet", "0/1", "--datadir", datadir, "--nat", "none", "--nodiscover", "--maxpeers", "0", "--port", "0",
+		"--http", "--http.port", "0",
+		"--password", "testdata/passwords.txt",
+		"--unlock", "7EF5A6135f1FD6a02593eEdC869c6D41D934aef8",
+		"--exitwhensynced.epoch", "1",
+		"--ipcdisable")
+
+	cli.ExpectExit()
+	expected := "account unlock with HTTP access is forbidden"
+	if !strings.Contains(cli.StderrText(), expected) {
+		t.Errorf("stderr text does not contain %q", expected)
+	}
+}
+
 // https://github.com/ethereum/go-ethereum/issues/1785
 func TestUnlockFlagMultiIndex(t *testing.T) {
 	datadir := tmpDatadirWithKeystore(t)

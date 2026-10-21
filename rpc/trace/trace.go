@@ -40,6 +40,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/rpc/core"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
 	"github.com/0xsoniclabs/sonic/txtrace"
@@ -452,8 +453,11 @@ func (a *api) get(ctx context.Context, hash common.Hash, traceIndex []hexutil.Ui
 // traceTxHash looks for the block of this transaction hash and traces it.
 func (a *api) traceTxHash(ctx context.Context, hash common.Hash, traceIndex *[]hexutil.Uint) (*[]txtrace.ActionTrace, error) {
 	head := a.env.Chain.Head()
-	tx, blockNumber, _, ok := a.env.Core.TxByHash(hash)
-	if !ok || tx == nil || blockNumber > head.Number {
+	tx, blockNumber, _, err := a.env.Core.TxByHash(hash)
+	if err != nil && !errors.Is(err, core.ErrNotFound) {
+		return nil, fmt.Errorf("cannot get transaction %s: %v", hash.String(), err)
+	}
+	if err != nil || tx == nil || blockNumber > head.Number {
 		return nil, fmt.Errorf("transaction %s not found", hash.String())
 	}
 	block, err := a.env.BlockAt(head, blockNumber)

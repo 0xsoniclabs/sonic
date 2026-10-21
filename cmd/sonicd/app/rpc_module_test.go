@@ -24,13 +24,16 @@ import (
 	"time"
 
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/node"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
+	"github.com/0xsoniclabs/sonic/rpc"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
+	"github.com/0xsoniclabs/sonic/rpc/tests"
 )
 
 func TestTakeOverRPC_HTTPAndWebSocketOnOneEndpoint(t *testing.T) {
@@ -91,6 +94,17 @@ func TestTakeOverRPC_WebSocketOnItsOwnEndpoint(t *testing.T) {
 	require.Equal(t, []string{"*"}, takeover.ws.WS.Origins)
 }
 
+func TestTakeOverRPC_WebSocketOnTheHTTPPortSharesTheServer(t *testing.T) {
+	// As in go-ethereum's node, the port decides; the WebSocket host wins.
+	cfg := &node.Config{HTTPHost: "127.0.0.1", HTTPPort: 8545, WSHost: "0.0.0.0", WSPort: 8545}
+	takeover := takeOverRPC(cfg)
+	require.NotNil(t, takeover.http)
+	require.Nil(t, takeover.ws)
+	require.NotNil(t, takeover.http.WS)
+	require.Equal(t, "0.0.0.0", takeover.http.Host)
+	require.Equal(t, 8545, takeover.http.Port)
+}
+
 func TestTakeOverRPC_OnlyWhatIsConfiguredIsServed(t *testing.T) {
 	takeover := takeOverRPC(&node.Config{})
 	require.Nil(t, takeover.http)
@@ -100,6 +114,48 @@ func TestTakeOverRPC_OnlyWhatIsConfiguredIsServed(t *testing.T) {
 	takeover = takeOverRPC(&node.Config{WSHost: "127.0.0.1", WSPort: 8546})
 	require.Nil(t, takeover.http)
 	require.NotNil(t, takeover.ws)
+}
+
+func TestTakeOverRPC_ExternalRPCIsReportedForTheUnlockCheck(t *testing.T) {
+	require.False(t, takeOverRPC(&node.Config{IPCPath: "sonic.ipc"}).extRPCEnabled())
+	require.True(t, takeOverRPC(&node.Config{HTTPHost: "127.0.0.1"}).extRPCEnabled())
+	require.True(t, takeOverRPC(&node.Config{WSHost: "127.0.0.1"}).extRPCEnabled())
+}
+
+func TestChainReader_ReadsTheStateThroughTheModule(t *testing.T) {
+	fc, cs := tests.NewCarmenCore(t, tests.WithBlocks(1))
+	addr := common.Address{1}
+	cs.SetBalance(addr, big.NewInt(42)).SetNonce(addr, 7).SetCode(addr, []byte{0x60, 0x00}).
+		SetStorage(addr, common.Hash{2}, common.Hash{3})
+	module, err := rpc.New(rpc.Config{Limits: dispatch.DefaultConfig()}, fc, rpc.WithMetrics(dispatch.NewMetrics(nil)))
+	require.NoError(t, err)
+	require.NoError(t, module.Start())
+	t.Cleanup(func() { require.NoError(t, module.Stop()) })
+
+	chain := (&rpcTakeover{module: module}).chainReader()
+	ctx := context.Background()
+	balance, err := chain.BalanceAt(ctx, addr, nil)
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt(42), balance)
+	nonce, err := chain.NonceAt(ctx, addr, big.NewInt(1))
+	require.NoError(t, err)
+	require.EqualValues(t, 7, nonce)
+	code, err := chain.CodeAt(ctx, addr, nil)
+	require.NoError(t, err)
+	require.Equal(t, []byte{0x60, 0x00}, code)
+	value, err := chain.StorageAt(ctx, addr, common.Hash{2}, nil)
+	require.NoError(t, err)
+	require.Equal(t, common.Hash{3}.Bytes(), value)
+
+	_, err = chain.BalanceAt(ctx, addr, big.NewInt(99))
+	require.Error(t, err)
+}
+
+func TestBlockArg_EncodesAsEthclient(t *testing.T) {
+	require.Equal(t, "latest", blockArg(nil))
+	require.Equal(t, "0x0", blockArg(big.NewInt(0)))
+	require.Equal(t, "0x1f", blockArg(big.NewInt(31)))
+	require.Equal(t, "pending", blockArg(big.NewInt(int64(gethrpc.PendingBlockNumber))))
 }
 
 func TestLimitsFromConfig(t *testing.T) {
@@ -115,7 +171,7 @@ func TestLimitsFromConfig(t *testing.T) {
 	g.AllowJSTracers = true
 	g.FilterAPI.LogQueryParameterLimit = 11
 	g.FilterAPI.LogQueryResultLimit = 12
-	g.GPO = gasprice.Config{MaxGasPrice: big.NewInt(77), DefaultCertainty: 5}
+	g.GPO = gasprice.Config{MaxGasPrice: big.NewInt(77), MinGasPrice: big.NewInt(66), DefaultCertainty: 5}
 
 	limits := limitsFromConfig(g)
 	require.Equal(t, 3*time.Second, limits.Timeout)
@@ -130,12 +186,14 @@ func TestLimitsFromConfig(t *testing.T) {
 	require.EqualValues(t, 11, limits.LogQueryParameterLimit)
 	require.EqualValues(t, 12, limits.LogQueryResultLimit)
 	require.Equal(t, big.NewInt(77), limits.OracleMaxGasPrice)
+	require.Equal(t, big.NewInt(66), limits.OracleMinGasPrice)
 	require.EqualValues(t, 5, limits.OracleDefaultCertainty)
 
 	// The oracle keeps its defaults where the configuration has none.
 	g.GPO = gasprice.Config{}
 	limits = limitsFromConfig(g)
 	require.Equal(t, dispatch.DefaultConfig().OracleMaxGasPrice, limits.OracleMaxGasPrice)
+	require.Equal(t, dispatch.DefaultConfig().OracleMinGasPrice, limits.OracleMinGasPrice)
 	require.Equal(t, dispatch.DefaultConfig().OracleDefaultCertainty, limits.OracleDefaultCertainty)
 }
 

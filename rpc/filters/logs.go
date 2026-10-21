@@ -114,7 +114,7 @@ func (q *query) Logs(ctx context.Context) ([]*types.Log, error) {
 		// copy them so that neither this update nor callers modify the shared ones.
 		l := *logs[i]
 		logs[i] = &l
-		if _, _, index, ok := q.core.TxByHash(l.TxHash); ok {
+		if _, _, index, err := q.core.TxByHash(l.TxHash); err == nil {
 			l.TxIndex = uint(index)
 		} else {
 			log.Warn("tx index empty", "hash", l.TxHash)
@@ -332,14 +332,17 @@ func isEmpty(topics [][]common.Hash) bool {
 }
 
 // returnLogs returns an empty log array in case the given logs array is nil,
-// and makes sure no log has nil topics.
+// and makes sure no log has nil topics. A log without topics is replaced by a
+// copy: the log may be shared with other requests.
 func returnLogs(logs []*types.Log) []*types.Log {
 	if logs == nil {
 		return []*types.Log{}
 	}
-	for _, l := range logs {
+	for i, l := range logs {
 		if l.Topics == nil {
-			l.Topics = []common.Hash{}
+			fixed := *l
+			fixed.Topics = []common.Hash{}
+			logs[i] = &fixed
 		}
 	}
 	return logs

@@ -392,6 +392,21 @@ func TestEth_CoreFailuresAreNotPanics(t *testing.T) {
 	}
 }
 
+func TestEth_TxLookupFailuresAreReported(t *testing.T) {
+	// A node that does not index transactions fails the lookups, as the
+	// reference does; an unknown transaction is not an error.
+	fc := tests.NewFakeCore(t, tests.WithBlocks(2))
+	h := newHarness(t, fc)
+	require.JSONEq(t, `null`, string(h.Result("eth_getTransactionByHash", common.Hash{1})))
+	require.JSONEq(t, `"0x"`, string(h.Result("eth_getRawTransactionByHash", common.Hash{1})))
+	require.JSONEq(t, `null`, string(h.Result("eth_getTransactionReceipt", common.Hash{1})))
+	fc.Inject("TxByHash", tests.Fail)
+	for _, method := range []string{"eth_getTransactionByHash", "eth_getRawTransactionByHash", "eth_getTransactionReceipt"} {
+		err := h.Fails(method, common.Hash{1})
+		require.Equal(t, tests.ErrInjected.Error(), err.Message, method)
+	}
+}
+
 func TestEth_CorePanicsAreRecovered(t *testing.T) {
 	for method, call := range map[string][]any{
 		"Block":             {"eth_getBlockByNumber", "latest", true},

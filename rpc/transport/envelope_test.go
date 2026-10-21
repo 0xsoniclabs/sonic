@@ -63,12 +63,28 @@ func (gethService) Two(a, b int) int { return a + b }
 
 func (gethService) Big() string { return strings.Repeat("x", 100) }
 
+// slowCall is how long t_slow takes; it ignores its context, as a method that
+// cannot be cancelled does.
+const slowCall = 1500 * time.Millisecond
+
+func (gethService) Slow() int {
+	time.Sleep(slowCall)
+	return 1
+}
+
 func newGethServer(t *testing.T, batchItems, batchBytes int) *httptest.Server {
+	t.Helper()
+	return newGethServerWithWriteTimeout(t, batchItems, batchBytes, 0)
+}
+
+func newGethServerWithWriteTimeout(t *testing.T, batchItems, batchBytes int, writeTimeout time.Duration) *httptest.Server {
 	t.Helper()
 	srv := rpc.NewServer()
 	srv.SetBatchLimits(batchItems, batchBytes)
 	require.NoError(t, srv.RegisterName("t", gethService{}))
-	ts := httptest.NewServer(srv)
+	ts := httptest.NewUnstartedServer(srv)
+	ts.Config.WriteTimeout = writeTimeout
+	ts.Start()
 	t.Cleanup(func() { ts.Close(); srv.Stop() })
 	return ts
 }
@@ -86,19 +102,27 @@ func registerTestMethods(d *dispatch.Dispatcher) {
 	dispatch.Add0(d, "t_nil", func(context.Context) (*int, error) { return nil, nil })
 	dispatch.Add2(d, "t_two", func(_ context.Context, a, b int) (int, error) { return a + b, nil }, "a", "b")
 	dispatch.Add0(d, "t_big", func(context.Context) (string, error) { return strings.Repeat("x", 100), nil })
+	dispatch.Add0(d, "t_slow", func(context.Context) (int, error) {
+		time.Sleep(slowCall)
+		return 1, nil
+	})
 }
 
 func newModuleServer(t *testing.T, batchItems, batchBytes int) string {
 	t.Helper()
+	return newModuleServerWithTimeouts(t, HTTPConfig{BatchLimit: batchItems, BatchResponseMax: batchBytes})
+}
+
+func newModuleServerWithTimeouts(t *testing.T, cfg HTTPConfig) string {
+	t.Helper()
 	d := dispatch.New(dispatch.DefaultConfig(), dispatch.NewMetrics(nil))
 	registerTestMethods(d)
-	srv, err := NewHTTPServer(HTTPConfig{
-		Host: "127.0.0.1", BatchLimit: batchItems, BatchResponseMax: batchBytes,
-	}, NewFront(d))
+	cfg.Host = "127.0.0.1"
+	srv, err := NewHTTPServer(cfg, NewFront(d))
 	require.NoError(t, err)
 	require.NoError(t, srv.Start())
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second+slowCall)
 		defer cancel()
 		_ = srv.Stop(ctx)
 		d.Stop(time.Second)
@@ -236,6 +260,39 @@ func TestEnvelope_BatchLimitsMatchGeth(t *testing.T) {
 			require.Equal(t, normalize(t, want.body), normalize(t, got.body), "geth: %s\nmine: %s", want.body, got.body)
 		})
 	}
+}
+
+func TestEnvelope_TimeoutsMatchGeth(t *testing.T) {
+	const writeTimeout = time.Second
+	geth := newGethServerWithWriteTimeout(t, 0, 0, writeTimeout).URL
+	timeouts := DefaultTimeouts
+	timeouts.Write = writeTimeout
+	mine := newModuleServerWithTimeouts(t, HTTPConfig{Timeouts: timeouts})
+
+	requests := map[string]string{
+		// A slow notification is not compared: go-ethereum's server races
+		// with its own timeout answer there.
+		"slow call": `{"jsonrpc":"2.0","id":1,"method":"t_slow"}`,
+		"batch with a slow call": `[{"jsonrpc":"2.0","id":1,"method":"t_two","params":[1,2]},` +
+			`{"jsonrpc":"2.0","id":2,"method":"t_slow"},{"jsonrpc":"2.0","method":"t_nil"},` +
+			`{"jsonrpc":"2.0","id":3,"method":"t_nil"}]`,
+		"fast call": `{"jsonrpc":"2.0","id":1,"method":"t_two","params":[1,2]}`,
+	}
+	for name, body := range requests {
+		t.Run(name, func(t *testing.T) {
+			start := time.Now()
+			want := post(t, geth, body)
+			got := post(t, mine, body)
+			require.Equal(t, want.status, got.status)
+			require.Equal(t, normalize(t, want.body), normalize(t, got.body), "geth: %s\nmine: %s", want.body, got.body)
+			// The answer does not wait for the slow method.
+			require.Less(t, time.Since(start), 2*slowCall)
+		})
+	}
+
+	// go-ethereum answers a slow notification with the timeout error too.
+	got := post(t, mine, `{"jsonrpc":"2.0","method":"t_slow"}`)
+	require.JSONEq(t, `{"jsonrpc":"2.0","error":{"code":-32002,"message":"request timed out"}}`, got.body)
 }
 
 func TestHTTP_RequestValidationMatchesGeth(t *testing.T) {

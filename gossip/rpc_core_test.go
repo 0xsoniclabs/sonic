@@ -86,13 +86,21 @@ func TestRPCCore_ChainReaderServesBlocksAndTransactions(t *testing.T) {
 	_, err = c.Rules(latest + 2)
 	require.ErrorIs(t, err, rpccore.ErrNotFound)
 
-	found2, blockNumber, index, ok := c.TxByHash(tx.Hash())
-	require.True(t, ok)
+	found2, blockNumber, index, err := c.TxByHash(tx.Hash())
+	require.NoError(t, err)
 	require.Equal(t, tx.Hash(), found2.Hash())
 	require.Equal(t, number, blockNumber)
 	require.EqualValues(t, 0, index)
-	_, _, _, ok = c.TxByHash(common.Hash{1})
-	require.False(t, ok)
+	_, _, _, err = c.TxByHash(common.Hash{1})
+	require.ErrorIs(t, err, rpccore.ErrNotFound)
+}
+
+func TestRPCCore_WithoutTxIndexReceiptsAndTransactionsFail(t *testing.T) {
+	c := &rpcCore{svc: &Service{config: Config{TxIndex: false}}}
+	_, err := c.Receipts(1)
+	require.EqualError(t, err, "transactions index is disabled (enable TxIndex and re-process the DAGs)")
+	_, _, _, err = c.TxByHash(common.Hash{1})
+	require.EqualError(t, err, "transactions index is disabled (enable TxIndex and re-process the DAG)")
 }
 
 func TestRPCCore_MissingBlocksAreNotFound(t *testing.T) {

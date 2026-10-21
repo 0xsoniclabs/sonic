@@ -159,6 +159,32 @@ func TestModule_NewHeadsSubscription(t *testing.T) {
 	}
 }
 
+func TestModule_NewHeadsIsEncodedOncePerBlock(t *testing.T) {
+	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
+	_, addr, _ := startModule(t, fc)
+	client := dialWS(t, addr)
+
+	var channels []chan map[string]any
+	for range 3 {
+		heads := make(chan map[string]any, 8)
+		sub, err := client.EthSubscribe(context.Background(), heads, "newHeads")
+		require.NoError(t, err)
+		t.Cleanup(sub.Unsubscribe)
+		channels = append(channels, heads)
+	}
+	before := fc.Calls("Receipts")
+	block := fc.AddBlock()
+	for _, heads := range channels {
+		select {
+		case head := <-heads:
+			require.Equal(t, block.Hash.Hex(), head["hash"])
+		case <-time.After(2 * time.Second):
+			t.Fatal("no notification")
+		}
+	}
+	require.Equal(t, 1, fc.Calls("Receipts")-before)
+}
+
 func TestModule_SubscriptionIsInstalledBeforeTheIdIsReturned(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
 	_, addr, _ := startModule(t, fc)
