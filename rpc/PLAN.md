@@ -51,8 +51,8 @@ previous execution paid for is a rule or a gate here.
 | Package | Holds | Imports |
 |---|---|---|
 | `rpc/core` | `Core` and its value types; implemented by `gossip/rpc_core.go` | evmcore, opera, inter/state |
-| `rpc/dispatch` | `Dispatcher` (method table, deadline, recover, `Group`), `Args`, `BlockRef`, `Chain` (head view, selector resolution), `Config`, `Notifier` | core |
-| `rpc/exec` | what execution methods share: `CallArgs`, overrides, EVM environment (`New`, `Run`), `ChainConfig` derived from rules, `RevertError` | dispatch, core, evmcore, opera |
+| `rpc/dispatch` | `Dispatcher` (method table, deadline, recover, `Group`), `Args`, `BlockRef`, `Chain` (head view; `Resolve` turns a reference into a number, H1), `Encoded` (H3), `Config`, `Notifier` | core |
+| `rpc/exec` | what execution methods share: `CallArgs`, overrides, EVM environment (`New`, `Run`), `ChainConfig` derived from rules, `RevertError`; the one set of block, header, transaction and state lookups on `Env` (H1, H2) | dispatch, core, evmcore, opera |
 | `rpc/oracle` | gas price oracle and its sampler | core |
 | `rpc/eth`, `filters`, `trace`, `debug`, `txpool`, `net`, `web3`, `sonic` | one namespace each; `Register(d, chain[, ns])`; `eth` and `filters` register twice, as `eth_` and `ftm_` | dispatch, exec, oracle, core |
 | `rpc/transport` | HTTP, WebSocket, unix-socket transports over one `Front` that routes ported methods to the dispatcher and forwards the rest to the node's legacy handler while the port is under way | dispatch |
@@ -401,7 +401,7 @@ parallel after step 1; none may add to `Core`.
    The module takes over the HTTP listener, after listing what the node reads
    of the configuration it rewrites (section 3). When the HTTP and WebSocket
    ports are the same, the WebSocket upgrade is reverse-proxied to the node's
-   own server on a private endpoint until step 4 (ADR12). Gates: I1–I4, I13,
+   own server on a private endpoint until step 4 (ADR12). Gates: H1, H3, H6, I1–I4, I13,
    I15, D1–D4, D9, D11, P1–P5, P7, S1, MON1–MON5, O5 (unlock check).
 2. **Oracle, state and execution** (M1). The gas price oracle in the module on
    `Core.OracleInputs`, `PendingHeads` and `Rules` (I10; it runs next to the
@@ -411,7 +411,7 @@ parallel after step 1; none may add to `Core`.
    defaulting (`setDefaults`) asks it for the tip. Then `eth_get{Balance,Code,
    StorageAt,TransactionCount,Account,Proof}`, `eth_call`, `eth_estimateGas`,
    `eth_createAccessList`, `eth_simulateV1`, `sonic_estimateGasForTransactions`.
-   Gates: I5–I8, I10, I12, V1–V6, V10, V11, F2–F5, O1; lakme state, call and oracle
+   Gates: H2, I5–I8, I10, I12, V1–V6, V10, V11, F2–F5, O1; lakme state, call and oracle
    families.
 3. **Transactions and pool** (M1). `eth_sendRawTransaction(Sync)`,
    `eth_pendingTransactions`, `txpool_*`, `sonic_submitBundle`,
@@ -430,7 +430,7 @@ parallel after step 1; none may add to `Core`.
    in the minimal `api/legacy` package until their removal. Deleted here: the
    legacy oracle and its plumbing (G2), `gossip/filters` (G1), the unreachable
    parts of `api/*` (G3). Before the forwarding goes, every in-process client
-   of the node's handler is moved to the module (O5). Gates: Q1–Q6, D10,
+   of the node's handler is moved to the module (O5). Gates: H4, H5, H7, Q1–Q6, D10,
    O1–O5, P6–P8, MON1–MON6, import test, lakme and benchmark gate (T2) against
    the reference, and a review of the whole branch against the reference by
    someone who did not write it, with section 7.6 as the checklist (T7). No
@@ -440,7 +440,7 @@ parallel after step 1; none may add to `Core`.
 
 Columns: **ID**, requirement, **Verified by** (section 7 tools:
 L lakme, E execution-apis fixtures, R rpctest, I integration tests, U unit test
-in the module, C CI lint or import test). I, D, P, V, F, S, X and MON gate
+in the module, C CI lint or import test). I, D, P, V, F, H, S, X and MON gate
 M1 and M2; Q, O and G gate M2 alone.
 
 ### I. Interface and state
@@ -543,6 +543,25 @@ execution paid for it.
 | F6 | `eth_getLogs` over a range ends at the first block it cannot read and returns what it has; range limits are checked on the requested bounds before the walk | L, U |
 | F7 | `eth_newPendingTransactionFilter(true)` serves whole transactions with no block fields, each priced by its own gas price | L, U |
 | F8 | Known bugs of the reference (section 6) are reproduced, not fixed, until a release fixes them; each has an issue and a branch with one failing test | L |
+
+### H. Code economy
+
+A port can pass lakme, the handler tests and the benchmarks and still carry the
+same lookup five times, helpers nobody calls and work the answer never uses:
+none of it shows in an answer. Each rule is a class a review found after the
+code was green. Keeping them while porting is cheaper than removing the code
+later: before porting a package, list the repeated shapes in the legacy code
+(7.6), then write each once.
+
+| ID | Requirement | Verified by |
+|---|---|---|
+| H1 | One path from a reference to a block. `Chain.Resolve(head, ref)` turns a number, tag or hash into a number and reports a reference without selector, an unknown hash and an invalid tag as sentinel errors. One set of lookups on `exec.Env` (`HeaderAt`, `BlockAt`, `FindBlock`, `TxByHash`, `OpenState`, `StateAt`) serves every namespace. A namespace keeps no copy of them, and the switch on `ref.Number` and `ref.Hash` is written once. A method with its own wording (F3) maps the sentinels at its call site, never through a second resolver | U (a table over `Resolve`: tags, a number above the head, a hash, an unknown hash, an invalid tag, an empty reference), review |
+| H2 | Read the least that answers (I13 for every lookup). A method that does not use a header does not read one: `OpenState`, not `StateAt`. An adapter method that needs a field of the stored block (state root, epoch) reads the block, not the EVM header, whose build also looks up the epoch state and the parent hash. What a request needs about its block (head snapshot, header, rules) is read once and held, not looked up at every step of a loop | U (the fake counts `Header` calls: a state getter at a past block makes none), profile (7.2) |
+| H3 | Encode once. A handler that must encode its result to check a size returns the bytes as `dispatch.Encoded`, which the dispatcher hands on. `json.RawMessage` is validated and compacted again, and the envelope compacts it a last time as geth's does; use it only for bytes the module did not write with `json.Marshal` (a tracer's output) | U (an `Encoded` result passes through unchanged; a `RawMessage` is compacted) |
+| H4 | No dead code. An exported symbol has a caller outside tests or implements an interface; an unexported one has a caller. A refactor deletes what it leaves without a caller in the same commit. A variant is added when its first caller needs it (`Add5` had none), and a wrapper that only forwards is not written. A helper only tests use lives in a test file or `rpc/tests` | C (an unused-symbol check in CI, built with the module's Go version; exports used only by tests are listed and justified), review |
+| H5 | One definition of a fact. The chain id as a `*big.Int`, the signer, the base fee of the head, an error wording shared by several methods (`exec.UnknownHashError`), the optional-timeout context, the mapping of `core.ErrNotFound` to "no value": each is one function, and a conversion that appears a third time becomes one. Defaults follow section 8 | review (the three-sites rule) |
+| H6 | Block numbers are `uint64` inside the module. `BlockNumber` holds the tags as negative values and is for client input: a `uint64` cast to it above `MaxInt64` becomes a tag (`2^64-2` is `latest`). Helpers that mean a number take a `uint64` (`HeaderAt(head, n)`). Where the reference casts (`debug_getBlockRlp`), F1 wins and the cast stays in that handler, with a comment | U (a number above `MaxInt64` is not a tag), review |
+| H7 | The same shape twice is a function. A branch written twice in one function (the replay of a traced and of an untraced transaction repeated the message and receipt checks) and a loop shape repeated across handlers (the head, log and pool subscription loops) are merged when the second one appears | review |
 
 ### S. Surface
 
@@ -807,6 +826,32 @@ v2.2.2; re-measure against the current reference at step 2): geomean 405.7µs �
 faster, so an `EstimateGas` or `TraceBlock/busiest` moving by more than a few
 percent means something other than the RPC layer changed.
 
+**Profile before optimising.** A change made for speed lands with the profile
+line that shows its cost and a `benchstat` that shows its gain; a guess is not
+a reason. `-lakme.pprof 20` samples side `a` during each benchmark into
+`.lakme/pprof`; read it with `go tool pprof -top -cum` and `-peek <handler>`
+(or `./flamegraph.sh`), and look at what sits below the handler besides the EVM
+and the store. What the first profiles showed (2026-10-21):
+
+- `eth_estimateGas` is 88% EVM, half of that Carmen hashing contract code in
+  `GetCodeHash`, as in the reference; the module's own share is a few percent.
+  The `ChainInfo` call per EVM and the map of BLOCKHASH answers per EVM were each
+  under 0.5% and were left alone.
+- The costs the module added were lookups the answer does not use: the EVM header
+  built for a state read (2.4% of `eth_getBalance` at the head, 15% over old
+  blocks) and a second compaction of an encoded trace (3.8% of `trace_call`).
+  Removing them (H2, H3) gained, with 20 samples per side: `GetBalance` and
+  `GetStorageAt` over old blocks 3–5%, `TraceCall` 4–6%, `EstimateGas` 1–3%,
+  geomean 1.3%, no row slower beyond noise.
+- On small responses the gzip writer's reset is 11% of the CPU of
+  `eth_getBalance` at the head. The reference pays it too. Not compressing
+  responses under about 1 KB would remove it and changes the wire, so it is a
+  decision, not a fix.
+- A row slower in one sweep (`GetProof` over old blocks, +6% at 20 samples) was
+  noise: 60 samples per side, interleaved and run for those rows only, showed no
+  change. Re-measure the rows concerned with more samples before looking for a
+  cause.
+
 ### 7.3 Ethereum execution APIs
 
 The `ethereum/execution-apis` fixtures (`tests/<method>/*.io`, 29 methods today)
@@ -859,6 +904,8 @@ the legacy code before porting, not from the port afterwards.
 | State a client makes the node keep | a test installs a few filters and polls them | I17: every structure a request leaves behind has a cap, and its cost per event is measured with many of them | each polled filter copied every pool transaction for 5 minutes, under one lock, and nothing bounded the number of filters |
 | Cost of a coarse `Core` call | the answer is right | read what the legacy code read, per caller (I10) | the oracle tick walked every validator's last event |
 | Defaults written twice | they agree today | one definition (section 8) | the oracle's maximum gas price default in three places |
+| Work the answer does not use | the answers are right and a sweep shows only a sum | H2, H3: profile each class of method (state read at the head and over old blocks, call, trace) at the end of steps 2 and 5, and read what is below the handler | an EVM header built for a state read; a trace result compacted twice |
+| Copies and dead code | the tests pass with five copies of a lookup and with symbols nobody calls | H1, H4, H5, H7: repeated shapes listed in the legacy code before porting, the unused-symbol check at the end of each step | block lookups copied into `eth` beside `exec.Env`; the number and hash switch written eight times; six symbols with no caller, `Add5` among them |
 | Cost a client chooses | the answers are right, and fast for the values honest clients send | V11: for every number a request carries (overrides, indexes, range ends), count the `Core` calls with hostile values: above the head, far below it, the maximum of the type | a block override `number` above the head made one BLOCKHASH read every header down to genesis (F8 table) |
 | A size limit that counts the wrong thing | the limit is tested on the trace it was written for | V12: count in the unit of the limit everything the structure keeps, and test with the most expensive operation per gas, not with a loop of cheap ones | the vmTrace limit counted 128 bytes per operation: a loop of `SWAP16` over full words kept 2 GiB under a 256 MiB limit, and `trace_callMany` multiplied it by its calls |
 

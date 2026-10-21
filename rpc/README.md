@@ -76,6 +76,13 @@ Alerts to define (MON6):
   every loop.
 - Take the head once per request (`chain.Head()`) and use it for every part of
   the answer.
+- Resolve a block reference with `chain.Resolve` and look blocks, headers,
+  transactions and state up with the `exec.Env` methods; do not write a private
+  copy in a namespace. Use `env.OpenState` when the header is not used, and keep
+  block numbers `uint64` (`dispatch.BlockNumber` is for client input).
+- Return `dispatch.Encoded` for a result you encoded with `json.Marshal`; a
+  `json.RawMessage` is compacted again.
+- Delete what a change leaves without a caller in the same commit.
 - A namespace imports `rpc/core`, `rpc/dispatch`, `rpc/exec` and go-ethereum
   value types only; `rpc/lint_test.go` checks the rule.
 - Test a handler on `tests.FakeCore` (no node) or on `tests.CarmenCore` (real
