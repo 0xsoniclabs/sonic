@@ -411,7 +411,7 @@ parallel after step 1; none may add to `Core`.
    defaulting (`setDefaults`) asks it for the tip. Then `eth_get{Balance,Code,
    StorageAt,TransactionCount,Account,Proof}`, `eth_call`, `eth_estimateGas`,
    `eth_createAccessList`, `eth_simulateV1`, `sonic_estimateGasForTransactions`.
-   Gates: I5–I8, I10, I12, V1–V6, V10, F2–F5, O1; lakme state, call and oracle
+   Gates: I5–I8, I10, I12, V1–V6, V10, V11, F2–F5, O1; lakme state, call and oracle
    families.
 3. **Transactions and pool** (M1). `eth_sendRawTransaction(Sync)`,
    `eth_pendingTransactions`, `txpool_*`, `sonic_submitBundle`,
@@ -423,7 +423,7 @@ parallel after step 1; none may add to `Core`.
    V8, F6, F7, P8; lakme filter family; subscription tests over WS and IPC.
 5. **Tracing** (M1). `debug_*`, `trace_*`, `debug_getRaw*` (ADR7). Read
    `stateAtTransaction` before deciding where the EIP-2935 write goes (section 6).
-   Gates: V6, F2, F3; lakme trace families.
+   Gates: V6, V11, F2, F3; lakme trace families.
 6. **Switch** (M2). The forwarding of unported methods goes, with the last path
    to `eth_stop` (S1); `Front` keeps only the IPC routing of X3 and the p2p
    facts; the module is the only RPC server; X3 namespaces stay on IPC
@@ -518,6 +518,7 @@ M1 and M2; Q, O and G gate M2 alone.
 | V8 | Filter and subscription ids exist and belong to the calling connection | L, U |
 | V9 | Validation never allocates proportionally to a client-chosen number before the bound is checked (block count, storage keys, topics, batch items) | U |
 | V10 | `eth_getProof`: at most 1024 storage keys, strict key decoding, both → -32602 before any state access | L, R |
+| V11 | No value a client sets decides how far a lookup walks or how often a loop runs, beyond what a limit of section 8 bounds. A block override `number` changes which blocks BLOCKHASH may ask for, never what one BLOCKHASH costs: it is answered by one lookup by number (`Core.Header`), with the zero hash at or above the block of the call, never by walking the parent hashes back from that block (`evmcore.GetHashFn`), which a `number` above the head turns into one header read per block down to genesis. Applies to every block context built from a header of the chain (`exec.Env.BlockContext`): `eth_call`, `eth_estimateGas` (once per step of its search), `eth_createAccessList`, `debug_traceCall`, `trace_*`, `sonic_estimateGasForTransactions`. `eth_simulateV1` is the one walk left: its blocks are not in `Core`, its block number is that of the header it walks from, so it walks at most 256 headers | U (`Core.Header` calls counted under overrides above and below the head) |
 
 ### F. Fidelity to the reference
 
@@ -697,9 +698,10 @@ entry; a new row is added with its entry in the same change.
 ### Bugs of the reference the port treats (F8)
 
 Confirmed by running or reading the code on `main` and `v2.2.4`. The module
-reproduces the first two so lakme stays green; it fixes the last two (panics),
-which the table above records. Each is fixed deliberately in a release, with a
-`defects.json` entry and an issue holding one failing test.
+reproduces the first two so lakme stays green; it fixes the two panics, which
+the table above records, and the BLOCKHASH walk, which changes no answer. Each
+is fixed deliberately in a release, with a `defects.json` entry (none for the
+walk: lakme cannot see it) and an issue holding one failing test.
 
 | Where | Bug | Fix | Tracking |
 |---|---|---|---|
@@ -708,6 +710,7 @@ which the table above records. Each is fixed deliberately in a release, with a
 | `PublicFilterAPI.Stop` (`filters/api.go`) | exported, so served as `eth_stop`/`ftm_stop` | stop registering it: wrap the API in `Service.APIs`, since `gossip` calls `Stop` from another package. **File and fix in the 2.2 line now**, not at step 6 | issue to file (S1) |
 | `replayBlock` (`tx_trace.go`) | the untraced branch indexes `receipts[i]` unguarded: a short list panics | hoist the guard the traced branch has | issue to file |
 | `traceBlock` (`api.go`) | ignores the error from `TxAsMessage`, then dereferences the nil message | return it | issue to file |
+| `GetHashFn` (`evmcore/evm.go`) | lacks geth's `ref.Number <= n` guard and walks the parent hashes back from the block of the call. A block override `number` above the head lets BLOCKHASH ask for the head or later: the walk reads every header down to genesis without finding it, and keeps 32 bytes per block. On a 20,000-block chain one `eth_call` read 20,000 headers and `eth_estimateGas` 460,000; on mainnet one unauthenticated request costs minutes and GBs, and neither the request deadline nor `evm.Cancel` stops it inside the opcode. A `number` far below the head walks from the head down to it | the guard in `GetHashFn` (block processing never asks at or above its block, so consensus is unchanged); the module answers BLOCKHASH by a lookup by number (`exec.Env.BlockContext`). Same answers, see V11 | issue to file |
 
 Considered and rejected, to stay identical to the reference: erroring on an
 `eth_feeHistory` count above 1024 (legacy clamps, lakme draws up to 1100), and
@@ -850,6 +853,7 @@ the legacy code before porting, not from the port afterwards.
 | Cost multiplied by consumers | the benchmarks have one client | I16, `Core` calls counted with N consumers | `newHeads` loaded receipts once per subscriber |
 | Cost of a coarse `Core` call | the answer is right | read what the legacy code read, per caller (I10) | the oracle tick walked every validator's last event |
 | Defaults written twice | they agree today | one definition (section 8) | the oracle's maximum gas price default in three places |
+| Cost a client chooses | the answers are right, and fast for the values honest clients send | V11: for every number a request carries (overrides, indexes, range ends), count the `Core` calls with hostile values: above the head, far below it, the maximum of the type | a block override `number` above the head made one BLOCKHASH read every header down to genesis (F8 table) |
 
 ## 8. Limits inherited from the reference
 

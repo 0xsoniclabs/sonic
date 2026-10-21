@@ -188,6 +188,28 @@ func TestTraceCall(t *testing.T) {
 	require.Equal(t, "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified", err.Message)
 }
 
+// BLOCKHASH of a traced call with a block number above the head reads no
+// header: it does not walk the chain down to genesis.
+func TestTraceCall_BlockHashUnderABlockOverrideReadsNoHeader(t *testing.T) {
+	const blocks = 1000
+	fc, cs := tests.NewCarmenCore(t, tests.WithBlocks(blocks))
+	// PUSH2 blocks BLOCKHASH STOP
+	cs.SetCode(contract, []byte{0x61, byte(blocks >> 8), byte(blocks & 0xff), 0x40, 0x00})
+	h := tests.NewHarness(t, fc, tests.Default(), func(d *dispatch.Dispatcher, chain *dispatch.Chain) {
+		Register(d, exec.NewEnv(chain, oracle.New(oracle.Config{}, fc)))
+	})
+	trace := func(config map[string]any) int {
+		before := fc.Calls("Header")
+		h.Result("debug_traceCall", map[string]any{"to": contract}, "latest", config)
+		return fc.Calls("Header") - before
+	}
+	// Without an override the asked block is the block of the call: no hash.
+	withoutOverride := trace(map[string]any{"tracer": "callTracer"})
+	withOverride := trace(map[string]any{"tracer": "callTracer",
+		"blockOverrides": map[string]any{"number": hexutil.Uint64(blocks + 1)}})
+	require.Equal(t, withoutOverride, withOverride)
+}
+
 func TestBlockEncodings(t *testing.T) {
 	f := newFixture(t)
 	number := f.block.number

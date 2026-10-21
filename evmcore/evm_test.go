@@ -17,6 +17,7 @@
 package evmcore
 
 import (
+	"math"
 	"math/big"
 	"testing"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestNewEVMBlockContext_DifficultyIsOne(t *testing.T) {
@@ -245,4 +247,27 @@ func TestNewEVMBlockContextWithDifficulty_UsesHeaderParametersIfDefinedOrSonicDe
 			test.expectation(t, ctx)
 		})
 	}
+}
+
+func TestGetHashFn_AtOrAboveTheReferenceIsZeroWithoutReadingTheChain(t *testing.T) {
+	// A block override of the RPC can make BLOCKHASH ask for the reference
+	// block or a later one. The chain must not be walked for it: no call on the
+	// mock is expected.
+	chain := NewMockDummyChain(gomock.NewController(t))
+	ref := &EvmHeader{Number: big.NewInt(100), ParentHash: common.Hash{1}}
+	getHash := GetHashFn(ref, chain)
+	require.Equal(t, common.Hash{}, getHash(100))
+	require.Equal(t, common.Hash{}, getHash(101))
+	require.Equal(t, common.Hash{}, getHash(math.MaxUint64))
+	require.Equal(t, common.Hash{1}, getHash(99))
+}
+
+func TestGetHashFn_BelowTheReferenceFollowsTheParents(t *testing.T) {
+	chain := NewMockDummyChain(gomock.NewController(t))
+	ref := &EvmHeader{Number: big.NewInt(100), ParentHash: common.Hash{99}}
+	chain.EXPECT().Header(common.Hash{99}, uint64(99)).Return(&EvmHeader{Number: big.NewInt(99), ParentHash: common.Hash{98}})
+	getHash := GetHashFn(ref, chain)
+	require.Equal(t, common.Hash{98}, getHash(98))
+	// The second answer comes from the cache.
+	require.Equal(t, common.Hash{98}, getHash(98))
 }

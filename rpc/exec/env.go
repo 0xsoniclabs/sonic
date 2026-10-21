@@ -195,25 +195,41 @@ func (e *Env) StateAt(head dispatch.Head, ref dispatch.BlockRef) (state.StateDB,
 	return st, header, nil
 }
 
-// hashChain gives the EVM the hashes of the blocks BLOCKHASH asks for.
-type hashChain struct {
-	e    *Env
-	head dispatch.Head
-}
-
-// Header implements evmcore.DummyChain. It returns nil if the block is unknown
-// or its hash is not the given one.
-func (c hashChain) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
-	header, err := c.e.header(c.head, number)
-	if header == nil || err != nil || header.Hash != hash {
-		return nil
+// getHash gives the EVM the hashes of the blocks BLOCKHASH asks for, below the
+// block ref. The served chain is canonical, so the hash of block n is that of
+// its header: one lookup by number. The walk back from ref along the parent
+// hashes, which evmcore.GetHashFn does, is not used: a block override moves the
+// number BLOCKHASH is checked against anywhere, and the walk then reads every
+// header between ref and the asked block. The answers are the walk's: the zero
+// hash at or above ref and for a block the node does not have. Like the walk's,
+// the answers are cached for the EVM, which asks for at most 256 blocks.
+func (e *Env) getHash(head dispatch.Head, ref *evmcore.EvmHeader) vm.GetHashFunc {
+	refNumber := ref.Number.Uint64()
+	hashes := map[uint64]common.Hash{}
+	return func(n uint64) common.Hash {
+		if n >= refNumber {
+			return common.Hash{}
+		}
+		if n == refNumber-1 {
+			return ref.ParentHash
+		}
+		if hash, ok := hashes[n]; ok {
+			return hash
+		}
+		var hash common.Hash
+		if header, err := e.header(head, n); header != nil && err == nil {
+			hash = header.Hash
+		}
+		hashes[n] = hash
+		return hash
 	}
-	return header
 }
 
 // BlockContext returns the block context of the EVM for a header.
 func (e *Env) BlockContext(head dispatch.Head, header *evmcore.EvmHeader) vm.BlockContext {
-	return evmcore.NewEVMBlockContext(header, hashChain{e, head}, nil)
+	ctx := evmcore.NewEVMBlockContext(header, nil, nil)
+	ctx.GetHash = e.getHash(head, header)
+	return ctx
 }
 
 // NewEVM builds the EVM of a block. The chain configuration is that of the

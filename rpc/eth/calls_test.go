@@ -126,6 +126,52 @@ func TestEstimateGas_FailsWhenNothingHelps(t *testing.T) {
 	require.Equal(t, 3, err.Code)
 }
 
+// blockHashOf is the state override that makes the contract ask BLOCKHASH for
+// the block n twice and return the answer: PUSH3 n BLOCKHASH POP PUSH3 n
+// BLOCKHASH PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN.
+func blockHashOf(n uint64) map[string]any {
+	push := []byte{0x62, byte(n >> 16), byte(n >> 8), byte(n)}
+	code := append(append(append(push, 0x40, 0x50), push...), 0x40, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3)
+	return map[string]any{contract.Hex(): map[string]any{"code": hexutil.Encode(code)}}
+}
+
+// BLOCKHASH is one lookup by number, whatever a block override sets the number
+// to. A walk back along the parent hashes reads every header between the block
+// of the call and the asked one: with a number above the head, every header
+// down to genesis, once per execution, and the estimate executes about 25 times.
+func TestCall_BlockHashReadsAtMostOneHeader(t *testing.T) {
+	const blocks = 1000
+	h, fc, _ := newStateHarness(t, blocks)
+	hashOf := func(n uint64) []byte { return fc.BlockAt(n).Hash.Bytes() }
+	zero := common.Hash{}.Bytes()
+
+	cases := map[string]struct {
+		asked     uint64
+		overrides any
+		want      []byte
+	}{
+		"parent":                {blocks - 1, nil, hashOf(blocks - 1)},
+		"ancestor":              {blocks - 200, nil, hashOf(blocks - 200)},
+		"too old":               {blocks - 300, nil, zero},
+		"number above the head": {blocks, map[string]any{"number": hexutil.Uint64(blocks + 1)}, zero},
+		"number below the head": {100, map[string]any{"number": hexutil.Uint64(300)}, hashOf(100)},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			before := fc.Calls("Header")
+			var out hexutil.Bytes
+			h.Into(&out, "eth_call", map[string]any{"to": contract}, "latest", blockHashOf(c.asked), c.overrides)
+			require.Equal(t, c.want, []byte(out))
+			require.LessOrEqual(t, fc.Calls("Header")-before, 1)
+		})
+	}
+
+	before := fc.Calls("Header")
+	h.Result("eth_estimateGas", map[string]any{"to": contract}, "latest", blockHashOf(blocks),
+		map[string]any{"number": hexutil.Uint64(blocks + 1)})
+	require.Zero(t, fc.Calls("Header")-before)
+}
+
 func TestCreateAccessList(t *testing.T) {
 	h, _, cs := newStateHarness(t, 1)
 	cs.SetCode(contract, stores).SetBalance(account, big.NewInt(1e18))

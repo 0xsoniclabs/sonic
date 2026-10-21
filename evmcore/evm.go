@@ -130,6 +130,12 @@ func GetHashFn(ref *EvmHeader, chain DummyChain) func(n uint64) common.Hash {
 	var cache []common.Hash
 
 	return func(n uint64) common.Hash {
+		// A block override of the RPC can ask for the reference block or a
+		// later one. The walk below would go back to genesis without finding
+		// it, so answer at once what it would answer at the end.
+		if ref.Number.Uint64() <= n {
+			return common.Hash{}
+		}
 		// If there's no hash cache yet, make one
 		if len(cache) == 0 {
 			cache = append(cache, ref.ParentHash)
