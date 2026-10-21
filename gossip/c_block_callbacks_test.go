@@ -24,6 +24,8 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"os"
+	"os/exec"
 	"slices"
 	"sync"
 	"testing"
@@ -36,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
@@ -221,8 +224,8 @@ func testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 				if test.proposal != nil {
 					proposal := *test.proposal
 					// Fix some required fields in any proposal.
-					proposal.Number = 1
-					proposal.ParentHash = store.GetBlock(0).Hash()
+					proposal.Number = store.GetLatestBlockIndex() + 1
+					proposal.ParentHash = store.GetLatestBlock().Hash()
 					builder.SetPayload(inter.Payload{
 						Proposal: &proposal,
 					})
@@ -245,9 +248,7 @@ func testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 
 			// Update the block and epoch state to match the test conditions.
 			bs := store.GetBlockState()
-			bs.LastBlock = iblockproc.BlockCtx{
-				Time: test.lastBlockTime,
-			}
+			bs.LastBlock.Time = test.lastBlockTime
 			es := store.GetEpochState()
 			es.Rules.Blocks.MaxEmptyBlockSkipPeriod = MaxEmptyBlockSkipPeriod
 			store.SetBlockEpochState(bs, es)
@@ -329,7 +330,7 @@ func testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 			blockBusyFlag := uint32(0)
 			emitters := []*emitter.Emitter{}
 			beginBlock := consensusCallbackBeginBlockFn(
-				workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping,
+				workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store), proc, false, nil, &emitters, nil, &bootstrapping,
 			)
 
 			// Run a full consensus callback cycle for this block.
@@ -387,8 +388,8 @@ func testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T, u
 	proposalBuilder.SetMedianTime(blockTime)
 	proposalBuilder.SetPayload(inter.Payload{
 		Proposal: &inter.Proposal{
-			Number:     1,
-			ParentHash: store.GetBlock(0).Hash(),
+			Number:     store.GetLatestBlockIndex() + 1,
+			ParentHash: store.GetLatestBlock().Hash(),
 		},
 	})
 	proposalEvent := proposalBuilder.Build()
@@ -406,7 +407,7 @@ func testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T, u
 
 	// Update block and epoch state to match the test conditions.
 	bs := store.GetBlockState()
-	bs.LastBlock = iblockproc.BlockCtx{Time: lastBlockTime}
+	bs.LastBlock.Time = lastBlockTime
 	es := store.GetEpochState()
 	es.Rules.Blocks.MaxEmptyBlockSkipPeriod = maxEmptyBlockSkipPeriod
 	store.SetBlockEpochState(bs, es)
@@ -490,7 +491,7 @@ func testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T, u
 	blockBusyFlag := uint32(0)
 	emitters := []*emitter.Emitter{}
 	beginBlock := consensusCallbackBeginBlockFn(
-		workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping,
+		workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store), proc, false, nil, &emitters, nil, &bootstrapping,
 	)
 
 	callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
@@ -508,6 +509,48 @@ func testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T, u
 	wantBrioSizeLimit := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
 	require.Contains(executeSizeLimits, wantBrioSizeLimit,
 		"user transactions must be executed with the block's start rules (Brio enabled), got size limits %v", executeSizeLimits)
+}
+
+func TestConsensusCallback_UsesLedgerFromTheBlockAfterTheOneEnablingDolce(t *testing.T) {
+	t.Parallel()
+
+	store := newInMemoryStoreWithGenesisData(t, opera.GetCantoUpgrades(), 1, 2)
+
+	// Let the next block seal the epoch and enable Dolce.
+	bs, es := store.GetBlockState(), store.GetEpochState()
+	rules := es.Rules.Copy()
+	rules.Upgrades.Dolce = true
+	bs.DirtyRules = &rules
+	bs.AdvanceEpochs = 1
+	store.SetBlockEpochState(bs, es)
+
+	// Any ledger call without an expectation fails the test.
+	ledger := NewMockLedger(gomock.NewController(t))
+
+	beginBlock := consensusCallbackBeginBlockFn(
+		nil, new(sync.WaitGroup), new(uint32), store, ledger, DefaultBlockProc(), false, nil, &[]*emitter.Emitter{}, nil, new(bool),
+	)
+
+	// Produces an empty block, late enough not to be skipped.
+	produceBlock := func() {
+		number := store.GetLatestBlockIndex() + 1
+		atroposBuilder := inter.MutableEventPayload{}
+		atroposBuilder.SetCreator(1)
+		atroposBuilder.SetMedianTime(store.GetBlockState().LastBlock.Time +
+			store.GetEpochState().Rules.Blocks.MaxEmptyBlockSkipPeriod + 1)
+		atropos := atroposBuilder.Build()
+
+		callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
+		callbacks.ApplyEvent(atropos)
+		callbacks.EndBlock()
+		require.Equal(t, number, store.GetLatestBlockIndex())
+	}
+
+	produceBlock()
+	require.True(t, store.GetEpochState().Rules.Upgrades.Dolce)
+
+	ledger.EXPECT().Head().DoAndReturn(NewLedger(store).Head)
+	produceBlock()
 }
 
 // TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking verifies
@@ -562,8 +605,8 @@ func testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 	originBuilder.SetCreator(originCreator)
 	originBuilder.SetPayload(inter.Payload{
 		Proposal: &inter.Proposal{
-			Number:       1,
-			ParentHash:   store.GetBlock(0).Hash(),
+			Number:       store.GetLatestBlockIndex() + 1,
+			ParentHash:   store.GetLatestBlock().Hash(),
 			Transactions: types.Transactions{originTx},
 		},
 	})
@@ -582,7 +625,7 @@ func testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 	}
 
 	bs := store.GetBlockState()
-	bs.LastBlock = iblockproc.BlockCtx{Time: lastBlockTime}
+	bs.LastBlock.Time = lastBlockTime
 	es := store.GetEpochState()
 	es.Rules.Blocks.MaxEmptyBlockSkipPeriod = maxEmptyBlockSkipPeriod
 	store.SetBlockEpochState(bs, es)
@@ -671,7 +714,7 @@ func testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 	blockBusyFlag := uint32(0)
 	emitters := []*emitter.Emitter{}
 	beginBlock := consensusCallbackBeginBlockFn(
-		workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping,
+		workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store), proc, false, nil, &emitters, nil, &bootstrapping,
 	)
 
 	callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
@@ -821,7 +864,7 @@ func testConsensusCallback_AppliesTransactionPriorities(t *testing.T, upgrades o
 	blockBusyFlag := uint32(0)
 	emitters := []*emitter.Emitter{}
 	beginBlock := consensusCallbackBeginBlockFn(
-		workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping,
+		workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store), proc, false, nil, &emitters, nil, &bootstrapping,
 	)
 
 	callbacks := beginBlock(&lachesis.Block{Atropos: event.ID()})
@@ -832,6 +875,130 @@ func testConsensusCallback_AppliesTransactionPriorities(t *testing.T, upgrades o
 	// The prioritized transaction is hoisted ahead of the plain one, overriding
 	// the order of the proposal.
 	require.Equal(types.Transactions{prioritizedTx, plainTx}, executedTxs)
+}
+
+func TestConsensusCallback_InconsistentHead_TerminatesProcess(t *testing.T) {
+	const envChild = "SONIC_TEST_LEDGER_FAILURE_CHILD"
+	tests := map[string]struct {
+		setup   func(store *Store)
+		message string
+	}{
+		"head block missing from store": {
+			setup: func(store *Store) {
+				bs := store.GetBlockState()
+				bs.LastBlock.Idx++
+				store.SetBlockEpochState(bs, store.GetEpochState())
+			},
+			message: "Failed to read the ledger head",
+		},
+		"head does not match the block state": {
+			setup: func(store *Store) {
+				bs := store.GetBlockState()
+				bs.LastBlock.Idx++
+				store.SetBlock(bs.LastBlock.Idx, inter.NewBlockBuilder().
+					WithNumber(uint64(bs.LastBlock.Idx)).
+					Build())
+				store.SetBlockEpochState(bs, store.GetEpochState())
+			},
+			message: "Ledger head does not match the block state",
+		},
+		"live state of the head cannot be opened": {
+			setup: func(store *Store) {
+				number := store.GetLatestBlockIndex()
+				store.SetBlock(number, inter.NewBlockBuilder().
+					WithNumber(uint64(number)).
+					WithStateRoot(common.Hash{1}).
+					Build())
+			},
+			message: "Failed to begin block",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if os.Getenv(envChild) == "1" {
+				log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelCrit, false)))
+				store := newInMemoryStoreWithGenesisData(t, opera.GetDolceUpgrades(), 1, 2)
+				es := store.GetEpochState()
+				es.Rules.Blocks.MaxEmptyBlockSkipPeriod = 0
+				store.SetBlockEpochState(store.GetBlockState(), es)
+
+				ctrl := gomock.NewController(t)
+				_any := gomock.Any()
+				eventProcessor := blockproc.NewMockConfirmedEventsProcessor(ctrl)
+				eventProcessor.EXPECT().ProcessConfirmedEvent(_any)
+				eventProcessor.EXPECT().Finalize(_any, _any).Return(store.GetBlockState())
+				eventsModule := blockproc.NewMockConfirmedEventsModule(ctrl)
+				eventsModule.EXPECT().Start(_any, _any).Return(eventProcessor)
+
+				atroposBuilder := inter.MutableEventPayload{}
+				atroposBuilder.SetVersion(3)
+				atroposBuilder.SetEpoch(es.Epoch)
+				atropos := atroposBuilder.Build()
+
+				var wg sync.WaitGroup
+				bootstrapping := false
+				blockBusyFlag := uint32(0)
+				emitters := []*emitter.Emitter{}
+				beginBlock := consensusCallbackBeginBlockFn(
+					nil, &wg, &blockBusyFlag, store, NewLedger(store), BlockProc{EventsModule: eventsModule}, false, nil, &emitters, nil, &bootstrapping,
+				)
+				callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
+				callbacks.ApplyEvent(atropos)
+				test.setup(store)
+				callbacks.EndBlock()
+				// reached only if log.Crit did not terminate the process
+				os.Exit(2)
+			}
+
+			cmd := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
+			cmd.Env = append(os.Environ(), envChild+"=1")
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+
+			var exitErr *exec.ExitError
+			require.ErrorAs(t, err, &exitErr)
+			require.Equal(t, 1, exitErr.ExitCode())
+			require.Contains(t, stderr.String(), test.message)
+		})
+	}
+}
+
+func TestConsensusCallback_SkippedBlock_OpensLiveStateOnlyBeforeDolce(t *testing.T) {
+	tests := map[string]struct {
+		upgrades   opera.Upgrades
+		wantOpened bool
+	}{
+		"Canto": {upgrades: opera.GetCantoUpgrades(), wantOpened: true},
+		"Dolce": {upgrades: opera.GetDolceUpgrades()},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			store := newInMemoryStoreWithGenesisData(t, test.upgrades, 1, 2)
+			beginBlock := consensusCallbackBeginBlockFn(
+				nil, new(sync.WaitGroup), new(uint32), store, NewLedger(store), DefaultBlockProc(), false, nil, &[]*emitter.Emitter{}, nil, new(bool),
+			)
+
+			// Opening the live state on a missing EVM store panics.
+			evm := store.evm
+			store.evm = nil
+			defer func() { store.evm = evm }()
+
+			// Without the Atropos being applied, the block is skipped.
+			produceSkippedBlock := func() {
+				callbacks := beginBlock(&lachesis.Block{Atropos: hash.Event{1}})
+				require.Nil(t, callbacks.EndBlock())
+			}
+			if test.wantOpened {
+				require.PanicsWithError(t, "runtime error: invalid memory address or nil pointer dereference", produceSkippedBlock)
+			} else {
+				require.NotPanics(t, produceSkippedBlock)
+			}
+		})
+	}
 }
 
 func TestEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransaction(t *testing.T) {
@@ -2310,7 +2477,7 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupFromBrio(t *te
 
 			// Update the block state to a known time.
 			blockState := store.GetBlockState()
-			blockState.LastBlock = iblockproc.BlockCtx{Time: inter.Timestamp(1000)}
+			blockState.LastBlock.Time = inter.Timestamp(1000)
 			epochState := store.GetEpochState()
 			store.SetBlockEpochState(blockState, epochState)
 
@@ -2393,7 +2560,7 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupFromBrio(t *te
 			blockBusyFlag := uint32(0)
 			emitters := []*emitter.Emitter{}
 			beginBlock := consensusCallbackBeginBlockFn(
-				workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping,
+				workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store), proc, false, nil, &emitters, nil, &bootstrapping,
 			)
 
 			callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})

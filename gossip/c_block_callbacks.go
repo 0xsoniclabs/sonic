@@ -121,6 +121,7 @@ func (s *Service) GetConsensusCallbacks() lachesis.ConsensusCallbacks {
 			&s.blockProcWg,
 			&s.blockBusyFlag,
 			s.store,
+			s.ledger,
 			s.blockProcModules,
 			s.config.TxIndex,
 			&s.feed,
@@ -138,6 +139,7 @@ func consensusCallbackBeginBlockFn(
 	wg *sync.WaitGroup,
 	blockBusyFlag *uint32,
 	store *Store,
+	ledger Ledger,
 	blockProc BlockProc,
 	txIndex bool,
 	feed *ServiceFeed,
@@ -167,12 +169,18 @@ func consensusCallbackBeginBlockFn(
 		// otherwise cheaters would get punished after a first block where cheaters were observed
 		bs.EpochCheaters = mergeCheaters(bs.EpochCheaters, cBlock.Cheaters)
 
-		// Get stateDB
-		statedb, err := store.evm.GetLiveStateDb(bs.FinalizedStateRoot)
-		if err != nil {
-			log.Crit("Failed to open StateDB", "err", err)
+		// Before Dolce, the live state is opened here and captured by the callbacks.
+		// From Dolce on, the ledger owns it.
+		var statedb state.StateDB
+		var nonceSource blockproc.NonceSource
+		if !es.Rules.Upgrades.Dolce {
+			var err error
+			statedb, err = store.evm.GetLiveStateDb(bs.FinalizedStateRoot)
+			if err != nil {
+				log.Crit("Failed to open StateDB", "err", err)
+			}
+			nonceSource = blockproc.NewNonceSource(statedb)
 		}
-		nonceSource := blockproc.NewNonceSource(statedb)
 		evmStateReader := &EvmStateReader{
 			ServiceFeed: feed,
 			store:       store,
@@ -208,6 +216,7 @@ func consensusCallbackBeginBlockFn(
 						wg,
 						blockBusyFlag,
 						store,
+						ledger,
 						blockProc,
 						txIndex,
 						feed,
@@ -216,8 +225,6 @@ func consensusCallbackBeginBlockFn(
 						start,
 						bs,
 						es,
-						statedb,
-						nonceSource,
 						evmStateReader,
 						eventProcessor,
 						atroposTime,
@@ -722,6 +729,7 @@ func endBlock(
 	wg *sync.WaitGroup,
 	blockBusyFlag *uint32,
 	store *Store,
+	ledger Ledger,
 	blockProc BlockProc,
 	txIndex bool,
 	feed *ServiceFeed,
@@ -730,8 +738,6 @@ func endBlock(
 	start time.Time,
 	bs iblockproc.BlockState,
 	es iblockproc.EpochState,
-	statedb state.StateDB,
-	nonceSource blockproc.NonceSource,
 	evmStateReader *EvmStateReader,
 	eventProcessor blockproc.ConfirmedEventsProcessor,
 	atroposTime inter.Timestamp,
@@ -759,9 +765,19 @@ func endBlock(
 		},
 	)
 
-	// Start assembling the resulting block.
-	number := uint64(bs.LastBlock.Idx + 1)
-	lastBlockHeader := evmStateReader.Header(common.Hash{}, number-1)
+	// Start assembling the resulting block. The proposal is
+	// validated against the head the block is built on.
+	head, err := ledger.Head()
+	if err != nil {
+		log.Crit("Failed to read the ledger head", "err", err)
+	}
+	parent := head.Block()
+	if parent.Number != uint64(bs.LastBlock.Idx) {
+		log.Crit("Ledger head does not match the block state",
+			"head", parent.Number, "last_block", bs.LastBlock.Idx)
+	}
+	number := parent.Number + 1
+	lastBlockHeader := evmStateReader.Header(parent.Hash(), parent.Number)
 
 	randao := computePrevRandao(confirmedEvents)
 	chainCfg := opera.CreateTransientEvmChainConfig(
@@ -883,6 +899,12 @@ func endBlock(
 		)
 	}
 
+	executingBlock, err := head.BeginBlock()
+	if err != nil {
+		log.Crit("Failed to begin block", "err", err)
+	}
+	statedb := executingBlock.stateDB()
+
 	// Apply the transaction priorities and reorder the (already
 	// filtered) transactions, identically in both legacy and
 	// single-proposer modes, overriding any proposer order.
@@ -928,6 +950,7 @@ func endBlock(
 	executionStart := time.Now()
 
 	// Execute pre-internal transactions
+	nonceSource := blockproc.NewNonceSource(statedb)
 	preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
 	preInternalProcessedTxs := evmProcessor.Execute(preInternalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
 	bs = txListener.Finalize()
