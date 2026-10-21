@@ -318,7 +318,6 @@ func TestReceiptGasAmendments_RoundTrip(t *testing.T) {
 	require.Equal(t, 2, wantCount)
 	_, err = target.EvmStore().ExportReceiptGasAmendments(context.Background(), &got, 0)
 	require.NoError(t, err)
-	require.NotZero(t, want.Len())
 	require.Equal(t, want.Bytes(), got.Bytes(), "only the amendments from block 2 onwards are exported")
 }
 

@@ -151,17 +151,6 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 	return nil
 }
 
-// checkBundleHistoryBlock ensures the latest bundle history hash belongs to the last
-// block of the genesis, as the node continues the history hash chain from that block.
-func checkBundleHistoryBlock(bundles genesis.ProcessedBundles, lastBlock idx.Block) error {
-	historyHashes, hasHistory := bundles.GetHistoryHashes()
-	if hasHistory && historyHashes.Latest.BlockNumber != uint64(lastBlock) {
-		return fmt.Errorf("latest bundle history hash is at block %d, but genesis ends at block %d",
-			historyHashes.Latest.BlockNumber, lastBlock)
-	}
-	return nil
-}
-
 // importReceiptGasAmendments restores the receipt gas amendments from the
 // genesis file, skipping genesis files predating them.
 func (s *Store) importReceiptGasAmendments(section genesis.ReceiptGasAmendmentsSection) error {
@@ -172,6 +161,17 @@ func (s *Store) importReceiptGasAmendments(section genesis.ReceiptGasAmendmentsS
 	}
 	if err := s.evm.ImportReceiptGasAmendments(reader); err != nil {
 		return fmt.Errorf("failed to import receipt gas amendments from genesis; %w", err)
+	}
+	return nil
+}
+
+// checkBundleHistoryBlock ensures the latest bundle history hash belongs to the last
+// block of the genesis, as the node continues the history hash chain from that block.
+func checkBundleHistoryBlock(bundles genesis.ProcessedBundles, lastBlock idx.Block) error {
+	historyHashes, hasHistory := bundles.GetHistoryHashes()
+	if hasHistory && historyHashes.Latest.BlockNumber != uint64(lastBlock) {
+		return fmt.Errorf("latest bundle history hash is at block %d, but genesis ends at block %d",
+			historyHashes.Latest.BlockNumber, lastBlock)
 	}
 	return nil
 }

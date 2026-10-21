@@ -345,7 +345,10 @@ type fakeReceiptGasAmendmentsSection struct {
 }
 
 func (f fakeReceiptGasAmendmentsSection) GetReader() (io.Reader, error) {
-	return bytes.NewReader(f.data), f.err
+	if f.err != nil {
+		return nil, f.err
+	}
+	return bytes.NewReader(f.data), nil
 }
 
 func TestImportReceiptGasAmendments_RestoresExportedAmendments(t *testing.T) {
