@@ -48,7 +48,7 @@ func registerState(d *dispatch.Dispatcher, a *API, m func(string) string) {
 // getBalance returns the amount of wei for the address in the state of the
 // block. When the block parameter is omitted, it defaults to the latest block.
 func (a *API) getBalance(_ context.Context, address common.Address, ref *dispatch.BlockRef) (*hexutil.U256, error) {
-	statedb, _, err := a.env.StateAt(a.chain.Head(), dispatch.OrLatest(ref))
+	statedb, err := a.env.OpenState(a.chain.Head(), dispatch.OrLatest(ref))
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func (a *API) getBalance(_ context.Context, address common.Address, ref *dispatc
 
 // getCode returns the code stored at the address in the state of the block.
 func (a *API) getCode(_ context.Context, address common.Address, ref *dispatch.BlockRef) (hexutil.Bytes, error) {
-	statedb, _, err := a.env.StateAt(a.chain.Head(), dispatch.OrLatest(ref))
+	statedb, err := a.env.OpenState(a.chain.Head(), dispatch.OrLatest(ref))
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func (a *API) getCode(_ context.Context, address common.Address, ref *dispatch.B
 
 // getStorageAt returns the storage at the address and key in the state of the block.
 func (a *API) getStorageAt(_ context.Context, address common.Address, key string, ref *dispatch.BlockRef) (hexutil.Bytes, error) {
-	statedb, _, err := a.env.StateAt(a.chain.Head(), dispatch.OrLatest(ref))
+	statedb, err := a.env.OpenState(a.chain.Head(), dispatch.OrLatest(ref))
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func (a *API) getTransactionCount(_ context.Context, address common.Address, ref
 		nonce := a.core.PoolNonce(address)
 		return (*hexutil.Uint64)(&nonce), nil
 	}
-	statedb, _, err := a.env.StateAt(a.chain.Head(), resolved)
+	statedb, err := a.env.OpenState(a.chain.Head(), resolved)
 	if err != nil {
 		return nil, err
 	}

@@ -503,7 +503,7 @@ func (a *api) replayBlock(ctx context.Context, head dispatch.Head, block *evmcor
 	chainConfig := a.env.ChainConfig(block.NumberU64())
 	signer := types.LatestSignerForChainID(chainConfig.ChainID)
 
-	statedb, _, err := a.env.StateAt(head, dispatch.RefNumber(dispatch.BlockNumber(blockNumber-1)))
+	statedb, err := a.env.OpenState(head, dispatch.RefNumber(dispatch.BlockNumber(blockNumber-1)))
 	if err != nil {
 		return nil, fmt.Errorf("cannot get state for block %v, error: %v", block.NumberU64(), err.Error())
 	}

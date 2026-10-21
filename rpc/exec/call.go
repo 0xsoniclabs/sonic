@@ -296,7 +296,7 @@ func DoEstimateGas(
 
 // fundableGas caps the gas limit hi with what the sender can pay for.
 func fundableGas(env *Env, head dispatch.Head, ref dispatch.BlockRef, overrides *StateOverride, args *CallArgs, feeCap *big.Int, hi uint64) (uint64, error) {
-	statedb, _, err := env.StateAt(head, ref)
+	statedb, err := env.OpenState(head, ref)
 	if err != nil {
 		return 0, err
 	}

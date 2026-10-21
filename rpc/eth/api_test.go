@@ -410,7 +410,7 @@ func TestEth_TxLookupFailuresAreReported(t *testing.T) {
 func TestEth_CorePanicsAreRecovered(t *testing.T) {
 	for method, call := range map[string][]any{
 		"Block":             {"eth_getBlockByNumber", "latest", true},
-		"Header":            {"eth_getBalance", "0x0000000000000000000000000000000000000001", "0x1"},
+		"Header":            {"eth_getBlockReceipts", "0x1"},
 		"Receipts":          {"eth_getBlockReceipts", "latest"},
 		"ChainInfo":         {"eth_chainId"},
 		"BlockNumberByHash": {"eth_getBlockByHash", common.Hash{1}, true},

@@ -121,7 +121,7 @@ func stateAtTransaction(ctx context.Context, env *Env, head dispatch.Head, block
 	}
 
 	// Look up the state of the parent block.
-	statedb, _, err := env.StateAt(head, dispatch.RefHash(block.ParentHash))
+	statedb, err := env.OpenState(head, dispatch.RefHash(block.ParentHash))
 	if err != nil {
 		return nil, nil, err
 	}

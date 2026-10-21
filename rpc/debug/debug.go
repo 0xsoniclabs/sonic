@@ -435,7 +435,7 @@ func (a *api) traceBlock(ctx context.Context, head dispatch.Head, block *evmcore
 	if block.NumberU64() == 0 {
 		return nil, errors.New("genesis is not traceable")
 	}
-	statedb, _, err := a.env.StateAt(head, dispatch.RefHash(block.ParentHash))
+	statedb, err := a.env.OpenState(head, dispatch.RefHash(block.ParentHash))
 	if err != nil {
 		return nil, err
 	}

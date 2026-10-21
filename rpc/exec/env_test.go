@@ -156,3 +156,40 @@ func TestEnv_StateAt(t *testing.T) {
 		require.ErrorIs(t, err, dispatch.ErrNoSelector)
 	})
 }
+
+func TestEnv_OpenStateReadsNoHeader(t *testing.T) {
+	fc, _ := tests.NewCarmenCore(t, tests.WithBlocks(2))
+	d := dispatch.New(dispatch.DefaultConfig(), dispatch.NewMetrics(nil))
+	chain := dispatch.NewChain(fc, dispatch.DefaultConfig(), d.Metrics())
+	require.NoError(t, chain.Start(d))
+	t.Cleanup(func() { d.Stop(0) })
+	env := exec.NewEnv(chain, oracle.New(oracle.Config{}, fc))
+	head := env.Chain.Head()
+
+	fc.Inject("Header", tests.Fail)
+	before := fc.Calls("Header")
+	for name, ref := range map[string]dispatch.BlockRef{
+		"latest": dispatch.RefLatest(),
+		"number": dispatch.RefNumber(1),
+		"hash":   dispatch.RefHash(fc.BlockAt(1).Hash),
+	} {
+		st, err := env.OpenState(head, ref)
+		require.NoError(t, err, name)
+		st.Release()
+	}
+	require.Equal(t, before, fc.Calls("Header"), "the header is not read")
+
+	_, _, err := env.StateAt(head, dispatch.RefNumber(1))
+	require.ErrorIs(t, err, tests.ErrInjected, "StateAt does read it")
+
+	for name, ref := range map[string]dispatch.BlockRef{
+		"above the head": dispatch.RefNumber(3),
+		"unknown hash":   dispatch.RefHash(common.Hash{9}),
+		"invalid tag":    dispatch.RefNumber(-9),
+	} {
+		_, err := env.OpenState(head, ref)
+		require.ErrorIs(t, err, exec.ErrHeaderNotFound, name)
+	}
+	_, err = env.OpenState(head, dispatch.BlockRef{})
+	require.ErrorIs(t, err, dispatch.ErrNoSelector)
+}

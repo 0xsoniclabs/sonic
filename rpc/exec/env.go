@@ -145,16 +145,25 @@ func (e *Env) TxByHash(head dispatch.Head, hash common.Hash) (tx *types.Transact
 	return tx, block, index, nil
 }
 
+// OpenState opens the archived state of the block a reference names, for the
+// callers that have no use for the header of the block: the header of a block
+// of the past is not read. The caller owns the state and must release it
+// exactly once, on the line after the call.
+func (e *Env) OpenState(head dispatch.Head, ref dispatch.BlockRef) (state.StateDB, error) {
+	n, err := e.resolveServed(head, ref)
+	if err != nil {
+		return nil, err
+	}
+	return e.openState(n)
+}
+
 // StateAt opens the archived state of the block a reference names, together
 // with the header of the block. The caller owns the state and must release it
 // exactly once, on the line after the call. The header is the caller's too.
 func (e *Env) StateAt(head dispatch.Head, ref dispatch.BlockRef) (state.StateDB, *evmcore.EvmHeader, error) {
-	n, err := e.Chain.Resolve(head, ref)
-	if errors.Is(err, dispatch.ErrNoSelector) {
+	n, err := e.resolveServed(head, ref)
+	if err != nil {
 		return nil, nil, err
-	}
-	if err != nil || n > head.Number {
-		return nil, nil, ErrHeaderNotFound
 	}
 	header, err := e.HeaderAt(head, n)
 	if err != nil {
@@ -167,17 +176,38 @@ func (e *Env) StateAt(head dispatch.Head, ref dispatch.BlockRef) (state.StateDB,
 		h := *header
 		header = &h
 	}
-	st, err := e.Core.State(n)
-	if errors.Is(err, core.ErrNotFound) {
-		return nil, nil, ErrHeaderNotFound
-	}
+	st, err := e.openState(n)
 	if err != nil {
 		return nil, nil, err
 	}
-	if st == nil {
-		return nil, nil, ErrHeaderNotFound
-	}
 	return st, header, nil
+}
+
+// resolveServed resolves a reference to the number of a block the module
+// serves: ErrHeaderNotFound if there is none.
+func (e *Env) resolveServed(head dispatch.Head, ref dispatch.BlockRef) (uint64, error) {
+	n, err := e.Chain.Resolve(head, ref)
+	if errors.Is(err, dispatch.ErrNoSelector) {
+		return 0, err
+	}
+	if err != nil || n > head.Number {
+		return 0, ErrHeaderNotFound
+	}
+	return n, nil
+}
+
+func (e *Env) openState(number uint64) (state.StateDB, error) {
+	st, err := e.Core.State(number)
+	if errors.Is(err, core.ErrNotFound) {
+		return nil, ErrHeaderNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if st == nil {
+		return nil, ErrHeaderNotFound
+	}
+	return st, nil
 }
 
 // getHash gives the EVM the hashes of the blocks BLOCKHASH asks for, below the
