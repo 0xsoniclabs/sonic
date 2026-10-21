@@ -178,6 +178,34 @@ func TestBundles_RoundTrip(t *testing.T) {
 		"exported and re-imported bundle execution infos should match")
 }
 
+func TestBundles_RoundTripWithoutHistory(t *testing.T) {
+	store := setupBundleStore(t)
+
+	tmpDir := t.TempDir()
+	outFile, err := os.CreateTemp(tmpDir, "export-bundles-*.g")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, outFile.Close()) }()
+
+	writer := newUnitWriter(outFile)
+	require.NoError(t, writer.Start(genesis.Header{}, "bh", tmpDir))
+	require.NoError(t, exportBundlesHash(context.Background(), store, writer, 1))
+	require.NoError(t, writer.Start(genesis.Header{}, "bundles", tmpDir))
+	require.NoError(t, exportBundles(context.Background(), store, writer, 1))
+
+	_, err = outFile.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	gs, hashes, err := genesisstore.OpenGenesisStore(outFile)
+	require.NoError(t, err)
+	require.NotZero(t, hashes["bh"], "the history hash section must be flushed")
+
+	_, ok := gs.ProcessedBundles().GetHistoryHashes()
+	require.False(t, ok)
+	gs.ProcessedBundles().ForEach(func(bundle.ExecutionInfo) bool {
+		t.Fatal("no bundles expected")
+		return false
+	})
+}
+
 func TestBundles_DeterministicOutput(t *testing.T) {
 	// Running export twice with the same data should produce the same hash.
 
