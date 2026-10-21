@@ -28,7 +28,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -135,6 +134,7 @@ func TestBundle_FailingBareRootBeforeCantoDoesNotInflateNextReceipt(t *testing.T
 	// value is varied until the scrambler orders it after the envelope.
 	var markerTx *types.Transaction
 	for value := int64(1); ; value++ {
+		require.LessOrEqual(t, value, int64(64), "scrambler never ordered the marker after the envelope")
 		markerTx = tests.CreateTransaction(t, net, &types.LegacyTx{
 			To:    &common.Address{},
 			Value: big.NewInt(value),
@@ -147,33 +147,42 @@ func TestBundle_FailingBareRootBeforeCantoDoesNotInflateNextReceipt(t *testing.T
 	_, err = net.ForceEmitAll(t.Context(), []*types.Transaction{envelope, markerTx})
 	require.NoError(t, err)
 
-	requireMarkerGasUsed := func() {
-		t.Helper()
-		client, err := net.GetClient()
-		require.NoError(t, err)
-		defer client.Close()
-
-		receipt, err := net.GetReceipt(markerTx.Hash())
-		require.NoError(t, err)
-		require.EqualValues(t, params.TxGas, receipt.GasUsed)
-
-		// The bundle's gas leaks into the block, but into no receipt.
-		header, err := client.HeaderByNumber(t.Context(), receipt.BlockNumber)
-		require.NoError(t, err)
-		receipts, err := client.BlockReceipts(t.Context(),
-			rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(receipt.BlockNumber.Int64())))
-		require.NoError(t, err)
-		receiptsGas := uint64(0)
-		for _, r := range receipts {
-			receiptsGas += r.GasUsed
-		}
-		require.Greater(t, header.GasUsed, receiptsGas)
-	}
+	// The failed bundle leaked its gas right before the marker, ...
+	requireLeakBeforeMarker(t, net, markerTx.Hash())
 
 	// Live receipts are served from the cache, ...
-	requireMarkerGasUsed()
+	requireMarkerGasUsed(t, net, markerTx.Hash())
 
 	// ... after a restart they are derived from storage.
 	require.NoError(t, net.Restart())
-	requireMarkerGasUsed()
+	requireMarkerGasUsed(t, net, markerTx.Hash())
+}
+
+// requireLeakBeforeMarker checks that the failed bundle leaked its gas right
+// before the marker transaction. The failed bundle leaves no transaction in
+// the block, so the marker is its only one, and the bundle's gas is all its
+// cumulative gas holds beyond the marker's own.
+func requireLeakBeforeMarker(t *testing.T, net tests.IntegrationTestNetSession, markerHash common.Hash) {
+	t.Helper()
+	receipt, err := net.GetReceipt(markerHash)
+	require.NoError(t, err)
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
+	require.NoError(t, err)
+	require.Len(t, block.Transactions(), 1,
+		"the marker must be the only transaction in its block, or its cumulative gas may hold the gas of other transactions")
+	require.Greater(t, receipt.CumulativeGasUsed, params.TxGas,
+		"the marker's cumulative gas must hold the gas leaked by the failed bundle")
+}
+
+// requireMarkerGasUsed checks that the receipt of the marker transaction
+// reports only its own gas, not the gas leaked by the failed bundle before it.
+func requireMarkerGasUsed(t *testing.T, net tests.IntegrationTestNetSession, markerHash common.Hash) {
+	t.Helper()
+	receipt, err := net.GetReceipt(markerHash)
+	require.NoError(t, err)
+	require.EqualValues(t, params.TxGas, receipt.GasUsed,
+		"the marker's receipt must report only its own gas, not the gas leaked by the failed bundle")
 }
