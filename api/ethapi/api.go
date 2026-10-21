@@ -1185,19 +1185,6 @@ func (diff *StateOverride) Apply(state state.StateDB) error {
 	return nil
 }
 
-func (diff *StateOverride) HasCodesExceedingOnChainLimit() bool {
-	if diff == nil {
-		return false
-	}
-	for _, account := range *diff {
-		// Check account(contract) code length.
-		if account.Code != nil && len(*account.Code) > params.MaxCodeSize {
-			return true
-		}
-	}
-	return false
-}
-
 func DoCall(
 	ctx context.Context,
 	b Backend,
@@ -1239,10 +1226,6 @@ func DoCall(
 	vmConfig, err := GetVmConfig(ctx, b, idx.Block(block.Number.Uint64()))
 	if err != nil {
 		return nil, err
-	}
-	if overrides.HasCodesExceedingOnChainLimit() {
-		// Use geth as VM for computation
-		vmConfig.Tracer = &tracing.Hooks{}
 	}
 
 	var blockCtx *vm.BlockContext

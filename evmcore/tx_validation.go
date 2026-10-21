@@ -164,7 +164,7 @@ func ValidateTxForNetwork(tx *types.Transaction, rules NetworkRules, chain State
 	if tx.To() == nil && rules.shanghai {
 		limit := params.MaxInitCodeSize
 		if rules.brio {
-			limit = opera.SonicPostAllegroMaxInitCodeSize
+			limit = opera.SonicBrioMaxInitCodeSize
 		}
 		if len(tx.Data()) > limit {
 			return fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), limit)
