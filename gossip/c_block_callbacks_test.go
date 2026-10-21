@@ -965,6 +965,42 @@ func TestConsensusCallback_InconsistentHead_TerminatesProcess(t *testing.T) {
 	}
 }
 
+func TestConsensusCallback_SkippedBlock_OpensLiveStateOnlyBeforeDolce(t *testing.T) {
+	tests := map[string]struct {
+		upgrades   opera.Upgrades
+		wantOpened bool
+	}{
+		"Canto": {upgrades: opera.GetCantoUpgrades(), wantOpened: true},
+		"Dolce": {upgrades: opera.GetDolceUpgrades()},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			store := newInMemoryStoreWithGenesisData(t, test.upgrades, 1, 2)
+			beginBlock := consensusCallbackBeginBlockFn(
+				nil, new(sync.WaitGroup), new(uint32), store, NewLedger(store), DefaultBlockProc(), false, nil, &[]*emitter.Emitter{}, nil, new(bool),
+			)
+
+			// Opening the live state on a missing EVM store panics.
+			evm := store.evm
+			store.evm = nil
+			defer func() { store.evm = evm }()
+
+			// Without the Atropos being applied, the block is skipped.
+			produceSkippedBlock := func() {
+				callbacks := beginBlock(&lachesis.Block{Atropos: hash.Event{1}})
+				require.Nil(t, callbacks.EndBlock())
+			}
+			if test.wantOpened {
+				require.Panics(t, produceSkippedBlock)
+			} else {
+				require.NotPanics(t, produceSkippedBlock)
+			}
+		})
+	}
+}
+
 func TestEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransaction(t *testing.T) {
 	runPreAndPostDolce(t, opera.GetBrioUpgrades(), testEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransaction)
 }
