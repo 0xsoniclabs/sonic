@@ -15,14 +15,17 @@
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
 // Package rpc is the node's RPC module. It reaches the node only through
-// core.Core and serves JSON-RPC over HTTP, WebSocket and a unix socket. Methods
-// the module does not serve yet are forwarded to the node's legacy handler.
+// core.Core and serves JSON-RPC over HTTP, WebSocket and a unix socket. The few
+// methods it does not serve (the legacy namespaces of IPC and the p2p facts)
+// are forwarded to the node's own handler.
+
 package rpc
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -197,6 +200,10 @@ func (m *Module) health() transport.Health {
 	}
 	return h
 }
+
+// SuggestTip returns the gas tip the module's oracle suggests for the
+// certainty; the node's wallet methods default their fees to it.
+func (m *Module) SuggestTip(certainty uint64) *big.Int { return m.oracle.SuggestTip(certainty) }
 
 // Dispatcher returns the dispatcher of the module.
 func (m *Module) Dispatcher() *dispatch.Dispatcher { return m.d }

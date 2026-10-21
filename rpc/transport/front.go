@@ -23,16 +23,17 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 )
 
-// Forwarder hands a call to the node's legacy handler. It exists while methods
-// are being ported; the composition root provides it.
+// Forwarder hands a call to the node's own handler of the methods the module
+// does not serve: the legacy namespaces of IPC and the p2p facts. The
+// composition root provides it.
 type Forwarder interface {
 	Forward(ctx context.Context, method string, params json.RawMessage) (json.RawMessage, *dispatch.Error)
 }
 
-// Front routes a call to the dispatcher, or to the node's legacy handler.
+// Front routes a call to the dispatcher, or to the node's own handler.
 //
 // A method the dispatcher has is served by it. Anything else is unknown, with
-// three exceptions the legacy handler keeps serving until it is removed: the
+// two exceptions the node's handler keeps serving until it is removed: the
 // namespaces and methods of the consensus internals and the node's wallets,
 // which are for the IPC transport only, and the p2p facts, which every
 // transport serves.

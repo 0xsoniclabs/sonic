@@ -247,8 +247,8 @@ structs. This is the largest and most security-sensitive part of the work
 (envelope, batches, framing, origin and host checks, size limits). Mitigations,
 all gates: geth's `rpc.Server` and `rpc.Client` are the compatibility oracle in
 test files (Q5, D11); a fuzz target on the codec; the transports are the one
-part of step 1 and step 4 with their own review. `Front` is scaffolding and goes
-at step 6. The `eth_stop` hole alone does not justify a rewrite (it is a
+part of step 1 and step 4 with their own review. `Front` is scaffolding for the
+methods not ported yet; at step 6 only its IPC routing of X3 remains. The `eth_stop` hole alone does not justify a rewrite (it is a
 one-line fix in legacy, section 6); deadline/recover/metrics uniformity and the
 measured saving do.
 
@@ -293,7 +293,8 @@ of the guarantees of M2 are claimed.
 ### M2. MVP: the first release (step 6)
 
 Same features and at least the performance of the reference, plus the guarantees
-M1 does not make. `Front` goes and the module is the only RPC server.
+M1 does not make. The forwarding of unported methods goes and the module is the only RPC server
+for everything but X3.
 
 | Guarantee | How we know |
 |---|---|
@@ -347,12 +348,13 @@ parallel after step 1; none may add to `Core`.
 5. **Tracing** (M1). `debug_*`, `trace_*`, `debug_getRaw*` (ADR7). Read
    `stateAtTransaction` before deciding where the EIP-2935 write goes (section 6).
    Gates: V6, F2, F3; lakme trace families.
-6. **Switch** (M2). `Front` and the forwarding go, with the last path to
-   `eth_stop` (S1); the module is the only RPC server; X3 namespaces stay on IPC
-   in a minimal `legacy` package until their removal. Deleted here: the
+6. **Switch** (M2). The forwarding of unported methods goes, with the last path
+   to `eth_stop` (S1); `Front` keeps only the IPC routing of X3 and the p2p
+   facts; the module is the only RPC server; X3 namespaces stay on IPC
+   in the minimal `api/legacy` package until their removal. Deleted here: the
    legacy oracle and its plumbing (G2), `gossip/filters` (G1), the unreachable
    parts of `api/*` (G3). Gates: Q1–Q6, D10, O1–O4, MON1–MON6, import test,
-   lakme and benchmark gate (T2) against the reference. Rollout per ADR11.
+   lakme and benchmark gate (T2) against the reference. No escape hatch (ADR11).
 
 ## 5. Requirements
 
@@ -488,7 +490,7 @@ execution paid for it.
 |---|---|
 | X1 | Not ported: `personal_*`, `eth_accounts`, `eth_sign`, `eth_signTransaction`, `eth_sendTransaction`, `eth_fillTransaction`, `eth_resend`, `debug_chaindbProperty`, `debug_chaindbCompact`, `debug_setHead`; with them `AddrLocker` and the RPC use of the account manager. The CLI flags that feed them follow O4 |
 | X2 | Not ported: `dag_*`, `abft_*`, `eth_getEpochBlock`, `eth_getEpochStats`; `eth_getRules`, `eth_currentEpoch`, `eth_config` are served from block rules, epoch and `ChainInfo` |
-| X3 | Until removed, X1 and X2 methods are served by the legacy `api/ethapi` registered on IPC only (ADR5); lakme rows for them are annotated; integration tests using `dag_*` switch to the IPC client |
+| X3 | Until removed, X1 and X2 methods are served by the legacy `api/legacy` (and `api/testapi`) registered on IPC only (ADR5); lakme rows for them are annotated; integration tests using `dag_*` switch to the IPC client |
 | X4 | `CalcBlockExtApi`, `RPCBlockExt` and the gossip `PublicEthereumAPI` shims (`gossip/api.go`) are not carried over; `eth_chainId` has one implementation |
 | X5 | `MinGasPrice`, `MaxGasLimit` are derived from `Rules(n)` in the module, not exposed by `Core` |
 
@@ -604,7 +606,7 @@ entry; a new row is added with its entry in the same change.
 | `debug_traceBlock*` message conversion error | ignored, then nil dereference | returned | same |
 | `sonic_getBundleInfo` `block` | `rpc.BlockNumber` | `hexutil.Uint64` | no go-ethereum `rpc` import; identical JSON for reachable values |
 | `sonic_prepareBundle`, `sonic_submitBundle` "current block" | the node's live head | the archived head | I3; can shift the default range and base fee by a block |
-| `eth_getRules` | an epoch number, `null` for an epoch with no state | the rules in force at a block | X2; lakme `rpc-module-getRules-block-selector` |
+| `eth_getRules` | an epoch number, `null` for an epoch with no state | the rules in force at a block; the tags that select the head answer the rules the next block is processed with, as the open epoch did | X2; lakme `rpc-module-getRules-block-selector` |
 | `eth_blockNumber` | committed head | archived head | I3 (ADR4) |
 
 ### Bugs of the reference the port treats (F8)
@@ -774,16 +776,19 @@ does and does not apply (T6).
 ## 9. Open decisions
 
 Decided: ADR1 module path `rpc/`; ADR2 an own JSON-RPC layer (section 3);
-ADR3 uniform `MaxResponseSize` (O1).
+ADR3 uniform `MaxResponseSize` (O1); ADR5 the legacy namespaces of X3 live in
+`api/legacy` and `api/testapi`, served by the node's own handler on IPC only,
+its wallet methods defaulting fees and gas through the module's oracle and
+`eth_estimateGas`; ADR11 the legacy engine is deleted with the switch: no
+`--rpc.engine` flag, no escape hatch, `Front` keeps only the IPC routing of X3
+and the p2p facts.
 
 | ID | Decision | Recommendation |
 |---|---|---|
 | ADR4 | One `latest` (archive head) for `eth_blockNumber` | Yes (I3). Annotate in lakme; a client that reads the number can always query it |
-| ADR5 | Where X3's legacy namespaces live until removal | A `legacy` package registered on IPC only, holding `dag`, `abft`, `personal`, `test` handlers copied as they are; deleted with the consensus change |
 | ADR6 | New semantic caps other clients have and we lack | `eth_simulateV1` block count: 256 (reth, nethermind). `trace_filter` is already capped (inherited); `eth_getLogs` stays unlimited-but-result-capped for compatibility |
 | ADR7 | `debug_getRaw{Block,Header,Receipts,Transaction}` | Add in step 5; fixtures exist and they are block reads |
 | ADR8 | lakme WebSocket side | Add after step 4, so subscriptions and filters over WS are compared; until then integration tests carry them |
 | ADR9 | The `GPO` config section (`MaxGasPrice`, `MinGasPrice`, `DefaultCertainty`; TOML only) once the legacy oracle is deleted | Keep `MaxGasPrice` and `DefaultCertainty` and feed them to the module's oracle through `Config`; drop `MinGasPrice`, which the legacy oracle already ignores. The loader rejects unknown fields, so removing a key is breaking; that is why the section stays |
 | ADR10 | Coverage floor for Q4 | 80% line coverage per module package, measured before step 6 lands so the number comes from evidence; raised, never lowered |
-| ADR11 | Rollout of step 6 | Ship the module as the default with `--rpc.engine=legacy` as a one-release escape hatch, then delete the legacy path. Cost: `Front` and the legacy handlers live one release longer; benefit: an operator can roll back without a downgrade |
 | ADR12 | Shared HTTP/WebSocket endpoint during steps 1 to 3 | Reverse-proxy the WebSocket upgrade (`httputil.ReverseProxy` handles it) to the node's own server on a private loopback endpoint; the alternative, taking over WS at step 1, drags subscriptions into the skeleton |

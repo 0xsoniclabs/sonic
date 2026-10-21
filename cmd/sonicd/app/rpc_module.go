@@ -23,10 +23,12 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
 
+	"github.com/0xsoniclabs/sonic/api/legacy"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/rpc"
@@ -47,10 +49,6 @@ type rpcTakeover struct {
 	ws *transport.HTTPConfig
 	// ipc is the module's unix socket; nil if IPC is off.
 	ipc *rpc.IPCConfig
-
-	// legacyEngine is true if the operator chose the legacy engine: the node's
-	// own servers stay on and there is no module.
-	legacyEngine bool
 
 	// original holds the endpoint settings the operator configured, to put
 	// them back where the configuration is reported.
@@ -137,9 +135,6 @@ func takeOverRPC(cfg *node.Config) *rpcTakeover {
 // restore puts the endpoint settings the operator configured back into the
 // node configuration, for the places that report the configuration.
 func (t *rpcTakeover) restore(cfg *node.Config) {
-	if t.legacyEngine {
-		return
-	}
 	cfg.HTTPHost = t.original.httpHost
 	cfg.WSHost = t.original.wsHost
 	cfg.WSPort = t.original.wsPort
@@ -151,9 +146,6 @@ func (t *rpcTakeover) restore(cfg *node.Config) {
 // of the node, after the service: it starts after the service and stops
 // before it.
 func (t *rpcTakeover) attach(stack *node.Node, svc *gossip.Service, cfg *config.Config) error {
-	if t.legacyEngine {
-		return nil
-	}
 	limits := limitsFromConfig(cfg.Opera)
 	modCfg := rpc.Config{
 		Limits:        limits,
@@ -169,6 +161,8 @@ func (t *rpcTakeover) attach(stack *node.Node, svc *gossip.Service, cfg *config.
 		return fmt.Errorf("failed to create the RPC module: %w", err)
 	}
 	t.module = module
+	svc.EthAPI.SetTipSuggester(module.SuggestTip)
+	svc.EthAPI.SetGasEstimator(estimateGasWith(module))
 	t.stack = stack
 	if t.http != nil || t.ws != nil {
 		// The node's own HTTP and WebSocket servers are off, but external RPC
@@ -177,6 +171,26 @@ func (t *rpcTakeover) attach(stack *node.Node, svc *gossip.Service, cfg *config.
 	}
 	stack.RegisterLifecycle(t)
 	return nil
+}
+
+// estimateGasWith returns the gas estimator of the node's legacy wallet methods:
+// the module answers eth_estimateGas for them, at the head.
+func estimateGasWith(module *rpc.Module) func(context.Context, legacy.TransactionArgs) (hexutil.Uint64, error) {
+	return func(ctx context.Context, args legacy.TransactionArgs) (hexutil.Uint64, error) {
+		params, err := json.Marshal([]any{args, "pending"})
+		if err != nil {
+			return 0, err
+		}
+		raw, rpcErr := module.Dispatcher().Serve(ctx, "eth_estimateGas", params)
+		if rpcErr != nil {
+			return 0, rpcErr
+		}
+		var gas hexutil.Uint64
+		if err := json.Unmarshal(raw, &gas); err != nil {
+			return 0, err
+		}
+		return gas, nil
+	}
 }
 
 // httpEndpoint is the HTTP endpoint clients connect to.

@@ -445,14 +445,21 @@ func TestModule_StopLeavesNoGoroutinesBehindUnderLoad(t *testing.T) {
 				return
 			default:
 			}
-			client, err := gethrpc.DialWebsocket(context.Background(), "ws://"+addr, "")
+			// Every call is bounded: go-ethereum's client can wait forever for the
+			// answer of a request that raced with the close of its connection, and
+			// this loop runs while the module stops. With no socket open on the
+			// server side at that point, the module is not what is waited for.
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			client, err := gethrpc.DialWebsocket(ctx, "ws://"+addr, "")
 			if err != nil {
+				cancel()
 				continue
 			}
 			heads := make(chan map[string]any, 4)
-			_, _ = client.EthSubscribe(context.Background(), heads, "newHeads")
+			_, _ = client.EthSubscribe(ctx, heads, "newHeads")
 			var n hexutil.Uint64
-			_ = client.Call(&n, "eth_blockNumber")
+			_ = client.CallContext(ctx, &n, "eth_blockNumber")
+			cancel()
 			client.Close()
 		}
 	}()

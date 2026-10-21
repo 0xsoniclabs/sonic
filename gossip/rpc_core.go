@@ -27,11 +27,14 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	notify "github.com/ethereum/go-ethereum/event"
 
+	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	rpccore "github.com/0xsoniclabs/sonic/rpc/core"
+	"github.com/0xsoniclabs/sonic/utils/concurrent"
 )
 
 // RPCCore returns the adapter the RPC module uses to reach the node.
@@ -117,11 +120,17 @@ func (c *rpcCore) Receipts(number uint64) (types.Receipts, error) {
 }
 
 func (c *rpcCore) Rules(number uint64) (*opera.Rules, error) {
-	header := c.reader.Header(common.Hash{}, number)
-	if header == nil {
+	var epoch idx.Epoch
+	if header := c.reader.Header(common.Hash{}, number); header != nil {
+		epoch = idx.Epoch(header.Epoch)
+	} else if number == uint64(c.svc.store.GetLatestBlockIndex())+1 {
+		// The block is not there yet: it will belong to the open epoch, which
+		// is the epoch after the sealing block of the previous one.
+		epoch = c.svc.store.GetEpoch()
+	} else {
 		return nil, rpccore.ErrNotFound
 	}
-	_, es := c.svc.store.GetHistoryBlockEpochState(idx.Epoch(header.Epoch))
+	_, es := c.svc.store.GetHistoryBlockEpochState(epoch)
 	if es == nil {
 		return nil, rpccore.ErrNotFound
 	}
@@ -239,13 +248,73 @@ func (c *rpcCore) Progress() rpccore.Progress {
 }
 
 func (c *rpcCore) OracleInputs() rpccore.OracleInputs {
-	backend := &GPOBackend{c.svc.store, c.svc.txpool}
-	return rpccore.OracleInputs{
-		PendingRules:      backend.GetPendingRules(),
-		Rules:             backend.GetRules(),
-		TotalGasPowerLeft: backend.TotalGasPowerLeft(),
-		MinTip:            new(big.Int).Set(backend.MinGasTip()),
+	bs, es := c.svc.store.GetBlockEpochState()
+	pendingRules := es.Rules
+	if bs.DirtyRules != nil {
+		pendingRules = *bs.DirtyRules
 	}
+	return rpccore.OracleInputs{
+		PendingRules:      pendingRules,
+		Rules:             c.svc.store.GetRules(),
+		TotalGasPowerLeft: c.totalGasPowerLeft(),
+		MinTip:            new(big.Int).Set(c.svc.txpool.MinTip()),
+	}
+}
+
+// totalGasPowerLeft returns the total amount of long-term gas power obtained by
+// the validators, according to the latest event of each validator.
+func (c *rpcCore) totalGasPowerLeft() uint64 {
+	store := c.svc.store
+	bs, es := store.GetBlockEpochState()
+	set := store.GetLastEvents(es.Epoch)
+	if set == nil {
+		set = concurrent.WrapValidatorEventsSet(map[idx.ValidatorID]hash.Event{})
+	}
+	set.RLock()
+	defer set.RUnlock()
+	metValidators := map[idx.ValidatorID]bool{}
+	total := uint64(0)
+	gasPowerCheckCfg := gaspowercheck.Config{
+		Idx:                inter.LongTermGas,
+		AllocPerSec:        es.Rules.Economy.LongGasPower.AllocPerSec,
+		MaxAllocPeriod:     es.Rules.Economy.LongGasPower.MaxAllocPeriod,
+		MinEnsuredAlloc:    es.Rules.Economy.Gas.MaxEventGas,
+		StartupAllocPeriod: es.Rules.Economy.LongGasPower.StartupAllocPeriod,
+		MinStartupGas:      es.Rules.Economy.LongGasPower.MinStartupGas,
+	}
+	// count GasPowerLeft from latest events of this epoch
+	for _, tip := range set.Val {
+		e := store.GetEvent(tip)
+		left := e.GasPowerLeft().Gas[inter.LongTermGas]
+		left += bs.GetValidatorState(e.Creator(), es.Validators).DirtyGasRefund
+
+		_, max, _ := gaspowercheck.CalcValidatorGasPowerPerSec(e.Creator(), es.Validators, gasPowerCheckCfg)
+		if left > max {
+			left = max
+		}
+		total += left
+
+		metValidators[e.Creator()] = true
+	}
+	// count GasPowerLeft from last events of prev epoch if no event in current epoch is present
+	for i := idx.Validator(0); i < es.Validators.Len(); i++ {
+		vid := es.Validators.GetID(i)
+		if !metValidators[vid] {
+			left := es.ValidatorStates[i].PrevEpochEvent.GasPowerLeft.Gas[inter.LongTermGas]
+			left += es.ValidatorStates[i].GasRefund
+
+			_, max, startup := gaspowercheck.CalcValidatorGasPowerPerSec(vid, es.Validators, gasPowerCheckCfg)
+			if left > max {
+				left = max
+			}
+			if left < startup {
+				left = startup
+			}
+			total += left
+		}
+	}
+
+	return total
 }
 
 func (c *rpcCore) PendingHeads(max int) []rpccore.PendingHead {

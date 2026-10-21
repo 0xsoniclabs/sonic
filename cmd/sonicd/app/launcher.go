@@ -163,7 +163,6 @@ func initFlags() {
 		flags.MaxTraceFilterRangeFlag,
 		flags.StructLogLimitFlag,
 		flags.AllowJSTracersFlag,
-		flags.RPCEngineFlag,
 	}
 
 	metricsFlags = []cli.Flag{
@@ -297,16 +296,7 @@ func lachesisMainInternal(
 	sigCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	var takeover *rpcTakeover
-	switch engine := ctx.GlobalString(flags.RPCEngineFlag.Name); engine {
-	case flags.RPCEngineModule:
-		takeover = takeOverRPC(&cfg.Node)
-	case flags.RPCEngineLegacy:
-		log.Warn("The legacy RPC engine is deprecated and will be removed in the next release")
-		takeover = &rpcTakeover{legacyEngine: true}
-	default:
-		return fmt.Errorf("--%s must be %q or %q, not %q", flags.RPCEngineFlag.Name, flags.RPCEngineModule, flags.RPCEngineLegacy, engine)
-	}
+	takeover := takeOverRPC(&cfg.Node)
 	node, svc, nodeClose, err := config.MakeNode(sigCtx, ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize the node: %w", err)

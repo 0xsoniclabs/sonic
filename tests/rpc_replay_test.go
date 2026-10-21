@@ -21,7 +21,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
+	rpcexec "github.com/0xsoniclabs/sonic/rpc/exec"
+	rpctrace "github.com/0xsoniclabs/sonic/rpc/trace"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -93,7 +94,7 @@ func TestRpcReplay_IsConsistentWithUpgradesAtBlockHeight(t *testing.T) {
 
 	lastBlockNumber := receiptAfterUpgrade.BlockNumber
 
-	rpcTx := ethapi.TransactionArgs{
+	rpcTx := rpcexec.CallArgs{
 		From:     (*common.Address)(AsPointer(sender.Address())),
 		To:       (*common.Address)(tx.To()),
 		Gas:      AsPointer(hexutil.Uint64(tx2.Gas())),
@@ -103,7 +104,7 @@ func TestRpcReplay_IsConsistentWithUpgradesAtBlockHeight(t *testing.T) {
 	}
 	t.Run("eth_createAccessList", func(t *testing.T) {
 
-		rpcTx := ethapi.TransactionArgs{
+		rpcTx := rpcexec.CallArgs{
 			From:     (*common.Address)(AsPointer(sender.Address())),
 			To:       (*common.Address)(tx.To()),
 			Gas:      AsPointer(hexutil.Uint64(tx2.Gas())),
@@ -135,7 +136,7 @@ func TestRpcReplay_IsConsistentWithUpgradesAtBlockHeight(t *testing.T) {
 	t.Run("debug_traceCall", func(t *testing.T) {
 		var res map[string]any
 
-		config := ethapi.TraceCallConfig{}
+		config := rpctrace.TraceCallConfig{}
 		err = client.Client().Call(&res, "debug_traceCall", rpcTx, (*hexutil.Big)(lastBlockNumber), config)
 		require.NoError(t, err)
 

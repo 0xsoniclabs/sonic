@@ -93,7 +93,7 @@ func TestBundles_ContractExecutionsAreRevertedInCaseOfBundleRevert(t *testing.T)
 	code, err := client.CodeAt(
 		t.Context(),
 		expectedContractAddr,
-		big.NewInt(info.Block.Int64()),
+		big.NewInt(int64(info.Block)),
 	)
 	require.NoError(t, err)
 	require.Empty(t, code, "contract should not exist after bundle revert")
@@ -162,7 +162,7 @@ func TestBundles_TransactionsInBundleAreSeparateTransactions(t *testing.T) {
 	require.NoError(t, err)
 
 	// Selfdestruct in a different transaction than creation does not destroy the contract.
-	atBlock := big.NewInt(info.Block.Int64())
+	atBlock := big.NewInt(int64(info.Block))
 	code, err := client.CodeAt(t.Context(), contractAddr, atBlock)
 	require.NoError(t, err)
 	require.NotEmpty(t, code,

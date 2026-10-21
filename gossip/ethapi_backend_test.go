@@ -22,122 +22,23 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
-	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/concurrent"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
-func TestEthApiBackend_GetNetworkRules_LoadsRulesFromEpoch(t *testing.T) {
-	require := require.New(t)
-
-	blockNumber := idx.Block(12)
-	epoch := idx.Epoch(3)
-
-	store, err := NewMemStore(t)
-	require.NoError(err)
-
-	store.SetBlock(
-		blockNumber,
-		inter.NewBlockBuilder().
-			WithNumber(uint64(blockNumber)).
-			WithEpoch(epoch).
-			Build(),
-	)
-	require.True(store.HasBlock(blockNumber))
-	setLatestBlockIndex(store, blockNumber)
-
-	rules := opera.FakeNetRules(opera.Upgrades{})
-	rules.Name = "test-rules"
-
-	store.SetHistoryBlockEpochState(
-		epoch,
-		iblockproc.BlockState{},
-		iblockproc.EpochState{
-			Epoch: epoch,
-			Rules: rules,
-		},
-	)
-
-	backend := &EthAPIBackend{
-		svc: &Service{
-			store: store,
-		},
-		state: &EvmStateReader{
-			store: store,
-		},
-	}
-
-	got, err := backend.GetNetworkRules(t.Context(), blockNumber)
-	require.NoError(err)
-
-	// Rules contain functions that cannot be compared directly,
-	// so we compare their string representations.
-	want := fmt.Sprintf("%+v", rules)
-	have := fmt.Sprintf("%+v", got)
-	require.Equal(want, have, "Network rules do not match")
-}
-
-func TestEthApiBackend_GetNetworkRules_MissingBlockReturnsNilRules(t *testing.T) {
-	require := require.New(t)
-
-	blockNumber := idx.Block(12)
-
-	store, err := NewMemStore(t)
-	require.NoError(err)
-	require.False(store.HasBlock(blockNumber))
-	setLatestBlockIndex(store, blockNumber)
-
-	backend := &EthAPIBackend{
-		state: &EvmStateReader{
-			store: store,
-		},
-	}
-
-	rules, err := backend.GetNetworkRules(t.Context(), blockNumber)
-	require.NoError(err)
-	require.Nil(rules)
-}
-
-func TestEthApiBackend_GetTransaction_ReturnsTransactionAtItsPosition(t *testing.T) {
-	require := require.New(t)
-
-	store, err := NewMemStore(t)
-	require.NoError(err)
-
-	tx := types.NewTx(&types.LegacyTx{Nonce: 1})
-	store.evm.SetTx(tx.Hash(), tx)
-	store.evm.SetTxPosition(tx.Hash(), evmstore.TxPosition{Block: 42, BlockOffset: 7})
-	setLatestBlockIndex(store, 42)
-
-	backend := &EthAPIBackend{
-		svc: &Service{
-			config: Config{TxIndex: true},
-			store:  store,
-		},
-	}
-
-	got, block, offset, err := backend.GetTransaction(t.Context(), tx.Hash())
-	require.NoError(err)
-	require.Equal(tx.Hash(), got.Hash())
-	require.Equal(uint64(42), block)
-	require.Equal(uint64(7), offset)
-}
-
-// TestEthApiBackend_GetTransaction_IsNotReportedBeforeItsBlockIsPublished
+// TestEthApiBackend_GetTxPosition_IsNotReportedBeforeItsBlockIsPublished
 // checks that a transaction is reported as unknown while the latest block index
 // does not cover the block it was included in. The transaction index is written
 // before that index is advanced; reporting the transaction in between would let
 // a client obtain its receipt while queries resolving "latest" still answer from
 // the preceding block.
-func TestEthApiBackend_GetTransaction_IsNotReportedBeforeItsBlockIsPublished(t *testing.T) {
+func TestEthApiBackend_GetTxPosition_IsNotReportedBeforeItsBlockIsPublished(t *testing.T) {
 	require := require.New(t)
 
 	const blockNumber = idx.Block(42)
@@ -159,37 +60,12 @@ func TestEthApiBackend_GetTransaction_IsNotReportedBeforeItsBlockIsPublished(t *
 	setLatestBlockIndex(store, blockNumber-1)
 	require.Nil(backend.GetTxPosition(tx.Hash()),
 		"a transaction of an unpublished block must not be reported")
-	got, _, _, err := backend.GetTransaction(t.Context(), tx.Hash())
-	require.NoError(err)
-	require.Nil(got, "a transaction of an unpublished block must not be reported")
 
 	setLatestBlockIndex(store, blockNumber)
-	got, block, offset, err := backend.GetTransaction(t.Context(), tx.Hash())
-	require.NoError(err)
-	require.Equal(tx.Hash(), got.Hash())
-	require.Equal(uint64(blockNumber), block)
-	require.Equal(uint64(7), offset)
-}
-
-func TestEthApiBackend_GetTransaction_ReportsCorruptedIndexIfBodyIsMissing(t *testing.T) {
-	require := require.New(t)
-
-	store, err := NewMemStore(t)
-	require.NoError(err)
-
-	txHash := common.Hash{1}
-	store.evm.SetTxPosition(txHash, evmstore.TxPosition{Block: 42, BlockOffset: 7})
-	setLatestBlockIndex(store, 42)
-
-	backend := &EthAPIBackend{
-		svc: &Service{
-			config: Config{TxIndex: true},
-			store:  store,
-		},
-	}
-
-	_, _, _, err = backend.GetTransaction(t.Context(), txHash)
-	require.ErrorContains(err, "index is corrupted")
+	position := backend.GetTxPosition(tx.Hash())
+	require.NotNil(position)
+	require.Equal(blockNumber, position.Block)
+	require.Equal(uint32(7), position.BlockOffset)
 }
 
 func TestEthApiBackend_IsTestOnlyApiEnabled_ReturnsConfigFlagValue(t *testing.T) {

@@ -23,7 +23,6 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
 	emitter_config "github.com/0xsoniclabs/sonic/gossip/emitter/config"
-	"github.com/0xsoniclabs/sonic/gossip/filters"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	pcsclite "github.com/gballet/go-libpcsclite"
 	"gopkg.in/urfave/cli.v1"
@@ -38,12 +37,6 @@ import (
 //
 // The flags are defined here so their names and help texts
 // are the same for all commands.
-
-// Values of the --rpc.engine flag.
-const (
-	RPCEngineModule = "module"
-	RPCEngineLegacy = "legacy"
-)
 
 var (
 	// General settings
@@ -314,12 +307,12 @@ var (
 	RPCLogQueryParameterLimit = &cli.UintFlag{
 		Name:  "rpc.log-query-parameter-limit",
 		Usage: "Maximum total number of addresses or topics allowed in log filter criteria of eth_getLogs, eth_newFilter and logs subscriptions (0 = no cap)",
-		Value: filters.DefaultConfig().LogQueryParameterLimit,
+		Value: gossip.DefaultFilterConfig().LogQueryParameterLimit,
 	}
 	RPCLogQueryResultLimit = &cli.UintFlag{
 		Name:  "rpc.log-query-result-limit",
 		Usage: "Maximum number of logs that can be returned in a single eth_getLogs query if the query covers a range of more than one block. For a single block, there is no limit (0 = no cap)",
-		Value: filters.DefaultConfig().LogQueryResultLimit,
+		Value: gossip.DefaultFilterConfig().LogQueryResultLimit,
 	}
 	RPCTxSyncDefaultTimeoutFlag = &cli.DurationFlag{
 		Name:  "rpc.txsync.defaulttimeout",
@@ -359,12 +352,6 @@ var (
 	AllowJSTracersFlag = cli.BoolFlag{
 		Name:  "rpc.allow-js-tracers",
 		Usage: "Allow custom (user-supplied) JavaScript debug tracers (unsafe); default permits only built-in tracers",
-	}
-	RPCEngineFlag = cli.StringFlag{
-		Name: "rpc.engine",
-		Usage: `RPC engine: "module" serves RPC with the node's RPC module, "legacy" with the handlers of the previous releases ` +
-			`(an escape hatch for one release)`,
-		Value: RPCEngineModule,
 	}
 	ModeFlag = cli.StringFlag{
 		Name:  "mode",

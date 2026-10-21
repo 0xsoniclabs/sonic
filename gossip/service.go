@@ -43,7 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/0xsoniclabs/sonic/api"
-	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/api/legacy"
 	"github.com/0xsoniclabs/sonic/eventcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/basiccheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
@@ -60,8 +60,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
-	"github.com/0xsoniclabs/sonic/gossip/filters"
-	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/proclogger"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
@@ -271,18 +269,13 @@ type Service struct {
 
 	feed ServiceFeed
 
-	gpo *gasprice.Oracle
-
 	// application protocol
 	handler *handler
 
 	operaDialCandidates enode.Iterator
 
 	EthAPI        *EthAPIBackend
-	netRPCService *ethapi.PublicNetAPI
-
-	// filterAPI must be stopped during shutdown before the store is closed.
-	filterAPI *filters.PublicFilterAPI
+	netRPCService *legacy.PublicNetAPI
 
 	procLogger *proclogger.Logger
 
@@ -313,7 +306,7 @@ func NewService(stack *node.Node, config Config, store *Store, blockProc BlockPr
 	svc.accountManager = stack.AccountManager()
 	svc.EthAPI.SetExtRPCEnabled(stack.Config().ExtRPCEnabled())
 	// Create the net API service
-	svc.netRPCService = ethapi.NewPublicNetAPI(svc.p2pServer, store.GetRules().NetworkID)
+	svc.netRPCService = legacy.NewPublicNetAPI(svc.p2pServer, store.GetRules().NetworkID)
 	svc.haltCheck = haltCheck
 
 	return svc, nil
@@ -361,17 +354,12 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	svc.proposalCheckReader = newProposalCheckReader(store)
 	svc.checkers = makeCheckers(config.HeavyCheck, txSigner, &svc.heavyCheckReader, &svc.gasPowerCheckReader, &svc.proposalCheckReader, svc.store)
 
-	// create GPO
-	svc.gpo = gasprice.NewOracle(svc.config.GPO, nil)
-
 	// create tx pool
 	stateReader := &EvmStateReader{
 		ServiceFeed: &svc.feed,
 		store:       svc.store,
-		gpo:         svc.gpo,
 	}
 	svc.txpool = newTxPool(stateReader)
-	svc.gpo.SetReader(&GPOBackend{svc.store, svc.txpool})
 
 	// init dialCandidates
 	dnsclient := dnsdisc.NewClient(dnsdisc.Config{})
@@ -407,7 +395,12 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	rpc.SetExecutionTimeLimit(config.RPCTimeout)
 
 	// create API backend
-	svc.EthAPI = &EthAPIBackend{false, svc, stateReader, txSigner, config.AllowUnprotectedTxs}
+	svc.EthAPI = &EthAPIBackend{
+		svc:                 svc,
+		state:               stateReader,
+		signer:              txSigner,
+		allowUnprotectedTxs: config.AllowUnprotectedTxs,
+	}
 
 	svc.verWatcher = verwatcher.New(netVerStore)
 	svc.tflusher = svc.makePeriodicFlusher()
@@ -551,37 +544,12 @@ func (s *Service) Protocols() ([]p2p.Protocol, CleanupFunc) {
 func (s *Service) APIs() []rpc.API {
 	apis := api.GetAPIs(s.EthAPI)
 
-	// Retained so its event loop can be stopped before the store is closed.
-	s.filterAPI = filters.NewPublicFilterAPI(s.EthAPI, s.config.FilterAPI)
-
-	apis = append(apis, []rpc.API{
-		{
-			Namespace: "eth",
-			Version:   "1.0",
-			Service:   NewPublicEthereumAPI(s),
-			Public:    true,
-		}, {
-			Namespace: "eth",
-			Version:   "1.0",
-			Service:   s.filterAPI,
-			Public:    true,
-		}, {
-			Namespace: "net",
-			Version:   "1.0",
-			Service:   s.netRPCService,
-			Public:    true,
-		}, {
-			Namespace: "debug",
-			Version:   "1.0",
-			Service:   ethapi.NewPublicDebugAPI(s.EthAPI, s.config.MaxResponseSize, s.config.StructLogLimit, s.config.AllowJSTracers),
-			Public:    true,
-		}, {
-			Namespace: "trace",
-			Version:   "1.0",
-			Service:   ethapi.NewPublicTxTraceAPI(s.EthAPI, s.config.MaxResponseSize, s.config.MaxTraceFilterRange),
-			Public:    true,
-		},
-	}...)
+	apis = append(apis, rpc.API{
+		Namespace: "net",
+		Version:   "1.0",
+		Service:   s.netRPCService,
+		Public:    true,
+	})
 
 	// eth-namespace is doubled as ftm-namespace for branding purpose
 	for _, api := range apis {
@@ -600,7 +568,6 @@ func (s *Service) APIs() []rpc.API {
 
 // Start method invoked when the node is ready to start the service.
 func (s *Service) Start() error {
-	s.gpo.Start()
 	// start tflusher before starting snapshots generation
 	s.tflusher.Start()
 	blockState := s.store.GetBlockState()
@@ -685,12 +652,7 @@ func (s *Service) Stop() error {
 
 	s.stopPeerHandling()
 
-	// Must stop before the store is closed to avoid reading from a closed store.
-	if s.filterAPI != nil {
-		s.filterAPI.Stop()
-	}
 	s.stopStoreReaders()
-	s.gpo.Stop()
 	// it's safe to stop tflusher only before locking engineMu
 	s.tflusher.Stop()
 

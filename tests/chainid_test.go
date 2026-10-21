@@ -22,9 +22,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/opera"
+	rpceth "github.com/0xsoniclabs/sonic/rpc/eth"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
@@ -168,7 +168,7 @@ func testChainId_AcceptsLegacyTxSignedWithHomestead(
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// get the transaction by hash and verify that it has the correct chain ID
-	var json *ethapi.RPCTransaction
+	var json *rpceth.RPCTransaction
 	err = client.Client().CallContext(t.Context(), &json,
 		"eth_getTransactionByHash", signed.Hash(),
 	)
@@ -203,7 +203,7 @@ func TestChainId_InternalTransactionHasCorrectChainId(t *testing.T) {
 	require.Greater(t, block.Transactions().Len(), 0, "block nr. 1 should have transactions")
 
 	// get the transaction by hash and verify that it has the correct chain ID
-	var json *ethapi.RPCTransaction
+	var json *rpceth.RPCTransaction
 	err = client.Client().CallContext(t.Context(), &json,
 		"eth_getTransactionByHash", block.Transactions()[0].Hash().String(),
 	)
@@ -212,7 +212,7 @@ func TestChainId_InternalTransactionHasCorrectChainId(t *testing.T) {
 	require.Equal(t, wantChainId, json.ChainID.ToInt())
 }
 
-func rpcTransactionToTransaction(t *testing.T, tx *ethapi.RPCTransaction) *types.Transaction {
+func rpcTransactionToTransaction(t *testing.T, tx *rpceth.RPCTransaction) *types.Transaction {
 	t.Helper()
 
 	switch tx.Type {

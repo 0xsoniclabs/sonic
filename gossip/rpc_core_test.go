@@ -77,6 +77,15 @@ func TestRPCCore_ChainReaderServesBlocksAndTransactions(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, info.ChainID, rules.NetworkID)
 
+	// The block after the newest one is processed with the rules of the open
+	// epoch; the ones after that are not known.
+	latest := uint64(env.store.GetLatestBlockIndex())
+	next, err := c.Rules(latest + 1)
+	require.NoError(t, err)
+	require.Equal(t, info.ChainID, next.NetworkID)
+	_, err = c.Rules(latest + 2)
+	require.ErrorIs(t, err, rpccore.ErrNotFound)
+
 	found2, blockNumber, index, ok := c.TxByHash(tx.Hash())
 	require.True(t, ok)
 	require.Equal(t, tx.Hash(), found2.Hash())

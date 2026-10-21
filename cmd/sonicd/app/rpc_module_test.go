@@ -102,14 +102,6 @@ func TestTakeOverRPC_OnlyWhatIsConfiguredIsServed(t *testing.T) {
 	require.NotNil(t, takeover.ws)
 }
 
-func TestRestore_DoesNothingForTheLegacyEngine(t *testing.T) {
-	cfg := &node.Config{HTTPHost: "x"}
-	takeover := &rpcTakeover{legacyEngine: true}
-	takeover.restore(cfg)
-	require.Equal(t, "x", cfg.HTTPHost)
-	require.NoError(t, takeover.attach(nil, nil, nil))
-}
-
 func TestLimitsFromConfig(t *testing.T) {
 	g := gossip.DefaultConfig(cachescale.Identity)
 	g.RPCTimeout = 3 * time.Second

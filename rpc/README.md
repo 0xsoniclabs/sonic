@@ -20,9 +20,8 @@ and the requirement ids (I, D, P, Q, V, F, S, O, MON, X, G, T) are in
 
 ## Operator notes
 
-- `--rpc.engine=module` (default) serves RPC from this module. `--rpc.engine=legacy`
-  serves it with the handlers of the previous releases. The flag is an escape
-  hatch for one release.
+- This module is the only RPC server of the node. There is no switch back to
+  the handlers of the previous releases.
 - Every RPC flag and configuration key keeps its name and effect. The module
   reads the limits from the node configuration at start: `RPCTimeout`,
   `RPCEVMTimeout`, `RPCGasCap`, `RPCTxFeeCap`, the log filter limits, the batch
@@ -30,7 +29,7 @@ and the requirement ids (I, D, P, Q, V, F, S, O, MON, X, G, T) are in
 - The wallet methods, `eth_getEpochBlock`, `eth_getEpochStats`,
   `debug_chaindbProperty`, `debug_chaindbCompact`, `debug_setHead` and the
   `admin`, `dag`, `abft`, `personal` and `test` namespaces are answered on the IPC
-  socket only (by the node's own handler).
+  socket only (by the node's own handler, `api/legacy` and `api/testapi`).
 - The Tosca interpreter does not observe `--rpc.evmtimeout`. A call that does
   not run on the go-ethereum interpreter stops at the gas cap
   (`--rpc.gascap`). Keep the gas cap set on public nodes.

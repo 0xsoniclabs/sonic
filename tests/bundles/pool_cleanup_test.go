@@ -144,7 +144,7 @@ func TestBundles_BundleOnlyTxOfProcessedBundleDoesNotBlockTheSendersNonce(t *tes
 			require.Equal(t, 1, int(info.Count),
 				"only the succeeding transaction should be included")
 
-			block := big.NewInt(info.Block.Int64())
+			block := big.NewInt(int64(info.Block))
 			_, err = client.TransactionReceipt(t.Context(), testedTx.Hash())
 			require.ErrorIs(t, err, ethereum.NotFound)
 			require.NotContains(t, getBlockTxsHashes(t, client, block), testedTx.Hash())

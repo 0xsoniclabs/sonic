@@ -20,8 +20,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
+	rpctrace "github.com/0xsoniclabs/sonic/rpc/trace"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/sonic/tests/contracts/sponsoring"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -102,7 +102,7 @@ func debugTraceSponsoredTransaction(t *testing.T, rpcClient *rpc.Client, txHash 
 	require := require.New(t)
 
 	tracer := "callTracer"
-	traceConfig := &ethapi.TraceCallConfig{
+	traceConfig := &rpctrace.TraceCallConfig{
 		TraceConfig: tracers.TraceConfig{
 			Tracer: &tracer,
 		},

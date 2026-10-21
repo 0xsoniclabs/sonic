@@ -23,6 +23,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -30,6 +31,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc/rpc_test_utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
@@ -360,4 +362,44 @@ func TestGethMethodsAreServedOrListed(t *testing.T) {
 		_, listed := notServed[method]
 		require.True(t, listed, "%s is neither served nor listed with a reason", method)
 	}
+}
+
+// gethNotImplemented lists the methods of go-ethereum's APIs that no Sonic
+// release ever served.
+var gethNotImplemented = map[string]bool{
+	"eth_getStorageValues":              true,
+	"debug_dbAncient":                   true,
+	"debug_dbAncients":                  true,
+	"debug_dbGet":                       true,
+	"debug_intermediateRoots":           true,
+	"debug_standardTraceBadBlockToFile": true,
+	"debug_standardTraceBlockToFile":    true,
+	"debug_traceBadBlock":               true,
+	"debug_traceBlock":                  true,
+	"debug_traceBlockFromFile":          true,
+	"debug_traceChain":                  true,
+}
+
+// Q5, from go-ethereum's own code: every exported method of the APIs of the
+// go-ethereum the node is built with is served by the module, answered as
+// unknown for a reason (notServed) or listed as never implemented.
+func TestGethAPIsAreServedOrListed(t *testing.T) {
+	module, _, _ := newMatrixModule(t)
+	d := module.Dispatcher()
+	var missing []string
+	for _, api := range rpc_test_utils.GetRpcApis() {
+		typ := reflect.TypeOf(api.Service)
+		for i := range typ.NumMethod() {
+			name := typ.Method(i).Name
+			method := api.Namespace + "_" + strings.ToLower(name[:1]) + name[1:]
+			if d.Has(method) || gethNotImplemented[method] {
+				continue
+			}
+			if _, listed := notServed[method]; !listed {
+				missing = append(missing, method)
+			}
+		}
+	}
+	sort.Strings(missing)
+	require.Empty(t, missing, "go-ethereum methods that are neither served nor listed")
 }

@@ -24,9 +24,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/rpctest"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
+	rpctests "github.com/0xsoniclabs/sonic/rpc/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -535,8 +535,8 @@ func TestCreateProposalRequestFromBundle(t *testing.T) {
 	require.NotNil(t, proposal)
 
 	// Check that the proposal contains the expected block range and steps
-	require.EqualValues(t, *rpctest.ToHexUint64(0), proposal.BlockRange.First)
-	require.EqualValues(t, *rpctest.ToHexUint64(1024), proposal.BlockRange.Length)
+	require.EqualValues(t, *rpctests.ToHexUint64(0), proposal.BlockRange.First)
+	require.EqualValues(t, *rpctests.ToHexUint64(1024), proposal.BlockRange.Length)
 	require.Len(t, proposal.Steps, 1)
 
 	// Nested bundle (AllOf with two steps)
@@ -618,11 +618,11 @@ func Test_convertVisitorLeafIntoRPCExecutionPlanProposalLeaf_ConvertsToProposalL
 				BuildBundle(),
 			expected: []RPCExecutionStepProposal{{
 				CallArgs: exec.CallArgs{
-					ChainID: rpctest.ToHexBigInt(big.NewInt(1)),
+					ChainID: rpctests.ToHexBigInt(big.NewInt(1)),
 					From:    &sender,
-					Nonce:   rpctest.ToHexUint64(1),
-					Value:   rpctest.ToHexBigInt(big.NewInt(100)),
-					Gas:     rpctest.ToHexUint64(4300),
+					Nonce:   rpctests.ToHexUint64(1),
+					Value:   rpctests.ToHexBigInt(big.NewInt(100)),
+					Gas:     rpctests.ToHexUint64(4300),
 				},
 			}},
 		},
@@ -642,11 +642,11 @@ func Test_convertVisitorLeafIntoRPCExecutionPlanProposalLeaf_ConvertsToProposalL
 				BuildBundle(),
 			expected: []RPCExecutionStepProposal{{
 				CallArgs: exec.CallArgs{
-					ChainID: rpctest.ToHexBigInt(big.NewInt(1)),
+					ChainID: rpctests.ToHexBigInt(big.NewInt(1)),
 					From:    &sender,
-					Nonce:   rpctest.ToHexUint64(1),
-					Value:   rpctest.ToHexBigInt(big.NewInt(100)),
-					Gas:     rpctest.ToHexUint64(4300),
+					Nonce:   rpctests.ToHexUint64(1),
+					Value:   rpctests.ToHexBigInt(big.NewInt(100)),
+					Gas:     rpctests.ToHexUint64(4300),
 					AccessList: &types.AccessList{
 						{
 							Address:     common.Address{1},
@@ -671,11 +671,11 @@ func Test_convertVisitorLeafIntoRPCExecutionPlanProposalLeaf_ConvertsToProposalL
 				BuildBundle(),
 			expected: []RPCExecutionStepProposal{{
 				CallArgs: exec.CallArgs{
-					ChainID: rpctest.ToHexBigInt(big.NewInt(1)),
+					ChainID: rpctests.ToHexBigInt(big.NewInt(1)),
 					From:    &sender,
-					Nonce:   rpctest.ToHexUint64(1),
-					Value:   rpctest.ToHexBigInt(big.NewInt(100)),
-					Gas:     rpctest.ToHexUint64(4300),
+					Nonce:   rpctests.ToHexUint64(1),
+					Value:   rpctests.ToHexBigInt(big.NewInt(100)),
+					Gas:     rpctests.ToHexUint64(4300),
 				},
 			}},
 		},
@@ -698,11 +698,11 @@ func Test_convertVisitorLeafIntoRPCExecutionPlanProposalLeaf_ConvertsToProposalL
 				BuildBundle(),
 			expected: []RPCExecutionStepProposal{{
 				CallArgs: exec.CallArgs{
-					ChainID: rpctest.ToHexBigInt(big.NewInt(1)),
+					ChainID: rpctests.ToHexBigInt(big.NewInt(1)),
 					From:    &sender,
-					Nonce:   rpctest.ToHexUint64(1),
-					Value:   rpctest.ToHexBigInt(big.NewInt(100)),
-					Gas:     rpctest.ToHexUint64(4300),
+					Nonce:   rpctests.ToHexUint64(1),
+					Value:   rpctests.ToHexBigInt(big.NewInt(100)),
+					Gas:     rpctests.ToHexUint64(4300),
 					AccessList: &types.AccessList{
 						{
 							Address:     common.Address{1},
@@ -1053,8 +1053,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 		"simple proposal with one step": {
 			proposal: RPCExecutionProposal{
 				BlockRange: &RPCRange{
-					First:  *rpctest.ToHexUint64(0),
-					Length: *rpctest.ToHexUint64(1023),
+					First:  *rpctests.ToHexUint64(0),
+					Length: *rpctests.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -1062,8 +1062,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 							CallArgs: exec.CallArgs{
 								From:  &address1,
 								To:    &common.Address{123},
-								Nonce: rpctest.ToHexUint64(1),
-								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+								Nonce: rpctests.ToHexUint64(1),
+								Gas:   rpctests.ToHexUint64(21000 + bundleMarkerCost),
 							},
 						},
 					},
@@ -1084,8 +1084,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 		"single step in nested plain group": {
 			proposal: RPCExecutionProposal{
 				BlockRange: &RPCRange{
-					First:  *rpctest.ToHexUint64(0),
-					Length: *rpctest.ToHexUint64(1023),
+					First:  *rpctests.ToHexUint64(0),
+					Length: *rpctests.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -1095,8 +1095,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 									CallArgs: exec.CallArgs{
 										From:  &address1,
 										To:    &common.Address{123},
-										Nonce: rpctest.ToHexUint64(1),
-										Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+										Nonce: rpctests.ToHexUint64(1),
+										Gas:   rpctests.ToHexUint64(21000 + bundleMarkerCost),
 									},
 								},
 							},
@@ -1121,8 +1121,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 		"single step in one-of group": {
 			proposal: RPCExecutionProposal{
 				BlockRange: &RPCRange{
-					First:  *rpctest.ToHexUint64(0),
-					Length: *rpctest.ToHexUint64(1023),
+					First:  *rpctests.ToHexUint64(0),
+					Length: *rpctests.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					OneOf: true,
@@ -1131,8 +1131,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 							CallArgs: exec.CallArgs{
 								From:  &address1,
 								To:    &common.Address{123},
-								Nonce: rpctest.ToHexUint64(1),
-								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+								Nonce: rpctests.ToHexUint64(1),
+								Gas:   rpctests.ToHexUint64(21000 + bundleMarkerCost),
 							},
 						},
 					},
@@ -1153,8 +1153,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 		"two steps in one group": {
 			proposal: RPCExecutionProposal{
 				BlockRange: &RPCRange{
-					First:  *rpctest.ToHexUint64(0),
-					Length: *rpctest.ToHexUint64(1023),
+					First:  *rpctests.ToHexUint64(0),
+					Length: *rpctests.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -1162,16 +1162,16 @@ func Test_convertProposalToPlan(t *testing.T) {
 							CallArgs: exec.CallArgs{
 								From:  &address1,
 								To:    &common.Address{123},
-								Nonce: rpctest.ToHexUint64(1),
-								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+								Nonce: rpctests.ToHexUint64(1),
+								Gas:   rpctests.ToHexUint64(21000 + bundleMarkerCost),
 							},
 						},
 						RPCExecutionStepProposal{
 							CallArgs: exec.CallArgs{
 								From:  &address2,
 								To:    &common.Address{1},
-								Nonce: rpctest.ToHexUint64(2),
-								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+								Nonce: rpctests.ToHexUint64(2),
+								Gas:   rpctests.ToHexUint64(21000 + bundleMarkerCost),
 							},
 						},
 					},
@@ -1197,8 +1197,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 		"different execution flags in steps": {
 			proposal: RPCExecutionProposal{
 				BlockRange: &RPCRange{
-					First:  *rpctest.ToHexUint64(0),
-					Length: *rpctest.ToHexUint64(1023),
+					First:  *rpctests.ToHexUint64(0),
+					Length: *rpctests.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					Steps: []any{
@@ -1206,8 +1206,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 							CallArgs: exec.CallArgs{
 								From:  &address1,
 								To:    &common.Address{123},
-								Nonce: rpctest.ToHexUint64(1),
-								Gas: rpctest.ToHexUint64(21000 +
+								Nonce: rpctests.ToHexUint64(1),
+								Gas: rpctests.ToHexUint64(21000 +
 									// NOTE: builder adds marker costs
 									params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
 							},
@@ -1217,8 +1217,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 							CallArgs: exec.CallArgs{
 								From:  &address2,
 								To:    &common.Address{1},
-								Nonce: rpctest.ToHexUint64(2),
-								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+								Nonce: rpctests.ToHexUint64(2),
+								Gas:   rpctests.ToHexUint64(21000 + bundleMarkerCost),
 							},
 							TolerateInvalid: true,
 						},
@@ -1246,8 +1246,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 
 			proposal: RPCExecutionProposal{
 				BlockRange: &RPCRange{
-					First:  *rpctest.ToHexUint64(0),
-					Length: *rpctest.ToHexUint64(1023),
+					First:  *rpctests.ToHexUint64(0),
+					Length: *rpctests.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					OneOf: true,
@@ -1256,16 +1256,16 @@ func Test_convertProposalToPlan(t *testing.T) {
 							CallArgs: exec.CallArgs{
 								From:  &address1,
 								To:    &common.Address{123},
-								Nonce: rpctest.ToHexUint64(1),
-								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+								Nonce: rpctests.ToHexUint64(1),
+								Gas:   rpctests.ToHexUint64(21000 + bundleMarkerCost),
 							},
 						},
 						RPCExecutionStepProposal{
 							CallArgs: exec.CallArgs{
 								From:  &address2,
 								To:    &common.Address{1},
-								Nonce: rpctest.ToHexUint64(2),
-								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+								Nonce: rpctests.ToHexUint64(2),
+								Gas:   rpctests.ToHexUint64(21000 + bundleMarkerCost),
 							},
 						},
 					},
@@ -1292,8 +1292,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 		"OneOf group with different execution flags in steps": {
 			proposal: RPCExecutionProposal{
 				BlockRange: &RPCRange{
-					First:  *rpctest.ToHexUint64(0),
-					Length: *rpctest.ToHexUint64(1023),
+					First:  *rpctests.ToHexUint64(0),
+					Length: *rpctests.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					OneOf: true,
@@ -1302,8 +1302,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 							CallArgs: exec.CallArgs{
 								From:  &address1,
 								To:    &common.Address{123},
-								Nonce: rpctest.ToHexUint64(1),
-								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+								Nonce: rpctests.ToHexUint64(1),
+								Gas:   rpctests.ToHexUint64(21000 + bundleMarkerCost),
 							},
 							TolerateFailed: true,
 						},
@@ -1311,8 +1311,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 							CallArgs: exec.CallArgs{
 								From:  &address2,
 								To:    &common.Address{1},
-								Nonce: rpctest.ToHexUint64(2),
-								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+								Nonce: rpctests.ToHexUint64(2),
+								Gas:   rpctests.ToHexUint64(21000 + bundleMarkerCost),
 							},
 							TolerateInvalid: true,
 						},
@@ -1339,8 +1339,8 @@ func Test_convertProposalToPlan(t *testing.T) {
 		"group TolerateFailures flag is preserved": {
 			proposal: RPCExecutionProposal{
 				BlockRange: &RPCRange{
-					First:  *rpctest.ToHexUint64(0),
-					Length: *rpctest.ToHexUint64(1023),
+					First:  *rpctests.ToHexUint64(0),
+					Length: *rpctests.ToHexUint64(1023),
 				},
 				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
 					TolerateFailures: true,
@@ -1349,16 +1349,16 @@ func Test_convertProposalToPlan(t *testing.T) {
 							CallArgs: exec.CallArgs{
 								From:  &address1,
 								To:    &common.Address{123},
-								Nonce: rpctest.ToHexUint64(1),
-								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+								Nonce: rpctests.ToHexUint64(1),
+								Gas:   rpctests.ToHexUint64(21000 + bundleMarkerCost),
 							},
 						},
 						RPCExecutionStepProposal{
 							CallArgs: exec.CallArgs{
 								From:  &address2,
 								To:    &common.Address{1},
-								Nonce: rpctest.ToHexUint64(2),
-								Gas:   rpctest.ToHexUint64(21000 + bundleMarkerCost),
+								Nonce: rpctests.ToHexUint64(2),
+								Gas:   rpctests.ToHexUint64(21000 + bundleMarkerCost),
 							},
 						},
 					},
@@ -1401,16 +1401,16 @@ func Test_convertProposalToPlan_ReturnsErrors(t *testing.T) {
 	address := common.Address{1}
 
 	validRange := &RPCRange{
-		First:  *rpctest.ToHexUint64(0),
-		Length: *rpctest.ToHexUint64(1023),
+		First:  *rpctests.ToHexUint64(0),
+		Length: *rpctests.ToHexUint64(1023),
 	}
 
 	validStep := RPCExecutionStepProposal{
 		CallArgs: exec.CallArgs{
 			From:  &address,
 			To:    &common.Address{2},
-			Nonce: rpctest.ToHexUint64(1),
-			Gas:   rpctest.ToHexUint64(21000),
+			Nonce: rpctests.ToHexUint64(1),
+			Gas:   rpctests.ToHexUint64(21000),
 		},
 	}
 
@@ -1438,8 +1438,8 @@ func Test_convertProposalToPlan_ReturnsErrors(t *testing.T) {
 						RPCExecutionStepProposal{
 							CallArgs: exec.CallArgs{
 								To:    &common.Address{2},
-								Nonce: rpctest.ToHexUint64(1),
-								Gas:   rpctest.ToHexUint64(21000),
+								Nonce: rpctests.ToHexUint64(1),
+								Gas:   rpctests.ToHexUint64(21000),
 							},
 						},
 					},
@@ -1496,8 +1496,8 @@ func Test_convertProposalToPlan_ReturnsErrors(t *testing.T) {
 							CallArgs: exec.CallArgs{
 								From:              &address,
 								To:                &common.Address{2},
-								Nonce:             rpctest.ToHexUint64(1),
-								Gas:               rpctest.ToHexUint64(21000),
+								Nonce:             rpctests.ToHexUint64(1),
+								Gas:               rpctests.ToHexUint64(21000),
 								MaxFeePerGas:      (*hexutil.Big)(overflowingValue),
 								AuthorizationList: []types.SetCodeAuthorization{{}},
 							},
@@ -1516,8 +1516,8 @@ func Test_convertProposalToPlan_ReturnsErrors(t *testing.T) {
 							CallArgs: exec.CallArgs{
 								From:                 &address,
 								To:                   &common.Address{2},
-								Nonce:                rpctest.ToHexUint64(1),
-								Gas:                  rpctest.ToHexUint64(21000),
+								Nonce:                rpctests.ToHexUint64(1),
+								Gas:                  rpctests.ToHexUint64(21000),
 								MaxFeePerGas:         (*hexutil.Big)(big.NewInt(1)),
 								MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(-1)),
 								AuthorizationList:    []types.SetCodeAuthorization{{}},
@@ -1537,8 +1537,8 @@ func Test_convertProposalToPlan_ReturnsErrors(t *testing.T) {
 							CallArgs: exec.CallArgs{
 								From:                 &address,
 								To:                   &common.Address{2},
-								Nonce:                rpctest.ToHexUint64(1),
-								Gas:                  rpctest.ToHexUint64(21000),
+								Nonce:                rpctests.ToHexUint64(1),
+								Gas:                  rpctests.ToHexUint64(21000),
 								MaxFeePerGas:         (*hexutil.Big)(big.NewInt(1)),
 								MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(1)),
 								BlobFeeCap:           (*hexutil.Big)(overflowingValue),
@@ -1564,8 +1564,8 @@ func Test_convertProposalToPlan_ReturnsErrors(t *testing.T) {
 									CallArgs: exec.CallArgs{
 										// missing From
 										To:    &common.Address{2},
-										Nonce: rpctest.ToHexUint64(1),
-										Gas:   rpctest.ToHexUint64(21000),
+										Nonce: rpctests.ToHexUint64(1),
+										Gas:   rpctests.ToHexUint64(21000),
 									},
 								},
 							},

@@ -22,19 +22,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 
-	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/rpc/core"
 )
 
-// node is a fixed set of inputs of the oracle, which also serves as the reader
-// of the node's legacy oracle, to compare the two.
+// node is a fixed set of inputs of the oracle.
 type node struct {
 	inputs core.OracleInputs
 	heads  []core.PendingHead
@@ -43,18 +40,6 @@ type node struct {
 func (n *node) OracleInputs() core.OracleInputs     { return n.inputs }
 func (n *node) PendingHeads(int) []core.PendingHead { return n.heads }
 func (n *node) Progress() core.Progress             { return core.Progress{} }
-func (n *node) GetLatestBlockIndex() idx.Block      { return 0 }
-func (n *node) TotalGasPowerLeft() uint64           { return n.inputs.TotalGasPowerLeft }
-func (n *node) GetRules() opera.Rules               { return n.inputs.Rules }
-func (n *node) GetPendingRules() opera.Rules        { return n.inputs.PendingRules }
-func (n *node) MinGasTip() *big.Int                 { return n.inputs.MinTip }
-func (n *node) PendingTxs() map[common.Address]types.Transactions {
-	res := map[common.Address]types.Transactions{}
-	for i, h := range n.heads {
-		res[common.BigToAddress(big.NewInt(int64(i)))] = types.Transactions{h.Tx}
-	}
-	return res
-}
 
 func newNode() *node {
 	rules := opera.FakeNetRules(opera.GetBrioUpgrades())
@@ -74,20 +59,31 @@ func tx(tip, feeCap int64, gas uint64) core.PendingHead {
 	})}
 }
 
-func TestSuggestTip_MatchesTheNodesLegacyOracle(t *testing.T) {
+// Golden tips of the oracle the node had before the module took over: the
+// answers of its constructive price at five levels of free gas power and five
+// certainties, as measured on the node's own implementation (release 2.2.4).
+var goldenTips = [5][5]string{
+	{"24000000000", "24000000000", "24000000000", "24000000000", "24000000000"},
+	{"18933344000", "19146672000", "20000000000", "20853344000", "21066672000"},
+	{"2881250000", "2986250000", "3406250000", "3826250000", "3931250000"},
+	{"214999000", "227000000", "275000000", "322999000", "335000000"},
+	{"5000000", "9000000", "25000000", "41000000", "45000000"},
+}
+
+func TestSuggestTip_MatchesTheNodesFormerOracle(t *testing.T) {
 	n := newNode()
 	maxGas := n.inputs.TotalGasPowerLeft
-	for _, left := range []uint64{0, maxGas / 10, maxGas / 2, maxGas * 9 / 10, maxGas} {
-		for _, certainty := range []uint64{0, 100_000, 500_000, 900_000, 1_000_000} {
+	require.EqualValues(t, 150_000_000, maxGas)
+	for li, left := range []uint64{0, maxGas / 10, maxGas / 2, maxGas * 9 / 10, maxGas} {
+		for ci, certainty := range []uint64{0, 100_000, 500_000, 900_000, 1_000_000} {
 			n.inputs.TotalGasPowerLeft = left
-			legacy := gasprice.NewOracle(gasprice.Config{}, n)
-			module := New(Config{}, n)
-			require.Equal(t, legacy.SuggestTip(certainty), module.SuggestTip(certainty), "left=%d certainty=%d", left, certainty)
+			want, _ := new(big.Int).SetString(goldenTips[li][ci], 10)
+			require.Equal(t, want, New(Config{}, n).SuggestTip(certainty), "left=%d certainty=%d", left, certainty)
 		}
 	}
 	// ... and for the default certainty.
-	legacy := gasprice.NewOracle(gasprice.Config{}, n)
-	require.Equal(t, legacy.SuggestTip(gasprice.AsDefaultCertainty), New(Config{}, n).SuggestTip(AsDefaultCertainty))
+	n.inputs.TotalGasPowerLeft = maxGas
+	require.Equal(t, big.NewInt(25_000_000), New(Config{}, n).SuggestTip(AsDefaultCertainty))
 }
 
 func TestSuggestTip_MinTipIsAFloor(t *testing.T) {

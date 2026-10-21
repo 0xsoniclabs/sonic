@@ -24,7 +24,68 @@ coverage:
       default:
         target: 80% # coverage of the changes
         threshold: 1% # allow the coverage to drop by <threshold>%
+# Q4 of rpc/PLAN.md: every package of the RPC module keeps 80% line coverage.
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: 80%
+        threshold: 0%
+  individual_components:
+    - component_id: rpc
+      name: rpc
+      paths:
+        - rpc/*.go
+    - component_id: rpc_debug
+      name: rpc/debug
+      paths:
+        - rpc/debug/**
+    - component_id: rpc_dispatch
+      name: rpc/dispatch
+      paths:
+        - rpc/dispatch/**
+    - component_id: rpc_eth
+      name: rpc/eth
+      paths:
+        - rpc/eth/**
+    - component_id: rpc_exec
+      name: rpc/exec
+      paths:
+        - rpc/exec/**
+    - component_id: rpc_filters
+      name: rpc/filters
+      paths:
+        - rpc/filters/**
+    - component_id: rpc_net
+      name: rpc/net
+      paths:
+        - rpc/net/**
+    - component_id: rpc_oracle
+      name: rpc/oracle
+      paths:
+        - rpc/oracle/**
+    - component_id: rpc_sonic
+      name: rpc/sonic
+      paths:
+        - rpc/sonic/**
+    - component_id: rpc_trace
+      name: rpc/trace
+      paths:
+        - rpc/trace/**
+    - component_id: rpc_transport
+      name: rpc/transport
+      paths:
+        - rpc/transport/**
+    - component_id: rpc_txpool
+      name: rpc/txpool
+      paths:
+        - rpc/txpool/**
+    - component_id: rpc_web3
+      name: rpc/web3
+      paths:
+        - rpc/web3/**
 ignore:
+  - "rpc/tests/"
   - "tests/"
   - "**/*_mock.go"
   - "**/*_test.go"

@@ -453,11 +453,18 @@ func (a *API) currentEpoch(context.Context) (hexutil.Uint64, error) {
 }
 
 // getRules returns the network rules in force at a block; null if the block
-// does not exist.
+// does not exist. The tags that select the head answer the rules the next block
+// is processed with: an epoch sealed by the head block, or a rule change that
+// ends the epoch before Allegro, is seen at once.
 func (a *API) getRules(_ context.Context, block dispatch.BlockNumber) (*opera.Rules, error) {
 	head := a.chain.Head()
 	n, err := a.chain.Number(head, block)
-	if err != nil || n > head.Number {
+	if err != nil {
+		return nil, nil
+	}
+	if block.IsLatest() {
+		n++
+	} else if n > head.Number {
 		return nil, nil
 	}
 	rules, err := a.core.Rules(n)

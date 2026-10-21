@@ -31,13 +31,43 @@ import (
 
 	"github.com/0xsoniclabs/sonic/eventcheck/heavycheck"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
-	"github.com/0xsoniclabs/sonic/gossip/filters"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamleecher"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamseeder"
 )
 
 const nominalSize uint = 1
+
+// FilterConfig holds the limits of the log queries of the RPC module (the
+// "FilterAPI" section of the configuration file).
+type FilterConfig struct {
+	// Block range limit for logs search (indexed).
+	IndexedLogsBlockRangeLimit idx.Block
+	// Block range limit for logs search (unindexed).
+	UnindexedLogsBlockRangeLimit idx.Block
+
+	// LogQueryParameterLimit is the maximum number of parameters that can be
+	// specified in log filter criteria, for eth_getLogs, eth_newFilter and
+	// logs subscriptions alike. A parameter is either an address or a topic.
+	// A value of 0 means no cap.
+	LogQueryParameterLimit uint
+
+	// LogQueryResultLimit is the maximum number of logs that can be returned in
+	// a single eth_getLogs query. The limit is only enforced if the query covers
+	// a range of more than one block. For a single block, there is no limit.
+	// A value of 0 means no cap.
+	LogQueryResultLimit uint
+}
+
+// DefaultFilterConfig returns the default limits of the log queries.
+func DefaultFilterConfig() FilterConfig {
+	return FilterConfig{
+		IndexedLogsBlockRangeLimit:   999999999999999999,
+		UnindexedLogsBlockRangeLimit: 100,
+		LogQueryParameterLimit:       1000,
+		LogQueryResultLimit:          5000,
+	}
+}
 
 type (
 	// ProtocolConfig is config for p2p protocol
@@ -72,7 +102,7 @@ type (
 
 	// Config for the gossip service.
 	Config struct {
-		FilterAPI filters.Config
+		FilterAPI FilterConfig
 
 		// This can be set to list of enrtree:// URLs which will be queried
 		// for nodes to connect to.
@@ -170,7 +200,7 @@ type PeerCacheConfig struct {
 // DefaultConfig returns the default configurations for the gossip service.
 func DefaultConfig(scale cachescale.Func) Config {
 	cfg := Config{
-		FilterAPI: filters.DefaultConfig(),
+		FilterAPI: DefaultFilterConfig(),
 
 		TxIndex: true,
 

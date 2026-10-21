@@ -24,7 +24,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/opera"
 )
@@ -46,17 +45,19 @@ func TestIsSponsorshipRequest_MatchesTheNodesFunction(t *testing.T) {
 	}
 }
 
-func TestMakeForkId_MatchesTheNodesFunction(t *testing.T) {
+func TestMakeForkId_MatchesTheNodesFormerFunction(t *testing.T) {
+	// The fork ids of the function the node had before the module took over.
 	genesis := common.HexToHash("0x1234")
-	for _, u := range []opera.UpgradeHeight{
-		opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 0),
-		opera.MakeUpgradeHeight(opera.GetAllegroUpgrades(), 15),
-		opera.MakeUpgradeHeight(opera.GetBrioUpgrades(), 1<<40),
+	for _, tc := range []struct {
+		upgrade opera.UpgradeHeight
+		want    [4]byte
+	}{
+		{opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 0), [4]byte{0xd9, 0xcc, 0x5c, 0x81}},
+		{opera.MakeUpgradeHeight(opera.GetAllegroUpgrades(), 15), [4]byte{0xcf, 0x27, 0x0b, 0xd8}},
+		{opera.MakeUpgradeHeight(opera.GetBrioUpgrades(), 1<<40), [4]byte{0x7e, 0x0d, 0x0d, 0xeb}},
 	} {
-		want, err := ethapi.MakeForkId(u, genesis)
+		got, err := MakeForkId(tc.upgrade, genesis)
 		require.NoError(t, err)
-		got, err := MakeForkId(u, genesis)
-		require.NoError(t, err)
-		require.Equal(t, [4]byte(want), [4]byte(got))
+		require.Equal(t, tc.want, [4]byte(got))
 	}
 }
