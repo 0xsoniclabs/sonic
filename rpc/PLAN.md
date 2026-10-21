@@ -620,8 +620,8 @@ integration test. Every ported method also has an R test (T4).
 | eth_getBalance, eth_getTransactionCount, eth_getCode, eth_getStorageAt | port | `PublicBlockChainAPI.Get*`, `PublicTransactionPoolAPI.GetTransactionCount` | L E | pending nonce via pool (I5) |
 | eth_getAccount | port | `GetAccount` | L | storage root from empty-storage flag today |
 | eth_getProof | port | `GetProof` | L E | `State.GetProof`; V10 |
-| eth_call | port | `Call`, `DoCall` | L E I | revert data in error; `preArgs` (I8); overrides (V5) |
-| eth_estimateGas | port | `EstimateGas`, `DoEstimateGas` | L E I | binary search bounded by `RPCGasCap`, `MaxGasLimit` |
+| eth_call | port | `Call`, `DoCall` | L E I | revert data in error; `preArgs` (I8); overrides (V5); BLOCKHASH by lookup (V11) |
+| eth_estimateGas | port | `EstimateGas`, `DoEstimateGas` | L E I | binary search bounded by `RPCGasCap`, `MaxGasLimit`; BLOCKHASH by lookup (V11) |
 | eth_createAccessList | port | `CreateAccessList`, `AccessList` | L E | reproduces F8 bugs 1–2 |
 | eth_simulateV1 | port | `simulate.go` | L E I | block count cap (ADR6) |
 | eth_getBlockByNumber/Hash, eth_getHeaderByNumber/Hash | port | `PublicBlockChainAPI` | L E | |
@@ -631,7 +631,7 @@ integration test. Every ported method also has an R test (T4).
 | eth_sendRawTransaction | port | `SendRawTransaction`, `SubmitTransaction` | E I | V7 |
 | eth_sendRawTransactionSync | port | `SendRawTransactionSync` | I | main only; waits on the head subscription, not polling |
 | eth_pendingTransactions | port | `PendingTransactions` | | pool view |
-| eth_newFilter, eth_newBlockFilter, eth_newPendingTransactionFilter, eth_getFilterChanges, eth_getFilterLogs, eth_uninstallFilter | port | `gossip/filters/api.go` | L | D6, V8 |
+| eth_newFilter, eth_newBlockFilter, eth_newPendingTransactionFilter, eth_getFilterChanges, eth_getFilterLogs, eth_uninstallFilter | port | `gossip/filters/api.go` | L | D6, V8, I17 (journal, caps) |
 | eth_getLogs | port | `PublicFilterAPI.GetLogs` | L E I | I11, V2, V4 |
 | eth_subscribe / eth_unsubscribe (newHeads, logs, newPendingTransactions) | port | `PublicFilterAPI` | I | WS and IPC only |
 | eth_getRules, eth_currentEpoch, eth_config | port | `GetRules`, `CurrentEpoch`, `config.go` | L | from block rules and `ChainInfo` (X2) |
@@ -657,7 +657,7 @@ integration test. Every ported method also has an R test (T4).
 | debug_traceBlockByNumber/Hash | port | `TraceBlockByNumber`, `traceBlock` | L I | |
 | debug_traceCall | port | `TraceCall` | L I | |
 | trace_transaction, trace_get, trace_block | port | `tx_trace.go` | L | |
-| trace_call, trace_callMany | port | `tx_trace.go` | L I | |
+| trace_call, trace_callMany | port | `tx_trace.go` | L I | bounded by `MaxResponseSize` as a whole (V12) |
 | trace_filter | port | `tx_trace.go` | L | parallel replay via `Group` (P2); range cap `MaxTraceFilterRange` (1000, `--rpc.tracefilterrange`) is inherited (V2); result order and error message vary today (lakme annotated) |
 | debug_getRaw{Block,Header,Receipts,Transaction} | *decide* | not implemented | E | ADR7 |
 | debug_chaindbProperty, debug_chaindbCompact, debug_setHead | delete | `PublicDebugAPI` | | X1 |

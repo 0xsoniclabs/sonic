@@ -38,6 +38,9 @@ and the requirement ids (I, D, P, Q, V, F, S, O, MON, X, G, T) are in
   filter is refused. Their events are kept once for all of them, at most 2^20
   of a kind; a filter not polled before its events were dropped is answered
   `filter not found`, as an expired one.
+- `trace_call` and `trace_callMany` are bounded by `--rpc.maxresponsesize` as
+  `debug_trace*` and `trace_filter` are: above it they answer `response too
+  large`. The calls of `trace_callMany` share the limit.
 - A request that panics is answered with `-32603` and counted in
   `rpc_panics_total`. A loop of the module that panics is restarted and counted
   in `rpc_loop_restarts_total`.

@@ -35,6 +35,8 @@ For optimal compatibility and stability, it is recommended to use the most recen
 - `debug_trace*` rejects a `timeout` that is malformed or above `--rpc.evmtimeout` with `-32602`.
 - `sonic_prepareBundle` and `sonic_submitBundle` take the current block from the archive head, which can shift their default block range and base fee by one block.
 - `eth_blockNumber` answers the newest block of the archive, the block that all other methods serve as `latest`.
+- The node holds at most 100,000 polled filters (`eth_newFilter`, `eth_newBlockFilter`, `eth_newPendingTransactionFilter`). Above that a new filter fails with `too many filters, the limit is 100000`. The events of the polled filters are kept once for all of them, at most 2^20 of a kind: `eth_getFilterChanges` answers `filter not found` for a filter that was not polled before its events were dropped, as for an expired one.
+- `trace_call` and `trace_callMany` fail with `response too large` when their response exceeds `--rpc.maxresponsesize`, as `debug_trace*` and `trace_filter` do. The calls of `trace_callMany` share the limit. The size limit of a `vmTrace` counts pushed values, code and memory.
 - A panic in a method handler answers `-32603` and does not stop the node.
 - A WebSocket or IPC connection that cannot keep up with its subscriptions is closed instead of delaying the node.
 - `eth_call`, `debug_*` and `trace_*` that run the Tosca interpreter stop at the gas cap (`--rpc.gascap`), not at `--rpc.evmtimeout`: only calls that use the go-ethereum interpreter observe the EVM timeout. This is the behavior of 2.2.4.
@@ -46,6 +48,7 @@ For optimal compatibility and stability, it is recommended to use the most recen
 ### Fixed
 
 - `trace_callMany` returns an error trace for a call that cannot pay for its gas, as in 2.2.4.
+- A block override `number` above the head no longer makes a `BLOCKHASH` in `eth_call`, `eth_estimateGas`, `debug_traceCall` or `trace_*` read every block header down to genesis.
 
 ## [2.2.5] - 7 October 2026
 
