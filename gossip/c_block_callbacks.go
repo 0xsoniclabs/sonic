@@ -169,7 +169,8 @@ func consensusCallbackBeginBlockFn(
 		// otherwise cheaters would get punished after a first block where cheaters were observed
 		bs.EpochCheaters = mergeCheaters(bs.EpochCheaters, cBlock.Cheaters)
 
-		// Get stateDB
+		// Before Dolce, the live state is opened here and captured by the callbacks.
+		// From Dolce on, the ledger owns it.
 		var statedb state.StateDB
 		var nonceSource blockproc.NonceSource
 		if !es.Rules.Upgrades.Dolce {

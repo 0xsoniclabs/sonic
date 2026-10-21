@@ -993,7 +993,7 @@ func TestConsensusCallback_SkippedBlock_OpensLiveStateOnlyBeforeDolce(t *testing
 				require.Nil(t, callbacks.EndBlock())
 			}
 			if test.wantOpened {
-				require.Panics(t, produceSkippedBlock)
+				require.PanicsWithError(t, "runtime error: invalid memory address or nil pointer dereference", produceSkippedBlock)
 			} else {
 				require.NotPanics(t, produceSkippedBlock)
 			}
