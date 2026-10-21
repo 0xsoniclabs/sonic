@@ -120,21 +120,22 @@ func TestBundle_FailingBareRootBeforeCantoDoesNotInflateNextReceipt(t *testing.T
 	client.Close()
 
 	signer := types.LatestSignerForChainID(net.GetChainId())
-	envelope, _, _ := bundle.NewBuilder().
-		WithSigner(signer).
-		SetEarliest(blockNumber).
-		With(Step(t, net, sender, &types.AccessListTx{
-			To:   &revertAddress,
-			Gas:  1_000_000,
-			Data: revertInput,
-		})).
-		BuildEnvelopeBundleAndPlan()
 
-	// The marker must follow the failing bundle in the same block, so its
-	// value is varied until the scrambler orders it after the envelope.
-	var markerTx *types.Transaction
+	// The marker must follow the failing bundle in the same block. The
+	// scrambler orders two transactions by each other's hash, so both the
+	// envelope and the marker are rebuilt until the marker follows.
+	var envelope, markerTx *types.Transaction
 	for value := int64(1); ; value++ {
 		require.LessOrEqual(t, value, int64(64), "scrambler never ordered the marker after the envelope")
+		envelope, _, _ = bundle.NewBuilder().
+			WithSigner(signer).
+			SetEarliest(blockNumber).
+			With(Step(t, net, sender, &types.AccessListTx{
+				To:   &revertAddress,
+				Gas:  1_000_000,
+				Data: revertInput,
+			})).
+			BuildEnvelopeBundleAndPlan()
 		markerTx = tests.CreateTransaction(t, net, &types.LegacyTx{
 			To:    &common.Address{},
 			Value: big.NewInt(value),
