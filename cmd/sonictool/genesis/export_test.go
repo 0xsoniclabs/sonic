@@ -133,31 +133,7 @@ func TestBundles_RoundTrip(t *testing.T) {
 		"oldest and newest history hashes should differ")
 	require.NotZero(t, wantEarliestHistoryHash)
 
-	// Export to a real file.
-	tmpDir := t.TempDir()
-	outFile, err := os.CreateTemp(tmpDir, "export-bundles-*.g")
-	require.NoError(t, err)
-	defer func() { require.NoError(t, outFile.Close()) }()
-
-	header := genesis.Header{}
-	writer := newUnitWriter(outFile)
-
-	err = writer.Start(header, "bh", tmpDir)
-	require.NoError(t, err)
-	err = exportBundlesHash(context.Background(), store, writer, 1)
-	require.NoError(t, err)
-
-	err = writer.Start(header, "bundles", tmpDir)
-	require.NoError(t, err)
-	err = exportBundles(context.Background(), store, writer, 1)
-	require.NoError(t, err)
-
-	// Re-open the file and read back through genesisstore.
-	_, err = outFile.Seek(0, io.SeekStart)
-	require.NoError(t, err)
-
-	gs, _, err := genesisstore.OpenGenesisStore(outFile)
-	require.NoError(t, err)
+	gs, _ := exportAndReopenBundles(t, store)
 
 	// Verify history hashes roundtrip correctly via the new GetHistoryHashes method.
 	gotHHs, ok := gs.ProcessedBundles().GetHistoryHashes()
@@ -176,6 +152,22 @@ func TestBundles_RoundTrip(t *testing.T) {
 	})
 	require.Equal(t, wantInfos, gotInfos,
 		"exported and re-imported bundle execution infos should match")
+}
+
+func TestBundles_RoundTripWithoutHistory(t *testing.T) {
+	store := setupBundleStore(t)
+
+	gs, hashes := exportAndReopenBundles(t, store)
+	wantHash, err := newDryRunWriter(t).Flush()
+	require.NoError(t, err)
+	require.Equal(t, wantHash, hashes["bh"], "the history hash section must be flushed empty")
+
+	_, ok := gs.ProcessedBundles().GetHistoryHashes()
+	require.False(t, ok)
+	gs.ProcessedBundles().ForEach(func(bundle.ExecutionInfo) bool {
+		t.Fatal("no bundles expected")
+		return false
+	})
 }
 
 func TestBundles_DeterministicOutput(t *testing.T) {
@@ -317,6 +309,28 @@ func newDryRunWriter(t *testing.T) *unitWriter {
 	err := w.Start(genesis.Header{}, "test", "")
 	require.NoError(t, err)
 	return w
+}
+
+// exportAndReopenBundles exports the bundle history hash and bundle units of
+// store into a temporary genesis file and opens it again for reading.
+func exportAndReopenBundles(t *testing.T, store *gossip.Store) (*genesisstore.Store, genesis.Hashes) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	outFile, err := os.CreateTemp(tmpDir, "export-bundles-*.g")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, outFile.Close()) })
+
+	writer := newUnitWriter(outFile)
+	require.NoError(t, writer.Start(genesis.Header{}, "bh", tmpDir))
+	require.NoError(t, exportBundlesHash(context.Background(), store, writer, 1))
+	require.NoError(t, writer.Start(genesis.Header{}, "bundles", tmpDir))
+	require.NoError(t, exportBundles(context.Background(), store, writer, 1))
+
+	_, err = outFile.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	gs, hashes, err := genesisstore.OpenGenesisStore(outFile)
+	require.NoError(t, err)
+	return gs, hashes
 }
 
 // setupBundleStore creates a gossip.Store with a current epoch state set
