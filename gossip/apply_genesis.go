@@ -86,10 +86,8 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 
 	// write receipt gas amendments, which block records do not carry
 	if g.ReceiptGasAmendments != nil {
-		if reader, err := g.ReceiptGasAmendments.GetReader(); err != nil {
-			s.Log.Info("Receipt gas amendments not available in the genesis", "err", err)
-		} else if err := s.evm.ImportReceiptGasAmendments(reader); err != nil {
-			return fmt.Errorf("failed to import receipt gas amendments from genesis; %w", err)
+		if err := s.importReceiptGasAmendments(g.ReceiptGasAmendments); err != nil {
+			return err
 		}
 	}
 
@@ -160,6 +158,20 @@ func checkBundleHistoryBlock(bundles genesis.ProcessedBundles, lastBlock idx.Blo
 	if hasHistory && historyHashes.Latest.BlockNumber != uint64(lastBlock) {
 		return fmt.Errorf("latest bundle history hash is at block %d, but genesis ends at block %d",
 			historyHashes.Latest.BlockNumber, lastBlock)
+	}
+	return nil
+}
+
+// importReceiptGasAmendments restores the receipt gas amendments from the
+// genesis file, skipping genesis files predating them.
+func (s *Store) importReceiptGasAmendments(section genesis.ReceiptGasAmendmentsSection) error {
+	reader, err := section.GetReader()
+	if err != nil {
+		s.Log.Info("Receipt gas amendments not available in the genesis", "err", err)
+		return nil
+	}
+	if err := s.evm.ImportReceiptGasAmendments(reader); err != nil {
+		return fmt.Errorf("failed to import receipt gas amendments from genesis; %w", err)
 	}
 	return nil
 }

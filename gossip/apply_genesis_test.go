@@ -17,11 +17,14 @@
 package gossip
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -332,4 +335,57 @@ func TestCheckBundleHistoryBlock_RequiresLatestHistoryHashAtLastGenesisBlock(t *
 		require.ErrorContains(t, checkBundleHistoryBlock(historyAt(block), lastBlock),
 			"latest bundle history hash is at block")
 	}
+}
+
+// fakeReceiptGasAmendmentsSection provides the given receipt gas amendments
+// section, or fails to provide it if err is set.
+type fakeReceiptGasAmendmentsSection struct {
+	data []byte
+	err  error
+}
+
+func (f fakeReceiptGasAmendmentsSection) GetReader() (io.Reader, error) {
+	return bytes.NewReader(f.data), f.err
+}
+
+func TestImportReceiptGasAmendments_RestoresExportedAmendments(t *testing.T) {
+	source, err := NewMemStore(t)
+	require.NoError(t, err)
+	source.EvmStore().SetReceipts(1, types.Receipts{
+		{CumulativeGasUsed: 21_000, GasUsed: 21_000, Logs: []*types.Log{}},
+		{CumulativeGasUsed: 50_000, GasUsed: 21_000, Logs: []*types.Log{}},
+	})
+	var want bytes.Buffer
+	count, err := source.EvmStore().ExportReceiptGasAmendments(t.Context(), &want, 0)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
+	target, err := NewMemStore(t)
+	require.NoError(t, err)
+	require.NoError(t, target.importReceiptGasAmendments(fakeReceiptGasAmendmentsSection{data: want.Bytes()}))
+
+	var got bytes.Buffer
+	_, err = target.EvmStore().ExportReceiptGasAmendments(t.Context(), &got, 0)
+	require.NoError(t, err)
+	require.Equal(t, want.Bytes(), got.Bytes())
+}
+
+func TestImportReceiptGasAmendments_SkipsMissingSection(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+
+	section := fakeReceiptGasAmendmentsSection{err: errors.New("section not found")}
+	require.NoError(t, store.importReceiptGasAmendments(section))
+
+	count, err := store.EvmStore().ExportReceiptGasAmendments(t.Context(), io.Discard, 0)
+	require.NoError(t, err)
+	require.Zero(t, count)
+}
+
+func TestImportReceiptGasAmendments_ReturnsDecodeError(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+
+	err = store.importReceiptGasAmendments(fakeReceiptGasAmendmentsSection{data: []byte{1, 2, 3}})
+	require.ErrorContains(t, err, "failed to import receipt gas amendments from genesis")
 }

@@ -105,23 +105,26 @@ type receiptGasAmendmentsRecord struct {
 }
 
 // ExportReceiptGasAmendments writes the gas amendments of all blocks from the
-// given one onwards to out, in ascending block order.
-func (s *Store) ExportReceiptGasAmendments(ctx context.Context, out io.Writer, from idx.Block) error {
+// given one onwards to out, in ascending block order, and returns the number
+// of blocks written.
+func (s *Store) ExportReceiptGasAmendments(ctx context.Context, out io.Writer, from idx.Block) (int, error) {
 	it := s.table.ReceiptGasAmendments.NewIterator(nil, from.Bytes())
 	defer it.Release()
+	count := 0
 	for it.Next() {
 		if err := ctx.Err(); err != nil {
-			return err
+			return count, err
 		}
 		record := receiptGasAmendmentsRecord{Block: idx.BytesToBlock(it.Key())}
 		if err := rlp.DecodeBytes(it.Value(), &record.Amendments); err != nil {
-			return fmt.Errorf("failed to decode receipt gas amendments of block %d; %w", record.Block, err)
+			return count, fmt.Errorf("failed to decode receipt gas amendments of block %d; %w", record.Block, err)
 		}
 		if err := rlp.Encode(out, &record); err != nil {
-			return err
+			return count, err
 		}
+		count++
 	}
-	return it.Error()
+	return count, it.Error()
 }
 
 // ImportReceiptGasAmendments stores the gas amendments read from a stream

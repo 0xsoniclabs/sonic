@@ -267,7 +267,9 @@ func TestStore_ExportReceiptGasAmendments_WritesBlocksFromGivenOneInOrder(t *tes
 	store.putReceiptGasAmendments(5, []ReceiptGasAmendment{{Index: 1, GasExcess: 5}, {Index: 2, GasExcess: 6}})
 
 	var out bytes.Buffer
-	require.NoError(t, store.ExportReceiptGasAmendments(t.Context(), &out, 5))
+	count, err := store.ExportReceiptGasAmendments(t.Context(), &out, 5)
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
 
 	var got []receiptGasAmendmentsRecord
 	stream := rlp.NewStream(&out, 0)
@@ -300,7 +302,9 @@ func TestStore_ImportReceiptGasAmendments_RestoresExportedAmendments(t *testing.
 	}
 
 	var out bytes.Buffer
-	require.NoError(t, source.ExportReceiptGasAmendments(t.Context(), &out, 0))
+	count, err := source.ExportReceiptGasAmendments(t.Context(), &out, 0)
+	require.NoError(t, err)
+	require.Equal(t, len(want), count)
 
 	target := cachedStore()
 	require.NoError(t, target.ImportReceiptGasAmendments(&out))
@@ -333,7 +337,8 @@ func TestStore_ExportReceiptGasAmendments_ReturnsContextError(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	var out bytes.Buffer
-	require.ErrorIs(t, store.ExportReceiptGasAmendments(ctx, &out, 0), context.Canceled)
+	_, err := store.ExportReceiptGasAmendments(ctx, &out, 0)
+	require.ErrorIs(t, err, context.Canceled)
 	require.Zero(t, out.Len())
 }
 
@@ -343,7 +348,7 @@ func TestStore_ExportReceiptGasAmendments_ReturnsWriteError(t *testing.T) {
 	store.putReceiptGasAmendments(1, []ReceiptGasAmendment{{Index: 0, GasExcess: 1}})
 
 	injectedErr := errors.New("write error")
-	err := store.ExportReceiptGasAmendments(t.Context(), failingWriter{injectedErr}, 0)
+	_, err := store.ExportReceiptGasAmendments(t.Context(), failingWriter{injectedErr}, 0)
 	require.ErrorIs(t, err, injectedErr)
 }
 
@@ -353,7 +358,7 @@ func TestStore_ExportReceiptGasAmendments_ReturnsDecodeError(t *testing.T) {
 	require.NoError(t, store.table.ReceiptGasAmendments.Put(idx.Block(1).Bytes(), []byte{1, 2, 3}))
 
 	var out bytes.Buffer
-	err := store.ExportReceiptGasAmendments(t.Context(), &out, 0)
+	_, err := store.ExportReceiptGasAmendments(t.Context(), &out, 0)
 	require.ErrorContains(t, err, "failed to decode receipt gas amendments of block 1")
 }
 

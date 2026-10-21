@@ -268,9 +268,6 @@ func TestMustRlpEncodeToByte_CanEncodeHistoryHashAndExecutionInfo(t *testing.T) 
 	}
 }
 
-// ------------- tooling for tests -------------
-
-// failingTmpWriter implements fileshash.TmpWriter but always fails on Write.
 func TestBlocksExportBase_LimitsExportToMaxBlocks(t *testing.T) {
 	tests := map[string]struct {
 		to        idx.Block
@@ -316,8 +313,11 @@ func TestReceiptGasAmendments_RoundTrip(t *testing.T) {
 	require.NoError(t, target.EvmStore().ImportReceiptGasAmendments(reader))
 
 	var want, got bytes.Buffer
-	require.NoError(t, source.EvmStore().ExportReceiptGasAmendments(context.Background(), &want, 2))
-	require.NoError(t, target.EvmStore().ExportReceiptGasAmendments(context.Background(), &got, 0))
+	wantCount, err := source.EvmStore().ExportReceiptGasAmendments(context.Background(), &want, 2)
+	require.NoError(t, err)
+	require.Equal(t, 2, wantCount)
+	_, err = target.EvmStore().ExportReceiptGasAmendments(context.Background(), &got, 0)
+	require.NoError(t, err)
 	require.NotZero(t, want.Len())
 	require.Equal(t, want.Bytes(), got.Bytes(), "only the amendments from block 2 onwards are exported")
 }
@@ -363,15 +363,9 @@ func TestExportReceiptGasAmendments_ContextCancelled(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
-// leakedGasReceipts returns receipts whose second receipt has the given gas
-// leaked into its CumulativeGasUsed, so that storing them records an amendment.
-func leakedGasReceipts(leaked uint64) types.Receipts {
-	return types.Receipts{
-		{CumulativeGasUsed: 21_000, GasUsed: 21_000, Logs: []*types.Log{}},
-		{CumulativeGasUsed: 42_000 + leaked, GasUsed: 21_000, Logs: []*types.Log{}},
-	}
-}
+// ------------- tooling for tests -------------
 
+// failingTmpWriter implements fileshash.TmpWriter but always fails on Write.
 type failingTmpWriter struct{}
 
 func (f *failingTmpWriter) Read(p []byte) (int, error)                   { return 0, errors.New("read error") }
@@ -383,6 +377,15 @@ func (f *failingTmpWriter) Drop() error                                  { retur
 // Ensure failingTmpWriter satisfies the interface.
 var _ fileshash.TmpWriter = (*failingTmpWriter)(nil)
 var _ io.ReadWriteSeeker = (*failingTmpWriter)(nil)
+
+// leakedGasReceipts returns receipts whose second receipt has the given gas
+// leaked into its CumulativeGasUsed, so that storing them records an amendment.
+func leakedGasReceipts(leaked uint64) types.Receipts {
+	return types.Receipts{
+		{CumulativeGasUsed: 21_000, GasUsed: 21_000, Logs: []*types.Log{}},
+		{CumulativeGasUsed: 42_000 + leaked, GasUsed: 21_000, Logs: []*types.Log{}},
+	}
+}
 
 // cancelAfterNChecks is a context.Context wrapper that returns
 // context.Canceled after allowedCalls calls to Err().
