@@ -387,3 +387,25 @@ func TestDispatcher_StopCancelsRequestsAfterTheGracePeriod(t *testing.T) {
 	require.Less(t, time.Since(start), 2*time.Second)
 	require.Equal(t, "context canceled", (<-done).Message)
 }
+
+func TestServe_EncodedResultsAreHandedOnAsTheyAre(t *testing.T) {
+	d := newTestDispatcher(t, DefaultConfig())
+	Add0(d, "test_encoded", func(context.Context) (Encoded, error) { return Encoded(`{"a":[1,2]}`), nil })
+	Add0(d, "test_nothing", func(context.Context) (Encoded, error) { return nil, nil })
+	Add0(d, "test_raw", func(context.Context) (json.RawMessage, error) {
+		return json.RawMessage(` { "a" : [ 1 , 2 ] } `), nil
+	})
+
+	got, err := d.Serve(context.Background(), "test_encoded", nil)
+	require.Nil(t, err)
+	require.Equal(t, `{"a":[1,2]}`, string(got))
+
+	got, err = d.Serve(context.Background(), "test_nothing", nil)
+	require.Nil(t, err)
+	require.Equal(t, `null`, string(got))
+
+	// A json.RawMessage is compacted; an Encoded result is trusted.
+	got, err = d.Serve(context.Background(), "test_raw", nil)
+	require.Nil(t, err)
+	require.Equal(t, `{"a":[1,2]}`, string(got))
+}

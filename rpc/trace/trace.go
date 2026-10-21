@@ -182,7 +182,7 @@ func (a *api) transaction(ctx context.Context, hash common.Hash) (*[]txtrace.Act
 // call returns the inner traces of a transaction for non historical
 // transactions. It supports the "trace", "stateDiff" and "vmTrace" trace types.
 // The response is bounded by MaxResponseSize.
-func (a *api) call(ctx context.Context, args exec.CallArgs, traceTypes []string, ref dispatch.BlockRef, config *TraceCallConfig) (json.RawMessage, error) {
+func (a *api) call(ctx context.Context, args exec.CallArgs, traceTypes []string, ref dispatch.BlockRef, config *TraceCallConfig) (dispatch.Encoded, error) {
 	defer func(start time.Time) {
 		log.Debug("Executing trace_Call call finished", "txArgs", args, "runtime", time.Since(start))
 	}(time.Now())
@@ -232,7 +232,7 @@ func (a *api) call(ctx context.Context, args exec.CallArgs, traceTypes []string,
 	if limit := a.env.Cfg.MaxResponseSize; limit > 0 && len(encoded) > limit {
 		return nil, ErrResponseTooLarge
 	}
-	return encoded, nil
+	return dispatch.Encoded(encoded), nil
 }
 
 // responseBudget returns how many bytes a response may still grow by once used
@@ -690,7 +690,7 @@ func (r *CallRequest) UnmarshalJSON(data []byte) error {
 // overrides to be applied once to the base state before any call is executed.
 // The calls share one MaxResponseSize: each result is encoded as soon as it is
 // there, and the vmTrace of a call may only use what the previous ones left.
-func (a *api) callMany(ctx context.Context, calls []CallRequest, ref dispatch.BlockRef, config *TraceCallConfig) (json.RawMessage, error) {
+func (a *api) callMany(ctx context.Context, calls []CallRequest, ref dispatch.BlockRef, config *TraceCallConfig) (dispatch.Encoded, error) {
 	defer func(start time.Time) {
 		log.Debug("Executing trace_callMany call finished", "numCalls", len(calls), "runtime", time.Since(start))
 	}(time.Now())
@@ -754,7 +754,7 @@ type FilterArgs struct {
 }
 
 // filter is the function of the trace_filter call.
-func (a *api) filter(ctx context.Context, args FilterArgs) (json.RawMessage, error) {
+func (a *api) filter(ctx context.Context, args FilterArgs) (dispatch.Encoded, error) {
 	if args.Count == 0 && args.After == 0 {
 		// count and order of traces doesn't matter so filter blocks in parallel
 		return a.filterBlocksInParallel(ctx, args)
@@ -764,7 +764,7 @@ func (a *api) filter(ctx context.Context, args FilterArgs) (json.RawMessage, err
 }
 
 // filterBlocks filters the specified block range in series.
-func (a *api) filterBlocks(ctx context.Context, args FilterArgs) (json.RawMessage, error) {
+func (a *api) filterBlocks(ctx context.Context, args FilterArgs) (dispatch.Encoded, error) {
 	var traceAdded, traceCount uint
 
 	// resultBuffer is the buffer for collecting result traces
@@ -820,7 +820,7 @@ type traceWorkerResult struct {
 // filterBlocksInParallel filters the specified block range in parallel. The
 // children run in a group of the dispatcher: a panic in one fails the request
 // and cancels the others.
-func (a *api) filterBlocksInParallel(ctx context.Context, args FilterArgs) (json.RawMessage, error) {
+func (a *api) filterBlocksInParallel(ctx context.Context, args FilterArgs) (dispatch.Encoded, error) {
 	// resultBuffer is the buffer for collecting result traces
 	resultBuffer, err := newJSONResultBuffer(a.env.Cfg.MaxResponseSize)
 	if err != nil {
@@ -1072,7 +1072,7 @@ func newJSONResultBuffer(maxResultSize int) (*jsonResultBuffer, error) {
 }
 
 // GetResult returns the finalized byte array.
-func (b *jsonResultBuffer) GetResult() ([]byte, error) {
+func (b *jsonResultBuffer) GetResult() (dispatch.Encoded, error) {
 	if err := b.writeString("]"); err != nil {
 		return nil, err
 	}

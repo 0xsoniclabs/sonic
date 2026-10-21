@@ -320,13 +320,29 @@ func (d *Dispatcher) Serve(ctx context.Context, name string, params json.RawMess
 		d.observe(label, res, start, 0)
 		return nil, panicToError(err)
 	}
-	encoded, merr := json.Marshal(result)
+	encoded, merr := encode(result)
 	if merr != nil {
 		d.observe(label, ResultError, start, 0)
 		return nil, NewError(CodeInternal, "%v", merr)
 	}
 	d.observe(label, ResultOK, start, len(encoded))
 	return encoded, nil
+}
+
+// Encoded is a result the handler has encoded the way json.Marshal does: valid,
+// compact JSON. The dispatcher hands it on as it is. A json.RawMessage is
+// validated and compacted again, which costs a pass over the result: use
+// Encoded only for bytes that json.Marshal wrote.
+type Encoded []byte
+
+func encode(result any) (json.RawMessage, error) {
+	if encoded, ok := result.(Encoded); ok {
+		if encoded == nil {
+			return json.RawMessage("null"), nil
+		}
+		return json.RawMessage(encoded), nil
+	}
+	return json.Marshal(result)
 }
 
 func (d *Dispatcher) observe(label, result string, start time.Time, size int) {
