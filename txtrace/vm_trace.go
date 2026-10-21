@@ -73,13 +73,19 @@ type vmTraceFrame struct {
 	memSize   uint64    // memory size lastOp is about to write, if memWrite
 }
 
-// vmTraceSizeLimit caps the approximate number of bytes a single vmTrace
-// retains (code, memory diffs and per-op overhead), protecting the node
-// from running out of memory on pathological traces.
+// vmTraceSizeLimit caps the approximate size of a single vmTrace, protecting
+// the node from running out of memory on pathological traces. The size counts
+// what the trace costs in memory or in the response, whichever is larger: per
+// operation, per pushed value, and memory diffs and code as hex.
 const vmTraceSizeLimit = 256 << 20
 
 // vmTraceOpSize approximates the fixed footprint of one traced operation.
 const vmTraceOpSize = 128
+
+// vmTracePushSize approximates the footprint of one pushed value: a big.Int
+// with its words in memory, or up to 64 hex digits in the response. A SWAP16
+// or DUP16 pushes 17 of them for 3 gas.
+const vmTracePushSize = 72
 
 var errVmTraceTooLarge = errors.New("vmTrace exceeds size limit")
 
@@ -96,7 +102,15 @@ type VmTraceLogger struct {
 
 // NewVmTraceLogger creates a new VmTraceLogger.
 func NewVmTraceLogger() *VmTraceLogger {
-	return &VmTraceLogger{sizeLimit: vmTraceSizeLimit}
+	return NewVmTraceLoggerWithLimit(vmTraceSizeLimit)
+}
+
+// NewVmTraceLoggerWithLimit creates a VmTraceLogger that drops the trace once
+// its approximate size exceeds limit bytes, or the size limit of every vmTrace
+// if that is smaller. A caller with a response size limit passes what is left
+// of it.
+func NewVmTraceLoggerWithLimit(limit uint64) *VmTraceLogger {
+	return &VmTraceLogger{sizeLimit: min(limit, vmTraceSizeLimit)}
 }
 
 // Hooks returns the tracing hooks.
@@ -177,7 +191,7 @@ func (l *VmTraceLogger) onEnter(depth int, typ byte, _ common.Address, to common
 		}
 	}
 
-	if !l.grow(uint64(len(code))) {
+	if !l.grow(2 * uint64(len(code))) {
 		return
 	}
 
@@ -243,10 +257,14 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 	if frame.lastOpIdx >= 0 {
 		prevOp := &frame.trace.Ops[frame.lastOpIdx]
 		if prevOp.Ex != nil {
-			prevOp.Ex.Push = computePushed(frame.lastOp, scope.StackData())
+			pushed := computePushed(frame.lastOp, scope.StackData())
+			if !l.grow(uint64(len(pushed)) * vmTracePushSize) {
+				return
+			}
+			prevOp.Ex.Push = pushed
 			if frame.memWrite && frame.memSize > 0 {
 				// Report the full reserved [off, off+size) region, matching Parity/OpenEthereum's vmTrace semantics.
-				if !l.grow(frame.memSize) {
+				if !l.grow(2 * frame.memSize) {
 					return
 				}
 				data := memoryRegion(scope.MemoryData(), frame.memOff, frame.memSize)

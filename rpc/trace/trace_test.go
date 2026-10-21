@@ -190,6 +190,61 @@ func TestCallMany(t *testing.T) {
 	require.Equal(t, dispatch.CodeInvalidParams, err.Code)
 }
 
+// spinner runs until it is out of gas: JUMPDEST PUSH1 0 JUMP.
+var spinner = common.HexToAddress("0x5917")
+
+// newSizeHarness serves the trace methods with a response size limit, over a
+// state that holds the spinner.
+func newSizeHarness(t *testing.T, maxResponseSize int) *tests.Harness {
+	t.Helper()
+	fc, cs := tests.NewCarmenCore(t, tests.WithBlocks(1))
+	cs.SetCode(spinner, []byte{0x5b, 0x60, 0x00, 0x56})
+	cfg := tests.Default()
+	cfg.MaxResponseSize = maxResponseSize
+	return tests.NewHarness(t, fc, cfg, func(d *dispatch.Dispatcher, chain *dispatch.Chain) {
+		Register(d, exec.NewEnv(chain, oracle.New(oracle.Config{}, fc)))
+	})
+}
+
+// spin is a call of the spinner with 100,000 gas: about 20,000 operations,
+// whose vmTrace is about 2 MiB in the response.
+var spin = map[string]any{"to": spinner, "gas": hexutil.Uint64(100_000)}
+
+func TestCall_ResponseIsBoundedByMaxResponseSize(t *testing.T) {
+	// Without a vmTrace the result is checked once encoded.
+	err := newSizeHarness(t, 10).Fails("trace_call", spin, []string{"trace"}, "latest")
+	require.Equal(t, ErrResponseTooLarge.Error(), err.Message)
+
+	// A vmTrace stops growing at the limit, long before the execution ends.
+	err = newSizeHarness(t, 1<<20).Fails("trace_call", spin, []string{"vmTrace"}, "latest")
+	require.Equal(t, "vmTrace exceeds size limit", err.Message)
+
+	res := newSizeHarness(t, 4<<20).Result("trace_call", spin, []string{"vmTrace"}, "latest")
+	require.Less(t, len(res), 4<<20)
+	require.Greater(t, len(res), 1<<20)
+}
+
+func TestCallMany_CallsShareMaxResponseSize(t *testing.T) {
+	h := newSizeHarness(t, 4<<20)
+	call := []any{spin, []string{"vmTrace"}}
+	res := h.Result("trace_callMany", []any{call}, "latest")
+	require.Greater(t, len(res), 1<<20)
+
+	// The second call may only use what the first one left.
+	err := h.Fails("trace_callMany", []any{call, call}, "latest")
+	require.Equal(t, "call 1: vmTrace exceeds size limit", err.Message)
+
+	// The results without a vmTrace count as well.
+	err = newSizeHarness(t, 1000).Fails("trace_callMany", []any{
+		[]any{spin, []string{"trace"}}, []any{spin, []string{"trace"}}, []any{spin, []string{"trace"}},
+	}, "latest")
+	require.Equal(t, ErrResponseTooLarge.Error(), err.Message)
+
+	// Without a limit there is no shared budget; each vmTrace keeps its own cap.
+	res = newSizeHarness(t, 0).Result("trace_callMany", []any{call, call}, "latest")
+	require.Greater(t, len(res), 3<<20)
+}
+
 func TestFilter(t *testing.T) {
 	f := newFixture(t)
 	var traces []actionTrace

@@ -423,7 +423,7 @@ parallel after step 1; none may add to `Core`.
    V8, F6, F7, P8; lakme filter family; subscription tests over WS and IPC.
 5. **Tracing** (M1). `debug_*`, `trace_*`, `debug_getRaw*` (ADR7). Read
    `stateAtTransaction` before deciding where the EIP-2935 write goes (section 6).
-   Gates: V6, V11, F2, F3; lakme trace families.
+   Gates: V6, V11, V12, F2, F3; lakme trace families.
 6. **Switch** (M2). The forwarding of unported methods goes, with the last path
    to `eth_stop` (S1); `Front` keeps only the IPC routing of X3 and the p2p
    facts; the module is the only RPC server; X3 namespaces stay on IPC
@@ -519,6 +519,7 @@ M1 and M2; Q, O and G gate M2 alone.
 | V9 | Validation never allocates proportionally to a client-chosen number before the bound is checked (block count, storage keys, topics, batch items) | U |
 | V10 | `eth_getProof`: at most 1024 storage keys, strict key decoding, both → -32602 before any state access | L, R |
 | V11 | No value a client sets decides how far a lookup walks or how often a loop runs, beyond what a limit of section 8 bounds. A block override `number` changes which blocks BLOCKHASH may ask for, never what one BLOCKHASH costs: it is answered by one lookup by number (`Core.Header`), with the zero hash at or above the block of the call, never by walking the parent hashes back from that block (`evmcore.GetHashFn`), which a `number` above the head turns into one header read per block down to genesis. Applies to every block context built from a header of the chain (`exec.Env.BlockContext`): `eth_call`, `eth_estimateGas` (once per step of its search), `eth_createAccessList`, `debug_traceCall`, `trace_*`, `sonic_estimateGasForTransactions`. `eth_simulateV1` is the one walk left: its blocks are not in `Core`, its block number is that of the header it walks from, so it walks at most 256 headers | U (`Core.Header` calls counted under overrides above and below the head) |
+| V12 | A response that collects traces is bounded by `MaxResponseSize` as a whole: `debug_trace*` and `trace_filter` as in the reference, `trace_call` and `trace_callMany` in the module (`trace_block`, `trace_transaction` and `trace_get` replay recorded blocks and stay bounded by their gas only, as in the reference). The calls of `trace_callMany` share one budget, each result is encoded as soon as it is there, and a tracer that collects in memory (vmTrace) stops at what is left of the budget, not after the run. Its size counts everything it keeps, in the larger of its memory and response cost: per operation, per pushed value (`SWAP16` and `DUP16` push 17 words for 3 gas), and code and memory as hex. A fixed size per operation lets the most expensive operations through | U (a vmTrace over the limit fails before the execution ends; two calls that fit alone fail together; the accounting of pushed values, code and memory) |
 
 ### F. Fidelity to the reference
 
@@ -694,6 +695,7 @@ entry; a new row is added with its entry in the same change.
 | `sonic_prepareBundle`, `sonic_submitBundle` "current block" | the node's live head | the archived head | I3; can shift the default range and base fee by a block |
 | `eth_getRules` | an epoch number, `null` for an epoch with no state | the rules in force at a block; the tags that select the head answer the rules the next block is processed with, as the open epoch did | X2; lakme `rpc-module-getRules-block-selector` |
 | `eth_blockNumber` | committed head | archived head | I3 (ADR4) |
+| `trace_call`, `trace_callMany` | the response is unbounded; a vmTrace stops at an approximate 256 MiB per call, counting 128 bytes per operation and nothing for pushed values, so it let 2 GiB of heap through | `ErrResponseTooLarge` above `MaxResponseSize` for the whole response; the vmTrace of each call is limited by what is left of it | V12, ADR3; vmTrace is not in v2.2.4 (lakme `trace_call-vmTrace-unsupported`), other replies stay far below the limit |
 
 ### Bugs of the reference the port treats (F8)
 
@@ -854,6 +856,7 @@ the legacy code before porting, not from the port afterwards.
 | Cost of a coarse `Core` call | the answer is right | read what the legacy code read, per caller (I10) | the oracle tick walked every validator's last event |
 | Defaults written twice | they agree today | one definition (section 8) | the oracle's maximum gas price default in three places |
 | Cost a client chooses | the answers are right, and fast for the values honest clients send | V11: for every number a request carries (overrides, indexes, range ends), count the `Core` calls with hostile values: above the head, far below it, the maximum of the type | a block override `number` above the head made one BLOCKHASH read every header down to genesis (F8 table) |
+| A size limit that counts the wrong thing | the limit is tested on the trace it was written for | V12: count in the unit of the limit everything the structure keeps, and test with the most expensive operation per gas, not with a loop of cheap ones | the vmTrace limit counted 128 bytes per operation: a loop of `SWAP16` over full words kept 2 GiB under a 256 MiB limit, and `trace_callMany` multiplied it by its calls |
 
 ## 8. Limits inherited from the reference
 
@@ -872,7 +875,7 @@ shows the need).
 | `RPCEVMTimeout` | 5s | EVM interpreter cancel; only geth's interpreter polls it (at jumps), Tosca's LFVM/SFVM never do, so on the chain interpreter the bound is `RPCGasCap` | `DoCall`, tracers, `simulate.go`; timeout test in `rpc/eth` |
 | `RPCTimeout` | 5s | per-request deadline; today a fork patch (`SetExecutionTimeLimit`) | `gossip.NewService` |
 | `RPCTxFeeCap` | 100 FTM | refuse expensive sends | `checkTxFee` |
-| `MaxResponseSize` | 25 MiB | only `debug_*` and `trace_*` check it | `api.go` |
+| `MaxResponseSize` | 25 MiB (`--rpc.maxresponsesize`) | `debug_trace*` and `trace_filter` check it; `trace_call` and `trace_callMany` since the module (V12), the calls of `trace_callMany` sharing it, and a vmTrace stopping at it | `api.go` |
 | `StructLogLimit` | 2000 | struct-log length | `gossip.DefaultConfig` |
 | `MaxTraceFilterRange` | 1000 (`--rpc.tracefilterrange`, 0 = unlimited) | widest `trace_filter` span, since 2.2.3 | `gossip.DefaultConfig` |
 | `eth_getProof` keys | 1024 | storage keys per request, since 2.2.3 | `maxGetProofKeys` |

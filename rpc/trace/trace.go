@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"runtime"
 	"sync"
@@ -96,6 +97,7 @@ type evmSetup struct {
 // returns it together with the associated loggers and a cancel function.
 // The caller is responsible for calling cancel when execution is complete.
 // noBaseFee should be true for simulated calls, false for historical replay.
+// vmTraceLimit bounds the approximate size of a vmTrace in bytes.
 func (a *api) setupTracedEVM(
 	ctx context.Context,
 	head dispatch.Head,
@@ -104,6 +106,7 @@ func (a *api) setupTracedEVM(
 	index uint64,
 	tracers TraceOptions,
 	noBaseFee bool,
+	vmTraceLimit uint64,
 ) (*evmSetup, context.CancelFunc, error) {
 	header := block.Header()
 	cfg, err := a.env.VMConfig(header.Number.Uint64())
@@ -140,7 +143,7 @@ func (a *api) setupTracedEVM(
 	}
 
 	if tracers.VmTrace {
-		setup.vmTraceLogger = txtrace.NewVmTraceLogger()
+		setup.vmTraceLogger = txtrace.NewVmTraceLoggerWithLimit(vmTraceLimit)
 		// Wrap activeState so OnStorageChange fires when storage is written.
 		setup.activeState = exec.WrapStateDbWithLogger(setup.activeState, setup.vmTraceLogger.Hooks())
 		// Merge VM level hooks into cfg.Tracer.
@@ -179,7 +182,8 @@ func (a *api) transaction(ctx context.Context, hash common.Hash) (*[]txtrace.Act
 
 // call returns the inner traces of a transaction for non historical
 // transactions. It supports the "trace", "stateDiff" and "vmTrace" trace types.
-func (a *api) call(ctx context.Context, args exec.CallArgs, traceTypes []string, ref dispatch.BlockRef, config *TraceCallConfig) (*txtrace.TraceCallResult, error) {
+// The response is bounded by MaxResponseSize.
+func (a *api) call(ctx context.Context, args exec.CallArgs, traceTypes []string, ref dispatch.BlockRef, config *TraceCallConfig) (json.RawMessage, error) {
 	defer func(start time.Time) {
 		log.Debug("Executing trace_Call call finished", "txArgs", args, "runtime", time.Since(start))
 	}(time.Now())
@@ -218,7 +222,28 @@ func (a *api) call(ctx context.Context, args exec.CallArgs, traceTypes []string,
 		return nil, err
 	}
 
-	return a.traceCallExec(ctx, head, block, msg, statedb, tx, uint64(txIndex), traceOptions)
+	result, err := a.traceCallExec(ctx, head, block, msg, statedb, tx, uint64(txIndex), traceOptions, a.responseBudget(0))
+	if err != nil {
+		return nil, err
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+	if limit := a.env.Cfg.MaxResponseSize; limit > 0 && len(encoded) > limit {
+		return nil, ErrResponseTooLarge
+	}
+	return encoded, nil
+}
+
+// responseBudget returns how many bytes a response may still grow by once used
+// bytes of it are written, unlimited if MaxResponseSize is not set.
+func (a *api) responseBudget(used int) uint64 {
+	limit := a.env.Cfg.MaxResponseSize
+	if limit <= 0 {
+		return math.MaxUint64
+	}
+	return uint64(max(limit-used, 0))
 }
 
 // TraceOptions are the kinds of trace a request asks for.
@@ -325,8 +350,9 @@ func (a *api) traceCallExec(
 	tx *types.Transaction,
 	index uint64,
 	traceOptions TraceOptions,
+	vmTraceLimit uint64,
 ) (*txtrace.TraceCallResult, error) {
-	tracedEVM, cancel, err := a.setupTracedEVM(ctx, head, block, statedb, index, traceOptions, true)
+	tracedEVM, cancel, err := a.setupTracedEVM(ctx, head, block, statedb, index, traceOptions, true, vmTraceLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -606,7 +632,7 @@ func (a *api) traceTx(
 	index uint64,
 	status uint64,
 ) (*[]txtrace.ActionTrace, error) {
-	tracedEVM, cancel, err := a.setupTracedEVM(ctx, head, block, statedb, index, TraceOptions{Trace: true}, true)
+	tracedEVM, cancel, err := a.setupTracedEVM(ctx, head, block, statedb, index, TraceOptions{Trace: true}, true, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -676,7 +702,9 @@ func (r *CallRequest) UnmarshalJSON(data []byte) error {
 // executed on top of the state produced by all previous calls n-1, so state
 // changes accumulate across the list. The optional config allows state
 // overrides to be applied once to the base state before any call is executed.
-func (a *api) callMany(ctx context.Context, calls []CallRequest, ref dispatch.BlockRef, config *TraceCallConfig) ([]*txtrace.TraceCallResult, error) {
+// The calls share one MaxResponseSize: each result is encoded as soon as it is
+// there, and the vmTrace of a call may only use what the previous ones left.
+func (a *api) callMany(ctx context.Context, calls []CallRequest, ref dispatch.BlockRef, config *TraceCallConfig) (json.RawMessage, error) {
 	defer func(start time.Time) {
 		log.Debug("Executing trace_callMany call finished", "numCalls", len(calls), "runtime", time.Since(start))
 	}(time.Now())
@@ -700,7 +728,10 @@ func (a *api) callMany(ctx context.Context, calls []CallRequest, ref dispatch.Bl
 		}
 	}
 
-	results := make([]*txtrace.TraceCallResult, 0, len(calls))
+	results, err := newJSONResultBuffer(a.env.Cfg.MaxResponseSize)
+	if err != nil {
+		return nil, err
+	}
 	for i, call := range calls {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -715,14 +746,15 @@ func (a *api) callMany(ctx context.Context, calls []CallRequest, ref dispatch.Bl
 			return nil, fmt.Errorf("call %d: %w", i, err)
 		}
 
-		result, err := a.traceCallExec(ctx, head, block, msg, statedb, tx, uint64(i), traceOptions)
+		result, err := a.traceCallExec(ctx, head, block, msg, statedb, tx, uint64(i), traceOptions, a.responseBudget(results.Len()))
 		if err != nil {
 			return nil, fmt.Errorf("call %d: %w", i, err)
 		}
-		results = append(results, result)
+		if err := results.AddObject(result); err != nil {
+			return nil, err
+		}
 	}
-
-	return results, nil
+	return results.GetResult()
 }
 
 // FilterArgs represents the arguments for specifying trace targets

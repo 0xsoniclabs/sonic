@@ -18,6 +18,7 @@ package txtrace
 
 import (
 	"errors"
+	"math"
 	"math/big"
 	"testing"
 
@@ -214,6 +215,36 @@ func TestVmTraceLogger_SizeLimitDropsTrace(t *testing.T) {
 	l.onExit(0, nil, 0, nil, false)
 	require.Nil(t, l.GetResult())
 	require.ErrorIs(t, l.Err(), errVmTraceTooLarge)
+}
+
+func TestVmTraceLogger_SizeCountsPushedValues(t *testing.T) {
+	// A SWAP16 pushes 17 values for 3 gas: they cost more than the operation.
+	l := NewVmTraceLoggerWithLimit(2*vmTraceOpSize + 16*vmTracePushSize)
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+	l.onOpcode(0, byte(vm.SWAP16), 1000, 3, &mockOpContext{stack: makeStack(make([]uint64, 17)...)}, nil, 0, nil)
+	require.NoError(t, l.Err())
+	l.onOpcode(1, byte(vm.STOP), 997, 0, &mockOpContext{stack: makeStack(make([]uint64, 17)...)}, nil, 0, nil)
+	require.ErrorIs(t, l.Err(), errVmTraceTooLarge)
+}
+
+func TestVmTraceLogger_SizeCountsCodeAndMemoryAsHex(t *testing.T) {
+	// The response carries code and memory as hex: two digits per byte.
+	code := make([]byte, 100)
+	l := NewVmTraceLoggerWithLimit(2*100 - 1)
+	l.onEnter(0, byte(vm.CREATE), addr(1), addr(2), code, 1000, big.NewInt(0))
+	require.ErrorIs(t, l.Err(), errVmTraceTooLarge)
+
+	l = NewVmTraceLoggerWithLimit(2*vmTraceOpSize + 2*32 - 1)
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+	l.onOpcode(0, byte(vm.MSTORE), 1000, 6, &mockOpContext{stack: makeStack(0, 0)}, nil, 0, nil)
+	l.onOpcode(33, byte(vm.STOP), 994, 0, &mockOpContext{memory: make([]byte, 32)}, nil, 0, nil)
+	require.ErrorIs(t, l.Err(), errVmTraceTooLarge)
+}
+
+func TestNewVmTraceLoggerWithLimit_NeverExceedsTheLimitOfEveryTrace(t *testing.T) {
+	require.EqualValues(t, vmTraceSizeLimit, NewVmTraceLoggerWithLimit(math.MaxUint64).sizeLimit)
+	require.EqualValues(t, 10, NewVmTraceLoggerWithLimit(10).sizeLimit)
+	require.EqualValues(t, vmTraceSizeLimit, NewVmTraceLogger().sizeLimit)
 }
 
 func TestVmTraceLogger_EmptyFrame(t *testing.T) {
