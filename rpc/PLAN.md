@@ -92,9 +92,9 @@ type ChainReader interface {
 	Header(number uint64) (*evmcore.EvmHeader, error) // no transactions decoded
 	Block(number uint64) (*evmcore.EvmBlock, error)   // ErrNotFound above the archive head
 	BlockNumberByHash(hash common.Hash) (uint64, bool)
-	Receipts(number uint64) (types.Receipts, error)
-	Rules(number uint64) (*opera.Rules, error)
-	TxByHash(hash common.Hash) (tx *types.Transaction, block, index uint64, ok bool)
+	Receipts(number uint64) (types.Receipts, error)      // fails if TxIndex is off
+	Rules(number uint64) (*opera.Rules, error)           // head+1: the open epoch's rules
+	TxByHash(hash common.Hash) (tx *types.Transaction, block, index uint64, err error) // ErrNotFound if unknown; fails if TxIndex is off
 	BundleInfo(executionPlanHash common.Hash) (BundleInfo, bool)
 }
 
@@ -160,10 +160,28 @@ Rules the adapter follows, each a design decision:
   reader do.
 - The launcher stops the module before the node closes, so the module leaves the
   feed before the feed leaves.
+- Every guard the legacy backend takes from the node's configuration is the
+  adapter's. With `TxIndex` off, `Receipts` fails with `transactions index is
+  disabled (enable TxIndex and re-process the DAGs)` and `TxByHash` with the
+  same text ending `the DAG)` (`EthAPIBackend.GetReceiptsByNumber`,
+  `GetTransaction`); a method propagates the error where its legacy
+  counterpart did. A `bool` result cannot carry such a failure, which is why
+  `TxByHash` returns an error. Before writing the adapter, list every
+  `svc.config` read in `gossip/ethapi_backend.go`; lakme runs the default
+  configuration and sees none of them, so each one has an adapter test.
 
-Derived by the module, not asked for: `MinGasPrice` and `MaxGasLimit` (from
-`Rules(n)`), the EVM and the chain config (from `Rules(n)`, the header and
-`opera.GetVmConfig`), the head (from `SubscribeHead`).
+Derived by the module, not asked for: `MinGasPrice` and `MaxGasLimit`, the EVM
+and the chain config (from `Rules(n)`, the header and `opera.GetVmConfig`), the
+head (from `SubscribeHead`).
+
+**The current rules are the next block's.** Legacy reads the open epoch's rules
+through `store.GetRules()` (`EvmStateReader.CurrentMaxGasLimit`, the oracle's
+sampler, `eth_getRules` for tags). The module's equivalent is
+`Rules(head+1)`, never `Rules(head)`: the head may seal an epoch, and the
+header's epoch is then the old one. `MaxGasLimit` (the `eth_estimateGas` upper
+bound and the Osaka cap), the sampler and `eth_getRules` all follow this rule.
+When one site is found reading the wrong epoch, every other site of the shape is
+checked in the same change (7.1).
 
 Not on the interface, by decision: `GetEVM`, `AccountManager`, dag and abft,
 `CalcBlockExtApi`, `ExtRPCEnabled`, the `RPC*` limit getters (RPC
@@ -213,6 +231,18 @@ for parallel work come from `Dispatcher.Group(ctx)`, an `errgroup` whose childre
 run under the same recover. Long-lived loops (head, filter expiry, oracle
 sampler) are started by `Start`, restart on panic with backoff, stop on `Stop`.
 
+- **A restart takes everything again.** The defers of the panicking run release
+  what the loop owns. A subscription taken outside the loop function is dead
+  when the loop restarts: the loop keeps running and counts as recovered, but
+  receives nothing. So the loop function subscribes (and the head loop reads
+  `Head()`) itself on each run. A test panics each loop and checks that it still
+  does its job afterwards; a restart counter alone proves nothing (P3).
+- **Admission is atomic towards `Stop`.** The check that refuses new work once
+  `Stop` began and the count `Stop` waits on (requests, subscriptions, `Go`,
+  `Loop`) are taken under one lock. Checking an atomic flag and then calling
+  `WaitGroup.Add` lets a request in after `Wait` returned: it runs on a
+  cancelled context, after `Stop`, and `-race` reports the `Add` (P7).
+
 Stream connections (WebSocket, IPC) put a `Notifier` on every request's context;
 HTTP requests have none and answer `eth_subscribe` with -32601 `notifications
 not supported`. The contract:
@@ -233,12 +263,55 @@ not supported`. The contract:
 | WebSocket | as HTTP plus `eth_subscribe`/`eth_unsubscribe`; origin check; per-connection subscription cap; bounded notification buffer, disconnect on overflow | `gorilla/websocket` is already in the module graph |
 | IPC | as WebSocket, newline-delimited JSON on `<datadir>/sonic.ipc`, mode 0600 | `sonictool attach` and the harness dial it; `test_*` and `admin_*` are served here only |
 
+**The HTTP write timeout is answered, not suffered.** geth's server
+(`handler.handleNonBatchCall`, `batchCallBuffer` in `rpc/handler.go`) starts a
+timer at the write timeout minus 100ms. When it fires, the timer cancels the
+method's context and writes -32002 `request timed out` itself, flushed with a
+`Content-Length`, whether or not the method returns. In a batch, every call
+without an answer gets the error, the running one included, and the answers so
+far go out with them. A notification is answered too. The late answer of the
+method is dropped. The module does the same:
+
+- The timeout reaches the endpoint as a value, not as a context deadline: a
+  deadline cancels the method at the same instant, so the method's own error
+  races the timer and wins half of the time.
+- Exactly one write per request (a `sync.Once` for a call, a locked buffer for a
+  batch), and the request path synchronises with the timer even when it has no
+  answer of its own. Otherwise net/http finishes the response while the timer
+  goroutine still writes; geth's own server has that race on a timed-out
+  notification, so the differential test leaves that one case out.
+- The methods that ignore cancellation (`eth_call` and `eth_estimateGas` on
+  Tosca's interpreter, section 8) are exactly the ones that reach it, so the
+  differential test (Q5) includes a method slower than the write timeout: a
+  single call, a batch with fast and slow calls, and a notification.
+
 **Operator surface kept as it is**: `--http.{addr,port,corsdomain,vhosts,api,
 rpcprefix}`, `--ws.{addr,port,origins,api,rpcprefix}`, `--ipcpath`,
 `--ipcdisable`, HTTP server timeouts (#1064), batch limits, `--mode validator`.
 The node hands its listeners to the module at start (`takeOverRPC` in
 `cmd/sonicd/app`, new): the node's own servers for a taken-over transport stay
 off and the module listens on the configured endpoint.
+
+- **WebSocket shares the HTTP server when the ports match**, whatever the
+  hosts, and the shared server then listens on the WebSocket host (geth's
+  `Node.wsServerForPort`, then `setListenAddr(WSHost, …)`). "The same endpoint"
+  means the same port. Deciding by host and port binds the same port twice,
+  and the node does not start.
+- **Taking over rewrites the node's configuration**, so everything the node
+  reads from it changes too. Before step 1, list every reader of `HTTPHost`,
+  `WSHost` and `IPCPath`, and of what derives from them, and keep its
+  behaviour. `Config().ExtRPCEnabled()` is false once both hosts are empty, and
+  `unlockAccounts` then unlocks `--unlock` accounts with HTTP open, where the
+  reference refuses with `account unlock with HTTP access is forbidden`.
+  `HTTPEndpoint()` and the dump-config path report the endpoints too. The
+  module, not the node configuration, answers whether external RPC is served.
+- **In-process clients are clients.** `stack.Attach()` reaches the node's own
+  handler, and that handler stops serving the ported namespaces at step 6.
+  Before the switch, list every non-test `Attach()` caller and what it calls.
+  Hardware-wallet self-derivation (`startNode`, `Wallet.SelfDerive`) reads
+  `eth_getBalance` and `eth_getTransactionCount`. Such a caller goes through
+  the module's dispatcher (an `ethereum.ChainStateReader` over `Serve`).
+  Only the X3 forwarding stays on `Attach()` (O5).
 
 **Codec (ADR2, decided).** An own JSON-RPC 2.0 layer on `net/http`,
 `encoding/json` and gorilla, because the dispatcher must see every request
@@ -305,7 +378,8 @@ for everything but X3.
 | Nil safety | Q3: the injection matrix runs with `rpc_panics_total` at zero |
 | Coverage | Q4: the CI floor holds; every registered method has a handler test |
 | Standards | Q5: JSON-RPC 2.0 envelope and geth's method set match, as oracle test, fixtures and lakme observe |
-| Operable | MON1–MON6; limits preserved and tested (O1); deadlines on every request (O2); `--mode validator` closes public listeners (O3); flags and TOML keys compatible (O4); transports secure (D11); changelog and operator notes written |
+| Operable | MON1–MON6; limits preserved and tested (O1); deadlines on every request (O2); `--mode validator` closes public listeners (O3); flags and TOML keys compatible, each with its effect (O4); the node's own uses of its RPC configuration and handler kept (O5); transports secure (D11); changelog and operator notes written |
+| Reviewed | T7: an independent review against the reference, with 7.6 as the checklist |
 
 ### Steps
 
@@ -324,13 +398,15 @@ parallel after step 1; none may add to `Core`.
    deadlines, method table), **HTTP** transport and `Front`, metrics. Ports:
    `eth_chainId`, `eth_blockNumber`, `eth_syncing`, block and header reads, tx
    lookups, `eth_getRules`/`currentEpoch`/`config`, `net_version`, `web3_*`.
-   The module takes over the HTTP listener. When the HTTP and WebSocket
-   endpoints are the same, the WebSocket upgrade is reverse-proxied to the
-   node's own server on a private endpoint until step 4 (ADR12). Gates: I1–I4,
-   I13, I15, D1–D4, D9, D11, P1–P5, S1, MON1–MON5.
+   The module takes over the HTTP listener, after listing what the node reads
+   of the configuration it rewrites (section 3). When the HTTP and WebSocket
+   ports are the same, the WebSocket upgrade is reverse-proxied to the node's
+   own server on a private endpoint until step 4 (ADR12). Gates: I1–I4, I13,
+   I15, D1–D4, D9, D11, P1–P5, P7, S1, MON1–MON5, O5 (unlock check).
 2. **Oracle, state and execution** (M1). The gas price oracle in the module on
-   `Core.OracleInputs` and `PendingHeads` (it runs next to the legacy oracle,
-   which stays until step 6): `eth_gasPrice`, `eth_maxPriorityFeePerGas`,
+   `Core.OracleInputs`, `PendingHeads` and `Rules` (I10; it runs next to the
+   legacy oracle, which stays until step 6), with all three `GPO` keys in
+   effect (ADR9): `eth_gasPrice`, `eth_maxPriorityFeePerGas`,
    `eth_feeHistory`, `eth_blobBaseFee`. The oracle comes first because call
    defaulting (`setDefaults`) asks it for the tip. Then `eth_get{Balance,Code,
    StorageAt,TransactionCount,Account,Proof}`, `eth_call`, `eth_estimateGas`,
@@ -343,8 +419,8 @@ parallel after step 1; none may add to `Core`.
    `tests/rpcs/send_raw_transaction_sync_test.go`, bundle tests.
 4. **Events** (M1). WebSocket and IPC transports (the module takes both over and
    the proxy goes), head and tx subscriptions, filters, `eth_getLogs`; one step,
-   because a subscription cannot be forwarded. Gates: I9, I11, I14, D4–D6, V8,
-   F6, F7; lakme filter family; subscription tests over WS and IPC.
+   because a subscription cannot be forwarded. Gates: I9, I11, I14, I16, D4–D6,
+   V8, F6, F7, P8; lakme filter family; subscription tests over WS and IPC.
 5. **Tracing** (M1). `debug_*`, `trace_*`, `debug_getRaw*` (ADR7). Read
    `stateAtTransaction` before deciding where the EIP-2935 write goes (section 6).
    Gates: V6, F2, F3; lakme trace families.
@@ -353,8 +429,12 @@ parallel after step 1; none may add to `Core`.
    facts; the module is the only RPC server; X3 namespaces stay on IPC
    in the minimal `api/legacy` package until their removal. Deleted here: the
    legacy oracle and its plumbing (G2), `gossip/filters` (G1), the unreachable
-   parts of `api/*` (G3). Gates: Q1–Q6, D10, O1–O4, MON1–MON6, import test,
-   lakme and benchmark gate (T2) against the reference. No escape hatch (ADR11).
+   parts of `api/*` (G3). Before the forwarding goes, every in-process client
+   of the node's handler is moved to the module (O5). Gates: Q1–Q6, D10,
+   O1–O5, P6–P8, MON1–MON6, import test, lakme and benchmark gate (T2) against
+   the reference, and a review of the whole branch against the reference by
+   someone who did not write it, with section 7.6 as the checklist (T7). No
+   escape hatch (ADR11).
 
 ## 5. Requirements
 
@@ -376,12 +456,13 @@ M1 and M2; Q, O and G gate M2 alone.
 | I7 | Every `StateDB` obtained is released exactly once, by the request that opened it, via `defer` before any code that may panic | R (panic injection), U |
 | I8 | Methods that chain runs (`eth_call` with `preArgs`, `eth_simulateV1`, `sonic_estimateGasForTransactions`, `trace_callMany`, block replays) reuse one StateDB with `EndTransaction` between runs and `Copy()` for branches | R, L |
 | I9 | The head subscription is the module's only source of head, new blocks, new logs and new pending transactions; on its loss the module keeps serving the last head and logs the lag | U, I |
-| I10 | The oracle runs in the module on `Core.OracleInputs` and `Core.PendingHeads`, sampling at 1s/5s as today; call defaulting reads its tip | L (tolerance rows), I (`gas_price_suggestion_test.go`) |
+| I10 | The oracle runs in the module on `Core.OracleInputs` and `Core.PendingHeads`, sampling at 1s/5s as today; call defaulting reads its tip. The sampler reads what the legacy sampler read and no more: `PendingHeads` and the open epoch's minimum gas price (`Rules(latest+1)`). `OracleInputs` walks every validator's last event for `TotalGasPowerLeft`, so it is read for a suggestion only, never per tick | L (tolerance rows), I (`gas_price_suggestion_test.go`), U (a tick does not call `OracleInputs`) |
 | I11 | `eth_getLogs` and filter history: indexed queries through `Core.FindLogs`; queries with no address and no topic, and `blockHash` queries, scan blocks through `Core.Header`/`Receipts`; both keep the limits of section 8; each log gets its tx index from `TxByHash` and its timestamp from the header | L, I (`rpc_get_logs_test.go`, `indexed_logs_test.go`) |
 | I12 | The EVM is built in the module from `Rules(n)`, the derived chain config and the block header; the chain config is the *queried* block's, never the head's | I, R |
 | I13 | Header-only reads (state getters, `eth_call`, estimates, `eth_getLogs` timestamps) use `Core.Header`, never `Core.Block` | U (fake counts `Block` calls), benchmark |
 | I14 | The module advances its served head only after that block's logs are enqueued for subscribers, so `eth_getLogs` at `latest`, `eth_blockNumber` and log subscriptions never disagree | U, I (`log_subscription_test.go`) |
 | I15 | The head loop never blocks on a consumer: bounded per-consumer queues, a lagging consumer is dropped | U (stalled consumer, head still advances) |
+| I16 | Work that depends only on the event is done once per event, not once per consumer: the `newHeads` notification (the block's receipts and the encoded header) is built once per block and shared by every subscription. The reference did this in its filter system; a handler per subscription that reads `Receipts` multiplies block loads by the subscriber count. The benchmarks of 7.2 do not cover subscriptions, so this is a rule | U (N subscribers, one `Receipts` call per block) |
 
 ### D. Dispatcher and transports
 
@@ -389,7 +470,7 @@ M1 and M2; Q, O and G gate M2 alone.
 |---|---|---|
 | D1 | All request goroutines are created by the dispatcher or its `Group`; a lint test fails on a bare `go` statement elsewhere in the module | C |
 | D2 | Lookup, decode, validation, deadline, recover, metrics and encoding happen in the dispatcher, in that order, for every method on every transport | U (table-driven per stage), R |
-| D3 | HTTP: single and batch requests, body cap, batch item and response caps, CORS/vhosts/path prefix as configured today, `/health` reporting head and lag | I, L |
+| D3 | HTTP: single and batch requests, body cap, batch item and response caps, CORS/vhosts/path prefix as configured today, `/health` reporting head and lag; at the write timeout minus 100ms a running call is answered -32002 `request timed out` and every unanswered call of a batch with it, as geth does (section 3) | I, L, U (differential test with a slow method) |
 | D4 | WebSocket: requests, batches, subscriptions (`newHeads`, `logs`, `newPendingTransactions`), subscription cap per connection, bounded buffer per subscription, disconnect of a client that does not read | I (`log_subscription_test.go`, `pending_transactions_subscription_test.go`), U |
 | D5 | IPC unix socket at `<datadir>/sonic.ipc`, mode 0600, same features as WebSocket; the only transport that serves `admin_*`, `test_*` and the legacy namespaces | I (harness client), U |
 | D6 | Filters installed over HTTP expire after 5 minutes without a poll; ids are unguessable and per node | L, U |
@@ -405,10 +486,12 @@ M1 and M2; Q, O and G gate M2 alone.
 |---|---|---|
 | P1 | A panic in any handler or child is recovered by the dispatcher, answered -32603, logged once with the stack, counted in `rpc_panics_total{method}`; the process never exits because of RPC work | R (panic injection on every `Core` method), U |
 | P2 | Child goroutines run in a `Group`: a panicking child becomes an error, cancels its siblings, and the parent waits for all children | U (goroutine count), R |
-| P3 | Long-lived loops restart on panic with backoff and a counter; a loop that panics repeatedly is reported, never silently dead | U |
+| P3 | Long-lived loops restart on panic with backoff and a counter; a loop that panics repeatedly is reported, never silently dead. A restarted loop takes its subscriptions again: what it acquired outside its function was released by the panic (section 3) | U (panic injected into each loop; afterwards the loop still does its job: the head advances, the pool feed delivers) |
 | P4 | Handlers hold no locks. Shared structures (filter registry, subscription registry, oracle cache) expose small methods that lock and `defer` unlock in the same function and never call out to `Core`, a handler or the EVM while locked | review rule, U (blocked `Core` does not stall other requests) |
 | P5 | Resources with a lifetime (state views, subscriptions, tracer buffers) are released by a `defer` on the line after acquisition | R (panic injection; budget back at zero) |
 | P6 | Module tests run under `-race`; the RPC integration tests run under `-race` nightly | C |
+| P7 | Admission is atomic towards `Stop`: the stopping check and the count `Stop` waits on are taken under one lock, for requests, subscriptions, `Go` and `Loop`; no work starts after `Stop` returned | U (stress: requests and `Go` racing `Stop`, under `-race`) |
+| P8 | What the node hands out is shared and read-only: the blocks and logs of a `HeadEvent` reach every consumer, and receipts, headers and logs come from the node's caches. Normalising for an answer (nil topics to `[]`, a log's tx index) works on a copy. The reference's `returnLogs` writes topics in place; the port does not inherit it | U (a shared log is unchanged after `eth_getFilterChanges`), P6 |
 
 ### Q. Release guarantees (M2)
 
@@ -418,7 +501,7 @@ M1 and M2; Q, O and G gate M2 alone.
 | Q2 | Cancellation is observed on every path: a cancelled request returns within one `Core` call or one interpreter poll; every loop checks the context; no handler waits on a channel without selecting on the context | U (every method through `FakeCore` latency injection, cancelled) |
 | Q3 | Nil safety: every method answers without panic when any `Core` method returns nil, not-found or an error, and for any `null` or absent optional argument; `rpc_panics_total` stays zero over the matrix | R (`FakeCore` failure modes × methods × argument shapes) |
 | Q4 | Line coverage of every module package at or above the floor (ADR10), measured in CI; every registered method has a handler test (T4) | C |
-| Q5 | Compliance with geth: every method in geth's OpenRPC specification for `eth`, `debug`, `txpool`, `net`, `web3` is served or listed in X with its reason (a test diffs the sets); the JSON-RPC 2.0 envelope (ids, batches, notifications, error codes, `null` results) matches geth's `rpc.Server`, checked by a differential test that sends the same requests to both | C, E, L, U |
+| Q5 | Compliance with geth: every method in geth's OpenRPC specification for `eth`, `debug`, `txpool`, `net`, `web3` is served or listed in X with its reason (a test diffs the sets); the JSON-RPC 2.0 envelope (ids, batches, notifications, error codes, `null` results, timeouts) matches geth's `rpc.Server`, checked by a differential test that sends the same requests to both. The test includes the cases that only show under a configured limit: a method slower than the write timeout (call and batch), a batch over each cap | C, E, L, U |
 | Q6 | Sonic extensions are served and listed by origin in section 6: `ftm` mirror, `sonic_*`, OpenEthereum `trace_*`, `eth_getRules`, `eth_currentEpoch`, `eth_config`, `eth_sendRawTransactionSync`; each has the handler tests and lakme rows geth methods have | L, I, R |
 
 ### V. Validation (every method, before the handler)
@@ -471,7 +554,8 @@ execution paid for it.
 | O1 | Semantic caps keep their names, defaults and effect (section 8) | L (rows that hit each cap), I |
 | O2 | `RPCTimeout` is applied by the dispatcher to every request context; the fork's `SetExecutionTimeLimit` is no longer used by the module | U, C |
 | O3 | `--mode validator` keeps disabling public listeners | I |
-| O4 | Every CLI flag and TOML key under `config` keeps its effect or is listed as deprecated (accepted, warns, no effect) for one release. The loader rejects unknown fields, so removal breaks configs: this covers `--unlock`, `--password`, `--allow-insecure-unlock` (X1) and the `GPO` section (ADR9) | U (test enumerates flags and keys) |
+| O4 | Every CLI flag and TOML key under `config` keeps its effect or is listed as deprecated (accepted, warns, no effect) for one release. The loader rejects unknown fields, so removal breaks configs: this covers `--unlock`, `--password`, `--allow-insecure-unlock` (X1) and the `GPO` section (ADR9). "Keeps its effect" is tested by changing the key and observing the change. A key that still parses but no longer reaches its consumer passes a parse test (`GPO.MinGasPrice` did); so does a node-configuration key nothing reads any more. Every `if cfg.X != nil` or `!= 0` mapping into the module's `Config` has a row that sets it | U (test enumerates flags and keys; one effect test per key the module consumes) |
+| O5 | What the node derives from its own RPC configuration and handler keeps its effect after `takeOverRPC`: `--unlock` with HTTP or WebSocket open and no `--allow-insecure-unlock` is refused; hardware-wallet self-derivation reads the chain through the module; the reported endpoints are the module's. Every non-test `stack.Attach()` caller is listed with the methods it calls, and served (section 3) | I (`cmd/sonicd/app` exec test of the unlock refusal), U (chain reader over the dispatcher) |
 
 ### MON. Monitoring
 
@@ -492,7 +576,7 @@ execution paid for it.
 | X2 | Not ported: `dag_*`, `abft_*`, `eth_getEpochBlock`, `eth_getEpochStats`; `eth_getRules`, `eth_currentEpoch`, `eth_config` are served from block rules, epoch and `ChainInfo` |
 | X3 | Until removed, X1 and X2 methods are served by the legacy `api/legacy` (and `api/testapi`) registered on IPC only (ADR5); lakme rows for them are annotated; integration tests using `dag_*` switch to the IPC client |
 | X4 | `CalcBlockExtApi`, `RPCBlockExt` and the gossip `PublicEthereumAPI` shims (`gossip/api.go`) are not carried over; `eth_chainId` has one implementation |
-| X5 | `MinGasPrice`, `MaxGasLimit` are derived from `Rules(n)` in the module, not exposed by `Core` |
+| X5 | `MinGasPrice`, `MaxGasLimit` are derived in the module, not exposed by `Core`; `MaxGasLimit` from `Rules(head+1)`, the open epoch (section 2) |
 
 ### G. Moves out of gossip (step 6)
 
@@ -513,6 +597,7 @@ execution paid for it.
 | T4 | `rpc/tests` holds `FakeCore` (panic injection per method) and `NewCarmenCore`; every ported method has handler tests through the dispatcher | R |
 | T5 | The `tests/` RPC integration tests pass in HTTP and WebSocket modes, plus the IPC path for `test_*` and `admin_*` | I |
 | T6 | Module unit tests cover dispatcher stages, transports, filters and the oracle; run with `-race` | U |
+| T7 | Before step 6 lands, the branch is reviewed against the reference by someone who did not write it, using the classes of 7.6 as the checklist. Every finding is fixed with a test that fails without the fix, or becomes a deviations row | review |
 
 ## 6. Method inventory
 
@@ -679,6 +764,11 @@ queries over the whole history with `rapid`, comparing answers field by field.
 - lakme does not draw `eth_subscribe`, `eth_sendRawTransaction*`, `txpool_*`,
   `sonic_*`, `eth_syncing`; those are integration territory (7.5). Gap to close
   in lakme: a WebSocket side (ADR8).
+- A green lakme run says nothing about what lakme cannot provoke: one node
+  configuration (the defaults), one transport, requests that finish in time,
+  no panics, no shutdown, no concurrency between consumers. lakme green is
+  necessary, not sufficient: section 7.6 lists the classes it misses and their
+  gates.
 
 ### 7.2 Performance: lakme benchmarks
 
@@ -738,11 +828,37 @@ The RPC tests in `tests/` (`eth_call_test.go`, `rpc_get_logs_test.go`, `rpcs/*`,
 module. The harness's core client uses the IPC socket for `test_*`, `admin_*`
 and `dag_*`.
 
+### 7.6 What the tools do not see
+
+lakme, the fixtures and the handler tests compare answers under one default
+configuration. Every class below passed them all, so each has a gate of its own
+and is a checklist item of the review (T7). For each class, list the sites from
+the legacy code before porting, not from the port afterwards.
+
+| Class | How it hides | Gate | Instance an execution shipped |
+|---|---|---|---|
+| Guards that depend on node configuration | lakme runs the defaults | an adapter test per `svc.config` read in the legacy backend (section 2) | `TxIndex` off: receipts and lookups answered empty instead of the error |
+| Config keys that parse but do nothing | a parse test passes | an effect test per key (O4) | `GPO.MinGasPrice` floor dropped (ADR9) |
+| The node's own readers of the configuration `takeOverRPC` rewrites | nobody queries them over RPC | O5, listed before step 1 (section 3) | `--unlock` allowed with HTTP open |
+| In-process clients of the node's handler | they are not on any transport | O5, every `Attach()` caller listed before step 6 | hardware-wallet derivation lost `eth_getBalance` |
+| Endpoint rules of geth's `node` package | tests use one endpoint layout | a `takeOverRPC` row per layout geth distinguishes | same WebSocket port with another host did not start |
+| Behaviour under a configured limit or timeout | requests finish in time | the differential test with a slow method and each cap (Q5, D3) | no -32002; batches lost their unanswered calls |
+| The current-epoch rules | the head seals an epoch only at epoch ends | `Rules(head+1)` at every such site (section 2), a row where the head seals an epoch | `MaxGasLimit` read the sealed epoch |
+| Restart after a panic | nothing panics in a green run | P3: the loop works after the restart | the head froze while the restart counter said it had recovered |
+| Shutdown and admission races | requests do not race `Stop` | P7, a stress test under `-race` | a request admitted after `Stop` returned |
+| Mutation of shared values | one consumer per value | P8, a shared value is unchanged after the call, `-race` | `returnLogs` wrote topics into a log shared by all subscribers |
+| Cost multiplied by consumers | the benchmarks have one client | I16, `Core` calls counted with N consumers | `newHeads` loaded receipts once per subscriber |
+| Cost of a coarse `Core` call | the answer is right | read what the legacy code read, per caller (I10) | the oracle tick walked every validator's last event |
+| Defaults written twice | they agree today | one definition (section 8) | the oracle's maximum gas price default in three places |
+
 ## 8. Limits inherited from the reference
 
 The module changes no limit the reference enforces. Every knob keeps its name,
 default and effect (O1); the only change of mechanism is `RPCTimeout`, applied by
-the dispatcher (O2). Nothing here bounds how many requests run at once; that is
+the dispatcher (O2). Each default has one definition, in the module package that
+consumes it; `gossip.DefaultConfig`, `config` and `dispatch.DefaultConfig` refer
+to it and never repeat the literal (`gossip/gasprice` delegates to `rpc/oracle`).
+A copy agrees until someone changes one of them. Nothing here bounds how many requests run at once; that is
 out of this plan (the dispatcher is where a limiter would go, `rpc_inflight`
 shows the need).
 
@@ -761,7 +877,8 @@ shows the need).
 | filter `deadline` | 5 min | unpolled filters are dropped | `filters/api.go` |
 | `BatchRequestLimit` / `BatchResponseMaxSize` | 1000 / 25 MB | batch limits | `config/node_config.go` |
 | HTTP body, WS message | 5 MiB, 32 MiB | transport limits | the fork's `rpc` package |
-| HTTP timeouts | read 30s, write 30s, idle 120s | `net/http` | `config/defaults.go` |
+| HTTP timeouts | read 30s, write 30s, idle 120s; at write − 100ms a running call is answered -32002 (section 3) | `net/http` | `config/defaults.go` |
+| `GPO.MaxGasPrice` / `MinGasPrice` / `DefaultCertainty` | 10,000,000 gwei / 0 / 0.5 | ceiling and floor of the oracle's suggestion; certainty of a request that names none | `gossip/gasprice/config.go`, ADR9 |
 | `TxSyncDefaultTimeout` / `TxSyncMaxTimeout` | 5s / 30s | `eth_sendRawTransactionSync` wait; **`main` only**, not in 2.2.x, no lakme row | `gossip.DefaultConfig` |
 | `--mode validator` | | disables public RPC on validators | `config/config.go` |
 
@@ -789,6 +906,6 @@ and the p2p facts.
 | ADR6 | New semantic caps other clients have and we lack | `eth_simulateV1` block count: 256 (reth, nethermind). `trace_filter` is already capped (inherited); `eth_getLogs` stays unlimited-but-result-capped for compatibility |
 | ADR7 | `debug_getRaw{Block,Header,Receipts,Transaction}` | Add in step 5; fixtures exist and they are block reads |
 | ADR8 | lakme WebSocket side | Add after step 4, so subscriptions and filters over WS are compared; until then integration tests carry them |
-| ADR9 | The `GPO` config section (`MaxGasPrice`, `MinGasPrice`, `DefaultCertainty`; TOML only) once the legacy oracle is deleted | Keep `MaxGasPrice` and `DefaultCertainty` and feed them to the module's oracle through `Config`; drop `MinGasPrice`, which the legacy oracle already ignores. The loader rejects unknown fields, so removing a key is breaking; that is why the section stays |
+| ADR9 | The `GPO` config section (`MaxGasPrice`, `MinGasPrice`, `DefaultCertainty`; TOML only) once the legacy oracle is deleted | Keep all three and feed them to the module's oracle through `Config`. `MinGasPrice` is not ignored: it is the floor of the suggestion (`utils.BigMax(gpo.cfg.MinGasPrice, reactive, constructive)` in `Oracle.suggestTip`, `gossip/gasprice/gasprice.go`). An earlier execution read it as ignored, kept the key and dropped its effect, which a parse test does not see (O4). The loader rejects unknown fields, so removing a key is breaking; that is why the section stays |
 | ADR10 | Coverage floor for Q4 | 80% line coverage per module package, measured before step 6 lands so the number comes from evidence; raised, never lowered |
 | ADR12 | Shared HTTP/WebSocket endpoint during steps 1 to 3 | Reverse-proxy the WebSocket upgrade (`httputil.ReverseProxy` handles it) to the node's own server on a private loopback endpoint; the alternative, taking over WS at step 1, drags subscriptions into the skeleton |
