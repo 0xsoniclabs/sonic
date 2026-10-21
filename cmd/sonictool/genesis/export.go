@@ -245,7 +245,7 @@ func exportBundlesHash(ctx context.Context, gdb *gossip.Store, writer *unitWrite
 	oldestHash, ok := gdb.GetProcessedBundleHistoryHash(base)
 
 	if !ok {
-		log.Info("No processed bundles history hash found in genesis, exporting an empty section")
+		log.Info("No processed bundles history hash found in store, exporting an empty section")
 		_, err := writer.Flush()
 		return err
 	}

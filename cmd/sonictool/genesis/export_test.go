@@ -158,7 +158,9 @@ func TestBundles_RoundTripWithoutHistory(t *testing.T) {
 	store := setupBundleStore(t)
 
 	gs, hashes := exportAndReopenBundles(t, store)
-	require.NotZero(t, hashes["bh"], "the history hash section must be flushed")
+	wantHash, err := newDryRunWriter(t).Flush()
+	require.NoError(t, err)
+	require.Equal(t, wantHash, hashes["bh"], "the history hash section must be flushed empty")
 
 	_, ok := gs.ProcessedBundles().GetHistoryHashes()
 	require.False(t, ok)
