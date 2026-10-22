@@ -27,6 +27,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/utils/adapters/ethdb2kvdb"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
 	"github.com/stretchr/testify/require"
 	gomock "go.uber.org/mock/gomock"
@@ -621,6 +622,14 @@ func TestFilter_FilterLogs_HandlesMalformedQueries(t *testing.T) {
 			begin: 0,
 			end:   0,
 		},
+		"begin is earliest": {
+			begin: rpc.EarliestBlockNumber.Int64(),
+			end:   0,
+		},
+		"begin is earliest, end is head": {
+			begin: rpc.EarliestBlockNumber.Int64(),
+			end:   rpc.LatestBlockNumber.Int64(),
+		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -812,4 +821,48 @@ func TestFilter_BlockRangeErrors_AreReportedAsInvalidParams(t *testing.T) {
 			require.Equal(t, -32602, rpcErr.ErrorCode())
 		})
 	}
+}
+
+func TestResolveBlockNumber(t *testing.T) {
+	const head = 10
+	tests := map[string]struct {
+		number   int64
+		expected idx.Block
+	}{
+		"explicit number": {number: 5, expected: 5},
+		"genesis":         {number: 0, expected: 0},
+		"earliest":        {number: rpc.EarliestBlockNumber.Int64(), expected: 0},
+		"latest":          {number: rpc.LatestBlockNumber.Int64(), expected: head},
+		"pending":         {number: rpc.PendingBlockNumber.Int64(), expected: head},
+		"finalized":       {number: rpc.FinalizedBlockNumber.Int64(), expected: head},
+		"safe":            {number: rpc.SafeBlockNumber.Int64(), expected: head},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.expected, resolveBlockNumber(test.number, head))
+		})
+	}
+}
+
+func TestFilter_FilterLogs_EarliestBlockIsResolvedToTheFirstBlock(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+
+	backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.LatestBlockNumber).
+		Return(&evmcore.EvmHeader{Number: big.NewInt(2)}, nil)
+	for n := range 3 {
+		backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(n)).
+			Return(&evmcore.EvmHeader{Number: big.NewInt(int64(n)), Hash: common.Hash{byte(n + 1)}}, nil)
+		backend.EXPECT().GetLogs(gomock.Any(), common.Hash{byte(n + 1)}).Return(nil, nil)
+	}
+
+	filter := &Filter{
+		backend: backend,
+		config:  testConfig(),
+		begin:   rpc.EarliestBlockNumber.Int64(),
+		end:     rpc.LatestBlockNumber.Int64(),
+	}
+	logs, err := filter.Logs(t.Context())
+	require.NoError(t, err)
+	require.Empty(t, logs)
 }

@@ -370,6 +370,35 @@ func testGetLogFiltersWithClient(
 			})
 		}
 	}
+
+	// The "earliest" block tag is the first block of the chain, not the head.
+	earliest := big.NewInt(rpc.EarliestBlockNumber.Int64())
+	earliestRanges := map[string]struct {
+		query    ethereum.FilterQuery
+		expected ethereum.FilterQuery
+	}{
+		"earliest to genesis block": {
+			query:    ethereum.FilterQuery{FromBlock: earliest, ToBlock: big.NewInt(0)},
+			expected: ethereum.FilterQuery{FromBlock: big.NewInt(0), ToBlock: big.NewInt(0)},
+		},
+		"earliest to end block": {
+			query:    ethereum.FilterQuery{FromBlock: earliest, ToBlock: big.NewInt(int64(endBlock))},
+			expected: ethereum.FilterQuery{FromBlock: big.NewInt(0), ToBlock: big.NewInt(int64(endBlock))},
+		},
+		"earliest to latest": {
+			query:    ethereum.FilterQuery{FromBlock: earliest, ToBlock: big.NewInt(rpc.LatestBlockNumber.Int64())},
+			expected: ethereum.FilterQuery{FromBlock: big.NewInt(0), ToBlock: big.NewInt(int64(endBlock))},
+		},
+	}
+	for method, getLogs := range methods {
+		for name, test := range earliestRanges {
+			t.Run(method+"/"+name, func(t *testing.T) {
+				logs, err := getLogs(test.query)
+				require.NoError(t, err)
+				require.EqualValues(t, filterLogs(allLogs, test.expected), logs)
+			})
+		}
+	}
 }
 
 // getFilterLogs installs a log filter using eth_newFilter and retrieves its
@@ -380,8 +409,8 @@ func getFilterLogs(
 	query ethereum.FilterQuery,
 ) ([]types.Log, error) {
 	arg := map[string]any{
-		"fromBlock": (*hexutil.Big)(query.FromBlock),
-		"toBlock":   (*hexutil.Big)(query.ToBlock),
+		"fromBlock": blockNumberArg(query.FromBlock),
+		"toBlock":   blockNumberArg(query.ToBlock),
 	}
 	var id string
 	if err := client.CallContext(ctx, &id, "eth_newFilter", arg); err != nil {
@@ -390,6 +419,18 @@ func getFilterLogs(
 	var logs []types.Log
 	err := client.CallContext(ctx, &logs, "eth_getFilterLogs", id)
 	return logs, err
+}
+
+// blockNumberArg encodes a block number the way ethclient does: negative
+// numbers are the special block tags such as "earliest" or "latest".
+func blockNumberArg(number *big.Int) any {
+	if number == nil {
+		return nil
+	}
+	if number.Sign() < 0 {
+		return rpc.BlockNumber(number.Int64())
+	}
+	return (*hexutil.Big)(number)
 }
 
 type logSource interface {

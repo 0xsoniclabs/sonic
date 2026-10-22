@@ -169,16 +169,8 @@ func (f *Filter) fetchLogsFromBlockRange(ctx context.Context, logs []*types.Log)
 	}
 	head := idx.Block(header.Number.Uint64())
 
-	begin := idx.Block(f.begin)
-	if f.begin < 0 {
-		begin = head
-	}
-	// The log index is written before the head advances; blocks beyond it are
-	// not published yet.
-	end := idx.Block(f.end)
-	if f.end < 0 || end > head {
-		end = head
-	}
+	begin := resolveBlockNumber(f.begin, head)
+	end := resolveBlockNumber(f.end, head)
 	if begin > end {
 		return nil, errInvalidBlockRange
 	}
@@ -190,6 +182,22 @@ func (f *Filter) fetchLogsFromBlockRange(ctx context.Context, logs []*types.Log)
 		return f.unindexedLogs(ctx, begin, end)
 	} else {
 		return f.indexedLogs(ctx, begin, end)
+	}
+}
+
+// resolveBlockNumber translates a boundary of a block range into a block number.
+// Negative values are the special block tags of the RPC API: "earliest" is the
+// first block of the chain, all other tags are resolved to the given head.
+func resolveBlockNumber(number int64, head idx.Block) idx.Block {
+	switch {
+	case number == rpc.EarliestBlockNumber.Int64():
+		return 0 // history is never pruned
+	case number < 0:
+		return head
+	case idx.Block(number) > head:
+		return head
+	default:
+		return idx.Block(number)
 	}
 }
 

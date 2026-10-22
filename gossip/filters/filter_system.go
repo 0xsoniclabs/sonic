@@ -206,6 +206,11 @@ func (es *EventSystem) SubscribeLogs(crit ethereum.FilterQuery, logs chan []*typ
 		to = rpc.BlockNumber(crit.ToBlock.Int64())
 	}
 
+	// The earliest block is the genesis block, history is never pruned.
+	if from == rpc.EarliestBlockNumber {
+		from = 0
+	}
+
 	// only interested in pending logs
 	if from == rpc.PendingBlockNumber && to == rpc.PendingBlockNumber {
 		return es.subscribePendingLogs(crit, logs), nil
