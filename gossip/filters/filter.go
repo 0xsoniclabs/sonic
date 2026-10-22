@@ -194,8 +194,6 @@ func resolveBlockNumber(number int64, head idx.Block) idx.Block {
 		return 0 // history is never pruned
 	case number < 0:
 		return head
-	case idx.Block(number) > head:
-		return head
 	default:
 		return idx.Block(number)
 	}

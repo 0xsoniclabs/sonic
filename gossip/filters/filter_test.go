@@ -792,21 +792,22 @@ func TestFilter_IndexedLogs_AcceptsAnyQueryIfThereAreNoLimits(t *testing.T) {
 	}
 }
 
-func TestFilter_Logs_RangeIsClampedToHead(t *testing.T) {
+func TestFilter_Logs_RangeBeyondHeadIsRejectedWithoutQueryingTheIndex(t *testing.T) {
 	const head = idx.Block(5)
 
+	// The log index is written before the head advances, so blocks beyond the
+	// head must not be read. The mocks have no expectations for the index, so
+	// any access to it fails the test.
 	ctrl := gomock.NewController(t)
 	backend := NewMockBackend(ctrl)
-	index := topicsdb.NewMockIndex(ctrl)
 	backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.LatestBlockNumber).
 		Return(&evmcore.EvmHeader{Number: big.NewInt(int64(head))}, nil)
-	backend.EXPECT().EvmLogIndex().Return(index)
-	index.EXPECT().FindInBlocks(gomock.Any(), idx.Block(0), head, gomock.Any(), gomock.Any())
 
 	filter, err := NewRangeFilter(backend, testConfig(), 0, int64(head)+10, []common.Address{{0x42}}, nil, 0)
 	require.NoError(t, err)
-	_, err = filter.Logs(t.Context())
-	require.NoError(t, err)
+	logs, err := filter.Logs(t.Context())
+	require.ErrorIs(t, err, errBlockRangeIntoFuture)
+	require.Nil(t, logs)
 }
 
 func TestFilter_BlockRangeErrors_AreReportedAsInvalidParams(t *testing.T) {
