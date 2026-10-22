@@ -387,6 +387,45 @@ func TestOperaEVMProcessor_Execute_UsesNumberOfTransactionsWithReceiptsAsTransac
 	}
 }
 
+func TestOperaEVMProcessor_Execute_ForwardsGasLimitRegardlessOfGasUsedInBlock(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	factory := NewMock_stateProcessorFactory(ctrl)
+	stateProcessor := NewMock_stateProcessor(ctrl)
+
+	any := gomock.Any()
+	factory.EXPECT().NewStateProcessorForHeadState(any, any, any, any).Return(stateProcessor)
+	stateProcessor.EXPECT().Process(any, any, any, uint64(30_000), any, any, any, any)
+
+	processor := &OperaEVMProcessor{
+		processorFactory: factory,
+		gasUsed:          21_000,
+	}
+
+	processor.Execute(nil, 30_000, math.MaxUint64)
+}
+
+func TestOperaEVMProcessor_Execute_ForwardsMetricsFromStartToStateProcessor(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	metrics := evmcore.NewMockBlockExecutionMetrics(ctrl)
+	factory := NewMock_stateProcessorFactory(ctrl)
+	stateProcessor := NewMock_stateProcessor(ctrl)
+
+	any := gomock.Any()
+	stateDb.EXPECT().BeginBlock(any)
+	factory.EXPECT().NewStateProcessorForHeadState(any, any, any, metrics).Return(stateProcessor)
+	stateProcessor.EXPECT().Process(any, any, any, any, any, any, any, any)
+
+	processor := New().Start(
+		0, 0, 0,
+		stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		metrics,
+	).(*OperaEVMProcessor)
+	processor.processorFactory = factory
+
+	processor.Execute(nil, 0, 0)
+}
+
 func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)

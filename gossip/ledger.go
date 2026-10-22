@@ -66,8 +66,9 @@ type ExecutingBlock interface {
 	stateDB() state.StateDB
 
 	// Run executes a batch of user transactions against the block being
-	// assembled, honoring UserTransactionsGasLimit and the block size limit,
-	// appends the accepted ones, and returns the execution summary.
+	// assembled, honoring the UserTransactionsGasLimit shared by all calls on
+	// the block and the block size limit, appends the accepted ones, and
+	// returns the execution summary.
 	Run(txs types.Transactions) evmcore.ProcessSummary
 
 	// runInternal executes a batch of system (consensus-internal) transactions
@@ -104,8 +105,8 @@ type BlockParams struct {
 	// GasLimit is the block's header gas limit; internal transactions run
 	// within it.
 	GasLimit uint64
-	// UserTransactionsGasLimit is the gas available to user transactions
-	// executed by Run. It must be at most GasLimit.
+	// UserTransactionsGasLimit is the gas available to the user transactions
+	// of all Run calls on the block. It must be at most GasLimit.
 	UserTransactionsGasLimit uint64
 	Rules                    opera.Rules
 }
@@ -201,12 +202,13 @@ func (h *head) BeginBlock(
 
 // executingBlock is the main implementation of ExecutingBlock.
 type executingBlock struct {
-	statedb      state.StateDB
-	number       uint64
-	params       BlockParams
-	evmProcessor blockproc.EVMProcessor
-	blockBuilder *inter.BlockBuilder
-	finalized    bool
+	statedb                 state.StateDB
+	number                  uint64
+	params                  BlockParams
+	evmProcessor            blockproc.EVMProcessor
+	blockBuilder            *inter.BlockBuilder
+	userTransactionsGasUsed uint64
+	finalized               bool
 }
 
 func (eb *executingBlock) stateDB() state.StateDB {
@@ -236,13 +238,14 @@ func (eb *executingBlock) Run(txs types.Transactions) evmcore.ProcessSummary {
 		}
 	}
 
-	summary := eb.evmProcessor.Execute(txs, eb.params.UserTransactionsGasLimit, remainingSize)
+	summary := eb.evmProcessor.Execute(txs, eb.params.UserTransactionsGasLimit-eb.userTransactionsGasUsed, remainingSize)
 	for _, processed := range summary.ProcessedTransactions {
 		if processed.Receipt != nil { // < nil if skipped
 			eb.blockBuilder.AddTransaction(
 				processed.Transaction,
 				processed.Receipt,
 			)
+			eb.userTransactionsGasUsed += processed.Receipt.GasUsed
 		}
 	}
 
