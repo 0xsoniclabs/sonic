@@ -51,6 +51,10 @@ func BundlesSection(i int) string {
 	return getSectionName("bundles", i)
 }
 
+func ReceiptGasAmendmentsSection(i int) string {
+	return getSectionName("rga", i)
+}
+
 type FilesMap func(string) (io.Reader, error)
 
 // Store is a node persistent storage working over a physical zip archive.
