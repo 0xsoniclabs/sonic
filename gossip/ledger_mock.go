@@ -16,7 +16,6 @@ import (
 	core_types "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	state "github.com/0xsoniclabs/sonic/inter/state"
-	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -152,10 +151,10 @@ func (mr *MockExecutingBlockMockRecorder) Finalize() *gomock.Call {
 }
 
 // Run mocks base method.
-func (m *MockExecutingBlock) Run(txs types.Transactions) map[common.Hash]common.Hash {
+func (m *MockExecutingBlock) Run(txs types.Transactions) evmcore.ProcessSummary {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Run", txs)
-	ret0, _ := ret[0].(map[common.Hash]common.Hash)
+	ret0, _ := ret[0].(evmcore.ProcessSummary)
 	return ret0
 }
 

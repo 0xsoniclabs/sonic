@@ -992,7 +992,7 @@ func endBlock(
 			}
 		}
 
-		txCausedBy := executingBlock.Run(proposal.Transactions)
+		txCausedBy := executingBlock.Run(proposal.Transactions).CausedBy
 
 		candidate := executingBlock.Finalize().Candidate()
 		block := candidate.Block
