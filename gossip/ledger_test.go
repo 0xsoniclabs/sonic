@@ -19,15 +19,14 @@ package gossip
 import (
 	"math"
 	"math/big"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
@@ -35,7 +34,6 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -259,496 +257,143 @@ func TestHead_BeginBlock_FailedPrecondition_ReportsError(t *testing.T) {
 	}
 }
 
-func TestExecutingBlock_Run_ForwardsBlockGasLimitToEVMProcessor(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
-	blockBuilder := inter.NewBlockBuilder()
-
-	// Create some dummy transactions with gas usage
-	tx1 := types.NewTx(&types.LegacyTx{Nonce: 1, Gas: 1000})
-	tx2 := types.NewTx(&types.LegacyTx{Nonce: 2, Gas: 1000})
-	tx3 := types.NewTx(&types.LegacyTx{Nonce: 3, Gas: 1000})
-
-	// Set up receipts for each transaction
-	receipt1 := &types.Receipt{GasUsed: 1000}
-	receipt2 := &types.Receipt{GasUsed: 1000}
-	receipt3 := &types.Receipt{GasUsed: 1000}
-
-	userTransactionGasLimit := uint64(3000)
-
-	orderedTxs := []*types.Transaction{tx1, tx2, tx3}
-
-	// Mock EVMProcessor.Execute to be called once with all txs and the full gas limit
-	evmProcessor.EXPECT().
-		Execute(orderedTxs, userTransactionGasLimit, gomock.Any()).
-		Return(evmcore.ProcessSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{
-			{Transaction: tx1, Receipt: receipt1},
-			{Transaction: tx2, Receipt: receipt2},
-			{Transaction: tx3, Receipt: receipt3},
-		}})
-
-	upgrades := opera.Upgrades{Brio: true}
-	executing := &executingBlock{
-		evmProcessor: evmProcessor,
-		blockBuilder: blockBuilder,
-		params:       BlockParams{UserGasLimit: userTransactionGasLimit, Rules: opera.Rules{Upgrades: upgrades}},
+func TestExecutingBlock_Run_ExecutesWithinRemainingUserGasAndBlockSize(t *testing.T) {
+	maxSize := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
+	recordedTx := types.NewTx(&types.LegacyTx{Data: make([]byte, 1000)})
+	encodingSize := types.NewTx(&types.LegacyTx{Data: make([]byte, maxSize)}).Size() - maxSize
+	fullTx := types.NewTx(&types.LegacyTx{Data: make([]byte, maxSize-encodingSize)})
+	overfullTx := types.NewTx(&types.LegacyTx{Data: make([]byte, maxSize-encodingSize+1)})
+	halves := types.Transactions{
+		types.NewTx(&types.LegacyTx{Nonce: 1, Data: make([]byte, params.MaxBlockSize/2)}),
+		types.NewTx(&types.LegacyTx{Nonce: 2, Data: make([]byte, params.MaxBlockSize/2)}),
 	}
-	executing.Run(orderedTxs)
+	tx0 := types.NewTx(&types.LegacyTx{Nonce: 10})
+	tx1 := types.NewTx(&types.LegacyTx{Nonce: 11})
+	addedTx := types.NewTx(&types.LegacyTx{Nonce: 12})
 
-	// All transactions should be included
-	gotTxs := blockBuilder.GetTransactions()
-	require.Equal(t, types.Transactions{tx1, tx2, tx3}, gotTxs)
-}
-
-func TestExecutingBlock_Run_TransactionsWithNoReceiptAreNotIncluded(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
-	blockBuilder := inter.NewBlockBuilder()
-
-	tx := types.NewTx(&types.LegacyTx{Nonce: 1})
-
-	// Simulate skipped transaction (no receipt)
-	evmProcessor.EXPECT().
-		Execute([]*types.Transaction{tx}, gomock.Any(), gomock.Any()).
-		Return(evmcore.ProcessSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx, Receipt: nil}}})
-
-	upgrades := opera.Upgrades{Brio: true}
-	executing := &executingBlock{
-		evmProcessor: evmProcessor,
-		blockBuilder: blockBuilder,
-		params:       BlockParams{UserGasLimit: 10000, Rules: opera.Rules{Upgrades: upgrades}},
-	}
-	executing.Run([]*types.Transaction{tx})
-
-	// Should not be added to blockBuilder
-	gotTxs := blockBuilder.GetTransactions()
-	require.Empty(t, gotTxs)
-}
-
-func TestExecutingBlock_Run_DeductsInternalTxsSize(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
-	blockBuilder := inter.NewBlockBuilder()
-
-	// Add an internal tx to blockBuilder
-	internalTx := types.NewTx(&types.LegacyTx{Data: make([]byte, 1000)})
-	blockBuilder.AddTransaction(internalTx, &types.Receipt{})
-
-	// Create a user tx
-	userTx := types.NewTx(&types.LegacyTx{Data: make([]byte, 1000)})
-
-	// Ensure the evmProcessor is called with the correct remaining size after accounting for the internal transaction.
-	orderedTxs := []*types.Transaction{userTx}
-	evmProcessor.EXPECT().
-		Execute(orderedTxs, uint64(10000), params.MaxBlockSize-rlpEncodedMaxHeaderSizeInBytes-internalTx.Size()).
-		Return(evmcore.ProcessSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{
-			{Transaction: userTx, Receipt: &types.Receipt{}},
-		}})
-
-	upgrades := opera.Upgrades{Brio: true}
-	executing := &executingBlock{
-		evmProcessor: evmProcessor,
-		blockBuilder: blockBuilder,
-		params:       BlockParams{UserGasLimit: 10000, Rules: opera.Rules{Upgrades: upgrades}},
-	}
-	executing.Run(orderedTxs)
-
-	// Ensure both internal and user transactions are included.
-	gotTxs := blockBuilder.GetTransactions()
-	require.Equal(t, types.Transactions{internalTx, userTx}, gotTxs)
-}
-
-func TestExecutingBlock_Run_SkipsTxsExceedingSizeLimit(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
-	blockBuilder := inter.NewBlockBuilder()
-
-	// Create a tx that exceeds the size limit
-	largeTx := types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize)})
-
-	// Following txs are not skipped
-	tx0 := types.NewTx(&types.LegacyTx{Data: []byte{0x01}})
-	tx1 := types.NewTx(&types.LegacyTx{Data: []byte{0x01}})
-
-	orderedTxs := []*types.Transaction{largeTx, tx0, tx1}
-
-	// All txs are passed to Execute; the EVMProcessor handles size-based skipping
-	evmProcessor.EXPECT().
-		Execute(orderedTxs, uint64(10000), gomock.Any()).
-		Return(evmcore.ProcessSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{
-			{Transaction: largeTx, Receipt: nil}, // skipped due to size
-			{Transaction: tx0, Receipt: &types.Receipt{}},
-			{Transaction: tx1, Receipt: &types.Receipt{}},
-		}})
-
-	upgrades := opera.Upgrades{Brio: true}
-	executing := &executingBlock{
-		evmProcessor: evmProcessor,
-		blockBuilder: blockBuilder,
-		params:       BlockParams{UserGasLimit: 10000, Rules: opera.Rules{Upgrades: upgrades}},
-	}
-	executing.Run(orderedTxs)
-
-	// Huge transactions should not be added
-	gotTxs := blockBuilder.GetTransactions()
-	require.Equal(t, types.Transactions{tx0, tx1}, gotTxs)
-}
-
-func TestExecutingBlock_Run_InternalTransactionsHaveNoImpactOnTheUserTransactionGas(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	statedb := state.NewMockStateDB(ctrl)
-
-	statedb.EXPECT().BeginBlock(gomock.Any())
-	statedb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
-	statedb.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
-	statedb.EXPECT().SubBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-	statedb.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-	statedb.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
-	statedb.EXPECT().SetNonce(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-	statedb.EXPECT().GetCode(gomock.Any()).AnyTimes()
-	statedb.EXPECT().Snapshot().AnyTimes()
-	statedb.EXPECT().Exist(gomock.Any()).Return(true).AnyTimes()
-	statedb.EXPECT().AddBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-	statedb.EXPECT().GetRefund().AnyTimes()
-	statedb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).AnyTimes()
-	statedb.EXPECT().EndTransaction().AnyTimes()
-	statedb.EXPECT().TxIndex().AnyTimes()
-
-	evmModule := evmmodule.New()
-	evmProcessor := evmModule.Start(
-		0,
-		0,
-		0,
-		statedb,
-		&EvmStateReader{},
-		func(l *core_types.Log) {},
-		opera.Rules{},
-		&params.ChainConfig{},
-		common.Hash{},
-		nil,
-	)
-	blockBuilder := inter.NewBlockBuilder()
-
-	internalTx := types.NewTx(&types.LegacyTx{To: &common.Address{0x41}, Gas: 21_000})
-	internalTxGasLimit := uint64(30_000)
-	internalProcessedTxs := evmProcessor.Execute([]*types.Transaction{internalTx}, internalTxGasLimit, math.MaxUint64).ProcessedTransactions
-	require.Len(t, internalProcessedTxs, 1)
-
-	userTx0 := types.NewTx(&types.LegacyTx{To: &common.Address{0x42}, Gas: 21_000})
-	skippedTx := types.NewTx(&types.LegacyTx{To: &common.Address{0x44}, Gas: 21_000})
-
-	// the user transaction only fits into the user transaction gas limit if
-	// the internal transaction gas is not counted towards it
-	userTransactionGasLimit := uint64(30_000)
-	upgrades := opera.Upgrades{Brio: true}
-	executing := &executingBlock{
-		evmProcessor: evmProcessor,
-		blockBuilder: blockBuilder,
-		params:       BlockParams{UserGasLimit: userTransactionGasLimit, Rules: opera.Rules{Upgrades: upgrades}},
-	}
-	executing.Run([]*types.Transaction{userTx0, skippedTx})
-
-	gotTxs := blockBuilder.GetTransactions()
-	require.Equal(t, types.Transactions{userTx0}, gotTxs)
-}
-
-func TestExecutingBlock_Run_MetricsAreForwardedToStateProcessor(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	statedb := state.NewMockStateDB(ctrl)
-	mockMetrics := evmcore.NewMockBlockExecutionMetrics(ctrl)
-
-	statedb.EXPECT().BeginBlock(gomock.Any())
-	statedb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
-	statedb.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
-	statedb.EXPECT().SubBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-	statedb.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-	statedb.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
-	statedb.EXPECT().SetNonce(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-	statedb.EXPECT().GetCode(gomock.Any()).AnyTimes()
-	statedb.EXPECT().Snapshot().AnyTimes()
-	statedb.EXPECT().RevertToSnapshot(gomock.Any()).AnyTimes()
-	statedb.EXPECT().Exist(gomock.Any()).Return(true).AnyTimes()
-	statedb.EXPECT().AddBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-	statedb.EXPECT().GetRefund().AnyTimes()
-	statedb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).AnyTimes()
-	statedb.EXPECT().EndTransaction().AnyTimes()
-	statedb.EXPECT().TxIndex().AnyTimes()
-
-	evmModule := evmmodule.New()
-	evmProcessor := evmModule.Start(
-		0,
-		0,
-		0,
-		statedb,
-		&EvmStateReader{},
-		func(l *core_types.Log) {},
-		opera.Rules{Upgrades: opera.Upgrades{Brio: true, GasSubsidies: true}},
-		&params.ChainConfig{},
-		common.Hash{},
-		mockMetrics,
-	)
-	blockBuilder := inter.NewBlockBuilder()
-
-	// A sponsored transaction (gas price 0) will be skipped because there is
-	// no subsidies registry contract deployed. This should trigger the
-	// SkippedSponsoredTxs counter via the metrics forwarded to the state processor.
-	key, err := crypto.GenerateKey()
-	require.NoError(t, err)
-	signer := types.LatestSignerForChainID(nil)
-	sponsoredTx := types.MustSignNewTx(key, signer, &types.LegacyTx{To: &common.Address{0x42}, Gas: 21_000})
-	require.True(t, subsidies.IsSponsorshipRequest(sponsoredTx))
-
-	mockMetrics.EXPECT().IncSkippedSponsoredTx()
-
-	upgrades := opera.Upgrades{Brio: true, GasSubsidies: true}
-	executing := &executingBlock{
-		evmProcessor: evmProcessor,
-		blockBuilder: blockBuilder,
-		params:       BlockParams{UserGasLimit: 30_000, Rules: opera.Rules{Upgrades: upgrades}},
-	}
-	executing.Run([]*types.Transaction{sponsoredTx})
-
-	// The sponsored tx is skipped (no receipt) so it should not appear in the block.
-	require.Empty(t, blockBuilder.GetTransactions())
-}
-
-func TestExecutingBlock_Run_SponsoredTxSizeIsAccountedCorrectly(t *testing.T) {
 	tests := map[string]struct {
-		gasPrice      int64
-		isSponsoredTx bool
+		brio        bool
+		recorded    types.Transactions
+		userGasUsed uint64
+		txs         types.Transactions
+		added       types.Transactions
+		skipped     types.Transactions
+		wantSize    uint64
+		want        types.Transactions
 	}{
-		"normal tx": {
-			gasPrice:      10,
-			isSponsoredTx: false,
+		"before Brio, size is unlimited": {
+			txs:      types.Transactions{tx0, tx1},
+			wantSize: math.MaxUint64,
+			want:     types.Transactions{tx0, tx1},
 		},
-		"sponsored tx": {
-			gasPrice:      0,
-			isSponsoredTx: true,
+		"with Brio, size is limited": {
+			brio:     true,
+			txs:      types.Transactions{tx0, tx1},
+			wantSize: maxSize,
+			want:     types.Transactions{tx0, tx1},
+		},
+		"before Brio, recorded transactions do not reduce the size": {
+			recorded: types.Transactions{recordedTx},
+			txs:      types.Transactions{tx0, tx1},
+			wantSize: math.MaxUint64,
+			want:     types.Transactions{recordedTx, tx0, tx1},
+		},
+		"with Brio, recorded transactions reduce the size": {
+			brio:     true,
+			recorded: types.Transactions{recordedTx},
+			txs:      types.Transactions{tx0, tx1},
+			wantSize: maxSize - recordedTx.Size(),
+			want:     types.Transactions{recordedTx, tx0, tx1},
+		},
+		"recorded transaction filling the block leaves no size": {
+			brio:     true,
+			recorded: types.Transactions{fullTx},
+			txs:      types.Transactions{tx0, tx1},
+			skipped:  types.Transactions{tx0, tx1},
+			wantSize: 0,
+			want:     types.Transactions{fullTx},
+		},
+		"recorded transaction exceeding the block leaves no size": {
+			brio:     true,
+			recorded: types.Transactions{overfullTx},
+			txs:      types.Transactions{tx0, tx1},
+			skipped:  types.Transactions{tx0, tx1},
+			wantSize: 0,
+			want:     types.Transactions{overfullTx},
+		},
+		"recorded transactions exceeding the block together leave no size": {
+			brio:     true,
+			recorded: halves,
+			txs:      types.Transactions{tx0, tx1},
+			skipped:  types.Transactions{tx0, tx1},
+			wantSize: 0,
+			want:     halves,
+		},
+		"before Brio, skipped transactions are not included": {
+			txs:      types.Transactions{tx0, tx1},
+			skipped:  types.Transactions{tx0},
+			wantSize: math.MaxUint64,
+			want:     types.Transactions{tx1},
+		},
+		"with Brio, skipped transactions are not included": {
+			brio:     true,
+			txs:      types.Transactions{tx0, tx1},
+			skipped:  types.Transactions{tx0},
+			wantSize: maxSize,
+			want:     types.Transactions{tx1},
+		},
+		"before Brio, transactions added by the processor are included": {
+			txs:      types.Transactions{tx0, tx1},
+			added:    types.Transactions{addedTx},
+			wantSize: math.MaxUint64,
+			want:     types.Transactions{tx0, tx1, addedTx},
+		},
+		"with Brio, transactions added by the processor are included": {
+			brio:     true,
+			txs:      types.Transactions{tx0, tx1},
+			added:    types.Transactions{addedTx},
+			wantSize: maxSize,
+			want:     types.Transactions{tx0, tx1, addedTx},
+		},
+		"user gas used by earlier batches reduces the user gas limit": {
+			userGasUsed: 4_000,
+			txs:         types.Transactions{tx0, tx1},
+			wantSize:    math.MaxUint64,
+			want:        types.Transactions{tx0, tx1},
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
-			blockBuilder := inter.NewBlockBuilder()
-
-			tx0 := types.NewTx(&types.LegacyTx{
-				Data: make([]byte, params.MaxBlockSize-5000),
-			})
-			tx1 := types.NewTx(&types.LegacyTx{
-				To:       &common.Address{0x42},
-				GasPrice: big.NewInt(test.gasPrice),
-				V:        big.NewInt(1),
-			})
-			remainingSize := params.MaxBlockSize - tx0.Size() - tx1.Size() - rlpEncodedMaxHeaderSizeInBytes
-			tx2 := types.NewTx(&types.LegacyTx{
-				Data: make([]byte, remainingSize-100), // leave some room for other fields in tx
-			})
-
-			var processedTxs []evmcore.ProcessedTransaction
-			var feeChargingTransaction *types.Transaction
-			if test.gasPrice == 0 {
-				feeChargingTransaction = subsidies.NewPostTxBuilder().BuildForTesting()
-				processedTxs = []evmcore.ProcessedTransaction{
-					{Transaction: tx0, Receipt: &types.Receipt{}},
-					{Transaction: tx1, Receipt: &types.Receipt{}},
-					{Transaction: feeChargingTransaction, Receipt: &types.Receipt{}},
-					{Transaction: tx2, Receipt: nil}, // skipped due to size
+			summary := evmcore.ProcessSummary{CausedBy: map[common.Hash]common.Hash{}}
+			wantUserGasUsed := test.userGasUsed
+			for _, tx := range append(slices.Clone(test.txs), test.added...) {
+				processed := evmcore.ProcessedTransaction{Transaction: tx}
+				if !slices.Contains(test.skipped, tx) {
+					processed.Receipt = &types.Receipt{GasUsed: 100}
+					summary.CausedBy[tx.Hash()] = tx.Hash()
+					wantUserGasUsed += 100
 				}
-			} else {
-				processedTxs = []evmcore.ProcessedTransaction{
-					{Transaction: tx0, Receipt: &types.Receipt{}},
-					{Transaction: tx1, Receipt: &types.Receipt{}},
-					{Transaction: tx2, Receipt: &types.Receipt{}},
-				}
+				summary.ProcessedTransactions = append(summary.ProcessedTransactions, processed)
 			}
-
-			orderedTxs := []*types.Transaction{tx0, tx1, tx2}
-			evmProcessor.EXPECT().
-				Execute(orderedTxs, uint64(10000), gomock.Any()).
-				Return(evmcore.ProcessSummary{
-					ProcessedTransactions: processedTxs,
-				})
-
-			upgrades := opera.Upgrades{Brio: true}
-			executing := &executingBlock{
-				evmProcessor: evmProcessor,
-				blockBuilder: blockBuilder,
-				params:       BlockParams{UserGasLimit: 10000, Rules: opera.Rules{Upgrades: upgrades}},
+			for _, tx := range test.added {
+				summary.CausedBy[tx.Hash()] = tx1.Hash()
 			}
-			executing.Run(orderedTxs)
-
-			gotTxs := blockBuilder.GetTransactions()
-			require.Contains(t, gotTxs, tx0)
-			require.Contains(t, gotTxs, tx1)
-
-			if test.isSponsoredTx {
-				// ensure the sponsored transaction is followed by the gas paying transaction
-				require.Equal(t, tx1, gotTxs[1])
-				require.Equal(t, feeChargingTransaction, gotTxs[2])
-
-				require.NotContains(t, gotTxs, tx2)
-			} else {
-				require.Contains(t, gotTxs, tx2)
-			}
-		})
-	}
-}
-
-func TestExecutingBlock_Run_SkipUserTransactionIfInternalTransactionsExceedBlockSizeLimit(t *testing.T) {
-	tests := map[string][]*types.Transaction{
-		"single huge internal tx": {
-			types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize)}),
-		},
-		"multiple internal txs exceeding block size": {
-			types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/4)}),
-			types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/4)}),
-			types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/4)}),
-			types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/4)}),
-		},
-	}
-
-	for name, internalTxs := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
-			blockBuilder := inter.NewBlockBuilder()
-
-			for _, internalTx := range internalTxs {
-				// Add internal txs to blockBuilder
-				blockBuilder.AddTransaction(internalTx, &types.Receipt{})
-			}
-
-			// Create a user tx that would only fit without the internal tx
-			userTx := types.NewTx(&types.LegacyTx{})
-			upgrades := opera.Upgrades{Brio: true}
-
-			evmProcessor.EXPECT().Execute(gomock.Any(), gomock.Any(), gomock.Any()).Return(evmcore.ProcessSummary{})
-			executing := &executingBlock{
-				evmProcessor: evmProcessor,
-				blockBuilder: blockBuilder,
-				params:       BlockParams{UserGasLimit: 10000, Rules: opera.Rules{Upgrades: upgrades}},
-			}
-			executing.Run([]*types.Transaction{userTx})
-
-			// Only internal tx should be present
-			gotTxs := blockBuilder.GetTransactions()
-			require.Equal(t, types.Transactions(internalTxs), gotTxs)
-		})
-	}
-}
-
-func TestExecutingBlock_Run_InternalTxsExceedingBlockSizePassesZeroRemainingSize(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
-	blockBuilder := inter.NewBlockBuilder()
-
-	// Add two internal transactions: one that nearly fills the block, and one that exceeds the remaining size.
-	smallTx := types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize-rlpEncodedMaxHeaderSizeInBytes-100)})
-	overflowTx := types.NewTx(&types.LegacyTx{Data: make([]byte, 200)})
-	blockBuilder.AddTransaction(smallTx, &types.Receipt{})
-	blockBuilder.AddTransaction(overflowTx, &types.Receipt{})
-
-	userTx := types.NewTx(&types.LegacyTx{})
-	orderedTxs := []*types.Transaction{userTx}
-	upgrades := opera.Upgrades{Brio: true}
-
-	// After the overflow is detected, remainingSize is set to 0
-	evmProcessor.EXPECT().
-		Execute(orderedTxs, uint64(10000), gomock.Any()).
-		DoAndReturn(func(txs []*types.Transaction, gas uint64, size uint64) evmcore.ProcessSummary {
-			require.Equal(t, uint64(0), size) // Ensure the user transactions are processed with zero remaining size
-			return evmcore.ProcessSummary{}
-		})
-
-	executing := &executingBlock{
-		evmProcessor: evmProcessor,
-		blockBuilder: blockBuilder,
-		params:       BlockParams{UserGasLimit: 10000, Rules: opera.Rules{Upgrades: upgrades}},
-	}
-	executing.Run(orderedTxs)
-}
-
-func TestExecutingBlock_Run_RecordsOriginTransactionForAcceptedProcessedTransactions(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
-
-	transactions := []*types.Transaction{
-		types.NewTx(&types.LegacyTx{Nonce: 0}),
-		types.NewTx(&types.LegacyTx{Nonce: 1}),
-		types.NewTx(&types.LegacyTx{Nonce: 2}),
-	}
-
-	extras := []*types.Transaction{
-		types.NewTx(&types.LegacyTx{Nonce: 11}),
-		types.NewTx(&types.LegacyTx{Nonce: 21}),
-		types.NewTx(&types.LegacyTx{Nonce: 22}),
-		types.NewTx(&types.LegacyTx{Nonce: 23}),
-	}
-
-	wantCausedBy := map[common.Hash]common.Hash{
-		transactions[0].Hash(): transactions[0].Hash(),
-		transactions[1].Hash(): transactions[1].Hash(),
-		extras[0].Hash():       transactions[1].Hash(),
-		extras[1].Hash():       transactions[2].Hash(),
-		extras[2].Hash():       transactions[2].Hash(),
-		// no entry for extras[3] since it has no receipt
-	}
-
-	evmProcessor.EXPECT().
-		Execute(transactions, gomock.Any(), gomock.Any()).
-		Return(evmcore.ProcessSummary{
-			ProcessedTransactions: []evmcore.ProcessedTransaction{
-				{Transaction: transactions[0], Receipt: &types.Receipt{}},
-				{Transaction: transactions[1], Receipt: &types.Receipt{}},
-				{Transaction: extras[0], Receipt: &types.Receipt{}},
-				{Transaction: extras[1], Receipt: &types.Receipt{}},
-				{Transaction: extras[2], Receipt: &types.Receipt{}},
-				{Transaction: extras[3], Receipt: nil},
-			},
-			CausedBy: wantCausedBy,
-		})
-
-	executing := &executingBlock{
-		evmProcessor: evmProcessor,
-		blockBuilder: inter.NewBlockBuilder(),
-		params:       BlockParams{UserGasLimit: math.MaxUint64, Rules: opera.Rules{Upgrades: opera.Upgrades{Brio: true}}},
-	}
-	gotCausedBy := executing.Run(transactions).CausedBy
-	require.Equal(t, wantCausedBy, gotCausedBy)
-}
-
-func TestExecutingBlock_Run_BlockSizeLimitIsEnforcedStartingFromBrio(t *testing.T) {
-	tests := map[string]struct {
-		upgrades          opera.Upgrades
-		expectedSizeLimit uint64
-	}{
-		"before Brio, no size limit is enforced": {
-			upgrades:          opera.Upgrades{Brio: false},
-			expectedSizeLimit: math.MaxUint64,
-		},
-		"with Brio, block size limit is enforced": {
-			upgrades:          opera.Upgrades{Brio: true},
-			expectedSizeLimit: uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes),
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
-			blockBuilder := inter.NewBlockBuilder()
-
-			// Ensure the evmProcessor is called with the expected size limit
-			evmProcessor.EXPECT().Execute(gomock.Any(), gomock.Any(), test.expectedSizeLimit)
+			evmProcessor := blockproc.NewMockEVMProcessor(gomock.NewController(t))
+			evmProcessor.EXPECT().Execute(test.txs, 10_000-test.userGasUsed, test.wantSize).Return(summary)
 
 			executing := &executingBlock{
 				evmProcessor: evmProcessor,
-				blockBuilder: blockBuilder,
-				params:       BlockParams{UserGasLimit: math.MaxUint64, Rules: opera.Rules{Upgrades: test.upgrades}},
+				blockBuilder: inter.NewBlockBuilder(),
+				params:       BlockParams{UserGasLimit: 10_000, Rules: opera.Rules{Upgrades: opera.Upgrades{Brio: test.brio}}},
+				userGasUsed:  test.userGasUsed,
 			}
-			executing.Run([]*types.Transaction{})
+			for _, tx := range test.recorded {
+				executing.blockBuilder.AddTransaction(tx, &types.Receipt{})
+			}
+			require.Equal(t, summary, executing.Run(test.txs))
+			require.Equal(t, test.want, executing.blockBuilder.GetTransactions())
+			require.Equal(t, wantUserGasUsed, executing.userGasUsed)
 		})
 	}
 }

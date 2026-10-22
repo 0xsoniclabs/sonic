@@ -201,6 +201,7 @@ type executingBlock struct {
 	params       BlockParams
 	evmProcessor blockproc.EVMProcessor
 	blockBuilder *inter.BlockBuilder
+	userGasUsed  uint64
 	finalized    bool
 }
 
@@ -231,13 +232,14 @@ func (eb *executingBlock) Run(txs types.Transactions) evmcore.ProcessSummary {
 		}
 	}
 
-	summary := eb.evmProcessor.Execute(txs, eb.params.UserGasLimit, remainingSize)
+	summary := eb.evmProcessor.Execute(txs, eb.params.UserGasLimit-eb.userGasUsed, remainingSize)
 	for _, processed := range summary.ProcessedTransactions {
 		if processed.Receipt != nil { // < nil if skipped
 			eb.blockBuilder.AddTransaction(
 				processed.Transaction,
 				processed.Receipt,
 			)
+			eb.userGasUsed += processed.Receipt.GasUsed
 		}
 	}
 
