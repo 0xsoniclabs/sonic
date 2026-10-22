@@ -390,11 +390,12 @@ func _cartesianProductRecursion[T any](current []T, elements [][]T, callback fun
 // arbitrary and was selected by the previous version of this algorithm.
 func WaitFor(ctx context.Context, predicate func(context.Context) (bool, error)) error {
 
-	timedContext, cancel := context.WithCancel(ctx)
+	timedContext := ctx
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
 		timedContext, cancel = context.WithTimeout(ctx, 100*time.Second)
+		defer cancel()
 	}
-	defer cancel()
 
 	// implement some backoff strategy: sleeps get longer the longer it
 	// takes to receive the event
