@@ -52,6 +52,9 @@ type (
 	RawProcessedBundles struct {
 		fMap FilesMap
 	}
+	RawReceiptGasAmendmentsSection struct {
+		fMap FilesMap
+	}
 )
 
 func (s *Store) Genesis() genesis.Genesis {
@@ -64,6 +67,8 @@ func (s *Store) Genesis() genesis.Genesis {
 		FwsArchiveSection: s.FwsArchiveSection(),
 		SignatureSection:  s.SignatureSection(),
 		ProcessedBundles:  s.ProcessedBundles(),
+
+		ReceiptGasAmendments: s.ReceiptGasAmendmentsSection(),
 	}
 }
 
@@ -216,6 +221,14 @@ func (s *Store) FwsArchiveSection() genesis.FwsLiveSection {
 
 func (s RawFwsArchiveSection) GetReader() (io.Reader, error) {
 	return s.fMap(FwsArchiveSection(0))
+}
+
+func (s *Store) ReceiptGasAmendmentsSection() genesis.ReceiptGasAmendmentsSection {
+	return RawReceiptGasAmendmentsSection{s.fMap}
+}
+
+func (s RawReceiptGasAmendmentsSection) GetReader() (io.Reader, error) {
+	return s.fMap(ReceiptGasAmendmentsSection(0))
 }
 
 func (s *Store) SignatureSection() genesis.SignatureSection {

@@ -80,6 +80,10 @@ func TestBundle_FailingBareRootBeforeCantoDoesNotInflateNextReceipt(t *testing.T
 	// ... after a restart they are derived from storage.
 	require.NoError(t, net.Restart())
 	requireMarkerGasUsed(t, net, markerTx.Hash())
+
+	// ... and after an export/import, they are derived from the genesis.
+	require.NoError(t, net.RestartWithExportImport())
+	requireMarkerGasUsed(t, net, markerTx.Hash())
 }
 
 // requireLeakBeforeMarker checks that the failed bundle leaked its gas right

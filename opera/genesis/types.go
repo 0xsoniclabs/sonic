@@ -52,6 +52,9 @@ type (
 	FwsArchiveSection interface {
 		GetReader() (io.Reader, error)
 	}
+	ReceiptGasAmendmentsSection interface {
+		GetReader() (io.Reader, error)
+	}
 	SignatureSection interface {
 		GetSignature() ([]byte, error)
 	}
@@ -66,6 +69,8 @@ type (
 		Epochs           Epochs
 		RawEvmItems      EvmItems
 		ProcessedBundles ProcessedBundles
+		// ReceiptGasAmendments fails to read in genesis files predating it.
+		ReceiptGasAmendments ReceiptGasAmendmentsSection
 		FwsLiveSection
 		FwsArchiveSection
 		SignatureSection
