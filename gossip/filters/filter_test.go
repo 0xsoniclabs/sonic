@@ -33,7 +33,6 @@ import (
 	gomock "go.uber.org/mock/gomock"
 
 	"github.com/0xsoniclabs/sonic/topicsdb"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
