@@ -899,7 +899,25 @@ func endBlock(
 		)
 	}
 
-	executingBlock, err := head.BeginBlock()
+	txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es)
+	onNewLogAll := func(l *core_types.Log) {
+		txListener.OnNewLog(l)
+		// Note: it's possible for logs to get indexed twice by BR and block processing
+		if verWatcher != nil {
+			verWatcher.OnNewLog(l)
+		}
+	}
+
+	// prepare block processing
+	blockParams := BlockParams{
+		Time:         blockCtx.Time,
+		Epoch:        cBlock.Atropos.Epoch(),
+		PrevRandao:   randao,
+		GasLimit:     maxBlockGas,
+		UserGasLimit: userTransactionGasLimit,
+		Rules:        thisBlocksRules,
+	}
+	executingBlock, err := head.BeginBlock(blockParams, onNewLogAll)
 	if err != nil {
 		log.Crit("Failed to begin block", "err", err)
 	}
@@ -925,34 +943,12 @@ func endBlock(
 
 	sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
 	sealing := sealer.EpochSealing()
-	txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es)
-	onNewLogAll := func(l *core_types.Log) {
-		txListener.OnNewLog(l)
-		// Note: it's possible for logs to get indexed twice by BR and block processing
-		if verWatcher != nil {
-			verWatcher.OnNewLog(l)
-		}
-	}
-
-	// prepare block processing
-	evmProcessor := blockProc.EVMModule.Start(
-		blockCtx.Idx,
-		blockCtx.Time,
-		blockCtx.Atropos.Epoch(),
-		statedb,
-		evmStateReader,
-		onNewLogAll,
-		thisBlocksRules,
-		chainCfg,
-		randao,
-		sonicFeaturesMetrics,
-	)
 	executionStart := time.Now()
 
 	// Execute pre-internal transactions
 	nonceSource := blockproc.NewNonceSource(statedb)
 	preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
-	preInternalProcessedTxs := evmProcessor.Execute(preInternalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
+	preInternalProcessedTxs := executingBlock.runInternal(preInternalTxs).ProcessedTransactions
 	bs = txListener.Finalize()
 	for _, tx := range preInternalProcessedTxs {
 		if tx.Receipt == nil || tx.Receipt.Status == 0 {
@@ -987,90 +983,24 @@ func endBlock(
 	// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
 	blockFn := func() {
 
-		blockDuration := time.Duration(blockCtx.Time - bs.LastBlock.Time)
-		blockBuilder := inter.NewBlockBuilder().
-			WithEpoch(blockCtx.Atropos.Epoch()).
-			WithNumber(number).
-			WithParentHash(proposal.ParentHash).
-			WithTime(blockCtx.Time).
-			WithPrevRandao(randao).
-			WithGasLimit(maxBlockGas).
-			WithDuration(blockDuration)
-
-		// With the transition from v2.0 to v2.1, the handling of
-		// block-gas-limit updates has changed. In v2.0, epoch
-		// sealing blocks used to already adapt the new gas limit,
-		// while in v2.1 the old gas limit is kept and only the
-		// first block after the sealing block is adapting the new
-		// gas limit. As the list of transactions for the sealing
-		// block is assembled by validators using the rules of the
-		// current epoch, using the ending epoch's gas limit is
-		// matching the assumptions made by the validators.
-		//
-		// However, in the past, there was one epoch-sealing block
-		// (8054923) in which the gas limit was adapted. To support
-		// this one-time exception, we add a special case for
-		// this block here to ensure backward compatibility.
-		if thisBlocksRules.NetworkID == 146 && number == 8054923 {
-			blockBuilder.WithGasLimit(es.Rules.Blocks.MaxBlockGas)
-		}
-
-		for _, cur := range preInternalProcessedTxs {
-			if cur.Receipt != nil {
-				blockBuilder.AddTransaction(
-					cur.Transaction,
-					cur.Receipt,
-				)
-			}
-		}
-
 		// Execute post-internal transactions
 		internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, nonceSource)
-		internalProcessedTxs := evmProcessor.Execute(internalTxs, maxBlockGas, math.MaxUint64).ProcessedTransactions
+		internalProcessedTxs := executingBlock.runInternal(internalTxs).ProcessedTransactions
 		for _, tx := range internalProcessedTxs {
 			if tx.Receipt == nil || tx.Receipt.Status == 0 {
 				log.Warn("Internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
 			}
 		}
 
-		for _, cur := range internalProcessedTxs {
-			if cur.Receipt != nil {
-				blockBuilder.AddTransaction(
-					cur.Transaction,
-					cur.Receipt,
-				)
-			}
-		}
+		txCausedBy := executingBlock.Run(proposal.Transactions)
 
-		txCausedBy := processUserTransactions(
-			evmProcessor,
-			blockBuilder,
-			proposal.Transactions,
-			userTransactionGasLimit,
-			thisBlocksRules.Upgrades,
-		)
-
-		evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
-
-		// Add results of the transaction processing to the block.
-		blockBuilder.
-			WithStateRoot(common.Hash(evmBlock.Root)).
-			WithGasUsed(evmBlock.GasUsed).
-			WithBaseFee(evmBlock.BaseFee)
-
-		// Complete the block.
-		block := blockBuilder.Build()
-		evmBlock.Hash = block.Hash()
-		evmBlock.Duration = blockDuration
-
-		// Update block-hash and -time values in receipts and logs.
-		for i := range allReceipts {
-			allReceipts[i].BlockHash = block.Hash()
-			for j := range allReceipts[i].Logs {
-				allReceipts[i].Logs[j].BlockHash = block.Hash()
-				allReceipts[i].Logs[j].BlockTimestamp = uint64(block.Time.Unix())
-			}
-		}
+		// Finalize the block: commit state, assemble and hash the block,
+		// and stamp the block hash/time onto the receipts and logs.
+		candidate := executingBlock.Finalize().Candidate()
+		block := candidate.Block
+		evmBlock := candidate.EvmBlock
+		allReceipts := candidate.Receipts
+		numSkippedTxs := candidate.NumSkipped
 
 		// memorize the event creator of each tx
 		txPositions := make(map[common.Hash]ExtendedTxPosition)
@@ -1115,7 +1045,7 @@ func endBlock(
 		// Store the transaction bodies before indexing their
 		// positions, such that readers finding a position always
 		// find the corresponding body as well.
-		for _, tx := range blockBuilder.GetTransactions() {
+		for _, tx := range evmBlock.Transactions {
 			store.evm.SetTx(tx.Hash(), tx)
 		}
 
@@ -1173,7 +1103,7 @@ func endBlock(
 			"index", blockCtx.Idx,
 			"id", block.Hash(),
 			"gas_used", evmBlock.GasUsed,
-			"gas_rate", float64(evmBlock.GasUsed)/blockDuration.Seconds(),
+			"gas_rate", float64(evmBlock.GasUsed)/time.Duration(block.Duration).Seconds(),
 			"base_fee", evmBlock.BaseFee.String(),
 			"txs", fmt.Sprintf("%d/%d", len(evmBlock.Transactions), numSkippedTxs),
 			"age", utils.PrettyDuration(blockAge),
