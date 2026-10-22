@@ -84,6 +84,13 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 		return true
 	})
 
+	// write receipt gas amendments, which block records do not carry
+	if g.ReceiptGasAmendments != nil {
+		if err := s.importReceiptGasAmendments(g.ReceiptGasAmendments); err != nil {
+			return err
+		}
+	}
+
 	// write EVM items
 	liveReader, err := g.FwsLiveSection.GetReader()
 	if err != nil {
@@ -140,6 +147,20 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 		if err := s.importProcessedBundles(g.ProcessedBundles); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// importReceiptGasAmendments restores the receipt gas amendments from the
+// genesis file, skipping genesis files predating them.
+func (s *Store) importReceiptGasAmendments(section genesis.ReceiptGasAmendmentsSection) error {
+	reader, err := section.GetReader()
+	if err != nil {
+		s.Log.Info("Receipt gas amendments not available in the genesis", "err", err)
+		return nil
+	}
+	if err := s.evm.ImportReceiptGasAmendments(reader); err != nil {
+		return fmt.Errorf("failed to import receipt gas amendments from genesis; %w", err)
 	}
 	return nil
 }

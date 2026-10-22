@@ -17,6 +17,7 @@
 package genesis
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -34,6 +35,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/genesisstore/fileshash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
 )
@@ -266,6 +268,100 @@ func TestMustRlpEncodeToByte_CanEncodeHistoryHashAndExecutionInfo(t *testing.T) 
 	}
 }
 
+func TestBlocksExportBase_LimitsExportToMaxBlocks(t *testing.T) {
+	tests := map[string]struct {
+		to        idx.Block
+		maxBlocks int64
+		want      idx.Block
+	}{
+		"unlimited":                {to: 1000, maxBlocks: 0, want: 0},
+		"chain shorter than limit": {to: 100, maxBlocks: 300, want: 0},
+		"chain at the limit":       {to: 301, maxBlocks: 300, want: 0},
+		"chain longer than limit":  {to: 302, maxBlocks: 300, want: 2},
+		"chain much longer":        {to: 1000, maxBlocks: 300, want: 700},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.want, blocksExportBase(test.to, test.maxBlocks))
+		})
+	}
+}
+
+func TestReceiptGasAmendments_RoundTrip(t *testing.T) {
+	source := setupBundleStore(t)
+	for _, block := range []idx.Block{1, 2, 3} {
+		source.EvmStore().SetReceipts(block, leakedGasReceipts(uint64(block)))
+	}
+
+	tmpDir := t.TempDir()
+	outFile, err := os.CreateTemp(tmpDir, "export-rga-*.g")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, outFile.Close()) }()
+
+	writer := newUnitWriter(outFile)
+	require.NoError(t, writer.Start(genesis.Header{}, "rga", tmpDir))
+	require.NoError(t, exportReceiptGasAmendments(context.Background(), source, writer, 2))
+
+	_, err = outFile.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	gs, _, err := genesisstore.OpenGenesisStore(outFile)
+	require.NoError(t, err)
+	reader, err := gs.Genesis().ReceiptGasAmendments.GetReader()
+	require.NoError(t, err)
+
+	target := setupBundleStore(t)
+	require.NoError(t, target.EvmStore().ImportReceiptGasAmendments(reader))
+
+	var want, got bytes.Buffer
+	wantCount, err := source.EvmStore().ExportReceiptGasAmendments(context.Background(), &want, 2)
+	require.NoError(t, err)
+	require.Equal(t, 2, wantCount)
+	_, err = target.EvmStore().ExportReceiptGasAmendments(context.Background(), &got, 0)
+	require.NoError(t, err)
+	require.Equal(t, want.Bytes(), got.Bytes(), "only the amendments from block 2 onwards are exported")
+}
+
+func TestReceiptGasAmendments_SectionIsMissingInOlderFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	outFile, err := os.CreateTemp(tmpDir, "export-bundles-*.g")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, outFile.Close()) }()
+
+	writer := newUnitWriter(outFile)
+	require.NoError(t, writer.Start(genesis.Header{}, "bundles", tmpDir))
+	require.NoError(t, exportBundles(context.Background(), setupBundleStore(t), writer, 1))
+
+	_, err = outFile.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	gs, _, err := genesisstore.OpenGenesisStore(outFile)
+	require.NoError(t, err)
+	_, err = gs.Genesis().ReceiptGasAmendments.GetReader()
+	require.Error(t, err)
+}
+
+func TestExportReceiptGasAmendments_WriteError(t *testing.T) {
+	store := setupBundleStore(t)
+	store.EvmStore().SetReceipts(1, leakedGasReceipts(1))
+
+	writer := &unitWriter{}
+	writer.fileshasher = fileshash.WrapWriter(nil, genesisstore.FilesHashPieceSize,
+		func(int) fileshash.TmpWriter {
+			return &failingTmpWriter{}
+		},
+	)
+	require.Error(t, exportReceiptGasAmendments(context.Background(), store, writer, 0))
+}
+
+func TestExportReceiptGasAmendments_ContextCancelled(t *testing.T) {
+	store := setupBundleStore(t)
+	store.EvmStore().SetReceipts(1, leakedGasReceipts(1))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := exportReceiptGasAmendments(ctx, store, newDryRunWriter(t), 0)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 // ------------- tooling for tests -------------
 
 // failingTmpWriter implements fileshash.TmpWriter but always fails on Write.
@@ -280,6 +376,15 @@ func (f *failingTmpWriter) Drop() error                                  { retur
 // Ensure failingTmpWriter satisfies the interface.
 var _ fileshash.TmpWriter = (*failingTmpWriter)(nil)
 var _ io.ReadWriteSeeker = (*failingTmpWriter)(nil)
+
+// leakedGasReceipts returns receipts whose second receipt has the given gas
+// leaked into its CumulativeGasUsed, so that storing them records an amendment.
+func leakedGasReceipts(leaked uint64) types.Receipts {
+	return types.Receipts{
+		{CumulativeGasUsed: 21_000, GasUsed: 21_000, Logs: []*types.Log{}},
+		{CumulativeGasUsed: 42_000 + leaked, GasUsed: 21_000, Logs: []*types.Log{}},
+	}
+}
 
 // cancelAfterNChecks is a context.Context wrapper that returns
 // context.Canceled after allowedCalls calls to Err().
