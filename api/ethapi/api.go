@@ -2647,7 +2647,7 @@ func limitStructLogs(onOpcode tracing.OpcodeHook, limit int) tracing.OpcodeHook 
 		return onOpcode
 	}
 	if limit < 0 {
-		return func(uint64, byte, uint64, uint64, tracing.OpContext, []byte, int, error) {}
+		return nil
 	}
 	reported := 0
 	return func(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
@@ -2689,8 +2689,8 @@ func (api *PublicDebugAPI) traceTx(
 		if config.Config == nil {
 			config.Config = &logger.Config{}
 		}
-		structLogger := logger.NewStructLogger(config.Config)
-		hooks := structLogger.Hooks()
+		logger := logger.NewStructLogger(config.Config)
+		hooks := logger.Hooks()
 		// The struct logger's own config.Limit is a limit on the size of the
 		// produced output in bytes, while api.structLogLimit is a limit on the
 		// number of produced log entries. The latter has to be enforced here.
@@ -2699,8 +2699,8 @@ func (api *PublicDebugAPI) traceTx(
 		hooks.OnOpcode = limitStructLogs(hooks.OnOpcode, api.structLogLimit)
 		tracer = &tracers.Tracer{
 			Hooks:     hooks,
-			GetResult: structLogger.GetResult,
-			Stop:      structLogger.Stop,
+			GetResult: logger.GetResult,
+			Stop:      logger.Stop,
 		}
 	} else {
 		if !api.allowJSTracers && !isTracerWhitelisted(*config.Tracer) {

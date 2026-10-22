@@ -17,6 +17,7 @@
 package ethapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"encoding/json"
@@ -2478,7 +2479,6 @@ func TestLimitStructLogs_ReportsAtMostLimitOpcodes(t *testing.T) {
 		want  int
 	}{
 		"zero limit is unlimited":       {limit: 0, calls: 10, want: 10},
-		"negative limit reports none":   {limit: -1, calls: 10, want: 0},
 		"limit above the call count":    {limit: 10, calls: 3, want: 3},
 		"limit below the call count":    {limit: 3, calls: 10, want: 3},
 		"limit equal to the call count": {limit: 5, calls: 5, want: 5},
@@ -2527,4 +2527,53 @@ func TestLimitStructLogs_KeepsTheOpcodeArguments(t *testing.T) {
 
 func TestLimitStructLogs_KeepsANilHookNil(t *testing.T) {
 	require.Nil(t, limitStructLogs(nil, 100))
+}
+
+func TestLimitStructLogs_DropsTheHookForANegativeLimit(t *testing.T) {
+	require.Nil(t, limitStructLogs(func(uint64, byte, uint64, uint64, tracing.OpContext, []byte, int, error) {}, -1))
+}
+
+func TestTraceCall_StructLoggerReportsAtMostStructLogLimitEntries(t *testing.T) {
+	code := bytes.Repeat([]byte{byte(vm.JUMPDEST)}, 10) // 10 opcodes, then an implicit STOP
+
+	tests := map[string]struct {
+		limit int
+		want  int
+	}{
+		"unlimited":           {limit: 0, want: 11},
+		"limit below the ops": {limit: 3, want: 3},
+		"negative is none":    {limit: -1, want: 0},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockBackend := NewMockBackend(ctrl)
+			mockState := state.NewMockStateDB(ctrl)
+
+			block := &evmcore.EvmBlock{}
+			block.Number = big.NewInt(5)
+			any := gomock.Any()
+			mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+			mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
+			mockBackend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
+			mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
+			mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(
+				func(_ context.Context, stateDb vm.StateDB, _ *evmcore.EvmHeader, vmConfig *vm.Config, _ *vm.BlockContext) (*vm.EVM, func() error, error) {
+					blockCtx := vm.BlockContext{Transfer: vm.TransferFunc(func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {})}
+					return vm.NewEVM(blockCtx, stateDb, opera.CreateTransientEvmChainConfig(1, nil, 0), *vmConfig), func() error { return nil }, nil
+				}).AnyTimes()
+			mockBackend.EXPECT().ChainConfig(any).Return(&params.ChainConfig{}).AnyTimes()
+			mockState.EXPECT().GetCode(common.Address{1}).Return(code).AnyTimes()
+			mockState.EXPECT().GetCodeHash(common.Address{1}).Return(crypto.Keccak256Hash(code)).AnyTimes()
+			setExpectedStateCalls(mockState)
+
+			api := NewPublicDebugAPI(mockBackend, 0, test.limit, false)
+			res, err := api.TraceCall(t.Context(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(5), &TraceCallConfig{})
+			require.NoError(t, err)
+
+			var result struct{ StructLogs []json.RawMessage }
+			require.NoError(t, json.Unmarshal(res.(json.RawMessage), &result))
+			require.Len(t, result.StructLogs, test.want)
+		})
+	}
 }
