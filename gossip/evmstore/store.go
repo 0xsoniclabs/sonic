@@ -43,6 +43,8 @@ type Store struct {
 		Receipts    kvdb.Store `table:"r"`
 		TxPositions kvdb.Store `table:"x"`
 		Txs         kvdb.Store `table:"X"`
+
+		ReceiptGasAmendments kvdb.Store `table:"a"`
 	}
 
 	EvmLogs topicsdb.Index
