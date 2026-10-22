@@ -30,12 +30,19 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-// SetReceipts stores transaction receipts.
+// SetReceipts stores transaction receipts, together with the gas amendments
+// needed to derive their original GasUsed when they are read back.
 func (s *Store) SetReceipts(n idx.Block, receipts types.Receipts) {
 	receiptsStorage := make([]*types.ReceiptForStorage, receipts.Len())
 	for i, r := range receipts {
 		receiptsStorage[i] = (*types.ReceiptForStorage)(r)
 	}
+
+	// The amendments are written first, so that readers, which read the
+	// receipts before the amendments, see the amendments of any new receipts.
+	// A reader may thus see amendments of receipts not written yet, which
+	// applyReceiptGasAmendments skips.
+	s.setReceiptGasAmendments(n, receipts)
 
 	size := s.SetRawReceipts(n, receiptsStorage)
 
@@ -106,6 +113,7 @@ func (s *Store) GetReceipts(n idx.Block, config *params.ChainConfig, hash common
 	if err != nil {
 		s.Log.Crit("Failed to derive receipts", "err", err)
 	}
+	s.applyReceiptGasAmendments(n, receipts)
 
 	// Add to LRU cache.
 	s.cache.Receipts.Add(n, receipts, uint(size))
