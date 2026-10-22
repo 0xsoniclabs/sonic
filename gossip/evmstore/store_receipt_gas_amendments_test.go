@@ -20,10 +20,13 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"testing"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -231,8 +234,69 @@ func TestStore_applyReceiptGasAmendments_SkipsAmendmentsBeyondReceipts(t *testin
 	require.EqualValues(t, 9, receipts[0].GasUsed)
 	require.EqualValues(t, 10, receipts[1].GasUsed)
 
-	// Amendments of a block without receipts.
+	// Amendments written ahead of the receipts of a new block.
 	require.NotPanics(t, func() { store.applyReceiptGasAmendments(1, types.Receipts{}) })
+}
+
+func TestStore_SetReceipts_WritesAmendmentsBeforeReceipts(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	store := cachedStore()
+	receiptsTable := NewMockStore(ctrl)
+	store.table.Receipts = receiptsTable
+	amendmentsTable := NewMockStore(ctrl)
+	store.table.ReceiptGasAmendments = amendmentsTable
+	log := logger.NewMockLogger(ctrl)
+	store.Log = log
+
+	log.EXPECT().Warn(gomock.Any(), gomock.Any())
+	gomock.InOrder(
+		amendmentsTable.EXPECT().Put(idx.Block(1).Bytes(), gomock.Any()),
+		receiptsTable.EXPECT().Put(idx.Block(1).Bytes(), gomock.Any()),
+	)
+	store.SetReceipts(1, makeReceipts([]uint64{71_000}, []uint64{21_000}))
+}
+
+func TestStore_GetReceipts_AmendsGasLeakedByFailedBundles(t *testing.T) {
+	logger.SetTestMode(t)
+
+	tests := map[string]struct {
+		cumulative []uint64
+		amended    bool
+	}{
+		"NoLeak":        {cumulative: []uint64{21_000, 42_000, 63_000}},
+		"LeakBeforeTx0": {cumulative: []uint64{71_000, 92_000, 113_000}, amended: true},
+		"LeakBeforeTx1": {cumulative: []uint64{21_000, 92_000, 113_000}, amended: true},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			store := cachedStore()
+			block := idx.Block(1)
+
+			txs := make(types.Transactions, len(test.cumulative))
+			gasUsed := make([]uint64, len(test.cumulative))
+			for i := range test.cumulative {
+				txs[i] = types.NewTx(&types.LegacyTx{Nonce: uint64(i), To: &common.Address{}, Gas: 21_000})
+				gasUsed[i] = 21_000
+			}
+			store.SetReceipts(block, makeReceipts(test.cumulative, gasUsed))
+			require.Equal(t, test.amended, store.getReceiptGasAmendments(block) != nil)
+
+			// Drop the cached live receipts to read them back from storage.
+			store.cache.Receipts.Purge()
+			got := store.GetReceipts(block, params.TestChainConfig, common.Hash{}, 0, big.NewInt(1), nil, txs)
+			require.Len(t, got, len(txs))
+			for i, r := range got {
+				require.EqualValues(t, 21_000, r.GasUsed, "receipt %d", i)
+			}
+
+			// A second read is served from the cache, already amended.
+			cached := store.GetReceipts(block, params.TestChainConfig, common.Hash{}, 0, big.NewInt(1), nil, txs)
+			for i, r := range cached {
+				require.EqualValues(t, 21_000, r.GasUsed, "receipt %d", i)
+			}
+		})
+	}
 }
 
 func makeReceipts(cumulative, gasUsed []uint64) types.Receipts {
