@@ -19,6 +19,7 @@ package gossip
 import (
 	"math"
 	"math/big"
+	"slices"
 	"testing"
 	"time"
 
@@ -256,19 +257,145 @@ func TestHead_BeginBlock_FailedPrecondition_ReportsError(t *testing.T) {
 	}
 }
 
-func TestExecutingBlock_Run_ExecutesWithinUserGasLimit(t *testing.T) {
-	txs := types.Transactions{types.NewTx(&types.LegacyTx{Nonce: 1})}
-	blockParams := BlockParams{GasLimit: 4, UserGasLimit: 3}
-
-	evmProcessor := blockproc.NewMockEVMProcessor(gomock.NewController(t))
-	evmProcessor.EXPECT().Execute(txs, blockParams.UserGasLimit, uint64(math.MaxUint64)).Return(evmcore.ProcessSummary{})
-
-	executing := &executingBlock{
-		evmProcessor: evmProcessor,
-		blockBuilder: inter.NewBlockBuilder(),
-		params:       blockParams,
+func TestExecutingBlock_Run_ExecutesWithinRemainingUserGasAndBlockSize(t *testing.T) {
+	maxSize := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
+	recordedTx := types.NewTx(&types.LegacyTx{Data: make([]byte, 1000)})
+	encodingSize := types.NewTx(&types.LegacyTx{Data: make([]byte, maxSize)}).Size() - maxSize
+	fullTx := types.NewTx(&types.LegacyTx{Data: make([]byte, maxSize-encodingSize)})
+	overfullTx := types.NewTx(&types.LegacyTx{Data: make([]byte, maxSize-encodingSize+1)})
+	halves := types.Transactions{
+		types.NewTx(&types.LegacyTx{Nonce: 1, Data: make([]byte, params.MaxBlockSize/2)}),
+		types.NewTx(&types.LegacyTx{Nonce: 2, Data: make([]byte, params.MaxBlockSize/2)}),
 	}
-	executing.Run(txs)
+	tx0 := types.NewTx(&types.LegacyTx{Nonce: 10})
+	tx1 := types.NewTx(&types.LegacyTx{Nonce: 11})
+	addedTx := types.NewTx(&types.LegacyTx{Nonce: 12})
+
+	tests := map[string]struct {
+		brio        bool
+		recorded    types.Transactions
+		userGasUsed uint64
+		txs         types.Transactions
+		added       types.Transactions
+		skipped     types.Transactions
+		wantSize    uint64
+		want        types.Transactions
+	}{
+		"before Brio, size is unlimited": {
+			txs:      types.Transactions{tx0, tx1},
+			wantSize: math.MaxUint64,
+			want:     types.Transactions{tx0, tx1},
+		},
+		"with Brio, size is limited": {
+			brio:     true,
+			txs:      types.Transactions{tx0, tx1},
+			wantSize: maxSize,
+			want:     types.Transactions{tx0, tx1},
+		},
+		"before Brio, recorded transactions do not reduce the size": {
+			recorded: types.Transactions{recordedTx},
+			txs:      types.Transactions{tx0, tx1},
+			wantSize: math.MaxUint64,
+			want:     types.Transactions{recordedTx, tx0, tx1},
+		},
+		"with Brio, recorded transactions reduce the size": {
+			brio:     true,
+			recorded: types.Transactions{recordedTx},
+			txs:      types.Transactions{tx0, tx1},
+			wantSize: maxSize - recordedTx.Size(),
+			want:     types.Transactions{recordedTx, tx0, tx1},
+		},
+		"recorded transaction filling the block leaves no size": {
+			brio:     true,
+			recorded: types.Transactions{fullTx},
+			txs:      types.Transactions{tx0, tx1},
+			skipped:  types.Transactions{tx0, tx1},
+			wantSize: 0,
+			want:     types.Transactions{fullTx},
+		},
+		"recorded transaction exceeding the block leaves no size": {
+			brio:     true,
+			recorded: types.Transactions{overfullTx},
+			txs:      types.Transactions{tx0, tx1},
+			skipped:  types.Transactions{tx0, tx1},
+			wantSize: 0,
+			want:     types.Transactions{overfullTx},
+		},
+		"recorded transactions exceeding the block together leave no size": {
+			brio:     true,
+			recorded: halves,
+			txs:      types.Transactions{tx0, tx1},
+			skipped:  types.Transactions{tx0, tx1},
+			wantSize: 0,
+			want:     halves,
+		},
+		"before Brio, skipped transactions are not included": {
+			txs:      types.Transactions{tx0, tx1},
+			skipped:  types.Transactions{tx0},
+			wantSize: math.MaxUint64,
+			want:     types.Transactions{tx1},
+		},
+		"with Brio, skipped transactions are not included": {
+			brio:     true,
+			txs:      types.Transactions{tx0, tx1},
+			skipped:  types.Transactions{tx0},
+			wantSize: maxSize,
+			want:     types.Transactions{tx1},
+		},
+		"before Brio, transactions added by the processor are included": {
+			txs:      types.Transactions{tx0, tx1},
+			added:    types.Transactions{addedTx},
+			wantSize: math.MaxUint64,
+			want:     types.Transactions{tx0, tx1, addedTx},
+		},
+		"with Brio, transactions added by the processor are included": {
+			brio:     true,
+			txs:      types.Transactions{tx0, tx1},
+			added:    types.Transactions{addedTx},
+			wantSize: maxSize,
+			want:     types.Transactions{tx0, tx1, addedTx},
+		},
+		"user gas used by earlier batches reduces the user gas limit": {
+			userGasUsed: 4_000,
+			txs:         types.Transactions{tx0, tx1},
+			wantSize:    math.MaxUint64,
+			want:        types.Transactions{tx0, tx1},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			summary := evmcore.ProcessSummary{CausedBy: map[common.Hash]common.Hash{}}
+			wantUserGasUsed := test.userGasUsed
+			for _, tx := range append(slices.Clone(test.txs), test.added...) {
+				processed := evmcore.ProcessedTransaction{Transaction: tx}
+				if !slices.Contains(test.skipped, tx) {
+					processed.Receipt = &types.Receipt{GasUsed: 100}
+					summary.CausedBy[tx.Hash()] = tx.Hash()
+					wantUserGasUsed += 100
+				}
+				summary.ProcessedTransactions = append(summary.ProcessedTransactions, processed)
+			}
+			for _, tx := range test.added {
+				summary.CausedBy[tx.Hash()] = tx1.Hash()
+			}
+			evmProcessor := blockproc.NewMockEVMProcessor(gomock.NewController(t))
+			evmProcessor.EXPECT().Execute(test.txs, 10_000-test.userGasUsed, test.wantSize).Return(summary)
+
+			executing := &executingBlock{
+				evmProcessor: evmProcessor,
+				blockBuilder: inter.NewBlockBuilder(),
+				params:       BlockParams{UserGasLimit: 10_000, Rules: opera.Rules{Upgrades: opera.Upgrades{Brio: test.brio}}},
+				userGasUsed:  test.userGasUsed,
+			}
+			for _, tx := range test.recorded {
+				executing.blockBuilder.AddTransaction(tx, &types.Receipt{})
+			}
+			require.Equal(t, summary, executing.Run(test.txs))
+			require.Equal(t, test.want, executing.blockBuilder.GetTransactions())
+			require.Equal(t, wantUserGasUsed, executing.userGasUsed)
+		})
+	}
 }
 
 func TestExecutingBlock_runInternal_ExecutesWithinBlockGasLimitAndUnlimitedSize(t *testing.T) {

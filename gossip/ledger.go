@@ -26,6 +26,8 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
@@ -65,9 +67,8 @@ type ExecutingBlock interface {
 
 	// Run executes a batch of user transactions against the block being
 	// assembled, honoring the block's user gas limit and the block size limit,
-	// appends the accepted ones, and maps each processed transaction to the
-	// transaction that caused it.
-	Run(txs types.Transactions) map[common.Hash]common.Hash
+	// appends the accepted ones, and returns the execution summary.
+	Run(txs types.Transactions) evmcore.ProcessSummary
 
 	// runInternal executes a batch of system (consensus-internal) transactions
 	// within the block gas limit and without a size limit, appends the accepted
@@ -200,6 +201,7 @@ type executingBlock struct {
 	params       BlockParams
 	evmProcessor blockproc.EVMProcessor
 	blockBuilder *inter.BlockBuilder
+	userGasUsed  uint64
 	finalized    bool
 }
 
@@ -210,17 +212,38 @@ func (eb *executingBlock) stateDB() state.StateDB {
 	return eb.statedb
 }
 
-func (eb *executingBlock) Run(txs types.Transactions) map[common.Hash]common.Hash {
+func (eb *executingBlock) Run(txs types.Transactions) evmcore.ProcessSummary {
 	if eb.finalized {
 		panic("Run called after Finalize")
 	}
-	return processUserTransactions(
-		eb.evmProcessor,
-		eb.blockBuilder,
-		txs,
-		eb.params.UserGasLimit,
-		eb.params.Rules.Upgrades,
-	)
+	remainingSize := uint64(math.MaxUint64)
+	if eb.params.Rules.Upgrades.Brio {
+		remainingSize = uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
+		for _, tx := range eb.blockBuilder.GetTransactions() {
+			txSize := tx.Size()
+			if txSize > remainingSize {
+				// Still call evmProcessor execute with 0 remaining size to
+				// track skipped transactions correctly.
+				log.Warn("block filled with recorded transactions")
+				remainingSize = 0
+				break
+			}
+			remainingSize -= txSize
+		}
+	}
+
+	summary := eb.evmProcessor.Execute(txs, eb.params.UserGasLimit-eb.userGasUsed, remainingSize)
+	for _, processed := range summary.ProcessedTransactions {
+		if processed.Receipt != nil { // < nil if skipped
+			eb.blockBuilder.AddTransaction(
+				processed.Transaction,
+				processed.Receipt,
+			)
+			eb.userGasUsed += processed.Receipt.GasUsed
+		}
+	}
+
+	return summary
 }
 
 func (eb *executingBlock) runInternal(txs types.Transactions) evmcore.ProcessSummary {
