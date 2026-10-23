@@ -18,49 +18,27 @@ package eth
 
 import (
 	"encoding/json"
-	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/rpc/core"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
-	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/tests"
 )
 
-func newHarness(t *testing.T, fc *tests.FakeCore) *tests.Harness {
+// newHarness serves the eth and ftm namespaces over the core.
+func newHarness(t *testing.T, fc *tests.FakeCore, mutate ...func(*dispatch.Config)) *tests.Harness {
 	t.Helper()
-	return tests.NewHarness(t, fc, tests.Default(), func(d *dispatch.Dispatcher, chain *dispatch.Chain) {
-		env := exec.NewEnv(chain, oracle.New(oracle.Config{}, fc))
+	return tests.NewEnvHarness(t, fc, func(d *dispatch.Dispatcher, env *exec.Env) {
 		Register(d, env, "eth")
 		Register(d, env, "ftm")
-	})
-}
-
-func signedTx(t *testing.T, nonce uint64) *types.Transaction {
-	t.Helper()
-	key, err := crypto.GenerateKey()
-	require.NoError(t, err)
-	to := common.Address{0x42}
-	signer := types.LatestSignerForChainID(new(big.Int).SetUint64(opera.FakeNetworkID))
-	tx, err := types.SignNewTx(key, signer, &types.DynamicFeeTx{
-		ChainID:   new(big.Int).SetUint64(opera.FakeNetworkID),
-		Nonce:     nonce,
-		GasTipCap: big.NewInt(0),
-		GasFeeCap: big.NewInt(2000),
-		Gas:       21000,
-		To:        &to,
-		Value:     big.NewInt(1),
-	})
-	require.NoError(t, err)
-	return tx
+	}, mutate...)
 }
 
 func TestEth_ChainId_AndBlockNumber(t *testing.T) {
@@ -85,8 +63,7 @@ func TestEth_BlockNumber_FollowsTheHeadFeed(t *testing.T) {
 	h := newHarness(t, fc)
 
 	fc.AddBlock()
-	fc.AddBlock()
-	require.Eventually(t, func() bool { return h.Chain.Latest() == 3 }, 1e9, 1e6)
+	h.WaitHead(fc.AddBlock().NumberU64())
 
 	var n hexutil.Uint64
 	h.Into(&n, "eth_blockNumber")
@@ -94,7 +71,7 @@ func TestEth_BlockNumber_FollowsTheHeadFeed(t *testing.T) {
 }
 
 func TestEth_GetBlockByNumber(t *testing.T) {
-	tx := signedTx(t, 0)
+	tx := tests.Tx(t, 0)
 	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
 	fc.AddBlock(tx)
 	h := newHarness(t, fc)
@@ -162,7 +139,7 @@ func TestEth_GetHeaderByNumber(t *testing.T) {
 
 func TestEth_BlockTransactionCountAndUncles(t *testing.T) {
 	fc := tests.NewFakeCore(t)
-	fc.AddBlock(signedTx(t, 0), signedTx(t, 1))
+	fc.AddBlock(tests.Tx(t, 0), tests.Tx(t, 1))
 	h := newHarness(t, fc)
 
 	var count *hexutil.Uint
@@ -186,7 +163,7 @@ func TestEth_BlockTransactionCountAndUncles(t *testing.T) {
 }
 
 func TestEth_TransactionByIndexAndRaw(t *testing.T) {
-	tx := signedTx(t, 0)
+	tx := tests.Tx(t, 0)
 	fc := tests.NewFakeCore(t)
 	block := fc.AddBlock(tx)
 	h := newHarness(t, fc)
@@ -217,7 +194,7 @@ func TestEth_TransactionByIndexAndRaw(t *testing.T) {
 }
 
 func TestEth_GetTransactionByHash_ChainAndPool(t *testing.T) {
-	mined, pending := signedTx(t, 0), signedTx(t, 1)
+	mined, pending := tests.Tx(t, 0), tests.Tx(t, 1)
 	fc := tests.NewFakeCore(t)
 	fc.AddBlock(mined)
 	fc.AddPoolTransaction(pending)
@@ -239,7 +216,7 @@ func TestEth_GetTransactionByHash_ChainAndPool(t *testing.T) {
 }
 
 func TestEth_GetTransactionByHash_HidesTransactionsAboveTheHead(t *testing.T) {
-	tx := signedTx(t, 0)
+	tx := tests.Tx(t, 0)
 	fc := tests.NewFakeCore(t)
 	h := newHarness(t, fc)
 	fc.AddBlockSilently(tx) // not announced: the module does not serve it yet
@@ -250,7 +227,7 @@ func TestEth_GetTransactionByHash_HidesTransactionsAboveTheHead(t *testing.T) {
 }
 
 func TestEth_GetRawTransactionByHash(t *testing.T) {
-	mined, pending := signedTx(t, 0), signedTx(t, 1)
+	mined, pending := tests.Tx(t, 0), tests.Tx(t, 1)
 	fc := tests.NewFakeCore(t)
 	fc.AddBlock(mined)
 	fc.AddPoolTransaction(pending)
@@ -269,7 +246,7 @@ func TestEth_GetRawTransactionByHash(t *testing.T) {
 }
 
 func TestEth_GetTransactionReceipt(t *testing.T) {
-	tx := signedTx(t, 0)
+	tx := tests.Tx(t, 0)
 	fc := tests.NewFakeCore(t)
 	block := fc.AddBlock(tx)
 	h := newHarness(t, fc)
@@ -290,7 +267,7 @@ func TestEth_GetTransactionReceipt(t *testing.T) {
 }
 
 func TestEth_GetBlockReceipts(t *testing.T) {
-	a, b := signedTx(t, 0), signedTx(t, 1)
+	a, b := tests.Tx(t, 0), tests.Tx(t, 1)
 	fc := tests.NewFakeCore(t)
 	block := fc.AddBlock(a, b)
 	h := newHarness(t, fc)
@@ -360,7 +337,7 @@ func TestEth_Rules_Epoch_Config(t *testing.T) {
 func TestEth_CoreFailuresAreNotPanics(t *testing.T) {
 	for _, mode := range []tests.Mode{tests.Fail, tests.NotFound, tests.Nil} {
 		fc := tests.NewFakeCore(t, tests.WithBlocks(2))
-		fc.AddBlock(signedTx(t, 0))
+		fc.AddBlock(tests.Tx(t, 0))
 		h := newHarness(t, fc)
 		fc.Inject("*", mode)
 		for _, call := range []struct {

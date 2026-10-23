@@ -18,22 +18,19 @@ package exec_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
-	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/tests"
 )
 
 func TestEnv_TxByHash(t *testing.T) {
 	env, fc := newEnv(t)
 	tx := tests.NewAccount(t, nil, nil).Transfer(t, 0, common.Address{1}, 1)
-	fc.AddBlock(tx)
-	require.Eventually(t, func() bool { return env.Chain.Latest() == 3 }, time.Second, time.Millisecond)
+	tests.WaitHead(t, env.Chain, fc.AddBlock(tx).NumberU64())
 	head := env.Chain.Head()
 
 	got, block, index, err := env.TxByHash(head, tx.Hash())
@@ -118,11 +115,7 @@ func TestEnv_FindBlock(t *testing.T) {
 
 func TestEnv_StateAt(t *testing.T) {
 	fc, _ := tests.NewCarmenCore(t, tests.WithBlocks(2))
-	d := dispatch.New(dispatch.DefaultConfig(), dispatch.NewMetrics(nil))
-	chain := dispatch.NewChain(fc, dispatch.DefaultConfig(), d.Metrics())
-	require.NoError(t, chain.Start(d))
-	t.Cleanup(func() { d.Stop(0) })
-	env := exec.NewEnv(chain, oracle.New(oracle.Config{}, fc))
+	env := tests.NewEnvHarness(t, fc, nil).Env
 	head := env.Chain.Head()
 
 	t.Run("head", func(t *testing.T) {
@@ -159,11 +152,7 @@ func TestEnv_StateAt(t *testing.T) {
 
 func TestEnv_OpenStateReadsNoHeader(t *testing.T) {
 	fc, _ := tests.NewCarmenCore(t, tests.WithBlocks(2))
-	d := dispatch.New(dispatch.DefaultConfig(), dispatch.NewMetrics(nil))
-	chain := dispatch.NewChain(fc, dispatch.DefaultConfig(), d.Metrics())
-	require.NoError(t, chain.Start(d))
-	t.Cleanup(func() { d.Stop(0) })
-	env := exec.NewEnv(chain, oracle.New(oracle.Config{}, fc))
+	env := tests.NewEnvHarness(t, fc, nil).Env
 	head := env.Chain.Head()
 
 	fc.Inject("Header", tests.Fail)

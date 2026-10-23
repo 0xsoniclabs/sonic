@@ -17,7 +17,7 @@
 package debug
 
 import (
-	"math/big"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -29,42 +29,24 @@ import (
 
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
-	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/tests"
 )
 
-var (
-	bob      = common.HexToAddress("0xb0b")
-	contract = common.HexToAddress("0xc0de")
-	// PUSH1 1 PUSH1 0 SSTORE STOP
-	stores = []byte{0x60, 0x01, 0x60, 0x00, 0x55, 0x00}
-)
-
+// fixture serves the debug namespace over the replay chain.
 type fixture struct {
-	h     *tests.Harness
-	fc    *tests.FakeCore
-	alice tests.Account
-	tx0   *types.Transaction
-	tx1   *types.Transaction
-	block *struct{ number uint64 }
+	*tests.ReplayChain
+	h *tests.Harness
 }
 
 func newFixture(t *testing.T, mutate ...func(*dispatch.Config)) *fixture {
 	t.Helper()
-	fc, cs := tests.NewCarmenCore(t, tests.WithBlocks(1))
-	alice := tests.NewAccount(t, cs, big.NewInt(1e18))
-	cs.SetCode(contract, stores)
-	tx0 := alice.Transfer(t, 0, bob, 5)
-	tx1 := alice.Call(t, 1, contract, 0, nil, 100_000)
-	block := fc.AddBlock(tx0, tx1)
-	cfg := tests.Default()
-	for _, m := range mutate {
-		m(&cfg)
-	}
-	h := tests.NewHarness(t, fc, cfg, func(d *dispatch.Dispatcher, chain *dispatch.Chain) {
-		Register(d, exec.NewEnv(chain, oracle.New(oracle.Config{}, fc)))
-	})
-	return &fixture{h: h, fc: fc, alice: alice, tx0: tx0, tx1: tx1, block: &struct{ number uint64 }{block.NumberU64()}}
+	r := tests.NewReplayChain(t)
+	return &fixture{ReplayChain: r, h: newHarness(t, r.Core, mutate...)}
+}
+
+func newHarness(t *testing.T, fc *tests.FakeCore, mutate ...func(*dispatch.Config)) *tests.Harness {
+	t.Helper()
+	return tests.NewEnvHarness(t, fc, func(d *dispatch.Dispatcher, env *exec.Env) { Register(d, env) }, mutate...)
 }
 
 func TestTraceTransaction_DefaultStructLogger(t *testing.T) {
@@ -76,17 +58,24 @@ func TestTraceTransaction_DefaultStructLogger(t *testing.T) {
 			Op string `json:"op"`
 		} `json:"structLogs"`
 	}
-	f.h.Into(&res, "debug_traceTransaction", f.tx1.Hash())
+	f.h.Into(&res, "debug_traceTransaction", f.Store.Hash())
 	require.False(t, res.Failed)
 	var ops []string
 	for _, l := range res.StructLogs {
 		ops = append(ops, l.Op)
 	}
 	require.Contains(t, ops, "SSTORE")
+	require.Len(t, ops, 4) // PUSH1 PUSH1 SSTORE STOP
 
-	// The struct log is cut at the configured limit.
-	h := newFixture(t, func(c *dispatch.Config) { c.StructLogLimit = 2 }).h
-	_ = h
+	// The struct log is cut at the configured limit, which also caps a larger
+	// limit of the client. In the go-ethereum version of the module the limit
+	// is a size in bytes: 2 lets only the first log through.
+	f = newFixture(t, func(c *dispatch.Config) { c.StructLogLimit = 2 })
+	for _, config := range []string{`{}`, `{"limit":0}`, `{"limit":100000}`} {
+		res.StructLogs = nil
+		f.h.Into(&res, "debug_traceTransaction", f.Store.Hash(), json.RawMessage(config))
+		require.Len(t, res.StructLogs, 1, config)
+	}
 }
 
 func TestTraceTransaction_CallTracer(t *testing.T) {
@@ -97,9 +86,9 @@ func TestTraceTransaction_CallTracer(t *testing.T) {
 		Value hexutil.Big    `json:"value"`
 		Type  string         `json:"type"`
 	}
-	f.h.Into(&res, "debug_traceTransaction", f.tx0.Hash(), map[string]any{"tracer": "callTracer"})
-	require.Equal(t, f.alice.Addr, res.From)
-	require.Equal(t, bob, res.To)
+	f.h.Into(&res, "debug_traceTransaction", f.Transfer.Hash(), map[string]any{"tracer": "callTracer"})
+	require.Equal(t, f.Alice.Addr, res.From)
+	require.Equal(t, f.Bob, res.To)
 	require.Equal(t, int64(5), res.Value.ToInt().Int64())
 	require.Equal(t, "CALL", res.Type)
 }
@@ -110,32 +99,32 @@ func TestTraceTransaction_Errors(t *testing.T) {
 	require.Equal(t, "transaction "+common.Hash{9}.Hex()+" not found", err.Message)
 
 	// Only built-in tracers run unless the operator allows others.
-	err = f.h.Fails("debug_traceTransaction", f.tx0.Hash(), map[string]any{"tracer": "{result: function() { return 1 }, fault: function() {}}"})
+	err = f.h.Fails("debug_traceTransaction", f.Transfer.Hash(), map[string]any{"tracer": "{result: function() { return 1 }, fault: function() {}}"})
 	require.Equal(t, "custom tracer is not permitted", err.Message)
-	err = f.h.Fails("debug_traceTransaction", f.tx0.Hash(), map[string]any{"tracer": "nope"})
+	err = f.h.Fails("debug_traceTransaction", f.Transfer.Hash(), map[string]any{"tracer": "nope"})
 	require.Equal(t, "custom tracer is not permitted", err.Message)
 }
 
 func TestTraceTransaction_TimeoutIsCheckedWhereTheTracerIsBuilt(t *testing.T) {
 	f := newFixture(t, func(c *dispatch.Config) { c.EVMTimeout = time.Minute })
-	err := f.h.Fails("debug_traceTransaction", f.tx0.Hash(), map[string]any{"tracer": "callTracer", "timeout": "5m"})
+	err := f.h.Fails("debug_traceTransaction", f.Transfer.Hash(), map[string]any{"tracer": "callTracer", "timeout": "5m"})
 	require.Equal(t, dispatch.CodeInvalidParams, err.Code)
 	require.Contains(t, err.Message, "exceeds the limit")
-	err = f.h.Fails("debug_traceTransaction", f.tx0.Hash(), map[string]any{"tracer": "callTracer", "timeout": "soon"})
+	err = f.h.Fails("debug_traceTransaction", f.Transfer.Hash(), map[string]any{"tracer": "callTracer", "timeout": "soon"})
 	require.Equal(t, dispatch.CodeInvalidParams, err.Code)
-	f.h.Result("debug_traceTransaction", f.tx0.Hash(), map[string]any{"tracer": "callTracer", "timeout": "30s"})
+	f.h.Result("debug_traceTransaction", f.Transfer.Hash(), map[string]any{"tracer": "callTracer", "timeout": "30s"})
 
 	// The subject is found first: an unknown transaction is reported as such.
 	err = f.h.Fails("debug_traceTransaction", common.Hash{9}, map[string]any{"timeout": "5m"})
 	require.Contains(t, err.Message, "not found")
 	// ... and the tracer name before the timeout.
-	err = f.h.Fails("debug_traceTransaction", f.tx0.Hash(), map[string]any{"tracer": "nope", "timeout": "5m"})
+	err = f.h.Fails("debug_traceTransaction", f.Transfer.Hash(), map[string]any{"tracer": "nope", "timeout": "5m"})
 	require.Equal(t, "custom tracer is not permitted", err.Message)
 }
 
 func TestTraceTransaction_ResponseSizeIsLimited(t *testing.T) {
 	f := newFixture(t, func(c *dispatch.Config) { c.MaxResponseSize = 10 })
-	err := f.h.Fails("debug_traceTransaction", f.tx1.Hash())
+	err := f.h.Fails("debug_traceTransaction", f.Store.Hash())
 	require.Equal(t, ErrMaxResponseSize.Error(), err.Message)
 }
 
@@ -144,7 +133,7 @@ func TestTraceBlock(t *testing.T) {
 	for _, call := range [][]any{
 		{"debug_traceBlockByNumber", "latest", map[string]any{"tracer": "callTracer"}},
 		{"debug_traceBlockByNumber", "0x2"},
-		{"debug_traceBlockByHash", f.fc.BlockAt(2).Hash, map[string]any{"tracer": "callTracer"}},
+		{"debug_traceBlockByHash", f.Core.BlockAt(2).Hash, map[string]any{"tracer": "callTracer"}},
 	} {
 		var res []struct {
 			TxHash common.Hash `json:"txHash"`
@@ -152,8 +141,8 @@ func TestTraceBlock(t *testing.T) {
 		}
 		f.h.Into(&res, call[0].(string), call[1:]...)
 		require.Len(t, res, 2, call[0])
-		require.Equal(t, f.tx0.Hash(), res[0].TxHash)
-		require.Equal(t, f.tx1.Hash(), res[1].TxHash)
+		require.Equal(t, f.Transfer.Hash(), res[0].TxHash)
+		require.Equal(t, f.Store.Hash(), res[1].TxHash)
 	}
 
 	err := f.h.Fails("debug_traceBlockByNumber", "0x0")
@@ -170,13 +159,13 @@ func TestTraceCall(t *testing.T) {
 		Type string         `json:"type"`
 		To   common.Address `json:"to"`
 	}
-	f.h.Into(&res, "debug_traceCall", map[string]any{"from": f.alice.Addr, "to": contract, "gas": "0x30000"}, "latest",
+	f.h.Into(&res, "debug_traceCall", map[string]any{"from": f.Alice.Addr, "to": f.Contract, "gas": "0x30000"}, "latest",
 		map[string]any{"tracer": "callTracer"})
-	require.Equal(t, contract, res.To)
+	require.Equal(t, f.Contract, res.To)
 
-	f.h.Result("debug_traceCall", map[string]any{"from": f.alice.Addr, "to": bob}, f.fc.BlockAt(1).Hash)
+	f.h.Result("debug_traceCall", map[string]any{"from": f.Alice.Addr, "to": f.Bob}, f.Core.BlockAt(1).Hash)
 
-	err := f.h.Fails("debug_traceCall", map[string]any{"to": bob}, "pending")
+	err := f.h.Fails("debug_traceCall", map[string]any{"to": f.Bob}, "pending")
 	require.Equal(t, "tracing on top of pending is not supported", err.Message)
 	// Missing blocks are "header not found", whatever the call object holds.
 	bad := map[string]any{"gasPrice": "0x1", "maxFeePerGas": "0x1"}
@@ -192,12 +181,11 @@ func TestTraceCall(t *testing.T) {
 // header: it does not walk the chain down to genesis.
 func TestTraceCall_BlockHashUnderABlockOverrideReadsNoHeader(t *testing.T) {
 	const blocks = 1000
+	contract := common.HexToAddress("0xc0de")
 	fc, cs := tests.NewCarmenCore(t, tests.WithBlocks(blocks))
 	// PUSH2 blocks BLOCKHASH STOP
 	cs.SetCode(contract, []byte{0x61, byte(blocks >> 8), byte(blocks & 0xff), 0x40, 0x00})
-	h := tests.NewHarness(t, fc, tests.Default(), func(d *dispatch.Dispatcher, chain *dispatch.Chain) {
-		Register(d, exec.NewEnv(chain, oracle.New(oracle.Config{}, fc)))
-	})
+	h := newHarness(t, fc)
 	trace := func(config map[string]any) int {
 		before := fc.Calls("Header")
 		h.Result("debug_traceCall", map[string]any{"to": contract}, "latest", config)
@@ -212,7 +200,7 @@ func TestTraceCall_BlockHashUnderABlockOverrideReadsNoHeader(t *testing.T) {
 
 func TestBlockEncodings(t *testing.T) {
 	f := newFixture(t)
-	number := f.block.number
+	number := f.Block
 	// The RLP of a block is that of the node's block type, which holds a
 	// duration RLP cannot encode: the answer is the same error as ever.
 	require.Contains(t, f.h.Fails("debug_getBlockRlp", number).Message, "is not RLP-serializable")
@@ -229,9 +217,9 @@ func TestBlockEncodings(t *testing.T) {
 	var block types.Block
 	require.NoError(t, rlp.DecodeBytes(raw, &block))
 	require.Len(t, block.Transactions(), 2)
-	require.Equal(t, f.tx0.Hash(), block.Transactions()[0].Hash())
+	require.Equal(t, f.Transfer.Hash(), block.Transactions()[0].Hash())
 
-	f.h.Into(&raw, "debug_getRawHeader", f.fc.BlockAt(number).Hash)
+	f.h.Into(&raw, "debug_getRawHeader", f.Core.BlockAt(number).Hash)
 	var header types.Header
 	require.NoError(t, rlp.DecodeBytes(raw, &header))
 	require.EqualValues(t, number, header.Number.Uint64())
@@ -243,9 +231,9 @@ func TestBlockEncodings(t *testing.T) {
 	require.NoError(t, receipt.UnmarshalBinary(receipts[0]))
 	require.EqualValues(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	want, err3 := f.tx1.MarshalBinary()
+	want, err3 := f.Store.MarshalBinary()
 	require.NoError(t, err3)
-	f.h.Into(&raw, "debug_getRawTransaction", f.tx1.Hash())
+	f.h.Into(&raw, "debug_getRawTransaction", f.Store.Hash())
 	require.Equal(t, hexutil.Bytes(want), raw)
 	require.JSONEq(t, `"0x"`, string(f.h.Result("debug_getRawTransaction", common.Hash{9})))
 

@@ -27,8 +27,6 @@ import (
 
 func TestVersionIsTheNetworkID(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithChainID(146))
-	h := tests.NewHarness(t, fc, tests.Default(), func(d *dispatch.Dispatcher, _ *dispatch.Chain) {
-		Register(d, fc)
-	})
+	h := tests.NewHarness(t, fc, func(d *dispatch.Dispatcher, _ *dispatch.Chain) { Register(d, fc) })
 	require.JSONEq(t, `"146"`, string(h.Result("net_version")))
 }

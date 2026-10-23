@@ -29,9 +29,7 @@ import (
 
 func TestTxPool_Methods(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
-	h := tests.NewHarness(t, fc, tests.Default(), func(d *dispatch.Dispatcher, chain *dispatch.Chain) {
-		Register(d, chain)
-	})
+	h := tests.NewHarness(t, fc, func(d *dispatch.Dispatcher, chain *dispatch.Chain) { Register(d, chain) })
 	alice := tests.NewAccount(t, nil, nil)
 	bob := tests.NewAccount(t, nil, nil)
 	tx0 := alice.Transfer(t, 0, bob.Addr, 5)
@@ -72,9 +70,7 @@ func TestTxPool_Methods(t *testing.T) {
 
 func TestTxPool_CoreFailuresAreNotPanics(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
-	h := tests.NewHarness(t, fc, tests.Default(), func(d *dispatch.Dispatcher, chain *dispatch.Chain) {
-		Register(d, chain)
-	})
+	h := tests.NewHarness(t, fc, func(d *dispatch.Dispatcher, chain *dispatch.Chain) { Register(d, chain) })
 	for _, mode := range []tests.Mode{tests.Fail, tests.Nil, tests.NotFound} {
 		fc.Inject("*", mode)
 		for _, method := range []string{"txpool_content", "txpool_status", "txpool_inspect"} {

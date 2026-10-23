@@ -32,7 +32,6 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/core"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
-	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/tests"
 )
 
@@ -44,17 +43,13 @@ var (
 
 func newHarness(t *testing.T, fc *tests.FakeCore, mutate ...func(*dispatch.Config)) (*tests.Harness, *API) {
 	t.Helper()
-	cfg := tests.Default()
-	for _, m := range mutate {
-		m(&cfg)
-	}
 	var api *API
-	h := tests.NewHarness(t, fc, cfg, func(d *dispatch.Dispatcher, chain *dispatch.Chain) {
-		api = New(exec.NewEnv(chain, oracle.New(oracle.Config{}, fc)))
+	h := tests.NewEnvHarness(t, fc, func(d *dispatch.Dispatcher, env *exec.Env) {
+		api = New(env)
 		api.Register(d, "eth")
 		api.Register(d, "ftm")
 		api.Start(d)
-	})
+	}, mutate...)
 	return h, api
 }
 
@@ -78,6 +73,7 @@ func chainWithLogs(t *testing.T, blocks int) (*tests.FakeCore, []*types.Transact
 			Address: addr, Topics: []common.Hash{topic}, BlockNumber: block.NumberU64(), BlockHash: block.Hash,
 			TxHash: tx.Hash(), TxIndex: 99, Index: uint(n),
 		}}
+		fc.SetReceipts(block.NumberU64(), receipts)
 	}
 	fc.AnnounceUpTo(uint64(blocks))
 	return fc, txs
@@ -159,7 +155,7 @@ func TestGetLogs_Indexed(t *testing.T) {
 	require.EqualValues(t, 1, seen.from)
 	require.EqualValues(t, 6, seen.to)
 	require.Equal(t, [][]common.Hash{{common.BytesToHash(addrA[:])}, {topic}, nil}, seen.pattern)
-	require.EqualValues(t, tests.Default().LogQueryResultLimit, seen.limit)
+	require.EqualValues(t, dispatch.DefaultConfig().LogQueryResultLimit, seen.limit)
 	require.Len(t, logs, 6)
 	for i, l := range logs {
 		require.EqualValues(t, i+1, l.BlockNumber)
@@ -192,6 +188,10 @@ func TestGetLogs_Limits(t *testing.T) {
 	require.Equal(t, "too many results, consider narrowing your query criteria, the limit is 2", err.Message)
 
 	// The parameter limit holds on every path, before any block is read.
+	reads := func() int {
+		return fc.Calls("Header") + fc.Calls("Block") + fc.Calls("Receipts") + fc.Calls("FindLogs")
+	}
+	before := reads()
 	tooMany := map[string]any{"address": []string{addrA.Hex(), addrB.Hex()}, "topics": []any{topic.Hex(), topic.Hex()}}
 	for _, call := range []struct {
 		method string
@@ -203,7 +203,7 @@ func TestGetLogs_Limits(t *testing.T) {
 		err = h.Fails(call.method, call.params...)
 		require.Equal(t, "too many query parameters, the limit is 3", err.Message, call.method)
 	}
-	require.Zero(t, fc.Calls("Header")-fc.Calls("Header")) // no access needed to refuse
+	require.Equal(t, before, reads(), "no access is needed to refuse")
 }
 
 func TestGetLogs_ByBlockHash(t *testing.T) {

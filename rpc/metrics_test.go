@@ -27,72 +27,19 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/0xsoniclabs/sonic/rpc"
 	"github.com/0xsoniclabs/sonic/rpc/core"
-	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/tests"
-	"github.com/0xsoniclabs/sonic/rpc/transport"
 )
-
-// scrape reads the series of a registry: the name with its labels in the
-// order of the metric family, to the value (the sample count for histograms).
-type scrape map[string]float64
-
-func gather(t *testing.T, reg *prometheus.Registry) scrape {
-	t.Helper()
-	families, err := reg.Gather()
-	require.NoError(t, err)
-	res := scrape{}
-	for _, f := range families {
-		for _, m := range f.GetMetric() {
-			key := f.GetName()
-			for _, l := range m.GetLabel() {
-				key += fmt.Sprintf("{%s=%s}", l.GetName(), l.GetValue())
-			}
-			switch {
-			case m.Counter != nil:
-				res[key] = m.GetCounter().GetValue()
-			case m.Gauge != nil:
-				res[key] = m.GetGauge().GetValue()
-			case m.Histogram != nil:
-				res[key+"_count"] = float64(m.GetHistogram().GetSampleCount())
-				res[key+"_sum"] = m.GetHistogram().GetSampleSum()
-			}
-		}
-	}
-	return res
-}
-
-func startModuleWith(t *testing.T, fc *tests.FakeCore, reg *prometheus.Registry) (*rpc.Module, string, string) {
-	t.Helper()
-	sock := t.TempDir() + "/m.ipc"
-	module, err := rpc.New(rpc.Config{
-		Limits: dispatch.DefaultConfig(),
-		HTTP: &transport.HTTPConfig{
-			Host: "127.0.0.1",
-			WS:   &transport.WSConfig{StreamConfig: transport.StreamConfig{MaxSubscriptions: 4}},
-		},
-		IPC: &rpc.IPCConfig{Path: sock},
-	}, fc, rpc.WithMetrics(dispatch.NewMetrics(reg)))
-	require.NoError(t, err)
-	require.NoError(t, module.Start())
-	t.Cleanup(func() { require.NoError(t, module.Stop()) })
-	return module, module.HTTPAddr(), sock
-}
 
 // MON2: per method counters and histograms, HTTP, WebSocket and IPC alike.
 func TestMetrics_CountRequestsOfEveryTransport(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(2))
 	reg := prometheus.NewRegistry()
-	_, addr, sock := startModuleWith(t, fc, reg)
+	_, addr, sock := startWithMetrics(t, fc, reg)
 
-	httpClient, err := gethrpc.DialHTTP("http://" + addr)
-	require.NoError(t, err)
-	defer httpClient.Close()
+	httpClient := dialHTTP(t, addr)
 	wsClient := dialWS(t, addr)
-	ipcClient, err := gethrpc.DialIPC(context.Background(), sock)
-	require.NoError(t, err)
-	defer ipcClient.Close()
+	ipcClient := dialIPC(t, sock)
 
 	for _, c := range []*gethrpc.Client{httpClient, wsClient, ipcClient} {
 		var n string
@@ -122,10 +69,8 @@ func TestMetrics_CountRequestsOfEveryTransport(t *testing.T) {
 func TestMetrics_CardinalityIsBoundedByTheMethodTable(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
 	reg := prometheus.NewRegistry()
-	_, addr, _ := startModuleWith(t, fc, reg)
-	client, err := gethrpc.DialHTTP("http://" + addr)
-	require.NoError(t, err)
-	defer client.Close()
+	_, addr, _ := startWithMetrics(t, fc, reg)
+	client := dialHTTP(t, addr)
 
 	var out any
 	before := len(gather(t, reg))
@@ -146,12 +91,10 @@ func TestMetrics_CardinalityIsBoundedByTheMethodTable(t *testing.T) {
 func TestMetrics_ConnectionsAndSubscriptions(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
 	reg := prometheus.NewRegistry()
-	_, addr, sock := startModuleWith(t, fc, reg)
+	_, addr, sock := startWithMetrics(t, fc, reg)
 
 	ws := dialWS(t, addr)
-	ipcClient, err := gethrpc.DialIPC(context.Background(), sock)
-	require.NoError(t, err)
-	defer ipcClient.Close()
+	ipcClient := dialIPC(t, sock)
 	var n string
 	require.NoError(t, ws.Call(&n, "eth_blockNumber"))
 	require.NoError(t, ipcClient.Call(&n, "eth_blockNumber"))
@@ -186,7 +129,7 @@ func TestMetrics_ConnectionsAndSubscriptions(t *testing.T) {
 func TestMetrics_HeadServedAndLag(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(3))
 	reg := prometheus.NewRegistry()
-	_, _, _ = startModuleWith(t, fc, reg)
+	_, _, _ = startWithMetrics(t, fc, reg)
 
 	require.EqualValues(t, 3, gather(t, reg)["rpc_head_served"])
 

@@ -32,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
@@ -46,52 +45,12 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/transport"
 )
 
-// startModule runs a module over the core with HTTP and WebSocket on one
-// ephemeral port, and a unix socket.
-func startModule(t *testing.T, fc *tests.FakeCore, mutate ...func(*rpc.Config)) (*rpc.Module, string, string) {
-	t.Helper()
-	sock := filepath.Join(t.TempDir(), "sonic.ipc")
-	cfg := rpc.Config{
-		Limits:        dispatch.DefaultConfig(),
-		ClientVersion: "test/v0",
-		HTTP: &transport.HTTPConfig{
-			Host: "127.0.0.1",
-			WS: &transport.WSConfig{
-				StreamConfig: transport.StreamConfig{MaxSubscriptions: 4},
-				Origins:      []string{"http://allowed.example"},
-			},
-			VHosts: []string{"localhost", "allowed.example"},
-		},
-		IPC: &rpc.IPCConfig{Path: sock},
-	}
-	for _, m := range mutate {
-		m(&cfg)
-	}
-	module, err := rpc.New(cfg, fc, rpc.WithMetrics(dispatch.NewMetrics(nil)))
-	require.NoError(t, err)
-	require.NoError(t, module.Start())
-	t.Cleanup(func() { require.NoError(t, module.Stop()) })
-	return module, module.HTTPAddr(), sock
-}
-
-func dialWS(t *testing.T, addr string) *gethrpc.Client {
-	t.Helper()
-	client, err := gethrpc.DialWebsocket(context.Background(), "ws://"+addr, "")
-	require.NoError(t, err)
-	t.Cleanup(client.Close)
-	return client
-}
-
 func TestModule_ServesHTTPWebSocketAndIPC(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(3))
 	_, addr, sock := startModule(t, fc)
 
-	httpClient, err := gethrpc.DialHTTP("http://" + addr)
-	require.NoError(t, err)
-	defer httpClient.Close()
-	ipcClient, err := gethrpc.DialIPC(context.Background(), sock)
-	require.NoError(t, err)
-	defer ipcClient.Close()
+	httpClient := dialHTTP(t, addr)
+	ipcClient := dialIPC(t, sock)
 	wsClient := dialWS(t, addr)
 
 	for name, client := range map[string]*gethrpc.Client{"http": httpClient, "ws": wsClient, "ipc": ipcClient} {
@@ -136,13 +95,8 @@ func TestModule_NewHeadsSubscription(t *testing.T) {
 	_, addr, sock := startModule(t, fc)
 
 	for name, client := range map[string]*gethrpc.Client{
-		"ws": dialWS(t, addr),
-		"ipc": func() *gethrpc.Client {
-			c, err := gethrpc.DialIPC(context.Background(), sock)
-			require.NoError(t, err)
-			t.Cleanup(c.Close)
-			return c
-		}(),
+		"ws":  dialWS(t, addr),
+		"ipc": dialIPC(t, sock),
 	} {
 		heads := make(chan map[string]any, 8)
 		sub, err := client.EthSubscribe(context.Background(), heads, "newHeads")
@@ -239,7 +193,7 @@ func TestModule_LogsAndPendingTransactionSubscriptions(t *testing.T) {
 		t.Fatal("no log")
 	}
 
-	tx := signedTx(t, 0)
+	tx := tests.Tx(t, 0)
 	fc.AddPoolTransaction(tx)
 	select {
 	case h := <-hashes:
@@ -254,20 +208,6 @@ func TestModule_LogsAndPendingTransactionSubscriptions(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("no pending transaction")
 	}
-}
-
-func signedTx(t *testing.T, nonce uint64) *types.Transaction {
-	t.Helper()
-	key, err := crypto.GenerateKey()
-	require.NoError(t, err)
-	to := common.Address{0x42}
-	signer := types.LatestSignerForChainID(new(big.Int).SetUint64(opera.FakeNetworkID))
-	tx, err := types.SignNewTx(key, signer, &types.DynamicFeeTx{
-		ChainID: new(big.Int).SetUint64(opera.FakeNetworkID), Nonce: nonce,
-		GasFeeCap: big.NewInt(2000), Gas: 21000, To: &to, Value: big.NewInt(1),
-	})
-	require.NoError(t, err)
-	return tx
 }
 
 func TestModule_SubscriptionErrors(t *testing.T) {
@@ -346,20 +286,16 @@ func TestModule_SubscriptionIdsBelongToTheConnection(t *testing.T) {
 func TestModule_SubscriptionsAreNotAvailableOverHTTP(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
 	_, addr, _ := startModule(t, fc)
-	client, err := gethrpc.DialHTTP("http://" + addr)
-	require.NoError(t, err)
-	defer client.Close()
+	client := dialHTTP(t, addr)
 	var id string
-	err = client.Call(&id, "eth_subscribe", "newHeads")
+	err := client.Call(&id, "eth_subscribe", "newHeads")
 	require.ErrorContains(t, err, "notifications not supported")
 }
 
 func TestModule_PolledFilters(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
 	_, addr, _ := startModule(t, fc)
-	client, err := gethrpc.DialHTTP("http://" + addr)
-	require.NoError(t, err)
-	defer client.Close()
+	client := dialHTTP(t, addr)
 
 	var blockFilter, txFilter, fullTxFilter, logFilter string
 	require.NoError(t, client.Call(&blockFilter, "eth_newBlockFilter"))
@@ -378,7 +314,7 @@ func TestModule_PolledFilters(t *testing.T) {
 	require.Equal(t, "null", string(raw)) // the answer of a pending transaction filter with nothing new
 
 	block := fc.AddBlock()
-	tx := signedTx(t, 0)
+	tx := tests.Tx(t, 0)
 	fc.AddPoolTransaction(tx)
 	fc.Publish(core.HeadEvent{Block: block, Logs: []*types.Log{
 		{Address: common.HexToAddress("0xaa"), BlockNumber: 2, Topics: []common.Hash{}},
@@ -420,7 +356,7 @@ func TestModule_PolledFilters(t *testing.T) {
 	require.True(t, found)
 	require.NoError(t, client.Call(&found, "eth_uninstallFilter", blockFilter))
 	require.False(t, found)
-	err = client.Call(&hashes, "eth_getFilterChanges", blockFilter)
+	err := client.Call(&hashes, "eth_getFilterChanges", blockFilter)
 	require.ErrorContains(t, err, "filter not found")
 	// Only log filters have logs.
 	err = client.Call(&logs, "eth_getFilterLogs", txFilter)
@@ -430,9 +366,7 @@ func TestModule_PolledFilters(t *testing.T) {
 func TestModule_FiltersExpireWithoutPolls(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
 	_, addr, _ := startModule(t, fc, func(c *rpc.Config) { c.Limits.FilterTimeout = 300 * time.Millisecond })
-	client, err := gethrpc.DialHTTP("http://" + addr)
-	require.NoError(t, err)
-	defer client.Close()
+	client := dialHTTP(t, addr)
 
 	var idle, polled string
 	require.NoError(t, client.Call(&idle, "eth_newBlockFilter"))
@@ -450,12 +384,12 @@ func TestModule_FiltersExpireWithoutPolls(t *testing.T) {
 
 func TestModule_StopLeavesNoGoroutinesBehindUnderLoad(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(2))
-	sock := filepath.Join(t.TempDir(), "s.ipc")
 	cfg := rpc.Config{
 		Limits: dispatch.DefaultConfig(),
 		HTTP:   &transport.HTTPConfig{Host: "127.0.0.1", WS: &transport.WSConfig{}},
-		IPC:    &rpc.IPCConfig{Path: sock},
+		IPC:    &rpc.IPCConfig{Path: filepath.Join(t.TempDir(), "s.ipc")},
 	}
+	// Not started by start: the test stops the module itself, under load.
 	module, err := rpc.New(cfg, fc, rpc.WithMetrics(dispatch.NewMetrics(nil)))
 	require.NoError(t, err)
 	require.NoError(t, module.Start())
@@ -587,9 +521,7 @@ func TestModule_AStalledClientDoesNotHoldTheServer(t *testing.T) {
 	require.NotContains(t, err.Error(), "i/o timeout")
 
 	// Other clients are served meanwhile.
-	client, err := gethrpc.DialHTTP("http://" + addr)
-	require.NoError(t, err)
-	defer client.Close()
+	client := dialHTTP(t, addr)
 	var n hexutil.Uint64
 	require.NoError(t, client.Call(&n, "eth_blockNumber"))
 }
@@ -629,18 +561,14 @@ func TestModule_NamespacesAreEnabledPerTransport(t *testing.T) {
 		c.HTTP.Modules = []string{"eth", "web3"}
 		c.HTTP.WS.Modules = []string{"net"}
 	})
-	httpClient, err := gethrpc.DialHTTP("http://" + addr)
-	require.NoError(t, err)
-	defer httpClient.Close()
+	httpClient := dialHTTP(t, addr)
 	wsClient := dialWS(t, addr)
-	ipcClient, err := gethrpc.DialIPC(context.Background(), sock)
-	require.NoError(t, err)
-	defer ipcClient.Close()
+	ipcClient := dialIPC(t, sock)
 
 	var out json.RawMessage
 	require.NoError(t, httpClient.Call(&out, "eth_blockNumber"))
 	require.NoError(t, httpClient.Call(&out, "web3_clientVersion"))
-	err = httpClient.Call(&out, "net_version")
+	err := httpClient.Call(&out, "net_version")
 	require.ErrorContains(t, err, "does not exist/is not available")
 	err = httpClient.Call(&out, "ftm_blockNumber") // ftm has to be named to be enabled
 	require.ErrorContains(t, err, "does not exist/is not available")
@@ -676,12 +604,8 @@ func TestModule_NamespacesAreEnabledPerTransport(t *testing.T) {
 func TestModule_EthStopIsNotCallable(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
 	_, addr, sock := startModule(t, fc)
-	httpClient, err := gethrpc.DialHTTP("http://" + addr)
-	require.NoError(t, err)
-	defer httpClient.Close()
-	ipcClient, err := gethrpc.DialIPC(context.Background(), sock)
-	require.NoError(t, err)
-	defer ipcClient.Close()
+	httpClient := dialHTTP(t, addr)
+	ipcClient := dialIPC(t, sock)
 
 	for name, client := range map[string]*gethrpc.Client{"http": httpClient, "ws": dialWS(t, addr), "ipc": ipcClient} {
 		for _, method := range []string{"eth_stop", "ftm_stop"} {
@@ -700,11 +624,7 @@ func TestModule_EthStopIsNotCallable(t *testing.T) {
 func TestModule_HeaderOnlyReadsDoNotReadBlocks(t *testing.T) {
 	fc, cs := tests.NewCarmenCore(t, tests.WithBlocks(3))
 	cs.SetBalance(common.HexToAddress("0x1"), big.NewInt(1e18))
-	module, err := rpc.New(rpc.Config{Limits: dispatch.DefaultConfig()}, fc, rpc.WithMetrics(dispatch.NewMetrics(nil)))
-	require.NoError(t, err)
-	require.NoError(t, module.Start())
-	defer func() { require.NoError(t, module.Stop()) }()
-	d := module.Dispatcher()
+	d := start(t, rpc.Config{Limits: dispatch.DefaultConfig()}, fc).Dispatcher()
 	blockReads := fc.Calls("Block")
 
 	zero := common.Address{}
@@ -732,15 +652,7 @@ func TestModule_HeaderOnlyReadsDoNotReadBlocks(t *testing.T) {
 // P4: a Core call that blocks does not stall other requests.
 func TestModule_ABlockedCoreCallDoesNotStallOtherRequests(t *testing.T) {
 	fc, _ := tests.NewCarmenCore(t, tests.WithBlocks(2))
-	module, _, _ := func() (*rpc.Module, string, string) {
-		cfg := rpc.Config{Limits: dispatch.DefaultConfig()}
-		m, err := rpc.New(cfg, fc, rpc.WithMetrics(dispatch.NewMetrics(nil)))
-		require.NoError(t, err)
-		require.NoError(t, m.Start())
-		t.Cleanup(func() { require.NoError(t, m.Stop()) })
-		return m, "", ""
-	}()
-	d := module.Dispatcher()
+	d := start(t, rpc.Config{Limits: dispatch.DefaultConfig()}, fc).Dispatcher()
 
 	release := fc.BlockCalls("Receipts")
 	defer release()
@@ -778,20 +690,13 @@ func (l *legacyStub) Forward(_ context.Context, method string, _ json.RawMessage
 func TestModule_LegacyMethodsAreServedOnIPCOnly(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
 	legacy := &legacyStub{}
-	module, err := rpc.New(rpc.Config{
+	module := start(t, rpc.Config{
 		Limits: dispatch.DefaultConfig(), LegacyNamespaces: []string{"admin", "dag", "abft", "personal", "test"},
 		HTTP: &transport.HTTPConfig{Host: "127.0.0.1"}, IPC: &rpc.IPCConfig{Path: filepath.Join(t.TempDir(), "l.ipc")},
-	}, fc, rpc.WithMetrics(dispatch.NewMetrics(nil)), rpc.WithLegacy(legacy))
-	require.NoError(t, err)
-	require.NoError(t, module.Start())
-	defer func() { require.NoError(t, module.Stop()) }()
+	}, fc, rpc.WithLegacy(legacy))
 
-	httpClient, err := gethrpc.DialHTTP("http://" + module.HTTPAddr())
-	require.NoError(t, err)
-	defer httpClient.Close()
-	ipcClient, err := gethrpc.DialIPC(context.Background(), module.IPCPath())
-	require.NoError(t, err)
-	defer ipcClient.Close()
+	httpClient := dialHTTP(t, module.HTTPAddr())
+	ipcClient := dialIPC(t, module.IPCPath())
 
 	for _, method := range []string{
 		"admin_peers", "dag_getHeads", "abft_getValidators", "personal_listAccounts", "test_addTransactions",

@@ -10,13 +10,13 @@ and the requirement ids (I, D, P, Q, V, F, S, O, MON, X, G, T) are in
 
 | Package | Content |
 |---|---|
-| `core` | `Core`, the interface to the node, and its mock |
+| `core` | `Core`, the interface to the node |
 | `dispatch` | method table, typed registration, deadlines, panic containment, served head (`Chain`), subscriptions (`Notifier`), metrics |
 | `transport` | JSON-RPC envelope, HTTP, WebSocket, IPC, `Front` (dispatcher first, legacy handler second) |
 | `eth`, `filters`, `trace`, `debug`, `txpool`, `sonic`, `net`, `web3` | the namespaces |
 | `exec` | call, estimate, access list and replay on archived state |
 | `oracle` | gas price oracle |
-| `tests` | `FakeCore`, `CarmenCore` and a harness to test handlers without a node |
+| `tests` | `FakeCore`, `CarmenCore`, `ReplayChain`, accounts, contract code and a harness to test handlers without a node |
 
 ## Operator notes
 
@@ -85,8 +85,13 @@ Alerts to define (MON6):
 - Delete what a change leaves without a caller in the same commit.
 - A namespace imports `rpc/core`, `rpc/dispatch`, `rpc/exec` and go-ethereum
   value types only; `rpc/lint_test.go` checks the rule.
-- Test a handler on `tests.FakeCore` (no node) or on `tests.CarmenCore` (real
-  state). The test of `rpc/matrix_test.go` injects failures, nil values and
-  panics into every method of the module.
+- Test a handler on `tests.FakeCore` (no node) or on `tests.NewCarmenCore` (real
+  state), served by `tests.NewHarness` or, for a namespace on `exec.Env`,
+  `tests.NewEnvHarness`. Take accounts, transactions, contract code and the
+  replay chain from `rpc/tests`; write a helper of your own only for what one
+  package needs. Use `FakeCore`, not a generated mock of `Core`: tests state
+  what a request answers, not which `Core` calls it makes. The test of
+  `rpc/matrix_test.go` injects failures, nil values and panics into every
+  method of the module.
 - Compare with the reference release with `lakme` (`defects.json` lists the
   accepted differences).

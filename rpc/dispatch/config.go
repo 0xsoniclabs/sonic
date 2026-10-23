@@ -39,7 +39,9 @@ type Config struct {
 	TxSyncMaxTimeout     time.Duration
 	// MaxResponseSize caps the response of debug_* and trace_* (bytes).
 	MaxResponseSize int
-	// StructLogLimit caps the number of struct logs of the default tracer.
+	// StructLogLimit caps the output of the default tracer. go-ethereum's
+	// struct logger counts it in bytes, although the flag describes a number
+	// of logs; the reference release behaves the same.
 	StructLogLimit int
 	// MaxTraceFilterRange is the widest block span of trace_filter, 0 = unlimited.
 	MaxTraceFilterRange uint64

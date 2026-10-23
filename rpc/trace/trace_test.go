@@ -18,9 +18,7 @@ package trace
 
 import (
 	"encoding/json"
-	"math/big"
 	"testing"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -29,39 +27,24 @@ import (
 
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
-	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/tests"
 )
 
-var (
-	bob      = common.HexToAddress("0xb0b")
-	contract = common.HexToAddress("0xc0de")
-	// PUSH1 1 PUSH1 0 SSTORE STOP
-	stores = []byte{0x60, 0x01, 0x60, 0x00, 0x55, 0x00}
-)
-
+// fixture serves the trace namespace over the replay chain.
 type fixture struct {
-	h     *tests.Harness
-	fc    *tests.FakeCore
-	alice tests.Account
-	tx0   *types.Transaction // a transfer to bob
-	tx1   *types.Transaction // a call that writes storage
-	block uint64
+	*tests.ReplayChain
+	h *tests.Harness
 }
 
-func newFixture(t *testing.T) *fixture {
+func newFixture(t *testing.T, mutate ...func(*dispatch.Config)) *fixture {
 	t.Helper()
-	fc, cs := tests.NewCarmenCore(t, tests.WithBlocks(1))
-	alice := tests.NewAccount(t, cs, big.NewInt(1e18))
-	cs.SetCode(contract, stores)
-	tx0 := alice.Transfer(t, 0, bob, 5)
-	tx1 := alice.Call(t, 1, contract, 0, nil, 100_000)
-	block := fc.AddBlock(tx0, tx1)
-	cfg := tests.Default()
-	h := tests.NewHarness(t, fc, cfg, func(d *dispatch.Dispatcher, chain *dispatch.Chain) {
-		Register(d, exec.NewEnv(chain, oracle.New(oracle.Config{}, fc)))
-	})
-	return &fixture{h: h, fc: fc, alice: alice, tx0: tx0, tx1: tx1, block: block.NumberU64()}
+	r := tests.NewReplayChain(t)
+	return &fixture{ReplayChain: r, h: newHarness(t, r.Core, mutate...)}
+}
+
+func newHarness(t *testing.T, fc *tests.FakeCore, mutate ...func(*dispatch.Config)) *tests.Harness {
+	t.Helper()
+	return tests.NewEnvHarness(t, fc, func(d *dispatch.Dispatcher, env *exec.Env) { Register(d, env) }, mutate...)
 }
 
 type actionTrace struct {
@@ -78,19 +61,19 @@ type actionTrace struct {
 func TestTransaction(t *testing.T) {
 	f := newFixture(t)
 	var traces []actionTrace
-	f.h.Into(&traces, "trace_transaction", f.tx0.Hash())
+	f.h.Into(&traces, "trace_transaction", f.Transfer.Hash())
 	require.Len(t, traces, 1)
 	require.Equal(t, "call", traces[0].Type)
-	require.Equal(t, f.alice.Addr, traces[0].Action.From)
-	require.Equal(t, bob, traces[0].Action.To)
+	require.Equal(t, f.Alice.Addr, traces[0].Action.From)
+	require.Equal(t, f.Bob, traces[0].Action.To)
 	require.Equal(t, int64(5), traces[0].Action.Value.ToInt().Int64())
-	require.Equal(t, f.tx0.Hash().Hex(), traces[0].TransactionHash)
+	require.Equal(t, f.Transfer.Hash().Hex(), traces[0].TransactionHash)
 
 	// The second transaction needs the first replayed: the state it runs on is
 	// the state after.
-	f.h.Into(&traces, "trace_transaction", f.tx1.Hash())
+	f.h.Into(&traces, "trace_transaction", f.Store.Hash())
 	require.Len(t, traces, 1)
-	require.Equal(t, contract, traces[0].Action.To)
+	require.Equal(t, f.Contract, traces[0].Action.To)
 	require.Empty(t, traces[0].Error)
 }
 
@@ -105,12 +88,11 @@ func TestBlock(t *testing.T) {
 	var traces []actionTrace
 	f.h.Into(&traces, "trace_block", "latest")
 	require.Len(t, traces, 2)
-	f.h.Into(&traces, "trace_block", f.fc.BlockAt(f.block).Hash)
+	f.h.Into(&traces, "trace_block", f.Core.BlockAt(f.Block).Hash)
 	require.Len(t, traces, 2)
 
 	// An empty block has one pseudo trace; the genesis block cannot be traced.
-	f.fc.AddBlock()
-	require.Eventually(t, func() bool { return f.h.Chain.Latest() == f.block+1 }, time.Second, time.Millisecond)
+	f.h.WaitHead(f.Core.AddBlock().NumberU64())
 	f.h.Into(&traces, "trace_block", "latest")
 	require.Len(t, traces, 1)
 	require.Equal(t, "Empty block", traces[0].Error)
@@ -126,11 +108,11 @@ func TestBlock(t *testing.T) {
 func TestGet(t *testing.T) {
 	f := newFixture(t)
 	var traces []actionTrace
-	f.h.Into(&traces, "trace_get", f.tx0.Hash(), []string{})
+	f.h.Into(&traces, "trace_get", f.Transfer.Hash(), []string{})
 	require.Len(t, traces, 1)
-	require.Equal(t, f.tx0.Hash().Hex(), traces[0].TransactionHash)
+	require.Equal(t, f.Transfer.Hash().Hex(), traces[0].TransactionHash)
 	// A trace index that is not there answers null.
-	require.JSONEq(t, `null`, string(f.h.Result("trace_get", f.tx0.Hash(), []string{"0x7"})))
+	require.JSONEq(t, `null`, string(f.h.Result("trace_get", f.Transfer.Hash(), []string{"0x7"})))
 }
 
 func TestCall(t *testing.T) {
@@ -141,14 +123,14 @@ func TestCall(t *testing.T) {
 		StateDiff map[string]any `json:"stateDiff"`
 		VmTrace   map[string]any `json:"vmTrace"`
 	}
-	f.h.Into(&res, "trace_call", map[string]any{"from": f.alice.Addr, "to": contract, "gas": "0x30000"},
+	f.h.Into(&res, "trace_call", map[string]any{"from": f.Alice.Addr, "to": f.Contract, "gas": "0x30000"},
 		[]string{"trace", "stateDiff", "vmTrace"}, "latest")
 	require.Len(t, res.Trace, 1)
-	require.Equal(t, contract, res.Trace[0].Action.To)
+	require.Equal(t, f.Contract, res.Trace[0].Action.To)
 	require.NotEmpty(t, res.StateDiff)
 	require.NotEmpty(t, res.VmTrace)
 
-	err := f.h.Fails("trace_call", map[string]any{"to": contract}, []string{"bogus"}, "latest")
+	err := f.h.Fails("trace_call", map[string]any{"to": f.Contract}, []string{"bogus"}, "latest")
 	require.Equal(t, "unrecognized trace type: bogus", err.Message)
 
 	// The trace types are checked before the block, the block before the call.
@@ -156,7 +138,7 @@ func TestCall(t *testing.T) {
 	require.Equal(t, "header not found", err.Message)
 	err = f.h.Fails("trace_call", map[string]any{"gasPrice": "0x1", "maxFeePerGas": "0x1"}, []string{"trace"}, "latest")
 	require.Equal(t, "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified", err.Message)
-	err = f.h.Fails("trace_call", map[string]any{"to": contract}, []string{"trace"}, common.Hash{9})
+	err = f.h.Fails("trace_call", map[string]any{"to": f.Contract}, []string{"trace"}, common.Hash{9})
 	require.Equal(t, "header not found", err.Message)
 }
 
@@ -165,8 +147,8 @@ func TestCall_StateOverride(t *testing.T) {
 	var res struct {
 		Trace []actionTrace `json:"trace"`
 	}
-	f.h.Into(&res, "trace_call", map[string]any{"from": f.alice.Addr, "to": bob, "value": "0x7"}, []string{"trace"}, "latest",
-		map[string]any{"stateOverrides": map[string]any{f.alice.Addr.Hex(): map[string]any{"balance": "0x1"}}})
+	f.h.Into(&res, "trace_call", map[string]any{"from": f.Alice.Addr, "to": f.Bob, "value": "0x7"}, []string{"trace"}, "latest",
+		map[string]any{"stateOverrides": map[string]any{f.Alice.Addr.Hex(): map[string]any{"balance": "0x1"}}})
 	// The sender cannot pay after the override: the call fails.
 	require.Len(t, res.Trace, 1)
 }
@@ -178,8 +160,8 @@ func TestCallMany(t *testing.T) {
 		Trace  []actionTrace `json:"trace"`
 	}
 	f.h.Into(&res, "trace_callMany", []any{
-		[]any{map[string]any{"from": f.alice.Addr, "to": bob, "value": "0x1"}, []string{"trace"}},
-		[]any{map[string]any{"from": f.alice.Addr, "to": contract}, []string{"trace"}},
+		[]any{map[string]any{"from": f.Alice.Addr, "to": f.Bob, "value": "0x1"}, []string{"trace"}},
+		[]any{map[string]any{"from": f.Alice.Addr, "to": f.Contract}, []string{"trace"}},
 	}, "latest")
 	require.Len(t, res, 2)
 	require.Len(t, res[0].Trace, 1)
@@ -190,7 +172,7 @@ func TestCallMany(t *testing.T) {
 	require.Equal(t, dispatch.CodeInvalidParams, err.Code)
 }
 
-// spinner runs until it is out of gas: JUMPDEST PUSH1 0 JUMP.
+// spinner runs tests.SpinCode.
 var spinner = common.HexToAddress("0x5917")
 
 // newSizeHarness serves the trace methods with a response size limit, over a
@@ -198,12 +180,8 @@ var spinner = common.HexToAddress("0x5917")
 func newSizeHarness(t *testing.T, maxResponseSize int) *tests.Harness {
 	t.Helper()
 	fc, cs := tests.NewCarmenCore(t, tests.WithBlocks(1))
-	cs.SetCode(spinner, []byte{0x5b, 0x60, 0x00, 0x56})
-	cfg := tests.Default()
-	cfg.MaxResponseSize = maxResponseSize
-	return tests.NewHarness(t, fc, cfg, func(d *dispatch.Dispatcher, chain *dispatch.Chain) {
-		Register(d, exec.NewEnv(chain, oracle.New(oracle.Config{}, fc)))
-	})
+	cs.SetCode(spinner, tests.SpinCode())
+	return newHarness(t, fc, func(c *dispatch.Config) { c.MaxResponseSize = maxResponseSize })
 }
 
 // spin is a call of the spinner with 100,000 gas: about 20,000 operations,
@@ -251,18 +229,18 @@ func TestFilter(t *testing.T) {
 	f.h.Into(&traces, "trace_filter", map[string]any{"fromBlock": "0x2", "toBlock": "0x2"})
 	require.Len(t, traces, 2)
 
-	f.h.Into(&traces, "trace_filter", map[string]any{"fromBlock": "0x2", "toBlock": "0x2", "toAddress": []string{bob.Hex()}})
+	f.h.Into(&traces, "trace_filter", map[string]any{"fromBlock": "0x2", "toBlock": "0x2", "toAddress": []string{f.Bob.Hex()}})
 	require.Len(t, traces, 1)
-	require.Equal(t, bob, traces[0].Action.To)
+	require.Equal(t, f.Bob, traces[0].Action.To)
 
 	// In series: after and count.
 	f.h.Into(&traces, "trace_filter", map[string]any{"fromBlock": "0x1", "toBlock": "0x2", "after": 1, "count": 1})
 	require.Len(t, traces, 1)
-	require.Equal(t, contract, traces[0].Action.To)
+	require.Equal(t, f.Contract, traces[0].Action.To)
 
 	// By hash and by tag.
 	f.h.Into(&traces, "trace_filter", map[string]any{
-		"fromBlock": map[string]any{"blockHash": f.fc.BlockAt(2).Hash}, "toBlock": "latest"})
+		"fromBlock": map[string]any{"blockHash": f.Core.BlockAt(2).Hash}, "toBlock": "latest"})
 	require.Len(t, traces, 2)
 	err := f.h.Fails("trace_filter", map[string]any{"fromBlock": map[string]any{"blockHash": common.Hash{9}}})
 	require.Equal(t, "block not found", err.Message)
@@ -271,19 +249,16 @@ func TestFilter(t *testing.T) {
 func TestFilter_RangeLimit(t *testing.T) {
 	f := newFixture(t)
 	for range 5 {
-		f.fc.AddBlock()
+		f.Core.AddBlock()
 	}
-	h := tests.NewHarness(t, f.fc, func() dispatch.Config { c := tests.Default(); c.MaxTraceFilterRange = 3; return c }(),
-		func(d *dispatch.Dispatcher, chain *dispatch.Chain) {
-			Register(d, exec.NewEnv(chain, oracle.New(oracle.Config{}, f.fc)))
-		})
+	h := newHarness(t, f.Core, func(c *dispatch.Config) { c.MaxTraceFilterRange = 3 })
 	// The limit is checked on the requested bounds, before any block is read.
-	calls := f.fc.Calls("Block")
+	calls := f.Core.Calls("Block")
 	err := h.Fails("trace_filter", map[string]any{"fromBlock": "0x1", "toBlock": "0x6"})
 	require.Equal(t, "too wide blocks range, the limit is 3", err.Message)
 	err = h.Fails("trace_filter", map[string]any{"fromBlock": "0x1", "toBlock": "0x6", "count": 5})
 	require.Equal(t, "too wide blocks range, the limit is 3", err.Message)
-	require.Equal(t, calls, f.fc.Calls("Block"))
+	require.Equal(t, calls, f.Core.Calls("Block"))
 
 	var traces []actionTrace
 	h.Into(&traces, "trace_filter", map[string]any{"fromBlock": "0x1", "toBlock": "0x4"})
@@ -298,14 +273,14 @@ func TestFilter_MissingBlock(t *testing.T) {
 
 func TestFilter_ShortReceiptListIsAnErrorNotAPanic(t *testing.T) {
 	f := newFixture(t)
-	f.fc.SetReceipts(f.block, types.Receipts{}) // fewer receipts than transactions
+	f.Core.SetReceipts(f.Block, types.Receipts{}) // fewer receipts than transactions
 	err := f.h.Fails("trace_block", "latest")
-	require.Contains(t, err.Message, "no receipt found for transaction "+f.tx0.Hash().String())
+	require.Contains(t, err.Message, "no receipt found for transaction "+f.Transfer.Hash().String())
 	require.Zero(t, f.h.Panics())
 
 	// The transaction in the middle of a replay hits the untraced branch.
-	f.fc.SetReceipts(f.block, types.Receipts{{Status: 1}})
-	err = f.h.Fails("trace_transaction", f.tx1.Hash())
+	f.Core.SetReceipts(f.Block, types.Receipts{{Status: 1}})
+	err = f.h.Fails("trace_transaction", f.Store.Hash())
 	require.Contains(t, err.Message, "no receipt found for transaction")
 	require.Zero(t, f.h.Panics())
 }

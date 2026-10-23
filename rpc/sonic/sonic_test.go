@@ -29,7 +29,6 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/core"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
-	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/tests"
 )
 
@@ -45,9 +44,7 @@ func newFixture(t *testing.T, blocks int) *fixture {
 	t.Helper()
 	fc, cs := tests.NewCarmenCore(t, tests.WithBlocks(blocks))
 	alice := tests.NewAccount(t, cs, big.NewInt(1e18))
-	h := tests.NewHarness(t, fc, tests.Default(), func(d *dispatch.Dispatcher, chain *dispatch.Chain) {
-		Register(d, exec.NewEnv(chain, oracle.New(oracle.Config{}, fc)))
-	})
+	h := tests.NewEnvHarness(t, fc, func(d *dispatch.Dispatcher, env *exec.Env) { Register(d, env) })
 	return &fixture{h: h, fc: fc, alice: alice}
 }
 

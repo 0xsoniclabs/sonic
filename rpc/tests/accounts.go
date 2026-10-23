@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
@@ -45,6 +46,21 @@ func NewAccount(t testing.TB, cs *CarmenState, balance *big.Int) Account {
 		cs.SetBalance(a.Addr, balance)
 	}
 	return a
+}
+
+// Tx signs a transfer of 1 to 0x42 from a new account, for tests that need a
+// transaction of their own but not its sender.
+func Tx(t testing.TB, nonce uint64) *types.Transaction {
+	t.Helper()
+	return NewAccount(t, nil, nil).Transfer(t, nonce, common.Address{0x42}, 1)
+}
+
+// Raw returns the binary encoding of a transaction.
+func Raw(t testing.TB, tx *types.Transaction) hexutil.Bytes {
+	t.Helper()
+	raw, err := tx.MarshalBinary()
+	require.NoError(t, err)
+	return raw
 }
 
 // Signer is the signer of the fake chain.

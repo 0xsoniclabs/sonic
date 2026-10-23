@@ -31,13 +31,6 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/tests"
 )
 
-func rawTx(t *testing.T, tx *types.Transaction) hexutil.Bytes {
-	t.Helper()
-	raw, err := tx.MarshalBinary()
-	require.NoError(t, err)
-	return raw
-}
-
 func TestSendRawTransaction(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(1))
 	h := newHarness(t, fc)
@@ -45,7 +38,7 @@ func TestSendRawTransaction(t *testing.T) {
 	tx := alice.Transfer(t, 0, common.Address{1}, 1)
 
 	var hash common.Hash
-	h.Into(&hash, "eth_sendRawTransaction", rawTx(t, tx))
+	h.Into(&hash, "eth_sendRawTransaction", tests.Raw(t, tx))
 	require.Equal(t, tx.Hash(), hash)
 	require.Equal(t, tx.Hash(), fc.PoolTransaction(tx.Hash()).Hash())
 
@@ -59,7 +52,7 @@ func TestSendRawTransaction_PoolVerdictIsReturnedVerbatim(t *testing.T) {
 	fc.SetSendTx(func(*types.Transaction) error { return errors.New("nonce too low") })
 	h := newHarness(t, fc)
 	alice := tests.NewAccount(t, nil, nil)
-	err := h.Fails("eth_sendRawTransaction", rawTx(t, alice.Transfer(t, 0, common.Address{1}, 1)))
+	err := h.Fails("eth_sendRawTransaction", tests.Raw(t, alice.Transfer(t, 0, common.Address{1}, 1)))
 	require.Equal(t, &dispatch.Error{Code: dispatch.CodeDefault, Message: "nonce too low"}, err)
 }
 
@@ -72,7 +65,7 @@ func TestSendRawTransaction_RefusesUnprotectedAndExpensiveTransactions(t *testin
 		Nonce: 0, GasPrice: big.NewInt(1000), Gas: 21000, To: &common.Address{1},
 	})
 	require.NoError(t, err)
-	e := h.Fails("eth_sendRawTransaction", rawTx(t, unprotected))
+	e := h.Fails("eth_sendRawTransaction", tests.Raw(t, unprotected))
 	require.Equal(t, "only replay-protected (EIP-155) transactions allowed over RPC", e.Message)
 
 	// A fee above the cap: 1000 gas * 1e18 wei per gas = 1e21 wei = 1000 FTM.
@@ -80,7 +73,7 @@ func TestSendRawTransaction_RefusesUnprotectedAndExpensiveTransactions(t *testin
 		Nonce: 0, GasPrice: new(big.Int).SetUint64(1e18), Gas: 1000, To: &common.Address{1},
 	})
 	require.NoError(t, err)
-	e = h.Fails("eth_sendRawTransaction", rawTx(t, expensive))
+	e = h.Fails("eth_sendRawTransaction", tests.Raw(t, expensive))
 	require.Contains(t, e.Message, "exceeds the configured cap")
 }
 
@@ -95,7 +88,7 @@ func TestSendRawTransactionSync_ReturnsTheReceiptOnceTheBlockIsServed(t *testing
 		fc.AddBlock(tx)
 	}()
 	var receipt map[string]any
-	h.Into(&receipt, "eth_sendRawTransactionSync", rawTx(t, tx), "0x2710")
+	h.Into(&receipt, "eth_sendRawTransactionSync", tests.Raw(t, tx), "0x2710")
 	require.Equal(t, tx.Hash().Hex(), receipt["transactionHash"])
 	require.Equal(t, "0x1", receipt["status"])
 	require.Equal(t, "0x2", receipt["blockNumber"])
@@ -108,7 +101,7 @@ func TestSendRawTransactionSync_Errors(t *testing.T) {
 
 	// Code 4: added to the pool, not confirmed within the timeout.
 	tx := alice.Transfer(t, 0, common.Address{1}, 1)
-	err := h.Fails("eth_sendRawTransactionSync", rawTx(t, tx), "0x32")
+	err := h.Fails("eth_sendRawTransactionSync", tests.Raw(t, tx), "0x32")
 	require.Equal(t, 4, err.Code)
 	require.Equal(t, "transaction not confirmed within timeout", err.Message)
 	require.Equal(t, tx.Hash(), err.Data)
@@ -116,7 +109,7 @@ func TestSendRawTransactionSync_Errors(t *testing.T) {
 
 	// Code 6: nonce gap.
 	fc.SetPoolNonce(alice.Addr, 1)
-	err = h.Fails("eth_sendRawTransactionSync", rawTx(t, alice.Transfer(t, 5, common.Address{1}, 1)))
+	err = h.Fails("eth_sendRawTransactionSync", tests.Raw(t, alice.Transfer(t, 5, common.Address{1}, 1)))
 	require.Equal(t, 6, err.Code)
 	require.Equal(t, "nonce gap: expected nonce 1", err.Message)
 	require.Equal(t, hexutil.Uint64(1), err.Data)
@@ -124,13 +117,13 @@ func TestSendRawTransactionSync_Errors(t *testing.T) {
 	// Code 5: rejected by the pool.
 	fc.SetSendTx(func(*types.Transaction) error { return errors.New("underpriced") })
 	rejected := alice.Transfer(t, 1, common.Address{1}, 1)
-	err = h.Fails("eth_sendRawTransactionSync", rawTx(t, rejected))
+	err = h.Fails("eth_sendRawTransactionSync", tests.Raw(t, rejected))
 	require.Equal(t, 5, err.Code)
 	require.Contains(t, err.Message, "underpriced")
 	require.Equal(t, rejected.Hash(), err.Data)
 
 	// A timeout of zero is refused.
-	err = h.Fails("eth_sendRawTransactionSync", rawTx(t, tx), "0x0")
+	err = h.Fails("eth_sendRawTransactionSync", tests.Raw(t, tx), "0x0")
 	require.Equal(t, "timeout must be greater than zero", err.Message)
 }
 
@@ -142,7 +135,7 @@ func TestSendRawTransactionSync_AlreadyConfirmedTransactionAnswersAtOnce(t *test
 	fc.SetPoolNonce(alice.Addr, 0)
 	h := newHarness(t, fc)
 	var receipt map[string]any
-	h.Into(&receipt, "eth_sendRawTransactionSync", rawTx(t, tx))
+	h.Into(&receipt, "eth_sendRawTransactionSync", tests.Raw(t, tx))
 	require.Equal(t, tx.Hash().Hex(), receipt["transactionHash"])
 }
 

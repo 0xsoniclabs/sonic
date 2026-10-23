@@ -27,20 +27,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
-	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/tests"
 )
 
 func newEnv(t *testing.T, opts ...tests.Option) (*exec.Env, *tests.FakeCore) {
 	t.Helper()
 	fc := tests.NewFakeCore(t, append([]tests.Option{tests.WithChainID(146), tests.WithBlocks(2)}, opts...)...)
-	d := dispatch.New(dispatch.DefaultConfig(), dispatch.NewMetrics(nil))
-	chain := dispatch.NewChain(fc, dispatch.DefaultConfig(), d.Metrics())
-	require.NoError(t, chain.Start(d))
-	t.Cleanup(func() { d.Stop(0) })
-	return exec.NewEnv(chain, oracle.New(oracle.Config{}, fc)), fc
+	return tests.NewEnvHarness(t, fc, nil).Env, fc
 }
 
 func TestEnv_MaxGasLimitFollowsTheRulesOfTheNextBlock(t *testing.T) {

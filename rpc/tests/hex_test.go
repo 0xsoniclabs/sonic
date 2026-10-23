@@ -41,23 +41,6 @@ func Test_ToHexUint64(t *testing.T) {
 	}
 }
 
-func Test_ToHexUint(t *testing.T) {
-	tests := []struct {
-		name string
-		val  uint
-	}{
-		{"zero", 0},
-		{"normal", 5678},
-		{"max", math.MaxUint},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			hexVal := ToHexUint(tt.val)
-			require.Equal(t, tt.val, uint(*hexVal))
-		})
-	}
-}
-
 func Test_ToHexBigInt(t *testing.T) {
 	tests := []struct {
 		name string
@@ -75,23 +58,6 @@ func Test_ToHexBigInt(t *testing.T) {
 			} else {
 				require.Equal(t, tt.val, (*big.Int)(hexVal))
 			}
-		})
-	}
-}
-
-func Test_ToHexBytes(t *testing.T) {
-	tests := []struct {
-		name string
-		val  []byte
-	}{
-		{"normal", []byte{0xde, 0xad, 0xbe, 0xef}},
-		{"empty", []byte{}},
-		{"nil", nil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			hexVal := ToHexBytes(tt.val)
-			require.Equal(t, tt.val, []byte(*hexVal))
 		})
 	}
 }

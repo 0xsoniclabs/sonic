@@ -30,7 +30,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc/rpc_test_utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
@@ -52,48 +51,14 @@ func registeredMethods(m *rpc.Module) []string {
 func newMatrixModule(t *testing.T) (*rpc.Module, *tests.FakeCore, prometheus.Gatherer) {
 	t.Helper()
 	fc, cs := tests.NewCarmenCore(t, tests.WithBlocks(3))
-	cs.SetBalance(common.HexToAddress("0x1"), big.NewInt(1e18)).SetCode(common.HexToAddress("0x2"), []byte{0x60, 0x01, 0x60, 0x00, 0x55, 0x00})
-	fc.AddBlock(matrixTx(t, 0), matrixTx(t, 1))
+	cs.SetBalance(common.HexToAddress("0x1"), big.NewInt(1e18)).SetCode(common.HexToAddress("0x2"), tests.StoreCode())
+	fc.AddBlock(tests.Tx(t, 0), tests.Tx(t, 1))
 	fc.AddBlock()
-	fc.AddPoolTransaction(matrixTx(t, 2))
+	fc.AddPoolTransaction(tests.Tx(t, 2))
 	reg := prometheus.NewRegistry()
 	cfg := rpc.Config{Limits: dispatch.DefaultConfig(), ClientVersion: "matrix"}
 	cfg.Limits.Timeout = 5 * time.Second
-	module, err := rpc.New(cfg, fc, rpc.WithMetrics(dispatch.NewMetrics(reg)))
-	require.NoError(t, err)
-	require.NoError(t, module.Start())
-	t.Cleanup(func() { require.NoError(t, module.Stop()) })
-	return module, fc, reg
-}
-
-func matrixTx(t *testing.T, nonce uint64) *types.Transaction { return signedTx(t, nonce) }
-
-// panics sums rpc_panics_total.
-func panics(t *testing.T, g prometheus.Gatherer) float64 {
-	t.Helper()
-	total, _ := panicsByMethod(t, g)
-	return total
-}
-
-// panicsByMethod sums rpc_panics_total and lists the methods that panicked.
-func panicsByMethod(t *testing.T, g prometheus.Gatherer) (float64, map[string]float64) {
-	t.Helper()
-	families, err := g.Gather()
-	require.NoError(t, err)
-	var total float64
-	by := map[string]float64{}
-	for _, f := range families {
-		if f.GetName() != "rpc_panics_total" {
-			continue
-		}
-		for _, m := range f.GetMetric() {
-			total += m.GetCounter().GetValue()
-			for _, l := range m.GetLabel() {
-				by[l.GetValue()] += m.GetCounter().GetValue()
-			}
-		}
-	}
-	return total, by
+	return start(t, cfg, fc, rpc.WithMetrics(dispatch.NewMetrics(reg))), fc, reg
 }
 
 // argumentShapes returns parameter lists for a method: for each arity the
@@ -157,6 +122,24 @@ func TestNilSafety_InjectionMatrix(t *testing.T) {
 	}
 }
 
+// reachers are requests that reach the Core methods no generic argument shape
+// reaches: they need a hash, an address, a signed transaction or an indexed
+// log query.
+func reachers(t *testing.T) map[string]struct{ method, params string } {
+	hash := `"0x` + strings.Repeat("11", 32) + `"`
+	address := `"0x` + strings.Repeat("11", 20) + `"`
+	raw, err := json.Marshal(tests.Raw(t, tests.Tx(t, 0)))
+	require.NoError(t, err)
+	return map[string]struct{ method, params string }{
+		"BundleInfo":      {"sonic_getBundleInfo", `[` + hash + `]`},
+		"FindLogs":        {"eth_getLogs", `[{"fromBlock":"0x1","toBlock":"0x3","address":` + address + `}]`},
+		"PoolContentFrom": {"txpool_contentFrom", `[` + address + `]`},
+		"PoolTransaction": {"eth_getTransactionByHash", `[` + hash + `]`},
+		"SendTx":          {"eth_sendRawTransaction", `[` + string(raw) + `]`},
+		"TxByHash":        {"eth_getTransactionByHash", `[` + hash + `]`},
+	}
+}
+
 // P1: a panic in any Core method is contained: the request is answered -32603
 // and counted, nothing else breaks.
 func TestPanicInjection_EveryCoreMethodIsContained(t *testing.T) {
@@ -179,11 +162,19 @@ func TestPanicInjection_EveryCoreMethodIsContained(t *testing.T) {
 					}
 				}
 			}
+			if call, ok := reachers(t)[coreMethod]; ok {
+				_, err := d.Serve(context.Background(), call.method, json.RawMessage(call.params))
+				require.NotNil(t, err, call.method)
+				require.Equal(t, dispatch.CodeInternal, err.Code, call.method)
+			}
 			// The module serves after the panics.
 			res, err := d.Serve(context.Background(), "web3_clientVersion", nil)
 			require.Nil(t, err)
 			require.JSONEq(t, `"matrix"`, string(res))
-			_ = reg
+			if coreMethod != "Head" && coreMethod != "PendingHeads" { // read at start and by the oracle's loop only
+				total, _ := panicsByMethod(t, reg)
+				require.Positive(t, total, "no request reached Core.%s", coreMethod)
+			}
 		})
 	}
 }

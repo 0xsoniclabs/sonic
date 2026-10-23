@@ -33,8 +33,6 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
-//go:generate go tool mockgen -source=core.go -destination=core_mock.go -package=core
-
 // ErrNotFound is returned by [ChainReader] and [StateProvider] for a block the
 // node does not (yet) have, e.g. one above the committed or archived head.
 var ErrNotFound = errors.New("not found")

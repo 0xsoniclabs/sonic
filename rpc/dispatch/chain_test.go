@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -30,32 +29,22 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/tests"
 )
 
-func startChain(t *testing.T, fc *tests.FakeCore) (*dispatch.Dispatcher, *dispatch.Chain) {
-	t.Helper()
-	d := dispatch.New(dispatch.DefaultConfig(), dispatch.NewMetrics(nil))
-	t.Cleanup(func() { d.Stop(time.Second) })
-	chain := dispatch.NewChain(fc, dispatch.DefaultConfig(), d.Metrics())
-	require.NoError(t, chain.Start(d))
-	return d, chain
-}
-
 func TestChain_HeadSnapshotAndFollowing(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(3))
-	_, chain := startChain(t, fc)
-	require.EqualValues(t, 3, chain.Latest())
-	require.Equal(t, fc.BlockAt(3).Hash, chain.Head().Hash)
+	h := tests.NewHarness(t, fc, nil)
+	require.EqualValues(t, 3, h.Chain.Latest())
+	require.Equal(t, fc.BlockAt(3).Hash, h.Chain.Head().Hash)
 
-	fc.AddBlock()
-	require.Eventually(t, func() bool { return chain.Latest() == 4 }, time.Second, time.Millisecond)
+	h.WaitHead(fc.AddBlock().NumberU64())
 }
 
 func TestChain_HeadNeverMovesBackwards(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(5))
-	_, chain := startChain(t, fc)
+	h := tests.NewHarness(t, fc, nil)
+	chain := h.Chain
 
 	fc.AddBlock()
-	fc.AddBlock() // number 7
-	require.Eventually(t, func() bool { return chain.Latest() == 7 }, time.Second, time.Millisecond)
+	h.WaitHead(fc.AddBlock().NumberU64()) // number 7
 
 	// An old event does not rewind the head.
 	publish(fc, fc.BlockAt(4))
@@ -71,7 +60,7 @@ func publish(fc *tests.FakeCore, block *evmcore.EvmBlock) {
 
 func TestChain_Number(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(9))
-	_, chain := startChain(t, fc)
+	chain := tests.NewHarness(t, fc, nil).Chain
 	head := chain.Head()
 	for bn, want := range map[dispatch.BlockNumber]uint64{
 		dispatch.LatestBlockNumber:    9,
@@ -92,7 +81,7 @@ func TestChain_Number(t *testing.T) {
 
 func TestChain_Resolve(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(9))
-	_, chain := startChain(t, fc)
+	chain := tests.NewHarness(t, fc, nil).Chain
 	head := chain.Head()
 
 	for name, test := range map[string]struct {
@@ -120,7 +109,8 @@ func TestChain_Resolve(t *testing.T) {
 
 func TestChain_StalledConsumerIsDroppedAndTheHeadAdvances(t *testing.T) {
 	fc := tests.NewFakeCore(t)
-	_, chain := startChain(t, fc)
+	h := tests.NewHarness(t, fc, nil)
+	chain := h.Chain
 
 	stalled := chain.SubscribeHeads(1) // never read
 	healthy := chain.SubscribeHeads(64)
@@ -129,7 +119,7 @@ func TestChain_StalledConsumerIsDroppedAndTheHeadAdvances(t *testing.T) {
 	for range 10 {
 		fc.AddBlock()
 	}
-	require.Eventually(t, func() bool { return chain.Latest() == 10 }, 2*time.Second, time.Millisecond)
+	h.WaitHead(10)
 	require.Eventually(t, stalled.Dropped, time.Second, time.Millisecond)
 	require.False(t, healthy.Dropped())
 
@@ -154,15 +144,14 @@ func TestChain_StalledConsumerIsDroppedAndTheHeadAdvances(t *testing.T) {
 
 func TestChain_ConsumersSeeABlockBeforeTheHeadServesIt(t *testing.T) {
 	fc := tests.NewFakeCore(t)
-	_, chain := startChain(t, fc)
-	consumer := chain.SubscribeHeads(8)
+	h := tests.NewHarness(t, fc, nil)
+	consumer := h.Chain.SubscribeHeads(8)
 	defer consumer.Close()
 
 	// The head moves only after the block was offered to the consumers: when
 	// the head shows block n, the consumer's queue already holds it.
 	for range 20 {
-		fc.AddBlock()
-		require.Eventually(t, func() bool { return chain.Latest() == fc.Latest() }, time.Second, 100*time.Microsecond)
+		h.WaitHead(fc.AddBlock().NumberU64())
 		select {
 		case ev := <-consumer.Events():
 			require.EqualValues(t, fc.Latest(), ev.Block.NumberU64())
@@ -174,7 +163,7 @@ func TestChain_ConsumersSeeABlockBeforeTheHeadServesIt(t *testing.T) {
 
 func TestChain_LossOfTheSubscriptionKeepsTheLastHead(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(2))
-	_, chain := startChain(t, fc)
+	chain := tests.NewHarness(t, fc, nil).Chain
 	fc.EndHeadSubscriptions()
 	time.Sleep(20 * time.Millisecond)
 	require.EqualValues(t, 2, chain.Latest())
@@ -183,24 +172,19 @@ func TestChain_LossOfTheSubscriptionKeepsTheLastHead(t *testing.T) {
 
 func TestChain_RestartAfterAPanicFollowsTheHeadAgain(t *testing.T) {
 	fc := tests.NewFakeCore(t, tests.WithBlocks(2))
-	d, chain := startChain(t, fc)
+	h := tests.NewHarness(t, fc, nil)
 	// The lag of the head is measured every second; the measurement panics.
 	fc.Inject("Progress", tests.Panic)
-	restarted := func() bool {
-		var m dto.Metric
-		_ = d.Metrics().LoopRestarts.WithLabelValues("head").Write(&m)
-		return m.GetCounter().GetValue() >= 1
-	}
+	restarted := func() bool { return tests.Counter(h.D.Metrics().LoopRestarts.WithLabelValues("head")) >= 1 }
 	require.Eventually(t, restarted, 3*time.Second, time.Millisecond)
 	fc.Inject("Progress", tests.Normal)
 
 	// The restarted loop has a subscription of its own.
 	require.Eventually(t, func() bool { return fc.Calls("SubscribeHead") >= 2 }, time.Second, time.Millisecond)
-	fc.AddBlock()
-	require.Eventually(t, func() bool { return chain.Latest() == 3 }, time.Second, time.Millisecond)
-	fc.AddBlock()
-	require.Eventually(t, func() bool { return chain.Latest() == 4 }, time.Second, time.Millisecond)
-	require.Equal(t, fc.BlockAt(4).Hash, chain.Head().Hash)
+	h.WaitHead(fc.AddBlock().NumberU64())
+	h.WaitHead(fc.AddBlock().NumberU64())
+	require.EqualValues(t, 4, h.Chain.Latest())
+	require.Equal(t, fc.BlockAt(4).Hash, h.Chain.Head().Hash)
 }
 
 func TestChain_StartFailsIfTheHeadIsUnavailable(t *testing.T) {

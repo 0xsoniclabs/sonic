@@ -24,32 +24,22 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
-	"github.com/0xsoniclabs/sonic/rpc/exec"
-	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/tests"
 )
-
-// spins is JUMPDEST PUSH1 0 JUMP: a contract that runs until it is stopped.
-var spins = []byte{0x5b, 0x60, 0x00, 0x56}
 
 // spinsInGeth is a spinning contract that exceeds the on-chain code size limit,
 // which makes the call run on the go-ethereum interpreter. Only that one
 // stops at a timeout.
 func spinsInGeth() map[string]any {
-	code := append(append([]byte{}, spins...), make([]byte, 30_000)...)
+	code := append(tests.SpinCode(), make([]byte, 30_000)...)
 	return map[string]any{contract.Hex(): map[string]any{"code": hexutil.Encode(code)}}
 }
 
 func newTimeoutHarness(t *testing.T, mutate func(*dispatch.Config)) (*tests.Harness, *tests.CarmenState) {
 	t.Helper()
-	cfg := tests.Default()
-	mutate(&cfg)
 	fc, cs := tests.NewCarmenCore(t, tests.WithBlocks(2))
-	h := tests.NewHarness(t, fc, cfg, func(d *dispatch.Dispatcher, chain *dispatch.Chain) {
-		Register(d, exec.NewEnv(chain, oracle.New(oracle.Config{}, fc)), "eth")
-	})
-	cs.SetCode(contract, spins)
-	return h, cs
+	cs.SetCode(contract, tests.SpinCode())
+	return newHarness(t, fc, mutate), cs
 }
 
 // O2: the EVM stops at the configured timeout, with the message of the

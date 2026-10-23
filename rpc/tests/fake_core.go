@@ -17,8 +17,9 @@
 // Package tests holds the support code of the module's tests: FakeCore, an
 // in-memory core.Core with a builder for blocks and transactions and failure
 // injection per method; NewCarmenCore, a FakeCore over a real in-memory
-// Carmen state; and a harness that calls methods through the dispatcher. It is
-// the successor of api/rpctest.
+// Carmen state; NewReplayChain, a block of executed transactions to replay;
+// accounts that sign transactions; contract code; and a harness that calls
+// methods through the dispatcher.
 package tests
 
 import (
@@ -26,6 +27,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"reflect"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -62,14 +65,15 @@ const (
 // ErrInjected is the error of the Fail mode.
 var ErrInjected = errors.New("injected failure")
 
-// CoreMethods are the names of the methods of core.Core.
-var CoreMethods = []string{
-	"ChainInfo", "Header", "Block", "BlockNumberByHash", "Receipts", "Rules", "TxByHash", "BundleInfo",
-	"Head", "SubscribeHead", "State",
-	"SendTx", "PoolNonce", "PoolTransaction", "PoolTransactions", "PoolContent", "PoolContentFrom",
-	"PoolStats", "SubscribeTxs", "FindLogs",
-	"Progress", "OracleInputs", "PendingHeads",
-}
+// CoreMethods are the names of the methods of core.Core, in sorted order.
+var CoreMethods = func() []string {
+	typ := reflect.TypeFor[core.Core]()
+	names := make([]string, typ.NumMethod())
+	for i := range names {
+		names[i] = typ.Method(i).Name
+	}
+	return names
+}()
 
 type txPos struct {
 	block, index uint64
@@ -126,11 +130,6 @@ func WithRules(fn func(block uint64) opera.Rules) Option {
 	return func(f *FakeCore) { f.rules = fn }
 }
 
-// WithUpgradeHeights sets the upgrade heights reported by ChainInfo.
-func WithUpgradeHeights(heights ...opera.UpgradeHeight) Option {
-	return func(f *FakeCore) { f.info.UpgradeHeights = heights }
-}
-
 // WithBlocks appends that many empty blocks after the genesis block.
 func WithBlocks(n int) Option {
 	return func(f *FakeCore) {
@@ -177,9 +176,6 @@ func NewFakeCore(t testing.TB, opts ...Option) *FakeCore {
 	}
 	return f
 }
-
-// Close releases resources of the core; it is registered with the test.
-func (f *FakeCore) Close() {}
 
 // -- building the chain --
 
@@ -296,11 +292,17 @@ func (f *FakeCore) SetReceipts(number uint64, receipts types.Receipts) {
 	f.receipts[number] = receipts
 }
 
-// ReceiptsOf returns the receipts of a block for the test to modify in place.
+// ReceiptsOf returns a copy of the receipts of a block, for the test to change
+// and set with SetReceipts.
 func (f *FakeCore) ReceiptsOf(number uint64) types.Receipts {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	return f.receipts[number]
+	receipts := make(types.Receipts, len(f.receipts[number]))
+	for i, r := range f.receipts[number] {
+		c := *r
+		receipts[i] = &c
+	}
+	return receipts
 }
 
 // AnnounceUpTo announces every block up to the number on the head feed, in order.
@@ -333,8 +335,8 @@ func (f *FakeCore) HideBlocksFrom(number uint64) {
 	f.hiddenFrom, f.hidden = number, true
 }
 
-// SetState sets the function that opens the state at a block.
-func (f *FakeCore) SetState(fn func(number uint64) (state.StateDB, error)) {
+// setState sets the function that opens the state at a block.
+func (f *FakeCore) setState(fn func(number uint64) (state.StateDB, error)) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.stateFn = fn
@@ -376,13 +378,6 @@ func (f *FakeCore) SetProgress(p core.Progress) {
 	f.progress = p
 }
 
-// SetOracleInputs sets the inputs of the gas price oracle.
-func (f *FakeCore) SetOracleInputs(in core.OracleInputs) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.oracle = in
-}
-
 // AddPoolTransaction puts a transaction into the pool and announces it.
 func (f *FakeCore) AddPoolTransaction(tx *types.Transaction) {
 	f.mu.Lock()
@@ -401,7 +396,7 @@ func (f *FakeCore) addToPool(tx *types.Transaction) {
 	f.pool[tx.Hash()] = tx
 }
 
-// Block returns a block of the chain, for expectations in tests.
+// BlockAt returns a block of the chain, for expectations in tests.
 func (f *FakeCore) BlockAt(number uint64) *evmcore.EvmBlock {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -419,15 +414,28 @@ func (f *FakeCore) Latest() uint64 {
 
 // Inject sets the mode of a method; "*" sets all methods.
 func (f *FakeCore) Inject(method string, mode Mode) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	f.t.Helper()
 	if method == "*" {
+		f.mu.Lock()
+		defer f.mu.Unlock()
 		for _, m := range CoreMethods {
 			f.inject[m] = mode
 		}
 		return
 	}
+	f.requireMethod(method)
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.inject[method] = mode
+}
+
+// requireMethod fails the test for a name that is not a method of core.Core,
+// so that a misspelled name cannot make an injection or a count vacuous.
+func (f *FakeCore) requireMethod(method string) {
+	f.t.Helper()
+	if !slices.Contains(CoreMethods, method) {
+		f.t.Fatalf("core.Core has no method %q", method)
+	}
 }
 
 // SetDelay makes every call take that long, for cancellation tests.
@@ -439,6 +447,8 @@ func (f *FakeCore) SetDelay(d time.Duration) {
 
 // Calls returns how often a method was called.
 func (f *FakeCore) Calls(method string) int {
+	f.t.Helper()
+	f.requireMethod(method)
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.calls[method]
@@ -446,6 +456,8 @@ func (f *FakeCore) Calls(method string) int {
 
 // BlockCalls makes calls of the method wait until the returned function is called.
 func (f *FakeCore) BlockCalls(method string) (release func()) {
+	f.t.Helper()
+	f.requireMethod(method)
 	gate := make(chan struct{})
 	f.mu.Lock()
 	f.gates[method] = gate
@@ -454,17 +466,20 @@ func (f *FakeCore) BlockCalls(method string) (release func()) {
 	return func() { once.Do(func() { close(gate) }) }
 }
 
-// WaitBlocked waits until a call of the method waits at its gate.
+// WaitBlocked waits until a call of the method waits at its gate; it fails
+// the test if none does within five seconds.
 func (f *FakeCore) WaitBlocked(method string) {
-	for {
+	f.t.Helper()
+	f.requireMethod(method)
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
 		f.mu.RLock()
 		n := f.waiting[method]
 		f.mu.RUnlock()
 		if n > 0 {
 			return
 		}
-		time.Sleep(time.Millisecond)
 	}
+	f.t.Fatalf("no call of %s waits at its gate", method)
 }
 
 // enter counts the call, applies the delay and returns the mode of the method.
@@ -833,12 +848,6 @@ type StateTracker struct {
 	twice    atomic.Int64
 }
 
-// Opened is the number of states handed out, copies included.
-func (s *StateTracker) Opened() int64 { return s.opened.Load() }
-
-// Released is the number of releases.
-func (s *StateTracker) Released() int64 { return s.released.Load() }
-
 // Require fails the test unless every state was released exactly once.
 func (s *StateTracker) Require(t testing.TB) {
 	t.Helper()
@@ -870,8 +879,8 @@ func (s *trackedState) Copy() state.StateDB {
 	return &trackedState{StateDB: s.StateDB.Copy(), tracker: s.tracker}
 }
 
-// TrackStates makes the core count the states it hands out. Call it after the
-// state function is set.
+// TrackStates makes the core count the states it hands out. Call it on a core
+// made by NewCarmenCore.
 func (f *FakeCore) TrackStates() *StateTracker {
 	tracker := &StateTracker{}
 	f.mu.Lock()

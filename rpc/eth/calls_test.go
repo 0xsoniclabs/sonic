@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
+	"github.com/0xsoniclabs/sonic/rpc/tests"
 )
 
 var (
@@ -34,8 +35,6 @@ var (
 	returns42 = []byte{0x60, 0x2a, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3}
 	// PUSH1 0xff PUSH1 0 MSTORE8 PUSH1 1 PUSH1 0 REVERT: reverts with one byte.
 	reverts = []byte{0x60, 0xff, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xfd}
-	// PUSH1 1 PUSH1 0 SSTORE STOP: writes one storage slot.
-	stores = []byte{0x60, 0x01, 0x60, 0x00, 0x55, 0x00}
 )
 
 func TestCall_ReturnsTheResult(t *testing.T) {
@@ -89,7 +88,7 @@ func TestCall_BlockIsCheckedBeforeTheCallObject(t *testing.T) {
 
 func TestEstimateGas(t *testing.T) {
 	h, _, cs := newStateHarness(t, 2)
-	cs.SetCode(contract, stores)
+	cs.SetCode(contract, tests.StoreCode())
 
 	var gas hexutil.Uint64
 	h.Into(&gas, "eth_estimateGas", map[string]any{"to": account})
@@ -174,7 +173,7 @@ func TestCall_BlockHashReadsAtMostOneHeader(t *testing.T) {
 
 func TestCreateAccessList(t *testing.T) {
 	h, _, cs := newStateHarness(t, 1)
-	cs.SetCode(contract, stores).SetBalance(account, big.NewInt(1e18))
+	cs.SetCode(contract, tests.StoreCode()).SetBalance(account, big.NewInt(1e18))
 	var res struct {
 		AccessList []struct {
 			Address     common.Address `json:"address"`

@@ -28,12 +28,6 @@ func ToHexUint64(i uint64) *hexutil.Uint64 {
 	return &hu
 }
 
-// ToHexUint converts a uint to a hexutil.Uint.
-func ToHexUint(i uint) *hexutil.Uint {
-	hu := hexutil.Uint(i)
-	return &hu
-}
-
 // ToHexBigInt converts a big.Int to a hexutil.Big.
 func ToHexBigInt(i *big.Int) *hexutil.Big {
 	if i == nil {
@@ -41,10 +35,4 @@ func ToHexBigInt(i *big.Int) *hexutil.Big {
 	}
 	hu := hexutil.Big(*i)
 	return &hu
-}
-
-// ToHexBytes converts a byte slice to a hexutil.Bytes.
-func ToHexBytes(b []byte) *hexutil.Bytes {
-	hb := hexutil.Bytes(b)
-	return &hb
 }

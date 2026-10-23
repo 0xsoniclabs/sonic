@@ -27,9 +27,7 @@ import (
 
 func TestWeb3(t *testing.T) {
 	fc := tests.NewFakeCore(t)
-	h := tests.NewHarness(t, fc, tests.Default(), func(d *dispatch.Dispatcher, _ *dispatch.Chain) {
-		Register(d, "sonic/test")
-	})
+	h := tests.NewHarness(t, fc, func(d *dispatch.Dispatcher, _ *dispatch.Chain) { Register(d, "sonic/test") })
 	require.JSONEq(t, `"sonic/test"`, string(h.Result("web3_clientVersion")))
 	// keccak256 of the empty input and of "hello"
 	require.JSONEq(t, `"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"`, string(h.Result("web3_sha3", "0x")))

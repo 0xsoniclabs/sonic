@@ -105,6 +105,6 @@ func NewCarmenCore(t testing.TB, opts ...Option) (*FakeCore, *CarmenState) {
 	t.Helper()
 	fc := NewFakeCore(t, opts...)
 	cs := NewCarmenState(t)
-	fc.SetState(func(uint64) (state.StateDB, error) { return cs.Open(), nil })
+	fc.setState(func(uint64) (state.StateDB, error) { return cs.Open(), nil })
 	return fc, cs
 }

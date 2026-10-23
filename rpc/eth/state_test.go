@@ -25,19 +25,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
-	"github.com/0xsoniclabs/sonic/rpc/exec"
-	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/tests"
 )
 
 func newStateHarness(t *testing.T, blocks int) (*tests.Harness, *tests.FakeCore, *tests.CarmenState) {
 	t.Helper()
 	fc, cs := tests.NewCarmenCore(t, tests.WithBlocks(blocks))
-	h := tests.NewHarness(t, fc, tests.Default(), func(d *dispatch.Dispatcher, chain *dispatch.Chain) {
-		env := exec.NewEnv(chain, oracle.New(oracle.Config{}, fc))
-		Register(d, env, "eth")
-	})
-	return h, fc, cs
+	return newHarness(t, fc), fc, cs
 }
 
 var account = common.HexToAddress("0x1000000000000000000000000000000000000001")
