@@ -1356,9 +1356,33 @@ func (s *Session) TryGetReceipts(timeout time.Duration, txHash []common.Hash) ([
 		},
 	)
 	if err != nil {
-		return nil, err
+		missing := 0
+		for _, receipt := range res {
+			if receipt == nil {
+				missing++
+			}
+		}
+		return nil, fmt.Errorf("%d of %d receipts missing, %s: %w",
+			missing, len(res), s.describeLatestBlock(), err)
 	}
 	return res, nil
+}
+
+// describeLatestBlock reports the latest block of the network for diagnosing
+// a failed wait, distinguishing a stalled network from a slow one.
+func (s *Session) describeLatestBlock() string {
+	client, err := s.net.GetClient()
+	if err != nil {
+		return fmt.Sprintf("latest block unknown: %v", err)
+	}
+	defer client.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	latest, err := client.BlockNumber(ctx)
+	if err != nil {
+		return fmt.Sprintf("latest block unknown: %v", err)
+	}
+	return fmt.Sprintf("latest block %d", latest)
 }
 
 // runParallelWithClient as a helper function to run a number of jobs in parallel

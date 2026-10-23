@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
@@ -461,16 +463,29 @@ func TestWaitFor_SucceedsWhenPredicateIsSatisfied(t *testing.T) {
 }
 
 func TestWaitFor_EventuallyTimesOut(t *testing.T) {
-	t.Parallel()
-	// TODO: once golang 1.25 is released, this is a candidate to run using
-	// synctest
-	// For the time being, this parallel routine takes ~100 seconds, which is
-	// less than the longest running integration test. Therefore it should not
-	// affect the total execution time.
-	err := WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
-		return false, nil
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		err := WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+			return false, nil
+		})
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, 100*time.Second, time.Since(start))
 	})
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestWaitFor_HonoursDeadlineOfContext(t *testing.T) {
+	for _, timeout := range []time.Duration{10 * time.Second, 5 * time.Minute} {
+		synctest.Test(t, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), timeout)
+			defer cancel()
+			start := time.Now()
+			err := WaitFor(ctx, func(ctx context.Context) (bool, error) {
+				return false, nil
+			})
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.Equal(t, timeout, time.Since(start))
+		})
+	}
 }
 
 func TestWaitFor_ForwardsErrors(t *testing.T) {
