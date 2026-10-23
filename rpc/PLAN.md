@@ -53,7 +53,7 @@ previous execution paid for is a rule or a gate here.
 | `rpc/oracle` | gas price oracle and its sampler | core |
 | `rpc/eth`, `filters`, `trace`, `debug`, `txpool`, `net`, `web3`, `sonic` | one namespace each; `Register(d, chain[, ns])`; `eth` and `filters` register twice, as `eth_` and `ftm_` | dispatch, exec, oracle, core |
 | `rpc/transport` | HTTP, WebSocket, unix-socket transports over one `Front` that routes ported methods to the dispatcher and forwards the rest to the node's legacy handler while the port is under way | dispatch |
-| `rpc/tests` | `FakeCore`, `NewCarmenCore` (real in-memory Carmen), dispatcher helpers; successor of `api/rpctest` | core, dispatch |
+| `rpc/tests` | the test support of 7.4: `FakeCore`, `NewCarmenCore` (real in-memory Carmen), the replay chain, accounts, contract code, the harness; successor of `api/rpctest` | core, dispatch, exec, oracle |
 | `rpc` | `Module`: wiring of namespaces, head loop, start and stop | all of the above |
 
 **One import rule, one test.** Nothing under `rpc/` imports `gossip`,
@@ -427,10 +427,12 @@ names.
    listener, after listing what the node reads of the configuration it
    rewrites (section 3); an HTTP endpoint that shares its port with WebSocket
    stays with the node until step 4 (ADR12). Commits:
-   - `rpc/core`: `Core`, its value types, the generated mock and the test that
-     freezes its method set (section 2)
+   - `rpc/core`: `Core`, its value types and the test that freezes its method
+     set (section 2); no generated mock (ADR14)
    - `rpc/tests`: `FakeCore` with panic injection per method, `NewCarmenCore`
-     (7.4)
+     and accounts (7.4). Later test support lands with its first user: the
+     harness with `rpc/dispatch`, the environment harness with `rpc/exec`, the
+     replay chain with the first trace method
    - the gossip adapter, with a test per `svc.config` read of the legacy
      backend (section 2)
    - `rpc/dispatch`: method table, decoding, deadline, recover, `Group`,
@@ -706,7 +708,7 @@ later: before porting a package, list the repeated shapes in the legacy code
 | T1 | lakme against the reference is green on every commit touching the module; every difference is fixed or an entry in `defects.json` with `introduced`/`fixed_in` bounds and a one-line reason | L |
 | T2 | lakme benchmarks per release by the 7.2 protocol, compared with `benchstat`; geomean at or below the reference, and no row slower: a row slower at p < 0.05 fails only if its re-run (7.2) shows it slower again | L |
 | T3 | The execution-apis fixtures run against the node on every commit for the methods they cover; failures are fixed or allow-listed. The runner is published at step 0 | E |
-| T4 | `rpc/tests` holds `FakeCore` (panic injection per method) and `NewCarmenCore`; every ported method has handler tests through the dispatcher | R |
+| T4 | `rpc/tests` holds the test support of 7.4 (`FakeCore` with panic injection per method, `NewCarmenCore`, the harness) and the tests follow its rules TS1–TS12; every ported method has handler tests through the dispatcher | R, review |
 | T5 | The `tests/` RPC integration tests pass in HTTP and WebSocket modes, plus the IPC path for `test_*` and `admin_*` | I |
 | T6 | Module unit tests cover dispatcher stages, transports, filters and the oracle; run with `-race` | U |
 | T7 | Before step 6 lands, the branch is reviewed against the reference by someone who did not write it, using the classes of 7.6 as the checklist. Every finding is fixed with a test that fails without the fix, or becomes a deviations row | review |
@@ -937,15 +939,37 @@ reference does not serve, X6).
 
 ### 7.4 Handler tests: `rpc/tests` on `Core`
 
-The successor of `api/rpctest`: a `FakeCore` with a builder for accounts, blocks
-and transactions and panic injection per `Core` method, and `NewCarmenCore`, a
-real in-memory Carmen (its `EndBlock` returns a nil channel when there is no
-archive; do not wait on it). A mockgen mock of `Core` (the repository's
-convention; Jenkins checks generated mocks) serves error-injection rows; the
-fake serves stateful flows. Handler tests live next to their namespace and call
-through the dispatcher. Every handler lands with its rows; every wording in
-F3–F5 has one assertion; every `Core` method a handler touches has a
-panic-injection row.
+Handler tests live next to their namespace and call through the dispatcher.
+Every handler lands with its rows; every wording in F3–F5 has one assertion;
+every `Core` method a handler touches has a panic-injection row. They run on
+`rpc/tests`, the successor of `api/rpctest` and the one package of test
+support for the module and for `cmd/sonicd/app`:
+
+| Piece | What it is | For |
+|---|---|---|
+| `FakeCore` | an in-memory `Core`: a builder for blocks, receipts and the pool; the head and pool feeds; per method a mode (normal, panic, fail, not found, nil), a call count and a gate that holds its calls; one delay for every call | every handler test; failure, panic and cancellation rows; rows that require a read not to happen (H2, I13) |
+| `NewCarmenCore` | a `FakeCore` whose `State(n)` is a copy of one real in-memory Carmen state (its `EndBlock` returns a nil channel when there is no archive; do not wait on it); `TrackStates` counts the states opened and released (I7) | state getters and execution |
+| the replay chain | a funded account, a contract that writes storage, and a block with a transfer and a call of the contract, over real state | `debug_trace*` and `trace_*` |
+| accounts and code | signing on the fake chain id, a transaction from a new account, the binary encoding; code that spins and code that writes storage | every test that needs a transaction or a contract |
+| the harness | a dispatcher and a `Chain` over a core, with the default configuration changed by mutate functions; a variant that adds the `exec.Env` with an oracle of the core; helpers that call, decode and expect a failure; the count of recovered panics; a wait for the served head | calling a namespace the way a transport does |
+
+The rules below keep the tests as small as the code they test. Each is a class
+a review found in green tests.
+
+| ID | Rule | Why |
+|---|---|---|
+| TS1 | `FakeCore` is the only double of `Core`; there is no generated mock of `Core` (ADR14). A generated mock is for a test of one collaborator and one interaction, such as a logged warning | A test states what a request answers and which `Core` calls it must not make. It does not state the sequence of calls a handler makes: that sequence changes with every H2 change, and the head loop and the oracle call `Core` in the background |
+| TS2 | A namespace test gets its harness from one call. The package's own helper only names what it registers | The wiring of dispatcher, chain, environment and oracle, written once per package, drifts |
+| TS3 | A configuration change is a mutate function on the defaults (`func(*dispatch.Config)`), never a copy of the defaults | One definition of a default (section 8) |
+| TS4 | A fixture two packages use moves to `rpc/tests` when the second one appears: accounts, signed transactions, contract code, scenario chains. A helper that one package needs stays in its test file | H7 for tests |
+| TS5 | A test waits for the served head with the harness's wait: no sleep, no polling of `Chain.Latest` by hand. Every helper that waits has a deadline and fails the test at it | A wait without a deadline hangs CI instead of failing |
+| TS6 | Where a `Core` method is named by a string (injection, call counts, gates), a name that `Core` does not have fails the test. The list of method names is derived from the interface, not written out | A misspelled name makes an injection do nothing and a count read 0, so a "not called" assertion passes |
+| TS7 | An assertion compares a value read before the action with one read after it. A count read twice in one expression, and a fixture built but not queried, are defects of the test | Both pass whatever the code does |
+| TS8 | A matrix row checks that its fault was reached: a panic row checks that `rpc_panics_total` grew. A `Core` method that no generic argument shape reaches gets a targeted request; a method that only the start or a background loop calls is named in the test with that reason | A matrix that never reaches a method proves nothing about it (Q3, P1) |
+| TS9 | The fake hands out copies. A test changes the fake only through its setters | The module's goroutines read the fake under `-race` |
+| TS10 | A test reads metrics from a registry of its own, through one scrape helper per test package. Module tests start a module through one helper that stops it with the test, and dial clients that close with the test. A test that stops the module itself says so | No registry state shared between tests; no socket left open |
+| TS11 | Test support adds no module dependency: a helper never changes `go.mod`. `rpc/tests` imports `core`, `dispatch`, `exec` and `oracle`, so the tests of those four packages that use it are external test packages (`package exec_test`) | An import cycle otherwise; a dependency for tests is still a dependency of the module |
+| TS12 | Test support has no dead code (H4): a helper or an option without a caller is deleted | It is read and kept up like module code |
 
 ### 7.5 Integration tests: `tests/`
 
@@ -990,6 +1014,7 @@ the legacy code before porting, not from the port afterwards.
 | Cost of a coarse `Core` call | the answer is right | read what the legacy code read, per caller (I10) | the oracle tick walked every validator's last event |
 | Defaults written twice | they agree today | one definition (section 8) | the oracle's maximum gas price default in three places |
 | Work the answer does not use | the answers are right and a sweep shows only a sum | H2, H3: profile each class of method (state read at the head and over old blocks, call, trace) at the end of steps 2 and 5, and read what is below the handler | an EVM header built for a state read; a trace result compacted twice |
+| Assertions that cannot fail | the test is green whatever the code does | TS6–TS8: before-and-after reads, checked method names, a matrix that checks its fault was reached; a review of every test helper | a call count subtracted from itself; a limit fixture built and never queried; a panic matrix that reached no request for several `Core` methods |
 | Copies and dead code | the tests pass with five copies of a lookup and with symbols nobody calls | H1, H4, H5, H7: repeated shapes listed in the legacy code before porting, the unused-symbol check at the end of each step | block lookups copied into `eth` beside `exec.Env`; the number and hash switch written eight times; six symbols with no caller, `Add5` among them |
 | Cost a client chooses | the answers are right, and fast for the values honest clients send | V11: for every number a request carries (overrides, indexes, range ends), count the `Core` calls with hostile values: above the head, far below it, the maximum of the type | a block override `number` above the head made one BLOCKHASH read every header down to genesis (F8 table) |
 | A size limit that counts the wrong thing | the limit is tested on the trace it was written for | V12: count in the unit of the limit everything the structure keeps, and test with the most expensive operation per gas, not with a loop of cheap ones | the vmTrace limit counted 128 bytes per operation: a loop of `SWAP16` over full words kept 2 GiB under a 256 MiB limit, and `trace_callMany` multiplied it by its calls |
@@ -1012,8 +1037,9 @@ Module (`go test -race ./rpc/...`, which is also P6):
   inventory; every method that is not registered answers -32601 on every
   transport.
 - Q3, P1: the injection matrix, every `Core` method failing in every mode
-  under every method; a panic in any `Core` method is contained. Q2: every
-  method, cancelled under `Core` latency, returns.
+  under every method; a panic in any `Core` method is contained and counted,
+  and a `Core` method no request reaches is named with its reason (TS8). Q2:
+  every method, cancelled under `Core` latency, returns.
 - Q4, T4: a test fails on a registered method no test names; coverage per
   package at the floor of ADR10.
 - Q5: the served set diffed against geth's methods; the envelope differential
@@ -1087,7 +1113,7 @@ once; that is out of this plan (the dispatcher is where a limiter would go,
 | `RPCTimeout` | 5s | per-request deadline; legacy uses a fork patch (`SetExecutionTimeLimit`) | `gossip.NewService` | `dispatch.DefaultConfig` |
 | `RPCTxFeeCap` | 100 FTM | refuse expensive sends | `checkTxFee` in `api/ethapi` | `dispatch.DefaultConfig` |
 | `MaxResponseSize` | 25 MiB (`--rpc.maxresponsesize`) | `debug_trace*` and `trace_filter` check it; `trace_call` and `trace_callMany` since the module (V12), the calls of `trace_callMany` sharing it, and a vmTrace stopping at it | `api/ethapi/api.go`, `api/ethapi/tx_trace.go` | `dispatch.DefaultConfig` |
-| `StructLogLimit` | 2000 | struct-log length | `gossip.DefaultConfig` | `dispatch.DefaultConfig` |
+| `StructLogLimit` | 2000 | output of the default tracer, in bytes: go-ethereum's struct logger counts its limit in bytes, although the flag says a number of logs (as in the reference) | `gossip.DefaultConfig` | `dispatch.DefaultConfig` |
 | `MaxTraceFilterRange` | 1000 (`--rpc.tracefilterrange`, 0 = unlimited) | widest `trace_filter` span, since 2.2.3 | `gossip.DefaultConfig` | `dispatch.DefaultConfig` |
 | `eth_getProof` keys | 1024 | storage keys per request, since 2.2.3 | `maxGetProofKeys` in `api/ethapi` | `maxGetProofKeys` in `rpc/eth` |
 | `LogQueryParameterLimit` / `LogQueryResultLimit` | 1000 / 5000 | parameters (every filter path since 2.2.3) / results | `gossip/filters.Config` | `dispatch.DefaultConfig`; TOML keys kept by `gossip.FilterConfig` |
@@ -1127,6 +1153,7 @@ and the p2p facts.
 | ADR7 | `debug_getRaw{Block,Header,Receipts,Transaction}` | Not served: the reference does not serve them (X6). Their execution-apis fixtures are allow-listed (7.3). Adding them is a change after the release |
 | ADR8 | lakme WebSocket side | After the release, as a lakme change. Until then the integration tests carry subscriptions and filters over WebSocket |
 | ADR9 | The `GPO` config section (`MaxGasPrice`, `MinGasPrice`, `DefaultCertainty`; TOML only) once the legacy oracle is deleted | Keep all three and feed them to the module's oracle through `Config`. `MinGasPrice` is not ignored: it is the floor of the suggestion (`utils.BigMax(gpo.cfg.MinGasPrice, reactive, constructive)` in `Oracle.suggestTip`, `gossip/gasprice/gasprice.go`). A key kept without its effect passes a parse test (O4). The loader rejects unknown fields, so removing a key is breaking; that is why the section stays |
-| ADR10 | Coverage floor for Q4 | 80% line coverage per module package, raised, never lowered. Excluded: `rpc/core` (the interface, its value types and a generated mock), `rpc/tests` (test support) and generated files everywhere |
+| ADR10 | Coverage floor for Q4 | 80% line coverage per module package, raised, never lowered. Excluded: `rpc/core` (the interface and its value types), `rpc/tests` (test support) and generated files everywhere |
 | ADR12 | Shared HTTP/WebSocket endpoint during steps 1 to 3 | While WebSocket is the node's, the module takes over HTTP only on a port of its own; an HTTP endpoint that shares its port with WebSocket stays with the node and answers as the reference does. The node starts in every endpoint layout after every commit. The shared endpoint moves to the module with WebSocket at step 4. No proxy is built |
+| ADR14 | Test double of `Core` | `FakeCore` only (TS1). The repository's convention is a mockgen mock per interface, and Jenkins checks that generated mocks are current; for `Core` no mock is generated. Strict expectations describe the calls a handler makes, which H2 changes; the head loop and the oracle call `Core` at times a test does not control; a failure row is one `FakeCore` mode for every method, where a mock needs an expectation per method. Generated mocks stay for tests of one collaborator (a logger) |
 | ADR13 | Compression of small responses | Open, after the release. The gzip writer's reset is a large share of the CPU of a small response such as `eth_getBalance` at the head, in the reference too (profile it at step 2). Not compressing responses under about 1 KB removes it and changes the wire, so the release compresses as the reference does (F1) |
