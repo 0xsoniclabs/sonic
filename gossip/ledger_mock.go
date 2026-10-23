@@ -12,8 +12,12 @@ package gossip
 import (
 	reflect "reflect"
 
+	evmcore "github.com/0xsoniclabs/sonic/evmcore"
+	core_types "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	state "github.com/0xsoniclabs/sonic/inter/state"
+	common "github.com/ethereum/go-ethereum/common"
+	types "github.com/ethereum/go-ethereum/core/types"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -81,18 +85,18 @@ func (m *MockHead) EXPECT() *MockHeadMockRecorder {
 }
 
 // BeginBlock mocks base method.
-func (m *MockHead) BeginBlock() (ExecutingBlock, error) {
+func (m *MockHead) BeginBlock(params BlockParams, onNewLog func(*core_types.Log)) (ExecutingBlock, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "BeginBlock")
+	ret := m.ctrl.Call(m, "BeginBlock", params, onNewLog)
 	ret0, _ := ret[0].(ExecutingBlock)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // BeginBlock indicates an expected call of BeginBlock.
-func (mr *MockHeadMockRecorder) BeginBlock() *gomock.Call {
+func (mr *MockHeadMockRecorder) BeginBlock(params, onNewLog any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeginBlock", reflect.TypeOf((*MockHead)(nil).BeginBlock))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeginBlock", reflect.TypeOf((*MockHead)(nil).BeginBlock), params, onNewLog)
 }
 
 // Block mocks base method.
@@ -133,6 +137,48 @@ func (m *MockExecutingBlock) EXPECT() *MockExecutingBlockMockRecorder {
 	return m.recorder
 }
 
+// Finalize mocks base method.
+func (m *MockExecutingBlock) Finalize() FinalizedBlock {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Finalize")
+	ret0, _ := ret[0].(FinalizedBlock)
+	return ret0
+}
+
+// Finalize indicates an expected call of Finalize.
+func (mr *MockExecutingBlockMockRecorder) Finalize() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Finalize", reflect.TypeOf((*MockExecutingBlock)(nil).Finalize))
+}
+
+// Run mocks base method.
+func (m *MockExecutingBlock) Run(txs types.Transactions) map[common.Hash]common.Hash {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Run", txs)
+	ret0, _ := ret[0].(map[common.Hash]common.Hash)
+	return ret0
+}
+
+// Run indicates an expected call of Run.
+func (mr *MockExecutingBlockMockRecorder) Run(txs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MockExecutingBlock)(nil).Run), txs)
+}
+
+// runInternal mocks base method.
+func (m *MockExecutingBlock) runInternal(txs types.Transactions) evmcore.ProcessSummary {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "runInternal", txs)
+	ret0, _ := ret[0].(evmcore.ProcessSummary)
+	return ret0
+}
+
+// runInternal indicates an expected call of runInternal.
+func (mr *MockExecutingBlockMockRecorder) runInternal(txs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runInternal", reflect.TypeOf((*MockExecutingBlock)(nil).runInternal), txs)
+}
+
 // stateDB mocks base method.
 func (m *MockExecutingBlock) stateDB() state.StateDB {
 	m.ctrl.T.Helper()
@@ -145,4 +191,42 @@ func (m *MockExecutingBlock) stateDB() state.StateDB {
 func (mr *MockExecutingBlockMockRecorder) stateDB() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "stateDB", reflect.TypeOf((*MockExecutingBlock)(nil).stateDB))
+}
+
+// MockFinalizedBlock is a mock of FinalizedBlock interface.
+type MockFinalizedBlock struct {
+	ctrl     *gomock.Controller
+	recorder *MockFinalizedBlockMockRecorder
+	isgomock struct{}
+}
+
+// MockFinalizedBlockMockRecorder is the mock recorder for MockFinalizedBlock.
+type MockFinalizedBlockMockRecorder struct {
+	mock *MockFinalizedBlock
+}
+
+// NewMockFinalizedBlock creates a new mock instance.
+func NewMockFinalizedBlock(ctrl *gomock.Controller) *MockFinalizedBlock {
+	mock := &MockFinalizedBlock{ctrl: ctrl}
+	mock.recorder = &MockFinalizedBlockMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockFinalizedBlock) EXPECT() *MockFinalizedBlockMockRecorder {
+	return m.recorder
+}
+
+// Candidate mocks base method.
+func (m *MockFinalizedBlock) Candidate() *BlockCandidate {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Candidate")
+	ret0, _ := ret[0].(*BlockCandidate)
+	return ret0
+}
+
+// Candidate indicates an expected call of Candidate.
+func (mr *MockFinalizedBlockMockRecorder) Candidate() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Candidate", reflect.TypeOf((*MockFinalizedBlock)(nil).Candidate))
 }
