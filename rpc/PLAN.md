@@ -13,20 +13,17 @@ no progress: the branch, its tests and lakme say what exists. It can be executed
 again from `main` by someone who has not seen the branch; every lesson a
 previous execution paid for is a rule or a gate here.
 
-**Baseline (revised 2026-10-12).**
+**Baseline.**
 
-- **Reference** is the newest `v2.2.x` tag, today `v2.2.4` (2.2.3 → 2.2.4 only
-  changed bundle plans). `main` is never the reference.
-- **Port base** is `main`, but `main` and `v2.2` have diverged. `v2.2` carries
-  RPC fixes `main` lacks: #1177 block consistency, #1205 (`eth_getProof` key cap,
-  log parameter limit on every filter path, `MaxTraceFilterRange`), #1207
-  unknown block in tracing, #1199/#1200 call-object and simulate fixes,
-  #1220/#1221 bundles (`git log main..v2.2.4 -- api gossip config`). `main`
-  carries what `v2.2` lacks: `eth_sendRawTransactionSync` (#1008). **Step 0**
-  merges the first set into `main` before any port work, so that every lakme
-  difference is the port's, not the branches'.
-- Wording and order rules in F2–F7 were derived on `main` before step 0; each
-  is re-checked against the reference after it.
+- **Reference** is the newest release tag, today `v2.2.4`. `main` is never the
+  reference.
+- **Port base** is the current `main`, with the most recent client code. Fixes
+  reach `main` first, so the branch takes no cherry-picks. What `main` answers
+  differently from the reference (today `eth_sendRawTransactionSync`, #1008) is
+  a release difference, annotated at step 0, so that every later lakme
+  difference is the port's.
+- Wording and order rules in F2–F7 are re-checked against the reference and
+  `main` before each port.
 - Code pointers are `file:Symbol`, never line numbers (they drift).
 - Sources: **code** the legacy handler on `main`, **new** decided here.
   Items marked *decide* are open decisions in section 9 (ADR ids; they do not
@@ -60,9 +57,18 @@ previous execution paid for is a rule or a gate here.
 | `rpc` | `Module`: wiring of namespaces, head loop, start and stop | all of the above |
 
 **One import rule, one test.** Nothing under `rpc/` imports `gossip`,
-`api/*` or `go-ethereum/rpc`, with one exception: `rpc/sonic` imports the leaf
-package `gossip/blockproc/bundle` (plan encoding, plan hash and envelope gas
-formula are consensus-critical; copying them would fork the hashing).
+`api/*` or `go-ethereum/rpc`. The exceptions are leaf packages of
+consensus-critical definitions that must not be copied, each allowed in the one
+package that needs it:
+
+- `gossip/blockproc/bundle` in `rpc/sonic`: plan encoding, plan hash and
+  envelope gas formula; a copy would fork the hashing.
+- `gossip/blockproc/priorities/registry` and `gossip/blockproc/subsidies/registry`
+  in `rpc/eth`: the system contract addresses `eth_config` reports.
+- `gossip/evmstore` in `rpc/tests`: the constructor of the Carmen state wrapper,
+  for test support only.
+
+A new exception goes into this list and into the test in the same change.
 `gossip` imports `rpc/core` only. The composition root `cmd/sonicd/app` builds
 the adapter and the `Module`. Test files may import go-ethereum's `rpc` as the
 oracle for envelope compatibility (Q5).
@@ -90,7 +96,7 @@ type Core interface {
 type ChainReader interface {
 	ChainInfo() ChainInfo
 	Header(number uint64) (*evmcore.EvmHeader, error) // no transactions decoded
-	Block(number uint64) (*evmcore.EvmBlock, error)   // ErrNotFound above the archive head
+	Block(number uint64) (*evmcore.EvmBlock, error)   // ErrNotFound above the committed head
 	BlockNumberByHash(hash common.Hash) (uint64, bool)
 	Receipts(number uint64) (types.Receipts, error)      // fails if TxIndex is off
 	Rules(number uint64) (*opera.Rules, error)           // head+1: the open epoch's rules
@@ -321,9 +327,9 @@ structs. This is the largest and most security-sensitive part of the work
 all gates: geth's `rpc.Server` and `rpc.Client` are the compatibility oracle in
 test files (Q5, D11); a fuzz target on the codec; the transports are the one
 part of step 1 and step 4 with their own review. `Front` is scaffolding for the
-methods not ported yet; at step 6 only its IPC routing of X3 remains. The `eth_stop` hole alone does not justify a rewrite (it is a
-one-line fix in legacy, section 6); deadline/recover/metrics uniformity and the
-measured saving do.
+methods not ported yet; at step 6 only its IPC routing of X3 and the p2p facts
+(`net_listening`, `net_peerCount`) remain. Deadline, recover and metrics
+uniformity and the measured saving are what justify an own layer.
 
 ### go-ethereum in the module
 
@@ -347,107 +353,190 @@ client-side `rpc` (`sonictool attach`, `tests/`); removing them is a separate
 change. A test enumerates the module's imports and fails on anything outside the
 keep list.
 
-## 4. Milestones
+## 4. Milestone
 
-Two milestones, each a question the work answers and a table of how we know.
+One milestone: the MVP, the first release. The work is a series of commits on
+one branch cut from `main`, in the order of the steps below. No pull request is
+opened while the work runs; every commit is written so that a pull request can
+be made from it later, alone or with its neighbours.
 
-### M1. Proof of concept (steps 0 to 5)
+### Guarantees of the release
 
-Can the module be built on the interface of section 2 without giving anything
-up? `Front` may still forward what is not ported; nothing is shippable and none
-of the guarantees of M2 are claimed.
-
-| Question | How we know | Pass |
-|---|---|---|
-| Is the interface sufficient? | Every method section 6 marks *port* is registered (a test diffs the registered set against the inventory); `Core` has not grown beyond section 2 during steps 1 to 5; the import test holds | No handler needed a call outside `Core`; additions are in section 2 with their reason |
-| Is it feature equivalent? | lakme against the reference, every family (7.1); the `tests/` RPC suite over HTTP and WebSocket | Green, or annotated in `defects.json` with a reason section 6 accepts |
-| Is performance acceptable? | The 7.2 protocol against the reference | No row slower at p < 0.05; geomean at or below |
-
-### M2. MVP: the first release (step 6)
-
-Same features and at least the performance of the reference, plus the guarantees
-M1 does not make. The forwarding of unported methods goes and the module is the only RPC server
-for everything but X3.
+Same features and at least the performance of the reference, plus the
+guarantees below. The forwarding of unported methods goes and the module is the
+only RPC server for everything but X3. Section 7.7 names the check behind each
+line.
 
 | Guarantee | How we know |
 |---|---|
+| Narrow interface | `Core` is the one of section 2, frozen by a test; the import test holds (I1) |
 | Feature equivalent | lakme green or annotated (T1); execution-apis fixtures (T3); every geth method served or in X with a reason (Q5); Sonic extensions served and tested (Q6) |
-| Performance | The 7.2 protocol: no row slower at p < 0.05, geomean at or below (T2) |
+| Performance | The 7.2 protocol: geomean at or below the reference, no row slower after the re-run of 7.2 (T2) |
 | Completion on shutdown | Q1/D10: no goroutine of the module alive after `Stop` under load |
-| Cancellation | Q2: every registered method returns within the bound when cancelled |
+| Cancellation | Q2: every registered method returns within the bound when cancelled; an EVM run on Tosca is bounded by its gas instead |
 | Nil safety | Q3: the injection matrix runs with `rpc_panics_total` at zero |
-| Coverage | Q4: the CI floor holds; every registered method has a handler test |
+| Coverage | Q4: the floor of ADR10 holds; every registered method has a handler test |
 | Standards | Q5: JSON-RPC 2.0 envelope and geth's method set match, as oracle test, fixtures and lakme observe |
 | Operable | MON1–MON6; limits preserved and tested (O1); deadlines on every request (O2); `--mode validator` closes public listeners (O3); flags and TOML keys compatible, each with its effect (O4); the node's own uses of its RPC configuration and handler kept (O5); transports secure (D11); changelog and operator notes written |
 | Reviewed | T7: an independent review against the reference, with 7.6 as the checklist |
 
+### Commits
+
+Each commit is one reviewable unit and could become a pull request of its own.
+
+- **One plan section or requirement group per commit.** The subject says what
+  changes; the body names the step, the plan section and the requirement IDs
+  the commit meets, and how it was checked. That body is the later pull request
+  description. A commit that needs a decision records it in section 9; one that
+  adds a deviation adds its row to section 6 and its `defects.json` entry.
+- **Dependency order.** A commit needs only the commits before it, so the
+  branch up to any commit is a valid base for the next pull request.
+- **Every commit leaves a working node.** It builds; its tests and those of the
+  packages it touches pass, under `-race` for `rpc/`; lakme is green or
+  annotated for the method families it touches. `Front` forwards whatever is
+  not ported yet, and the node starts in every endpoint layout (ADR12), so any
+  prefix of the branch could be released.
+- **Tests land with the code they test**, in the same commit; the check of a
+  requirement is in the commit that meets it.
+- **A fix belongs to the commit it fixes.** While the branch is not shared, fold
+  it in (`git commit --fixup`, then `git rebase --autosquash`); once it is
+  shared, the fix is a commit of its own that names the one it fixes.
+- **Moves and deletions are commits of their own**, never mixed with new
+  behaviour, so a reviewer sees one kind of change at a time.
+
 ### Steps
 
-Each step ships behind nothing: the module replaces the legacy handlers for the
-namespaces it has ported, `Front` forwards the rest, and lakme compares the
-branch to the reference. A step is done when the lakme run is green or
-annotated, its handler tests exist and the integration tests for its methods
-pass. The namespace packages are independent, so steps 2 to 5 can be worked in
-parallel after step 1; none may add to `Core`.
+The steps order the commits. The namespace packages are independent, so steps 2
+to 5 can be worked in parallel after step 1, each in its own commits; none may
+add to `Core`. A step is done when its last commit passes the gates the step
+names.
 
-0. **Baseline** (M1). Merge the `v2.2` RPC fixes into `main` (see Baseline).
-   Run lakme `main` against the reference; annotate or fix every difference.
-   This is the green start every later run is compared to. Gate: lakme green on
-   unmodified `main`.
-1. **Skeleton** (M1). `Core` and its gossip adapter, dispatcher (recover,
-   deadlines, method table), **HTTP** transport and `Front`, metrics. Ports:
-   `eth_chainId`, `eth_blockNumber`, `eth_syncing`, block and header reads, tx
-   lookups, `eth_getRules`/`currentEpoch`/`config`, `net_version`, `web3_*`.
-   The module takes over the HTTP listener, after listing what the node reads
-   of the configuration it rewrites (section 3). When the HTTP and WebSocket
-   ports are the same, the WebSocket upgrade is reverse-proxied to the node's
-   own server on a private endpoint until step 4 (ADR12). Gates: H1, H3, H6, I1–I4, I13,
-   I15, D1–D4, D9, D11, P1–P5, P7, S1, MON1–MON5, O5 (unlock check).
-2. **Oracle, state and execution** (M1). The gas price oracle in the module on
-   `Core.OracleInputs`, `PendingHeads` and `Rules` (I10; it runs next to the
-   legacy oracle, which stays until step 6), with all three `GPO` keys in
-   effect (ADR9): `eth_gasPrice`, `eth_maxPriorityFeePerGas`,
-   `eth_feeHistory`, `eth_blobBaseFee`. The oracle comes first because call
-   defaulting (`setDefaults`) asks it for the tip. Then `eth_get{Balance,Code,
-   StorageAt,TransactionCount,Account,Proof}`, `eth_call`, `eth_estimateGas`,
-   `eth_createAccessList`, `eth_simulateV1`, `sonic_estimateGasForTransactions`.
-   Gates: H2, I5–I8, I10, I12, V1–V6, V10, V11, F2–F5, O1; lakme state, call and oracle
-   families.
-3. **Transactions and pool** (M1). `eth_sendRawTransaction(Sync)`,
-   `eth_pendingTransactions`, `txpool_*`, `sonic_submitBundle`,
-   `sonic_prepareBundle`, `sonic_getBundleInfo`. Gates: V7; `rejected_tx_test.go`,
+0. **Baseline.** The branch starts on the current `main` (see Baseline).
+   Commits:
+   - the reference's flags and TOML keys as golden files, with the tests that
+     compare the node against them (O4)
+
+   Outside the repository: publish the Sonic runner of the execution-apis
+   fixtures (7.3), a private project today, so T3 can gate every later commit.
+   Run lakme against the reference and the fixtures on unmodified `main`;
+   annotate every difference `main` already has as a release difference in
+   `defects.json`. Gate: lakme green or annotated, the fixtures green or
+   allow-listed. This is the green start every later run is compared to.
+1. **Skeleton.** `Core` and its gossip adapter, dispatcher, **HTTP** transport
+   and `Front`, metrics, and the first reads. The module takes over the HTTP
+   listener, after listing what the node reads of the configuration it
+   rewrites (section 3); an HTTP endpoint that shares its port with WebSocket
+   stays with the node until step 4 (ADR12). Commits:
+   - `rpc/core`: `Core`, its value types, the generated mock and the test that
+     freezes its method set (section 2)
+   - `rpc/tests`: `FakeCore` with panic injection per method, `NewCarmenCore`
+     (7.4)
+   - the gossip adapter, with a test per `svc.config` read of the legacy
+     backend (section 2)
+   - `rpc/dispatch`: method table, decoding, deadline, recover, `Group`,
+     loops, `Stop`, `BlockRef`, `Chain` (section 3; D1, D2, D9, P1–P3, P7, H1,
+     H6, O2)
+   - metrics (MON1–MON5)
+   - `rpc/transport`: message layer, HTTP and `Front`, with the differential
+     envelope test against geth's server and the codec fuzz target (D3, D11,
+     Q5)
+   - the `Module` and `takeOverRPC` for HTTP, keeping every reader of the
+     rewritten configuration (O5)
+   - block, header and transaction reads; `eth_chainId`, `eth_blockNumber`,
+     `eth_syncing`, `eth_getRules`/`currentEpoch`/`config`, `net_version`,
+     `web3_*` (I2–I4, I13, S1)
+
+   Gates: the `Core` surface test, H1, H3, H6, I1–I4, I13, I15, D1–D3, D9, D11,
+   P1–P5, P7, S1, MON1–MON5, O5 (unlock check).
+2. **Oracle, state and execution.** The gas price oracle comes first because
+   call defaulting (`setDefaults`) asks it for the tip; it runs on
+   `Core.OracleInputs`, `PendingHeads` and `Rules` next to the legacy oracle,
+   which stays until step 6, with all three `GPO` keys in effect (ADR9).
+   Commits:
+   - `rpc/oracle` and `eth_gasPrice`, `eth_maxPriorityFeePerGas`,
+     `eth_feeHistory`, `eth_blobBaseFee` (I10, ADR9)
+   - the guard in `evmcore.GetHashFn` (F8; node code, consensus unchanged)
+   - `rpc/exec`: call arguments, overrides, the EVM environment from
+     `Rules(n)` and the header, BLOCKHASH by lookup (I12, V5, V11, H2)
+   - `eth_get{Balance,Code,StorageAt,TransactionCount,Account,Proof}` (I5–I7,
+     V10)
+   - `eth_call`, `eth_estimateGas`, `eth_createAccessList` (I8, F2–F5, V1–V6)
+   - `eth_simulateV1` (ADR6)
+   - `sonic_estimateGasForTransactions`
+
+   Gates: H2, I5–I8, I10, I12, V1–V6, V10, V11, F2–F5, O1; lakme state, call and
+   oracle families.
+3. **Transactions and pool.** Commits:
+   - `eth_sendRawTransaction`, `eth_sendRawTransactionSync` (V7)
+   - `eth_pendingTransactions`, `txpool_*`
+   - `sonic_submitBundle`, `sonic_prepareBundle`, `sonic_getBundleInfo`
+
+   Gates: V7; `rejected_tx_test.go`,
    `tests/rpcs/send_raw_transaction_sync_test.go`, bundle tests.
-4. **Events** (M1). WebSocket and IPC transports (the module takes both over and
-   the proxy goes), head and tx subscriptions, filters, `eth_getLogs`; one step,
-   because a subscription cannot be forwarded. Gates: I9, I11, I14, I16, I17, D4–D6,
-   V8, F6, F7, P8; lakme filter family; subscription tests over WS and IPC.
-5. **Tracing** (M1). `debug_*`, `trace_*`, `debug_getRaw*` (ADR7). Read
-   `stateAtTransaction` before deciding where the EIP-2935 write goes (section 6).
+4. **Events.** Logs, filters, and the WebSocket and IPC transports with
+   subscriptions. Commits:
+   - `eth_getLogs` (I11, F6, V2, V4)
+   - the polled filters and their journal (D6, V8, I17, F7, P8)
+   - the WebSocket and IPC transports and the `Notifier`, checked against
+     geth's client, not yet serving the node (D4, D5, D11)
+   - `eth_subscribe`/`eth_unsubscribe` (`newHeads`, `logs`,
+     `newPendingTransactions`) and `takeOverRPC` for WebSocket and IPC, the
+     shared HTTP endpoint included: one commit, because a subscription cannot
+     be forwarded (I9, I14, I16, ADR12)
+
+   Gates: I9, I11, I14, I16, I17, D4–D6, V8, F6, F7, P8; lakme filter family;
+   subscription tests over WS and IPC.
+5. **Tracing.** The `debug_*` and `trace_*` methods of section 6
+   (`debug_getRaw*` is not served, ADR7). Read `stateAtTransaction` before
+   deciding where the EIP-2935 write goes (section 6). Commits:
+   - `debug_traceTransaction`, `debug_traceBlockByNumber`/`Hash`,
+     `debug_traceCall`, `debug_getBlockRlp`, `debug_printBlock` (V6, F3)
+   - `trace_transaction`, `trace_get`, `trace_block`, `trace_filter` (V2)
+   - the size accounting of the vmTrace logger in `txtrace` (V12; node code)
+   - `trace_call`, `trace_callMany`, bounded as a whole (V12)
+
    Gates: V6, V11, V12, F2, F3; lakme trace families.
-6. **Switch** (M2). The forwarding of unported methods goes, with the last path
-   to `eth_stop` (S1); `Front` keeps only the IPC routing of X3 and the p2p
-   facts; the module is the only RPC server; X3 namespaces stay on IPC
-   in the minimal `api/legacy` package until their removal. Deleted here: the
-   legacy oracle and its plumbing (G2), `gossip/filters` (G1), the unreachable
-   parts of `api/*` (G3). Before the forwarding goes, every in-process client
-   of the node's handler is moved to the module (O5). Gates: H4, H5, H7, Q1–Q6, D10,
-   O1–O5, P6–P8, MON1–MON6, import test, lakme and benchmark gate (T2) against
-   the reference, and a review of the whole branch against the reference by
-   someone who did not write it, with section 7.6 as the checklist (T7). No
-   escape hatch (ADR11).
+6. **Switch.** The forwarding of unported methods goes; `Front` keeps only the
+   IPC routing of X3 and the p2p facts;
+   the module is the only RPC server. X3 namespaces stay on IPC until their
+   removal, in `api/legacy` (and `api/testapi`). Commits:
+   - every in-process client of the node's handler served by the module (O5)
+   - `api/legacy` cut out of `api/ethapi` mechanically, with an AST pass that
+     keeps the X3 methods and the declarations they reach and drops the rest,
+     not by hand; a test pins the exact method set the node's handler serves,
+     so nothing reaches IPC unlisted; its wallet methods default fees and gas
+     through the module (X3, ADR5)
+   - `Front` forwards only X3 on IPC and the p2p facts (S1)
+   - delete `gossip/filters` (G1)
+   - delete the legacy oracle and its plumbing (G2)
+   - delete what of `api/*` is left unreachable and shrink `EthAPIBackend`
+     (G3)
+   - changelog, operator notes and the alerts of MON6
+
+   Then the review of the whole branch against the reference by someone who did
+   not write it, with section 7.6 as the checklist (T7); each finding is fixed
+   in the commit it belongs to, with a test that fails without the fix. Gates:
+   H4, H5, H7, Q1–Q6, D10, O1–O5, P6–P8, MON1–MON6, the import test, lakme, the
+   fixtures (T3) and the benchmark gate (T2) against the reference, every line
+   of 7.7, T7. No escape hatch (ADR11).
 
 ## 5. Requirements
 
 Columns: **ID**, requirement, **Verified by** (section 7 tools:
 L lakme, E execution-apis fixtures, R rpctest, I integration tests, U unit test
-in the module, C CI lint or import test). I, D, P, V, F, H, S, X and MON gate
-M1 and M2; Q, O and G gate M2 alone.
+in the module, C CI lint or import test). Every ID gates the release (step 6);
+a step of section 4 names those it must already meet.
+
+Rows that start with *Beyond the reference* make the module better than the
+reference where the reference has a bug, a missing bound or a latent cost. They
+cost no more when written first, and three of them (I17, V11, V12) close a
+denial of service. Where a client can see one, section 6 has a deviations row.
 
 ### I. Interface and state
 
 | ID | Requirement | Verified by |
 |---|---|---|
-| I1 | Import rules of section 1: `rpc/` never imports `gossip` (but `rpc/sonic` → `gossip/blockproc/bundle`), `api/*`, `go-ethereum/rpc`; every core access is through `Core` | C |
+| I1 | Import rules of section 1: `rpc/` never imports `gossip`, `api/*`, `go-ethereum/rpc`, except the leaf packages section 1 lists, each in its one package; every core access is through `Core` | C |
 | I2 | Every `Core` call about chain or state carries a `uint64` number or a hash; the module resolves `latest`, `pending`, `safe`, `finalized`, `earliest` itself, once per request | R (fake Core rejects tags), U |
 | I3 | `latest` = newest archived block last seen on `SubscribeHead`; the same number serves every part of one request and `eth_blockNumber` | L (annotated), I (`block_in_archive_test.go`) |
 | I4 | `earliest` resolves to the pruning cutoff (`HistoryPruningCutoff`, today 0) | R |
@@ -463,7 +552,7 @@ M1 and M2; Q, O and G gate M2 alone.
 | I14 | The module advances its served head only after that block's logs are enqueued for subscribers, so `eth_getLogs` at `latest`, `eth_blockNumber` and log subscriptions never disagree | U, I (`log_subscription_test.go`) |
 | I15 | The head loop never blocks on a consumer: bounded per-consumer queues, a lagging consumer is dropped | U (stalled consumer, head still advances) |
 | I16 | Work that depends only on the event is done once per event, not once per consumer: the `newHeads` notification (the block's receipts and the encoded header) is built once per block and shared by every subscription. The reference did this in its filter system; a handler per subscription that reads `Receipts` multiplies block loads by the subscriber count. The benchmarks of 7.2 do not cover subscriptions, so this is a rule | U (N subscribers, one `Receipts` call per block) |
-| I17 | A polled filter costs nothing per event, and their number is bounded. The events of a kind (block hashes, pool transactions, logs) are kept once, in a journal shared by the filters of that kind; a filter keeps only the position up to which its client polled, and its criteria are applied when it polls, outside the lock. The journal keeps no more than the oldest live filter has not polled (at most `FilterTimeout` of events) and at most 2^20 events; a filter whose events were dropped before it polled is removed and answered `filter not found`, as if it had expired. The node holds at most 100,000 polled filters. The reference copied every event into every filter under one lock, for up to 5 minutes, with no bound on the filters: any client could make the node run out of memory | U (one copy of an event for 1000 filters; the cap; a filter that fell behind is removed while one that polled gets every event; the journal shrinks to what a live filter has not polled) |
+| I17 | *Beyond the reference.* A polled filter costs nothing per event, and their number is bounded. The events of a kind (block hashes, pool transactions, logs) are kept once, in a journal shared by the filters of that kind; a filter keeps only the position up to which its client polled, and its criteria are applied when it polls, outside the lock. The journal keeps no more than the oldest live filter has not polled (at most `FilterTimeout` of events) and at most 2^20 events; a filter whose events were dropped before it polled is removed and answered `filter not found`, as if it had expired. The node holds at most 100,000 polled filters. The reference copied every event into every filter under one lock, for up to 5 minutes, with no bound on the filters: any client could make the node run out of memory | U (one copy of an event for 1000 filters; the cap; a filter that fell behind is removed while one that polled gets every event; the journal shrinks to what a live filter has not polled) |
 
 ### D. Dispatcher and transports
 
@@ -490,18 +579,18 @@ M1 and M2; Q, O and G gate M2 alone.
 | P3 | Long-lived loops restart on panic with backoff and a counter; a loop that panics repeatedly is reported, never silently dead. A restarted loop takes its subscriptions again: what it acquired outside its function was released by the panic (section 3) | U (panic injected into each loop; afterwards the loop still does its job: the head advances, the pool feed delivers) |
 | P4 | Handlers hold no locks. Shared structures (filter registry, subscription registry, oracle cache) expose small methods that lock and `defer` unlock in the same function and never call out to `Core`, a handler or the EVM while locked | review rule, U (blocked `Core` does not stall other requests) |
 | P5 | Resources with a lifetime (state views, subscriptions, tracer buffers) are released by a `defer` on the line after acquisition | R (panic injection; budget back at zero) |
-| P6 | Module tests run under `-race`; the RPC integration tests run under `-race` nightly | C |
+| P6 | Module tests run under `-race`. A nightly `-race` run of the RPC integration tests is CI setup that follows the release, not a gate of it | C |
 | P7 | Admission is atomic towards `Stop`: the stopping check and the count `Stop` waits on are taken under one lock, for requests, subscriptions, `Go` and `Loop`; no work starts after `Stop` returned | U (stress: requests and `Go` racing `Stop`, under `-race`) |
-| P8 | What the node hands out is shared and read-only: the blocks and logs of a `HeadEvent` reach every consumer, and receipts, headers and logs come from the node's caches. Normalising for an answer (nil topics to `[]`, a log's tx index) works on a copy. The reference's `returnLogs` writes topics in place; the port does not inherit it | U (a shared log is unchanged after `eth_getFilterChanges`), P6 |
+| P8 | *Beyond the reference.* What the node hands out is shared and read-only: the blocks and logs of a `HeadEvent` reach every consumer, and receipts, headers and logs come from the node's caches. Normalising for an answer (nil topics to `[]`, a log's tx index) works on a copy. The reference's `returnLogs` writes topics in place; the port does not inherit it | U (a shared log is unchanged after `eth_getFilterChanges`), P6 |
 
-### Q. Release guarantees (M2)
+### Q. Release guarantees
 
 | ID | Requirement | Verified by |
 |---|---|---|
 | Q1 | Shutdown completes: `Stop` cancels in-flight requests at their deadline, waits for them, closes listeners, subscriptions and loops; the node's shutdown under RPC load finishes within the node's own timeout | U (goroutines after `Stop` under load = before `Start`), I (node stopped while a load client runs) |
-| Q2 | Cancellation is observed on every path: a cancelled request returns within one `Core` call or one interpreter poll; every loop checks the context; no handler waits on a channel without selecting on the context | U (every method through `FakeCore` latency injection, cancelled) |
+| Q2 | Cancellation is observed on every path: a cancelled request returns within one `Core` call or one interpreter poll; every loop checks the context; no handler waits on a channel without selecting on the context. One exception: Tosca's interpreters never poll (section 8), so an EVM run on them (`eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1`, `sonic_estimateGasForTransactions`, the traces) is bounded by `RPCGasCap`, not by cancellation | U (every method through `FakeCore` latency injection, cancelled; the EVM is not reached) |
 | Q3 | Nil safety: every method answers without panic when any `Core` method returns nil, not-found or an error, and for any `null` or absent optional argument; `rpc_panics_total` stays zero over the matrix | R (`FakeCore` failure modes × methods × argument shapes) |
-| Q4 | Line coverage of every module package at or above the floor (ADR10), measured in CI; every registered method has a handler test (T4) | C |
+| Q4 | Line coverage of every module package at or above the floor (ADR10), measured in CI; `rpc/core` and `rpc/tests` and generated files are excluded; every registered method has a handler test (T4) | C |
 | Q5 | Compliance with geth: every method in geth's OpenRPC specification for `eth`, `debug`, `txpool`, `net`, `web3` is served or listed in X with its reason (a test diffs the sets); the JSON-RPC 2.0 envelope (ids, batches, notifications, error codes, `null` results, timeouts) matches geth's `rpc.Server`, checked by a differential test that sends the same requests to both. The test includes the cases that only show under a configured limit: a method slower than the write timeout (call and batch), a batch over each cap | C, E, L, U |
 | Q6 | Sonic extensions are served and listed by origin in section 6: `ftm` mirror, `sonic_*`, OpenEthereum `trace_*`, `eth_getRules`, `eth_currentEpoch`, `eth_config`, `eth_sendRawTransactionSync`; each has the handler tests and lakme rows geth methods have | L, I, R |
 
@@ -519,8 +608,8 @@ M1 and M2; Q, O and G gate M2 alone.
 | V8 | Filter and subscription ids exist and belong to the calling connection | L, U |
 | V9 | Validation never allocates proportionally to a client-chosen number before the bound is checked (block count, storage keys, topics, batch items) | U |
 | V10 | `eth_getProof`: at most 1024 storage keys, strict key decoding, both → -32602 before any state access | L, R |
-| V11 | No value a client sets decides how far a lookup walks or how often a loop runs, beyond what a limit of section 8 bounds. A block override `number` changes which blocks BLOCKHASH may ask for, never what one BLOCKHASH costs: it is answered by one lookup by number (`Core.Header`), with the zero hash at or above the block of the call, never by walking the parent hashes back from that block (`evmcore.GetHashFn`), which a `number` above the head turns into one header read per block down to genesis. Applies to every block context built from a header of the chain (`exec.Env.BlockContext`): `eth_call`, `eth_estimateGas` (once per step of its search), `eth_createAccessList`, `debug_traceCall`, `trace_*`, `sonic_estimateGasForTransactions`. `eth_simulateV1` is the one walk left: its blocks are not in `Core`, its block number is that of the header it walks from, so it walks at most 256 headers | U (`Core.Header` calls counted under overrides above and below the head) |
-| V12 | A response that collects traces is bounded by `MaxResponseSize` as a whole: `debug_trace*` and `trace_filter` as in the reference, `trace_call` and `trace_callMany` in the module (`trace_block`, `trace_transaction` and `trace_get` replay recorded blocks and stay bounded by their gas only, as in the reference). The calls of `trace_callMany` share one budget, each result is encoded as soon as it is there, and a tracer that collects in memory (vmTrace) stops at what is left of the budget, not after the run. Its size counts everything it keeps, in the larger of its memory and response cost: per operation, per pushed value (`SWAP16` and `DUP16` push 17 words for 3 gas), and code and memory as hex. A fixed size per operation lets the most expensive operations through | U (a vmTrace over the limit fails before the execution ends; two calls that fit alone fail together; the accounting of pushed values, code and memory) |
+| V11 | *Beyond the reference.* No value a client sets decides how far a lookup walks or how often a loop runs, beyond what a limit of section 8 bounds. A block override `number` changes which blocks BLOCKHASH may ask for, never what one BLOCKHASH costs: it is answered by one lookup by number (`Core.Header`), with the zero hash at or above the block of the call, never by walking the parent hashes back from that block (`evmcore.GetHashFn`), which a `number` above the head turns into one header read per block down to genesis. Applies to every block context built from a header of the chain (`exec.Env.BlockContext`): `eth_call`, `eth_estimateGas` (once per step of its search), `eth_createAccessList`, `debug_traceCall`, `trace_*`, `sonic_estimateGasForTransactions`. `eth_simulateV1` is the one walk left: its blocks are not in `Core`, its block number is that of the header it walks from, so it walks at most 256 headers | U (`Core.Header` calls counted under overrides above and below the head) |
+| V12 | *Beyond the reference.* A response that collects traces is bounded by `MaxResponseSize` as a whole: `debug_trace*` and `trace_filter` as in the reference, `trace_call` and `trace_callMany` in the module (`trace_block`, `trace_transaction` and `trace_get` replay recorded blocks and stay bounded by their gas only, as in the reference). The calls of `trace_callMany` share one budget, each result is encoded as soon as it is there, and a tracer that collects in memory (vmTrace) stops at what is left of the budget, not after the run. Its size counts everything it keeps, in the larger of its memory and response cost: per operation, per pushed value (`SWAP16` and `DUP16` push 17 words for 3 gas), and code and memory as hex. A fixed size per operation lets the most expensive operations through | U (a vmTrace over the limit fails before the execution ends; two calls that fit alone fail together; the accounting of pushed values, code and memory) |
 
 ### F. Fidelity to the reference
 
@@ -558,7 +647,7 @@ later: before porting a package, list the repeated shapes in the legacy code
 | H1 | One path from a reference to a block. `Chain.Resolve(head, ref)` turns a number, tag or hash into a number and reports a reference without selector, an unknown hash and an invalid tag as sentinel errors. One set of lookups on `exec.Env` (`HeaderAt`, `BlockAt`, `FindBlock`, `TxByHash`, `OpenState`, `StateAt`) serves every namespace. A namespace keeps no copy of them, and the switch on `ref.Number` and `ref.Hash` is written once. A method with its own wording (F3) maps the sentinels at its call site, never through a second resolver | U (a table over `Resolve`: tags, a number above the head, a hash, an unknown hash, an invalid tag, an empty reference), review |
 | H2 | Read the least that answers (I13 for every lookup). A method that does not use a header does not read one: `OpenState`, not `StateAt`. An adapter method that needs a field of the stored block (state root, epoch) reads the block, not the EVM header, whose build also looks up the epoch state and the parent hash. What a request needs about its block (head snapshot, header, rules) is read once and held, not looked up at every step of a loop | U (the fake counts `Header` calls: a state getter at a past block makes none), profile (7.2) |
 | H3 | Encode once. A handler that must encode its result to check a size returns the bytes as `dispatch.Encoded`, which the dispatcher hands on. `json.RawMessage` is validated and compacted again, and the envelope compacts it a last time as geth's does; use it only for bytes the module did not write with `json.Marshal` (a tracer's output) | U (an `Encoded` result passes through unchanged; a `RawMessage` is compacted) |
-| H4 | No dead code. An exported symbol has a caller outside tests or implements an interface; an unexported one has a caller. A refactor deletes what it leaves without a caller in the same commit. A variant is added when its first caller needs it (`Add5` had none), and a wrapper that only forwards is not written. A helper only tests use lives in a test file or `rpc/tests` | C (an unused-symbol check in CI, built with the module's Go version; exports used only by tests are listed and justified), review |
+| H4 | No dead code. An exported symbol has a caller outside tests or implements an interface; an unexported one has a caller. A refactor deletes what it leaves without a caller in the same commit. A variant is added when its first caller needs it, and a wrapper that only forwards is not written. A helper only tests use lives in a test file or `rpc/tests` | C (an unused-symbol check in CI, built with the module's Go version; exports used only by tests are listed and justified), review |
 | H5 | One definition of a fact. The chain id as a `*big.Int`, the signer, the base fee of the head, an error wording shared by several methods (`exec.UnknownHashError`), the optional-timeout context, the mapping of `core.ErrNotFound` to "no value": each is one function, and a conversion that appears a third time becomes one. Defaults follow section 8 | review (the three-sites rule) |
 | H6 | Block numbers are `uint64` inside the module. `BlockNumber` holds the tags as negative values and is for client input: a `uint64` cast to it above `MaxInt64` becomes a tag (`2^64-2` is `latest`). Helpers that mean a number take a `uint64` (`HeaderAt(head, n)`). Where the reference casts (`debug_getBlockRlp`), F1 wins and the cast stays in that handler, with a comment | U (a number above `MaxInt64` is not a tag), review |
 | H7 | The same shape twice is a function. A branch written twice in one function (the replay of a traced and of an untraced transaction repeated the message and receipt checks) and a loop shape repeated across handlers (the head, log and pool subscription loops) are merged when the second one appears | review |
@@ -567,7 +656,7 @@ later: before porting a package, list the repeated shapes in the legacy code
 
 | ID | Requirement | Verified by |
 |---|---|---|
-| S1 | A method is callable only because a line in a `Register` function names it. Legacy registers every exported method of its API structs and so serves `eth_stop`/`ftm_stop` from `PublicFilterAPI.Stop()` (exported for `gossip.Service`): per the code, one unauthenticated call stops the filter event loop and every later filter or subscription install blocks. The module never registers it and `Front` stops forwarding a namespace the module serves | U (-32601 on every transport), L |
+| S1 | A method is callable only because a line in a `Register` function names it. Nothing is reflected off a struct, so no lifecycle or helper method becomes callable. `Front` stops forwarding a namespace the module serves | U (a method no `Register` names answers -32601 on every transport), L |
 
 ### O. Limits inherited from the reference (preserved and tested)
 
@@ -576,7 +665,7 @@ later: before porting a package, list the repeated shapes in the legacy code
 | O1 | Semantic caps keep their names, defaults and effect (section 8) | L (rows that hit each cap), I |
 | O2 | `RPCTimeout` is applied by the dispatcher to every request context; the fork's `SetExecutionTimeLimit` is no longer used by the module | U, C |
 | O3 | `--mode validator` keeps disabling public listeners | I |
-| O4 | Every CLI flag and TOML key under `config` keeps its effect or is listed as deprecated (accepted, warns, no effect) for one release. The loader rejects unknown fields, so removal breaks configs: this covers `--unlock`, `--password`, `--allow-insecure-unlock` (X1) and the `GPO` section (ADR9). "Keeps its effect" is tested by changing the key and observing the change. A key that still parses but no longer reaches its consumer passes a parse test (`GPO.MinGasPrice` did); so does a node-configuration key nothing reads any more. Every `if cfg.X != nil` or `!= 0` mapping into the module's `Config` has a row that sets it | U (test enumerates flags and keys; one effect test per key the module consumes) |
+| O4 | Every CLI flag and TOML key under `config` keeps its effect or is listed as deprecated (accepted, warns, no effect) for one release. The loader rejects unknown fields, so removal breaks configs: this covers `--unlock`, `--password`, `--allow-insecure-unlock` (X1) and the `GPO` section (ADR9). "Keeps its effect" is tested by changing the key and observing the change. A key that still parses but no longer reaches its consumer passes a parse test; so does a node-configuration key nothing reads any more. Every `if cfg.X != nil` or `!= 0` mapping into the module's `Config` has a row that sets it | U (test enumerates flags and keys; one effect test per key the module consumes) |
 | O5 | What the node derives from its own RPC configuration and handler keeps its effect after `takeOverRPC`: `--unlock` with HTTP or WebSocket open and no `--allow-insecure-unlock` is refused; hardware-wallet self-derivation reads the chain through the module; the reported endpoints are the module's. Every non-test `stack.Attach()` caller is listed with the methods it calls, and served (section 3) | I (`cmd/sonicd/app` exec test of the unlock refusal), U (chain reader over the dispatcher) |
 
 ### MON. Monitoring
@@ -588,9 +677,9 @@ later: before porting a package, list the repeated shapes in the legacy code
 | MON3 | Head: `rpc_head_served`, `rpc_head_lag` (committed minus served) | U |
 | MON4 | Faults: `rpc_panics_total{method}`, `rpc_loop_restarts_total{loop}` | R |
 | MON5 | Cardinality bounded by construction: unknown method names map to `other`; never label by address, block, client or error text | U |
-| MON6 | Alerts defined from day one: panics > 0, head lag over a block for a minute, p99 per method over its budget | operations |
+| MON6 | Alerts named from day one in `rpc/README.md`: panics > 0, head lag over a block for a minute, p99 per method over its budget. Operations installs them; that is not a gate of the release | review (the README names each alert and its metric) |
 
-### X. Marked for deletion
+### X. Not ported, not added
 
 | ID | Requirement |
 |---|---|
@@ -599,6 +688,7 @@ later: before porting a package, list the repeated shapes in the legacy code
 | X3 | Until removed, X1 and X2 methods are served by the legacy `api/legacy` (and `api/testapi`) registered on IPC only (ADR5); lakme rows for them are annotated; integration tests using `dag_*` switch to the IPC client |
 | X4 | `CalcBlockExtApi`, `RPCBlockExt` and the gossip `PublicEthereumAPI` shims (`gossip/api.go`) are not carried over; `eth_chainId` has one implementation |
 | X5 | `MinGasPrice`, `MaxGasLimit` are derived in the module, not exposed by `Core`; `MaxGasLimit` from `Rules(head+1)`, the open epoch (section 2) |
+| X6 | Not added: `debug_getRaw{Block,Header,Receipts,Transaction}`. geth serves them, the reference does not, and the reference defines parity (F1). Listed here for Q5; their execution-apis fixtures are allow-listed (7.3) |
 
 ### G. Moves out of gossip (step 6)
 
@@ -606,16 +696,16 @@ later: before porting a package, list the repeated shapes in the legacy code
 |---|---|
 | G1 | `gossip/filters` is rewritten in the module on `SubscribeHead`, `SubscribeTxs`, `FindLogs`; the package is deleted |
 | G2 | The oracle half of `gossip/gasprice` (`Oracle`, reactive, constructive, tip cache) is deleted once the module's oracle serves the four price methods and `setDefaults` has no legacy caller left; `base_fee.go`, `gas_tip.go`, `gaspricelimits` stay for block processing and the emitter; `gossip/gpo_backend.go`, `Service.gpo`, `EvmStateReader.gpo`, `EthAPIBackend.SuggestGasTipCap` go; the `GPO` section follows ADR9 |
-| G3 | `gossip/ethapi_backend.go` shrinks to the `Core` adapter; `api/ethapi`, `api/sonicapi`, `api/testapi` are deleted except what X3 keeps on IPC |
+| G3 | The `Core` adapter is `gossip/rpc_core.go`. `EthAPIBackend` (`gossip/ethapi_backend.go`) shrinks to what `api/legacy` and `api/testapi` need (X3) and what the adapter reuses; `api/ethapi`, `api/sonicapi`, `api/rpctest` are deleted, `api/testapi` stays for X3 |
 | G4 | `txtrace`, `evmcore`, `gossip/evmstore` and `gossip/blockproc/bundle` stay and are used as libraries |
 
 ### T. Testing (section 7)
 
 | ID | Requirement | Verified by |
 |---|---|---|
-| T1 | lakme against the reference is green on every PR touching the module; every difference is fixed or an entry in `defects.json` with `introduced`/`fixed_in` bounds and a one-line reason | L |
-| T2 | lakme benchmarks per release by the 7.2 protocol, compared with `benchstat`; no method's median regresses against the reference at p < 0.05 | L |
-| T3 | The execution-apis fixtures run against the node on every PR for the methods they cover; failures are fixed or annotated | E |
+| T1 | lakme against the reference is green on every commit touching the module; every difference is fixed or an entry in `defects.json` with `introduced`/`fixed_in` bounds and a one-line reason | L |
+| T2 | lakme benchmarks per release by the 7.2 protocol, compared with `benchstat`; geomean at or below the reference, and no row slower: a row slower at p < 0.05 fails only if its re-run (7.2) shows it slower again | L |
+| T3 | The execution-apis fixtures run against the node on every commit for the methods they cover; failures are fixed or allow-listed. The runner is published at step 0 | E |
 | T4 | `rpc/tests` holds `FakeCore` (panic injection per method) and `NewCarmenCore`; every ported method has handler tests through the dispatcher | R |
 | T5 | The `tests/` RPC integration tests pass in HTTP and WebSocket modes, plus the IPC path for `test_*` and `admin_*` | I |
 | T6 | Module unit tests cover dispatcher stages, transports, filters and the oracle; run with `-race` | U |
@@ -625,7 +715,7 @@ later: before porting a package, list the repeated shapes in the legacy code
 
 Decision: **port** (new handler), **local** (answered without `Core`),
 **delete** (X1/X2; legacy on IPC until removed), **core** (node-local namespace,
-IPC only). Coverage: **L** lakme, **E** execution-apis fixture, **I**
+IPC only), **absent** (a geth method the reference does not serve; X6). Coverage: **L** lakme, **E** execution-apis fixture, **I**
 integration test. Every ported method also has an R test (T4).
 
 ### eth (mirrored as ftm)
@@ -655,7 +745,6 @@ integration test. Every ported method also has an R test (T4).
 | eth_subscribe / eth_unsubscribe (newHeads, logs, newPendingTransactions) | port | `PublicFilterAPI` | I | WS and IPC only |
 | eth_getRules, eth_currentEpoch, eth_config | port | `GetRules`, `CurrentEpoch`, `config.go` | L | from block rules and `ChainInfo` (X2) |
 | eth_etherbase, eth_coinbase, eth_hashrate | local | `gossip/api.go` | | constants |
-| eth_stop | delete | `PublicFilterAPI.Stop` | | S1 |
 | eth_accounts, eth_sign, eth_signTransaction, eth_sendTransaction, eth_fillTransaction, eth_resend | delete | `PublicAccountAPI`, `PublicTransactionPoolAPI` | | X1 |
 | eth_getEpochBlock, eth_getEpochStats | delete | `PublicBlockChainAPI`, `dag_api.go` | L | X2; lakme annotated |
 
@@ -678,7 +767,7 @@ integration test. Every ported method also has an R test (T4).
 | trace_transaction, trace_get, trace_block | port | `tx_trace.go` | L | |
 | trace_call, trace_callMany | port | `tx_trace.go` | L I | bounded by `MaxResponseSize` as a whole (V12) |
 | trace_filter | port | `tx_trace.go` | L | parallel replay via `Group` (P2); range cap `MaxTraceFilterRange` (1000, `--rpc.tracefilterrange`) is inherited (V2); result order and error message vary today (lakme annotated) |
-| debug_getRaw{Block,Header,Receipts,Transaction} | *decide* | not implemented | E | ADR7 |
+| debug_getRaw{Block,Header,Receipts,Transaction} | absent | not in the reference | | ADR7, X6; fixtures allow-listed |
 | debug_chaindbProperty, debug_chaindbCompact, debug_setHead | delete | `PublicDebugAPI` | | X1 |
 | debug_* profiling (geth built-ins) | core | node | | IPC |
 
@@ -731,7 +820,6 @@ walk: lakme cannot see it) and an issue holding one failing test.
 |---|---|---|---|
 | `AccessList` (`api.go`) | when the caller omits `gas`, the per-round `setDefaults` gas estimate runs *before* `args.AccessList = &accessList`, so the round that finds an entry runs with the previous round's gas and fails `intrinsic gas too low` | assign the access list before the re-estimate | sonic-admin#904, branch `luis/repro-createaccesslist-intrinsic-gas` |
 | `setDefaults` (`transaction_args.go`) | the call object for the gas estimate copies `Data` and not `Input`: a call that sent only `input` is estimated with no calldata and reverts | copy `Input` too, or use `args.data()` | sonic-admin#905, branch `luis/repro-createaccesslist-ignores-input` |
-| `PublicFilterAPI.Stop` (`filters/api.go`) | exported, so served as `eth_stop`/`ftm_stop` | stop registering it: wrap the API in `Service.APIs`, since `gossip` calls `Stop` from another package. **File and fix in the 2.2 line now**, not at step 6 | issue to file (S1) |
 | `replayBlock` (`tx_trace.go`) | the untraced branch indexes `receipts[i]` unguarded: a short list panics | hoist the guard the traced branch has | issue to file |
 | `traceBlock` (`api.go`) | ignores the error from `TxAsMessage`, then dereferences the nil message | return it | issue to file |
 | `GetHashFn` (`evmcore/evm.go`) | lacks geth's `ref.Number <= n` guard and walks the parent hashes back from the block of the call. A block override `number` above the head lets BLOCKHASH ask for the head or later: the walk reads every header down to genesis without finding it, and keeps 32 bytes per block. On a 20,000-block chain one `eth_call` read 20,000 headers and `eth_estimateGas` 460,000; on mainnet one unauthenticated request costs minutes and GBs, and neither the request deadline nor `evm.Cancel` stops it inside the opcode. A `number` far below the head walks from the head down to it | the guard in `GetHashFn` (block processing never asks at or above its block, so consensus is unchanged); the module answers BLOCKHASH by a lookup by number (`exec.Env.BlockContext`). Same answers, see V11 | issue to file |
@@ -761,15 +849,15 @@ Inherited quirks kept as they are, not deviations:
 ## 7. Testing program
 
 Four tools, each with one job. No parity harness against a second process; the
-reference is the newest `v2.2.x` tag.
+reference is the newest release tag.
 
 ### 7.1 Compatibility: lakme
 
 `../lakme` starts two sonic versions from the same exported genesis and draws
 queries over the whole history with `rapid`, comparing answers field by field.
 
-- Run: `-lakme.a <reference> -lakme.b <branch>`, `-rapid.checks 500` on PRs,
-  3000 nightly. Against any 2.2.x use `-lakme.genesis testdata/synth_no_canto.g`
+- Run: `-lakme.a <reference> -lakme.b <commit>`, `-rapid.checks 500` per
+  commit, 3000 at the end of each step. Against any 2.2.x use `-lakme.genesis testdata/synth_no_canto.g`
   (that line predates Canto and cannot import the default genesis).
 - One reference, always. Every difference is the port's until justified: fixed
   in the module, or an entry in `defects.json`. Deliberate deviations carry no
@@ -789,8 +877,8 @@ queries over the whole history with `rapid`, comparing answers field by field.
   `trace_filter-range-limit`, `log-filter-parameter-limit-upfront`,
   `getProof-storage-key-validation`, `trace-call-missing-block-panic`.
 - lakme does not draw `eth_subscribe`, `eth_sendRawTransaction*`, `txpool_*`,
-  `sonic_*`, `eth_syncing`; those are integration territory (7.5). Gap to close
-  in lakme: a WebSocket side (ADR8).
+  `sonic_*`, `eth_syncing`; those are integration territory (7.5). A WebSocket
+  side for lakme comes after the release (ADR8).
 - A green lakme run says nothing about what lakme cannot provoke: one node
   configuration (the defaults), one transport, requests that finish in time,
   no panics, no shutdown, no concurrency between consumers. lakme green is
@@ -816,49 +904,35 @@ Protocol, because a single sweep per version is not a measurement:
   When one version fails and the other passes, compare over the pair in which
   both reproduce and say so.
 - Then `benchstat release.txt new.txt`, all sweeps concatenated; gate per T2.
+- A row slower at p < 0.05 is not yet a failure. With 18 rows, a run with no
+  real change shows one in about one run in three. Re-measure each such row
+  alone, interleaved, with at least 60 samples per side; only a row slower
+  again fails T2.
 
-Reference numbers (2026-09-21, Ryzen 7 PRO 7840U, 20 samples, measured against
-v2.2.2; re-measure against the current reference at step 2): geomean 405.7µs →
-344.6µs (−15.1%). Cheap state reads gain 20–32% (`GetStorageAt`, `GetBalance`,
-`GetLogs`), `GetBlock` 11–17%, `Call` 13%, `TraceCall` 8–11%, `GetProof` 7%,
-`EstimateGas` and `TraceBlock/busiest` 1–4%. The saving is a roughly constant
-30–45µs per request in the RPC layer; nothing in the module makes execution
-faster, so an `EstimateGas` or `TraceBlock/busiest` moving by more than a few
-percent means something other than the RPC layer changed.
+The saving is a roughly constant cost per request in the RPC layer; nothing in
+the module makes execution faster. An `EstimateGas` or `TraceBlock/busiest` row
+moving by more than a few percent means something other than the RPC layer
+changed. The numbers of past runs are kept with the benchmark results, not
+here; every run measures against the current reference.
 
 **Profile before optimising.** A change made for speed lands with the profile
 line that shows its cost and a `benchstat` that shows its gain; a guess is not
 a reason. `-lakme.pprof 20` samples side `a` during each benchmark into
 `.lakme/pprof`; read it with `go tool pprof -top -cum` and `-peek <handler>`
 (or `./flamegraph.sh`), and look at what sits below the handler besides the EVM
-and the store. What the first profiles showed (2026-10-21):
-
-- `eth_estimateGas` is 88% EVM, half of that Carmen hashing contract code in
-  `GetCodeHash`, as in the reference; the module's own share is a few percent.
-  The `ChainInfo` call per EVM and the map of BLOCKHASH answers per EVM were each
-  under 0.5% and were left alone.
-- The costs the module added were lookups the answer does not use: the EVM header
-  built for a state read (2.4% of `eth_getBalance` at the head, 15% over old
-  blocks) and a second compaction of an encoded trace (3.8% of `trace_call`).
-  Removing them (H2, H3) gained, with 20 samples per side: `GetBalance` and
-  `GetStorageAt` over old blocks 3–5%, `TraceCall` 4–6%, `EstimateGas` 1–3%,
-  geomean 1.3%, no row slower beyond noise.
-- On small responses the gzip writer's reset is 11% of the CPU of
-  `eth_getBalance` at the head. The reference pays it too. Not compressing
-  responses under about 1 KB would remove it and changes the wire, so it is a
-  decision, not a fix.
-- A row slower in one sweep (`GetProof` over old blocks, +6% at 20 samples) was
-  noise: 60 samples per side, interleaved and run for those rows only, showed no
-  change. Re-measure the rows concerned with more samples before looking for a
-  cause.
+and the store: lookups the answer does not use (H2) and results encoded twice
+(H3) are the module's own costs. Whether to compress small responses is
+ADR13.
 
 ### 7.3 Ethereum execution APIs
 
 The `ethereum/execution-apis` fixtures (`tests/<method>/*.io`, 29 methods today)
 run through a Sonic runner built on `rpctestgen`, a separate private project.
-Covers the eth methods marked E and `debug_getRaw*`. To do: publish the runner
-and run it on every PR (T3); a Sonic import of `chain.rlp`/`genesis.json` and one
-allow-list of Sonic-specific divergences (no uncles, no blobs, base fee rules).
+Covers the eth methods marked E. Publishing the runner is step 0 work; T3 runs
+it on every commit. It needs a Sonic import of
+`chain.rlp`/`genesis.json` and one allow-list of Sonic-specific divergences: no
+uncles, no blobs, base fee rules, and the `debug_getRaw*` fixtures (methods the
+reference does not serve, X6).
 (`tests/eth_exec_spec` here runs the execution-spec state tests, a different suite.)
 
 ### 7.4 Handler tests: `rpc/tests` on `Core`
@@ -877,9 +951,20 @@ panic-injection row.
 
 The RPC tests in `tests/` (`eth_call_test.go`, `rpc_get_logs_test.go`, `rpcs/*`,
 `log_subscription_test.go`, `pending_transactions_subscription_test.go`,
-`node_restart_test.go`, `rpc_replay_test.go`, …) run unchanged against the
-module. The harness's core client uses the IPC socket for `test_*`, `admin_*`
-and `dag_*`.
+`node_restart_test.go`, `rpc_replay_test.go`, …) run against the module with
+these harness changes and no others:
+
+- The types the tests decode into (transactions, call arguments, block
+  overrides, trace configuration, bundle info) move from `api/ethapi` and
+  `api/sonicapi` to the module's namespaces.
+- The harness gets an IPC client per node (`GetIpcClient`) for `admin_*`,
+  `test_*`, `dag_*`, `abft_*` and the wallet methods, which only IPC serves
+  (D5, X3).
+- `TestRPCApis` (`tests/eth_rpc_api_functions_test.go`) reflected over
+  `api/ethapi`; it is replaced by the module's test that diffs the served
+  methods against geth's (Q5).
+- New: an IPC console test (`sonictool attach` reaches the module and the
+  node's handler) and a node stopped under RPC load (Q1).
 
 ### 7.6 What the tools do not see
 
@@ -909,37 +994,112 @@ the legacy code before porting, not from the port afterwards.
 | Cost a client chooses | the answers are right, and fast for the values honest clients send | V11: for every number a request carries (overrides, indexes, range ends), count the `Core` calls with hostile values: above the head, far below it, the maximum of the type | a block override `number` above the head made one BLOCKHASH read every header down to genesis (F8 table) |
 | A size limit that counts the wrong thing | the limit is tested on the trace it was written for | V12: count in the unit of the limit everything the structure keeps, and test with the most expensive operation per gas, not with a loop of cheap ones | the vmTrace limit counted 128 bytes per operation: a loop of `SWAP16` over full words kept 2 GiB under a 256 MiB limit, and `trace_callMany` multiplied it by its calls |
 
+### 7.7 Release checklist
+
+Each gate and the check that proves it, one check per line. Each check lands in
+the commit that meets its requirement (section 4). The release (step 6) needs
+every line green.
+
+Module (`go test -race ./rpc/...`, which is also P6):
+
+- `Core` frozen (section 2): a test lists `Core`'s methods and refuses any
+  that mutates.
+- I1 and the import budget of section 3: a test walks the module's imports and
+  fails on a forbidden package or one outside the keep list.
+- D1: a lint test fails on a bare `go` statement outside the dispatcher. O2: a
+  lint test fails on `SetExecutionTimeLimit`; the timeout test in `rpc/eth`.
+- Inventory of section 6, S1, X: the registered set diffed against the
+  inventory; every method that is not registered answers -32601 on every
+  transport.
+- Q3, P1: the injection matrix, every `Core` method failing in every mode
+  under every method; a panic in any `Core` method is contained. Q2: every
+  method, cancelled under `Core` latency, returns.
+- Q4, T4: a test fails on a registered method no test names; coverage per
+  package at the floor of ADR10.
+- Q5: the served set diffed against geth's methods; the envelope differential
+  test against geth's server and client (single, batch, notification, a method
+  slower than the write timeout, each cap); the codec fuzz target.
+- Q1, D10: goroutines after `Stop` under load equal those before `Start`; `Stop`
+  drains requests and joins goroutines. P7: requests and `Go` racing `Stop`
+  under `-race`.
+- P2, P3: a panicking child cancels its siblings; each loop, panicked, does its
+  job afterwards.
+- I9, I14, I15, I16: the last head is kept when the subscription is lost;
+  consumers see a block before the head serves it; a stalled consumer is
+  dropped while the head advances; N subscribers cost one `Receipts` call per
+  block.
+- I17: one copy of an event for 1000 filters; the filter cap; a filter whose
+  events were dropped is removed; the journal shrinks to what a live filter has
+  not polled.
+- I10, ADR9: a tick does not call `OracleInputs`; `MinGasPrice` floors the
+  suggestion.
+- I13, H2: the fake counts `Block` and `Header` calls. P4: a blocked `Core`
+  call does not stall other requests. V9: no allocation proportional to a
+  client-chosen number before its bound. V11: `Core.Header` calls counted under
+  overrides above and below the head.
+- D4, V8: a subscription is installed before its id is returned; the cap per
+  connection; ids belong to their connection; a client that does not read is
+  disconnected.
+- D8, D11: namespaces per transport; a disallowed Host, a disallowed origin, an
+  oversize body, a stalled client.
+- D5, X3: legacy methods answer on IPC only.
+- MON1–MON5: counters per method and transport, cardinality bounded, head and
+  lag, the default registry.
+
+Node:
+
+- Adapter guards (section 2): one test per `svc.config` read, `TxIndex` off
+  among them.
+- X3 surface: a test pins the exact method set of the node's handler.
+- O4: flags and TOML keys against the golden files of the reference; changing
+  each key the module consumes changes its effect.
+- O5: one `takeOverRPC` test per endpoint layout geth distinguishes; the unlock
+  refusal with HTTP open; the chain reader over the dispatcher.
+
+Outside the unit tests:
+
+- T5, Q1: `go test ./tests/...`, including a node stopped under RPC load.
+- T1: from `../lakme`, `go test -count=1 -run . -lakme.a <ref> -lakme.b <sha>
+  -lakme.genesis testdata/synth_no_canto.g -rapid.checks 2000 -lakme.sonic
+  ../sonic`; every difference in `defects.json`.
+- T2: the protocol of 7.2.
+- T3: the execution-apis runner (7.3), green or allow-listed.
+- H4: the unused-symbol check.
+- MON6: the alerts in `rpc/README.md`.
+- T7: every finding of the review fixed with a test, or a row in section 6.
+
 ## 8. Limits inherited from the reference
 
 The module changes no limit the reference enforces. Every knob keeps its name,
 default and effect (O1); the only change of mechanism is `RPCTimeout`, applied by
-the dispatcher (O2). Each default has one definition, in the module package that
-consumes it; `gossip.DefaultConfig`, `config` and `dispatch.DefaultConfig` refer
-to it and never repeat the literal (`gossip/gasprice` delegates to `rpc/oracle`).
-A copy agrees until someone changes one of them. Nothing here bounds how many requests run at once; that is
-out of this plan (the dispatcher is where a limiter would go, `rpc_inflight`
-shows the need).
+the dispatcher (O2). Each default has one definition, the one in the column
+"Module definition"; `gossip.DefaultConfig`, `config` and `gossip/gasprice`
+refer to it and never repeat the literal. A copy agrees until someone changes
+one of them. "Legacy site" is where `main` checks or defines the knob, the
+place to read before porting it. Nothing here bounds how many requests run at
+once; that is out of this plan (the dispatcher is where a limiter would go,
+`rpc_inflight` shows the need).
 
-| Knob | Default | Kind | Where |
-|---|---|---|---|
-| `RPCGasCap` | 50,000,000 | cap on `eth_call`/`estimateGas`/traces | `gossip.DefaultConfig` |
-| `RPCEVMTimeout` | 5s | EVM interpreter cancel; only geth's interpreter polls it (at jumps), Tosca's LFVM/SFVM never do, so on the chain interpreter the bound is `RPCGasCap` | `DoCall`, tracers, `simulate.go`; timeout test in `rpc/eth` |
-| `RPCTimeout` | 5s | per-request deadline; today a fork patch (`SetExecutionTimeLimit`) | `gossip.NewService` |
-| `RPCTxFeeCap` | 100 FTM | refuse expensive sends | `checkTxFee` |
-| `MaxResponseSize` | 25 MiB (`--rpc.maxresponsesize`) | `debug_trace*` and `trace_filter` check it; `trace_call` and `trace_callMany` since the module (V12), the calls of `trace_callMany` sharing it, and a vmTrace stopping at it | `api.go` |
-| `StructLogLimit` | 2000 | struct-log length | `gossip.DefaultConfig` |
-| `MaxTraceFilterRange` | 1000 (`--rpc.tracefilterrange`, 0 = unlimited) | widest `trace_filter` span, since 2.2.3 | `gossip.DefaultConfig` |
-| `eth_getProof` keys | 1024 | storage keys per request, since 2.2.3 | `maxGetProofKeys` |
-| `LogQueryParameterLimit` / `LogQueryResultLimit` | 1000 / 5000 | parameters (every filter path since 2.2.3) / results | `filters.Config` |
-| `IndexedLogsBlockRangeLimit` / `UnindexedLogsBlockRangeLimit` | effectively none / 100 | block span of indexed / block-scan log queries | `filters.Config` |
-| filter `deadline` | 5 min | unpolled filters are dropped | `filters/api.go` |
-| polled filters, journaled events | 100,000 per node, 2^20 per kind | new in the module (I17, ADR6): above them a filter is refused, or removed if its events were dropped before it polled | `maxFilters`, `journalLimit` in `rpc/filters` |
-| `BatchRequestLimit` / `BatchResponseMaxSize` | 1000 / 25 MB | batch limits | `config/node_config.go` |
-| HTTP body, WS message | 5 MiB, 32 MiB | transport limits | the fork's `rpc` package |
-| HTTP timeouts | read 30s, write 30s, idle 120s; at write − 100ms a running call is answered -32002 (section 3) | `net/http` | `config/defaults.go` |
-| `GPO.MaxGasPrice` / `MinGasPrice` / `DefaultCertainty` | 10,000,000 gwei / 0 / 0.5 | ceiling and floor of the oracle's suggestion; certainty of a request that names none | `gossip/gasprice/config.go`, ADR9 |
-| `TxSyncDefaultTimeout` / `TxSyncMaxTimeout` | 5s / 30s | `eth_sendRawTransactionSync` wait; **`main` only**, not in 2.2.x, no lakme row | `gossip.DefaultConfig` |
-| `--mode validator` | | disables public RPC on validators | `config/config.go` |
+| Knob | Default | Kind | Legacy site (`main`) | Module definition |
+|---|---|---|---|---|
+| `RPCGasCap` | 50,000,000 | cap on `eth_call`/`estimateGas`/traces | `gossip.DefaultConfig` | `dispatch.DefaultConfig` |
+| `RPCEVMTimeout` | 5s | EVM interpreter cancel; only geth's interpreter polls it (at jumps), Tosca's LFVM/SFVM never do, so on the chain interpreter the bound is `RPCGasCap` | `DoCall`, tracers, `simulate.go` in `api/ethapi` | `dispatch.DefaultConfig`; timeout test in `rpc/eth` |
+| `RPCTimeout` | 5s | per-request deadline; legacy uses a fork patch (`SetExecutionTimeLimit`) | `gossip.NewService` | `dispatch.DefaultConfig` |
+| `RPCTxFeeCap` | 100 FTM | refuse expensive sends | `checkTxFee` in `api/ethapi` | `dispatch.DefaultConfig` |
+| `MaxResponseSize` | 25 MiB (`--rpc.maxresponsesize`) | `debug_trace*` and `trace_filter` check it; `trace_call` and `trace_callMany` since the module (V12), the calls of `trace_callMany` sharing it, and a vmTrace stopping at it | `api/ethapi/api.go`, `api/ethapi/tx_trace.go` | `dispatch.DefaultConfig` |
+| `StructLogLimit` | 2000 | struct-log length | `gossip.DefaultConfig` | `dispatch.DefaultConfig` |
+| `MaxTraceFilterRange` | 1000 (`--rpc.tracefilterrange`, 0 = unlimited) | widest `trace_filter` span, since 2.2.3 | `gossip.DefaultConfig` | `dispatch.DefaultConfig` |
+| `eth_getProof` keys | 1024 | storage keys per request, since 2.2.3 | `maxGetProofKeys` in `api/ethapi` | `maxGetProofKeys` in `rpc/eth` |
+| `LogQueryParameterLimit` / `LogQueryResultLimit` | 1000 / 5000 | parameters (every filter path since 2.2.3) / results | `gossip/filters.Config` | `dispatch.DefaultConfig`; TOML keys kept by `gossip.FilterConfig` |
+| `IndexedLogsBlockRangeLimit` / `UnindexedLogsBlockRangeLimit` | effectively none / 100 | block span of indexed / block-scan log queries | `gossip/filters.Config` | `dispatch.DefaultConfig` |
+| filter `deadline` | 5 min | unpolled filters are dropped | `gossip/filters/api.go` | `dispatch.DefaultConfig` (`FilterTimeout`) |
+| polled filters, journaled events | 100,000 per node, 2^20 per kind | new in the module (I17, ADR6): above them a filter is refused, or removed if its events were dropped before it polled | none | `maxFilters`, `journalLimit` in `rpc/filters` |
+| `BatchRequestLimit` / `BatchResponseMaxSize` | 1000 / 25 MB | batch limits | `config/node_config.go` | the node configuration, handed to `rpc/transport` |
+| HTTP body, WS message | 5 MiB, 32 MiB | transport limits | go-ethereum's `rpc` package | `rpc/transport` |
+| HTTP timeouts | read 30s, write 30s, idle 120s; at write − 100ms a running call is answered -32002 (section 3) | `net/http` | `config/defaults.go` | the node configuration, handed to `rpc/transport` |
+| `GPO.MaxGasPrice` / `MinGasPrice` / `DefaultCertainty` | 10,000,000 gwei / 0 / 0.5 | ceiling and floor of the oracle's suggestion; certainty of a request that names none | `gossip/gasprice/config.go` | `rpc/oracle`; ADR9 |
+| `TxSyncDefaultTimeout` / `TxSyncMaxTimeout` | 5s / 30s | `eth_sendRawTransactionSync` wait; **`main` only**, not in 2.2.x, no lakme row | `gossip.DefaultConfig` | `dispatch.DefaultConfig` |
+| `--mode validator` | | disables public RPC on validators | `config/config.go` | the node configuration |
 
 How each is tested: lakme draws requests that hit `RPCGasCap`,
 `MaxResponseSize`, `StructLogLimit`, `MaxTraceFilterRange`, the `LogQuery*` and
@@ -949,22 +1109,24 @@ log-range limits, the `getProof` cap and the `eth_feeHistory` clamp (T1);
 the timeout test in `rpc/eth` covers `RPCTimeout` and shows where `RPCEVMTimeout`
 does and does not apply (T6).
 
-## 9. Open decisions
+## 9. Decisions
 
-Decided: ADR1 module path `rpc/`; ADR2 an own JSON-RPC layer (section 3);
-ADR3 uniform `MaxResponseSize` (O1); ADR5 the legacy namespaces of X3 live in
+Every decision is made; ADR13 alone is open, and the release does not wait for
+it. ADR1 module path `rpc/`; ADR2 an own JSON-RPC layer (section 3); ADR3
+uniform `MaxResponseSize` (O1); ADR5 the legacy namespaces of X3 live in
 `api/legacy` and `api/testapi`, served by the node's own handler on IPC only,
 its wallet methods defaulting fees and gas through the module's oracle and
 `eth_estimateGas`; ADR11 the legacy engine is deleted with the switch: no
 `--rpc.engine` flag, no escape hatch, `Front` keeps only the IPC routing of X3
 and the p2p facts.
 
-| ID | Decision | Recommendation |
+| ID | Subject | Decision |
 |---|---|---|
-| ADR4 | One `latest` (archive head) for `eth_blockNumber` | Yes (I3). Annotate in lakme; a client that reads the number can always query it |
+| ADR4 | One `latest` (archive head) for `eth_blockNumber` | Yes (I3). Annotated in lakme; a client that reads the number can always query it |
 | ADR6 | New semantic caps other clients have and we lack | `eth_simulateV1` block count: 256 (reth, nethermind). `trace_filter` is already capped (inherited); `eth_getLogs` stays unlimited-but-result-capped for compatibility. Polled filters: 100,000 per node and 2^20 journaled events per kind (I17; geth has no bound, Erigon bounds what a filter keeps) |
-| ADR7 | `debug_getRaw{Block,Header,Receipts,Transaction}` | Add in step 5; fixtures exist and they are block reads |
-| ADR8 | lakme WebSocket side | Add after step 4, so subscriptions and filters over WS are compared; until then integration tests carry them |
-| ADR9 | The `GPO` config section (`MaxGasPrice`, `MinGasPrice`, `DefaultCertainty`; TOML only) once the legacy oracle is deleted | Keep all three and feed them to the module's oracle through `Config`. `MinGasPrice` is not ignored: it is the floor of the suggestion (`utils.BigMax(gpo.cfg.MinGasPrice, reactive, constructive)` in `Oracle.suggestTip`, `gossip/gasprice/gasprice.go`). An earlier execution read it as ignored, kept the key and dropped its effect, which a parse test does not see (O4). The loader rejects unknown fields, so removing a key is breaking; that is why the section stays |
-| ADR10 | Coverage floor for Q4 | 80% line coverage per module package, measured before step 6 lands so the number comes from evidence; raised, never lowered |
-| ADR12 | Shared HTTP/WebSocket endpoint during steps 1 to 3 | Reverse-proxy the WebSocket upgrade (`httputil.ReverseProxy` handles it) to the node's own server on a private loopback endpoint; the alternative, taking over WS at step 1, drags subscriptions into the skeleton |
+| ADR7 | `debug_getRaw{Block,Header,Receipts,Transaction}` | Not served: the reference does not serve them (X6). Their execution-apis fixtures are allow-listed (7.3). Adding them is a change after the release |
+| ADR8 | lakme WebSocket side | After the release, as a lakme change. Until then the integration tests carry subscriptions and filters over WebSocket |
+| ADR9 | The `GPO` config section (`MaxGasPrice`, `MinGasPrice`, `DefaultCertainty`; TOML only) once the legacy oracle is deleted | Keep all three and feed them to the module's oracle through `Config`. `MinGasPrice` is not ignored: it is the floor of the suggestion (`utils.BigMax(gpo.cfg.MinGasPrice, reactive, constructive)` in `Oracle.suggestTip`, `gossip/gasprice/gasprice.go`). A key kept without its effect passes a parse test (O4). The loader rejects unknown fields, so removing a key is breaking; that is why the section stays |
+| ADR10 | Coverage floor for Q4 | 80% line coverage per module package, raised, never lowered. Excluded: `rpc/core` (the interface, its value types and a generated mock), `rpc/tests` (test support) and generated files everywhere |
+| ADR12 | Shared HTTP/WebSocket endpoint during steps 1 to 3 | While WebSocket is the node's, the module takes over HTTP only on a port of its own; an HTTP endpoint that shares its port with WebSocket stays with the node and answers as the reference does. The node starts in every endpoint layout after every commit. The shared endpoint moves to the module with WebSocket at step 4. No proxy is built |
+| ADR13 | Compression of small responses | Open, after the release. The gzip writer's reset is a large share of the CPU of a small response such as `eth_getBalance` at the head, in the reference too (profile it at step 2). Not compressing responses under about 1 KB removes it and changes the wire, so the release compresses as the reference does (F1) |
