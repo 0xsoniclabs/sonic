@@ -994,8 +994,6 @@ func endBlock(
 
 		txCausedBy := executingBlock.Run(proposal.Transactions)
 
-		// Finalize the block: commit state, assemble and hash the block,
-		// and stamp the block hash/time onto the receipts and logs.
 		candidate := executingBlock.Finalize().Candidate()
 		block := candidate.Block
 		evmBlock := candidate.EvmBlock

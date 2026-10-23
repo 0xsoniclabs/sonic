@@ -330,7 +330,7 @@ func testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 			blockBusyFlag := uint32(0)
 			emitters := []*emitter.Emitter{}
 			beginBlock := consensusCallbackBeginBlockFn(
-				workers, &callbackWaitGroup, &blockBusyFlag, store, newLedgerInternal(store, LedgerConfig{}, evmModule), proc, false, nil, &emitters, nil, &bootstrapping,
+				workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store, evmModule, nil), proc, false, nil, &emitters, nil, &bootstrapping,
 			)
 
 			// Run a full consensus callback cycle for this block.
@@ -490,7 +490,7 @@ func testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T, u
 	blockBusyFlag := uint32(0)
 	emitters := []*emitter.Emitter{}
 	beginBlock := consensusCallbackBeginBlockFn(
-		workers, &callbackWaitGroup, &blockBusyFlag, store, newLedgerInternal(store, LedgerConfig{}, evmModule), proc, false, nil, &emitters, nil, &bootstrapping,
+		workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store, evmModule, nil), proc, false, nil, &emitters, nil, &bootstrapping,
 	)
 
 	callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
@@ -548,7 +548,7 @@ func TestConsensusCallback_UsesLedgerFromTheBlockAfterTheOneEnablingDolce(t *tes
 	produceBlock()
 	require.True(t, store.GetEpochState().Rules.Upgrades.Dolce)
 
-	ledger.EXPECT().Head().DoAndReturn(NewLedger(store, LedgerConfig{}).Head)
+	ledger.EXPECT().Head().DoAndReturn(NewLedger(store, evmmodule.New(), nil).Head)
 	produceBlock()
 }
 
@@ -589,7 +589,7 @@ func TestConsensusCallback_BeginsBlockWithParamsFromConsensusAndLogsToTxListener
 	}
 
 	ctrl := gomock.NewController(t)
-	realHead, err := NewLedger(store, LedgerConfig{}).Head()
+	realHead, err := NewLedger(store, evmmodule.New(), nil).Head()
 	require.NoError(t, err)
 	newLog := &core_types.Log{}
 	head := NewMockHead(ctrl)
@@ -786,7 +786,7 @@ func testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 	blockBusyFlag := uint32(0)
 	emitters := []*emitter.Emitter{}
 	beginBlock := consensusCallbackBeginBlockFn(
-		workers, &callbackWaitGroup, &blockBusyFlag, store, newLedgerInternal(store, LedgerConfig{}, evmModule), proc, false, nil, &emitters, nil, &bootstrapping,
+		workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store, evmModule, nil), proc, false, nil, &emitters, nil, &bootstrapping,
 	)
 
 	callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
@@ -936,7 +936,7 @@ func testConsensusCallback_AppliesTransactionPriorities(t *testing.T, upgrades o
 	blockBusyFlag := uint32(0)
 	emitters := []*emitter.Emitter{}
 	beginBlock := consensusCallbackBeginBlockFn(
-		workers, &callbackWaitGroup, &blockBusyFlag, store, newLedgerInternal(store, LedgerConfig{}, evmModule), proc, false, nil, &emitters, nil, &bootstrapping,
+		workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store, evmModule, nil), proc, false, nil, &emitters, nil, &bootstrapping,
 	)
 
 	callbacks := beginBlock(&lachesis.Block{Atropos: event.ID()})
@@ -1017,7 +1017,7 @@ func TestConsensusCallback_InconsistentHead_TerminatesProcess(t *testing.T) {
 				blockBusyFlag := uint32(0)
 				emitters := []*emitter.Emitter{}
 				beginBlock := consensusCallbackBeginBlockFn(
-					nil, &wg, &blockBusyFlag, store, NewLedger(store, LedgerConfig{}), BlockProc{EventsModule: eventsModule, TxListenerModule: txListenerModule}, false, nil, &emitters, nil, &bootstrapping,
+					nil, &wg, &blockBusyFlag, store, NewLedger(store, evmmodule.New(), nil), BlockProc{EventsModule: eventsModule, TxListenerModule: txListenerModule}, false, nil, &emitters, nil, &bootstrapping,
 				)
 				callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
 				callbacks.ApplyEvent(atropos)
@@ -1055,7 +1055,7 @@ func TestConsensusCallback_SkippedBlock_OpensLiveStateOnlyBeforeDolce(t *testing
 			t.Parallel()
 			store := newInMemoryStoreWithGenesisData(t, test.upgrades, 1, 2)
 			beginBlock := consensusCallbackBeginBlockFn(
-				nil, new(sync.WaitGroup), new(uint32), store, NewLedger(store, LedgerConfig{}), DefaultBlockProc(), false, nil, &[]*emitter.Emitter{}, nil, new(bool),
+				nil, new(sync.WaitGroup), new(uint32), store, NewLedger(store, evmmodule.New(), nil), DefaultBlockProc(), false, nil, &[]*emitter.Emitter{}, nil, new(bool),
 			)
 
 			// Opening the live state on a missing EVM store panics.
@@ -2630,7 +2630,7 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupFromBrio(t *te
 			blockBusyFlag := uint32(0)
 			emitters := []*emitter.Emitter{}
 			beginBlock := consensusCallbackBeginBlockFn(
-				workers, &callbackWaitGroup, &blockBusyFlag, store, newLedgerInternal(store, LedgerConfig{}, evmModule), proc, false, nil, &emitters, nil, &bootstrapping,
+				workers, &callbackWaitGroup, &blockBusyFlag, store, NewLedger(store, evmModule, nil), proc, false, nil, &emitters, nil, &bootstrapping,
 			)
 
 			callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
