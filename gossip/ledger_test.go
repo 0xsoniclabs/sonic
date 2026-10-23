@@ -39,30 +39,11 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
-func TestNewLedger_UsesProductionEvmAndGivenOrSharedMetrics(t *testing.T) {
-	custom := &evmcore.SonicBlockExecutionMetrics{}
-	tests := map[string]struct {
-		metrics evmcore.BlockExecutionMetrics
-		want    evmcore.BlockExecutionMetrics
-	}{
-		"nil metrics use the shared sink": {metrics: nil, want: sonicFeaturesMetrics},
-		"given metrics are kept":          {metrics: custom, want: custom},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			l := NewLedger(nil, LedgerConfig{ExecutionMetrics: test.metrics}).(*ledger)
-			require.Same(t, test.want, l.config.ExecutionMetrics)
-			require.IsType(t, &evmmodule.EVMModule{}, l.evmModule)
-		})
-	}
-}
-
 func TestLedger_Head_ReturnsHandleToBlockAtHeadPointer(t *testing.T) {
 	store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
 	headIdx := store.GetLatestBlockIndex()
 
-	head, err := NewLedger(store, LedgerConfig{}).Head()
+	head, err := NewLedger(store, nil, nil).Head()
 	require.NoError(t, err)
 	require.Equal(t, store.GetBlock(headIdx).Hash(), head.Block().Hash())
 }
@@ -73,14 +54,14 @@ func TestLedger_Head_HeadBlockMissingFromStore_ReportsError(t *testing.T) {
 	bs.LastBlock.Idx++
 	store.SetBlockEpochState(bs, store.GetEpochState())
 
-	head, err := NewLedger(store, LedgerConfig{}).Head()
+	head, err := NewLedger(store, nil, nil).Head()
 	require.ErrorContains(t, err, "not found in store")
 	require.Nil(t, head)
 }
 
 func TestHead_BeginBlock_OpensLiveStateAtHeadStateRoot(t *testing.T) {
 	store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
-	head, err := NewLedger(store, LedgerConfig{}).Head()
+	head, err := NewLedger(store, evmmodule.New(), nil).Head()
 	require.NoError(t, err)
 
 	blockParams := BlockParams{Time: head.Block().Time + 1}
@@ -91,7 +72,7 @@ func TestHead_BeginBlock_OpensLiveStateAtHeadStateRoot(t *testing.T) {
 
 func TestHead_BeginBlock_SecondCallOnSameHead_ReportsError(t *testing.T) {
 	store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
-	head, err := NewLedger(store, LedgerConfig{}).Head()
+	head, err := NewLedger(store, evmmodule.New(), nil).Head()
 	require.NoError(t, err)
 	blockParams := BlockParams{Time: head.Block().Time + 1}
 	_, err = head.BeginBlock(blockParams, nil)
@@ -139,7 +120,7 @@ func TestHead_BeginBlock_FailedCallDoesNotConsumeHead(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
-			l := NewLedger(store, LedgerConfig{}).(*ledger)
+			l := NewLedger(store, evmmodule.New(), nil).(*ledger)
 			head, err := l.Head()
 			require.NoError(t, err)
 			blockParams := BlockParams{Time: head.Block().Time + 1}
@@ -160,9 +141,8 @@ func TestHead_BeginBlock_StartsEvmAndBlockBuilderFromParamsAndHead(t *testing.T)
 
 	store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
 	feed := &ServiceFeed{}
-	metrics := &evmcore.SonicBlockExecutionMetrics{}
 	evm := blockproc.NewMockEVM(ctrl)
-	head, err := newLedgerInternal(store, LedgerConfig{Feed: feed, ExecutionMetrics: metrics}, evm).Head()
+	head, err := NewLedger(store, evm, feed).Head()
 	require.NoError(t, err)
 
 	parent := head.Block()
@@ -184,7 +164,7 @@ func TestHead_BeginBlock_StartsEvmAndBlockBuilderFromParamsAndHead(t *testing.T)
 	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
 	evm.EXPECT().Start(
 		idx.Block(parent.Number+1), blockParams.Time, blockParams.Epoch, gomock.Any(), &EvmStateReader{ServiceFeed: feed, store: store},
-		gomock.Any(), blockParams.Rules, evmCfg, blockParams.PrevRandao, metrics,
+		gomock.Any(), blockParams.Rules, evmCfg, blockParams.PrevRandao, sonicFeaturesMetrics,
 	).DoAndReturn(func(
 		_ idx.Block, _ inter.Timestamp, _ idx.Epoch, statedb state.StateDB, _ evmcore.DummyChain,
 		onNewLog func(*core_types.Log), _ opera.Rules, _ *params.ChainConfig, _ common.Hash,
@@ -258,7 +238,7 @@ func TestHead_BeginBlock_FailedPrecondition_ReportsError(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
-			l := newLedgerInternal(store, LedgerConfig{}, nil)
+			l := NewLedger(store, nil, nil).(*ledger)
 			if test.beforeHead != nil {
 				test.beforeHead(l)
 			}
@@ -274,6 +254,21 @@ func TestHead_BeginBlock_FailedPrecondition_ReportsError(t *testing.T) {
 			require.Nil(t, executing)
 		})
 	}
+}
+
+func TestExecutingBlock_Run_ExecutesWithinUserGasLimit(t *testing.T) {
+	txs := types.Transactions{types.NewTx(&types.LegacyTx{Nonce: 1})}
+	blockParams := BlockParams{GasLimit: 4, UserGasLimit: 3}
+
+	evmProcessor := blockproc.NewMockEVMProcessor(gomock.NewController(t))
+	evmProcessor.EXPECT().Execute(txs, blockParams.UserGasLimit, uint64(math.MaxUint64)).Return(evmcore.ProcessSummary{})
+
+	executing := &executingBlock{
+		evmProcessor: evmProcessor,
+		blockBuilder: inter.NewBlockBuilder(),
+		params:       blockParams,
+	}
+	executing.Run(txs)
 }
 
 func TestExecutingBlock_runInternal_ExecutesWithinBlockGasLimitAndUnlimitedSize(t *testing.T) {

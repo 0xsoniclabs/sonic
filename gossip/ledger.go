@@ -30,7 +30,6 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -109,39 +108,13 @@ type BlockParams struct {
 type ledger struct {
 	evmModule blockproc.EVM
 	store     *Store
-	config    LedgerConfig
+	feed      *ServiceFeed
 }
 
-// LedgerConfig groups the configuration a Ledger needs beyond the store: the
-// new-block feed (reader input, may be nil) and the block-execution metrics
-// sink (may be nil, in which case NewLedger uses the default sink).
-type LedgerConfig struct {
-	Feed             *ServiceFeed
-	ExecutionMetrics evmcore.BlockExecutionMetrics
-}
-
-// NewLedger creates a Ledger over the given store, backed by the production EVM
-// implementation. A nil config.ExecutionMetrics defaults to the shared
-// block-execution metrics sink.
-func NewLedger(store *Store, config LedgerConfig) Ledger {
-	if config.ExecutionMetrics == nil {
-		config.ExecutionMetrics = sonicFeaturesMetrics
-	}
-	return newLedgerInternal(store, config, evmmodule.New())
-}
-
-// newLedgerInternal creates a ledger with an explicit EVM module. It exists so
-// tests can inject an EVM mock; production code uses NewLedger.
-func newLedgerInternal(
-	store *Store,
-	config LedgerConfig,
-	evm blockproc.EVM,
-) *ledger {
-	return &ledger{
-		evmModule: evm,
-		store:     store,
-		config:    config,
-	}
+// NewLedger creates a Ledger over the given store, executing blocks with the
+// given EVM module. The new-block feed may be nil.
+func NewLedger(store *Store, evm blockproc.EVM, feed *ServiceFeed) Ledger {
+	return &ledger{evmModule: evm, store: store, feed: feed}
 }
 
 func (l *ledger) Head() (Head, error) {
@@ -196,12 +169,12 @@ func (h *head) BeginBlock(
 		params.Time,
 		params.Epoch,
 		statedb,
-		&EvmStateReader{ServiceFeed: h.ledger.config.Feed, store: h.ledger.store},
+		&EvmStateReader{ServiceFeed: h.ledger.feed, store: h.ledger.store},
 		onNewLog,
 		params.Rules,
 		evmCfg,
 		params.PrevRandao,
-		h.ledger.config.ExecutionMetrics,
+		sonicFeaturesMetrics,
 	)
 	blockBuilder := inter.NewBlockBuilder().
 		WithEpoch(params.Epoch).
