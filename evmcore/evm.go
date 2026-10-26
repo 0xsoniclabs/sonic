@@ -130,6 +130,13 @@ func GetHashFn(ref *EvmHeader, chain DummyChain) func(n uint64) common.Hash {
 	var cache []common.Hash
 
 	return func(n uint64) common.Hash {
+		// Only the blocks before ref have a hash to find. Block processing
+		// never asks for any other, but a call whose block number is
+		// overridden above ref does, and the walk down the parents would
+		// read every header to genesis without finding it.
+		if ref.Number.Uint64() <= n {
+			return common.Hash{}
+		}
 		// If there's no hash cache yet, make one
 		if len(cache) == 0 {
 			cache = append(cache, ref.ParentHash)

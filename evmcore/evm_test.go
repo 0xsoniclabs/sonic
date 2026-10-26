@@ -246,3 +246,34 @@ func TestNewEVMBlockContextWithDifficulty_UsesHeaderParametersIfDefinedOrSonicDe
 		})
 	}
 }
+
+// countingChain is a chain of headers whose parent hash is derived from the
+// number, counting the headers it is asked for.
+type countingChain struct {
+	reads int
+}
+
+func (chain *countingChain) Header(_ common.Hash, number uint64) *EvmHeader {
+	chain.reads++
+	return &EvmHeader{Number: new(big.Int).SetUint64(number), ParentHash: common.BigToHash(new(big.Int).SetUint64(number))}
+}
+
+func TestGetHashFn_AnswersZeroAtAndAboveTheReferenceWithoutReading(t *testing.T) {
+	chain := &countingChain{}
+	reference := &EvmHeader{Number: big.NewInt(100), ParentHash: common.BigToHash(big.NewInt(100))}
+	getHash := GetHashFn(reference, chain)
+	for _, number := range []uint64{100, 101, 1 << 40} {
+		require.Equal(t, common.Hash{}, getHash(number))
+	}
+	require.Zero(t, chain.reads, "a number at or above the block of the call walks no header")
+}
+
+func TestGetHashFn_WalksTheParentsBelowTheReference(t *testing.T) {
+	chain := &countingChain{}
+	reference := &EvmHeader{Number: big.NewInt(100), ParentHash: common.BigToHash(big.NewInt(100))}
+	getHash := GetHashFn(reference, chain)
+	require.Equal(t, common.BigToHash(big.NewInt(100)), getHash(99), "the parent is known without a read")
+	require.Zero(t, chain.reads)
+	require.Equal(t, common.BigToHash(big.NewInt(98)), getHash(97))
+	require.Equal(t, 2, chain.reads)
+}
