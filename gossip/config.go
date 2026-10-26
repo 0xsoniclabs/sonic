@@ -18,7 +18,6 @@ package gossip
 
 import (
 	"fmt"
-	"math/big"
 	"path/filepath"
 	"time"
 
@@ -35,6 +34,9 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamleecher"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamseeder"
+	"github.com/0xsoniclabs/sonic/rpc/dispatch"
+	"github.com/0xsoniclabs/sonic/rpc/exec"
+	"github.com/0xsoniclabs/sonic/rpc/oracle"
 )
 
 const nominalSize uint = 1
@@ -168,7 +170,10 @@ type PeerCacheConfig struct {
 }
 
 // DefaultConfig returns the default configurations for the gossip service.
+// The limits of the RPC methods and the keys of the gas price oracle take
+// the defaults of the RPC module, their one definition (plan, section 8).
 func DefaultConfig(scale cachescale.Func) Config {
+	limits := exec.DefaultConfig()
 	cfg := Config{
 		FilterAPI: filters.DefaultConfig(),
 
@@ -223,26 +228,22 @@ func DefaultConfig(scale cachescale.Func) Config {
 			PeerCache:                DefaultPeerCacheConfig(scale),
 		},
 
-		RPCEVMTimeout: 5 * time.Second,
+		RPCEVMTimeout: limits.RPCEVMTimeout,
 
-		GPO: gasprice.Config{
-			MaxGasPrice:      gasprice.DefaultMaxGasPrice(),
-			MinGasPrice:      new(big.Int),
-			DefaultCertainty: 0.5 * gasprice.DecimalUnit,
-		},
+		GPO: gasprice.Config(oracle.DefaultConfig()),
 
 		RPCBlockExt: true,
 
-		RPCGasCap:   50000000,
-		RPCTxFeeCap: 100, // 100 FTM
-		RPCTimeout:  5 * time.Second,
+		RPCGasCap:   limits.RPCGasCap,
+		RPCTxFeeCap: limits.RPCTxFeeCap,
+		RPCTimeout:  dispatch.DefaultConfig().RequestTimeout,
 
-		TxSyncDefaultTimeout: 5 * time.Second,
-		TxSyncMaxTimeout:     30 * time.Second,
+		TxSyncDefaultTimeout: limits.TxSyncDefaultTimeout,
+		TxSyncMaxTimeout:     limits.TxSyncMaxTimeout,
 
-		MaxResponseSize:     25 * 1024 * 1024,
-		MaxTraceFilterRange: 1000,
-		StructLogLimit:      2000,
+		MaxResponseSize:     limits.MaxResponseSize,
+		MaxTraceFilterRange: limits.MaxTraceFilterRange,
+		StructLogLimit:      limits.StructLogLimit,
 	}
 	sessionCfg := cfg.Protocol.DagStreamLeecher.Session
 

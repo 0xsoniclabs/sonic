@@ -24,13 +24,13 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/utils/piecefunc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
 	lru "github.com/hashicorp/golang-lru/v2"
 )
 
@@ -46,7 +46,7 @@ var (
 // Use this function when initializing Oracle configs or as a safe default
 // in gas price logic.
 func DefaultMaxGasPrice() *big.Int {
-	return big.NewInt(10000000 * params.GWei)
+	return oracle.DefaultMaxGasPrice()
 }
 
 const (

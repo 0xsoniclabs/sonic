@@ -17,11 +17,42 @@
 package gossip
 
 import (
+	"math/big"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/stretchr/testify/require"
+
+	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 )
+
+// TestDefaultConfig_KeepsTheDefaultsOfTheReference holds O1: the defaults
+// the node configuration takes from the RPC module are those of the
+// reference (plan, section 8).
+func TestDefaultConfig_KeepsTheDefaultsOfTheReference(t *testing.T) {
+	config := DefaultConfig(cachescale.Identity)
+	require.Equal(t, uint64(50_000_000), config.RPCGasCap)
+	require.Equal(t, 5*time.Second, config.RPCEVMTimeout)
+	require.Equal(t, 5*time.Second, config.RPCTimeout)
+	require.Equal(t, 100.0, config.RPCTxFeeCap)
+	require.Equal(t, 25*1024*1024, config.MaxResponseSize)
+	require.Equal(t, 2000, config.StructLogLimit)
+	require.Equal(t, uint64(1000), config.MaxTraceFilterRange)
+	require.Equal(t, 5*time.Second, config.TxSyncDefaultTimeout)
+	require.Equal(t, 30*time.Second, config.TxSyncMaxTimeout)
+	require.Equal(t, idx.Block(999999999999999999), config.FilterAPI.IndexedLogsBlockRangeLimit)
+	require.Equal(t, idx.Block(100), config.FilterAPI.UnindexedLogsBlockRangeLimit)
+	require.Equal(t, uint(1000), config.FilterAPI.LogQueryParameterLimit)
+	require.Equal(t, uint(5000), config.FilterAPI.LogQueryResultLimit)
+	require.Equal(t, gasprice.Config{
+		MaxGasPrice:      big.NewInt(10_000_000_000_000_000),
+		MinGasPrice:      new(big.Int),
+		DefaultCertainty: 500_000,
+	}, config.GPO)
+}
 
 // TestConfigInstancesAreIndependent instantiates 100 Configs and verifies that
 // all pointer, slice, map, or interface fields are not shared among instances.

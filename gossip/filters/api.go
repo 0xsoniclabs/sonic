@@ -29,6 +29,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/rpc/exec"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -74,12 +75,15 @@ type Config struct {
 	LogQueryResultLimit uint
 }
 
+// DefaultConfig returns the defaults of the RPC module, their one definition
+// (plan, section 8).
 func DefaultConfig() Config {
+	limits := exec.DefaultConfig()
 	return Config{
-		IndexedLogsBlockRangeLimit:   999999999999999999,
-		UnindexedLogsBlockRangeLimit: 100,
-		LogQueryParameterLimit:       1000,
-		LogQueryResultLimit:          5000,
+		IndexedLogsBlockRangeLimit:   idx.Block(limits.IndexedLogsBlockRangeLimit),
+		UnindexedLogsBlockRangeLimit: idx.Block(limits.UnindexedLogsBlockRangeLimit),
+		LogQueryParameterLimit:       limits.LogQueryParameterLimit,
+		LogQueryResultLimit:          limits.LogQueryResultLimit,
 	}
 }
 
