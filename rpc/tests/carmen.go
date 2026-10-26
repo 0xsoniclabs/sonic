@@ -40,12 +40,14 @@ type Account struct {
 }
 
 // CarmenCore is a FakeCore whose State opens a view of one real in-memory
-// Carmen state, the same for every block. The blocks carry the root of that
-// state, so witness proofs verify against them.
+// Carmen state, the archived state of genesis, for every block, as the node
+// opens archive states. The blocks carry the root of that state, so witness
+// proofs, which only archive states make, verify against them.
 type CarmenCore struct {
 	*FakeCore
 
-	live carmen.State
+	live    carmen.State
+	stateDB carmen.StateDB
 
 	mutex    sync.Mutex
 	opened   int
@@ -57,7 +59,7 @@ func NewCarmenCore(t testing.TB, accounts map[common.Address]Account) *CarmenCor
 	live, err := carmen.NewState(carmen.Parameters{
 		Variant:      gostate.VariantGoMemory,
 		Schema:       carmen.Schema(5),
-		Archive:      carmen.NoArchive,
+		Archive:      carmen.S5Archive,
 		Directory:    t.TempDir(),
 		LiveCache:    1,
 		ArchiveCache: 1,
@@ -71,16 +73,17 @@ func NewCarmenCore(t testing.TB, accounts map[common.Address]Account) *CarmenCor
 		}
 	})
 
-	root := writeAccounts(t, live, accounts)
+	stateDB := carmen.CreateStateDBUsing(live)
+	root := writeAccounts(t, stateDB, accounts)
 	fake := NewFakeCore(t)
 	fake.setStateRoot(root)
-	carmenCore := &CarmenCore{FakeCore: fake, live: live}
+	carmenCore := &CarmenCore{FakeCore: fake, live: live, stateDB: stateDB}
 	fake.SetStates(carmenCore.openState)
 	return carmenCore
 }
 
-func writeAccounts(t testing.TB, live carmen.State, accounts map[common.Address]Account) common.Hash {
-	writer := evmstore.CreateCarmenStateDb(carmen.CreateStateDBUsing(live), nil)
+func writeAccounts(t testing.TB, stateDB carmen.StateDB, accounts map[common.Address]Account) common.Hash {
+	writer := evmstore.CreateCarmenStateDb(stateDB, nil)
 	writer.BeginBlock(0)
 	for address, account := range accounts {
 		if account.Balance != nil {
@@ -101,9 +104,12 @@ func writeAccounts(t testing.TB, live carmen.State, accounts map[common.Address]
 	if err != nil {
 		t.Fatalf("failed to end the block of the accounts: %v", err)
 	}
-	// Without an archive the commit has nothing to wait for; its handle is nil.
-	if _, err := staged.Commit(); err != nil {
+	written, err := staged.Commit()
+	if err != nil {
 		t.Fatalf("failed to commit the block of the accounts: %v", err)
+	}
+	if err := written.Wait(); err != nil {
+		t.Fatalf("failed to archive the block of the accounts: %v", err)
 	}
 	return common.Hash(staged.StateHash())
 }
@@ -112,7 +118,11 @@ func (carmenCore *CarmenCore) openState(uint64) (state.StateDB, error) {
 	carmenCore.mutex.Lock()
 	carmenCore.opened++
 	carmenCore.mutex.Unlock()
-	view := evmstore.CreateNonCommittableCarmenStateDb(carmen.CreateNonCommittableStateDBUsing(carmenCore.live), nil)
+	archived, err := carmenCore.stateDB.GetArchiveStateDB(0)
+	if err != nil {
+		return nil, err
+	}
+	view := evmstore.CreateNonCommittableCarmenStateDb(archived, nil)
 	return &trackedState{StateDB: view, release: carmenCore.countRelease}, nil
 }
 

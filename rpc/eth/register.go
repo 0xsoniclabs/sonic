@@ -70,6 +70,15 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, no
 		dispatch.Required[[]float64]("rewardPercentiles"))
 	add("blobBaseFee", handler.blobBaseFee)
 
+	address := dispatch.Required[common.Address]("address")
+	optionalBlock := dispatch.Optional[chain.BlockReference]("block")
+	add("getBalance", handler.getBalance, address, optionalBlock)
+	add("getCode", handler.getCode, address, optionalBlock)
+	add("getStorageAt", handler.getStorageAt, address, dispatch.Required[string]("key"), optionalBlock)
+	add("getTransactionCount", handler.getTransactionCount, address, optionalBlock)
+	add("getAccount", handler.getAccount, address, optionalBlock)
+	add("getProof", handler.getProof, address, dispatch.Required[[]string]("storageKeys"), optionalBlock)
+
 	add("getBlockByNumber", handler.getBlockByNumber, block, fullTransactions)
 	add("getBlockByHash", handler.getBlockByHash, hash, fullTransactions)
 	add("getHeaderByNumber", handler.getHeaderByNumber, block)

@@ -42,6 +42,24 @@ func NullIfAbsent[Value any](value Value, err error) (Value, error) {
 	return value, err
 }
 
+var (
+	errHeaderNotFound  = errors.New("header not found")
+	errUnknownSelector = errors.New("unknown header selector")
+)
+
+// StateLookupError words a failure to find the block of a state as the
+// reference's state lookup worded it: "header not found", and "unknown header
+// selector" for a reference with neither number nor hash (F3).
+func StateLookupError(err error) error {
+	switch {
+	case Absent(err):
+		return errHeaderNotFound
+	case errors.Is(err, chain.ErrNoSelector):
+		return errUnknownSelector
+	}
+	return err
+}
+
 // UnknownHashError is the wording of a block hash of no served block, shared
 // by several methods.
 func UnknownHashError(hash common.Hash) error {

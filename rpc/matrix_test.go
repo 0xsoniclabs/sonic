@@ -84,6 +84,8 @@ func (chain matrixChain) requests() map[string][]string {
 	number := []string{`["0x1"]`, `["latest"]`, `["earliest"]`, `["0x5"]`}
 	hash := []string{`[` + block + `]`, `[` + mined + `]`}
 	transaction := []string{`[` + mined + `]`, `[` + pending + `]`, `[` + block + `]`}
+	sender, contract := quote(chain.sender), quote(chain.contract)
+	account := []string{`[` + sender + `]`, `[` + sender + `, "latest"]`, `[` + sender + `, null]`, `[` + sender + `, ` + block + `]`, `[` + sender + `, "0x5"]`}
 	requests := map[string][]string{
 		"chainId": {`[]`}, "blockNumber": {`[]`}, "syncing": {`[]`}, "currentEpoch": {`[]`}, "config": {`[]`},
 		"gasPrice": {`[]`}, "maxPriorityFeePerGas": {`[]`}, "blobBaseFee": {`[]`},
@@ -108,6 +110,12 @@ func (chain matrixChain) requests() map[string][]string {
 		"getTransactionByHash":                   transaction,
 		"getRawTransactionByHash":                transaction,
 		"getTransactionReceipt":                  transaction,
+		"getBalance":                             account,
+		"getCode":                                account,
+		"getTransactionCount":                    append(account, `[`+sender+`, "pending"]`),
+		"getAccount":                             account,
+		"getStorageAt":                           {`[` + contract + `, "0x0"]`, `[` + contract + `, "0x0", "latest"]`, `[` + contract + `, "0x0", "0x5"]`},
+		"getProof":                               {`[` + contract + `, ["0x0"]]`, `[` + contract + `, [], "latest"]`, `[` + contract + `, ["0x0"], "0x5"]`},
 	}
 	all := map[string][]string{
 		"net_version":        {`[]`},
@@ -131,11 +139,9 @@ var unreached = map[string]string{
 	"Head":                  "read at the start and by the head loop only",
 	"SubscribeHead":         "the head loop's subscription",
 	"SubscribeTransactions": "the pool loop's subscription",
-	"State":                 "no method of the module reads state yet",
 	"FindLogs":              "no method of the module reads logs yet",
 	"BundleInfo":            "no method of the module reads bundles yet",
 	"SendTransaction":       "no method of the module sends yet",
-	"PoolNonce":             "no method of the module reads nonces yet",
 	"PoolTransactions":      "no method of the module lists the pool yet",
 	"PoolContent":           "no method of the module lists the pool yet",
 	"PoolContentFrom":       "no method of the module lists the pool yet",
@@ -184,6 +190,9 @@ func TestMatrix_EveryCoreFailureIsContained(t *testing.T) {
 			require.Zero(t, panics, "a request panicked when %s answered %s", method, mode)
 		}
 	}
+	states := chain.core.States()
+	require.Positive(t, states.Opened)
+	require.Equal(t, states.Opened, states.Released, "every state opened is released once (I7)")
 }
 
 // TestMatrix_NamesEveryRegisteredMethod holds T4 for the matrix: a method

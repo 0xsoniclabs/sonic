@@ -237,6 +237,16 @@ func (environment *Environment) OpenState(head Head, number uint64) (state.State
 	return opened, nil
 }
 
+// FindState opens the state after the block a reference names. The caller
+// releases it.
+func (environment *Environment) FindState(head Head, reference chain.BlockReference) (state.StateDB, error) {
+	number, err := environment.Resolve(head, reference)
+	if err != nil {
+		return nil, err
+	}
+	return environment.OpenState(head, number)
+}
+
 // StateAt opens the state of the block a reference names, with the block's
 // header. The caller releases the state.
 func (environment *Environment) StateAt(head Head, reference chain.BlockReference) (state.StateDB, *evmcore.EvmHeader, error) {

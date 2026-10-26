@@ -231,3 +231,13 @@ func TestUnknownHashError_IsWordedAsTheReference(t *testing.T) {
 	require.EqualError(t, exec.UnknownHashError(common.HexToHash("0x01")),
 		"block with hash 0x0000000000000000000000000000000000000000000000000000000000000001 not found")
 }
+
+// TestStateLookupError_WordsAsTheReference holds F3 for the state lookups.
+func TestStateLookupError_WordsAsTheReference(t *testing.T) {
+	failure := errors.New("node failure")
+	require.EqualError(t, exec.StateLookupError(core.ErrNotFound), "header not found")
+	require.EqualError(t, exec.StateLookupError(chain.ErrUnknownHash), "header not found")
+	require.EqualError(t, exec.StateLookupError(chain.ErrNoSelector), "unknown header selector")
+	require.Same(t, failure, exec.StateLookupError(failure))
+	require.NoError(t, exec.StateLookupError(nil))
+}
