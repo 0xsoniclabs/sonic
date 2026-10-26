@@ -206,6 +206,21 @@ func (environment *Environment) TransactionByHash(head Head, hash common.Hash) (
 	})
 }
 
+// BundleInfo returns where a bundle with the given execution plan hash was
+// executed, in a block at or below the head.
+func (environment *Environment) BundleInfo(head Head, executionPlanHash common.Hash) (*core.BundleInfo, error) {
+	return read(head, func() (*core.BundleInfo, error) {
+		info, err := environment.nodeCore.BundleInfo(executionPlanHash)
+		if err != nil {
+			return nil, err
+		}
+		if info.BlockNumber > head.Number {
+			return nil, core.ErrNotFound
+		}
+		return &info, nil
+	})
+}
+
 // Located is a transaction with its position in the chain.
 type Located struct {
 	Transaction *types.Transaction

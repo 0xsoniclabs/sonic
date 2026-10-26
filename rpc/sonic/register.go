@@ -19,6 +19,8 @@
 package sonic
 
 import (
+	"github.com/ethereum/go-ethereum/common"
+
 	"github.com/0xsoniclabs/sonic/rpc/chain"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
@@ -36,4 +38,7 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment) {
 		dispatch.Optional[chain.BlockReference]("block"),
 		dispatch.Optional[exec.StateOverride]("stateOverrides"),
 		dispatch.Optional[exec.BlockOverrides]("blockOverrides"))
+	dispatcher.Add("sonic_prepareBundle", handler.prepareBundle, dispatch.Required[RPCExecutionProposal]("proposal"))
+	dispatcher.Add("sonic_submitBundle", handler.submitBundle, dispatch.Required[SubmitBundleArguments]("bundle"))
+	dispatcher.Add("sonic_getBundleInfo", handler.getBundleInfo, dispatch.Required[common.Hash]("executionPlanHash"))
 }

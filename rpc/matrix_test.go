@@ -137,11 +137,15 @@ func (chain matrixChain) requests() map[string][]string {
 		"pendingTransactions":    {`[]`},
 		"createAccessList":       {`[` + message + `]`, `[` + priced + `, "latest"]`, `[` + created + `]`, `[` + message + `, "0x5"]`},
 	}
+	proposal := `{"steps": [{"from": ` + sender + `, "to": ` + contract + `, "nonce": "0x1"}]}`
 	all := map[string][]string{
-		"txpool_content":     {`[]`},
-		"txpool_contentFrom": {`[` + sender + `]`},
-		"txpool_status":      {`[]`},
-		"txpool_inspect":     {`[]`},
+		"txpool_content":      {`[]`},
+		"txpool_contentFrom":  {`[` + sender + `]`},
+		"txpool_status":       {`[]`},
+		"txpool_inspect":      {`[]`},
+		"sonic_prepareBundle": {`[` + proposal + `]`, `[{"blockRange": {"first": "0x9", "length": "0x2"}, "steps": [{"from": ` + sender + `, "to": ` + contract + `, "nonce": "0x1", "gas": "0x5208"}]}]`},
+		"sonic_submitBundle":  {`[{"signedTransactions": [` + raw + `], "executionPlan": {"blockRange": {"first": "0x9", "length": "0x2"}, "steps": [{"from": ` + sender + `, "hash": ` + pending + `}]}}]`, `[{"signedTransactions": []}]`},
+		"sonic_getBundleInfo": {`[` + mined + `]`},
 		"sonic_estimateGasForTransactions": {
 			`[[` + message + `, ` + message + `]]`, `[[` + message + `], "latest", null, null]`, `[[` + created + `], "0x5"]`, `[[]]`,
 		},
@@ -167,7 +171,6 @@ var unreached = map[string]string{
 	"SubscribeHead":         "the head loop's subscription",
 	"SubscribeTransactions": "the pool loop's subscription",
 	"FindLogs":              "no method of the module reads logs yet",
-	"BundleInfo":            "no method of the module reads bundles yet",
 	"PendingHeads":          "read by the oracle's sampler loop only",
 }
 

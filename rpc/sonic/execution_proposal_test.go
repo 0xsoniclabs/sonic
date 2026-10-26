@@ -1,0 +1,1688 @@
+// Copyright 2026 Sonic Operations Ltd
+// This file is part of the Sonic Client
+//
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
+package sonic
+
+import (
+	"encoding/json"
+	"fmt"
+	"math/big"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
+
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/rpc/exec"
+)
+
+func Test_ExecutionProposal_canBeConstructedFromBuilderBundle(t *testing.T) {
+
+	signer := types.LatestSignerForChainID(big.NewInt(2))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	// transactionStep generates a JSON object for a standard AccessListTx step
+	// with optional flag prefix (e.g. `"tolerateFailed": true`).
+	transactionStep := func(flags string) string {
+		prefix := ""
+		if flags != "" {
+			prefix = flags + ","
+		}
+		return fmt.Sprintf(`{
+			%s
+			"from": "REPLACE_ADDRESS",
+			"to": null,
+			"gas": "0x10cc",
+			"gasPrice": null,
+			"maxFeePerGas": null,
+			"maxPriorityFeePerGas": null,
+			"value": null,
+			"nonce": null,
+			"data": null,
+			"input": null,
+			"chainId": "0x2",
+			"maxFeePerBlobGas": null,
+			"blobs": null,
+			"commitments": null,
+			"proofs": null,
+			"authorizationList": null
+		}`, prefix)
+	}
+
+	plain := transactionStep("")
+	sTF := transactionStep(`"tolerateFailed": true`)
+	sTI := transactionStep(`"tolerateInvalid": true`)
+	sTFI := transactionStep(`"tolerateFailed": true, "tolerateInvalid": true`)
+
+	cases := map[string]struct {
+		bundle bundle.TransactionBundle
+		json   string
+	}{
+		"simple bundle": {
+			bundle: bundle.NewBuilder().
+				WithSigner(signer).
+				AllOf(bundle.Step(key, &types.AccessListTx{})).
+				BuildBundle(),
+			json: fmt.Sprintf(`{
+				"blockRange":{"first":"0x0","length":"0x400"},
+				"steps":[%s]
+			}`, plain),
+		},
+		"bundle with two transactions": {
+			bundle: bundle.NewBuilder().
+				WithSigner(signer).
+				With(
+					bundle.AllOf(
+						bundle.Step(key, &types.AccessListTx{}),
+						bundle.Step(key, &types.AccessListTx{}),
+					),
+				).
+				BuildBundle(),
+			json: fmt.Sprintf(`{
+				"blockRange":{"first":"0x0","length":"0x400"},
+				"steps":[%s,%s]
+			}`, plain, plain),
+		},
+		"nested bundle": {
+			bundle: bundle.NewBuilder().
+				WithSigner(signer).
+				With(
+					bundle.OneOf(
+						bundle.AllOf(
+							bundle.Step(key, &types.AccessListTx{}),
+						),
+					),
+				).
+				BuildBundle(),
+			json: fmt.Sprintf(`{
+				"blockRange":{"first":"0x0","length":"0x400"},
+				"oneOf":true,"steps":[{"steps":[%s]}]
+			}`, plain),
+		},
+		"bundle with flags in transactions": {
+			bundle: bundle.NewBuilder().
+				WithSigner(signer).
+				With(
+					bundle.AllOf(
+						bundle.Step(key, &types.AccessListTx{}).
+							WithFlags(bundle.EF_TolerateFailed),
+						bundle.Step(key, &types.AccessListTx{}).
+							WithFlags(bundle.EF_TolerateInvalid),
+						bundle.Step(key, &types.AccessListTx{}).
+							WithFlags(bundle.EF_TolerateFailed|bundle.EF_TolerateInvalid),
+					),
+				).
+				BuildBundle(),
+			json: fmt.Sprintf(`{
+				"blockRange":{"first":"0x0","length":"0x400"},
+				"steps":[%s,%s,%s]
+			}`, sTF, sTI, sTFI),
+		},
+		"bundle with flags in groups": {
+			bundle: bundle.NewBuilder().
+				WithSigner(signer).
+				With(
+					bundle.AllOf(
+						bundle.OneOf(
+							bundle.Step(key, &types.AccessListTx{}),
+						),
+						bundle.OneOf(
+							bundle.Step(key, &types.AccessListTx{}),
+						).WithFlags(bundle.EF_TolerateFailed),
+						bundle.AllOf(
+							bundle.Step(key, &types.AccessListTx{}),
+						),
+						bundle.AllOf(
+							bundle.Step(key, &types.AccessListTx{}),
+						).WithFlags(bundle.EF_TolerateFailed),
+					),
+				).
+				BuildBundle(),
+			json: fmt.Sprintf(`{
+				"blockRange":{"first":"0x0","length":"0x400"},
+				"steps":[
+					{"oneOf":true,"steps":[%s]},
+					{"tolerateFailures":true,"oneOf":true,"steps":[%s]},
+					{"steps":[%s]},
+					{"tolerateFailures":true,"steps":[%s]}
+				]
+			}`, plain, plain, plain, plain),
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+
+			// check that signatures and keys are not misplaced
+			for _, transaction := range test.bundle.Transactions {
+				sender, err := signer.Sender(transaction)
+				require.NoError(t, err)
+				require.Equal(t, crypto.PubkeyToAddress(key.PublicKey), sender)
+			}
+
+			proposal, err := createProposalRequestFromBundle(signer, &test.bundle)
+			require.NoError(t, err)
+			require.NotNil(t, proposal)
+
+			json := strings.ReplaceAll(test.json, "REPLACE_ADDRESS", strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex()))
+
+			expectJsonEqual(t, json, proposal)
+
+			var deserialized RPCExecutionProposal
+			expectCanBeDeserialized(t, &deserialized, json)
+
+			require.Equal(t, *proposal, deserialized)
+		})
+	}
+}
+
+func TestConvertToCallArguments_convertsTransactionsToCallArguments(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	address := common.Address{1}
+
+	cases := map[string]struct {
+		transaction *types.Transaction
+		json        string
+	}{
+		// empty transactions
+		"empty legacy tx": {
+			transaction: types.NewTx(&types.LegacyTx{}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s"
+ 			}`,
+		},
+		"empty access list tx": {
+			transaction: types.NewTx(&types.AccessListTx{}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s"
+ 			}`,
+		},
+		"empty dynamic fee tx": {
+			transaction: types.NewTx(&types.DynamicFeeTx{}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s"
+ 			}`,
+		},
+		"empty blob tx": {
+			transaction: types.NewTx(&types.BlobTx{}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0000000000000000000000000000000000000000"
+ 			}`,
+		},
+		"empty set code tx": {
+			transaction: types.NewTx(&types.SetCodeTx{}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0000000000000000000000000000000000000000"
+ 			}`,
+		},
+		// trivial transactions
+		"trivial legacy tx": {
+			transaction: types.NewTx(&types.LegacyTx{
+				To:    &address,
+				Nonce: 10,
+				Value: big.NewInt(12123),
+				Data:  []byte{0xAB, 0xCD},
+			}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0100000000000000000000000000000000000000",
+ 				"nonce": "0xa",
+ 				"value": "0x2f5b",
+ 				"data": "0xabcd"
+ 			}`,
+		},
+		"trivial access list tx": {
+			transaction: types.NewTx(&types.AccessListTx{
+				To:    &address,
+				Nonce: 10,
+				Value: big.NewInt(123),
+				Data:  []byte{0xAB, 0xCD},
+			}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0100000000000000000000000000000000000000",
+ 				"nonce": "0xa",
+ 				"value": "0x7b",
+ 				"data": "0xabcd"
+ 			}`,
+		},
+		"trivial dynamic fee tx": {
+			transaction: types.NewTx(&types.DynamicFeeTx{
+				To:    &address,
+				Nonce: 10,
+				Value: big.NewInt(123),
+				Data:  []byte{0xAB, 0xCD},
+			}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0100000000000000000000000000000000000000",
+ 				"nonce": "0xa",
+ 				"value": "0x7b",
+ 				"data": "0xabcd"
+ 			}`,
+		},
+		"trivial blob tx": {
+			transaction: types.NewTx(&types.BlobTx{
+				To:    address,
+				Nonce: 10,
+				Value: uint256.NewInt(123),
+				Data:  []byte{0xAB, 0xCD},
+			}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0100000000000000000000000000000000000000",
+ 				"nonce": "0xa",
+ 				"value": "0x7b",
+ 				"data": "0xabcd"
+ 			}`,
+		},
+		"trivial set code tx": {
+			transaction: types.NewTx(&types.SetCodeTx{
+				To:    address,
+				Nonce: 10,
+				Value: uint256.NewInt(123),
+				Data:  []byte{0xAB, 0xCD},
+			}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0100000000000000000000000000000000000000",
+ 				"nonce": "0xa",
+ 				"value": "0x7b",
+ 				"data": "0xabcd"
+ 			}`,
+		},
+		// Data vs Input semantics
+		"contract create": {
+			transaction: types.NewTx(&types.LegacyTx{
+				Data: slices.Repeat([]byte{0xAB}, 4),
+			}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"input": "0xabababab"
+ 			}`,
+		},
+		"no create": {
+			transaction: types.NewTx(&types.LegacyTx{
+				To:   &address,
+				Data: slices.Repeat([]byte{0xAB}, 4),
+			}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0100000000000000000000000000000000000000",
+ 				"data": "0xabababab"
+ 			}`,
+		},
+		// GasLimit
+		"With Gas limit": {
+			transaction: types.NewTx(&types.DynamicFeeTx{
+				Gas: 21000,
+			}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"gas": "0x5208"
+ 			}`,
+		},
+		// Access list semantics
+		"Access list with entries": {
+			transaction: types.NewTx(&types.AccessListTx{
+				AccessList: types.AccessList{
+					{
+						Address:     address,
+						StorageKeys: []common.Hash{{1}},
+					},
+				},
+			}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"accessList": [
+ 					{
+ 						"address": "0x0100000000000000000000000000000000000000",
+ 						"storageKeys": ["0x0100000000000000000000000000000000000000000000000000000000000000"]
+ 					}
+ 				]
+ 			}`,
+		},
+		// Gas price semantics
+		"Legacy tx with gas price": {
+			transaction: types.NewTx(&types.LegacyTx{
+				GasPrice: big.NewInt(100_000_000_000),
+			}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"gasPrice": "0x174876e800"
+ 			}`,
+		},
+		"Access list tx with gas price": {
+			transaction: types.NewTx(&types.AccessListTx{
+				GasPrice: big.NewInt(100_000_000_000),
+			}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"gasPrice": "0x174876e800"
+ 			}`,
+		},
+		"Dynamic fee tx with max fee per gas and max priority fee per gas": {
+			transaction: types.NewTx(&types.DynamicFeeTx{
+				GasFeeCap: big.NewInt(100_000_000_000),
+				GasTipCap: big.NewInt(2_000_000_000),
+			}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"maxFeePerGas": "0x174876e800",
+ 				"maxPriorityFeePerGas": "0x77359400"
+ 			}`,
+		},
+		"Blob tx with max fee per gas and max priority fee per gas": {
+			transaction: types.NewTx(&types.BlobTx{
+				GasFeeCap: uint256.NewInt(100_000_000_000),
+				GasTipCap: uint256.NewInt(2_000_000_000),
+			}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0000000000000000000000000000000000000000",
+ 				"maxFeePerGas": "0x174876e800",
+ 				"maxPriorityFeePerGas": "0x77359400"
+ 			}`,
+		},
+		"Set code tx with max fee per gas and max priority fee per gas": {
+			transaction: types.NewTx(&types.SetCodeTx{
+				GasFeeCap: uint256.NewInt(100_000_000_000),
+				GasTipCap: uint256.NewInt(2_000_000_000),
+			}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0000000000000000000000000000000000000000",
+ 				"maxFeePerGas": "0x174876e800",
+ 				"maxPriorityFeePerGas": "0x77359400"
+ 			}`,
+		},
+		// Set code tx authorization
+		"set code tx with authorization": {
+			transaction: types.NewTx(&types.SetCodeTx{
+				To: address,
+				AuthList: []types.SetCodeAuthorization{
+					{},
+				},
+			}),
+			json: `{
+ 				"chainId": "0x1",
+ 				"from": "%s",
+ 				"to": "0x0100000000000000000000000000000000000000",
+ 				"authorizationList": [
+ 					{
+ 						"chainId": "0x0",
+ 						"address": "0x0000000000000000000000000000000000000000",
+ 						"nonce": "0x0",
+ 						"yParity": "0x0",
+ 						"r": "0x0",
+ 						"s": "0x0"
+ 					}
+ 				]
+ 			}`,
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			transaction, err := types.SignTx(test.transaction, signer, key)
+			require.NoError(t, err)
+
+			arguments, err := convertToCallArguments(signer, transaction)
+			require.NoError(t, err)
+
+			_, err = json.Marshal(arguments)
+			require.NoError(t, err)
+
+			json := fmt.Sprintf(test.json, crypto.PubkeyToAddress(key.PublicKey).Hex())
+			expectJsonEqual(t, json, arguments)
+		})
+	}
+}
+
+func TestConvertToCallArguments_returnsErrors(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	otherChainSigner := types.LatestSignerForChainID(big.NewInt(2))
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	cases := map[string]struct {
+		transaction *types.Transaction
+	}{
+		"invalid signature": {
+			transaction: types.MustSignNewTx(key, otherChainSigner, &types.LegacyTx{}),
+		},
+		"blob tx with invalid blob hash": {
+			transaction: types.MustSignNewTx(key, signer, &types.BlobTx{
+				BlobHashes: []common.Hash{{1}},
+			}),
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+
+			_, err = convertToCallArguments(signer, test.transaction)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestCreateProposalRequestFromBundle(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	// Build a simple bundle with one transaction
+	transaction := types.MustSignNewTx(key, signer, &types.AccessListTx{
+		Nonce:   1,
+		Value:   big.NewInt(100),
+		Gas:     21000,
+		ChainID: big.NewInt(1),
+	})
+	bndl := bundle.NewBuilder().
+		WithSigner(signer).
+		AllOf(bundle.Step(key, transaction)).
+		BuildBundle()
+
+	proposal, err := createProposalRequestFromBundle(signer, &bndl)
+	require.NoError(t, err)
+	require.NotNil(t, proposal)
+
+	// Check that the proposal contains the expected block range and steps
+	require.EqualValues(t, *toHexUint64(0), proposal.BlockRange.First)
+	require.EqualValues(t, *toHexUint64(1024), proposal.BlockRange.Length)
+	require.Len(t, proposal.Steps, 1)
+
+	// Nested bundle (AllOf with two steps)
+	transaction2 := types.MustSignNewTx(key, signer, &types.AccessListTx{
+		Nonce:   2,
+		Value:   big.NewInt(200),
+		Gas:     22000,
+		ChainID: big.NewInt(1),
+	})
+	nestedBndl := bundle.NewBuilder().
+		WithSigner(signer).
+		With(bundle.AllOf(
+			bundle.Step(key, transaction),
+			bundle.Step(key, transaction2),
+		)).
+		BuildBundle()
+
+	proposal2, err := createProposalRequestFromBundle(signer, &nestedBndl)
+	require.NoError(t, err)
+	require.NotNil(t, proposal2)
+	require.Len(t, proposal2.Steps, 2)
+}
+
+func TestCreateProposalRequestFromBundle_CanYieldErrors(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	cases := map[string]struct {
+		bundle  bundle.TransactionBundle
+		wantErr string
+	}{
+		"plan references missing transaction": {
+			bundle: bundle.TransactionBundle{
+				Plan: bundle.ExecutionPlan{
+					Root: bundle.NewAllOfStep(bundle.NewTxStep(bundle.TxReference{
+						Hash: common.Hash{123},
+					})),
+				},
+			},
+			wantErr: "transaction reference not found",
+		},
+		"root is not a group": {
+			bundle: bundle.NewBuilder().
+				WithSigner(signer).
+				With(bundle.Step(key, &types.AccessListTx{})).
+				BuildBundle(),
+			wantErr: "root must be a group",
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := createProposalRequestFromBundle(signer, &test.bundle)
+			require.ErrorContains(t, err, test.wantErr)
+		})
+	}
+}
+
+func Test_convertVisitorLeafIntoRPCExecutionPlanProposalLeaf_ConvertsToProposalLeaf(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	sender := crypto.PubkeyToAddress(key.PublicKey)
+
+	transaction1 := types.MustSignNewTx(key, signer, &types.AccessListTx{
+		Nonce: 1,
+		Value: big.NewInt(100),
+	})
+
+	cases := map[string]struct {
+		transactionBundle bundle.TransactionBundle
+		expected          []RPCExecutionStepProposal
+	}{
+		"simple bundle": {
+			transactionBundle: bundle.NewBuilder().
+				WithSigner(signer).
+				With(bundle.Step(key, transaction1)).
+				BuildBundle(),
+			expected: []RPCExecutionStepProposal{{
+				CallArguments: exec.CallArguments{
+					ChainID: toHexBigInt(big.NewInt(1)),
+					From:    &sender,
+					Nonce:   toHexUint64(1),
+					Value:   toHexBigInt(big.NewInt(100)),
+					Gas:     toHexUint64(4300),
+				},
+			}},
+		},
+		"bundle with transaction including access list": {
+			transactionBundle: bundle.NewBuilder().
+				WithSigner(signer).
+				With(bundle.Step(key, types.MustSignNewTx(key, signer, &types.AccessListTx{
+					Nonce: 1,
+					Value: big.NewInt(100),
+					AccessList: types.AccessList{
+						{
+							Address:     common.Address{1},
+							StorageKeys: []common.Hash{{1}},
+						},
+					},
+				}))).
+				BuildBundle(),
+			expected: []RPCExecutionStepProposal{{
+				CallArguments: exec.CallArguments{
+					ChainID: toHexBigInt(big.NewInt(1)),
+					From:    &sender,
+					Nonce:   toHexUint64(1),
+					Value:   toHexBigInt(big.NewInt(100)),
+					Gas:     toHexUint64(4300),
+					AccessList: &types.AccessList{
+						{
+							Address:     common.Address{1},
+							StorageKeys: []common.Hash{{1}},
+						},
+					},
+				},
+			}},
+		},
+		"bundle with transaction including access list with marker": {
+			transactionBundle: bundle.NewBuilder().
+				WithSigner(signer).
+				With(bundle.Step(key, types.MustSignNewTx(key, signer, &types.AccessListTx{
+					Nonce: 1,
+					Value: big.NewInt(100),
+					AccessList: types.AccessList{
+						{
+							Address: bundle.BundleOnly,
+						},
+					},
+				}))).
+				BuildBundle(),
+			expected: []RPCExecutionStepProposal{{
+				CallArguments: exec.CallArguments{
+					ChainID: toHexBigInt(big.NewInt(1)),
+					From:    &sender,
+					Nonce:   toHexUint64(1),
+					Value:   toHexBigInt(big.NewInt(100)),
+					Gas:     toHexUint64(4300),
+				},
+			}},
+		},
+		"bundle with transaction including access list with marker and other access list entries": {
+			transactionBundle: bundle.NewBuilder().
+				WithSigner(signer).
+				With(bundle.Step(key, types.MustSignNewTx(key, signer, &types.AccessListTx{
+					Nonce: 1,
+					Value: big.NewInt(100),
+					AccessList: types.AccessList{
+						{
+							Address: bundle.BundleOnly,
+						},
+						{
+							Address:     common.Address{1},
+							StorageKeys: []common.Hash{{1}},
+						},
+					},
+				}))).
+				BuildBundle(),
+			expected: []RPCExecutionStepProposal{{
+				CallArguments: exec.CallArguments{
+					ChainID: toHexBigInt(big.NewInt(1)),
+					From:    &sender,
+					Nonce:   toHexUint64(1),
+					Value:   toHexBigInt(big.NewInt(100)),
+					Gas:     toHexUint64(4300),
+					AccessList: &types.AccessList{
+						{
+							Address:     common.Address{1},
+							StorageKeys: []common.Hash{{1}},
+						},
+					},
+				},
+			}},
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+
+			for index, reference := range test.transactionBundle.Plan.Root.GetTransactionReferencesInReferencedOrder() {
+
+				result, err := convertVisitorLeafIntoRPCExecutionPlanProposalLeaf(
+					signer,
+					&test.transactionBundle,
+					0,
+					reference,
+				)
+				require.NoError(t, err)
+				require.Equal(t, test.expected[index], result)
+
+			}
+		})
+	}
+}
+
+func Test_convertVisitorLeafIntoRPCExecutionPlanProposalLeaf_canReturnErrors(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	transactionBundle := bundle.NewBuilder().
+		WithSigner(signer).
+		//  Blob tx with hashes is not supported
+		With(bundle.Step(key, &types.BlobTx{BlobHashes: []common.Hash{{}}})).
+		BuildBundle()
+
+	cases := map[string]struct {
+		transactionBundle bundle.TransactionBundle
+		reference         bundle.TxReference
+		expectedError     string
+	}{
+		"transaction reference not found in bundle transactions returns error": {
+			transactionBundle: transactionBundle,
+			reference:         bundle.TxReference{Hash: common.Hash{123}},
+			expectedError:     "transaction reference not found in bundle transactions",
+		},
+		"bundle with non-convertible transaction type returns error": {
+			transactionBundle: transactionBundle,
+			reference:         transactionBundle.Plan.Root.GetTransactionReferencesInReferencedOrder()[0],
+			expectedError:     "blob transactions are not supported in execution proposals",
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := convertVisitorLeafIntoRPCExecutionPlanProposalLeaf(signer, &test.transactionBundle, 0, test.reference)
+			if test.expectedError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), test.expectedError)
+			}
+		})
+	}
+}
+
+func Test_transform_AppliesFunctionToAllLeaves(t *testing.T) {
+	address := common.Address{1}
+
+	markTolerateFailed := func(step RPCExecutionStepProposal) (RPCExecutionStepProposal, error) {
+		step.TolerateFailed = true
+		return step, nil
+	}
+
+	cases := map[string]struct {
+		proposal RPCExecutionProposal
+		expected RPCExecutionProposal
+	}{
+		"nil steps returns proposal unchanged": {
+			proposal: RPCExecutionProposal{},
+			expected: RPCExecutionProposal{},
+		},
+		"empty steps": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{Steps: []any{}},
+			},
+			expected: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{Steps: []any{}},
+			},
+		},
+		"single leaf step": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{RPCExecutionStepProposal{}},
+				},
+			},
+			expected: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{RPCExecutionStepProposal{TolerateFailed: true}},
+				},
+			},
+		},
+		"multiple leaf steps": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{},
+						RPCExecutionStepProposal{TolerateInvalid: true},
+					},
+				},
+			},
+			expected: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{TolerateFailed: true},
+						RPCExecutionStepProposal{TolerateFailed: true, TolerateInvalid: true},
+					},
+				},
+			},
+		},
+		"leaf mixed with nested group": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{},
+						RPCExecutionPlanGroup{
+							OneOf: true,
+							Steps: []any{RPCExecutionStepProposal{}},
+						},
+						RPCExecutionStepProposal{},
+					},
+				},
+			},
+			expected: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{TolerateFailed: true},
+						RPCExecutionPlanGroup{
+							OneOf: true,
+							Steps: []any{RPCExecutionStepProposal{TolerateFailed: true}},
+						},
+						RPCExecutionStepProposal{TolerateFailed: true},
+					},
+				},
+			},
+		},
+		"deeply nested groups": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							Steps: []any{
+								RPCExecutionPlanGroup{
+									OneOf: true,
+									Steps: []any{RPCExecutionStepProposal{}},
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							Steps: []any{
+								RPCExecutionPlanGroup{
+									OneOf: true,
+									Steps: []any{RPCExecutionStepProposal{TolerateFailed: true}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"preserves group flags": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					TolerateFailures: true,
+					OneOf:            true,
+					Steps: []any{
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{From: &address},
+						},
+					},
+				},
+			},
+			expected: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					TolerateFailures: true,
+					OneOf:            true,
+					Steps: []any{
+						RPCExecutionStepProposal{
+							TolerateFailed: true,
+							CallArguments:  exec.CallArguments{From: &address},
+						},
+					},
+				},
+			},
+		},
+		"preserves block range": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{First: 10, Length: 20},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{RPCExecutionStepProposal{}},
+				},
+			},
+			expected: RPCExecutionProposal{
+				BlockRange: &RPCRange{First: 10, Length: 20},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{RPCExecutionStepProposal{TolerateFailed: true}},
+				},
+			},
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			result, err := transform(test.proposal, markTolerateFailed, 0)
+			require.NoError(t, err)
+			require.Equal(t, test.expected, result)
+		})
+	}
+}
+
+func Test_transform_ReturnsErrors(t *testing.T) {
+	injectedErr := fmt.Errorf("injected error")
+
+	alwaysFails := func(step RPCExecutionStepProposal) (RPCExecutionStepProposal, error) {
+		return step, injectedErr
+	}
+
+	cases := map[string]struct {
+		proposal RPCExecutionProposal
+	}{
+		"error on leaf step at top level": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{RPCExecutionStepProposal{}},
+				},
+			},
+		},
+		"error on leaf step inside nested group": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							Steps: []any{RPCExecutionStepProposal{}},
+						},
+					},
+				},
+			},
+		},
+		"error on leaf step inside deeply nested group": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							Steps: []any{
+								RPCExecutionPlanGroup{
+									Steps: []any{RPCExecutionStepProposal{}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"unknown step type at top level": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{"unexpected string"},
+				},
+			},
+		},
+		"unknown step type inside nested group": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							Steps: []any{42},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := transform(test.proposal, alwaysFails, 0)
+			require.Error(t, err)
+		})
+	}
+}
+
+func Test_transform_ChecksNestingDepth(t *testing.T) {
+	identity := func(step RPCExecutionStepProposal) (RPCExecutionStepProposal, error) {
+		return step, nil
+	}
+
+	cases := map[string]struct {
+		leafDepth int
+		wantErr   bool
+	}{
+		"leaf at maximum depth":     {leafDepth: bundle.MaxGroupNestingDepth},
+		"leaf beyond maximum depth": {leafDepth: bundle.MaxGroupNestingDepth + 1, wantErr: true},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			step := any(RPCExecutionStepProposal{})
+			for range test.leafDepth - 1 {
+				step = RPCExecutionPlanGroup{Steps: []any{step}}
+			}
+			proposal := RPCExecutionProposal{RPCExecutionPlanGroup: RPCExecutionPlanGroup{Steps: []any{step}}}
+			_, err := transform(proposal, identity, 0)
+			if test.wantErr {
+				require.ErrorContains(t, err, "execution plan exceeds maximum nesting depth")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func Test_convertProposalToPlan(t *testing.T) {
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	key1, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	address1 := crypto.PubkeyToAddress(key1.PublicKey)
+	key2, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	address2 := crypto.PubkeyToAddress(key2.PublicKey)
+
+	const bundleMarkerCost = params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
+
+	cases := map[string]struct {
+		proposal RPCExecutionProposal
+		plan     bundle.ExecutionPlan
+	}{
+		"simple proposal with one step": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					First:  *toHexUint64(0),
+					Length: *toHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								From:      &address1,
+								Recipient: &common.Address{123},
+								Nonce:     toHexUint64(1),
+								Gas:       toHexUint64(21000 + bundleMarkerCost),
+							},
+						},
+					},
+				},
+			},
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetRangeLength(1023).
+				WithSigner(signer).
+				AllOf(
+					bundle.Step(key1, &types.AccessListTx{
+						To:    &common.Address{123},
+						Nonce: 1,
+						Gas:   21000,
+					}),
+				).
+				BuildBundle().Plan,
+		},
+		"single step in nested plain group": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					First:  *toHexUint64(0),
+					Length: *toHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							Steps: []any{
+								RPCExecutionStepProposal{
+									CallArguments: exec.CallArguments{
+										From:      &address1,
+										Recipient: &common.Address{123},
+										Nonce:     toHexUint64(1),
+										Gas:       toHexUint64(21000 + bundleMarkerCost),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetRangeLength(1023).
+				WithSigner(signer).
+				AllOf(
+					bundle.AllOf(
+						bundle.Step(key1, &types.AccessListTx{
+							To:    &common.Address{123},
+							Nonce: 1,
+							Gas:   21000,
+						}),
+					),
+				).
+				BuildBundle().Plan,
+		},
+		"single step in one-of group": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					First:  *toHexUint64(0),
+					Length: *toHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					OneOf: true,
+					Steps: []any{
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								From:      &address1,
+								Recipient: &common.Address{123},
+								Nonce:     toHexUint64(1),
+								Gas:       toHexUint64(21000 + bundleMarkerCost),
+							},
+						},
+					},
+				},
+			},
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetRangeLength(1023).
+				WithSigner(signer).
+				OneOf(
+					bundle.Step(key1, &types.AccessListTx{
+						To:    &common.Address{123},
+						Nonce: 1,
+						Gas:   21000,
+					}),
+				).
+				BuildBundle().Plan,
+		},
+		"two steps in one group": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					First:  *toHexUint64(0),
+					Length: *toHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								From:      &address1,
+								Recipient: &common.Address{123},
+								Nonce:     toHexUint64(1),
+								Gas:       toHexUint64(21000 + bundleMarkerCost),
+							},
+						},
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								From:      &address2,
+								Recipient: &common.Address{1},
+								Nonce:     toHexUint64(2),
+								Gas:       toHexUint64(21000 + bundleMarkerCost),
+							},
+						},
+					},
+				},
+			},
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetRangeLength(1023).
+				WithSigner(signer).
+				AllOf(
+					bundle.Step(key1, &types.AccessListTx{
+						To:    &common.Address{123},
+						Nonce: 1,
+						Gas:   21000,
+					}),
+					bundle.Step(key2, &types.AccessListTx{
+						To:    &common.Address{1},
+						Nonce: 2,
+						Gas:   21000,
+					}),
+				).
+				BuildBundle().Plan,
+		},
+		"different execution flags in steps": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					First:  *toHexUint64(0),
+					Length: *toHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								From:      &address1,
+								Recipient: &common.Address{123},
+								Nonce:     toHexUint64(1),
+								Gas: toHexUint64(21000 +
+									// NOTE: builder adds marker costs
+									params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas),
+							},
+							TolerateFailed: true,
+						},
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								From:      &address2,
+								Recipient: &common.Address{1},
+								Nonce:     toHexUint64(2),
+								Gas:       toHexUint64(21000 + bundleMarkerCost),
+							},
+							TolerateInvalid: true,
+						},
+					},
+				},
+			},
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetRangeLength(1023).
+				WithSigner(signer).
+				AllOf(
+					bundle.Step(key1, &types.AccessListTx{
+						To:    &common.Address{123},
+						Nonce: 1,
+						Gas:   21000,
+					}).WithFlags(bundle.EF_TolerateFailed),
+					bundle.Step(key2, &types.AccessListTx{
+						To:    &common.Address{1},
+						Nonce: 2,
+						Gas:   21000,
+					}).WithFlags(bundle.EF_TolerateInvalid),
+				).
+				BuildBundle().Plan,
+		},
+		"OneOf group": {
+
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					First:  *toHexUint64(0),
+					Length: *toHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					OneOf: true,
+					Steps: []any{
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								From:      &address1,
+								Recipient: &common.Address{123},
+								Nonce:     toHexUint64(1),
+								Gas:       toHexUint64(21000 + bundleMarkerCost),
+							},
+						},
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								From:      &address2,
+								Recipient: &common.Address{1},
+								Nonce:     toHexUint64(2),
+								Gas:       toHexUint64(21000 + bundleMarkerCost),
+							},
+						},
+					},
+				},
+			},
+
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetRangeLength(1023).
+				WithSigner(signer).
+				OneOf(
+					bundle.Step(key1, &types.AccessListTx{
+						To:    &common.Address{123},
+						Nonce: 1,
+						Gas:   21000,
+					}),
+					bundle.Step(key2, &types.AccessListTx{
+						To:    &common.Address{1},
+						Nonce: 2,
+						Gas:   21000,
+					}),
+				).
+				BuildBundle().Plan,
+		},
+		"OneOf group with different execution flags in steps": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					First:  *toHexUint64(0),
+					Length: *toHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					OneOf: true,
+					Steps: []any{
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								From:      &address1,
+								Recipient: &common.Address{123},
+								Nonce:     toHexUint64(1),
+								Gas:       toHexUint64(21000 + bundleMarkerCost),
+							},
+							TolerateFailed: true,
+						},
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								From:      &address2,
+								Recipient: &common.Address{1},
+								Nonce:     toHexUint64(2),
+								Gas:       toHexUint64(21000 + bundleMarkerCost),
+							},
+							TolerateInvalid: true,
+						},
+					},
+				},
+			},
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetRangeLength(1023).
+				WithSigner(signer).
+				OneOf(
+					bundle.Step(key1, &types.AccessListTx{
+						To:    &common.Address{123},
+						Nonce: 1,
+						Gas:   21000,
+					}).WithFlags(bundle.EF_TolerateFailed),
+					bundle.Step(key2, &types.AccessListTx{
+						To:    &common.Address{1},
+						Nonce: 2,
+						Gas:   21000,
+					}).WithFlags(bundle.EF_TolerateInvalid),
+				).
+				BuildBundle().Plan,
+		},
+		"group TolerateFailures flag is preserved": {
+			proposal: RPCExecutionProposal{
+				BlockRange: &RPCRange{
+					First:  *toHexUint64(0),
+					Length: *toHexUint64(1023),
+				},
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					TolerateFailures: true,
+					Steps: []any{
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								From:      &address1,
+								Recipient: &common.Address{123},
+								Nonce:     toHexUint64(1),
+								Gas:       toHexUint64(21000 + bundleMarkerCost),
+							},
+						},
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								From:      &address2,
+								Recipient: &common.Address{1},
+								Nonce:     toHexUint64(2),
+								Gas:       toHexUint64(21000 + bundleMarkerCost),
+							},
+						},
+					},
+				},
+			},
+			plan: bundle.NewBuilder().
+				SetEarliest(0).SetRangeLength(1023).
+				WithSigner(signer).
+				With(
+					bundle.AllOf(
+						bundle.Step(key1, &types.AccessListTx{
+							To:    &common.Address{123},
+							Nonce: 1,
+							Gas:   21000,
+						}),
+						bundle.Step(key2, &types.AccessListTx{
+							To:    &common.Address{1},
+							Nonce: 2,
+							Gas:   21000,
+						}),
+					).WithFlags(bundle.EF_TolerateFailed),
+				).
+				BuildBundle().Plan,
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			plan, err := convertProposalToPlan(signer, test.proposal)
+			require.NoError(t, err)
+			require.Equal(t, test.plan, plan)
+			require.Equal(t, test.plan.Hash(), plan.Hash())
+		})
+	}
+}
+
+func Test_convertProposalToPlan_ReturnsErrors(t *testing.T) {
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	address := common.Address{1}
+
+	validRange := &RPCRange{
+		First:  *toHexUint64(0),
+		Length: *toHexUint64(1023),
+	}
+
+	validStep := RPCExecutionStepProposal{
+		CallArguments: exec.CallArguments{
+			From:      &address,
+			Recipient: &common.Address{2},
+			Nonce:     toHexUint64(1),
+			Gas:       toHexUint64(21000),
+		},
+	}
+
+	// a value that overflows uint256
+	overflowingValue := new(big.Int).Lsh(big.NewInt(1), 257)
+
+	cases := map[string]struct {
+		proposal    RPCExecutionProposal
+		expectedErr string
+	}{
+		// --- missing fields ---
+		"missing block range": {
+			proposal: RPCExecutionProposal{
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{validStep},
+				},
+			},
+			expectedErr: "execution proposal must include block range",
+		},
+		"missing from in step": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								Recipient: &common.Address{2},
+								Nonce:     toHexUint64(1),
+								Gas:       toHexUint64(21000),
+							},
+						},
+					},
+				},
+			},
+			expectedErr: "transaction in bundle must include from",
+		},
+
+		// --- empty / wrong structure ---
+		"empty steps": {
+			proposal: RPCExecutionProposal{
+				BlockRange:            validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{Steps: []any{}},
+			},
+			expectedErr: "proposed group must include at least one step",
+		},
+		"empty nested group": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{Steps: []any{}},
+					},
+				},
+			},
+			expectedErr: "proposed group must include at least one step",
+		},
+		"nil step element in group": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{nil},
+				},
+			},
+			expectedErr: "invalid execution proposal level",
+		},
+		"wrong type in steps slice": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{"not a step"},
+				},
+			},
+			expectedErr: "invalid execution proposal level",
+		},
+
+		// --- wrong transactions (overflow in gas fee fields) ---
+		"SetCodeTx with overflowing MaxFeePerGas": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								From:              &address,
+								Recipient:         &common.Address{2},
+								Nonce:             toHexUint64(1),
+								Gas:               toHexUint64(21000),
+								MaxFeePerGas:      (*hexutil.Big)(overflowingValue),
+								AuthorizationList: []types.SetCodeAuthorization{{}},
+							},
+						},
+					},
+				},
+			},
+			expectedErr: "invalid MaxFeePerGas",
+		},
+		"SetCodeTx with negative MaxPriorityFeePerGas": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								From:                 &address,
+								Recipient:            &common.Address{2},
+								Nonce:                toHexUint64(1),
+								Gas:                  toHexUint64(21000),
+								MaxFeePerGas:         (*hexutil.Big)(big.NewInt(1)),
+								MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(-1)),
+								AuthorizationList:    []types.SetCodeAuthorization{{}},
+							},
+						},
+					},
+				},
+			},
+			expectedErr: "invalid MaxPriorityFeePerGas",
+		},
+		"BlobTx with overflowing BlobFeeCap": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionStepProposal{
+							CallArguments: exec.CallArguments{
+								From:                 &address,
+								Recipient:            &common.Address{2},
+								Nonce:                toHexUint64(1),
+								Gas:                  toHexUint64(21000),
+								MaxFeePerGas:         (*hexutil.Big)(big.NewInt(1)),
+								MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(1)),
+								BlobFeeCap:           (*hexutil.Big)(overflowingValue),
+								BlobHashes:           []common.Hash{{1}},
+							},
+						},
+					},
+				},
+			},
+			expectedErr: "invalid BlobFeeCap",
+		},
+
+		// --- wrong transaction nested in group ---
+		"error propagates from nested group step": {
+			proposal: RPCExecutionProposal{
+				BlockRange: validRange,
+				RPCExecutionPlanGroup: RPCExecutionPlanGroup{
+					Steps: []any{
+						RPCExecutionPlanGroup{
+							OneOf: true,
+							Steps: []any{
+								RPCExecutionStepProposal{
+									CallArguments: exec.CallArguments{
+										// missing From
+										Recipient: &common.Address{2},
+										Nonce:     toHexUint64(1),
+										Gas:       toHexUint64(21000),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedErr: "transaction in bundle must include from",
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := convertProposalToPlan(signer, test.proposal)
+			require.Error(t, err)
+			require.ErrorContains(t, err, test.expectedErr)
+		})
+	}
+}
+
+func Test_RPCExecutionProposal_UnmarshalJSON_FailsOnInvalidTopLevel(t *testing.T) {
+	cases := map[string]string{
+		"not json at all":        `not json`,
+		"top level is an array":  `[]`,
+		"blockRange wrong type":  `{"blockRange": "invalid"}`,
+		"steps is not an array":  `{"steps": 123}`,
+		"oneOf is not a boolean": `{"oneOf": "yes", "steps": []}`,
+	}
+
+	for name, input := range cases {
+		t.Run(name, func(t *testing.T) {
+			var proposal RPCExecutionProposal
+			err := json.Unmarshal([]byte(input), &proposal)
+			require.Error(t, err)
+		})
+	}
+}
+
+func Test_RPCExecutionProposal_UnmarshalJSON_FailsOnInvalidFirstLevelStep(t *testing.T) {
+	cases := map[string]string{
+		"step is not an object": `{
+			"steps": [123]
+		}`,
+		"step has invalid from field": `{
+			"steps": [{"from": "not-an-address", "to": "0x0000000000000000000000000000000000000001"}]
+		}`,
+		"step has nested steps with invalid content": `{
+			"steps": [{"steps": [true]}]
+		}`,
+		"step has nested steps with invalid flags": `{
+			"steps": [{"tolerateFailed": "not a boolean"}]
+		}`,
+	}
+
+	for name, input := range cases {
+		t.Run(name, func(t *testing.T) {
+			var proposal RPCExecutionProposal
+			err := json.Unmarshal([]byte(input), &proposal)
+			require.Error(t, err)
+		})
+	}
+}
+
+func Test_RPCExecutionProposal_UnmarshalJSON_RejectsExcessivelyDeepNesting(t *testing.T) {
+	for _, depth := range []int{
+		bundle.MaxGroupNestingDepth + 1,
+		bundle.MaxGroupNestingDepth + 2,
+		1000,
+		4999, // maximum depth that encoding/json will accept
+	} {
+		t.Run(fmt.Sprintf("depth=%d", depth), func(t *testing.T) {
+			var proposal RPCExecutionProposal
+			rawJSON := nestedStepsJSON(depth)
+			err := json.Unmarshal(rawJSON, &proposal)
+			require.ErrorContains(t, err, "nesting depth")
+		})
+	}
+}
+
+func Test_RPCExecutionProposal_UnmarshalJSON_AcceptsNestingAtLimit(t *testing.T) {
+	var proposal RPCExecutionProposal
+	require.NoError(t, json.Unmarshal(nestedStepsJSON(bundle.MaxGroupNestingDepth), &proposal))
+}
+
+// nestedStepsJSON builds a JSON execution proposal or plan whose single leaf
+// step is at the given depth, with the top-level object being the root group
+// at depth 0.
+func nestedStepsJSON(depth int) []byte {
+	var b strings.Builder
+	for range depth {
+		b.WriteString(`{"steps":[`)
+	}
+	b.WriteString(`{"from":"0x0000000000000000000000000000000000000001"}`)
+	for range depth {
+		b.WriteString(`]}`)
+	}
+	return []byte(b.String())
+}
+
+func Test_RPCExecutionProposal_UnmarshalJSON_FailsOnInvalidNestedLevelStep(t *testing.T) {
+	cases := map[string]string{
+		"nested group contains non-object element": `{
+			"steps": [{"steps": [{"steps": [42]}]}]
+		}`,
+		"nested group contains invalid leaf": `{
+			"steps": [{"steps": [{"steps": [{"from": "bad"}]}]}]
+		}`,
+		"deeply nested group has malformed steps array": `{
+			"steps": [{"steps": [{"steps": "not-an-array"}]}]
+		}`,
+	}
+
+	for name, input := range cases {
+		t.Run(name, func(t *testing.T) {
+			var proposal RPCExecutionProposal
+			err := json.Unmarshal([]byte(input), &proposal)
+			require.Error(t, err)
+		})
+	}
+}

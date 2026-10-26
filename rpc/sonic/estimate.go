@@ -37,25 +37,32 @@ type bundleGasLimits struct {
 	GasLimits []hexutil.Uint64 `json:"gasLimits"`
 }
 
-// estimateGasForTransactions estimates each transaction after the ones
-// before it, with their estimated gas, and adds to each the gas of the
-// bundle-only address and of the execution plan hash of a bundle's access
-// list.
+// estimateGasForTransactions implements sonic_estimateGasForTransactions.
 func (handler *handlers) estimateGasForTransactions(ctx context.Context, arguments dispatch.Arguments) (any, error) {
-	transactions := dispatch.Argument[[]exec.CallArguments](arguments, 0)
-	if len(transactions) > maxEstimableTransactions {
-		return nil, fmt.Errorf("too many transactions to estimate gas for: got %d, max is %d", len(transactions), maxEstimableTransactions)
-	}
 	head, err := handler.environment.Latest(ctx)
 	if err != nil {
 		return nil, err
 	}
-	estimation := exec.Estimation{
+	gasLimits, err := handler.estimateTransactions(head, dispatch.Argument[[]exec.CallArguments](arguments, 0), exec.Estimation{
 		Block:          dispatch.ArgumentOr(arguments, 1, chain.Latest()),
 		StateOverrides: dispatch.ArgumentOr[exec.StateOverride](arguments, 2, nil),
 		BlockOverrides: dispatch.Argument[*exec.BlockOverrides](arguments, 3),
-		Previous:       make([]exec.CallArguments, 0, len(transactions)),
+	})
+	if err != nil {
+		return nil, err
 	}
+	return bundleGasLimits{GasLimits: gasLimits}, nil
+}
+
+// estimateTransactions estimates each transaction after the ones before it
+// with their estimated gas, on the block and with the overrides of the
+// estimation, and adds the gas of the bundle-only address and of the
+// execution plan hash.
+func (handler *handlers) estimateTransactions(head exec.Head, transactions []exec.CallArguments, estimation exec.Estimation) ([]hexutil.Uint64, error) {
+	if len(transactions) > maxEstimableTransactions {
+		return nil, fmt.Errorf("too many transactions to estimate gas for: got %d, max is %d", len(transactions), maxEstimableTransactions)
+	}
+	estimation.Previous = make([]exec.CallArguments, 0, len(transactions))
 	gasLimits := make([]hexutil.Uint64, len(transactions))
 	for index, transaction := range transactions {
 		estimation.Arguments = transaction
@@ -67,5 +74,5 @@ func (handler *handlers) estimateGasForTransactions(ctx context.Context, argumen
 		estimation.Previous = append(estimation.Previous, transaction)
 		gasLimits[index] = gas + hexutil.Uint64(params.TxAccessListAddressGas) + hexutil.Uint64(params.TxAccessListStorageKeyGas)
 	}
-	return bundleGasLimits{GasLimits: gasLimits}, nil
+	return gasLimits, nil
 }
