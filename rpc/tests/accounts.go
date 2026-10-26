@@ -53,6 +53,17 @@ func (signer *Signer) Sign(t testing.TB, data types.TxData) *types.Transaction {
 	return signed
 }
 
+// SignUnprotected signs a legacy transaction without the replay protection
+// of EIP-155.
+func (signer *Signer) SignUnprotected(t testing.TB, data *types.LegacyTx) *types.Transaction {
+	t.Helper()
+	signed, err := types.SignNewTx(signer.key, types.HomesteadSigner{}, data)
+	if err != nil {
+		t.Fatalf("failed to sign a transaction: %v", err)
+	}
+	return signed
+}
+
 // Encode returns the binary encoding of a transaction, as a client sends it.
 func Encode(t testing.TB, transaction *types.Transaction) hexutil.Bytes {
 	t.Helper()

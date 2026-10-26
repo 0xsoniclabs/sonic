@@ -265,6 +265,11 @@ func (environment *Environment) StateAt(head Head, reference chain.BlockReferenc
 	return opened, header, nil
 }
 
+// Heads is the feed of the blocks the served head moves to.
+func (environment *Environment) Heads() *chain.Hub[core.HeadEvent] {
+	return environment.chain.Heads()
+}
+
 // ChainInfo returns the facts of the chain the head loop last read.
 func (environment *Environment) ChainInfo() core.ChainInfo {
 	return environment.chain.ChainInfo()

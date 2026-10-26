@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 
@@ -42,6 +43,7 @@ type matrixChain struct {
 	block    common.Hash
 	mined    common.Hash
 	pending  common.Hash
+	raw      hexutil.Bytes
 	sender   common.Address
 	contract common.Address
 }
@@ -66,7 +68,8 @@ func newMatrixChain(t *testing.T) matrixChain {
 		registerNamespaces(dispatcher, environment, carmenCore, DefaultConfig())
 	})
 	harness.WaitForHead(block.NumberU64())
-	return matrixChain{core: carmenCore, harness: harness, block: block.Hash, mined: mined.Hash(), pending: pending.Hash(), sender: signer.Address, contract: contract}
+	raw := tests.Encode(t, signer.Sign(t, &types.LegacyTx{Nonce: 2, To: &contract, Gas: 50000, GasPrice: big.NewInt(2_000_000_000)}))
+	return matrixChain{core: carmenCore, harness: harness, block: block.Hash, mined: mined.Hash(), pending: pending.Hash(), raw: raw, sender: signer.Address, contract: contract}
 }
 
 // requests are, for each method, the parameter arrays the matrix sends: a
@@ -84,7 +87,7 @@ func (chain matrixChain) requests() map[string][]string {
 	number := []string{`["0x1"]`, `["latest"]`, `["earliest"]`, `["0x5"]`}
 	hash := []string{`[` + block + `]`, `[` + mined + `]`}
 	transaction := []string{`[` + mined + `]`, `[` + pending + `]`, `[` + block + `]`}
-	sender, contract := quote(chain.sender), quote(chain.contract)
+	sender, contract, raw := quote(chain.sender), quote(chain.contract), quote(chain.raw)
 	account := []string{`[` + sender + `]`, `[` + sender + `, "latest"]`, `[` + sender + `, null]`, `[` + sender + `, ` + block + `]`, `[` + sender + `, "0x5"]`}
 	message := `{"from": ` + sender + `, "to": ` + contract + `}`
 	priced := `{"from": ` + sender + `, "to": ` + contract + `, "maxFeePerGas": "0x3b9aca00"}`
@@ -129,7 +132,9 @@ func (chain matrixChain) requests() map[string][]string {
 			`[{"blockStateCalls": [{"calls": [` + message + `]}, {}]}]`, `[{"blockStateCalls": [{"calls": [` + created + `]}]}, "latest"]`,
 			`[{"blockStateCalls": []}]`, `[{"blockStateCalls": [{}]}, "0x5"]`, `[{"blockStateCalls": [{"calls": [` + message + `]}], "returnFullTransactions": true}, ` + block + `]`,
 		},
-		"createAccessList": {`[` + message + `]`, `[` + priced + `, "latest"]`, `[` + created + `]`, `[` + message + `, "0x5"]`},
+		"sendRawTransaction":     {`[` + raw + `]`, `["0x01"]`},
+		"sendRawTransactionSync": {`[` + raw + `, "0x1"]`, `["0x01"]`},
+		"createAccessList":       {`[` + message + `]`, `[` + priced + `, "latest"]`, `[` + created + `]`, `[` + message + `, "0x5"]`},
 	}
 	all := map[string][]string{
 		"sonic_estimateGasForTransactions": {
@@ -158,7 +163,6 @@ var unreached = map[string]string{
 	"SubscribeTransactions": "the pool loop's subscription",
 	"FindLogs":              "no method of the module reads logs yet",
 	"BundleInfo":            "no method of the module reads bundles yet",
-	"SendTransaction":       "no method of the module sends yet",
 	"PoolTransactions":      "no method of the module lists the pool yet",
 	"PoolContent":           "no method of the module lists the pool yet",
 	"PoolContentFrom":       "no method of the module lists the pool yet",

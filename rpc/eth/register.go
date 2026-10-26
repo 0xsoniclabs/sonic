@@ -87,6 +87,10 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, no
 	add("createAccessList", handler.createAccessList, transaction, optionalBlock)
 	add("simulateV1", handler.simulateV1, dispatch.Required[simulateOptions]("options"), optionalBlock)
 
+	encoded := dispatch.Required[hexutil.Bytes]("transaction")
+	add("sendRawTransaction", handler.sendRawTransaction, encoded)
+	add("sendRawTransactionSync", handler.sendRawTransactionSync, encoded, dispatch.Optional[hexutil.Uint64]("timeout"))
+
 	add("getBlockByNumber", handler.getBlockByNumber, block, fullTransactions)
 	add("getBlockByHash", handler.getBlockByHash, hash, fullTransactions)
 	add("getHeaderByNumber", handler.getHeaderByNumber, block)
