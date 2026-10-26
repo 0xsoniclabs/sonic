@@ -132,11 +132,17 @@ func (chain matrixChain) requests() map[string][]string {
 			`[{"blockStateCalls": [{"calls": [` + message + `]}, {}]}]`, `[{"blockStateCalls": [{"calls": [` + created + `]}]}, "latest"]`,
 			`[{"blockStateCalls": []}]`, `[{"blockStateCalls": [{}]}, "0x5"]`, `[{"blockStateCalls": [{"calls": [` + message + `]}], "returnFullTransactions": true}, ` + block + `]`,
 		},
-		"sendRawTransaction":     {`[` + raw + `]`, `["0x01"]`},
-		"sendRawTransactionSync": {`[` + raw + `, "0x1"]`, `["0x01"]`},
-		"pendingTransactions":    {`[]`},
-		"getLogs":                {`[{"fromBlock": "0x1", "address": ` + contract + `}]`, `[{"blockHash": ` + block + `}]`, `[{}]`, `[{"fromBlock": "0x0", "toBlock": "0x5"}]`, `[{"blockHash": ` + mined + `}]`},
-		"createAccessList":       {`[` + message + `]`, `[` + priced + `, "latest"]`, `[` + created + `]`, `[` + message + `, "0x5"]`},
+		"sendRawTransaction":          {`[` + raw + `]`, `["0x01"]`},
+		"sendRawTransactionSync":      {`[` + raw + `, "0x1"]`, `["0x01"]`},
+		"pendingTransactions":         {`[]`},
+		"getLogs":                     {`[{"fromBlock": "0x1", "address": ` + contract + `}]`, `[{"blockHash": ` + block + `}]`, `[{}]`, `[{"fromBlock": "0x0", "toBlock": "0x5"}]`, `[{"blockHash": ` + mined + `}]`},
+		"newFilter":                   {`[{"address": ` + contract + `}]`, `[{"fromBlock": "pending", "toBlock": "pending"}]`, `[{"fromBlock": "0x5", "toBlock": "0x1"}]`},
+		"newBlockFilter":              {`[]`},
+		"newPendingTransactionFilter": {`[]`, `[true]`, `[null]`},
+		"getFilterChanges":            {`["0x1"]`},
+		"getFilterLogs":               {`["0x1"]`},
+		"uninstallFilter":             {`["0x1"]`},
+		"createAccessList":            {`[` + message + `]`, `[` + priced + `, "latest"]`, `[` + created + `]`, `[` + message + `, "0x5"]`},
 	}
 	proposal := `{"steps": [{"from": ` + sender + `, "to": ` + contract + `, "nonce": "0x1"}]}`
 	all := map[string][]string{

@@ -65,10 +65,12 @@ func newLogChain(t *testing.T, mutations ...tests.Mutate) logChain {
 	}
 	fake.PublishHead(3)
 	harness := tests.NewHarness(t, fake, func(dispatcher *dispatch.Dispatcher, environment *exec.Environment) {
-		filters.Register(dispatcher, environment, fake, "eth")
-		filters.Register(dispatcher, environment, fake, "ftm")
+		filters.Register(dispatcher, environment, fake, "eth", "ftm")
 	}, mutations...)
 	harness.WaitForHead(3)
+	// A block published before the head loop subscribes is caught up, and
+	// its consumers are dropped as having missed it.
+	tests.Eventually(t, func() bool { return fake.HeadSubscribers() == 1 && fake.PoolSubscribers() == 1 }, "the feeds to be taken")
 	return logChain{core: fake, harness: harness, blocks: blocks, sent: sent}
 }
 

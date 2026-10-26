@@ -181,6 +181,18 @@ func checkParameterLimit(limit uint, criteria Criteria) error {
 	return nil
 }
 
+// matches tells whether a log matches the criteria's addresses and topics,
+// and lies within its bounds that are numbers.
+func (criteria Criteria) matches(log *types.Log) bool {
+	if criteria.FromBlock != nil && *criteria.FromBlock >= 0 && uint64(*criteria.FromBlock) > log.BlockNumber {
+		return false
+	}
+	if criteria.ToBlock != nil && *criteria.ToBlock >= 0 && uint64(*criteria.ToBlock) < log.BlockNumber {
+		return false
+	}
+	return matchesAddressesAndTopics(log, criteria.Addresses, criteria.Topics)
+}
+
 func matchesAddressesAndTopics(log *types.Log, addresses []common.Address, topics [][]common.Hash) bool {
 	if len(addresses) > 0 && !containsAddress(addresses, log.Address) {
 		return false

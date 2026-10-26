@@ -285,6 +285,11 @@ func (environment *Environment) Heads() *chain.Hub[core.HeadEvent] {
 	return environment.chain.Heads()
 }
 
+// Transactions is the feed of the transactions that enter the pool.
+func (environment *Environment) Transactions() *chain.Hub[evmcore.NewTxsNotify] {
+	return environment.chain.Transactions()
+}
+
 // ChainInfo returns the facts of the chain the head loop last read.
 func (environment *Environment) ChainInfo() core.ChainInfo {
 	return environment.chain.ChainInfo()

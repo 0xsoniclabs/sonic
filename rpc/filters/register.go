@@ -29,13 +29,32 @@ import (
 type handlers struct {
 	environment *exec.Environment
 	logIndex    core.LogIndex
+	polled      *polledFilters
 }
 
-// Register adds the methods of the package under the given namespace name
-// (eth or ftm).
-func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, logIndex core.LogIndex, namespace string) {
-	handler := &handlers{environment: environment, logIndex: logIndex}
-	dispatcher.Add(namespace+"_getLogs", handler.getLogs, dispatch.Required[Criteria]("criteria"))
+// Register adds the methods of the package under each namespace name (eth
+// and ftm), which share their filters, as in the reference, and starts the
+// loops that feed and expire the polled filters.
+func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, logIndex core.LogIndex, namespaces ...string) {
+	polled := newPolledFilters(environment.Config().FilterTimeout, journalLimit)
+	handler := &handlers{environment: environment, logIndex: logIndex, polled: polled}
+	criteria := dispatch.Required[Criteria]("criteria")
+	identifier := dispatch.Required[string]("filter")
+	for _, namespace := range namespaces {
+		add := func(name string, function dispatch.Handler, parameters ...dispatch.Parameter) {
+			dispatcher.Add(namespace+"_"+name, function, parameters...)
+		}
+		add("getLogs", handler.getLogs, criteria)
+		add("newFilter", handler.newFilter, criteria)
+		add("newBlockFilter", handler.newBlockFilter)
+		add("newPendingTransactionFilter", handler.newPendingTransactionFilter, dispatch.Optional[bool]("fullTransactions"))
+		add("getFilterChanges", handler.getFilterChanges, identifier)
+		add("getFilterLogs", handler.getFilterLogs, identifier)
+		add("uninstallFilter", handler.uninstallFilter, identifier)
+	}
+	dispatcher.Loop("filters-heads", polled.followHeads(environment.Heads()))
+	dispatcher.Loop("filters-pool", polled.followPool(environment.Transactions()))
+	dispatcher.Loop("filters-expiry", polled.expire)
 }
 
 func (handler *handlers) getLogs(ctx context.Context, arguments dispatch.Arguments) (any, error) {

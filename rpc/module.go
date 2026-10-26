@@ -114,8 +114,7 @@ func New(config Config, nodeCore core.Core, registerer prometheus.Registerer) *M
 func registerNamespaces(dispatcher *dispatch.Dispatcher, environment *exec.Environment, nodeCore core.Core, config Config) {
 	eth.Register(dispatcher, environment, nodeCore, "eth")
 	eth.Register(dispatcher, environment, nodeCore, "ftm")
-	filters.Register(dispatcher, environment, nodeCore, "eth")
-	filters.Register(dispatcher, environment, nodeCore, "ftm")
+	filters.Register(dispatcher, environment, nodeCore, "eth", "ftm")
 	net.Register(dispatcher, environment)
 	web3.Register(dispatcher, config.ClientVersion)
 	sonic.Register(dispatcher, environment)
