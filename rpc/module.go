@@ -29,6 +29,7 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/eth"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
+	"github.com/0xsoniclabs/sonic/rpc/filters"
 	"github.com/0xsoniclabs/sonic/rpc/net"
 	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/sonic"
@@ -113,6 +114,8 @@ func New(config Config, nodeCore core.Core, registerer prometheus.Registerer) *M
 func registerNamespaces(dispatcher *dispatch.Dispatcher, environment *exec.Environment, nodeCore core.Core, config Config) {
 	eth.Register(dispatcher, environment, nodeCore, "eth")
 	eth.Register(dispatcher, environment, nodeCore, "ftm")
+	filters.Register(dispatcher, environment, nodeCore, "eth")
+	filters.Register(dispatcher, environment, nodeCore, "ftm")
 	net.Register(dispatcher, environment)
 	web3.Register(dispatcher, config.ClientVersion)
 	sonic.Register(dispatcher, environment)

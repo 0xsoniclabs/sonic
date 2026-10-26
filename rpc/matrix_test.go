@@ -135,6 +135,7 @@ func (chain matrixChain) requests() map[string][]string {
 		"sendRawTransaction":     {`[` + raw + `]`, `["0x01"]`},
 		"sendRawTransactionSync": {`[` + raw + `, "0x1"]`, `["0x01"]`},
 		"pendingTransactions":    {`[]`},
+		"getLogs":                {`[{"fromBlock": "0x1", "address": ` + contract + `}]`, `[{"blockHash": ` + block + `}]`, `[{}]`, `[{"fromBlock": "0x0", "toBlock": "0x5"}]`, `[{"blockHash": ` + mined + `}]`},
 		"createAccessList":       {`[` + message + `]`, `[` + priced + `, "latest"]`, `[` + created + `]`, `[` + message + `, "0x5"]`},
 	}
 	proposal := `{"steps": [{"from": ` + sender + `, "to": ` + contract + `, "nonce": "0x1"}]}`
@@ -170,7 +171,6 @@ var unreached = map[string]string{
 	"Head":                  "read at the start and by the head loop only",
 	"SubscribeHead":         "the head loop's subscription",
 	"SubscribeTransactions": "the pool loop's subscription",
-	"FindLogs":              "no method of the module reads logs yet",
 	"PendingHeads":          "read by the oracle's sampler loop only",
 }
 
