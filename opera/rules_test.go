@@ -389,3 +389,13 @@ func TestCreateTransientEvmChainConfig_RespectsBlockHeightOfUpgradeHeight(t *tes
 		})
 	}
 }
+
+func TestRules_MaxTransactionGas_IsTheEventGasLessAnEmptyEvent(t *testing.T) {
+	rules := FakeNetRules(GetSonicUpgrades())
+	rules.Economy.Gas = GasRules{MaxEventGas: 1000, EventGas: 100, ParentGas: 10, ExtraDataGas: 1}
+	rules.Dag = DagRules{MaxParents: 12, MaxFreeParents: 2, MaxExtraData: 50}
+	require.Equal(t, uint64(1000-100-10*10-50), rules.MaxTransactionGas())
+
+	rules.Economy.Gas.MaxEventGas = 249
+	require.Zero(t, rules.MaxTransactionGas(), "an event too small for its own costs leaves no gas")
+}

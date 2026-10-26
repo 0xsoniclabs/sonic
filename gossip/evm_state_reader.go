@@ -85,14 +85,7 @@ func (r *EvmStateReader) CurrentBaseFee() *big.Int {
 
 // CurrentMaxGasLimit returns the maximum gas limit of the most recent epoch.
 func (r *EvmStateReader) CurrentMaxGasLimit() uint64 {
-	rules := r.store.GetRules()
-	maxEmptyEventGas := rules.Economy.Gas.EventGas +
-		uint64(rules.Dag.MaxParents-rules.Dag.MaxFreeParents)*rules.Economy.Gas.ParentGas +
-		uint64(rules.Dag.MaxExtraData)*rules.Economy.Gas.ExtraDataGas
-	if rules.Economy.Gas.MaxEventGas < maxEmptyEventGas {
-		return 0
-	}
-	return rules.Economy.Gas.MaxEventGas - maxEmptyEventGas
+	return r.store.GetRules().MaxTransactionGas()
 }
 
 // CurrentConfig returns the chain config applicable to the most recent block.

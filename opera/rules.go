@@ -97,8 +97,7 @@ type GasRulesRLPV1 struct {
 	// MaxEventGas defines the upper bound for gas usage in a single event.
 	//
 	// Starting from Brio and later upgrades, this value is also used to calculate
-	// the maximum gas allowed for a single transaction in EvmStateReader.MaxGasLimit()
-	// https://github.com/0xsoniclabs/sonic/blob/main/gossip/evm_state_reader.go#L47
+	// the maximum gas allowed for a single transaction (Rules.MaxTransactionGas).
 	//
 	// This mechanism in Sonic serves as an equivalent to the limit described in EIP-7825.
 	MaxEventGas  uint64
@@ -501,6 +500,19 @@ func DefaultGasPowerRules() GasPowerRules {
 		StartupAllocPeriod: inter.Timestamp(time.Second),
 		MinStartupGas:      DefaultEventGas * 20,
 	}
+}
+
+// MaxTransactionGas is the most gas a transaction may have under the rules:
+// the gas of the largest event less what an event without transactions costs.
+func (r Rules) MaxTransactionGas() uint64 {
+	gas := r.Economy.Gas
+	emptyEventGas := gas.EventGas +
+		uint64(r.Dag.MaxParents-r.Dag.MaxFreeParents)*gas.ParentGas +
+		uint64(r.Dag.MaxExtraData)*gas.ExtraDataGas
+	if gas.MaxEventGas < emptyEventGas {
+		return 0
+	}
+	return gas.MaxEventGas - emptyEventGas
 }
 
 func (r Rules) Copy() Rules {
