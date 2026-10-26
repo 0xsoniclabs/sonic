@@ -26,7 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 )
@@ -74,7 +73,6 @@ type EvmStateReader struct {
 	*ServiceFeed
 
 	store *Store
-	gpo   *gasprice.Oracle
 }
 
 // CurrentBaseFee returns the base fee of the most recent block.
@@ -85,14 +83,7 @@ func (r *EvmStateReader) CurrentBaseFee() *big.Int {
 
 // CurrentMaxGasLimit returns the maximum gas limit of the most recent epoch.
 func (r *EvmStateReader) CurrentMaxGasLimit() uint64 {
-	rules := r.store.GetRules()
-	maxEmptyEventGas := rules.Economy.Gas.EventGas +
-		uint64(rules.Dag.MaxParents-rules.Dag.MaxFreeParents)*rules.Economy.Gas.ParentGas +
-		uint64(rules.Dag.MaxExtraData)*rules.Economy.Gas.ExtraDataGas
-	if rules.Economy.Gas.MaxEventGas < maxEmptyEventGas {
-		return 0
-	}
-	return rules.Economy.Gas.MaxEventGas - maxEmptyEventGas
+	return opera.MaxGasLimit(r.store.GetRules())
 }
 
 // CurrentConfig returns the chain config applicable to the most recent block.

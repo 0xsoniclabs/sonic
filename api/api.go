@@ -14,82 +14,28 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
+// Package api lists the services of the node's own RPC handler: the legacy
+// namespaces and the test namespace, served on IPC only. Everything else is
+// served by the RPC module.
 package api
 
 import (
-	"github.com/0xsoniclabs/sonic/api/ethapi"
-	"github.com/0xsoniclabs/sonic/api/sonicapi"
-	"github.com/0xsoniclabs/sonic/api/testapi"
 	"github.com/ethereum/go-ethereum/rpc"
+
+	"github.com/0xsoniclabs/sonic/api/legacy"
+	"github.com/0xsoniclabs/sonic/api/testapi"
 )
 
-// Backend is an aggreate of all the APIs' backends.
-// This is a compromise solution because of the monolithic nature of the
-// original api backend object. This interface allows to develop and
-// maintain the APIs independently of the backend implementation.
+// backend is what the services of the node's handler read of the node.
 type backend interface {
-	ethapi.Backend
-	sonicapi.BundleApiBackend
+	legacy.Backend
 	testapi.Backend
 }
 
-func GetAPIs(apiBackend backend) []rpc.API {
-	nonceLock := new(ethapi.AddrLocker)
-	return []rpc.API{
-		{
-			Namespace: "eth",
-			Version:   "1.0",
-			Service:   ethapi.NewPublicEthereumAPI(apiBackend),
-			Public:    true,
-		}, {
-			Namespace: "eth",
-			Version:   "1.0",
-			Service:   ethapi.NewPublicBlockChainAPI(apiBackend),
-			Public:    true,
-		}, {
-			Namespace: "dag",
-			Version:   "1.0",
-			Service:   ethapi.NewPublicDAGChainAPI(apiBackend),
-			Public:    true,
-		}, {
-			Namespace: "eth",
-			Version:   "1.0",
-			Service:   ethapi.NewPublicTransactionPoolAPI(apiBackend, nonceLock),
-			Public:    true,
-		}, {
-			Namespace: "txpool",
-			Version:   "1.0",
-			Service:   ethapi.NewPublicTxPoolAPI(apiBackend),
-			Public:    true,
-		}, {
-			Namespace: "debug",
-			Version:   "1.0",
-			Service:   ethapi.NewPrivateDebugAPI(apiBackend),
-		}, {
-			Namespace: "eth",
-			Version:   "1.0",
-			Service:   ethapi.NewPublicAccountAPI(apiBackend.AccountManager()),
-			Public:    true,
-		}, {
-			Namespace: "personal",
-			Version:   "1.0",
-			Service:   ethapi.NewPrivateAccountAPI(apiBackend, nonceLock),
-			Public:    false,
-		}, {
-			Namespace: "abft",
-			Version:   "1.0",
-			Service:   ethapi.NewPublicAbftAPI(apiBackend),
-			Public:    true,
-		}, {
-			Namespace: "sonic",
-			Version:   "1.0",
-			Service:   sonicapi.NewPublicBundleAPI(apiBackend),
-			Public:    true,
-		}, {
-			Namespace: "test",
-			Version:   "1.0",
-			Service:   testapi.NewTestApi(apiBackend),
-			Public:    true,
-		},
-	}
+// GetAPIs returns the services of the node's handler.
+func GetAPIs(b backend) []rpc.API {
+	return append(legacy.GetAPIs(b), rpc.API{
+		Namespace: "test",
+		Service:   testapi.NewTestApi(b),
+	})
 }

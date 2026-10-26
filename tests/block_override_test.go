@@ -22,8 +22,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
+	rpcexec "github.com/0xsoniclabs/sonic/rpc/exec"
 	block_override "github.com/0xsoniclabs/sonic/tests/contracts/blockoverride"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -59,7 +59,7 @@ func TestBlockOverride(t *testing.T) {
 	// Set parameters to be overridden
 	time := uint64(1234)
 	gasLimit := uint64(567890)
-	blockOverrides := &ethapi.BlockOverrides{
+	blockOverrides := &rpcexec.BlockOverrides{
 		Number:      (*hexutil.Big)(big.NewInt(42)),
 		Difficulty:  (*hexutil.Big)(big.NewInt(1)),
 		Time:        (*hexutil.Uint64)(&time),
@@ -86,8 +86,8 @@ func TestBlockOverride(t *testing.T) {
 
 }
 
-func compareCalls(t *testing.T, rpcClient *rpc.Client, contractAddress common.Address, blockNumber uint64, blockOverrides *ethapi.BlockOverrides,
-	callFunc func(t *testing.T, rpcClient *rpc.Client, contractAddress common.Address, blockNumber uint64, blockOverrides *ethapi.BlockOverrides) (BlockParameters, error)) {
+func compareCalls(t *testing.T, rpcClient *rpc.Client, contractAddress common.Address, blockNumber uint64, blockOverrides *rpcexec.BlockOverrides,
+	callFunc func(t *testing.T, rpcClient *rpc.Client, contractAddress common.Address, blockNumber uint64, blockOverrides *rpcexec.BlockOverrides) (BlockParameters, error)) {
 
 	require := req.New(t)
 	params, err := callFunc(t, rpcClient, contractAddress, blockNumber, nil)
@@ -150,7 +150,7 @@ func getFunctionCallParameters(contractAddress *common.Address) map[string]inter
 	}
 }
 
-func makeEthCall(t *testing.T, rpcClient *rpc.Client, contractAddress common.Address, blockNumber uint64, blockOverrides *ethapi.BlockOverrides) (BlockParameters, error) {
+func makeEthCall(t *testing.T, rpcClient *rpc.Client, contractAddress common.Address, blockNumber uint64, blockOverrides *rpcexec.BlockOverrides) (BlockParameters, error) {
 	require := req.New(t)
 
 	var res interface{}
@@ -170,10 +170,10 @@ func makeEthCall(t *testing.T, rpcClient *rpc.Client, contractAddress common.Add
 	}
 }
 
-func makeDebugTraceCall(t *testing.T, rpcClient *rpc.Client, contractAddress common.Address, blockNumber uint64, blockOverrides *ethapi.BlockOverrides) (BlockParameters, error) {
+func makeDebugTraceCall(t *testing.T, rpcClient *rpc.Client, contractAddress common.Address, blockNumber uint64, blockOverrides *rpcexec.BlockOverrides) (BlockParameters, error) {
 	require := req.New(t)
 
-	traceConfig := &ethapi.TraceCallConfig{
+	traceConfig := &rpcexec.TraceCallConfig{
 		BlockOverrides: blockOverrides,
 	}
 
@@ -231,7 +231,7 @@ func checkAllFieldsAreDifferent(params1, params2 BlockParameters) error {
 }
 
 // checkOverrides checks that the given BlockParameters are the same as the overrides
-func checkOverrides(params BlockParameters, overrides ethapi.BlockOverrides) error {
+func checkOverrides(params BlockParameters, overrides rpcexec.BlockOverrides) error {
 	if want, got := overrides.Number, params.Number; got.Cmp((*big.Int)(want)) != 0 {
 		return fmt.Errorf("Number override incorrect, wanted %v, got %v", want, got)
 	}

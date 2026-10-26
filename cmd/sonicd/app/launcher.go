@@ -31,9 +31,9 @@ import (
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/0xsoniclabs/sonic/version"
+	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/console/prompt"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p/discover/discfilter"
@@ -296,7 +296,11 @@ func lachesisMainInternal(
 	sigCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	node, _, nodeClose, err := config.MakeNode(sigCtx, ctx, cfg)
+	// The RPC module serves the node's endpoints; the node opens none.
+	nodeConfig := cfg.Node
+	endpoints := takeOverRPC(&cfg.Node)
+
+	node, svc, nodeClose, err := config.MakeNode(sigCtx, ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize the node: %w", err)
 	}
@@ -306,12 +310,16 @@ func lachesisMainInternal(
 		// At this point the node is fully configured,
 		// if the dump-config flag is set, dump the config into the file and exit
 		outputConfigFile := ctx.GlobalString(flags.DumpConfigFileFlag.Name)
-		return config.SaveAllConfigs(outputConfigFile, cfg)
+		dumped := *cfg
+		dumped.Node = nodeConfig
+		return config.SaveAllConfigs(outputConfigFile, &dumped)
 	}
+
+	module := startRPCModule(cfg, endpoints, node, svc)
 
 	startFreeDiskSpaceMonitor(sigCtx, ctx, cancel, node.InstanceDir())
 
-	if err := startNode(sigCtx, ctx, node); err != nil {
+	if err := startNode(sigCtx, ctx, node, moduleChainReader{module}, endpoints.external); err != nil {
 		return fmt.Errorf("failed to start the node: %w", err)
 	}
 
@@ -321,7 +329,7 @@ func lachesisMainInternal(
 		}
 
 		if control.HttpPortAnnouncement != nil {
-			control.HttpPortAnnouncement <- node.HTTPEndpoint()
+			control.HttpPortAnnouncement <- module.HTTPEndpoint()
 		}
 
 		if control.Shutdown != nil {
@@ -338,8 +346,10 @@ func lachesisMainInternal(
 }
 
 // startNode boots up the system node and all registered protocols, after which
-// it unlocks any requested accounts, and starts the RPC/IPC interfaces.
-func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error {
+// it unlocks any requested accounts and opens the wallets. The wallets read
+// the chain through the RPC module; externalRPC says whether the module serves
+// external clients, which forbids unlocking accounts.
+func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node, chain ethereum.ChainStateReader, externalRPC bool) error {
 	// Start up the node itself
 	if err := stack.Start(); err != nil {
 		return fmt.Errorf("error starting protocol stack: %w", err)
@@ -354,7 +364,7 @@ func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error
 	}()
 
 	// Unlock any account specifically requested
-	err := unlockAccounts(sigCtx, ctx, stack)
+	err := unlockAccounts(sigCtx, ctx, stack, externalRPC)
 	if err != nil {
 		return fmt.Errorf("failed to unlock accounts: %w", err)
 	}
@@ -363,11 +373,7 @@ func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error
 	events := make(chan accounts.WalletEvent, 16)
 	stack.AccountManager().Subscribe(events)
 
-	// Create a client to interact with local sonic node.
-	rpcClient := stack.Attach()
-	ethClient := ethclient.NewClient(rpcClient)
 	go func() {
-		defer ethClient.Close()
 		// Open any wallets already attached
 		for _, wallet := range stack.AccountManager().Wallets() {
 			if err := wallet.Open(""); err != nil {
@@ -393,7 +399,7 @@ func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error
 					}
 					derivationPaths = append(derivationPaths, accounts.DefaultBaseDerivationPath)
 
-					event.Wallet.SelfDerive(derivationPaths, ethClient)
+					event.Wallet.SelfDerive(derivationPaths, chain)
 
 				case accounts.WalletDropped:
 					log.Info("Old wallet dropped", "url", event.Wallet.URL())

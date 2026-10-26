@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
+	rpcformat "github.com/0xsoniclabs/sonic/rpc/format"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -53,7 +53,7 @@ func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 		},
 		session.GetSessionSponsor())
 
-	pendingTxs := make(chan *ethapi.RPCTransaction)
+	pendingTxs := make(chan *rpcformat.Transaction)
 	defer close(pendingTxs)
 
 	trueBool := true
@@ -64,7 +64,7 @@ func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 	err = client.SendTransaction(t.Context(), tx)
 	require.NoError(t, err, "failed to send transaction ", err)
 
-	var got *ethapi.RPCTransaction
+	var got *rpcformat.Transaction
 	select {
 	case got = <-pendingTxs:
 	case err := <-subs.Err():
@@ -73,7 +73,7 @@ func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 		t.Fatalf("no pending-transaction notification received within %v", pendingTxNotificationTimeout)
 	}
 
-	want := ethapi.NewRPCPendingTransaction(tx, tx.GasPrice(), session.GetChainId())
+	want := rpcformat.NewPendingTransaction(tx, tx.GasPrice(), session.GetChainId())
 	require.Equal(t, want, got, "transaction from address does not match")
 
 }

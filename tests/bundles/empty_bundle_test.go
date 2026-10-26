@@ -115,7 +115,7 @@ func TestBundle_BundleContainingAnyEmptyGroupIsRejected(t *testing.T) {
 					info, err := WaitForBundleExecution(t.Context(), client.Client(), plan.Hash())
 					require.NoError(t, err)
 
-					blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(info.Block.Int64()))
+					blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(int64(info.Block)))
 					bundleTxs := bundle.GetTransactionsInReferencedOrder()
 
 					require.Equal(t, 1, int(info.Count))

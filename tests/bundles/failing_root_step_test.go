@@ -88,7 +88,7 @@ func TestBundle_FailingRootStepLeavesNoStateBehind(t *testing.T) {
 			require.Zero(t, int(info.Count))
 
 			// The failing transaction reaches no block, ...
-			block := big.NewInt(info.Block.Int64())
+			block := big.NewInt(int64(info.Block))
 			failingTx := txBundle.GetTransactionsInReferencedOrder()[0]
 			_, err = client.TransactionReceipt(t.Context(), failingTx.Hash())
 			require.ErrorIs(t, err, ethereum.NotFound)

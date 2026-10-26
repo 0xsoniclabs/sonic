@@ -21,8 +21,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
+	rpcexec "github.com/0xsoniclabs/sonic/rpc/exec"
 	"github.com/0xsoniclabs/sonic/tests/contracts/read_history_storage"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -145,6 +145,7 @@ func runTransactionReadingParentBlockHash(
 
 	const attempts = 10
 	for range attempts {
+		require.NoError(session.WaitForServedHead(t.Context()))
 		head, err := client.BlockNumber(t.Context())
 		require.NoError(err)
 
@@ -194,9 +195,9 @@ func debugTraceTransaction(t *testing.T, rpcClient *rpc.Client, txHash common.Ha
 	return callRPC[json.RawMessage](t, rpcClient, "debug_traceTransaction", txHash, callTracerConfig())
 }
 
-func callTracerConfig() *ethapi.TraceCallConfig {
+func callTracerConfig() *rpcexec.TraceCallConfig {
 	tracer := "callTracer"
-	return &ethapi.TraceCallConfig{TraceConfig: tracers.TraceConfig{Tracer: &tracer}}
+	return &rpcexec.TraceCallConfig{TraceConfig: tracers.TraceConfig{Tracer: &tracer}}
 }
 
 func traceBlock(t *testing.T, rpcClient *rpc.Client, blockNumber *big.Int) []json.RawMessage {

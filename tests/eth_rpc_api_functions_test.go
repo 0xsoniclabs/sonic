@@ -20,17 +20,18 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	rpceth "github.com/0xsoniclabs/sonic/rpc/eth"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/vecmt"
 	"github.com/Fantom-foundation/lachesis-base/abft"
@@ -39,50 +40,43 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/ethereum/go-ethereum/rpc/rpc_test_utils"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
-// Known missing APIs which are not implemented in Sonic
-var (
-	knownMissingAPIs = namespaceMap{
-		"eth": {
-			"GetStorageValues": struct{}{},
-		},
-		"debug": {
-			"DbAncient":                   struct{}{},
-			"DbAncients":                  struct{}{},
-			"DbGet":                       struct{}{},
-			"GetRawBlock":                 struct{}{},
-			"GetRawHeader":                struct{}{},
-			"GetRawReceipts":              struct{}{},
-			"GetRawTransaction":           struct{}{},
-			"IntermediateRoots":           struct{}{},
-			"StandardTraceBadBlockToFile": struct{}{},
-			"StandardTraceBlockToFile":    struct{}{},
-			"TraceBadBlock":               struct{}{},
-			"TraceBlock":                  struct{}{},
-			"TraceBlockFromFile":          struct{}{},
-			"TraceChain":                  struct{}{},
-		},
+// nodeHandlerMethods is the exact method set of the node's own handler: the
+// legacy namespaces X1 and X2 of rpc/PLAN.md, mirrored as ftm where they are
+// eth methods, the test namespace and the p2p facts. Everything else is served
+// by the RPC module; nothing reaches IPC unlisted.
+var nodeHandlerMethods = []string{
+	"abft_getDowntime", "abft_getEpochUptime", "abft_getOriginatedEpochFee", "abft_getValidators",
+	"dag_getEvent", "dag_getEventPayload", "dag_getHeads",
+	"debug_chaindbCompact", "debug_chaindbProperty", "debug_setHead",
+	"eth_accounts", "eth_fillTransaction", "eth_getEpochBlock", "eth_getEpochStats", "eth_resend",
+	"eth_sendTransaction", "eth_sign", "eth_signTransaction",
+	"ftm_accounts", "ftm_fillTransaction", "ftm_getEpochBlock", "ftm_getEpochStats", "ftm_resend",
+	"ftm_sendTransaction", "ftm_sign", "ftm_signTransaction",
+	"net_listening", "net_peerCount", "net_version",
+	"personal_deriveAccount", "personal_ecRecover", "personal_importRawKey", "personal_initializeWallet",
+	"personal_listAccounts", "personal_listWallets", "personal_lockAccount", "personal_newAccount",
+	"personal_openWallet", "personal_sendTransaction", "personal_sign", "personal_signAndSendTransaction",
+	"personal_signTransaction", "personal_unlockAccount", "personal_unpair",
+	"test_addTransactions", "test_proposeTransactions",
+}
+
+// TestNodeHandler_ServesExactlyTheLegacyMethods pins the method set of the
+// node's own handler (X3).
+func TestNodeHandler_ServesExactlyTheLegacyMethods(t *testing.T) {
+	var methods []string
+	for _, api := range getNodeService(t).APIs() {
+		pt := reflect.TypeOf(api.Service)
+		for i := range pt.NumMethod() {
+			name := pt.Method(i).Name
+			methods = append(methods, api.Namespace+"_"+strings.ToLower(name[:1])+name[1:])
+		}
 	}
-)
-
-type namespaceMap map[string]map[string]interface{}
-
-// TestRPCApis checks if all go-ethereum RPC APIs are implemented in Sonic
-func TestRPCApis(t *testing.T) {
-	ethAPIs := parseAPIs(rpc_test_utils.GetRpcApis())
-	sonicAPIs := parseAPIs(getNodeService(t).APIs())
-
-	// look for missing methods which are in go-ethereum and not in Sonic
-	missingInSonic := findMissingMethods(ethAPIs, sonicAPIs)
-
-	// look for missing methods which are in Sonic and are not in known missing
-	missing := findMissingMethods(missingInSonic, knownMissingAPIs)
-	require.Zero(t, len(missing), "missing namespaces %v", missing)
+	slices.Sort(methods)
+	require.Equal(t, nodeHandlerMethods, methods)
 }
 
 // getNodeService returns a gossip service
@@ -133,57 +127,6 @@ func getNodeService(t *testing.T) *gossip.Service {
 	return s
 }
 
-// findMissingMethods returns a map of namespaces and missing methods
-// all methods in `a` are present in `b` otherwise they are returned
-func findMissingMethods(a, b namespaceMap) namespaceMap {
-	missing := make(namespaceMap)
-
-	for outerKey, innerMap := range a {
-		for innerKey, value := range innerMap {
-			if _, exists := b[outerKey][innerKey]; !exists {
-				if missing[outerKey] == nil {
-					missing[outerKey] = make(map[string]interface{})
-				}
-				missing[outerKey][innerKey] = value
-			}
-		}
-	}
-	return missing
-}
-
-// parseAPIs returns a map of namespaces and methods
-func parseAPIs(apis []rpc.API) namespaceMap {
-	namespaces := make(map[string]map[string]interface{})
-
-	for _, api := range apis {
-		if _, exists := namespaces[api.Namespace]; !exists {
-			namespaces[api.Namespace] = make(map[string]interface{})
-		}
-		pt := reflect.TypeOf(api.Service)
-		for i := range pt.NumMethod() {
-			method := pt.Method(i)
-			namespaces[api.Namespace][method.Name] = true
-		}
-	}
-	return namespaces
-}
-
-func (nm namespaceMap) String() string {
-	var sb strings.Builder
-	sb.WriteString("{\n")
-	for key, innerMap := range nm {
-		fmt.Fprintf(&sb, "  \"%s\": [", key)
-		funcs := []string{}
-		for innerKey := range innerMap {
-			funcs = append(funcs, fmt.Sprintf("\"%s\"", innerKey))
-		}
-		sb.WriteString(strings.Join(funcs, ", "))
-		sb.WriteString("],\n")
-	}
-	sb.WriteString("}")
-	return sb.String()
-}
-
 const (
 	genesisBalance   = 1e18
 	genesisStake     = 2 * 4e6
@@ -228,7 +171,7 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 		Height:   1,
 	}
 	genesisId := net.GetGenesisId()
-	expectedForkId, err := ethapi.MakeForkId(upgradeHeight, genesisId)
+	expectedForkId, err := rpceth.MakeForkId(upgradeHeight, genesisId)
 	require.NoError(t, err, "could not make expected fork ID")
 
 	want := map[string]map[string]any{
@@ -304,7 +247,7 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 		Upgrades: originalRules.Upgrades,
 		Height:   idx.Block(heightUint),
 	}
-	expectedForkId, err = ethapi.MakeForkId(upgradeHeight, genesisId)
+	expectedForkId, err = rpceth.MakeForkId(upgradeHeight, genesisId)
 	require.NoError(t, err, "could not make expected fork ID after upgrade")
 
 	require.Equal(t, fmt.Sprintf("0x%x", expectedForkId), response["current"]["forkId"],

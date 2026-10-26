@@ -75,7 +75,7 @@ func testSingleProposerProtocol_CanProcessTransactions(
 	accounts := tests.MakeAccountsWithBalance(t, net, NumTxsPerRound, big.NewInt(1e18))
 
 	// Check that the network is using the single-proposer protocol.
-	require.Equal(3, getUsedEventVersion(t, client))
+	require.Equal(3, getUsedEventVersion(t, net))
 
 	// --- check processing of transactions ---
 
@@ -200,7 +200,7 @@ func testSingleProposerProtocol_CanBeEnabledAndDisabled(
 	client, err := net.GetClient()
 	require.NoError(err)
 	defer client.Close()
-	require.Equal(2, getUsedEventVersion(t, client))
+	require.Equal(2, getUsedEventVersion(t, net))
 
 	type upgrades struct {
 		SingleProposerBlockFormation bool
@@ -232,7 +232,7 @@ func testSingleProposerProtocol_CanBeEnabledAndDisabled(
 			require.NoError(err)
 
 			// At this point, the old version should still be used.
-			require.Equal(step.versionBefore, getUsedEventVersion(t, client))
+			require.Equal(step.versionBefore, getUsedEventVersion(t, net))
 
 			// Advance the epoch by one, enabling the single-proposer protocol.
 			net.AdvanceEpoch(t, 1)
@@ -244,7 +244,7 @@ func testSingleProposerProtocol_CanBeEnabledAndDisabled(
 			}
 
 			// At this point, the new version should be used.
-			require.Equal(step.versionAfter, getUsedEventVersion(t, client))
+			require.Equal(step.versionAfter, getUsedEventVersion(t, net))
 		}
 	}
 
@@ -257,30 +257,35 @@ func testSingleProposerProtocol_CanBeEnabledAndDisabled(
 }
 
 // getUsedEventVersion retrieves the current event version used by the network.
+// The dag_* methods are served on IPC only.
 func getUsedEventVersion(
 	t *testing.T,
-	client *tests.PooledEhtClient,
+	net *tests.IntegrationTestNet,
 ) int {
 	t.Helper()
 	require := require.New(t)
+
+	client, err := net.GetIpcClientConnectedToNode(0)
+	require.NoError(err)
+	defer client.Close()
 
 	// Get the current epoch.
 	block := struct {
 		Epoch hexutil.Uint64
 	}{}
-	err := client.Client().Call(&block, "eth_getBlockByNumber", rpc.BlockNumber(-1), false)
+	err = client.Call(&block, "eth_getBlockByNumber", rpc.BlockNumber(-1), false)
 	require.NoError(err)
 
 	// Get the head events of the current epoch.
 	heads := []hexutil.Bytes{}
-	err = client.Client().Call(&heads, "dag_getHeads", rpc.BlockNumber(block.Epoch))
+	err = client.Call(&heads, "dag_getHeads", rpc.BlockNumber(block.Epoch))
 	require.NoError(err)
 
 	// Download one of the head events and fetch the version.
 	event := struct {
 		Version hexutil.Uint64
 	}{}
-	err = client.Client().Call(&event, "dag_getEvent", heads[0].String())
+	err = client.Call(&event, "dag_getEvent", heads[0].String())
 	require.NoError(err)
 
 	return int(event.Version)

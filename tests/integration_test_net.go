@@ -25,6 +25,7 @@ import (
 	"maps"
 	"math"
 	"math/big"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -167,8 +168,20 @@ type IntegrationTestNetSession interface {
 	// in the test network.
 	GetClientConnectedToNode(node int) (*PooledEhtClient, error)
 
+	// GetIpcClientConnectedToNode returns a client connected to the IPC
+	// socket of the specified node, which alone serves the admin_* and test_*
+	// namespaces and the consensus internals (dag_*, abft_*). The resulting
+	// client must be closed after use.
+	GetIpcClientConnectedToNode(node int) (*rpc.Client, error)
+
 	// GetGenesisJson returns the genesis JSON used to start the network.
 	GetGenesisId() common.Hash
+
+	// WaitForServedHead waits until the first node serves its committed head
+	// as "latest". The RPC module serves the newest block whose state is
+	// archived (rpc/PLAN.md, I3), which may lag the committed head under load;
+	// a test that predicts the next block from eth_blockNumber waits here first.
+	WaitForServedHead(ctx context.Context) error
 }
 
 // AsPointer is a utility function that returns a pointer to the given value.
@@ -258,6 +271,7 @@ type IntegrationTestNet struct {
 type integrationTestNode struct {
 	directory string
 	httpPort  int
+	ipcPath   string
 	shutdown  chan<- struct{}
 	done      <-chan struct{}
 
@@ -564,6 +578,8 @@ func (n *IntegrationTestNet) start() error {
 			}()
 
 			caches := n.options.cacheSizes()
+			ipcPath := fmt.Sprintf("%s/sonic.ipc", tmp)
+			n.nodes[i].ipcPath = ipcPath
 
 			// start the fakenet sonic node
 			// equivalent to running `sonicd ...` but in this local process
@@ -583,7 +599,7 @@ func (n *IntegrationTestNet) start() error {
 
 				// websocket-client options
 				"--ws", "--ws.addr", "127.0.0.1", "--ws.port", "0",
-				"--ws.api", "admin,eth",
+				"--ws.api", "admin,eth,dag,web3,net,txpool,trace,debug,sonic,test",
 
 				// extend rpc timeout to avoid flakes in tests that perform heavy operations or run on slow machines
 				"--rpc.timeout", "60s",
@@ -599,7 +615,7 @@ func (n *IntegrationTestNet) start() error {
 				"--statedb.archivecache", fmt.Sprintf("%d", caches.ArchiveBytes),
 				"--statedb.cache", fmt.Sprintf("%d", caches.StateDbItems),
 
-				"--ipcpath", fmt.Sprintf("%s/sonic.ipc", tmp),
+				"--ipcpath", ipcPath,
 
 				// enable test-only API
 				"--enable-test-only-api",
@@ -668,7 +684,7 @@ func (n *IntegrationTestNet) start() error {
 
 		n.nodes[i].clients = &sync.Pool{
 			New: func() any {
-				client, err := ethclient.Dial(fmt.Sprintf("http://localhost:%d", n.nodes[i].httpPort))
+				client, err := ethclient.Dial(n.nodes[i].endpoint())
 				if err != nil {
 					return nil
 				}
@@ -742,13 +758,13 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 	// discfilter.Ban(), after which postHandshakeChecks rejects further
 	// connection attempts. Trusted peers are exempt from that check.
 	for i := range n.nodes {
-		client, err := n.GetClientConnectedToNode(i)
+		client, err := n.GetIpcClientConnectedToNode(i)
 		if err != nil {
-			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+			return fmt.Errorf("failed to connect to the IPC endpoint: %w", err)
 		}
 
 		enode := enodes[(i+1)%len(n.nodes)]
-		err = client.Client().Call(nil, "admin_addTrustedPeer", enode)
+		err = client.Call(nil, "admin_addTrustedPeer", enode)
 		client.Close()
 		if err != nil {
 			return fmt.Errorf("failed to add trusted peer on node %d: %v", i, err)
@@ -758,12 +774,12 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 	// Then dial, once per pair of nodes, see ringDialEdges.
 	for _, edge := range ringDialEdges(len(n.nodes)) {
 		dialer, target := edge[0], edge[1]
-		client, err := n.GetClientConnectedToNode(dialer)
+		client, err := n.GetIpcClientConnectedToNode(dialer)
 		if err != nil {
-			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+			return fmt.Errorf("failed to connect to the IPC endpoint: %w", err)
 		}
 
-		err = client.Client().Call(nil, "admin_addPeer", enodes[target])
+		err = client.Call(nil, "admin_addPeer", enodes[target])
 		client.Close()
 		if err != nil {
 			return fmt.Errorf("failed to add peer on node %d: %v", dialer, err)
@@ -772,16 +788,16 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 
 	// Now wait for each node to have the expected number of connections.
 	for i := range n.nodes {
-		client, err := n.GetClientConnectedToNode(i)
+		client, err := n.GetIpcClientConnectedToNode(i)
 		if err != nil {
-			return fmt.Errorf("failed to connect to the client: %w", err)
+			return fmt.Errorf("failed to connect to the IPC endpoint: %w", err)
 		}
 		defer client.Close()
 
 		err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
 			// Fetch the list of connected peers
 			var res []map[string]any
-			if err := client.Client().Call(&res, "admin_peers"); err != nil {
+			if err := client.Call(&res, "admin_peers"); err != nil {
 				return false, fmt.Errorf("failed to query peers on node %d: %v", i, err)
 			}
 
@@ -867,11 +883,58 @@ func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*PooledEhtClient, 
 	if client != nil {
 		return client, nil
 	}
-	ethclient, err := ethclient.Dial(fmt.Sprintf("http://localhost:%d", n.nodes[i].httpPort))
+	ethclient, err := ethclient.Dial(n.nodes[i].endpoint())
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 	}
 	return &PooledEhtClient{*ethclient, n.nodes[i].clients}, nil
+}
+
+// rpcTransportVariable selects the transport of the clients of the network:
+// "ws" for WebSocket, HTTP otherwise. The RPC integration tests pass in both
+// modes (T5 of rpc/PLAN.md).
+const rpcTransportVariable = "SONIC_TESTS_RPC_TRANSPORT"
+
+// endpoint is the URL the clients of the network dial.
+func (n *integrationTestNode) endpoint() string {
+	if os.Getenv(rpcTransportVariable) == "ws" {
+		return fmt.Sprintf("ws://localhost:%d", n.httpPort)
+	}
+	return fmt.Sprintf("http://localhost:%d", n.httpPort)
+}
+
+// GetIpcClientConnectedToNode provides a fresh connection to the IPC socket of
+// a node, which alone serves admin_*, test_* and the consensus internals. The
+// resulting client must be closed after use.
+func (n *IntegrationTestNet) GetIpcClientConnectedToNode(i int) (*rpc.Client, error) {
+	if i < 0 || i >= len(n.nodes) {
+		return nil, fmt.Errorf("node index out of bounds: %d", i)
+	}
+	return rpc.Dial(n.nodes[i].ipcPath)
+}
+
+// WaitForServedHead waits until the first node's /health reports no lag of
+// the served head behind the committed head.
+func (n *IntegrationTestNet) WaitForServedHead(ctx context.Context) error {
+	url := fmt.Sprintf("http://localhost:%d/health", n.nodes[0].httpPort)
+	return WaitFor(ctx, func(ctx context.Context) (bool, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return false, err
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return false, nil
+		}
+		defer resp.Body.Close()
+		var health struct {
+			Lag uint64 `json:"lag"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
+			return false, nil
+		}
+		return health.Lag == 0, nil
+	})
 }
 
 // GetWebSocketClient provides raw access to a fresh connection to the network
@@ -1280,7 +1343,7 @@ func (s *Session) ForceEmitAll(ctx context.Context, txs []*types.Transaction) ([
 }
 
 func (s *Session) callWithEncodedTxs(ctx context.Context, method string, txs []*types.Transaction) ([]common.Hash, error) {
-	client, err := s.GetClient()
+	client, err := s.GetIpcClientConnectedToNode(0)
 	if err != nil {
 		return nil, err
 	}
@@ -1295,7 +1358,7 @@ func (s *Session) callWithEncodedTxs(ctx context.Context, method string, txs []*
 		data[i] = encoded
 	}
 
-	if err := client.Client().CallContext(ctx, nil, method, data); err != nil {
+	if err := client.CallContext(ctx, nil, method, data); err != nil {
 		return nil, err
 	}
 
@@ -1577,6 +1640,16 @@ func (s *Session) GetClient() (*PooledEhtClient, error) {
 // the network. The resulting client must be closed after use.
 func (s *Session) GetClientConnectedToNode(i int) (*PooledEhtClient, error) {
 	return s.net.GetClientConnectedToNode(i)
+}
+
+// GetIpcClientConnectedToNode provides a fresh connection to the IPC socket of
+// a node. The resulting client must be closed after use.
+func (s *Session) GetIpcClientConnectedToNode(i int) (*rpc.Client, error) {
+	return s.net.GetIpcClientConnectedToNode(i)
+}
+
+func (s *Session) WaitForServedHead(ctx context.Context) error {
+	return s.net.WaitForServedHead(ctx)
 }
 
 // GetWebSocketClient provides raw access to a fresh connection to the network

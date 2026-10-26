@@ -103,7 +103,7 @@ type EventData struct {
 func getAllEventsOfCurrentEpoch(t *testing.T, net *IntegrationTestNet) []EventData {
 	t.Helper()
 
-	client, err := net.GetClient()
+	client, err := net.GetIpcClientConnectedToNode(0)
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -126,7 +126,7 @@ func getAllEventsOfCurrentEpoch(t *testing.T, net *IntegrationTestNet) []EventDa
 			ExtraData hexutil.Bytes   `json:"extraData"`
 			// other fields are ignored
 		}
-		err := client.Client().Call(&result, "dag_getEvent", eventID.Hex())
+		err := client.Call(&result, "dag_getEvent", eventID.Hex())
 		require.NoError(t, err)
 
 		event := EventData{

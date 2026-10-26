@@ -389,3 +389,14 @@ func TestCreateTransientEvmChainConfig_RespectsBlockHeightOfUpgradeHeight(t *tes
 		})
 	}
 }
+
+func TestMaxGasLimit_IsEventGasLessEmptyEventGas(t *testing.T) {
+	rules := MainNetRules()
+	emptyEventGas := rules.Economy.Gas.EventGas +
+		uint64(rules.Dag.MaxParents-rules.Dag.MaxFreeParents)*rules.Economy.Gas.ParentGas +
+		uint64(rules.Dag.MaxExtraData)*rules.Economy.Gas.ExtraDataGas
+	require.Equal(t, rules.Economy.Gas.MaxEventGas-emptyEventGas, MaxGasLimit(rules))
+
+	rules.Economy.Gas.MaxEventGas = emptyEventGas - 1
+	require.Zero(t, MaxGasLimit(rules))
+}

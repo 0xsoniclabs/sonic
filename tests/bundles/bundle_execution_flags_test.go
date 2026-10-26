@@ -167,7 +167,7 @@ func TestBundle_ExecutionFlagsOfSingleTxAreInterpretedCorrectly(t *testing.T) {
 					info, err := WaitForBundleExecution(t.Context(), client.Client(), plan.Hash())
 					require.NoError(t, err)
 
-					blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(info.Block.Int64()))
+					blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(int64(info.Block)))
 					bundleTxs := bundle.GetTransactionsInReferencedOrder()
 
 					// If the transaction is expected to not be included in the block,
@@ -300,7 +300,7 @@ func TestBundle_AllOfGroupSucceedsIfAllStepsTolerated(t *testing.T) {
 			require.NoError(t, err)
 
 			bundleTxs := bundle.GetTransactionsInReferencedOrder()
-			blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(info.Block.Int64()))
+			blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(int64(info.Block)))
 
 			expectedCount := 0
 			for i, tx := range bundleTxs {
@@ -436,7 +436,7 @@ func TestBundle_OneOfGroupSucceedsOnFirstToleratedStep(t *testing.T) {
 					require.NoError(t, err)
 
 					bundleTxs := bundle.GetTransactionsInReferencedOrder()
-					blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(info.Block.Int64()))
+					blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(int64(info.Block)))
 
 					expectedCount := 0
 					for i, tx := range bundleTxs {

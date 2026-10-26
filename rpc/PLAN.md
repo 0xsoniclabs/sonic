@@ -54,8 +54,8 @@ previous execution paid for is a rule or a gate here.
 | `rpc/format` | the JSON forms of blocks, headers, transactions, receipts and logs that several namespaces answer with | core, evmcore |
 | `rpc/oracle` | gas price oracle, its sampler and its `Config` (the `GPO` keys) | core |
 | `rpc/eth`, `filters`, `trace`, `debug`, `txpool`, `net`, `web3`, `sonic` | one namespace each; `Register(d, env[, role][, ns])` (H8); `eth` and `filters` register twice, as `eth_` and `ftm_`. A namespace imports no other namespace | dispatch, chain, exec, format, oracle, core (role interfaces, H8) |
-| `rpc/transport` | HTTP, WebSocket, unix-socket transports over one `Front` that routes ported methods to the dispatcher and forwards the rest to the node's legacy handler while the port is under way | dispatch |
-| `rpc/tests` | the test support of 7.4: `FakeCore`, `NewCarmenCore` (real in-memory Carmen), the replay chain, accounts, contract code, the harness; successor of `api/rpctest` | core, dispatch, chain, exec, oracle |
+| `rpc/transport` | HTTP, WebSocket, unix-socket transports over one `Front` that routes the module's methods to the dispatcher and forwards, on IPC, what the node's handler serves (X3) and, everywhere, the p2p facts | dispatch |
+| `rpc/tests` | the test support of 7.4: `FakeCore`, `NewCarmenCore` (real in-memory Carmen with an in-memory S5 archive, so that witness proofs work), the replay chain, accounts, contract code, the harness; successor of `api/rpctest` | core, dispatch, chain, exec, oracle |
 | `rpc` | `Module`: wiring of namespaces, start and stop | all of the above |
 
 **The Imports column is the rule inside the module, and a test holds it.** The
@@ -81,9 +81,17 @@ package that needs it:
   in `rpc/eth`: the system contract addresses `eth_config` reports.
 - `gossip/evmstore` in `rpc/tests`: the constructor of the Carmen state wrapper,
   for test support only.
+- `gossip/blockproc/subsidies` in `rpc/format`: `IsSponsorshipRequest`, which
+  decides that a receipt's `effectiveGasPrice` is zero; a copy would answer a
+  different price than block processing charges.
+- `gossip/gasprice/gaspricelimits` in `rpc/exec`: the suggested price of a new
+  transaction, the same rule the pool and the emitter apply.
 
 A new exception goes into this list and into the test in the same change.
-`gossip` imports `rpc/core` only. The composition root `cmd/sonicd/app` builds
+`gossip` imports `rpc/core` for the adapter, and the `Config` types and
+`DefaultConfig`s of `rpc/exec`, `rpc/dispatch` and `rpc/oracle` so that
+`gossip.DefaultConfig` refers to the one definition of each default
+(section 8); none of these imports `gossip`. The composition root `cmd/sonicd/app` builds
 the adapter and the `Module`. Test files may import go-ethereum's `rpc` as the
 oracle for envelope compatibility (Q5).
 
@@ -357,6 +365,17 @@ off and the module listens on the configured endpoint.
   `eth_getBalance` and `eth_getTransactionCount`. Such a caller goes through
   the module's dispatcher (an `ethereum.ChainStateReader` over `Serve`).
   Only the X3 forwarding stays on `Attach()` (O5).
+
+  The list at step 6: the only non-test caller of the node's handler is
+  `nodeForwarder` (`cmd/sonicd/app/rpc.go`, through `stack.RPCHandler()`),
+  which answers on IPC what the handler serves (`TestNodeHandler_ServesExactlyTheLegacyMethods`
+  pins it) and, everywhere, `net_listening` and `net_peerCount`. The
+  self-derivation of hardware wallets reads `eth_getBalance`,
+  `eth_getTransactionCount`, `eth_getCode` and `eth_getStorageAt` through
+  `moduleChainReader` (`TestModuleChainReader_ReadsTheChainThroughTheModule`).
+  The legacy wallet methods take `eth_maxPriorityFeePerGas` and
+  `eth_estimateGas` from the module through `moduleWallet` (ADR5,
+  `TestModuleWallet_DefaultsComeFromTheModule`).
 
 **Codec (ADR2, decided).** An own JSON-RPC 2.0 layer on `net/http`,
 `encoding/json` and gorilla, because the dispatcher must see every request
@@ -712,7 +731,7 @@ later: before porting a package, list the repeated shapes in the legacy code
 |---|---|---|
 | O1 | Semantic caps keep their names, defaults and effect (section 8) | L (rows that hit each cap), I |
 | O2 | `RPCTimeout` is applied by the dispatcher to every request context; the fork's `SetExecutionTimeLimit` is no longer used by the module | U, C |
-| O3 | `--mode validator` keeps disabling public listeners | I |
+| O3 | `--mode validator` keeps its effect. In the reference it drops the archive and the indexes and leaves the endpoints as configured (this row first said it disables public listeners; v2.2.5 does not); the module takes the endpoints over the same way and, without an archive, serves the committed head | U (`TestMode_AValidatorKeepsTheEndpointsOfTheReference`) |
 | O4 | Every CLI flag and TOML key under `config` keeps its effect or is listed as deprecated (accepted, warns, no effect) for one release. The loader rejects unknown fields, so removal breaks configs: this covers `--unlock`, `--password`, `--allow-insecure-unlock` (X1) and the `GPO` section (ADR9). "Keeps its effect" is tested by changing the key and observing the change. A key that still parses but no longer reaches its consumer passes a parse test; so does a node-configuration key nothing reads any more. Every `if cfg.X != nil` or `!= 0` mapping into the module's `Config` has a row that sets it | U (test enumerates flags and keys; one effect test per key the module consumes) |
 | O5 | What the node derives from its own RPC configuration and handler keeps its effect after `takeOverRPC`: `--unlock` with HTTP or WebSocket open and no `--allow-insecure-unlock` is refused; hardware-wallet self-derivation reads the chain through the module; the reported endpoints are the module's. Every non-test `stack.Attach()` caller is listed with the methods it calls, and served (section 3) | I (`cmd/sonicd/app` exec test of the unlock refusal), U (chain reader over the dispatcher) |
 
@@ -736,7 +755,7 @@ later: before porting a package, list the repeated shapes in the legacy code
 | X3 | Until removed, X1 and X2 methods are served by the legacy `api/legacy` (and `api/testapi`) registered on IPC only (ADR5); lakme rows for them are annotated; integration tests using `dag_*` switch to the IPC client |
 | X4 | `CalcBlockExtApi`, `RPCBlockExt` and the gossip `PublicEthereumAPI` shims (`gossip/api.go`) are not carried over; `eth_chainId` has one implementation |
 | X5 | `MinGasPrice`, `MaxGasLimit` are derived in the module, not exposed by `Core`; `MaxGasLimit` from `Rules(head+1)`, the open epoch (section 2) |
-| X6 | Not added: `debug_getRaw{Block,Header,Receipts,Transaction}`. geth serves them, the reference does not, and the reference defines parity (F1). Listed here for Q5; their execution-apis fixtures are allow-listed (7.3) |
+| X6 | Not added: `debug_getRaw{Block,Header,Receipts,Transaction}` and `debug_getBadBlocks`. geth serves them, the reference does not, and the reference defines parity (F1). Listed here for Q5; their execution-apis fixtures are allow-listed (7.3) |
 
 ### G. Moves out of gossip (step 6)
 
@@ -854,6 +873,10 @@ entry; a new row is added with its entry in the same change.
 | `sonic_prepareBundle`, `sonic_submitBundle` "current block" | the node's live head | the archived head | I3; can shift the default range and base fee by a block |
 | `eth_getRules` | an epoch number, `null` for an epoch with no state | the rules in force at a block; the tags that select the head answer the rules the next block is processed with, as the open epoch did | X2; lakme `rpc-module-getRules-block-selector` |
 | `eth_blockNumber` | committed head | archived head | I3 (ADR4) |
+| any method of the legacy namespaces (X1, X2) | served on every transport that enables its namespace | served on IPC only, by the node's handler (X3) | ADR5; lakme `rpc-module-ipc-only-methods` |
+| `rpc_modules` | every namespace the node's server registered | over HTTP and WebSocket, the namespaces the module serves on that transport and the p2p facts; on IPC, those and the node handler's | the legacy namespaces are not served there |
+| `debug_*` profiling methods (go-ethereum's `internal/debug`) | `this method is not enabled` unless built with `enable_debug` | the same without `enable_debug`; with it, the node's handler serves them on IPC only | the module does not import the node's debug handler |
+| a subscription that loses events | not detected | the subscription ends and its connection closes with the reason | I18 |
 | `trace_call`, `trace_callMany` | the response is unbounded; a vmTrace stops at an approximate 256 MiB per call, counting 128 bytes per operation and nothing for pushed values, so it let 2 GiB of heap through | `ErrResponseTooLarge` above `MaxResponseSize` for the whole response; the vmTrace of each call is limited by what is left of it | V12, ADR3; vmTrace is not in v2.2.4 (lakme `trace_call-vmTrace-unsupported`), other replies stay far below the limit |
 
 ### Bugs of the reference the port treats (F8)
@@ -924,6 +947,9 @@ queries over the whole history with `rapid`, comparing answers field by field.
   exceeds it). Already in `defects.json` for 2.2.3 and not to be redone:
   `trace_filter-range-limit`, `log-filter-parameter-limit-upfront`,
   `getProof-storage-key-validation`, `trace-call-missing-block-panic`.
+  Release differences `main` has against v2.2.5, found at step 0 and entered
+  with `introduced: 2.3.0`: `getLogs-range-end-clamped` (sonic#1177) and
+  `trace_call-pre-evm-error-refused`.
 - lakme does not draw `eth_subscribe`, `eth_sendRawTransaction*`, `txpool_*`,
   `sonic_*`, `eth_syncing`; those are integration territory (7.5). A WebSocket
   side for lakme comes after the release (ADR8).
@@ -1035,6 +1061,12 @@ these harness changes and no others:
   methods against geth's (Q5).
 - New: an IPC console test (`sonictool attach` reaches the module and the
   node's handler) and a node stopped under RPC load (Q1).
+- `SONIC_TESTS_RPC_TRANSPORT=ws` makes the harness's clients use WebSocket,
+  with `--ws.api` equal to `--http.api`, so that the tests run in both modes.
+- `WaitForServedHead` waits until `/health` reports no lag. `latest` is the
+  archived head (I3, ADR4), which lags the committed head under load; a test
+  that predicts the next block from `eth_blockNumber`
+  (`trace_consistency_test.go`) waits for it first, as a client would.
 
 ### 7.6 What the tools do not see
 
@@ -1238,3 +1270,5 @@ and the p2p facts.
 | ADR14 | Test double of `Core` | `FakeCore` only (TS1). The repository's convention is a mockgen mock per interface, and Jenkins checks that generated mocks are current; for `Core` no mock is generated. Strict expectations describe the calls a handler makes, which H2 changes; the head loop and the oracle call `Core` at times a test does not control; a failure row is one `FakeCore` mode for every method, where a mock needs an expectation per method. Generated mocks stay for tests of one collaborator (a logger) |
 | ADR13 | Compression of small responses | Open, after the release. The gzip writer's reset is a large share of the CPU of a small response such as `eth_getBalance` at the head, in the reference too (profile it at step 2). Not compressing responses under about 1 KB removes it and changes the wire, so the release compresses as the reference does (F1) |
 | ADR15 | A bound on the requests that run at once | Open, after the release. The dispatcher counts the requests in flight (`rpc_inflight`) and limits none, as the reference. A `trace_filter` request runs one replay worker per CPU, so a few concurrent ones take every core. The dispatcher is the one place a bound per method class would go (a semaphore taken at admission, answered at once when full, counted as `rejected`). Decide when `rpc_inflight` or the CPU of a public node shows the need; until then nothing in the module bounds it, and the operator notes say so |
+| ADR16 | How a lookup observes cancellation (Q2) | `exec.Env.Latest(ctx)` returns an `exec.Head`: the served head and the request's context. Every lookup of `Env` checks that context before it calls `Core` and after, and releases a state it opened after the cancel; `Rules`, `VMConfig` and `PreBlock` take the context. A background loop reads under `Env.View(ctx, head)`. A cancelled request therefore makes at most one more `Core` call and starts no EVM run |
+| ADR17 | `ChainInfo` per request | Not read per request: the head loop reads it at `Start` and with each new head, keeps the last answer with a chain id, and `Env.ChainInfo`/`ChainID`/`ChainConfig` answer from it. A request makes no uncancellable `ChainInfo` call, and a failing `ChainInfo` keeps the last facts. `ChainInfo` is in `chain.Source`; the injection matrix names it as read by the head loop only |

@@ -18,6 +18,7 @@ package txtrace
 
 import (
 	"errors"
+	"math"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -73,13 +74,15 @@ type vmTraceFrame struct {
 	memSize   uint64    // memory size lastOp is about to write, if memWrite
 }
 
-// vmTraceSizeLimit caps the approximate number of bytes a single vmTrace
-// retains (code, memory diffs and per-op overhead), protecting the node
-// from running out of memory on pathological traces.
-const vmTraceSizeLimit = 256 << 20
-
-// vmTraceOpSize approximates the fixed footprint of one traced operation.
-const vmTraceOpSize = 128
+// The size of a vmTrace counts everything it keeps, each item in the larger of
+// its memory and its JSON encoding: a fixed size per operation, one per value
+// it pushes (SWAP16 and DUP16 push 17 words for 3 gas), one per storage
+// write, and code and memory as hex, two bytes per byte.
+const (
+	vmTraceOpSize    = 128
+	vmTracePushSize  = 80
+	vmTraceStoreSize = 160
+)
 
 var errVmTraceTooLarge = errors.New("vmTrace exceeds size limit")
 
@@ -89,14 +92,15 @@ type VmTraceLogger struct {
 	result       *VmTrace
 	stateDB      tracing.StateDB
 	pendingStore *StorageDiff // latest storage write, attributed to the current op
-	size         uint64       // approximate bytes retained so far
+	size         uint64       // bytes retained so far
 	sizeLimit    uint64
 	err          error // set once the trace is dropped for exceeding sizeLimit
 }
 
-// NewVmTraceLogger creates a new VmTraceLogger.
-func NewVmTraceLogger() *VmTraceLogger {
-	return &VmTraceLogger{sizeLimit: vmTraceSizeLimit}
+// NewVmTraceLogger creates a VmTraceLogger that keeps at most limit bytes: it
+// stops collecting at the limit, during the run, and reports it from Err.
+func NewVmTraceLogger(limit uint64) *VmTraceLogger {
+	return &VmTraceLogger{sizeLimit: limit}
 }
 
 // Hooks returns the tracing hooks.
@@ -130,20 +134,25 @@ func (l *VmTraceLogger) grow(n uint64) bool {
 		return false
 	}
 	if n > l.sizeLimit-l.size {
-		l.err = errVmTraceTooLarge
-		l.traceStack = nil
-		l.result = nil
-		l.pendingStore = nil
+		l.drop()
 		return false
 	}
 	l.size += n
 	return true
 }
 
+// drop discards everything collected and stops collecting.
+func (l *VmTraceLogger) drop() {
+	l.err = errVmTraceTooLarge
+	l.traceStack = nil
+	l.result = nil
+	l.pendingStore = nil
+}
+
 // OnStorageChange records a storage write so it can be attributed to the
 // currently executing opcode.
 func (l *VmTraceLogger) OnStorageChange(_ common.Address, slot common.Hash, _ common.Hash, newVal common.Hash) {
-	if l.err != nil {
+	if !l.grow(vmTraceStoreSize) {
 		return
 	}
 	l.pendingStore = &StorageDiff{Key: slot, Val: newVal}
@@ -177,7 +186,7 @@ func (l *VmTraceLogger) onEnter(depth int, typ byte, _ common.Address, to common
 		}
 	}
 
-	if !l.grow(uint64(len(code))) {
+	if !l.grow(2 * uint64(len(code))) {
 		return
 	}
 
@@ -244,9 +253,16 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 		prevOp := &frame.trace.Ops[frame.lastOpIdx]
 		if prevOp.Ex != nil {
 			prevOp.Ex.Push = computePushed(frame.lastOp, scope.StackData())
+			if !l.grow(vmTracePushSize * uint64(len(prevOp.Ex.Push))) {
+				return
+			}
 			if frame.memWrite && frame.memSize > 0 {
 				// Report the full reserved [off, off+size) region, matching Parity/OpenEthereum's vmTrace semantics.
-				if !l.grow(frame.memSize) {
+				if frame.memSize > math.MaxUint64/2 {
+					l.drop()
+					return
+				}
+				if !l.grow(2 * frame.memSize) {
 					return
 				}
 				data := memoryRegion(scope.MemoryData(), frame.memOff, frame.memSize)

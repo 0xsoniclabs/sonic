@@ -18,7 +18,6 @@ package gossip
 
 import (
 	"fmt"
-	"math/big"
 	"path/filepath"
 	"time"
 
@@ -31,10 +30,11 @@ import (
 
 	"github.com/0xsoniclabs/sonic/eventcheck/heavycheck"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
-	"github.com/0xsoniclabs/sonic/gossip/filters"
-	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamleecher"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamseeder"
+	"github.com/0xsoniclabs/sonic/rpc/dispatch"
+	"github.com/0xsoniclabs/sonic/rpc/exec"
+	"github.com/0xsoniclabs/sonic/rpc/oracle"
 )
 
 const nominalSize uint = 1
@@ -70,9 +70,30 @@ type (
 		PeerCache PeerCacheConfig
 	}
 
+	// FilterConfig holds the limits of log queries under their TOML keys; the
+	// RPC module applies them.
+	FilterConfig struct {
+		// Block range limit for logs search (indexed).
+		IndexedLogsBlockRangeLimit idx.Block
+		// Block range limit for logs search (unindexed).
+		UnindexedLogsBlockRangeLimit idx.Block
+
+		// LogQueryParameterLimit is the maximum number of parameters that can be
+		// specified in log filter criteria, for eth_getLogs, eth_newFilter and
+		// logs subscriptions alike. A parameter is either an address or a topic.
+		// A value of 0 means no cap.
+		LogQueryParameterLimit uint
+
+		// LogQueryResultLimit is the maximum number of logs that can be returned in
+		// a single eth_getLogs query. The limit is only enforced if the query covers
+		// a range of more than one block. For a single block, there is no limit.
+		// A value of 0 means no cap.
+		LogQueryResultLimit uint
+	}
+
 	// Config for the gossip service.
 	Config struct {
-		FilterAPI filters.Config
+		FilterAPI FilterConfig
 
 		// This can be set to list of enrtree:// URLs which will be queried
 		// for nodes to connect to.
@@ -85,8 +106,8 @@ type (
 
 		HeavyCheck heavycheck.Config
 
-		// Gas Price Oracle options
-		GPO gasprice.Config
+		// Gas Price Oracle options, applied by the RPC module's oracle
+		GPO oracle.Config
 
 		// RPCGasCap is the global gas cap for eth-call variants.
 		RPCGasCap uint64 `toml:",omitempty"`
@@ -169,8 +190,16 @@ type PeerCacheConfig struct {
 
 // DefaultConfig returns the default configurations for the gossip service.
 func DefaultConfig(scale cachescale.Func) Config {
+	// The RPC knobs are defined once, by the module's packages that apply
+	// them (rpc/PLAN.md, section 8).
+	rpcLimits, rpcDispatch := exec.DefaultConfig(), dispatch.DefaultConfig()
 	cfg := Config{
-		FilterAPI: filters.DefaultConfig(),
+		FilterAPI: FilterConfig{
+			IndexedLogsBlockRangeLimit:   idx.Block(rpcLimits.IndexedLogsBlockRangeLimit),
+			UnindexedLogsBlockRangeLimit: idx.Block(rpcLimits.UnindexedLogsBlockRangeLimit),
+			LogQueryParameterLimit:       rpcLimits.LogQueryParameterLimit,
+			LogQueryResultLimit:          rpcLimits.LogQueryResultLimit,
+		},
 
 		TxIndex: true,
 
@@ -223,26 +252,22 @@ func DefaultConfig(scale cachescale.Func) Config {
 			PeerCache:                DefaultPeerCacheConfig(scale),
 		},
 
-		RPCEVMTimeout: 5 * time.Second,
+		RPCEVMTimeout: rpcLimits.EVMTimeout,
 
-		GPO: gasprice.Config{
-			MaxGasPrice:      gasprice.DefaultMaxGasPrice(),
-			MinGasPrice:      new(big.Int),
-			DefaultCertainty: 0.5 * gasprice.DecimalUnit,
-		},
+		GPO: oracle.DefaultConfig(),
 
 		RPCBlockExt: true,
 
-		RPCGasCap:   50000000,
-		RPCTxFeeCap: 100, // 100 FTM
-		RPCTimeout:  5 * time.Second,
+		RPCGasCap:   rpcLimits.GasCap,
+		RPCTxFeeCap: rpcLimits.TxFeeCap,
+		RPCTimeout:  rpcDispatch.RequestTimeout,
 
-		TxSyncDefaultTimeout: 5 * time.Second,
-		TxSyncMaxTimeout:     30 * time.Second,
+		TxSyncDefaultTimeout: rpcLimits.TxSyncDefaultTimeout,
+		TxSyncMaxTimeout:     rpcLimits.TxSyncMaxTimeout,
 
-		MaxResponseSize:     25 * 1024 * 1024,
-		MaxTraceFilterRange: 1000,
-		StructLogLimit:      2000,
+		MaxResponseSize:     rpcLimits.MaxResponseSize,
+		MaxTraceFilterRange: rpcLimits.MaxTraceFilterRange,
+		StructLogLimit:      rpcLimits.StructLogLimit,
 	}
 	sessionCfg := cfg.Protocol.DagStreamLeecher.Session
 

@@ -374,6 +374,19 @@ func CreateTransientEvmChainConfig(
 	return &cfg
 }
 
+// MaxGasLimit is the gas limit of the largest transaction an event can carry
+// under the given rules: the gas of an event less that of an empty event with
+// the most parents and extra data.
+func MaxGasLimit(rules Rules) uint64 {
+	maxEmptyEventGas := rules.Economy.Gas.EventGas +
+		uint64(rules.Dag.MaxParents-rules.Dag.MaxFreeParents)*rules.Economy.Gas.ParentGas +
+		uint64(rules.Dag.MaxExtraData)*rules.Economy.Gas.ExtraDataGas
+	if rules.Economy.Gas.MaxEventGas < maxEmptyEventGas {
+		return 0
+	}
+	return rules.Economy.Gas.MaxEventGas - maxEmptyEventGas
+}
+
 // MakeUpgradeHeight constructs an UpgradeHeight instance from the given
 // Upgrades and block height.
 func MakeUpgradeHeight(upgrades Upgrades, height idx.Block) UpgradeHeight {

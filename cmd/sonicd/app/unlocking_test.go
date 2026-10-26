@@ -287,3 +287,20 @@ func TestUnlockFlagPasswordFifoInterruptedBySignal(t *testing.T) {
 		t.Errorf("stderr text does not contain expected shutdown error, got:\n%s", cli.StderrText())
 	}
 }
+
+// TestUnlockFlag_RefusedWhileHTTPIsOpen is O5: the RPC module takes the HTTP
+// endpoint over, and the node still refuses to unlock an account while
+// external clients reach it, unless insecure unlocking is allowed.
+func TestUnlockFlag_RefusedWhileHTTPIsOpen(t *testing.T) {
+	datadir := tmpDatadirWithKeystore(t)
+	initFakenetDatadir(datadir, 1)
+	cli := exec(t,
+		"--fakenet", "0/1", "--datadir", datadir, "--nat", "none", "--nodiscover", "--maxpeers", "0", "--port", "0",
+		"--http", "--http.port", "0",
+		"--unlock", "f466859ead1932d743d622cb74fc058882e8648a",
+		"--exitwhensynced.epoch", "1")
+	cli.ExpectExit()
+	if !strings.Contains(cli.StderrText(), "account unlock with HTTP access is forbidden") {
+		t.Errorf("the unlock was not refused:\n%s", cli.StderrText())
+	}
+}

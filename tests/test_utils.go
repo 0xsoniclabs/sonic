@@ -27,10 +27,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	rpcformat "github.com/0xsoniclabs/sonic/rpc/format"
 	"github.com/0xsoniclabs/sonic/tests/contracts/revert"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -204,7 +204,7 @@ func waitUntilTransactionIsRetiredFromPoolByHash(t *testing.T, client *PooledEht
 	// - pending: transactions that are pending to be executed
 	// - queued: transactions that are queued to be executed
 	// each of the internal maps group transactions by sender address
-	var content map[string]map[string]map[string]*ethapi.RPCTransaction
+	var content map[string]map[string]map[string]*rpcformat.Transaction
 	return WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 
 		err := client.Client().Call(&content, "txpool_content")
@@ -488,14 +488,18 @@ func WaitForProofOf(t *testing.T, client *PooledEhtClient, blockNumber int) {
 	require.NoError(t, err, "failed to get witness proof")
 }
 
-// GetEventHeads retrieves the current consensus DAG heads (events tips, childless events)
-func GetEventHeads(t *testing.T, client *PooledEhtClient) []hash.Event {
+// GetEventHeads retrieves the current consensus DAG heads (events tips,
+// childless events). The dag_* methods are served on IPC only, so the client
+// is an IPC client.
+func GetEventHeads(t *testing.T, client *rpc.Client) []hash.Event {
+	t.Helper()
 
-	epoch := GetCurrentEpoch(t, client)
+	var epoch hexutil.Uint64
+	require.NoError(t, client.Call(&epoch, "eth_currentEpoch"))
 
 	// Get the head res of the given epoch.
 	res := []string{}
-	err := client.Client().Call(&res, "dag_getHeads", rpc.BlockNumber(epoch))
+	err := client.Call(&res, "dag_getHeads", rpc.BlockNumber(epoch))
 	require.NoError(t, err)
 
 	events := make([]hash.Event, len(res))

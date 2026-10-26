@@ -21,11 +21,34 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Added
 
+- A new RPC server, the RPC module (`rpc/`), serves every JSON-RPC namespace over HTTP, WebSocket and IPC. Flags, configuration keys, limits and answers are those of 2.2.x except where listed below. See `rpc/README.md` for operators.
+- `GET /health` on the HTTP endpoint answers the served head and its lag behind the committed head.
+- RPC metrics on the native Prometheus endpoint: `rpc_requests_total`, `rpc_duration_seconds`, `rpc_response_bytes`, `rpc_inflight`, `rpc_connections`, `rpc_subscriptions`, `rpc_subscription_events_total`, `rpc_head_served`, `rpc_head_lag`, `rpc_panics_total`, `rpc_loop_restarts_total`.
+- At most 100,000 polled filters per node; above it `eth_newFilter`, `eth_newBlockFilter` and `eth_newPendingTransactionFilter` answer `too many filters, the limit is 100000`.
+
 ### Changed
+
+- `eth_accounts`, `eth_sign`, `eth_signTransaction`, `eth_sendTransaction`, `eth_fillTransaction`, `eth_resend`, `eth_getEpochBlock`, `eth_getEpochStats`, `personal_*`, `dag_*`, `abft_*`, `debug_chaindbProperty`, `debug_chaindbCompact` and `debug_setHead` are served on IPC only; over HTTP and WebSocket they answer `-32601`.
+- `rpc_modules` lists the namespaces the transport it is called on serves.
+- A parameter that cannot be decoded is answered `-32602` with `parameter N (name): …` instead of `invalid argument N: …`.
+- `eth_blockNumber`, and every `latest` of a request, is the newest block whose state is archived; one request answers from one head.
+- `eth_getFilterChanges` answers `filter not found` for a filter whose events were dropped before it was polled (more than 2^20 events of its kind since its last poll), and for every filter of a kind whose feed was lost; install a new filter.
+- A subscription that falls behind, or whose feed was lost, closes its connection with the reason.
+- `eth_pendingTransactions` answers the pending transactions of the pool.
+- `eth_sendRawTransactionSync` waits for the new head instead of polling.
+- `eth_getAccount` and `eth_getProof` take `latest` when no block is given.
+- `debug_trace*` refuse a `timeout` above `--rpc.evmtimeout`, or one that does not parse, with `-32602`.
+- `eth_getRules` answers the rules in force at a block; `latest` answers the rules of the open epoch.
+- `trace_call` and `trace_callMany` are bounded by `--rpc.maxresponsesize` for the whole response; the calls of `trace_callMany` share it, and a `vmTrace` stops at what is left of it. A `vmTrace` counts what it keeps per pushed value and for code and memory, not per operation.
+- `sonic_getBundleInfo` answers `block` as a hexadecimal quantity; `sonic_prepareBundle` and `sonic_submitBundle` place a bundle relative to the archived head.
 
 ### Removed
 
 ### Fixed
+
+- `trace_*` no longer panic on a block whose receipts are fewer than its transactions; they answer `no receipt found for transaction <hash>`.
+- `debug_traceBlock*` report a transaction that cannot be converted to a message instead of panicking.
+- `BLOCKHASH` under a block override `number` above the head is answered by one lookup instead of reading every header down to genesis.
 
 ## [2.2.5] - 7 October 2026
 
