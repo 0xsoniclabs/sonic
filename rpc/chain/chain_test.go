@@ -211,9 +211,15 @@ func TestChain_AStalledConsumerIsDroppedWhileTheHeadAdvances(t *testing.T) {
 			received <- event.Block.NumberU64()
 		}
 	}()
+	// The blocks come in batches far below the queue of a consumer, each
+	// read before the next comes, so that the reading consumer keeps up even
+	// when its goroutine gets little time; the stalled one reads none.
 	var last *evmcore.EvmBlock
-	for range 1100 {
-		last = fake.AppendAndPublish(tests.BlockSpec{})
+	for batch := range 11 {
+		for range 100 {
+			last = fake.AppendAndPublish(tests.BlockSpec{})
+		}
+		tests.Eventually(t, func() bool { return len(received) == (batch+1)*100 }, "the reading consumer to get batch %d", batch)
 	}
 	harness.WaitForHead(last.NumberU64())
 	tests.Eventually(t, func() bool { return stalled.Err() != nil }, "the stalled consumer to be dropped")
