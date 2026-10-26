@@ -296,7 +296,7 @@ func lachesisMainInternal(
 	sigCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	node, _, nodeClose, err := config.MakeNode(sigCtx, ctx, cfg)
+	node, service, nodeClose, err := config.MakeNode(sigCtx, ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize the node: %w", err)
 	}
@@ -309,9 +309,14 @@ func lachesisMainInternal(
 		return config.SaveAllConfigs(outputConfigFile, cfg)
 	}
 
+	module, err := newRPCModule(node, service, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to initialize the RPC module: %w", err)
+	}
+
 	startFreeDiskSpaceMonitor(sigCtx, ctx, cancel, node.InstanceDir())
 
-	if err := startNode(sigCtx, ctx, node); err != nil {
+	if err := startNode(sigCtx, ctx, node, externalRPCServed(node, module)); err != nil {
 		return fmt.Errorf("failed to start the node: %w", err)
 	}
 
@@ -321,7 +326,7 @@ func lachesisMainInternal(
 		}
 
 		if control.HttpPortAnnouncement != nil {
-			control.HttpPortAnnouncement <- node.HTTPEndpoint()
+			control.HttpPortAnnouncement <- httpEndpoint(node, module)
 		}
 
 		if control.Shutdown != nil {
@@ -339,7 +344,9 @@ func lachesisMainInternal(
 
 // startNode boots up the system node and all registered protocols, after which
 // it unlocks any requested accounts, and starts the RPC/IPC interfaces.
-func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error {
+// externalRPC tells whether RPC is served to other processes, by the node or
+// by the RPC module.
+func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node, externalRPC bool) error {
 	// Start up the node itself
 	if err := stack.Start(); err != nil {
 		return fmt.Errorf("error starting protocol stack: %w", err)
@@ -354,7 +361,7 @@ func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error
 	}()
 
 	// Unlock any account specifically requested
-	err := unlockAccounts(sigCtx, ctx, stack)
+	err := unlockAccounts(sigCtx, ctx, stack, externalRPC)
 	if err != nil {
 		return fmt.Errorf("failed to unlock accounts: %w", err)
 	}
