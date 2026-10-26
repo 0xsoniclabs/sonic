@@ -30,6 +30,7 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/eth"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
 	"github.com/0xsoniclabs/sonic/rpc/net"
+	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
 	"github.com/0xsoniclabs/sonic/rpc/web3"
 )
@@ -40,6 +41,7 @@ type Config struct {
 	Dispatch dispatch.Config
 	Chain    chain.Config
 	Exec     exec.Config
+	Oracle   oracle.Config
 
 	// ClientVersion is the name the node gives itself, web3_clientVersion.
 	ClientVersion string
@@ -54,6 +56,7 @@ func DefaultConfig() Config {
 		Dispatch: dispatch.DefaultConfig(),
 		Chain:    chain.DefaultConfig(),
 		Exec:     exec.DefaultConfig(),
+		Oracle:   oracle.DefaultConfig(),
 	}
 }
 
@@ -83,7 +86,7 @@ func New(config Config, nodeCore core.Core, registerer prometheus.Registerer) *M
 	metrics := dispatch.NewMetrics(registerer)
 	dispatcher := dispatch.New(config.Dispatch, metrics)
 	served := chain.New(config.Chain, nodeCore, metrics)
-	environment := exec.NewEnvironment(nodeCore, served, config.Exec)
+	environment := exec.NewEnvironment(nodeCore, served, config.Exec, config.Oracle)
 	registerNamespaces(dispatcher, environment, nodeCore, config)
 
 	enabled := map[string][]string{}
@@ -123,6 +126,7 @@ func (module *Module) Start() error {
 	if err := module.chain.Start(module.dispatcher); err != nil {
 		return fmt.Errorf("failed to start the RPC module: %w", err)
 	}
+	module.dispatcher.Loop("oracle", module.environment.Oracle().Sample)
 	if module.http != nil {
 		if err := module.http.Start(); err != nil {
 			module.dispatcher.Stop()

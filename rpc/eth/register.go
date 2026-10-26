@@ -20,6 +20,7 @@ package eth
 import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/common/math"
 
 	"github.com/0xsoniclabs/sonic/rpc/chain"
 	"github.com/0xsoniclabs/sonic/rpc/core"
@@ -60,6 +61,14 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, no
 	add("etherbase", handler.zeroAddress)
 	add("coinbase", handler.zeroAddress)
 	add("hashrate", handler.hashrate)
+
+	add("gasPrice", handler.gasPrice)
+	add("maxPriorityFeePerGas", handler.maxPriorityFeePerGas)
+	add("feeHistory", handler.feeHistory,
+		dispatch.Required[math.HexOrDecimal64]("blockCount"),
+		dispatch.Required[chain.BlockNumber]("newestBlock"),
+		dispatch.Required[[]float64]("rewardPercentiles"))
+	add("blobBaseFee", handler.blobBaseFee)
 
 	add("getBlockByNumber", handler.getBlockByNumber, block, fullTransactions)
 	add("getBlockByHash", handler.getBlockByHash, hash, fullTransactions)

@@ -34,6 +34,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/rpc/chain"
 	"github.com/0xsoniclabs/sonic/rpc/core"
+	"github.com/0xsoniclabs/sonic/rpc/oracle"
 )
 
 // Environment is what a namespace reaches the chain and the state through.
@@ -42,11 +43,30 @@ type Environment struct {
 	nodeCore core.Core
 	chain    *chain.Chain
 	config   Config
+	oracle   *oracle.Oracle
 }
 
-// NewEnvironment returns the environment of the namespaces.
-func NewEnvironment(nodeCore core.Core, served *chain.Chain, config Config) *Environment {
-	return &Environment{nodeCore: nodeCore, chain: served, config: config}
+// NewEnvironment returns the environment of the namespaces, with a gas price
+// oracle over the node.
+func NewEnvironment(nodeCore core.Core, served *chain.Chain, config Config, oracleConfig oracle.Config) *Environment {
+	environment := &Environment{nodeCore: nodeCore, chain: served, config: config}
+	environment.oracle = oracle.New(oracleConfig, nodeCore, environment.openRules)
+	return environment
+}
+
+// Oracle returns the gas price oracle.
+func (environment *Environment) Oracle() *oracle.Oracle {
+	return environment.oracle
+}
+
+// openRules reads the rules of the open epoch: those of the block after the
+// served head, never those of the head, which may seal an epoch.
+func (environment *Environment) openRules(ctx context.Context) (opera.Rules, error) {
+	head, err := environment.Latest(ctx)
+	if err != nil {
+		return opera.Rules{}, err
+	}
+	return environment.RulesAt(head, head.Number+1)
 }
 
 // Config returns the semantic limits of the methods.

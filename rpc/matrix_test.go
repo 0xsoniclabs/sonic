@@ -86,7 +86,9 @@ func (chain matrixChain) requests() map[string][]string {
 	transaction := []string{`[` + mined + `]`, `[` + pending + `]`, `[` + block + `]`}
 	requests := map[string][]string{
 		"chainId": {`[]`}, "blockNumber": {`[]`}, "syncing": {`[]`}, "currentEpoch": {`[]`}, "config": {`[]`},
-		"etherbase": {`[]`}, "coinbase": {`[]`}, "hashrate": {`[]`},
+		"gasPrice": {`[]`}, "maxPriorityFeePerGas": {`[]`}, "blobBaseFee": {`[]`},
+		"feeHistory": {`["0x2", "latest", [10, 90]]`, `["0x1", "0x5", null]`, `["0x0", "latest", null]`},
+		"etherbase":  {`[]`}, "coinbase": {`[]`}, "hashrate": {`[]`},
 		"getRules":                               number,
 		"getBlockByNumber":                       byNumber,
 		"getBlockByHash":                         byHash,
@@ -119,6 +121,10 @@ func (chain matrixChain) requests() map[string][]string {
 	return all
 }
 
+// oracleCachePeriod is a little more than the period the oracle caches a
+// suggestion for.
+const oracleCachePeriod = 1100 * time.Millisecond
+
 // unreached are the methods of Core no request reaches, each with the reason.
 var unreached = map[string]string{
 	"ChainInfo":             "read by the head loop only; requests read its last answer",
@@ -134,8 +140,7 @@ var unreached = map[string]string{
 	"PoolContent":           "no method of the module lists the pool yet",
 	"PoolContentFrom":       "no method of the module lists the pool yet",
 	"PoolStats":             "no method of the module lists the pool yet",
-	"OracleInputs":          "no method of the module suggests prices yet",
-	"PendingHeads":          "no method of the module suggests prices yet",
+	"PendingHeads":          "read by the oracle's sampler loop only",
 }
 
 // TestMatrix_EveryCoreFailureIsContained holds Q3 and P1: whatever a Core
@@ -149,6 +154,11 @@ func TestMatrix_EveryCoreFailureIsContained(t *testing.T) {
 			continue
 		}
 		for _, mode := range tests.Modes {
+			if method == "OracleInputs" {
+				// The oracle answers a second suggestion of a band from
+				// its cache; only an expired cache reaches the node.
+				time.Sleep(oracleCachePeriod)
+			}
 			chain.core.SetMode(method, mode)
 			callsBefore := chain.core.Calls(method)
 			panicsBefore := chain.harness.Panics()

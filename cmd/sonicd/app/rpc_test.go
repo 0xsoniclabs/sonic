@@ -19,6 +19,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"math/big"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +32,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip"
+	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
 )
 
@@ -107,6 +109,9 @@ func TestRPCModuleConfig_MapsEveryKnob(t *testing.T) {
 	opera.FilterAPI.UnindexedLogsBlockRangeLimit = idx.Block(21)
 	opera.TxSyncDefaultTimeout = 22 * time.Second
 	opera.TxSyncMaxTimeout = 23 * time.Second
+	opera.GPO.MaxGasPrice = big.NewInt(24)
+	opera.GPO.MinGasPrice = big.NewInt(25)
+	opera.GPO.DefaultCertainty = 26
 
 	mapped := rpcModuleConfig(&config.Config{Opera: opera})
 	require.Equal(t, 11*time.Second, mapped.Dispatch.RequestTimeout)
@@ -125,6 +130,7 @@ func TestRPCModuleConfig_MapsEveryKnob(t *testing.T) {
 	require.Equal(t, uint64(21), limits.UnindexedLogsBlockRangeLimit)
 	require.Equal(t, 22*time.Second, limits.TxSyncDefaultTimeout)
 	require.Equal(t, 23*time.Second, limits.TxSyncMaxTimeout)
+	require.Equal(t, oracle.Config{MaxGasPrice: big.NewInt(24), MinGasPrice: big.NewInt(25), DefaultCertainty: 26}, mapped.Oracle)
 }
 
 // TestUnlock_IsRefusedWithHTTPTakenOverByTheModule holds O5: once the module

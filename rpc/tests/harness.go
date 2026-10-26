@@ -28,6 +28,7 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/core"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
+	"github.com/0xsoniclabs/sonic/rpc/oracle"
 )
 
 // Configs are the configurations of the packages a harness wires, at their
@@ -36,6 +37,7 @@ type Configs struct {
 	Dispatch dispatch.Config
 	Chain    chain.Config
 	Exec     exec.Config
+	Oracle   oracle.Config
 }
 
 // Mutate changes the default configurations for one harness.
@@ -62,6 +64,7 @@ func NewHarness(t testing.TB, nodeCore core.Core, register Register, mutations .
 		Dispatch: dispatch.DefaultConfig(),
 		Chain:    chain.DefaultConfig(),
 		Exec:     exec.DefaultConfig(),
+		Oracle:   oracle.DefaultConfig(),
 	}
 	for _, mutate := range mutations {
 		mutate(&configs)
@@ -70,11 +73,12 @@ func NewHarness(t testing.TB, nodeCore core.Core, register Register, mutations .
 	metrics := dispatch.NewMetrics(registry)
 	dispatcher := dispatch.New(configs.Dispatch, metrics)
 	served := chain.New(configs.Chain, nodeCore, metrics)
-	environment := exec.NewEnvironment(nodeCore, served, configs.Exec)
+	environment := exec.NewEnvironment(nodeCore, served, configs.Exec, configs.Oracle)
 	register(dispatcher, environment)
 	if err := served.Start(dispatcher); err != nil {
 		t.Fatalf("failed to start the chain: %v", err)
 	}
+	dispatcher.Loop("oracle", environment.Oracle().Sample)
 	t.Cleanup(dispatcher.Stop)
 	return &Harness{t: t, Dispatcher: dispatcher, Chain: served, Environment: environment, Registry: registry}
 }
