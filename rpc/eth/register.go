@@ -79,6 +79,13 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, no
 	add("getAccount", handler.getAccount, address, optionalBlock)
 	add("getProof", handler.getProof, address, dispatch.Required[[]string]("storageKeys"), optionalBlock)
 
+	transaction := dispatch.Required[exec.CallArguments]("transaction")
+	stateOverrides := dispatch.Optional[exec.StateOverride]("stateOverrides")
+	blockOverrides := dispatch.Optional[exec.BlockOverrides]("blockOverrides")
+	add("call", handler.call, transaction, optionalBlock, stateOverrides, blockOverrides)
+	add("estimateGas", handler.estimateGas, transaction, optionalBlock, stateOverrides, blockOverrides)
+	add("createAccessList", handler.createAccessList, transaction, optionalBlock)
+
 	add("getBlockByNumber", handler.getBlockByNumber, block, fullTransactions)
 	add("getBlockByHash", handler.getBlockByHash, hash, fullTransactions)
 	add("getHeaderByNumber", handler.getHeaderByNumber, block)

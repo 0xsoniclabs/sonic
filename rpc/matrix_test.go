@@ -86,6 +86,13 @@ func (chain matrixChain) requests() map[string][]string {
 	transaction := []string{`[` + mined + `]`, `[` + pending + `]`, `[` + block + `]`}
 	sender, contract := quote(chain.sender), quote(chain.contract)
 	account := []string{`[` + sender + `]`, `[` + sender + `, "latest"]`, `[` + sender + `, null]`, `[` + sender + `, ` + block + `]`, `[` + sender + `, "0x5"]`}
+	message := `{"from": ` + sender + `, "to": ` + contract + `}`
+	priced := `{"from": ` + sender + `, "to": ` + contract + `, "maxFeePerGas": "0x3b9aca00"}`
+	created := `{"from": ` + sender + `, "input": "0x6001600055"}`
+	calls := []string{
+		`[` + message + `]`, `[` + message + `, "latest", null, null]`, `[` + priced + `, ` + block + `]`,
+		`[` + message + `, "0x5"]`, `[` + message + `, "latest", {` + contract + `: {"balance": "0x1"}}, {"number": "0x10"}]`,
+	}
 	requests := map[string][]string{
 		"chainId": {`[]`}, "blockNumber": {`[]`}, "syncing": {`[]`}, "currentEpoch": {`[]`}, "config": {`[]`},
 		"gasPrice": {`[]`}, "maxPriorityFeePerGas": {`[]`}, "blobBaseFee": {`[]`},
@@ -116,6 +123,9 @@ func (chain matrixChain) requests() map[string][]string {
 		"getAccount":                             account,
 		"getStorageAt":                           {`[` + contract + `, "0x0"]`, `[` + contract + `, "0x0", "latest"]`, `[` + contract + `, "0x0", "0x5"]`},
 		"getProof":                               {`[` + contract + `, ["0x0"]]`, `[` + contract + `, [], "latest"]`, `[` + contract + `, ["0x0"], "0x5"]`},
+		"call":                                   calls,
+		"estimateGas":                            append(calls, `[`+created+`]`),
+		"createAccessList":                       {`[` + message + `]`, `[` + priced + `, "latest"]`, `[` + created + `]`, `[` + message + `, "0x5"]`},
 	}
 	all := map[string][]string{
 		"net_version":        {`[]`},
