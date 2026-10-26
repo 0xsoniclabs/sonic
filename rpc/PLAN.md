@@ -870,7 +870,7 @@ entry; a new row is added with its entry in the same change.
 | `eth_newFilter`, `eth_newBlockFilter`, `eth_newPendingTransactionFilter` | any number of filters | `too many filters, the limit is 100000` above 100,000 filters on the node | I17; lakme never comes close |
 | `eth_getFilterChanges` | every event since the last poll, however many | `filter not found` for a filter whose events were dropped from the journal (over 2^20 events of its kind since it last polled), and for every filter of a kind whose feed the module dropped (I18) | I17, I18; the filter is gone as if it had expired, and clients install a new one |
 | `eth_sendRawTransactionSync` | polls every 100 ms | waits on the head subscription | I9; the legacy message about an indexed but unarchived block cannot occur |
-| `eth_getAccount`, `eth_getProof` | block selector required; propagate `state.Error()` | selector optional (`latest`); do not propagate | consistent with the other state getters |
+| `eth_getBalance`, `eth_getCode`, `eth_getStorageAt`, `eth_getTransactionCount`, `eth_getAccount`, `eth_getProof` | block selector required (v2.2.5) | selector optional (`latest`), as on `main` since 2.3.0 | `main` made it optional; every getter propagates `state.Error()` as the reference does |
 | `debug_trace*` `timeout` | any duration accepted | `-32602` above `RPCEVMTimeout` or malformed; checked where the tracer is built | V6; lakme `rpc-module-tracer-timeout-limit` |
 | `debug_traceCall` chain config | `ChainConfig(overridden block number)` | the queried block's rules | only differs if an override crosses an upgrade height |
 | `trace_*` replay with a short receipt list | indexes the list unguarded, panics | `no receipt found for transaction <hash>` | latent panic (F8) |
