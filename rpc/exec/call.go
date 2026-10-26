@@ -105,7 +105,7 @@ func (call *Call) newEVM(ctx context.Context, statedb state.StateDB, hooks *trac
 // timeout, if any; a message that cannot be applied is reported with its gas
 // (F5).
 func (call *Call) Run(ctx context.Context, statedb state.StateDB, previous []*core.Message, message *core.Message, timeout time.Duration) (*core.ExecutionResult, error) {
-	ctx, cancel := withOptionalTimeout(ctx, timeout)
+	ctx, cancel := WithOptionalTimeout(ctx, timeout)
 	defer cancel()
 	evm, stop := call.newEVM(ctx, statedb, nil)
 	defer stop()
@@ -151,8 +151,9 @@ func Messages(previous []CallArguments, gasCap uint64, header *evmcore.EvmHeader
 	return messages
 }
 
-// withOptionalTimeout bounds a context by a timeout when one is given.
-func withOptionalTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+// WithOptionalTimeout bounds a context by a timeout when one is given, the
+// one definition of the reference's optional EVM timeout (H5).
+func WithOptionalTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
 	if timeout > 0 {
 		return context.WithTimeout(ctx, timeout)
 	}

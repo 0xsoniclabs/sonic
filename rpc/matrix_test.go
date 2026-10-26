@@ -125,7 +125,11 @@ func (chain matrixChain) requests() map[string][]string {
 		"getProof":                               {`[` + contract + `, ["0x0"]]`, `[` + contract + `, [], "latest"]`, `[` + contract + `, ["0x0"], "0x5"]`},
 		"call":                                   calls,
 		"estimateGas":                            append(calls, `[`+created+`]`),
-		"createAccessList":                       {`[` + message + `]`, `[` + priced + `, "latest"]`, `[` + created + `]`, `[` + message + `, "0x5"]`},
+		"simulateV1": {
+			`[{"blockStateCalls": [{"calls": [` + message + `]}, {}]}]`, `[{"blockStateCalls": [{"calls": [` + created + `]}]}, "latest"]`,
+			`[{"blockStateCalls": []}]`, `[{"blockStateCalls": [{}]}, "0x5"]`, `[{"blockStateCalls": [{"calls": [` + message + `]}], "returnFullTransactions": true}, ` + block + `]`,
+		},
+		"createAccessList": {`[` + message + `]`, `[` + priced + `, "latest"]`, `[` + created + `]`, `[` + message + `, "0x5"]`},
 	}
 	all := map[string][]string{
 		"sonic_estimateGasForTransactions": {

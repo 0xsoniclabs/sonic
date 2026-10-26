@@ -85,6 +85,7 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, no
 	add("call", handler.call, transaction, optionalBlock, stateOverrides, blockOverrides)
 	add("estimateGas", handler.estimateGas, transaction, optionalBlock, stateOverrides, blockOverrides)
 	add("createAccessList", handler.createAccessList, transaction, optionalBlock)
+	add("simulateV1", handler.simulateV1, dispatch.Required[simulateOptions]("options"), optionalBlock)
 
 	add("getBlockByNumber", handler.getBlockByNumber, block, fullTransactions)
 	add("getBlockByHash", handler.getBlockByHash, hash, fullTransactions)
