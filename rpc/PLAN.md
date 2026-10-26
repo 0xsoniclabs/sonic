@@ -33,7 +33,7 @@ previous execution paid for is a rule or a gate here.
 
 | Principle | What it means in the module |
 |---|---|
-| One narrow interface | The node is reached only through `Core` (section 2), a Go interface with no setter but `SendTx`; a test enforces it |
+| One narrow interface | The node is reached only through `Core` (section 2), a Go interface with no setter but `SendTransaction`; a test enforces it |
 | Stateless, block-addressed | Every request to the node names a block by number or hash; tags are resolved once per request in the module and never reach the node |
 | Archive-only reads | State comes from the archive at the named block, never from live state (as `GetBlockStateDb` does today); the pending nonce from the pool is the one exception |
 | One `latest` | The module defines `latest` as the newest archived block it saw on the head subscription, for everything it serves, the block number included |
@@ -48,12 +48,12 @@ previous execution paid for is a rule or a gate here.
 | Package | Holds | Imports |
 |---|---|---|
 | `rpc/core` | `Core`, its role interfaces and value types; implemented by `gossip/rpc_core.go` | evmcore, opera, inter/state |
-| `rpc/dispatch` | the JSON-RPC runtime and nothing of the chain: `Dispatcher` (method table, deadline, recover, `Group`, loops, `Stop`), `Args`, `Error`, `Encoded` (H3), `Notifier`, metrics; its `Config` holds the request deadline only | no node package |
-| `rpc/chain` | the served head: `Head`, `Chain` (head loop, the head and pool feeds fanned out through bounded `Hub`s, I15, I18), `BlockNumber`/`BlockRef` (client input, H6), `Resolve` (H1); its `Config` holds the pruning cutoff | core, dispatch, evmcore |
-| `rpc/exec` | what the methods share: the one set of block, header, transaction and state lookups on `Env` (H1, H2); `CallArgs`, overrides, EVM environment, `ChainConfig` derived from rules, `RevertError`; the send path (V7); `Config`, the semantic limits of the methods (section 8) | chain, dispatch, core, oracle, evmcore, opera |
+| `rpc/dispatch` | the JSON-RPC runtime and nothing of the chain: `Dispatcher` (method table, deadline, recover, `Group`, loops, `Stop`), `Arguments`, `Error`, `Encoded` (H3), `Notifier`, metrics; its `Config` holds the request deadline only | no node package |
+| `rpc/chain` | the served head: `Head`, `Chain` (head loop, the head and pool feeds fanned out through bounded `Hub`s, I15, I18), `BlockNumber`/`BlockReference` (client input, H6), `Resolve` (H1); its `Config` holds the pruning cutoff | core, dispatch, evmcore |
+| `rpc/exec` | what the methods share: the one set of block, header, transaction and state lookups on `Environment` (H1, H2); `CallArguments`, overrides, EVM environment, `ChainConfig` derived from rules, `RevertError`; the send path (V7); `Config`, the semantic limits of the methods (section 8) | chain, dispatch, core, oracle, evmcore, opera |
 | `rpc/format` | the JSON forms of blocks, headers, transactions, receipts and logs that several namespaces answer with | core, evmcore |
 | `rpc/oracle` | gas price oracle, its sampler and its `Config` (the `GPO` keys) | core |
-| `rpc/eth`, `filters`, `trace`, `debug`, `txpool`, `net`, `web3`, `sonic` | one namespace each; `Register(d, env[, role][, ns])` (H8); `eth` and `filters` register twice, as `eth_` and `ftm_`. A namespace imports no other namespace | dispatch, chain, exec, format, oracle, core (role interfaces, H8) |
+| `rpc/eth`, `filters`, `trace`, `debug`, `txpool`, `net`, `web3`, `sonic` | one namespace each; `Register(dispatcher, environment[, role][, namespace])` (H8); `eth` and `filters` register twice, as `eth_` and `ftm_`. A namespace imports no other namespace | dispatch, chain, exec, format, oracle, core (role interfaces, H8) |
 | `rpc/transport` | HTTP, WebSocket, unix-socket transports over one `Front` that routes the module's methods to the dispatcher and forwards, on IPC, what the node's handler serves (X3) and, everywhere, the p2p facts | dispatch |
 | `rpc/tests` | the test support of 7.4: `FakeCore`, `NewCarmenCore` (real in-memory Carmen with an in-memory S5 archive, so that witness proofs work), the replay chain, accounts, contract code, the harness; successor of `api/rpctest` | core, dispatch, chain, exec, oracle |
 | `rpc` | `Module`: wiring of namespaces, start and stop | all of the above |
@@ -103,14 +103,14 @@ the tx pool and `ServiceFeed`. Every module test runs against the fakes in
 
 ```go
 // Core is everything the RPC module may ask the node. Every call about chain
-// or state names a block by number or hash; nothing here mutates except SendTx.
+// or state names a block by number or hash; nothing here mutates except SendTransaction.
 // It is composed of role interfaces so a namespace depends only on the roles
 // it uses (H8). A lookup reports a missing item as ErrNotFound.
 type Core interface {
-	ChainReader   // ChainInfo, Header, Block, BlockNumberByHash, Receipts, Rules, TxByHash, BundleInfo
+	ChainReader   // ChainInfo, Header, Block, BlockNumberByHash, Receipts, Rules, TransactionByHash, BundleInfo
 	HeadSource    // Head, SubscribeHead
 	StateProvider // State
-	Pool          // SendTx, PoolNonce, PoolTransaction(s), PoolContent(From), PoolStats, SubscribeTxs
+	Pool          // SendTransaction, PoolNonce, PoolTransaction(s), PoolContent(From), PoolStats, SubscribeTransactions
 	LogIndex      // FindLogs
 	NodeInfo      // Progress, OracleInputs, PendingHeads
 }
@@ -122,13 +122,13 @@ type ChainReader interface {
 	BlockNumberByHash(hash common.Hash) (uint64, error)  // ErrNotFound for an unknown hash
 	Receipts(number uint64) (types.Receipts, error)      // fails if TxIndex is off
 	Rules(number uint64) (*opera.Rules, error)           // head+1: the open epoch's rules
-	TxByHash(hash common.Hash) (tx *types.Transaction, block, index uint64, err error) // ErrNotFound if unknown; fails if TxIndex is off
+	TransactionByHash(hash common.Hash) (transaction *types.Transaction, block, index uint64, err error) // ErrNotFound if unknown; fails if TxIndex is off
 	BundleInfo(executionPlanHash common.Hash) (BundleInfo, error) // ErrNotFound for an unknown plan
 }
 
 type HeadSource interface {
 	Head() (*evmcore.EvmBlock, error)                 // newest block whose state is archived
-	SubscribeHead(ch chan<- HeadEvent) Subscription
+	SubscribeHead(events chan<- HeadEvent) Subscription
 }
 
 // State: the archive at one block in Carmen's non-committable StateDB
@@ -140,14 +140,14 @@ type StateProvider interface {
 
 // Pool: the only calls whose answer depends on "now".
 type Pool interface {
-	SendTx(ctx context.Context, tx *types.Transaction) error
-	PoolNonce(addr common.Address) uint64
+	SendTransaction(ctx context.Context, transaction *types.Transaction) error
+	PoolNonce(address common.Address) uint64
 	PoolTransaction(hash common.Hash) (*types.Transaction, error) // ErrNotFound if not in the pool
 	PoolTransactions() (types.Transactions, error)
 	PoolContent() (pending, queued map[common.Address]types.Transactions)
-	PoolContentFrom(addr common.Address) (pending, queued types.Transactions)
+	PoolContentFrom(address common.Address) (pending, queued types.Transactions)
 	PoolStats() (pending, queued int)
-	SubscribeTxs(ch chan<- evmcore.NewTxsNotify) Subscription
+	SubscribeTransactions(events chan<- evmcore.NewTxsNotify) Subscription
 }
 
 // LogIndex: the node's address/topic index over archived blocks (topicsdb).
@@ -160,7 +160,7 @@ type LogIndex interface {
 type NodeInfo interface {
 	Progress() Progress
 	OracleInputs() OracleInputs // PendingRules, TotalGasPowerLeft, MinTip
-	PendingHeads(max int) []PendingHead
+	PendingHeads(limit int) []PendingHead
 }
 ```
 
@@ -176,11 +176,11 @@ Rules the adapter follows, each a design decision:
   synchronous `Head()`, not a first event pushed by the adapter (an unmanaged
   pusher panics on a stopped feed and takes the node down). The module keeps its
   head monotonic regardless of arrival order.
-- A stopped feed answers `SubscribeHead`/`SubscribeTxs` with an already-ended
+- A stopped feed answers `SubscribeHead`/`SubscribeTransactions` with an already-ended
   subscription, never the nil the feed scope hands out.
-- `SubscribeTxs` carries `evmcore.NewTxsNotify`, what the pool feed emits.
+- `SubscribeTransactions` carries `evmcore.NewTxsNotify`, what the pool feed emits.
   `PoolNonce` has no error because the pool's `Nonce` has none.
-- `Header(n)` exists because most reads (state getters, `eth_call`, estimates)
+- `Header(number)` exists because most reads (state getters, `eth_call`, estimates)
   need a header and not the block's transactions; `EvmStateReader.Header`
   already skips them. Serving them through `Block` would cost the saving
   section 7.2 measures.
@@ -190,21 +190,21 @@ Rules the adapter follows, each a design decision:
   reports a missing item as `ErrNotFound`: no `bool`, and no `nil` without an
   error. A mix of the three makes each caller map absence its own way; the
   mapping then repeats at every call site and one site gets it wrong. The
-  lookups of `exec.Env` keep the rule (H1).
+  lookups of `exec.Environment` keep the rule (H1).
 - The launcher stops the module before the node closes, so the module leaves the
   feed before the feed leaves.
 - Every guard the legacy backend takes from the node's configuration is the
   adapter's. With `TxIndex` off, `Receipts` fails with `transactions index is
-  disabled (enable TxIndex and re-process the DAGs)` and `TxByHash` with the
+  disabled (enable TxIndex and re-process the DAGs)` and `TransactionByHash` with the
   same text ending `the DAG)` (`EthAPIBackend.GetReceiptsByNumber`,
   `GetTransaction`); a method propagates the error where its legacy
   counterpart did. A `bool` result cannot carry such a failure, which is why
-  `TxByHash` returns an error. Before writing the adapter, list every
+  `TransactionByHash` returns an error. Before writing the adapter, list every
   `svc.config` read in `gossip/ethapi_backend.go`; lakme runs the default
   configuration and sees none of them, so each one has an adapter test.
 
 Derived by the module, not asked for: `MinGasPrice` and `MaxGasLimit`, the EVM
-and the chain config (from `Rules(n)`, the header and `opera.GetVmConfig`), the
+and the chain config (from `Rules(number)`, the header and `opera.GetVmConfig`), the
 head (from `SubscribeHead`).
 
 **The current rules are the next block's.** Legacy reads the open epoch's rules
@@ -251,14 +251,14 @@ and is the only place that starts a goroutine for request work. Handlers are
 plain functions in a table:
 
 ```go
-type Handler func(ctx context.Context, args Args) (any, error)
-// registered as: d.Add("eth_getBalance", a.getBalance)
+type Handler func(ctx context.Context, arguments Arguments) (any, error)
+// registered as: dispatcher.Add("eth_getBalance", handlers.getBalance)
 ```
 
 Methods exist only by registration, by name. Nothing is reflected off a struct,
 so no lifecycle or helper method can become callable (S1).
 
-`Dispatcher.Serve(ctx, req)`, in order: look the method up (unknown → -32601),
+`Dispatcher.Serve(ctx, request)`, in order: look the method up (unknown → -32601),
 decode and **count** params (failure → -32602 naming the parameter; never
 reaches the handler), attach the deadline, run the handler under `recover`
 (panic → -32603 + stack in the log + counter), encode and count the response.
@@ -444,7 +444,8 @@ Each commit is one reviewable unit and could become a pull request of its own.
 
 - **One plan section or requirement group per commit.** The subject says what
   changes; the body names the step, the plan section and the requirement IDs
-  the commit meets, and how it was checked. That body is the later pull request
+  the commit meets, and how it was checked, the author's self-review (H11)
+  included. That body is the later pull request
   description. A commit that needs a decision records it in section 9; one that
   adds a deviation adds its row to section 6 and its `defects.json` entry.
 - **Dependency order.** A commit needs only the commits before it, so the
@@ -498,7 +499,7 @@ names.
      loops, `Stop` with its log of what it waits for (section 3; D1, D2, D9,
      P1–P3, P7, Q1, O2)
    - `rpc/chain`: `Head`, `Chain`, the head and pool loops with their `Hub`s,
-     `BlockRef`, `Resolve` (section 3; H1, H6, I2–I4, I9, I15, I18)
+     `BlockReference`, `Resolve` (section 3; H1, H6, I2–I4, I9, I15, I18)
    - metrics (MON1–MON5)
    - `rpc/transport`: message layer, HTTP and `Front`, with the differential
      envelope test against geth's server and the codec fuzz target (D3, D11,
@@ -510,7 +511,7 @@ names.
      `eth_getRules`/`currentEpoch`/`config`, `net_version`, `web3_*` (I2–I4,
      I13, S1, H8)
 
-   Gates: the `Core` surface test, the import table, H1, H3, H6, H8, I1–I4,
+   Gates: the `Core` surface test, the import table, H1, H3, H6, H8–H11, I1–I4,
    I13, I15, D1–D3, D9, D11, P1–P5, P7, S1, MON1–MON5, O5 (unlock check).
 2. **Oracle, state and execution.** The gas price oracle comes first because
    call defaulting (`setDefaults`) asks it for the tip; it runs on
@@ -521,7 +522,7 @@ names.
      `eth_feeHistory`, `eth_blobBaseFee` (I10, ADR9)
    - the guard in `evmcore.GetHashFn` (F8; node code, consensus unchanged)
    - `rpc/exec`: call arguments, overrides, the EVM environment from
-     `Rules(n)` and the header, BLOCKHASH by lookup (I12, V5, V11, H2)
+     `Rules(number)` and the header, BLOCKHASH by lookup (I12, V5, V11, H2)
    - `eth_get{Balance,Code,StorageAt,TransactionCount,Account,Proof}` (I5–I7,
      V10)
    - `eth_call`, `eth_estimateGas`, `eth_createAccessList` (I8, F2–F5, V1–V6)
@@ -581,7 +582,7 @@ names.
    Then the review of the whole branch against the reference by someone who did
    not write it, with section 7.6 as the checklist (T7); each finding is fixed
    in the commit it belongs to, with a test that fails without the fix. Gates:
-   H4, H5, H7, Q1–Q6, D10, O1–O5, P6–P8, MON1–MON6, the import test, lakme, the
+   H4, H5, H7, H9–H11, Q1–Q6, D10, O1–O5, P6–P8, MON1–MON6, the import test, lakme, the
    fixtures (T3) and the benchmark gate (T2) against the reference, every line
    of 7.7, T7. No escape hatch (ADR11).
 
@@ -611,8 +612,8 @@ denial of service. Where a client can see one, section 6 has a deviations row.
 | I8 | Methods that chain runs (`eth_call` with `preArgs`, `eth_simulateV1`, `sonic_estimateGasForTransactions`, `trace_callMany`, block replays) reuse one StateDB with `EndTransaction` between runs and `Copy()` for branches | R, L |
 | I9 | The head subscription is the module's only source of head, new blocks, new logs and new pending transactions; on its loss the module keeps serving the last head and logs the lag | U, I |
 | I10 | The oracle runs in the module on `Core.OracleInputs` and `Core.PendingHeads`, sampling at 1s/5s as today; call defaulting reads its tip. The sampler reads what the legacy sampler read and no more: `PendingHeads` and the open epoch's minimum gas price (`Rules(latest+1)`). `OracleInputs` walks every validator's last event for `TotalGasPowerLeft`, so it is read for a suggestion only, never per tick | L (tolerance rows), I (`gas_price_suggestion_test.go`), U (a tick does not call `OracleInputs`) |
-| I11 | `eth_getLogs` and filter history: indexed queries through `Core.FindLogs`; queries with no address and no topic, and `blockHash` queries, scan blocks through `Core.Header`/`Receipts`; both keep the limits of section 8; each log gets its tx index from `TxByHash` and its timestamp from the header | L, I (`rpc_get_logs_test.go`, `indexed_logs_test.go`) |
-| I12 | The EVM is built in the module from `Rules(n)`, the derived chain config and the block header; the chain config is the *queried* block's, never the head's | I, R |
+| I11 | `eth_getLogs` and filter history: indexed queries through `Core.FindLogs`; queries with no address and no topic, and `blockHash` queries, scan blocks through `Core.Header`/`Receipts`; both keep the limits of section 8; each log gets its tx index from `TransactionByHash` and its timestamp from the header | L, I (`rpc_get_logs_test.go`, `indexed_logs_test.go`) |
+| I12 | The EVM is built in the module from `Rules(number)`, the derived chain config and the block header; the chain config is the *queried* block's, never the head's | I, R |
 | I13 | Header-only reads (state getters, `eth_call`, estimates, `eth_getLogs` timestamps) use `Core.Header`, never `Core.Block` | U (fake counts `Block` calls), benchmark |
 | I14 | The module advances its served head only after that block's logs are enqueued for subscribers, so `eth_getLogs` at `latest`, `eth_blockNumber` and log subscriptions never disagree | U, I (`log_subscription_test.go`) |
 | I15 | The head loop never blocks on a consumer: bounded per-consumer queues, a lagging consumer is dropped | U (stalled consumer, head still advances) |
@@ -674,7 +675,7 @@ denial of service. Where a client can see one, section 6 has a deviations row.
 | V8 | Filter and subscription ids exist and belong to the calling connection | L, U |
 | V9 | Validation never allocates proportionally to a client-chosen number before the bound is checked (block count, storage keys, topics, batch items) | U |
 | V10 | `eth_getProof`: at most 1024 storage keys, strict key decoding, both → -32602 before any state access | L, R |
-| V11 | *Beyond the reference.* No value a client sets decides how far a lookup walks or how often a loop runs, beyond what a limit of section 8 bounds. A block override `number` changes which blocks BLOCKHASH may ask for, never what one BLOCKHASH costs: it is answered by one lookup by number (`Core.Header`), with the zero hash at or above the block of the call, never by walking the parent hashes back from that block (`evmcore.GetHashFn`), which a `number` above the head turns into one header read per block down to genesis. Applies to every block context built from a header of the chain (`exec.Env.BlockContext`): `eth_call`, `eth_estimateGas` (once per step of its search), `eth_createAccessList`, `debug_traceCall`, `trace_*`, `sonic_estimateGasForTransactions`. `eth_simulateV1` is the one walk left: its blocks are not in `Core`, its block number is that of the header it walks from, so it walks at most 256 headers | U (`Core.Header` calls counted under overrides above and below the head) |
+| V11 | *Beyond the reference.* No value a client sets decides how far a lookup walks or how often a loop runs, beyond what a limit of section 8 bounds. A block override `number` changes which blocks BLOCKHASH may ask for, never what one BLOCKHASH costs: it is answered by one lookup by number (`Core.Header`), with the zero hash at or above the block of the call, never by walking the parent hashes back from that block (`evmcore.GetHashFn`), which a `number` above the head turns into one header read per block down to genesis. Applies to every block context built from a header of the chain (`exec.Environment.BlockContext`): `eth_call`, `eth_estimateGas` (once per step of its search), `eth_createAccessList`, `debug_traceCall`, `trace_*`, `sonic_estimateGasForTransactions`. `eth_simulateV1` is the one walk left: its blocks are not in `Core`, its block number is that of the header it walks from, so it walks at most 256 headers | U (`Core.Header` calls counted under overrides above and below the head) |
 | V12 | *Beyond the reference.* A response that collects traces is bounded by `MaxResponseSize` as a whole: `debug_trace*` and `trace_filter` as in the reference, `trace_call` and `trace_callMany` in the module (`trace_block`, `trace_transaction` and `trace_get` replay recorded blocks and stay bounded by their gas only, as in the reference). The calls of `trace_callMany` share one budget, each result is encoded as soon as it is there, and a tracer that collects in memory (vmTrace) stops at what is left of the budget, not after the run. Its size counts everything it keeps, in the larger of its memory and response cost: per operation, per pushed value (`SWAP16` and `DUP16` push 17 words for 3 gas), and code and memory as hex. A fixed size per operation lets the most expensive operations through | U (a vmTrace over the limit fails before the execution ends; two calls that fit alone fail together; the accounting of pushed values, code and memory) |
 
 ### F. Fidelity to the reference
@@ -699,25 +700,30 @@ execution paid for it.
 | F7 | `eth_newPendingTransactionFilter(true)` serves whole transactions with no block fields, each priced by its own gas price | L, U |
 | F8 | Known bugs of the reference (section 6) are reproduced, not fixed, until a release fixes them; each has an issue and a branch with one failing test | L |
 
-### H. Code economy
+### H. Code economy and readability
 
 A port can pass lakme, the handler tests and the benchmarks and still carry the
 same lookup five times, helpers nobody calls and work the answer never uses:
 none of it shows in an answer. Each rule is a class a review found after the
 code was green. Keeping them while porting is cheaper than removing the code
 later: before porting a package, list the repeated shapes in the legacy code
-(7.6), then write each once.
+(7.6), then write each once. H9–H11 are about how the code reads, which no tool
+of section 7 measures: every commit becomes a pull request that someone reads
+line by line (section 4), so the code is written for that reader.
 
 | ID | Requirement | Verified by |
 |---|---|---|
-| H1 | One path from a reference to a block. `Chain.Resolve(head, ref)` turns a number, tag or hash into a number and reports a reference without selector, an unknown hash and an invalid tag as sentinel errors. One set of lookups on `exec.Env` (`HeaderAt`, `BlockAt`, `FindBlock`, `TxByHash`, `OpenState`, `StateAt`) serves every namespace. A namespace keeps no copy of them, and the switch on `ref.Number` and `ref.Hash` is written once. The lookups return `(value, error)`: a missing item is `core.ErrNotFound` or a sentinel of `Resolve`, never `nil, nil`, and no lookup turns an error into "no value" (an invalid tag stays `ErrInvalidTag`). A method maps a sentinel to its wording (F3) or to a `null` result at its call site, through one helper for `null` (H5), never through a second resolver | U (a table over `Resolve`: tags, a number above the head, a hash, an unknown hash, an invalid tag, an empty reference), review |
+| H1 | One path from a reference to a block. `Chain.Resolve(head, reference)` turns a number, tag or hash into a number and reports a reference without selector, an unknown hash and an invalid tag as sentinel errors. One set of lookups on `exec.Environment` (`HeaderAt`, `BlockAt`, `FindBlock`, `TransactionByHash`, `OpenState`, `StateAt`) serves every namespace. A namespace keeps no copy of them, and the switch on `ref.Number` and `ref.Hash` is written once. The lookups return `(value, error)`: a missing item is `core.ErrNotFound` or a sentinel of `Resolve`, never `nil, nil`, and no lookup turns an error into "no value" (an invalid tag stays `ErrInvalidTag`). A method maps a sentinel to its wording (F3) or to a `null` result at its call site, through one helper for `null` (H5), never through a second resolver | U (a table over `Resolve`: tags, a number above the head, a hash, an unknown hash, an invalid tag, an empty reference), review |
 | H2 | Read the least that answers (I13 for every lookup). A method that does not use a header does not read one: `OpenState`, not `StateAt`. An adapter method that needs a field of the stored block (state root, epoch) reads the block, not the EVM header, whose build also looks up the epoch state and the parent hash. What a request needs about its block (head snapshot, header, rules) is read once and held, not looked up at every step of a loop | U (the fake counts `Header` calls: a state getter at a past block makes none), profile (7.2) |
 | H3 | Encode once. A handler that must encode its result to check a size returns the bytes as `dispatch.Encoded`, which the dispatcher hands on. `json.RawMessage` is validated and compacted again, and the envelope compacts it a last time as geth's does; use it only for bytes the module did not write with `json.Marshal` (a tracer's output) | U (an `Encoded` result passes through unchanged; a `RawMessage` is compacted) |
 | H4 | No dead code. An exported symbol has a caller outside tests or implements an interface; an unexported one has a caller. A refactor deletes what it leaves without a caller in the same commit. A variant is added when its first caller needs it, and a wrapper that only forwards is not written. A helper only tests use lives in a test file or `rpc/tests` | C (an unused-symbol check in CI, built with the module's Go version; exports used only by tests are listed and justified), review |
 | H5 | One definition of a fact. The chain id as a `*big.Int`, the signer, the base fee of the head, an error wording shared by several methods (`exec.UnknownHashError`), the optional-timeout context, the mapping of `core.ErrNotFound` to "no value": each is one function, and a conversion that appears a third time becomes one. Defaults follow section 8 | review (the three-sites rule) |
-| H6 | Block numbers are `uint64` inside the module. `BlockNumber` holds the tags as negative values and is for client input: a `uint64` cast to it above `MaxInt64` becomes a tag (`2^64-2` is `latest`). Helpers that mean a number take a `uint64` (`HeaderAt(head, n)`). Where the reference casts (`debug_getBlockRlp`), F1 wins and the cast stays in that handler, with a comment | U (a number above `MaxInt64` is not a tag), review |
+| H6 | Block numbers are `uint64` inside the module. `BlockNumber` holds the tags as negative values and is for client input: a `uint64` cast to it above `MaxInt64` becomes a tag (`2^64-2` is `latest`). Helpers that mean a number take a `uint64` (`HeaderAt(head, number)`). Where the reference casts (`debug_getBlockRlp`), F1 wins and the cast stays in that handler, with a comment | U (a number above `MaxInt64` is not a tag), review |
 | H7 | The same shape twice is a function. A branch written twice in one function (the replay of a traced and of an untraced transaction repeated the message and receipt checks) and a loop shape repeated across handlers (the head, log and pool subscription loops) are merged when the second one appears | review |
-| H8 | Dependencies are passed narrow and held once. `exec.Env` keeps `Core` unexported and offers the lookups (H1), the head, the limits and the oracle; a namespace reaches the chain and the state only through it, so no direct `Core` read can bypass H1. A namespace that needs a node fact `Env` does not cover (the pool, `Progress`, `FindLogs`) receives the one role interface of `Core` that has it (`core.Pool`, `core.NodeInfo`, `core.LogIndex`) in its `Register`, never `core.Core`. A handler struct holds each dependency once, not copies of `Env`'s parts beside `Env`. An interface is declared where it is used and lists everything its user calls: no capability is found by a type assertion (the transports take the `Router` the endpoint declares, `Namespaces` included, not the concrete `Front`). A role interface nothing uses is deleted (H4) | C (a lint test: no namespace names `core.Core`; no exported field of `Env` has a `Core` type), review |
+| H8 | Dependencies are passed narrow and held once. `exec.Environment` keeps `Core` unexported and offers the lookups (H1), the head, the limits and the oracle; a namespace reaches the chain and the state only through it, so no direct `Core` read can bypass H1. A namespace that needs a node fact `Environment` does not cover (the pool, `Progress`, `FindLogs`) receives the one role interface of `Core` that has it (`core.Pool`, `core.NodeInfo`, `core.LogIndex`) in its `Register`, never `core.Core`. A handler struct holds each dependency once, not copies of `Environment`'s parts beside `Environment`. An interface is declared where it is used and lists everything its user calls: no capability is found by a type assertion (the transports take the `Router` the endpoint declares, `Namespaces` included, not the concrete `Front`). A role interface nothing uses is deleted (H4) | C (a lint test: no namespace names `core.Core`; no exported field of `Environment` has a `Core` type), review |
+| H9 | Readable code. **Names are whole words.** A variable, parameter, field, receiver, function or type is named in full, for what it is or does, in the words of the domain (`HeaderAt`, `OpenState`, `Resolve`), not how it works and not by the initials of its type: `dispatcher`, not `d`; `environment`, not `env`; `nodeCore`, not `c` and not `core` (a name never hides an imported package). No single-letter name, loop indexes included (`index`), and no clipped word: `cfg`, `req`, `msg`, `addr`, `tx`, `ref`, `args`, `ns`, `idx`, `num`, `buf`, `conn`, `fn`, `opts` and `tmp` are written `request`, `message`, `address`, `transaction`, `reference`, `arguments`, `namespace`, `index`, `number`, `buffer`, `connection`, `function`, `options` and so on. The allowed short forms are these and no others: `ctx` for a `context.Context`, `err` for an `error`, `ok` for the second result of a map read, type assertion or receive, `t` and `b` for `*testing.T` and `*testing.B`, the `Err` prefix of a sentinel error, `Config` for the settings of a package, acronyms spelled as Go spells them (`HTTP`, `RPC`, `EVM`, `IPC`, `JSON`, `ID`, `URL`), and package names, which are one short lower-case word. A name owned by someone else keeps its spelling: go-ethereum, Carmen and the node packages (`evmcore.NewTxsNotify`, `TxIndex`), JSON-RPC method names and parameters, CLI flags, TOML keys, metric names and the legacy symbols this plan points at. The legacy code the port reads is full of clipped names; they are not copied, and this rule outranks matching the code around it, for code written in the module. Control flow is flat: a check returns early, the expected path runs down the left margin, and no `else` follows a `return`. The code follows Go's idioms and the repository's conventions, and is clean under the repository's `golangci-lint` configuration (`.golangci.yml`, gofmt included). A comment says why; code that needs a comment to say what it does is renamed or split first (H10) | C (the `golangci-lint` workflow; a test over the module's syntax trees that fails on a declared name shorter than three letters or on a clipped word above, with the allowed short forms held as data), review |
+| H10 | Small functions. A function does one thing, and its name says which. A handler reads as the steps of its method (resolve the block, check the arguments, read, answer); a step with logic of its own is a helper named after the step. A function whose body needs comments to mark its parts is split at those comments, and nesting deeper than three levels is flattened by early returns or a helper. A function is split at a distinct step, not to reach a size: a helper with one caller is written when it names a step, and a wrapper that only forwards is not written (H4) | review |
+| H11 | Self-review. Before a commit is made, its author reads the whole diff as its reviewer would and checks it against H1–H10 and the error rules (section 2, H1, D9, F3–F5): names (whole words, H9), duplication, function length, complexity the answer does not need, error handling, and the conventions of the surrounding code. What the review finds is fixed in the same commit. The commit body says that the review was done and what it changed (section 4). It comes before the independent review of T7 and does not replace it | review (the commit body) |
 
 ### S. Surface
 
@@ -761,7 +767,7 @@ later: before porting a package, list the repeated shapes in the legacy code
 
 | ID | Requirement |
 |---|---|
-| G1 | `gossip/filters` is rewritten in the module on `SubscribeHead`, `SubscribeTxs`, `FindLogs`; the package is deleted |
+| G1 | `gossip/filters` is rewritten in the module on `SubscribeHead`, `SubscribeTransactions`, `FindLogs`; the package is deleted |
 | G2 | The oracle half of `gossip/gasprice` (`Oracle`, reactive, constructive, tip cache) is deleted once the module's oracle serves the four price methods and `setDefaults` has no legacy caller left; `base_fee.go`, `gas_tip.go`, `gaspricelimits` stay for block processing and the emitter; `gossip/gpo_backend.go`, `Service.gpo`, `EvmStateReader.gpo`, `EthAPIBackend.SuggestGasTipCap` go; the `GPO` section follows ADR9 |
 | G3 | The `Core` adapter is `gossip/rpc_core.go`. `EthAPIBackend` (`gossip/ethapi_backend.go`) shrinks to what `api/legacy` and `api/testapi` need (X3) and what the adapter reuses; `api/ethapi`, `api/sonicapi`, `api/rpctest` are deleted, `api/testapi` stays for X3 |
 | G4 | `txtrace`, `evmcore`, `gossip/evmstore` and `gossip/blockproc/bundle` stay and are used as libraries |
@@ -893,7 +899,7 @@ walk: lakme cannot see it) and an issue holding one failing test.
 | `setDefaults` (`transaction_args.go`) | the call object for the gas estimate copies `Data` and not `Input`: a call that sent only `input` is estimated with no calldata and reverts | copy `Input` too, or use `args.data()` | sonic-admin#905, branch `luis/repro-createaccesslist-ignores-input` |
 | `replayBlock` (`tx_trace.go`) | the untraced branch indexes `receipts[i]` unguarded: a short list panics | hoist the guard the traced branch has | issue to file |
 | `traceBlock` (`api.go`) | ignores the error from `TxAsMessage`, then dereferences the nil message | return it | issue to file |
-| `GetHashFn` (`evmcore/evm.go`) | lacks geth's `ref.Number <= n` guard and walks the parent hashes back from the block of the call. A block override `number` above the head lets BLOCKHASH ask for the head or later: the walk reads every header down to genesis without finding it, and keeps 32 bytes per block. On a 20,000-block chain one `eth_call` read 20,000 headers and `eth_estimateGas` 460,000; on mainnet one unauthenticated request costs minutes and GBs, and neither the request deadline nor `evm.Cancel` stops it inside the opcode. A `number` far below the head walks from the head down to it | the guard in `GetHashFn` (block processing never asks at or above its block, so consensus is unchanged); the module answers BLOCKHASH by a lookup by number (`exec.Env.BlockContext`). Same answers, see V11 | issue to file |
+| `GetHashFn` (`evmcore/evm.go`) | lacks geth's `ref.Number <= n` guard and walks the parent hashes back from the block of the call. A block override `number` above the head lets BLOCKHASH ask for the head or later: the walk reads every header down to genesis without finding it, and keeps 32 bytes per block. On a 20,000-block chain one `eth_call` read 20,000 headers and `eth_estimateGas` 460,000; on mainnet one unauthenticated request costs minutes and GBs, and neither the request deadline nor `evm.Cancel` stops it inside the opcode. A `number` far below the head walks from the head down to it | the guard in `GetHashFn` (block processing never asks at or above its block, so consensus is unchanged); the module answers BLOCKHASH by a lookup by number (`exec.Environment.BlockContext`). Same answers, see V11 | issue to file |
 
 Considered and rejected, to stay identical to the reference: erroring on an
 `eth_feeHistory` count above 1024 (legacy clamps, lakme draws up to 1100), and
@@ -913,7 +919,7 @@ Inherited quirks kept as they are, not deviations:
   SkipParentBlockHash` selects the behaviour. Read the legacy path before
   deciding; the intuitive answer is wrong for the transaction tracers.
 - `eth_simulateV1` does not build on `rpc/exec`: a simulated block's number is
-  usually above the head so `Rules(n)` fails, BLOCKHASH must see simulated
+  usually above the head so `Rules(number)` fails, BLOCKHASH must see simulated
   predecessors, validation mode needs the base fee, and the simulator needs its
   own precompile set and a state wrapper for the log tracer.
 
@@ -1020,10 +1026,10 @@ support for the module and for `cmd/sonicd/app`:
 | Piece | What it is | For |
 |---|---|---|
 | `FakeCore` | an in-memory `Core`: a builder for blocks, receipts and the pool; the head and pool feeds; per method a mode (normal, panic, fail, not found, nil), a call count and a gate that holds its calls; one delay for every call | every handler test; failure, panic and cancellation rows; rows that require a read not to happen (H2, I13) |
-| `NewCarmenCore` | a `FakeCore` whose `State(n)` is a copy of one real in-memory Carmen state (its `EndBlock` returns a nil channel when there is no archive; do not wait on it); `TrackStates` counts the states opened and released (I7) | state getters and execution |
+| `NewCarmenCore` | a `FakeCore` whose `State(number)` is a copy of one real in-memory Carmen state (its `EndBlock` returns a nil channel when there is no archive; do not wait on it); `TrackStates` counts the states opened and released (I7) | state getters and execution |
 | the replay chain | a funded account, a contract that writes storage, and a block with a transfer and a call of the contract, over real state | `debug_trace*` and `trace_*` |
 | accounts and code | signing on the fake chain id, a transaction from a new account, the binary encoding; code that spins and code that writes storage | every test that needs a transaction or a contract |
-| the harness | a dispatcher and a `Chain` over a core, with the default configuration changed by mutate functions; a variant that adds the `exec.Env` with an oracle of the core; helpers that call, decode and expect a failure; the count of recovered panics; a wait for the served head | calling a namespace the way a transport does |
+| the harness | a dispatcher and a `Chain` over a core, with the default configuration changed by mutate functions; a variant that adds the `exec.Environment` with an oracle of the core; helpers that call, decode and expect a failure; the count of recovered panics; a wait for the served head | calling a namespace the way a transport does |
 
 The rules below keep the tests as small as the code they test. Each is a class
 a review found in green tests.
@@ -1093,12 +1099,12 @@ the legacy code before porting, not from the port afterwards.
 | Defaults written twice | they agree today | one definition (section 8) | the oracle's maximum gas price default in three places |
 | Work the answer does not use | the answers are right and a sweep shows only a sum | H2, H3: profile each class of method (state read at the head and over old blocks, call, trace) at the end of steps 2 and 5, and read what is below the handler | an EVM header built for a state read; a trace result compacted twice |
 | Assertions that cannot fail | the test is green whatever the code does | TS6–TS8: before-and-after reads, checked method names, a matrix that checks its fault was reached; a review of every test helper | a call count subtracted from itself; a limit fixture built and never queried; a panic matrix that reached no request for several `Core` methods |
-| Copies and dead code | the tests pass with five copies of a lookup and with symbols nobody calls | H1, H4, H5, H7: repeated shapes listed in the legacy code before porting, the unused-symbol check at the end of each step | block lookups copied into `eth` beside `exec.Env`; the number and hash switch written eight times; six symbols with no caller, `Add5` among them |
+| Copies and dead code | the tests pass with five copies of a lookup and with symbols nobody calls | H1, H4, H5, H7: repeated shapes listed in the legacy code before porting, the unused-symbol check at the end of each step | block lookups copied into `eth` beside `exec.Environment`; the number and hash switch written eight times; six symbols with no caller, `Add5` among them |
 | Cost a client chooses | the answers are right, and fast for the values honest clients send | V11: for every number a request carries (overrides, indexes, range ends), count the `Core` calls with hostile values: above the head, far below it, the maximum of the type | a block override `number` above the head made one BLOCKHASH read every header down to genesis (F8 table) |
 | Events a consumer lost without knowing | nothing falls behind and no loop panics in a green run | I18: a test makes each consumer fall behind and panics each feed loop, then checks what the client is answered | the feed of the polled filters fell behind, logged a warning, subscribed again and went on: polls answered lists with the gap missing. A restarted head loop set the new head and published the missed blocks to no one |
 | Work that ignores cancellation at shutdown | requests finish before `Stop` | Q1: `Stop` timed during a Tosca EVM run at the gas cap and during a blocked `Core` call; the log names what it waits for | after the grace period `Stop` waited with no bound stated and no log line, so a slow shutdown had no visible cause |
 | A rule the documentation states and no test checks | the rule is read, not run | I1's import table and H8 are tests; each rule in the README's developer notes names the test that checks it, or is not written as one that a test checks | namespaces imported another namespace for its JSON forms and its send path, while the README said a test forbade it; the Layout table and the imports disagreed |
-| Interfaces wider than their use | the answers are right whatever a handler can reach | H8: `Env` without an exported `Core`, role interfaces in `Register`, no type assertion for a capability | the environment exported the node interface and handlers read `Core` beside the lookups of H1; handler structs held several handles to the same things; the role interfaces of `Core` were declared and almost never used; `rpc_modules` found its namespaces by a type assertion on the router |
+| Interfaces wider than their use | the answers are right whatever a handler can reach | H8: `Environment` without an exported `Core`, role interfaces in `Register`, no type assertion for a capability | the environment exported the node interface and handlers read `Core` beside the lookups of H1; handler structs held several handles to the same things; the role interfaces of `Core` were declared and almost never used; `rpc_modules` found its namespaces by a type assertion on the router |
 | Absence said several ways | each handler maps its own case right | section 2 ("not found") and H1: lookups return `ErrNotFound` or a sentinel, never `nil, nil`; one helper turns absence into `null` | `Core` said "missing" with an error, a `bool` or a `nil`; the lookups added `nil, nil` and more errors, call sites mapped them one by one, and one lookup answered an invalid tag as "no block" |
 | A package that holds what its users own | the code works in any package | the Layout table (section 1); each limit defined by the package that applies it (section 8) | the dispatcher's package held the served head, the block references and the limits of the oracle, the filters and the tracers, so the transports compiled against the chain's data model |
 | A size limit that counts the wrong thing | the limit is tested on the trace it was written for | V12: count in the unit of the limit everything the structure keeps, and test with the most expensive operation per gas, not with a loop of cheap ones | the vmTrace limit counted 128 bytes per operation: a loop of `SWAP16` over full words kept 2 GiB under a 256 MiB limit, and `trace_callMany` multiplied it by its calls |
@@ -1117,7 +1123,7 @@ Module (`go test -race ./rpc/...`, which is also P6):
   fails on a forbidden package, one outside the keep list, or an import between
   module packages that the Layout table of section 1 does not list. H8: a lint
   test fails on `core.Core` in a namespace and on an exported `Core` field of
-  `Env`.
+  `Environment`.
 - D1: a lint test fails on a bare `go` statement outside the dispatcher. O2: a
   lint test fails on `SetExecutionTimeLimit`; the timeout test in `rpc/eth`.
 - Inventory of section 6, S1, X: the registered set diffed against the
@@ -1149,7 +1155,7 @@ Module (`go test -race ./rpc/...`, which is also P6):
 - I18: each consumer made to fall behind and each feed loop panicked; the
   subscriptions end, the polled filters of the kind answer `filter not found`,
   and a filter installed afterwards gets every event.
-- Section 2, H1: no lookup of `Core` or `Env` answers `nil, nil`; an invalid
+- Section 2, H1: no lookup of `Core` or `Environment` answers `nil, nil`; an invalid
   tag, an unknown hash and a missing block each reach the handler as their
   sentinel.
 - I10, ADR9: a tick does not call `OracleInputs`; `MinGasPrice` floors the
@@ -1189,6 +1195,9 @@ Outside the unit tests:
 - T2: the protocol of 7.2.
 - T3: the execution-apis runner (7.3), green or allow-listed.
 - H4: the unused-symbol check.
+- H9: the `golangci-lint` workflow (`.golangci.yml`, gofmt included) clean on
+  the branch, and the name test (whole-word names) green.
+- H10, H11: the self-review line in every commit body.
 - MON6: the alerts in `rpc/README.md`.
 - T7: every finding of the review fixed with a test, or a row in section 6.
 
@@ -1270,5 +1279,5 @@ and the p2p facts.
 | ADR14 | Test double of `Core` | `FakeCore` only (TS1). The repository's convention is a mockgen mock per interface, and Jenkins checks that generated mocks are current; for `Core` no mock is generated. Strict expectations describe the calls a handler makes, which H2 changes; the head loop and the oracle call `Core` at times a test does not control; a failure row is one `FakeCore` mode for every method, where a mock needs an expectation per method. Generated mocks stay for tests of one collaborator (a logger) |
 | ADR13 | Compression of small responses | Open, after the release. The gzip writer's reset is a large share of the CPU of a small response such as `eth_getBalance` at the head, in the reference too (profile it at step 2). Not compressing responses under about 1 KB removes it and changes the wire, so the release compresses as the reference does (F1) |
 | ADR15 | A bound on the requests that run at once | Open, after the release. The dispatcher counts the requests in flight (`rpc_inflight`) and limits none, as the reference. A `trace_filter` request runs one replay worker per CPU, so a few concurrent ones take every core. The dispatcher is the one place a bound per method class would go (a semaphore taken at admission, answered at once when full, counted as `rejected`). Decide when `rpc_inflight` or the CPU of a public node shows the need; until then nothing in the module bounds it, and the operator notes say so |
-| ADR16 | How a lookup observes cancellation (Q2) | `exec.Env.Latest(ctx)` returns an `exec.Head`: the served head and the request's context. Every lookup of `Env` checks that context before it calls `Core` and after, and releases a state it opened after the cancel; `Rules`, `VMConfig` and `PreBlock` take the context. A background loop reads under `Env.View(ctx, head)`. A cancelled request therefore makes at most one more `Core` call and starts no EVM run |
-| ADR17 | `ChainInfo` per request | Not read per request: the head loop reads it at `Start` and with each new head, keeps the last answer with a chain id, and `Env.ChainInfo`/`ChainID`/`ChainConfig` answer from it. A request makes no uncancellable `ChainInfo` call, and a failing `ChainInfo` keeps the last facts. `ChainInfo` is in `chain.Source`; the injection matrix names it as read by the head loop only |
+| ADR16 | How a lookup observes cancellation (Q2) | `exec.Environment.Latest(ctx)` returns an `exec.Head`: the served head and the request's context. Every lookup of `Environment` checks that context before it calls `Core` and after, and releases a state it opened after the cancel; `Rules`, `VMConfig` and `PreBlock` take the context. A background loop reads under `Environment.View(ctx, head)`. A cancelled request therefore makes at most one more `Core` call and starts no EVM run |
+| ADR17 | `ChainInfo` per request | Not read per request: the head loop reads it at `Start` and with each new head, keeps the last answer with a chain id, and `Environment.ChainInfo`/`ChainID`/`ChainConfig` answer from it. A request makes no uncancellable `ChainInfo` call, and a failing `ChainInfo` keeps the last facts. `ChainInfo` is in `chain.Source`; the injection matrix names it as read by the head loop only |
