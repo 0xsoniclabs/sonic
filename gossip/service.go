@@ -65,6 +65,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/proclogger"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
+	"github.com/0xsoniclabs/sonic/rpc/core"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 	"github.com/0xsoniclabs/sonic/utils/wgmutex"
 	"github.com/0xsoniclabs/sonic/valkeystore"
@@ -80,6 +81,7 @@ type ServiceFeed struct {
 	newEmittedEvent notify.Feed
 	newBlock        notify.Feed
 	newLogs         notify.Feed
+	newHead         notify.Feed
 
 	incomingUpdates chan<- feedUpdate // < channel to send updates to the background feed loop
 	stopFeeder      chan<- struct{}   // < if closed, the background feed loop will stop
@@ -109,6 +111,12 @@ func (f *ServiceFeed) SubscribeNewBlock(ch chan<- evmcore.ChainHeadNotify) notif
 
 func (f *ServiceFeed) SubscribeNewLogs(ch chan<- []*types.Log) notify.Subscription {
 	return f.scope.Track(f.newLogs.Subscribe(ch))
+}
+
+// SubscribeNewHead delivers each new archived block together with its logs,
+// for the RPC module.
+func (f *ServiceFeed) SubscribeNewHead(ch chan<- core.HeadEvent) notify.Subscription {
+	return f.scope.Track(f.newHead.Subscribe(ch))
 }
 
 func (f *ServiceFeed) Start(store ArchiveBlockHeightSource) {
@@ -164,6 +172,7 @@ func (f *ServiceFeed) Start(store ArchiveBlockHeightSource) {
 				}
 				f.newBlock.Send(evmcore.ChainHeadNotify{Block: update.block})
 				f.newLogs.Send(update.logs)
+				f.newHead.Send(core.HeadEvent{Block: update.block, Logs: update.logs})
 				pending = pending[1:]
 			}
 		}
