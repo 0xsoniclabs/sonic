@@ -58,6 +58,7 @@ type Server struct {
 	health           Health
 	websocketHandler http.Handler
 	websocketPrefix  string
+	connections      *connections
 
 	mutex    sync.Mutex
 	listener net.Listener
@@ -66,7 +67,7 @@ type Server struct {
 
 // NewServer returns a server for the address (host:port).
 func NewServer(address string, timeouts Timeouts, dispatcher *dispatch.Dispatcher) *Server {
-	return &Server{address: address, timeouts: timeouts, dispatcher: dispatcher}
+	return &Server{address: address, timeouts: timeouts, dispatcher: dispatcher, connections: newConnections()}
 }
 
 // EnableHTTP serves JSON-RPC over HTTP on the server, and the head on
@@ -75,6 +76,13 @@ func (server *Server) EnableHTTP(router Router, config HTTPConfig, health Health
 	server.httpHandler = newHTTPHandler(router, config, server.timeouts.Write)
 	server.httpPrefix = config.PathPrefix
 	server.health = health
+}
+
+// EnableWebSocket serves JSON-RPC over WebSocket on the server, with
+// subscriptions.
+func (server *Server) EnableWebSocket(router Router, config WebSocketConfig) {
+	server.websocketHandler = newWebSocketEndpoint(router, config, server.dispatcher, server.connections)
+	server.websocketPrefix = config.PathPrefix
 }
 
 // Start listens and serves.
@@ -134,7 +142,8 @@ func (server *Server) Address() string {
 const shutdownTimeout = 5 * time.Second
 
 // Stop stops listening, lets the requests in flight finish for a while and
-// closes the connections.
+// closes the connections; the WebSocket connections, which net/http no
+// longer tracks once upgraded, are ended and waited for.
 func (server *Server) Stop() {
 	server.mutex.Lock()
 	httpServer := server.server
@@ -149,6 +158,7 @@ func (server *Server) Stop() {
 		log.Warn("HTTP server graceful shutdown timed out")
 		_ = httpServer.Close()
 	}
+	server.connections.stop()
 	log.Info("HTTP server stopped", "endpoint", server.Address())
 }
 
