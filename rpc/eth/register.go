@@ -90,6 +90,7 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, no
 	encoded := dispatch.Required[hexutil.Bytes]("transaction")
 	add("sendRawTransaction", handler.sendRawTransaction, encoded)
 	add("sendRawTransactionSync", handler.sendRawTransactionSync, encoded, dispatch.Optional[hexutil.Uint64]("timeout"))
+	add("pendingTransactions", handler.pendingTransactions)
 
 	add("getBlockByNumber", handler.getBlockByNumber, block, fullTransactions)
 	add("getBlockByHash", handler.getBlockByHash, hash, fullTransactions)

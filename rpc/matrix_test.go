@@ -134,9 +134,14 @@ func (chain matrixChain) requests() map[string][]string {
 		},
 		"sendRawTransaction":     {`[` + raw + `]`, `["0x01"]`},
 		"sendRawTransactionSync": {`[` + raw + `, "0x1"]`, `["0x01"]`},
+		"pendingTransactions":    {`[]`},
 		"createAccessList":       {`[` + message + `]`, `[` + priced + `, "latest"]`, `[` + created + `]`, `[` + message + `, "0x5"]`},
 	}
 	all := map[string][]string{
+		"txpool_content":     {`[]`},
+		"txpool_contentFrom": {`[` + sender + `]`},
+		"txpool_status":      {`[]`},
+		"txpool_inspect":     {`[]`},
 		"sonic_estimateGasForTransactions": {
 			`[[` + message + `, ` + message + `]]`, `[[` + message + `], "latest", null, null]`, `[[` + created + `], "0x5"]`, `[[]]`,
 		},
@@ -163,10 +168,6 @@ var unreached = map[string]string{
 	"SubscribeTransactions": "the pool loop's subscription",
 	"FindLogs":              "no method of the module reads logs yet",
 	"BundleInfo":            "no method of the module reads bundles yet",
-	"PoolTransactions":      "no method of the module lists the pool yet",
-	"PoolContent":           "no method of the module lists the pool yet",
-	"PoolContentFrom":       "no method of the module lists the pool yet",
-	"PoolStats":             "no method of the module lists the pool yet",
 	"PendingHeads":          "read by the oracle's sampler loop only",
 }
 

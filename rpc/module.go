@@ -33,6 +33,7 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/sonic"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
+	"github.com/0xsoniclabs/sonic/rpc/txpool"
 	"github.com/0xsoniclabs/sonic/rpc/web3"
 )
 
@@ -115,6 +116,7 @@ func registerNamespaces(dispatcher *dispatch.Dispatcher, environment *exec.Envir
 	net.Register(dispatcher, environment)
 	web3.Register(dispatcher, config.ClientVersion)
 	sonic.Register(dispatcher, environment)
+	txpool.Register(dispatcher, environment, nodeCore)
 }
 
 // Forward makes the module hand every call it does not serve to the node's
