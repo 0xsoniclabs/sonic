@@ -161,6 +161,18 @@ func TestServe_DecodesParametersBeforeTheHandler(t *testing.T) {
 	}
 }
 
+func TestArgumentOr_AnswersTheDefaultForAnAbsentOptional(t *testing.T) {
+	dispatcher := newTestDispatcher(t)
+	dispatcher.Add("test_label", func(_ context.Context, arguments Arguments) (any, error) {
+		return ArgumentOr(arguments, 0, "default"), nil
+	}, Optional[string]("label"))
+	for parameters, result := range map[string]string{`["x"]`: `"x"`, `[]`: `"default"`, `[null]`: `"default"`, `[""]`: `""`} {
+		answer, err := serve(t, dispatcher, "test_label", parameters)
+		require.Nil(t, err)
+		require.Equal(t, result, answer, parameters)
+	}
+}
+
 func TestServe_RefusesTooManyParametersBeforeDecodingThem(t *testing.T) {
 	dispatcher := newTestDispatcher(t)
 	dispatcher.Add("test_one", echo, Required[uint64]("number"))

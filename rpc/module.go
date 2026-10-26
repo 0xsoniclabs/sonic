@@ -31,6 +31,7 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/exec"
 	"github.com/0xsoniclabs/sonic/rpc/net"
 	"github.com/0xsoniclabs/sonic/rpc/oracle"
+	"github.com/0xsoniclabs/sonic/rpc/sonic"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
 	"github.com/0xsoniclabs/sonic/rpc/web3"
 )
@@ -113,6 +114,7 @@ func registerNamespaces(dispatcher *dispatch.Dispatcher, environment *exec.Envir
 	eth.Register(dispatcher, environment, nodeCore, "ftm")
 	net.Register(dispatcher, environment)
 	web3.Register(dispatcher, config.ClientVersion)
+	sonic.Register(dispatcher, environment)
 }
 
 // Forward makes the module hand every call it does not serve to the node's

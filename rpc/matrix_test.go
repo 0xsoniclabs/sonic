@@ -128,6 +128,9 @@ func (chain matrixChain) requests() map[string][]string {
 		"createAccessList":                       {`[` + message + `]`, `[` + priced + `, "latest"]`, `[` + created + `]`, `[` + message + `, "0x5"]`},
 	}
 	all := map[string][]string{
+		"sonic_estimateGasForTransactions": {
+			`[[` + message + `, ` + message + `]]`, `[[` + message + `], "latest", null, null]`, `[[` + created + `], "0x5"]`, `[[]]`,
+		},
 		"net_version":        {`[]`},
 		"web3_clientVersion": {`[]`},
 		"web3_sha3":          {`["0x01"]`},

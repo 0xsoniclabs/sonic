@@ -41,12 +41,12 @@ import (
 // error.
 func (handler *handlers) call(ctx context.Context, arguments dispatch.Arguments) (any, error) {
 	callArguments := dispatch.Argument[exec.CallArguments](arguments, 0)
-	head, statedb, header, err := handler.stateAt(ctx, valueOr(arguments, 1, chain.Latest()))
+	head, statedb, header, err := handler.stateAt(ctx, dispatch.ArgumentOr(arguments, 1, chain.Latest()))
 	if err != nil {
 		return nil, err
 	}
 	defer statedb.Release()
-	if err := valueOr[exec.StateOverride](arguments, 2, nil).Apply(statedb); err != nil {
+	if err := dispatch.ArgumentOr[exec.StateOverride](arguments, 2, nil).Apply(statedb); err != nil {
 		return nil, err
 	}
 	limits := handler.environment.Config()
@@ -75,8 +75,8 @@ func (handler *handlers) estimateGas(ctx context.Context, arguments dispatch.Arg
 	}
 	return handler.environment.EstimateGas(head, exec.Estimation{
 		Arguments:      dispatch.Argument[exec.CallArguments](arguments, 0),
-		Block:          valueOr(arguments, 1, chain.Latest()),
-		StateOverrides: valueOr[exec.StateOverride](arguments, 2, nil),
+		Block:          dispatch.ArgumentOr(arguments, 1, chain.Latest()),
+		StateOverrides: dispatch.ArgumentOr[exec.StateOverride](arguments, 2, nil),
 		BlockOverrides: dispatch.Argument[*exec.BlockOverrides](arguments, 3),
 	})
 }
@@ -105,7 +105,7 @@ type accessListSearch struct {
 // (section 6, F8): the gas of a round is estimated with the access list of
 // the round before, and the estimate ignores input.
 func (handler *handlers) createAccessList(ctx context.Context, arguments dispatch.Arguments) (any, error) {
-	head, statedb, header, err := handler.stateAt(ctx, valueOr(arguments, 1, chain.ReferenceToNumber(chain.PendingBlockNumber)))
+	head, statedb, header, err := handler.stateAt(ctx, dispatch.ArgumentOr(arguments, 1, chain.ReferenceToNumber(chain.PendingBlockNumber)))
 	if err != nil {
 		return nil, err
 	}

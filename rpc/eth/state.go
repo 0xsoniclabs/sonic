@@ -40,15 +40,6 @@ import (
 // maxProofKeys bounds the storage keys of one eth_getProof (V10).
 const maxProofKeys = 1024
 
-// valueOr returns an optional argument, or the given value when the client
-// sent none.
-func valueOr[Value any](arguments dispatch.Arguments, position int, absent Value) Value {
-	if value := dispatch.Argument[*Value](arguments, position); value != nil {
-		return *value
-	}
-	return absent
-}
-
 // findState opens the state of the block an optional argument names, the
 // head's when there is none. The caller releases it.
 func (handler *handlers) findState(ctx context.Context, arguments dispatch.Arguments, position int) (state.StateDB, error) {
@@ -56,7 +47,7 @@ func (handler *handlers) findState(ctx context.Context, arguments dispatch.Argum
 	if err != nil {
 		return nil, err
 	}
-	statedb, err := handler.environment.FindState(head, valueOr(arguments, position, chain.Latest()))
+	statedb, err := handler.environment.FindState(head, dispatch.ArgumentOr(arguments, position, chain.Latest()))
 	return statedb, exec.StateLookupError(err)
 }
 
@@ -106,7 +97,7 @@ func (handler *handlers) getStorageAt(ctx context.Context, arguments dispatch.Ar
 // counts the pending transactions of the account (I5).
 func (handler *handlers) getTransactionCount(ctx context.Context, arguments dispatch.Arguments) (any, error) {
 	address := dispatch.Argument[common.Address](arguments, 0)
-	reference := valueOr(arguments, 1, chain.Latest())
+	reference := dispatch.ArgumentOr(arguments, 1, chain.Latest())
 	if reference.Number != nil && *reference.Number == chain.PendingBlockNumber {
 		nonce := handler.node.PoolNonce(address)
 		return (*hexutil.Uint64)(&nonce), nil
@@ -129,7 +120,7 @@ type accountResult struct {
 }
 
 func (handler *handlers) getAccount(ctx context.Context, arguments dispatch.Arguments) (any, error) {
-	_, statedb, header, err := handler.stateAt(ctx, valueOr(arguments, 1, chain.Latest()))
+	_, statedb, header, err := handler.stateAt(ctx, dispatch.ArgumentOr(arguments, 1, chain.Latest()))
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +198,7 @@ func (handler *handlers) getProof(ctx context.Context, arguments dispatch.Argume
 	if err != nil {
 		return nil, err
 	}
-	_, statedb, header, err := handler.stateAt(ctx, valueOr(arguments, 2, chain.Latest()))
+	_, statedb, header, err := handler.stateAt(ctx, dispatch.ArgumentOr(arguments, 2, chain.Latest()))
 	if err != nil {
 		return nil, err
 	}

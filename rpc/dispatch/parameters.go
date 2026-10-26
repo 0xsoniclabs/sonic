@@ -81,6 +81,15 @@ func Argument[Value any](arguments Arguments, position int) Value {
 	return arguments[position].(Value)
 }
 
+// ArgumentOr returns the argument of an Optional[Value] at a position, or the
+// given value when the client sent none or null.
+func ArgumentOr[Value any](arguments Arguments, position int, absent Value) Value {
+	if value := Argument[*Value](arguments, position); value != nil {
+		return *value
+	}
+	return absent
+}
+
 // DecodeParameters decodes the JSON array of a call against the parameters of
 // a method. Like go-ethereum's server it accepts an absent or null array and
 // fills absent optional parameters.
