@@ -38,7 +38,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/txtrace"
 )
@@ -108,7 +107,7 @@ func setupTracedEVM(
 
 	if tracers.StateDiff {
 		setup.stateDiffLogger = txtrace.NewStateDiffLogger()
-		setup.activeState = evmstore.WrapStateDbWithLogger(setup.activeState, setup.stateDiffLogger.Hooks())
+		setup.activeState = state.WrapWithLogger(setup.activeState, setup.stateDiffLogger.Hooks())
 
 		sdOnEnter := setup.stateDiffLogger.OnEnter
 		if cfg.Tracer == nil {
@@ -127,7 +126,7 @@ func setupTracedEVM(
 	if tracers.VmTrace {
 		setup.vmTraceLogger = txtrace.NewVmTraceLogger()
 		// Wrap activeState so OnStorageChange fires when storage is written.
-		setup.activeState = evmstore.WrapStateDbWithLogger(setup.activeState, setup.vmTraceLogger.Hooks())
+		setup.activeState = state.WrapWithLogger(setup.activeState, setup.vmTraceLogger.Hooks())
 		// Merge VM level hooks into cfg.Tracer.
 		cfg.Tracer = mergeVMHooks(cfg.Tracer, setup.vmTraceLogger.Hooks())
 	}

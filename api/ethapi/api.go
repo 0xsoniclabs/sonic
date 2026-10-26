@@ -31,7 +31,6 @@ import (
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
-	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	bip39 "github.com/tyler-smith/go-bip39"
 
@@ -2730,7 +2729,7 @@ func (api *PublicDebugAPI) traceTx(
 	evmconfig.Tracer = tracer.Hooks
 	evmconfig.NoBaseFee = true
 
-	loggingStateDB := evmstore.WrapStateDbWithLogger(statedb, tracer.Hooks)
+	loggingStateDB := state.WrapWithLogger(statedb, tracer.Hooks)
 
 	vmenv, _, err := api.b.GetEVM(ctx, loggingStateDB, blockHeader, &evmconfig, blockCtx)
 	if err != nil {

@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	interState "github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -335,7 +334,7 @@ func (sim *simulator) processBlock(
 	if hooks := tracer.Hooks(); hooks != nil {
 		vmConfig.Tracer = hooks
 	}
-	activeState := evmstore.WrapStateDbWithLogger(sim.state, tracer.Hooks())
+	activeState := interState.WrapWithLogger(sim.state, tracer.Hooks())
 
 	evm := vm.NewEVM(blockContext, activeState, sim.chainConfig, vmConfig)
 	if precompiles != nil {

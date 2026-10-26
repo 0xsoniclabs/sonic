@@ -75,7 +75,7 @@ type StateDiffStorage struct {
 }
 
 // StateDiffLogger captures account state changes during EVM execution using tracing hooks.
-// Use Hooks() with evmstore.WrapStateDbWithLogger to capture state changes.
+// Use Hooks() with state.WrapWithLogger to capture state changes.
 type StateDiffLogger struct {
 	balances       map[common.Address]*balanceDiff
 	nonces         map[common.Address]*nonceDiff

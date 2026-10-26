@@ -14,19 +14,20 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package evmstore
+package state
 
 import (
 	"math/big"
 
-	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 )
 
-func WrapStateDbWithLogger(stateDb state.StateDB, logger *tracing.Hooks) state.StateDB {
+// WrapWithLogger returns a view of the state that reports its changes to the
+// hooks of a tracer.
+func WrapWithLogger(stateDb StateDB, logger *tracing.Hooks) StateDB {
 	return &LoggingStateDB{
 		stateDb,
 		logger,
@@ -34,8 +35,10 @@ func WrapStateDbWithLogger(stateDb state.StateDB, logger *tracing.Hooks) state.S
 	}
 }
 
+// LoggingStateDB reports the changes made through it to the hooks of a
+// tracer.
 type LoggingStateDB struct {
-	state.StateDB
+	StateDB
 	logger         *tracing.Hooks
 	selfDestructed map[common.Address]struct{}
 }
