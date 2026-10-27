@@ -363,7 +363,7 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	svc.gpo.SetReader(&GPOBackend{svc.store, svc.txpool})
 
 	// create the long-lived ledger driven by the consensus block callback
-	svc.ledger = NewLedger(svc.store)
+	svc.ledger = NewLedger(svc.store, blockProc.EVMModule, &svc.feed)
 
 	// init dialCandidates
 	dnsclient := dnsdisc.NewClient(dnsdisc.Config{})
