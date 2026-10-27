@@ -151,10 +151,13 @@ other rows follow in a section per verdict, `todo` first.
   dependency modules are not covered; these are compared by version only.
 - Both sides are loaded with the Go toolchain the tool runs under, for the
   platform and cgo setting of its environment (`GOOS`, `GOARCH`,
-  `CGO_ENABLED`). Run it with the Go release named by the `go` line of the
-  client's `go.mod`, on a platform the client is built for, with cgo enabled.
-  Otherwise build constraints select other files, such as go-ethereum's pure-Go
-  signature code instead of secp256k1, or a dependency does not build at all.
+  `CGO_ENABLED`). The tool stops unless these are the release platform in
+  `Platform` of `internal/analysis/consensus.go`, linux/amd64 for Sonic, with
+  cgo enabled: other platforms select other files, such as go-ethereum's
+  pure-Go signature code instead of secp256k1 or the generic bn256 and keccak
+  code, and would reopen reviewed rows. Run it with the Go release named by
+  the `go` line of the client's `go.mod`, as a dependency may not build with
+  others.
 - Each side only knows the go-ethereum packages it imports. If only the head
   imports a package, its reachable declarations get the Base `-` even if they
   did not change.

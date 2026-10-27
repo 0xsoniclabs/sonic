@@ -214,6 +214,14 @@ func TestAnalyze_ReportsExactlyTheReachableDifferences(t *testing.T) {
 	}
 }
 
+func TestAnalyze_RefusesOtherPlatforms(t *testing.T) {
+	app := writeProgram(t, t.TempDir(), map[string]string{"core/core.go": oldCore}, map[string]string{"main.go": "package main\n\nfunc main() {}\n"})
+	_, err := Analyze(app, Config{Mains: []string{"."}, Platform: "plan9/386"})
+	if err == nil || !strings.Contains(err.Error(), "want plan9/386 with cgo") {
+		t.Errorf("got error %v, want a refusal to load for another platform", err)
+	}
+}
+
 func TestAnalyze_ComparesTheNativeFilesTheBuildIncludes(t *testing.T) {
 	const core = "package core\n\n/*\n#include \"./lib/src/sum.c\"\n#include \"ext.h\"\n*/\nimport \"C\"\n\nfunc Sum() int { return int(C.sum()) }\n"
 	const sum = "#include \"value.h\"\n\nstatic int sum(void) { return VALUE; }\n"

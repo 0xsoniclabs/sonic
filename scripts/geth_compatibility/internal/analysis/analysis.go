@@ -26,6 +26,7 @@ import (
 	"go/types"
 	"maps"
 	"os"
+	"os/exec"
 	"slices"
 	"strings"
 
@@ -61,6 +62,11 @@ func Analyze(dir string, c Config) (*Side, error) {
 		// Each version resolves its dependencies by its own go.mod, whatever
 		// the workspace or flags of the caller.
 		Env: append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=readonly"),
+	}
+	if c.Platform != "" {
+		if err := checkPlatform(cfg, c.Platform); err != nil {
+			return nil, err
+		}
 	}
 	initial, err := packages.Load(cfg, c.Mains...)
 	if err != nil {
@@ -116,6 +122,25 @@ func Analyze(dir string, c Config) (*Side, error) {
 	cr := reach(prog, consensusRoots, lim)
 	side.Consensus = ix.use(cr.order, c.Cuts, cr.vars)
 	return side, nil
+}
+
+// checkPlatform returns an error unless the toolchain of cfg builds for
+// platform with cgo.
+func checkPlatform(cfg *packages.Config, platform string) error {
+	cmd := exec.Command("go", "env", "GOOS", "GOARCH", "CGO_ENABLED")
+	cmd.Dir, cmd.Env = cfg.Dir, cfg.Env
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("go env: %w", err)
+	}
+	env := strings.Fields(string(out))
+	if len(env) != 3 {
+		return fmt.Errorf("go env printed %q", out)
+	}
+	if got := env[0] + "/" + env[1]; got != platform || env[2] != "1" {
+		return fmt.Errorf("the toolchain builds for %s with CGO_ENABLED=%s, want %s with cgo", got, env[2], platform)
+	}
+	return nil
 }
 
 // Missing returns the parts of the config that neither side has, so that one

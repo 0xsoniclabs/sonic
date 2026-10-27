@@ -34,8 +34,12 @@ import (
 // whose fields name the upgrades that gate changes of the consensus path.
 // Modules lists the dependency modules whose declarations, files and cgo
 // preambles are compared like those of go-ethereum, instead of by version.
+// Platform is the GOOS/GOARCH the program is released for; if set, the program
+// is only loaded for it, with cgo, as build constraints select other files on
+// other platforms.
 type Config struct {
 	Mains    []string
+	Platform string
 	Modules  []string
 	Roots    []string
 	Skips    []string
@@ -44,7 +48,8 @@ type Config struct {
 }
 
 var Sonic = Config{
-	Mains: []string{"./cmd/sonicd", "./cmd/sonictool"},
+	Mains:    []string{"./cmd/sonicd", "./cmd/sonictool"},
+	Platform: "linux/amd64",
 	Modules: []string{
 		"github.com/0xsoniclabs/carmen/go", // the state database
 		"github.com/0xsoniclabs/tosca",     // the EVM implementations
