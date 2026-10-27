@@ -34,6 +34,13 @@ import (
 	"gopkg.in/urfave/cli.v1"
 )
 
+var (
+	AppendFlag = cli.BoolFlag{
+		Name:  "append",
+		Usage: "Keep the failed bundles of the output file and export those after its last block",
+	}
+)
+
 func exportEvents(ctx *cli.Context) (err error) {
 	if len(ctx.Args()) < 1 {
 		return fmt.Errorf("this command requires an argument - the output file")
@@ -91,6 +98,33 @@ func exportEvents(ctx *cli.Context) (err error) {
 
 	log.Info("Exporting events to file", "file", filename)
 	err = chain.ExportEvents(gdbParams, writer, importAll, from, to)
+	if err != nil {
+		return fmt.Errorf("export error: %w", err)
+	}
+
+	return nil
+}
+
+func exportFailedBundles(ctx *cli.Context) (err error) {
+	if len(ctx.Args()) < 1 {
+		return fmt.Errorf("this command requires an argument - the output file")
+	}
+
+	filename := ctx.Args().First()
+
+	dataDir := ctx.GlobalString(flags.DataDirFlag.Name)
+	if dataDir == "" {
+		return fmt.Errorf("--%s need to be set", flags.DataDirFlag.Name)
+	}
+
+	gdbParams := db.GossipDbParameters{
+		DataDir:      dataDir,
+		LiveDbCache:  ctx.GlobalInt64(flags.LiveDbCacheFlag.Name),
+		ArchiveCache: ctx.GlobalInt64(flags.ArchiveCacheFlag.Name),
+	}
+
+	log.Info("Exporting failed bundles to file", "file", filename)
+	err = chain.ExportFailedBundles(gdbParams, filename, ctx.Bool(AppendFlag.Name))
 	if err != nil {
 		return fmt.Errorf("export error: %w", err)
 	}
