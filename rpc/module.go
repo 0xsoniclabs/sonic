@@ -51,6 +51,11 @@ type Config struct {
 
 	// HTTP is the HTTP endpoint the module serves, nil for none.
 	HTTP *HTTPEndpoint
+	// WebSocket is the WebSocket endpoint, nil for none. At the address of
+	// the HTTP endpoint, both share one server, as in go-ethereum's node.
+	WebSocket *WebSocketEndpoint
+	// IPC is the unix socket endpoint, nil for none.
+	IPC *IPCEndpoint
 }
 
 // DefaultConfig returns the default settings, without endpoints.
@@ -73,6 +78,24 @@ type HTTPEndpoint struct {
 	transport.HTTPConfig
 }
 
+// WebSocketEndpoint is a WebSocket endpoint the module listens on.
+type WebSocketEndpoint struct {
+	// Address is host:port.
+	Address string
+	// Namespaces are the namespaces it serves, every one when empty.
+	Namespaces []string
+	// Timeouts are those of its server when it has one of its own.
+	Timeouts transport.Timeouts
+	transport.WebSocketConfig
+}
+
+// IPCEndpoint is the unix socket the module listens on. It serves every
+// namespace, the node's own ones included (X3).
+type IPCEndpoint struct {
+	Path  string
+	Batch transport.BatchLimits
+}
+
 // Module is the RPC module.
 type Module struct {
 	config      Config
@@ -81,6 +104,8 @@ type Module struct {
 	environment *exec.Environment
 	front       *transport.Front
 	http        *transport.Server
+	websocket   *transport.Server
+	ipc         *transport.IPCServer
 }
 
 // New returns the module over the node, with its metrics registered on the
@@ -92,21 +117,14 @@ func New(config Config, nodeCore core.Core, registerer prometheus.Registerer) *M
 	environment := exec.NewEnvironment(nodeCore, served, config.Exec, config.Oracle)
 	registerNamespaces(dispatcher, environment, nodeCore, config)
 
-	enabled := map[string][]string{}
-	if config.HTTP != nil {
-		enabled[transport.HTTP] = config.HTTP.Namespaces
-	}
 	module := &Module{
 		config:      config,
 		dispatcher:  dispatcher,
 		chain:       served,
 		environment: environment,
-		front:       transport.NewFront(dispatcher, enabled),
+		front:       transport.NewFront(dispatcher, enabledNamespaces(config)),
 	}
-	if config.HTTP != nil {
-		module.http = transport.NewServer(config.HTTP.Address, config.HTTP.Timeouts, dispatcher)
-		module.http.EnableHTTP(module.front, config.HTTP.HTTPConfig, served)
-	}
+	module.makeEndpoints(served)
 	return module
 }
 
@@ -121,6 +139,40 @@ func registerNamespaces(dispatcher *dispatch.Dispatcher, environment *exec.Envir
 	txpool.Register(dispatcher, environment, nodeCore)
 }
 
+// enabledNamespaces are the namespaces each transport serves; IPC serves
+// every one.
+func enabledNamespaces(config Config) map[string][]string {
+	enabled := map[string][]string{}
+	if config.HTTP != nil {
+		enabled[transport.HTTP] = config.HTTP.Namespaces
+	}
+	if config.WebSocket != nil {
+		enabled[transport.WebSocket] = config.WebSocket.Namespaces
+	}
+	return enabled
+}
+
+// makeEndpoints makes the servers of the endpoints: WebSocket on the HTTP
+// server when their addresses match, on a server of its own otherwise.
+func (module *Module) makeEndpoints(served *chain.Chain) {
+	config := module.config
+	if config.HTTP != nil {
+		module.http = transport.NewServer(config.HTTP.Address, config.HTTP.Timeouts, module.dispatcher)
+		module.http.EnableHTTP(module.front, config.HTTP.HTTPConfig, served)
+	}
+	if config.WebSocket != nil {
+		if module.http != nil && config.WebSocket.Address == config.HTTP.Address {
+			module.http.EnableWebSocket(module.front, config.WebSocket.WebSocketConfig)
+		} else {
+			module.websocket = transport.NewServer(config.WebSocket.Address, config.WebSocket.Timeouts, module.dispatcher)
+			module.websocket.EnableWebSocket(module.front, config.WebSocket.WebSocketConfig)
+		}
+	}
+	if config.IPC != nil {
+		module.ipc = transport.NewIPCServer(config.IPC.Path, module.front, config.IPC.Batch, module.dispatcher)
+	}
+}
+
 // Forward makes the module hand every call it does not serve to the node's
 // own handler.
 func (module *Module) Forward(forwarder transport.Forwarder) {
@@ -133,20 +185,46 @@ func (module *Module) Start() error {
 		return fmt.Errorf("failed to start the RPC module: %w", err)
 	}
 	module.dispatcher.Loop("oracle", module.environment.Oracle().Sample)
-	if module.http != nil {
-		if err := module.http.Start(); err != nil {
-			module.dispatcher.Stop()
-			return fmt.Errorf("failed to start the HTTP endpoint: %w", err)
+	for _, server := range module.endpoints() {
+		if err := server.Start(); err != nil {
+			_ = module.Stop()
+			return fmt.Errorf("failed to start the %s endpoint: %w", server.name, err)
 		}
 	}
 	return nil
 }
 
+// endpoint is a server of the module with its name.
+type endpoint struct {
+	name string
+	server
+}
+
+type server interface {
+	Start() error
+	Stop()
+}
+
+// endpoints are the servers of the module, in the order they start.
+func (module *Module) endpoints() []endpoint {
+	var endpoints []endpoint
+	if module.http != nil {
+		endpoints = append(endpoints, endpoint{"HTTP", module.http})
+	}
+	if module.websocket != nil {
+		endpoints = append(endpoints, endpoint{"WebSocket", module.websocket})
+	}
+	if module.ipc != nil {
+		endpoints = append(endpoints, endpoint{"IPC", module.ipc})
+	}
+	return endpoints
+}
+
 // Stop closes the endpoints, waits for the requests in flight and stops the
 // loops. Once it returned, the module reads nothing of the node.
 func (module *Module) Stop() error {
-	if module.http != nil {
-		module.http.Stop()
+	for _, server := range module.endpoints() {
+		server.Stop()
 	}
 	module.dispatcher.Stop()
 	return nil
@@ -160,8 +238,20 @@ func (module *Module) HTTPEndpoint() string {
 	return "http://" + module.http.Address()
 }
 
+// WebSocketEndpoint returns the URL of the WebSocket endpoint, empty
+// without one.
+func (module *Module) WebSocketEndpoint() string {
+	switch {
+	case module.websocket != nil:
+		return "ws://" + module.websocket.Address()
+	case module.config.WebSocket != nil && module.http != nil:
+		return "ws://" + module.http.Address()
+	}
+	return ""
+}
+
 // ServesExternally tells whether the module serves an endpoint other
-// processes can reach.
+// processes can reach: HTTP or WebSocket, as go-ethereum's node decides.
 func (module *Module) ServesExternally() bool {
-	return module.http != nil
+	return module.http != nil || module.config.WebSocket != nil
 }

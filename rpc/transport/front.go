@@ -175,14 +175,9 @@ func (front *Front) subscribe(ctx context.Context, transport, method string, par
 	}
 	namespace, _, _ := strings.Cut(method, "_")
 	if !front.serves(transport, namespace) || !front.dispatcher.Has(method) {
-		return nil, SubscriptionNotFound(namespace, name)
+		return nil, dispatch.SubscriptionNotFound(namespace, name)
 	}
 	return front.dispatcher.Serve(ctx, method, parameters)
-}
-
-// SubscriptionNotFound answers a subscription a namespace does not offer.
-func SubscriptionNotFound(namespace, name string) *dispatch.Error {
-	return &dispatch.Error{Code: dispatch.CodeMethodNotFound, Message: fmt.Sprintf("no %q subscription in %s namespace", name, namespace)}
 }
 
 // subscriptionName reads the name of a subscription, its first parameter.

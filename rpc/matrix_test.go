@@ -142,6 +142,7 @@ func (chain matrixChain) requests() map[string][]string {
 		"getFilterChanges":            {`["0x1"]`},
 		"getFilterLogs":               {`["0x1"]`},
 		"uninstallFilter":             {`["0x1"]`},
+		"subscribe":                   {`["newHeads"]`, `["logs", {}]`, `["unknown"]`},
 		"createAccessList":            {`[` + message + `]`, `[` + priced + `, "latest"]`, `[` + created + `]`, `[` + message + `, "0x5"]`},
 	}
 	proposal := `{"steps": [{"from": ` + sender + `, "to": ` + contract + `, "nonce": "0x1"}]}`
@@ -180,6 +181,13 @@ var unreached = map[string]string{
 	"PendingHeads":          "read by the oracle's sampler loop only",
 }
 
+// requestPanics counts the panics of requests, leaving out those of the
+// oracle's sampler, which reads Rules and PendingHeads on its own schedule.
+func (chain matrixChain) requestPanics(t *testing.T) float64 {
+	t.Helper()
+	return chain.harness.Panics() - tests.Labeled(t, chain.harness.Registry, "rpc_panics_total", map[string]string{"method": "oracle"})
+}
+
 // TestMatrix_EveryCoreFailureIsContained holds Q3 and P1: whatever a Core
 // method answers, every request is answered, a panic is recovered, answered
 // -32603 and counted, and nothing else panics.
@@ -198,7 +206,7 @@ func TestMatrix_EveryCoreFailureIsContained(t *testing.T) {
 			}
 			chain.core.SetMode(method, mode)
 			callsBefore := chain.core.Calls(method)
-			panicsBefore := chain.harness.Panics()
+			panicsBefore := chain.requestPanics(t)
 			crashed := 0
 			for name, shapes := range requests {
 				for _, shape := range shapes {
@@ -212,7 +220,7 @@ func TestMatrix_EveryCoreFailureIsContained(t *testing.T) {
 			}
 			chain.core.SetMode(method, tests.Normal)
 			require.Greater(t, chain.core.Calls(method), callsBefore, "no request reached %s in mode %s", method, mode)
-			panics := chain.harness.Panics() - panicsBefore
+			panics := chain.requestPanics(t) - panicsBefore
 			if mode == tests.Panic {
 				require.Positive(t, crashed, "a panic of %s was not answered", method)
 				require.Equal(t, float64(crashed), panics, "every panic of %s is counted once", method)

@@ -20,7 +20,10 @@ package filters
 
 import (
 	"context"
+	"encoding/json"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/rpc/chain"
 	"github.com/0xsoniclabs/sonic/rpc/core"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
@@ -30,6 +33,7 @@ type handlers struct {
 	environment *exec.Environment
 	logIndex    core.LogIndex
 	polled      *polledFilters
+	headers     *headers
 }
 
 // Register adds the methods of the package under each namespace name (eth
@@ -37,7 +41,8 @@ type handlers struct {
 // loops that feed and expire the polled filters.
 func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, logIndex core.LogIndex, namespaces ...string) {
 	polled := newPolledFilters(environment.Config().FilterTimeout, journalLimit)
-	handler := &handlers{environment: environment, logIndex: logIndex, polled: polled}
+	built := &headers{environment: environment, hub: chain.NewHub[*evmcore.EvmHeaderJson](headerQueue)}
+	handler := &handlers{environment: environment, logIndex: logIndex, polled: polled, headers: built}
 	criteria := dispatch.Required[Criteria]("criteria")
 	identifier := dispatch.Required[string]("filter")
 	for _, namespace := range namespaces {
@@ -51,7 +56,9 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, lo
 		add("getFilterChanges", handler.getFilterChanges, identifier)
 		add("getFilterLogs", handler.getFilterLogs, identifier)
 		add("uninstallFilter", handler.uninstallFilter, identifier)
+		add("subscribe", handler.subscribe(namespace), dispatch.Required[string]("subscription"), dispatch.Optional[json.RawMessage]("argument"))
 	}
+	dispatcher.Loop("subscriptions-heads", built.follow(environment.Heads()))
 	dispatcher.Loop("filters-heads", polled.followHeads(environment.Heads()))
 	dispatcher.Loop("filters-pool", polled.followPool(environment.Transactions()))
 	dispatcher.Loop("filters-expiry", polled.expire)

@@ -30,7 +30,6 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/chain"
 	"github.com/0xsoniclabs/sonic/rpc/core"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
-	"github.com/0xsoniclabs/sonic/rpc/format"
 )
 
 const (
@@ -373,11 +372,7 @@ func (handler *handlers) pendingTransactions(transactions []*types.Transaction, 
 	var answered []any
 	chainID := handler.environment.ChainID()
 	for _, transaction := range transactions {
-		if full {
-			answered = append(answered, format.PendingTransaction(transaction, transaction.GasPrice(), chainID))
-		} else {
-			answered = append(answered, transaction.Hash())
-		}
+		answered = append(answered, pendingForm(transaction, full, chainID))
 	}
 	return answered
 }

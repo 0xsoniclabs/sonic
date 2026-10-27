@@ -65,6 +65,12 @@ func MethodNotFound(method string) *Error {
 	return &Error{Code: CodeMethodNotFound, Message: fmt.Sprintf("the method %s does not exist/is not available", method)}
 }
 
+// SubscriptionNotFound answers a subscription a namespace does not offer,
+// as go-ethereum's server words it.
+func SubscriptionNotFound(namespace, name string) *Error {
+	return &Error{Code: CodeMethodNotFound, Message: fmt.Sprintf("no %q subscription in %s namespace", name, namespace)}
+}
+
 // ErrNotificationsUnsupported answers a subscription on a transport without
 // notifications.
 var ErrNotificationsUnsupported = &Error{Code: CodeMethodNotFound, Message: "notifications not supported"}

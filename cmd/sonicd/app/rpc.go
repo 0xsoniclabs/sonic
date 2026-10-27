@@ -40,7 +40,7 @@ import (
 func newRPCModule(stack *node.Node, service *gossip.Service, configuration *config.Config) (*rpc.Module, error) {
 	moduleConfig := rpcModuleConfig(configuration)
 	moduleConfig.ClientVersion = stack.Server().Name
-	moduleConfig.HTTP = takeOverRPC(stack.Config())
+	takeOverRPC(stack.Config(), &moduleConfig)
 
 	module := rpc.New(moduleConfig, service.RPCCore(), prometheus.DefaultRegisterer)
 	handler, err := stack.RPCHandler()
@@ -77,47 +77,71 @@ func rpcModuleConfig(configuration *config.Config) rpc.Config {
 	return moduleConfig
 }
 
-// takeOverRPC moves the HTTP endpoint from the node's configuration to the
-// module and returns it, nil when the module does not take it. The node then
-// starts no HTTP server. An HTTP endpoint that shares its port with WebSocket
-// stays with the node, whose WebSocket server it is, as long as WebSocket is
-// the node's.
+// takeOverRPC moves the HTTP, WebSocket and IPC endpoints from the node's
+// configuration to the module's, which serves them; the node then starts no
+// server of its own. WebSocket shares the HTTP server when their ports
+// match, and the shared server listens on the WebSocket host, as
+// go-ethereum's node decides (Node.wsServerForPort).
 //
 // Taking over rewrites the configuration everything in the node reads, so its
 // readers learn from the module whether external RPC is served: see
 // externalRPCServed.
-func takeOverRPC(nodeConfig *node.Config) *rpc.HTTPEndpoint {
-	if nodeConfig.HTTPHost == "" {
-		return nil
+func takeOverRPC(nodeConfig *node.Config, moduleConfig *rpc.Config) {
+	timeouts := nodeTimeouts(nodeConfig)
+	batch := transport.BatchLimits{
+		RequestLimit:    nodeConfig.BatchRequestLimit,
+		ResponseMaxSize: nodeConfig.BatchResponseMaxSize,
 	}
-	if nodeConfig.WSHost != "" && nodeConfig.WSPort == nodeConfig.HTTPPort {
-		return nil
+	if nodeConfig.HTTPHost != "" {
+		moduleConfig.HTTP = &rpc.HTTPEndpoint{
+			Address:    net.JoinHostPort(nodeConfig.HTTPHost, strconv.Itoa(nodeConfig.HTTPPort)),
+			Namespaces: nodeConfig.HTTPModules,
+			Timeouts:   timeouts,
+			HTTPConfig: transport.HTTPConfig{
+				PathPrefix:   nodeConfig.HTTPPathPrefix,
+				CORSOrigins:  nodeConfig.HTTPCors,
+				VirtualHosts: nodeConfig.HTTPVirtualHosts,
+				Batch:        batch,
+			},
+		}
 	}
+	if nodeConfig.WSHost != "" {
+		address := net.JoinHostPort(nodeConfig.WSHost, strconv.Itoa(nodeConfig.WSPort))
+		if moduleConfig.HTTP != nil && nodeConfig.WSPort == nodeConfig.HTTPPort {
+			moduleConfig.HTTP.Address = address
+		}
+		moduleConfig.WebSocket = &rpc.WebSocketEndpoint{
+			Address:    address,
+			Namespaces: nodeConfig.WSModules,
+			Timeouts:   timeouts,
+			WebSocketConfig: transport.WebSocketConfig{
+				PathPrefix: nodeConfig.WSPathPrefix,
+				Origins:    nodeConfig.WSOrigins,
+				Batch:      batch,
+			},
+		}
+	}
+	if path := nodeConfig.IPCEndpoint(); path != "" {
+		moduleConfig.IPC = &rpc.IPCEndpoint{Path: path, Batch: batch}
+	}
+	nodeConfig.HTTPHost = ""
+	nodeConfig.WSHost = ""
+	nodeConfig.IPCPath = ""
+}
+
+// nodeTimeouts are the server timeouts of the node's configuration, checked
+// as the node checks them; no timeouts stay no timeouts.
+func nodeTimeouts(nodeConfig *node.Config) transport.Timeouts {
 	timeouts := nodeConfig.HTTPTimeouts
 	if timeouts != (gethrpc.HTTPTimeouts{}) {
 		node.CheckTimeouts(&timeouts)
 	}
-	endpoint := &rpc.HTTPEndpoint{
-		Address:    net.JoinHostPort(nodeConfig.HTTPHost, strconv.Itoa(nodeConfig.HTTPPort)),
-		Namespaces: nodeConfig.HTTPModules,
-		Timeouts: transport.Timeouts{
-			Read:       timeouts.ReadTimeout,
-			ReadHeader: timeouts.ReadHeaderTimeout,
-			Write:      timeouts.WriteTimeout,
-			Idle:       timeouts.IdleTimeout,
-		},
-		HTTPConfig: transport.HTTPConfig{
-			PathPrefix:   nodeConfig.HTTPPathPrefix,
-			CORSOrigins:  nodeConfig.HTTPCors,
-			VirtualHosts: nodeConfig.HTTPVirtualHosts,
-			Batch: transport.BatchLimits{
-				RequestLimit:    nodeConfig.BatchRequestLimit,
-				ResponseMaxSize: nodeConfig.BatchResponseMaxSize,
-			},
-		},
+	return transport.Timeouts{
+		Read:       timeouts.ReadTimeout,
+		ReadHeader: timeouts.ReadHeaderTimeout,
+		Write:      timeouts.WriteTimeout,
+		Idle:       timeouts.IdleTimeout,
 	}
-	nodeConfig.HTTPHost = ""
-	return endpoint
 }
 
 // externalRPCServed tells whether the node or the module serves RPC that

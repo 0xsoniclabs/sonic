@@ -32,12 +32,14 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip"
+	"github.com/0xsoniclabs/sonic/rpc"
 	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
 )
 
-func TestTakeOverRPC_TakesAnHTTPEndpointOfItsOwn(t *testing.T) {
+func TestTakeOverRPC_TakesEveryEndpoint(t *testing.T) {
 	nodeConfig := node.Config{
+		DataDir:              "/data",
 		HTTPHost:             "127.0.0.1",
 		HTTPPort:             8545,
 		HTTPModules:          []string{"eth", "net"},
@@ -47,46 +49,67 @@ func TestTakeOverRPC_TakesAnHTTPEndpointOfItsOwn(t *testing.T) {
 		HTTPTimeouts:         gethrpc.HTTPTimeouts{ReadTimeout: 2 * time.Second, ReadHeaderTimeout: 3 * time.Second, WriteTimeout: 4 * time.Second, IdleTimeout: 5 * time.Second},
 		BatchRequestLimit:    7,
 		BatchResponseMaxSize: 8,
-		WSHost:               "127.0.0.1",
+		WSHost:               "127.0.0.2",
 		WSPort:               8546,
+		WSModules:            []string{"eth"},
+		WSOrigins:            []string{"https://wallet.example"},
+		WSPathPrefix:         "/ws",
+		IPCPath:              "sonic.ipc",
 	}
-	endpoint := takeOverRPC(&nodeConfig)
-	require.NotNil(t, endpoint)
-	require.Equal(t, "127.0.0.1:8545", endpoint.Address)
-	require.Equal(t, []string{"eth", "net"}, endpoint.Namespaces)
-	require.Equal(t, transport.Timeouts{Read: 2 * time.Second, ReadHeader: 3 * time.Second, Write: 4 * time.Second, Idle: 5 * time.Second}, endpoint.Timeouts)
-	require.Equal(t, transport.HTTPConfig{
-		PathPrefix:   "/rpc",
-		CORSOrigins:  []string{"https://example.com"},
-		VirtualHosts: []string{"localhost"},
-		Batch:        transport.BatchLimits{RequestLimit: 7, ResponseMaxSize: 8},
-	}, endpoint.HTTPConfig)
-	require.Empty(t, nodeConfig.HTTPHost, "the node starts no HTTP server of its own")
-	require.Equal(t, "127.0.0.1", nodeConfig.WSHost, "WebSocket stays with the node")
-	require.True(t, nodeConfig.ExtRPCEnabled(), "the node still serves WebSocket")
+	var moduleConfig rpc.Config
+	takeOverRPC(&nodeConfig, &moduleConfig)
+	batch := transport.BatchLimits{RequestLimit: 7, ResponseMaxSize: 8}
+	timeouts := transport.Timeouts{Read: 2 * time.Second, ReadHeader: 3 * time.Second, Write: 4 * time.Second, Idle: 5 * time.Second}
+	require.Equal(t, &rpc.HTTPEndpoint{
+		Address:    "127.0.0.1:8545",
+		Namespaces: []string{"eth", "net"},
+		Timeouts:   timeouts,
+		HTTPConfig: transport.HTTPConfig{PathPrefix: "/rpc", CORSOrigins: []string{"https://example.com"}, VirtualHosts: []string{"localhost"}, Batch: batch},
+	}, moduleConfig.HTTP)
+	require.Equal(t, &rpc.WebSocketEndpoint{
+		Address:         "127.0.0.2:8546",
+		Namespaces:      []string{"eth"},
+		Timeouts:        timeouts,
+		WebSocketConfig: transport.WebSocketConfig{PathPrefix: "/ws", Origins: []string{"https://wallet.example"}, Batch: batch},
+	}, moduleConfig.WebSocket)
+	require.Equal(t, &rpc.IPCEndpoint{Path: "/data/sonic.ipc", Batch: batch}, moduleConfig.IPC)
+	require.Empty(t, nodeConfig.HTTPHost, "the node starts no server of its own")
+	require.Empty(t, nodeConfig.WSHost)
+	require.Empty(t, nodeConfig.IPCPath)
+	require.False(t, nodeConfig.ExtRPCEnabled(), "the module, not the node's configuration, tells whether RPC is external")
 }
 
-func TestTakeOverRPC_LeavesAnEndpointSharedWithWebSocketToTheNode(t *testing.T) {
+// TestTakeOverRPC_SharesTheHTTPServerWhenThePortsMatch: the shared server
+// listens on the WebSocket host, as go-ethereum's node decides.
+func TestTakeOverRPC_SharesTheHTTPServerWhenThePortsMatch(t *testing.T) {
 	for name, wsHost := range map[string]string{"same host": "127.0.0.1", "another host": "0.0.0.0"} {
 		nodeConfig := node.Config{HTTPHost: "127.0.0.1", HTTPPort: 8545, WSHost: wsHost, WSPort: 8545}
-		require.Nil(t, takeOverRPC(&nodeConfig), name)
-		require.Equal(t, "127.0.0.1", nodeConfig.HTTPHost, name)
+		var moduleConfig rpc.Config
+		takeOverRPC(&nodeConfig, &moduleConfig)
+		require.Equal(t, wsHost+":8545", moduleConfig.HTTP.Address, name)
+		require.Equal(t, moduleConfig.HTTP.Address, moduleConfig.WebSocket.Address, name)
 	}
 }
 
-func TestTakeOverRPC_TakesNothingWithoutHTTP(t *testing.T) {
-	nodeConfig := node.Config{WSHost: "127.0.0.1", WSPort: 8546}
-	require.Nil(t, takeOverRPC(&nodeConfig))
+func TestTakeOverRPC_TakesNothingWithoutEndpoints(t *testing.T) {
+	nodeConfig := node.Config{}
+	var moduleConfig rpc.Config
+	takeOverRPC(&nodeConfig, &moduleConfig)
+	require.Nil(t, moduleConfig.HTTP)
+	require.Nil(t, moduleConfig.WebSocket)
+	require.Nil(t, moduleConfig.IPC)
 }
 
 func TestTakeOverRPC_SanitizesTimeoutsAsTheNode(t *testing.T) {
 	nodeConfig := node.Config{HTTPHost: "127.0.0.1", HTTPTimeouts: gethrpc.HTTPTimeouts{ReadTimeout: time.Millisecond}}
-	endpoint := takeOverRPC(&nodeConfig)
-	require.Equal(t, gethrpc.DefaultHTTPTimeouts.WriteTimeout, endpoint.Timeouts.Write)
-	require.Equal(t, gethrpc.DefaultHTTPTimeouts.ReadTimeout, endpoint.Timeouts.Read)
+	var moduleConfig rpc.Config
+	takeOverRPC(&nodeConfig, &moduleConfig)
+	require.Equal(t, gethrpc.DefaultHTTPTimeouts.WriteTimeout, moduleConfig.HTTP.Timeouts.Write)
+	require.Equal(t, gethrpc.DefaultHTTPTimeouts.ReadTimeout, moduleConfig.HTTP.Timeouts.Read)
 
 	nodeConfig = node.Config{HTTPHost: "127.0.0.1"}
-	require.Equal(t, transport.Timeouts{}, takeOverRPC(&nodeConfig).Timeouts, "no timeouts stay no timeouts")
+	takeOverRPC(&nodeConfig, &moduleConfig)
+	require.Equal(t, transport.Timeouts{}, moduleConfig.HTTP.Timeouts, "no timeouts stay no timeouts")
 }
 
 // TestRPCModuleConfig_MapsEveryKnob holds O4 for the mapping into the
