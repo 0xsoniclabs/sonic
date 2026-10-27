@@ -70,7 +70,7 @@ func TestHead_BeginBlock_OpensLiveStateAtHeadStateRoot(t *testing.T) {
 	require.Equal(t, head.Block().StateRoot, executing.stateDB().GetStateHash())
 }
 
-func TestHead_BeginBlock_SecondCallOnSameHead_ReportsError(t *testing.T) {
+func TestHead_BeginBlock_SecondCallOnSameHead_Panics(t *testing.T) {
 	store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
 	head, err := NewLedger(store, evmmodule.New(), nil).Head()
 	require.NoError(t, err)
@@ -78,9 +78,7 @@ func TestHead_BeginBlock_SecondCallOnSameHead_ReportsError(t *testing.T) {
 	_, err = head.BeginBlock(blockParams, nil)
 	require.NoError(t, err)
 
-	executing, err := head.BeginBlock(blockParams, nil)
-	require.ErrorContains(t, err, "head already consumed")
-	require.Nil(t, executing)
+	require.PanicsWithValue(t, "head already consumed", func() { _, _ = head.BeginBlock(blockParams, nil) })
 }
 
 func TestHead_BeginBlock_FailedCallDoesNotConsumeHead(t *testing.T) {
@@ -120,7 +118,7 @@ func TestHead_BeginBlock_FailedCallDoesNotConsumeHead(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
-			l := NewLedger(store, evmmodule.New(), nil).(*ledger)
+			l := NewLedger(store, evmmodule.New(), nil)
 			head, err := l.Head()
 			require.NoError(t, err)
 			blockParams := BlockParams{Time: head.Block().Time + 1}
@@ -147,12 +145,12 @@ func TestHead_BeginBlock_StartsEvmAndBlockBuilderFromParamsAndHead(t *testing.T)
 
 	parent := head.Block()
 	blockParams := BlockParams{
-		Time:         parent.Time + 3,
-		Epoch:        4,
-		PrevRandao:   common.Hash{5},
-		GasLimit:     6,
-		UserGasLimit: 7,
-		Rules:        opera.FakeNetRules(opera.GetSonicUpgrades()),
+		Time:                     parent.Time + 3,
+		Epoch:                    4,
+		PrevRandao:               common.Hash{5},
+		GasLimit:                 6,
+		UserTransactionsGasLimit: 7,
+		Rules:                    opera.FakeNetRules(opera.GetSonicUpgrades()),
 	}
 	evmCfg := opera.CreateTransientEvmChainConfig(
 		blockParams.Rules.NetworkID, store.GetUpgradeHeights(), idx.Block(parent.Number+1),
@@ -238,7 +236,7 @@ func TestHead_BeginBlock_FailedPrecondition_ReportsError(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
-			l := NewLedger(store, nil, nil).(*ledger)
+			l := NewLedger(store, nil, nil)
 			if test.beforeHead != nil {
 				test.beforeHead(l)
 			}
@@ -256,12 +254,12 @@ func TestHead_BeginBlock_FailedPrecondition_ReportsError(t *testing.T) {
 	}
 }
 
-func TestExecutingBlock_Run_ExecutesWithinUserGasLimit(t *testing.T) {
+func TestExecutingBlock_Run_ExecutesWithinUserTransactionsGasLimit(t *testing.T) {
 	txs := types.Transactions{types.NewTx(&types.LegacyTx{Nonce: 1})}
-	blockParams := BlockParams{GasLimit: 4, UserGasLimit: 3}
+	blockParams := BlockParams{GasLimit: 4, UserTransactionsGasLimit: 3}
 
 	evmProcessor := blockproc.NewMockEVMProcessor(gomock.NewController(t))
-	evmProcessor.EXPECT().Execute(txs, blockParams.UserGasLimit, uint64(math.MaxUint64)).Return(evmcore.ProcessSummary{})
+	evmProcessor.EXPECT().Execute(txs, blockParams.UserTransactionsGasLimit, uint64(math.MaxUint64)).Return(evmcore.ProcessSummary{})
 
 	executing := &executingBlock{
 		evmProcessor: evmProcessor,
@@ -281,8 +279,8 @@ func TestExecutingBlock_runInternal_ExecutesWithinBlockGasLimitAndUnlimitedSize(
 	}}
 
 	blockParams := BlockParams{
-		GasLimit:     4,
-		UserGasLimit: 3,
+		GasLimit:                 4,
+		UserTransactionsGasLimit: 3,
 		// Brio enables the size limit for user batches, so this checks that internal batches ignore it.
 		Rules: opera.Rules{Upgrades: opera.Upgrades{Brio: true}},
 	}
@@ -389,24 +387,21 @@ func TestExecutingBlock_Finalize_AssemblesBlockFromExecutionResults(t *testing.T
 }
 
 func TestExecutingBlock_AfterFinalize_Panics(t *testing.T) {
-	tests := map[string]struct {
-		call      func(ExecutingBlock)
-		wantPanic string
-	}{
-		"stateDB":     {func(executing ExecutingBlock) { executing.stateDB() }, "stateDB called after Finalize"},
-		"Run":         {func(executing ExecutingBlock) { executing.Run(nil) }, "Run called after Finalize"},
-		"runInternal": {func(executing ExecutingBlock) { executing.runInternal(nil) }, "runInternal called after Finalize"},
-		"Finalize":    {func(executing ExecutingBlock) { executing.Finalize() }, "Finalize called twice"},
+	tests := map[string]func(ExecutingBlock){
+		"stateDB":     func(executing ExecutingBlock) { executing.stateDB() },
+		"Run":         func(executing ExecutingBlock) { executing.Run(nil) },
+		"runInternal": func(executing ExecutingBlock) { executing.runInternal(nil) },
+		"Finalize":    func(executing ExecutingBlock) { executing.Finalize() },
 	}
 
-	for name, test := range tests {
+	for name, call := range tests {
 		t.Run(name, func(t *testing.T) {
 			evmProcessor := blockproc.NewMockEVMProcessor(gomock.NewController(t))
 			evmProcessor.EXPECT().Finalize().Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{BaseFee: big.NewInt(0)}}, 0, nil)
 			executing := &executingBlock{evmProcessor: evmProcessor, blockBuilder: inter.NewBlockBuilder()}
 			executing.Finalize()
 
-			require.PanicsWithValue(t, test.wantPanic, func() { test.call(executing) })
+			require.PanicsWithValue(t, "executing block already consumed", func() { call(executing) })
 		})
 	}
 }

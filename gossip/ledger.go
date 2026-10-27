@@ -17,7 +17,6 @@
 package gossip
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -54,6 +53,7 @@ type Head interface {
 
 	// BeginBlock opens the live state at the head's state root and starts
 	// executing the next block on it, forwarding emitted logs to onNewLog.
+	// A successful call consumes the head; any later call panics.
 	BeginBlock(params BlockParams, onNewLog func(*core_types.Log)) (ExecutingBlock, error)
 }
 
@@ -64,7 +64,7 @@ type ExecutingBlock interface {
 	stateDB() state.StateDB
 
 	// Run executes a batch of user transactions against the block being
-	// assembled, honoring the block's user gas limit and the block size limit,
+	// assembled, honoring UserTransactionsGasLimit and the block size limit,
 	// appends the accepted ones, and maps each processed transaction to the
 	// transaction that caused it.
 	Run(txs types.Transactions) map[common.Hash]common.Hash
@@ -77,7 +77,8 @@ type ExecutingBlock interface {
 	runInternal(txs types.Transactions) evmcore.ProcessSummary
 
 	// Finalize commits the EVM state, assembles and hashes the block, and
-	// returns the finalized block.
+	// returns the finalized block. It consumes the executing block; any later
+	// call on it panics.
 	Finalize() FinalizedBlock
 }
 
@@ -96,12 +97,16 @@ var (
 
 // BlockParams holds the inputs for executing the next block.
 type BlockParams struct {
-	Time         inter.Timestamp
-	Epoch        idx.Epoch
-	PrevRandao   common.Hash
-	GasLimit     uint64
-	UserGasLimit uint64
-	Rules        opera.Rules
+	Time       inter.Timestamp
+	Epoch      idx.Epoch
+	PrevRandao common.Hash
+	// GasLimit is the block's header gas limit; internal transactions run
+	// within it.
+	GasLimit uint64
+	// UserTransactionsGasLimit is the gas available to user transactions
+	// executed by Run. It must be at most GasLimit.
+	UserTransactionsGasLimit uint64
+	Rules                    opera.Rules
 }
 
 // ledger is the main implementation of Ledger.
@@ -113,7 +118,7 @@ type ledger struct {
 
 // NewLedger creates a Ledger over the given store, executing blocks with the
 // given EVM module. The new-block feed may be nil.
-func NewLedger(store *Store, evm blockproc.EVM, feed *ServiceFeed) Ledger {
+func NewLedger(store *Store, evm blockproc.EVM, feed *ServiceFeed) *ledger {
 	return &ledger{evmModule: evm, store: store, feed: feed}
 }
 
@@ -142,7 +147,7 @@ func (h *head) BeginBlock(
 	onNewLog func(*core_types.Log),
 ) (ExecutingBlock, error) {
 	if h.consumed {
-		return nil, errors.New("head already consumed")
+		panic("head already consumed")
 	}
 	if params.Time <= h.block.Time {
 		return nil, fmt.Errorf("block time %d is not after head time %d", params.Time, h.block.Time)
@@ -205,27 +210,27 @@ type executingBlock struct {
 
 func (eb *executingBlock) stateDB() state.StateDB {
 	if eb.finalized {
-		panic("stateDB called after Finalize")
+		panic("executing block already consumed")
 	}
 	return eb.statedb
 }
 
 func (eb *executingBlock) Run(txs types.Transactions) map[common.Hash]common.Hash {
 	if eb.finalized {
-		panic("Run called after Finalize")
+		panic("executing block already consumed")
 	}
 	return processUserTransactions(
 		eb.evmProcessor,
 		eb.blockBuilder,
 		txs,
-		eb.params.UserGasLimit,
+		eb.params.UserTransactionsGasLimit,
 		eb.params.Rules.Upgrades,
 	)
 }
 
 func (eb *executingBlock) runInternal(txs types.Transactions) evmcore.ProcessSummary {
 	if eb.finalized {
-		panic("runInternal called after Finalize")
+		panic("executing block already consumed")
 	}
 	summary := eb.evmProcessor.Execute(txs, eb.params.GasLimit, math.MaxUint64)
 	for _, processed := range summary.ProcessedTransactions {
@@ -246,7 +251,7 @@ type BlockCandidate struct {
 
 func (eb *executingBlock) Finalize() FinalizedBlock {
 	if eb.finalized {
-		panic("Finalize called twice")
+		panic("executing block already consumed")
 	}
 	eb.finalized = true
 

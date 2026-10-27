@@ -580,12 +580,12 @@ func TestConsensusCallback_BeginsBlockWithParamsFromConsensusAndLogsToTxListener
 
 	// The proposal carries no valid randao reveal, so the event-derived one is used.
 	want := BlockParams{
-		Time:         blockTime,
-		Epoch:        es.Epoch,
-		PrevRandao:   computePrevRandao([]hash.Event{atropos.ID()}),
-		GasLimit:     es.Rules.Blocks.MaxBlockGas,
-		UserGasLimit: inter.GetEffectiveGasLimit(time.Second, es.Rules.Economy.ShortGasPower.AllocPerSec, es.Rules.Blocks.MaxBlockGas),
-		Rules:        es.Rules,
+		Time:                     blockTime,
+		Epoch:                    es.Epoch,
+		PrevRandao:               computePrevRandao([]hash.Event{atropos.ID()}),
+		GasLimit:                 es.Rules.Blocks.MaxBlockGas,
+		UserTransactionsGasLimit: inter.GetEffectiveGasLimit(time.Second, es.Rules.Economy.ShortGasPower.AllocPerSec, es.Rules.Blocks.MaxBlockGas),
+		Rules:                    es.Rules,
 	}
 
 	ctrl := gomock.NewController(t)

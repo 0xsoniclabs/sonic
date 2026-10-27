@@ -910,12 +910,12 @@ func endBlock(
 
 	// prepare block processing
 	blockParams := BlockParams{
-		Time:         blockCtx.Time,
-		Epoch:        cBlock.Atropos.Epoch(),
-		PrevRandao:   randao,
-		GasLimit:     maxBlockGas,
-		UserGasLimit: userTransactionGasLimit,
-		Rules:        thisBlocksRules,
+		Time:                     blockCtx.Time,
+		Epoch:                    cBlock.Atropos.Epoch(),
+		PrevRandao:               randao,
+		GasLimit:                 maxBlockGas,
+		UserTransactionsGasLimit: userTransactionGasLimit,
+		Rules:                    thisBlocksRules,
 	}
 	executingBlock, err := head.BeginBlock(blockParams, onNewLogAll)
 	if err != nil {
