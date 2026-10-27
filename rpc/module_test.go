@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"net"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
@@ -125,4 +126,62 @@ func TestModule_CallServesAClientInTheProcess(t *testing.T) {
 	require.Equal(t, dispatch.CodeMethodNotFound, dispatchError.Code)
 	require.ErrorContains(t, module.Call(t.Context(), &hash, "web3_sha3", func() {}), "unsupported type")
 	require.Error(t, module.Call(t.Context(), new(int), "web3_sha3", "0x"), "a result that does not decode")
+}
+
+// inventory is the method inventory of section 6 of the plan: the methods
+// the module ports or answers locally. The eth ones are mirrored as ftm.
+var inventory = struct {
+	eth, others []string
+}{
+	eth: []string{
+		"chainId", "blockNumber", "syncing",
+		"gasPrice", "maxPriorityFeePerGas", "feeHistory", "blobBaseFee",
+		"getBalance", "getTransactionCount", "getCode", "getStorageAt", "getAccount", "getProof",
+		"call", "estimateGas", "createAccessList", "simulateV1",
+		"getBlockByNumber", "getBlockByHash", "getHeaderByNumber", "getHeaderByHash", "getBlockReceipts",
+		"getBlockTransactionCountByNumber", "getBlockTransactionCountByHash",
+		"getUncleByBlockNumberAndIndex", "getUncleByBlockHashAndIndex", "getUncleCountByBlockNumber", "getUncleCountByBlockHash",
+		"getTransactionByBlockNumberAndIndex", "getTransactionByBlockHashAndIndex",
+		"getRawTransactionByBlockNumberAndIndex", "getRawTransactionByBlockHashAndIndex",
+		"getTransactionByHash", "getRawTransactionByHash", "getTransactionReceipt",
+		"sendRawTransaction", "sendRawTransactionSync", "pendingTransactions",
+		"newFilter", "newBlockFilter", "newPendingTransactionFilter", "getFilterChanges", "getFilterLogs", "uninstallFilter",
+		"getLogs", "subscribe",
+		"getRules", "currentEpoch", "config",
+		"etherbase", "coinbase", "hashrate",
+	},
+	others: []string{
+		"txpool_content", "txpool_contentFrom", "txpool_status", "txpool_inspect",
+		"sonic_estimateGasForTransactions", "sonic_prepareBundle", "sonic_submitBundle", "sonic_getBundleInfo",
+		"debug_getBlockRlp", "debug_printBlock", "debug_traceTransaction", "debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceCall",
+		"trace_transaction", "trace_get", "trace_block", "trace_call", "trace_callMany", "trace_filter",
+		"net_version", "web3_clientVersion", "web3_sha3",
+	},
+}
+
+// profiling are go-ethereum's profiling methods, which the module answers as
+// not enabled in a build without enable_debug.
+var profiling = []string{
+	"debug_verbosity", "debug_vmodule", "debug_memStats", "debug_gcStats", "debug_cpuProfile",
+	"debug_startCPUProfile", "debug_stopCPUProfile", "debug_goTrace", "debug_startGoTrace",
+	"debug_stopGoTrace", "debug_blockProfile", "debug_setBlockProfileRate", "debug_writeBlockProfile",
+	"debug_mutexProfile", "debug_setMutexProfileFraction", "debug_writeMutexProfile",
+	"debug_writeMemProfile", "debug_stacks", "debug_freeOSMemory", "debug_setGCPercent", "debug_setMemoryLimit",
+}
+
+// TestModule_RegistersExactlyTheInventory holds S1 and X with section 6 of
+// the plan: the module registers the inventory, and nothing else.
+func TestModule_RegistersExactlyTheInventory(t *testing.T) {
+	module := New(DefaultConfig(), tests.NewFakeCore(t), prometheus.NewRegistry())
+	expected := slices.Clone(inventory.others)
+	for _, name := range inventory.eth {
+		expected = append(expected, "eth_"+name, "ftm_"+name)
+	}
+	if module.dispatcher.Has(profiling[0]) {
+		expected = append(expected, profiling...)
+	}
+	registered := module.dispatcher.Methods()
+	slices.Sort(expected)
+	slices.Sort(registered)
+	require.Equal(t, expected, registered)
 }
