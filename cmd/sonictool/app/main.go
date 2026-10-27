@@ -205,6 +205,31 @@ be gzipped.
 `,
 				},
 				{
+					Name:      "export-failed-bundles",
+					Usage:     "Export the bundles that may have changed the state through transactions not in the block",
+					ArgsUsage: "<filename>",
+					Action:    exportFailedBundles,
+					Flags: []cli.Flag{
+						AppendFlag,
+					},
+					Description: `
+    sonictool --datadir=<datadir> events export-failed-bundles [--append] <filename>
+
+Writes the bundle envelopes, top-level or nested, whose failure may have changed
+the state through their own transactions that are not in the block, as a failed
+bundle adds no transactions to the block, but only its groups revert their
+state changes.
+The envelopes are taken from the activation of transaction bundles until
+Canto, as a JSON list of {"block", "pos", "tx"} entries. pos is the number of
+block transactions executed before the envelope and tx the binary encoding of
+the envelope. With --append, the entries of the file are kept and the export
+continues after their last block.
+The blocks are rebuilt by replaying the consensus on the stored events, which
+therefore need to be present since the activation, or with --append since the
+epoch of the block 1023 blocks before the continued one, or the epoch before.
+`,
+				},
+				{
 					Action:    importEvents,
 					Name:      "import",
 					Usage:     "Import blockchain events file",
