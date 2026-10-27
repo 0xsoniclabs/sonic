@@ -73,11 +73,6 @@ type vmTraceFrame struct {
 	memSize   uint64    // memory size lastOp is about to write, if memWrite
 }
 
-// vmTraceSizeLimit caps the bytes a single vmTrace retains when its caller
-// sets no budget, protecting the node from running out of memory on
-// pathological traces.
-const vmTraceSizeLimit = 256 << 20
-
 // The sizes a vmTrace counts for what it keeps: for each part the larger of
 // what it keeps in memory and what it takes in a response, so that neither
 // a trace in memory nor its answer grows past the limit. A fixed size per
@@ -116,11 +111,6 @@ type VmTraceLogger struct {
 	err          error  // set once the trace is dropped for exceeding sizeLimit
 }
 
-// NewVmTraceLogger creates a new VmTraceLogger with the default limit.
-func NewVmTraceLogger() *VmTraceLogger {
-	return NewVmTraceLoggerWithLimit(vmTraceSizeLimit, nil)
-}
-
 // NewVmTraceLoggerWithLimit creates a VmTraceLogger that keeps at most limit
 // bytes and calls exceeded, if not nil, once it drops the trace, so that its
 // caller can stop the execution instead of running it to the end.
@@ -143,12 +133,6 @@ func (l *VmTraceLogger) Hooks() *tracing.Hooks {
 // GetResult returns the completed vmTrace after execution.
 func (l *VmTraceLogger) GetResult() *VmTrace {
 	return l.result
-}
-
-// Err returns a non-nil error when the trace was dropped for exceeding the
-// size limit, in which case GetResult returns nil.
-func (l *VmTraceLogger) Err() error {
-	return l.err
 }
 
 // grow accounts n more retained bytes. Once the limit is exceeded, it drops

@@ -27,7 +27,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
@@ -280,7 +279,7 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 		Height:   1,
 	}
 	genesisId := net.GetGenesisId()
-	expectedForkId, err := ethapi.MakeForkId(upgradeHeight, genesisId)
+	expectedForkId, err := opera.ForkID(upgradeHeight, genesisId)
 	require.NoError(t, err, "could not make expected fork ID")
 
 	want := map[string]map[string]any{
@@ -356,7 +355,7 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 		Upgrades: originalRules.Upgrades,
 		Height:   idx.Block(heightUint),
 	}
-	expectedForkId, err = ethapi.MakeForkId(upgradeHeight, genesisId)
+	expectedForkId, err = opera.ForkID(upgradeHeight, genesisId)
 	require.NoError(t, err, "could not make expected fork ID after upgrade")
 
 	require.Equal(t, fmt.Sprintf("0x%x", expectedForkId), response["current"]["forkId"],

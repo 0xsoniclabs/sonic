@@ -14,22 +14,26 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package sonicapi
+package opera
 
 import (
-	"github.com/0xsoniclabs/sonic/api/ethapi"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"encoding/binary"
+	"fmt"
+	"hash/crc32"
+
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
-//go:generate go tool mockgen -source=backend.go -destination=backend_mock.go -package=sonicapi
-
-// BundleApiBackend is an interface that abstracts the necessary BundleApiBackend functions for the
-// sonic API.
-type BundleApiBackend interface {
-	ethapi.Backend
-
-	// GetBundleExecutionInfo returns information about the execution of a transaction bundle, if available.
-	// If the bundle is unknown, it returns nil.
-	GetBundleExecutionInfo(common.Hash) *bundle.ExecutionInfo
+// ForkID derives the fork id of an upgrade, as eth_config reports it:
+// CRC32(genesisId || bigEndian(upgrade.Height) || Rlp(upgrade)).
+func ForkID(upgrade UpgradeHeight, genesisID common.Hash) ([4]byte, error) {
+	encoded, err := rlp.EncodeToBytes(upgrade.Upgrades)
+	if err != nil {
+		return [4]byte{}, fmt.Errorf("could not encode upgrade to RLP, %v", err)
+	}
+	checksum := crc32.ChecksumIEEE(genesisID.Bytes())
+	checksum = crc32.Update(checksum, crc32.IEEETable, binary.BigEndian.AppendUint64(nil, uint64(upgrade.Height)))
+	checksum = crc32.Update(checksum, crc32.IEEETable, encoded)
+	return [4]byte(binary.BigEndian.AppendUint32(nil, checksum)), nil
 }

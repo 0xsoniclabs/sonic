@@ -22,9 +22,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/rpc/format"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
@@ -168,7 +168,7 @@ func testChainId_AcceptsLegacyTxSignedWithHomestead(
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// get the transaction by hash and verify that it has the correct chain ID
-	var json *ethapi.RPCTransaction
+	var json *format.Transaction
 	err = client.Client().CallContext(t.Context(), &json,
 		"eth_getTransactionByHash", signed.Hash(),
 	)
@@ -203,7 +203,7 @@ func TestChainId_InternalTransactionHasCorrectChainId(t *testing.T) {
 	require.Greater(t, block.Transactions().Len(), 0, "block nr. 1 should have transactions")
 
 	// get the transaction by hash and verify that it has the correct chain ID
-	var json *ethapi.RPCTransaction
+	var json *format.Transaction
 	err = client.Client().CallContext(t.Context(), &json,
 		"eth_getTransactionByHash", block.Transactions()[0].Hash().String(),
 	)
@@ -212,7 +212,7 @@ func TestChainId_InternalTransactionHasCorrectChainId(t *testing.T) {
 	require.Equal(t, wantChainId, json.ChainID.ToInt())
 }
 
-func rpcTransactionToTransaction(t *testing.T, tx *ethapi.RPCTransaction) *types.Transaction {
+func rpcTransactionToTransaction(t *testing.T, tx *format.Transaction) *types.Transaction {
 	t.Helper()
 
 	switch tx.Type {
@@ -221,12 +221,12 @@ func rpcTransactionToTransaction(t *testing.T, tx *ethapi.RPCTransaction) *types
 			Nonce:    uint64(tx.Nonce),
 			Gas:      uint64(tx.Gas),
 			GasPrice: tx.GasPrice.ToInt(),
-			To:       tx.To,
+			To:       tx.Recipient,
 			Value:    tx.Value.ToInt(),
 			Data:     tx.Input,
-			V:        tx.V.ToInt(),
-			R:        tx.R.ToInt(),
-			S:        tx.S.ToInt(),
+			V:        tx.SignatureV.ToInt(),
+			R:        tx.SignatureR.ToInt(),
+			S:        tx.SignatureS.ToInt(),
 		})
 	case types.AccessListTxType:
 		return types.NewTx(&types.AccessListTx{
@@ -234,13 +234,13 @@ func rpcTransactionToTransaction(t *testing.T, tx *ethapi.RPCTransaction) *types
 			Nonce:      uint64(tx.Nonce),
 			Gas:        uint64(tx.Gas),
 			GasPrice:   tx.GasPrice.ToInt(),
-			To:         tx.To,
+			To:         tx.Recipient,
 			Value:      tx.Value.ToInt(),
 			Data:       tx.Input,
 			AccessList: *tx.Accesses,
-			V:          tx.V.ToInt(),
-			R:          tx.R.ToInt(),
-			S:          tx.S.ToInt(),
+			V:          tx.SignatureV.ToInt(),
+			R:          tx.SignatureR.ToInt(),
+			S:          tx.SignatureS.ToInt(),
 		})
 	case types.DynamicFeeTxType:
 		return types.NewTx(&types.DynamicFeeTx{
@@ -249,13 +249,13 @@ func rpcTransactionToTransaction(t *testing.T, tx *ethapi.RPCTransaction) *types
 			Gas:        uint64(tx.Gas),
 			GasFeeCap:  tx.GasFeeCap.ToInt(),
 			GasTipCap:  tx.GasTipCap.ToInt(),
-			To:         tx.To,
+			To:         tx.Recipient,
 			Value:      tx.Value.ToInt(),
 			Data:       tx.Input,
 			AccessList: *tx.Accesses,
-			V:          tx.V.ToInt(),
-			R:          tx.R.ToInt(),
-			S:          tx.S.ToInt(),
+			V:          tx.SignatureV.ToInt(),
+			R:          tx.SignatureR.ToInt(),
+			S:          tx.SignatureS.ToInt(),
 		})
 	case types.BlobTxType:
 		return types.NewTx(&types.BlobTx{
@@ -264,15 +264,15 @@ func rpcTransactionToTransaction(t *testing.T, tx *ethapi.RPCTransaction) *types
 			Gas:        uint64(tx.Gas),
 			GasFeeCap:  uint256.MustFromBig(tx.GasFeeCap.ToInt()),
 			GasTipCap:  uint256.MustFromBig(tx.GasTipCap.ToInt()),
-			To:         *tx.To,
+			To:         *tx.Recipient,
 			Value:      uint256.MustFromBig(tx.Value.ToInt()),
 			Data:       tx.Input,
 			AccessList: *tx.Accesses,
 			BlobFeeCap: uint256.MustFromBig(tx.MaxFeePerBlobGas.ToInt()),
 			BlobHashes: tx.BlobVersionedHashes,
-			V:          uint256.MustFromBig(tx.V.ToInt()),
-			R:          uint256.MustFromBig(tx.R.ToInt()),
-			S:          uint256.MustFromBig(tx.S.ToInt()),
+			V:          uint256.MustFromBig(tx.SignatureV.ToInt()),
+			R:          uint256.MustFromBig(tx.SignatureR.ToInt()),
+			S:          uint256.MustFromBig(tx.SignatureS.ToInt()),
 		})
 
 	case types.SetCodeTxType:
@@ -282,14 +282,14 @@ func rpcTransactionToTransaction(t *testing.T, tx *ethapi.RPCTransaction) *types
 			Gas:        uint64(tx.Gas),
 			GasFeeCap:  uint256.MustFromBig(tx.GasFeeCap.ToInt()),
 			GasTipCap:  uint256.MustFromBig(tx.GasTipCap.ToInt()),
-			To:         *tx.To,
+			To:         *tx.Recipient,
 			Value:      uint256.MustFromBig(tx.Value.ToInt()),
 			Data:       tx.Input,
 			AccessList: *tx.Accesses,
 			AuthList:   tx.AuthorizationList,
-			V:          uint256.MustFromBig(tx.V.ToInt()),
-			R:          uint256.MustFromBig(tx.R.ToInt()),
-			S:          uint256.MustFromBig(tx.S.ToInt()),
+			V:          uint256.MustFromBig(tx.SignatureV.ToInt()),
+			R:          uint256.MustFromBig(tx.SignatureR.ToInt()),
+			S:          uint256.MustFromBig(tx.SignatureS.ToInt()),
 		})
 	default:
 		t.Error("unsupported transaction type ", tx.Type)

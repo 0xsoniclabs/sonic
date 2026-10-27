@@ -110,7 +110,7 @@ func TestBundle_SponsoredTransactionsAreAcceptedAndExecuted(t *testing.T) {
 	require.EqualValues(t, info.Position+2, receipts[1].TransactionIndex)
 
 	// Ensure the sponsored transaction was successful and the counter has been incremented.
-	got, err := counterContract.GetCount(&bind.CallOpts{BlockNumber: big.NewInt(info.Block.Int64())})
+	got, err := counterContract.GetCount(&bind.CallOpts{BlockNumber: new(big.Int).SetUint64(uint64(info.Block))})
 	require.NoError(t, err, "failed to get counter value")
 	require.Equal(t, int64(2), got.Int64(), "unexpected counter value")
 }
@@ -193,7 +193,7 @@ func TestBundle_RevertedBundleDoesNotConsumeSponsoredFunds(t *testing.T) {
 	require.NoError(t, err)
 
 	// Ensure the bundle was reverted and the counter has not been incremented.
-	number := big.NewInt(info.Block.Int64())
+	number := new(big.Int).SetUint64(uint64(info.Block))
 	got, err := counterContract.GetCount(&bind.CallOpts{BlockNumber: number})
 	require.NoError(t, err, "failed to get counter value")
 	require.Equal(t, int64(0), got.Int64(), "unexpected counter value")

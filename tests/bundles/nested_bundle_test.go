@@ -78,7 +78,7 @@ func TestBundle_NestedBundlesCanBeExecuted(t *testing.T) {
 	_, err = client.TransactionReceipt(t.Context(), innerEnvelopeWithBundleOnlyMarker.Hash())
 	require.ErrorIs(t, err, ethereum.NotFound)
 
-	blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(outerInfo.Block.Int64()))
+	blockTxsHashes := getBlockTxsHashes(t, client, new(big.Int).SetUint64(uint64(outerInfo.Block)))
 
 	bundleTxs := innerBundle.GetTransactionsInReferencedOrder()
 

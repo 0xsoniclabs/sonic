@@ -45,6 +45,11 @@ func TestComputePushed_PushOntoEmpty(t *testing.T) {
 }
 
 // makeStack builds a []uint256.Int from a list of uint64 values.
+// newVmTraceLogger is a logger with a limit no test reaches.
+func newVmTraceLogger() *VmTraceLogger {
+	return NewVmTraceLoggerWithLimit(256<<20, nil)
+}
+
 func makeStack(vals ...uint64) []uint256.Int {
 	s := make([]uint256.Int, len(vals))
 	for i, v := range vals {
@@ -191,21 +196,21 @@ func TestComputePushed_StackClamp(t *testing.T) {
 }
 
 func TestVmTraceLogger_GetResultBeforeExecution(t *testing.T) {
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 	require.Nil(t, l.GetResult(), "result must be nil before any execution")
 }
 
 func TestVmTraceLogger_SizeLimitDropsTrace(t *testing.T) {
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 	l.sizeLimit = 2*vmTraceOpSize + 16
 
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 	l.onOpcode(0, byte(vm.MSTORE), 1000, 6, &mockOpContext{stack: makeStack(0, 0)}, nil, 0, nil)
-	require.NoError(t, l.Err())
+	require.NoError(t, l.err)
 
 	// The MSTORE's 32 byte diff plus a second op exceed the limit.
 	l.onOpcode(33, byte(vm.STOP), 994, 0, &mockOpContext{memory: make([]byte, 32)}, nil, 0, nil)
-	require.ErrorIs(t, l.Err(), errVmTraceTooLarge)
+	require.ErrorIs(t, l.err, errVmTraceTooLarge)
 
 	// Remaining hooks must not resurrect the dropped trace.
 	l.onEnter(1, byte(vm.CALL), addr(2), addr(3), nil, 100, big.NewInt(0))
@@ -213,12 +218,12 @@ func TestVmTraceLogger_SizeLimitDropsTrace(t *testing.T) {
 	l.onExit(1, nil, 0, nil, false)
 	l.onExit(0, nil, 0, nil, false)
 	require.Nil(t, l.GetResult())
-	require.ErrorIs(t, l.Err(), errVmTraceTooLarge)
+	require.ErrorIs(t, l.err, errVmTraceTooLarge)
 }
 
 func TestVmTraceLogger_EmptyFrame(t *testing.T) {
 	// OnEnter + OnExit with no opcodes → trace with empty ops
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 
 	code := []byte{0x60, 0x01} // PUSH1 1
 	l.onEnter(0, 0x00 /* STOP */, addr(1), addr(2), code, 100, big.NewInt(0))
@@ -230,7 +235,7 @@ func TestVmTraceLogger_EmptyFrame(t *testing.T) {
 }
 
 func TestVmTraceLogger_OnFaultSetsExToNil(t *testing.T) {
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 
 	l.onEnter(0, 0x00, addr(1), addr(2), []byte{0x60}, 1000, big.NewInt(0))
 
@@ -247,7 +252,7 @@ func TestVmTraceLogger_OnFaultSetsExToNil(t *testing.T) {
 }
 
 func TestVmTraceLogger_OnOpcodeErrSetsExToNil(t *testing.T) {
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 
 	// go-ethereum reports pre-execution failures (stack underflow/overflow,
@@ -264,7 +269,7 @@ func TestVmTraceLogger_OnOpcodeErrSetsExToNil(t *testing.T) {
 }
 
 func TestVmTraceLogger_OnOpcodeRevertErrKeepsEx(t *testing.T) {
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 
 	l.onOpcode(0, 0xfd /* REVERT */, 1000, 0, &mockOpContext{}, nil, 0, vm.ErrExecutionReverted)
@@ -278,7 +283,7 @@ func TestVmTraceLogger_OnOpcodeRevertErrKeepsEx(t *testing.T) {
 }
 
 func TestVmTraceLogger_StorageChangeAttributed(t *testing.T) {
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 
 	ctx1 := &mockOpContext{}
@@ -306,7 +311,7 @@ func TestVmTraceLogger_StorageChangeAttributed(t *testing.T) {
 }
 
 func TestVmTraceLogger_GasAccountingUsed(t *testing.T) {
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 
 	// PUSH1 costs 3 gas; gas parameter = gas before this op = 1000
@@ -328,7 +333,7 @@ func TestVmTraceLogger_GasAccountingUsed(t *testing.T) {
 }
 
 func TestVmTraceLogger_SubTraceLinked(t *testing.T) {
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 
 	// Root call
 	l.onEnter(0, 0x00, addr(1), addr(2), []byte{}, 1000, big.NewInt(0))
@@ -357,7 +362,7 @@ func TestVmTraceLogger_SubTraceLinked(t *testing.T) {
 func TestVmTraceLogger_StorageChangeOnLastOp(t *testing.T) {
 	// Verifies that a storage change from an SSTORE that is the very last opcode
 	// (no subsequent onOpcode call before onExit) is correctly attributed to Ex.Store.
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 
 	// SSTORE is the only (and last) opcode — no subsequent onOpcode drains pendingStore.
@@ -382,7 +387,7 @@ func TestVmTraceLogger_StorageChangeOnLastOp(t *testing.T) {
 }
 
 func TestVmTraceLogger_NoOpsOnEmptyExec(t *testing.T) {
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 	// Guard: multiple OnExit calls without matching OnEnter must not panic
 	l.onExit(0, nil, 0, nil, false)
 	require.Nil(t, l.GetResult())
@@ -390,7 +395,7 @@ func TestVmTraceLogger_NoOpsOnEmptyExec(t *testing.T) {
 
 func TestVmTraceLogger_RevertHasNonNilEx(t *testing.T) {
 	// REVERT is a valid opcode execution; onFault with ErrExecutionReverted must not nil Ex.
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 	l.onOpcode(0, 0xfd /* REVERT */, 1000, 0, &mockOpContext{}, nil, 0, nil)
 	l.onFault(0, 0xfd, 1000, 0, &mockOpContext{}, 0, vm.ErrExecutionReverted)
@@ -427,7 +432,7 @@ func (m *mockOpContext) ContractCode() []byte     { return nil }
 
 func TestVmTraceLogger_MemNilForNonMemoryOp(t *testing.T) {
 	// PUSH1 does not write memory → Ex.Mem must be nil.
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 
 	// Both contexts have empty memory — nothing changes.
@@ -443,7 +448,7 @@ func TestVmTraceLogger_MemNilForNonMemoryOp(t *testing.T) {
 func TestVmTraceLogger_MemLastOpIsNil(t *testing.T) {
 	// The last op in a frame has no subsequent onOpcode to finalize it,
 	// so Ex.Mem must remain nil (post-execution state unavailable in onExit).
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 
 	l.onOpcode(0, byte(vm.STOP), 1000, 0, &mockOpContext{}, nil, 0, nil)
@@ -474,7 +479,7 @@ func TestVmTraceLogger_MemWriteOffset(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := NewVmTraceLogger()
+			l := newVmTraceLogger()
 			l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 
 			// MSTORE pops offset then value, so offset must be the top
@@ -535,7 +540,7 @@ func TestVmTraceLogger_MemWriteRange(t *testing.T) {
 func TestVmTraceLogger_MemSequentialWrites(t *testing.T) {
 	// Two MSTOREs to different offsets must each report only their own
 	// 32-byte range, not a growing or duplicated full-buffer snapshot.
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 
 	mem32 := make([]byte, 32)
@@ -572,7 +577,7 @@ func TestVmTraceLogger_CallMemReportsFullReservedRegion(t *testing.T) {
 	// reported in full, matching Parity/OpenEthereum's vmTrace semantics,
 	// even though go-ethereum's Memory.Set only actually writes the callee's
 	// returned bytes and never zero-fills the remainder of the reservation.
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 
 	// CALL stack (bottom to top): retSize=32, retOffset=0, inSize=0, inOffset=0, value=0, addr, gas.
@@ -603,7 +608,7 @@ func TestVmTraceLogger_CallMemReportsReservedRegionOnNonRevertError(t *testing.T
 	// When a CALL fails with anything other than a revert, go-ethereum skips
 	// Memory.Set entirely, but the reserved [retOffset, retOffset+retSize)
 	// range was already resized before the call and is still reported.
-	l := NewVmTraceLogger()
+	l := newVmTraceLogger()
 	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
 
 	callStack := makeStack(32, 0, 0, 0, 0, 0xaaaa, 21000)
@@ -665,9 +670,9 @@ func TestVmTraceLogger_MemDiffsFromRealEvm(t *testing.T) {
 	}
 
 	t.Run("diffs", func(t *testing.T) {
-		l := NewVmTraceLogger()
+		l := newVmTraceLogger()
 		require.NoError(t, run(l))
-		require.NoError(t, l.Err())
+		require.NoError(t, l.err)
 
 		word := common.LeftPadBytes([]byte{0x42}, 32)
 		type diff struct {
@@ -696,10 +701,10 @@ func TestVmTraceLogger_MemDiffsFromRealEvm(t *testing.T) {
 	})
 
 	t.Run("size limit", func(t *testing.T) {
-		l := NewVmTraceLogger()
+		l := newVmTraceLogger()
 		l.sizeLimit = 10 * vmTraceOpSize
 		require.NoError(t, run(l))
-		require.ErrorIs(t, l.Err(), errVmTraceTooLarge)
+		require.ErrorIs(t, l.err, errVmTraceTooLarge)
 		require.Nil(t, l.GetResult())
 	})
 }
@@ -728,7 +733,7 @@ func TestVmTraceLogger_CountsWhatItKeeps(t *testing.T) {
 	before = l.size
 	l.onExit(0, nil, 0, nil, false)
 	require.Equal(t, before+vmTraceStoreSize, l.size, "a storage write counts too")
-	require.NoError(t, l.Err())
+	require.NoError(t, l.err)
 }
 
 // TestVmTraceLogger_TellsItsCallerOnceWhenItDropsTheTrace holds V12: the
@@ -742,7 +747,7 @@ func TestVmTraceLogger_TellsItsCallerOnceWhenItDropsTheTrace(t *testing.T) {
 	l.onOpcode(2, byte(vm.PUSH1), 997, 3, &mockOpContext{stack: makeStack(1)}, nil, 0, nil)
 	l.onOpcode(4, byte(vm.STOP), 994, 0, &mockOpContext{stack: makeStack(1, 1)}, nil, 0, nil)
 	require.Equal(t, 1, calls)
-	require.ErrorIs(t, l.Err(), errVmTraceTooLarge)
+	require.ErrorIs(t, l.err, errVmTraceTooLarge)
 	require.Nil(t, l.GetResult())
 }
 

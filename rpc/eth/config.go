@@ -18,10 +18,8 @@ package eth
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"hash/crc32"
 	"math"
 	"math/big"
 
@@ -29,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 
 	priorities "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	subsidies "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
@@ -89,7 +86,7 @@ func (handler *handlers) config(ctx context.Context, _ dispatch.Arguments) (any,
 // forkConfig returns the configuration an upgrade activated.
 func (handler *handlers) forkConfig(head exec.Head, upgrade opera.UpgradeHeight) (*forkConfig, error) {
 	info := handler.environment.ChainInfo()
-	forkID, err := makeForkID(upgrade, info.GenesisID)
+	forkID, err := opera.ForkID(upgrade, info.GenesisID)
 	if err != nil {
 		return nil, fmt.Errorf("could not make fork id, %v", err)
 	}
@@ -133,17 +130,4 @@ func activeSystemContracts(upgrades opera.Upgrades) contractRegistry {
 		contracts["TRANSACTION_PRIORITY_REGISTRY_ADDRESS"] = priorities.GetAddress()
 	}
 	return contracts
-}
-
-// makeForkID derives the fork id of an upgrade:
-// CRC32(genesisId || bigEndian(upgrade.Height) || Rlp(upgrade)).
-func makeForkID(upgrade opera.UpgradeHeight, genesisID common.Hash) ([4]byte, error) {
-	encoded, err := rlp.EncodeToBytes(upgrade.Upgrades)
-	if err != nil {
-		return [4]byte{}, fmt.Errorf("could not encode upgrade to RLP, %v", err)
-	}
-	checksum := crc32.ChecksumIEEE(genesisID.Bytes())
-	checksum = crc32.Update(checksum, crc32.IEEETable, binary.BigEndian.AppendUint64(nil, uint64(upgrade.Height)))
-	checksum = crc32.Update(checksum, crc32.IEEETable, encoded)
-	return [4]byte(binary.BigEndian.AppendUint32(nil, checksum)), nil
 }

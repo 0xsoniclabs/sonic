@@ -130,7 +130,7 @@ func testBundle_BundlesWithTooLowEfficiencyAreRejected(t *testing.T, net *tests.
 				require.NoError(t, err)
 
 				bundleTxs := bundle.GetTransactionsInReferencedOrder()
-				blockTxsHashes := getBlockTxsHashes(t, client, big.NewInt(info.Block.Int64()))
+				blockTxsHashes := getBlockTxsHashes(t, client, new(big.Int).SetUint64(uint64(info.Block)))
 
 				successfulTxHash := bundleTxs[tc.InvalidTxCount].Hash()
 				require.EqualValues(t, info.Count, 1)

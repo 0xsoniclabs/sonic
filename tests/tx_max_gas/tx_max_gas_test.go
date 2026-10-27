@@ -22,8 +22,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/rpc/format"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum"
@@ -182,7 +182,7 @@ func testHighGasTxIsNeverExecuted(t *testing.T, net *tests.IntegrationTestNet) {
 	_, err = client.TransactionReceipt(t.Context(), gappedTx.Hash())
 	require.ErrorIs(t, err, ethereum.NotFound, "Transaction should not be executed")
 
-	var content map[string]map[string]map[string]*ethapi.RPCTransaction
+	var content map[string]map[string]map[string]*format.Transaction
 	err = client.Client().Call(&content, "txpool_content")
 	require.NoError(t, err, "Should get txpool content")
 

@@ -21,7 +21,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/rpc/exec"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -93,23 +93,23 @@ func TestRpcReplay_IsConsistentWithUpgradesAtBlockHeight(t *testing.T) {
 
 	lastBlockNumber := receiptAfterUpgrade.BlockNumber
 
-	rpcTx := ethapi.TransactionArgs{
-		From:     (*common.Address)(AsPointer(sender.Address())),
-		To:       (*common.Address)(tx.To()),
-		Gas:      AsPointer(hexutil.Uint64(tx2.Gas())),
-		GasPrice: (*hexutil.Big)(tx.GasPrice()),
-		Value:    (*hexutil.Big)(tx.Value()),
-		Data:     AsPointer(hexutil.Bytes(tx2.Data())),
+	rpcTx := exec.CallArguments{
+		From:      (*common.Address)(AsPointer(sender.Address())),
+		Recipient: (*common.Address)(tx.To()),
+		Gas:       AsPointer(hexutil.Uint64(tx2.Gas())),
+		GasPrice:  (*hexutil.Big)(tx.GasPrice()),
+		Value:     (*hexutil.Big)(tx.Value()),
+		Data:      AsPointer(hexutil.Bytes(tx2.Data())),
 	}
 	t.Run("eth_createAccessList", func(t *testing.T) {
 
-		rpcTx := ethapi.TransactionArgs{
-			From:     (*common.Address)(AsPointer(sender.Address())),
-			To:       (*common.Address)(tx.To()),
-			Gas:      AsPointer(hexutil.Uint64(tx2.Gas())),
-			GasPrice: (*hexutil.Big)(tx.GasPrice()),
-			Value:    (*hexutil.Big)(tx.Value()),
-			Data:     AsPointer(hexutil.Bytes(tx2.Data())),
+		rpcTx := exec.CallArguments{
+			From:      (*common.Address)(AsPointer(sender.Address())),
+			Recipient: (*common.Address)(tx.To()),
+			Gas:       AsPointer(hexutil.Uint64(tx2.Gas())),
+			GasPrice:  (*hexutil.Big)(tx.GasPrice()),
+			Value:     (*hexutil.Big)(tx.Value()),
+			Data:      AsPointer(hexutil.Bytes(tx2.Data())),
 		}
 
 		type accessListResult struct {
@@ -135,7 +135,7 @@ func TestRpcReplay_IsConsistentWithUpgradesAtBlockHeight(t *testing.T) {
 	t.Run("debug_traceCall", func(t *testing.T) {
 		var res map[string]any
 
-		config := ethapi.TraceCallConfig{}
+		config := exec.TraceCallConfig{}
 		err = client.Client().Call(&res, "debug_traceCall", rpcTx, (*hexutil.Big)(lastBlockNumber), config)
 		require.NoError(t, err)
 

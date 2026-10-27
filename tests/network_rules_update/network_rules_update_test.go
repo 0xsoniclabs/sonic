@@ -25,12 +25,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	"github.com/0xsoniclabs/sonic/rpc/format"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum"
@@ -244,7 +244,7 @@ func TestNetworkRules_UpdateMaxEventGas_DropsLargeGasTxs(t *testing.T) {
 	err = client.SendTransaction(t.Context(), tx)
 	require.NoError(err, "failed to send high gas transaction")
 
-	var content map[string]map[string]map[string]*ethapi.RPCTransaction
+	var content map[string]map[string]map[string]*format.Transaction
 	err = client.Client().Call(&content, "txpool_content")
 	require.NoError(err, "failed to get tx pool status")
 	require.Equal(1, len(content["queued"]), "expected the high gas tx to be in the queued section of the tx pool")
