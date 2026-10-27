@@ -60,6 +60,11 @@ func (buffer *resultBuffer) add(object any) error {
 	return buffer.write(encoded)
 }
 
+// left is what is left of the limit for one more object in the list.
+func (buffer *resultBuffer) left() int {
+	return buffer.limit - buffer.Len() - len(",]")
+}
+
 // result closes the list.
 func (buffer *resultBuffer) result() ([]byte, error) {
 	if err := buffer.write([]byte("]")); err != nil {

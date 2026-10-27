@@ -40,4 +40,8 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment) {
 	dispatcher.Add("trace_get", handler.get, hash, dispatch.Required[[]hexutil.Uint]("indexes"))
 	dispatcher.Add("trace_block", handler.block, dispatch.Required[chain.BlockReference]("block"))
 	dispatcher.Add("trace_filter", handler.filter, dispatch.Required[filterArguments]("filter"))
+	block := dispatch.Required[chain.BlockReference]("block")
+	config := dispatch.Optional[exec.TraceCallConfig]("config")
+	dispatcher.Add("trace_call", handler.call, dispatch.Required[exec.CallArguments]("transaction"), dispatch.Required[[]string]("traceTypes"), block, config)
+	dispatcher.Add("trace_callMany", handler.callMany, dispatch.Required[[]callRequest]("calls"), block, config)
 }

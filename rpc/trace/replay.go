@@ -37,10 +37,6 @@ import (
 	"github.com/0xsoniclabs/sonic/txtrace"
 )
 
-// defaultTraceTimeout bounds a traced run when RPCEVMTimeout sets none, as
-// in the reference.
-const defaultTraceTimeout = 5 * time.Second
-
 func (handler *handlers) transaction(ctx context.Context, arguments dispatch.Arguments) (any, error) {
 	return handler.traceTransactionHash(ctx, dispatch.Argument[common.Hash](arguments, 0), nil)
 }
@@ -270,7 +266,7 @@ func (handler *handlers) timeout() time.Duration {
 	if timeout := handler.environment.Config().RPCEVMTimeout; timeout > 0 {
 		return timeout
 	}
-	return defaultTraceTimeout
+	return exec.DefaultTraceTimeout
 }
 
 // emptyBlockTrace is the trace of a block without transactions.

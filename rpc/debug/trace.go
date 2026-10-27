@@ -38,10 +38,6 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/exec"
 )
 
-// defaultTraceTimeout bounds the trace of one transaction without a timeout
-// of its own, as in the reference.
-const defaultTraceTimeout = 5 * time.Second
-
 // errResponseSize is the reference's answer to a trace above
 // MaxResponseSize.
 var errResponseSize = errors.New("response size exceeded")
@@ -173,7 +169,7 @@ func (handler *handlers) traceCall(ctx context.Context, arguments dispatch.Argum
 	if err != nil {
 		return nil, err
 	}
-	block, err := handler.callBlock(head, reference)
+	block, err := handler.environment.CallBlock(head, reference)
 	if err != nil {
 		return nil, err
 	}
@@ -193,45 +189,11 @@ func (handler *handlers) traceCall(ctx context.Context, arguments dispatch.Argum
 		traceConfig = &config.TraceConfig
 	}
 	callArguments := dispatch.Argument[exec.CallArguments](arguments, 0)
-	transaction, message, err := callTransaction(&callArguments, block, handler.environment.Config().RPCGasCap)
+	transaction, message, err := callArguments.ToTracedCall(handler.environment.Config().RPCGasCap, block.BaseFee)
 	if err != nil {
 		return nil, err
 	}
 	return handler.traceMessage(ctx, transaction, message, new(tracers.Context), block.Header(), statedb, traceConfig, call)
-}
-
-// callBlock finds the block of a call to trace, worded as the reference's
-// lookup worded a block it did not find.
-func (handler *handlers) callBlock(head exec.Head, reference chain.BlockReference) (*evmcore.EvmBlock, error) {
-	if reference.Number == nil && reference.Hash == nil {
-		return nil, errors.New("invalid arguments; neither block number nor hash specified")
-	}
-	block, err := exec.NullIfAbsent(handler.environment.FindBlock(head, reference))
-	if err != nil {
-		return nil, err
-	}
-	if block == nil {
-		return nil, errors.New("header not found")
-	}
-	return block, nil
-}
-
-// callTransaction is the message of a call and the legacy transaction that
-// stands for it, as the reference built them.
-func callTransaction(arguments *exec.CallArguments, block *evmcore.EvmBlock, gasCap uint64) (*types.Transaction, *core.Message, error) {
-	message, err := arguments.ToMessage(gasCap, block.BaseFee)
-	if err != nil {
-		return nil, nil, err
-	}
-	transaction := types.NewTx(&types.LegacyTx{
-		To:       message.To,
-		Nonce:    message.Nonce,
-		Gas:      message.GasLimit,
-		GasPrice: message.GasPrice,
-		Value:    message.Value,
-		Data:     message.Data,
-	})
-	return transaction, message, nil
 }
 
 // traceMessage runs a message with the tracer the configuration asks for, the
@@ -308,7 +270,7 @@ func (handler *handlers) newTracer(config *tracers.TraceConfig, subject *tracers
 // (V6, section 6).
 func (handler *handlers) traceTimeout(config *tracers.TraceConfig) (time.Duration, error) {
 	if config.Timeout == nil {
-		return defaultTraceTimeout, nil
+		return exec.DefaultTraceTimeout, nil
 	}
 	timeout, err := time.ParseDuration(*config.Timeout)
 	if err != nil {

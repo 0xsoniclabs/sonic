@@ -914,13 +914,14 @@ Inherited quirks kept as they are, not deviations:
 - `TxSyncMaxTimeout` (30s) is unreachable while `RPCTimeout` (5s) bounds every
   request; an operator who wants long sync waits raises `--rpc.timeout`.
 - `RPCEVMTimeout` only bites where geth's interpreter runs (section 8).
-- The EIP-2935 history contract is written where legacy replays wrote it:
-  `stateAtTransaction` runs it, so `debug_traceTransaction`, `debug_traceCall`,
-  `trace_transaction` and `trace_call` see it once before the traced
-  transaction; `traceBlock` and `trace_block` never run it. The untraced branch
-  of `replayBlock` calls it per replayed transaction. `exec.Options.
-  SkipParentBlockHash` selects the behaviour. Read the legacy path before
-  deciding; the intuitive answer is wrong for the transaction tracers.
+- The EIP-2935 history contract is written where legacy replays wrote it. In
+  v2.2.5 `stateAtTransaction` ran it, `traceBlock` and the traced branch of
+  `replayBlock` never did, and the untraced branch called it per replayed
+  transaction; `main` (#1160, `applyPreBlockSystemCalls`) runs it once on the
+  parent state before the first transaction of every replay, as block
+  processing does. The module follows `main` (`exec.Environment.ReplayState`);
+  the difference shows only where a traced transaction reads the history
+  contract, which lakme's chain does not.
 - `eth_simulateV1` does not build on `rpc/exec`: a simulated block's number is
   usually above the head so `Rules(number)` fails, BLOCKHASH must see simulated
   predecessors, validation mode needs the base fee, and the simulator needs its

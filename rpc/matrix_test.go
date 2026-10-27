@@ -152,6 +152,8 @@ func (chain matrixChain) requests() map[string][]string {
 		"trace_get":                {`[` + mined + `, []]`, `[` + mined + `, ["0x0"]]`},
 		"trace_block":              {`["0x1"]`, `["latest"]`, `[` + block + `]`, `["0x5"]`},
 		"trace_filter":             {`[{"fromBlock": "0x1"}]`, `[{"fromBlock": "0x1", "count": 1}]`, `[{"fromBlock": "0x5"}]`},
+		"trace_call":               {`[` + message + `, ["trace", "stateDiff", "vmTrace"], "latest"]`, `[` + message + `, ["trace"], ` + block + `, {"txIndex": "0x1"}]`, `[` + message + `, ["trace"], "0x5"]`},
+		"trace_callMany":           {`[[[` + message + `, ["trace", "vmTrace"]], [` + message + `, ["stateDiff"]]], "latest"]`, `[[], "0x5"]`},
 		"debug_getBlockRlp":        {`[1]`, `[5]`},
 		"debug_printBlock":         {`[1]`, `[5]`},
 		"debug_traceTransaction":   {`[` + mined + `]`, `[` + mined + `, {"tracer": "callTracer"}]`, `[` + pending + `]`},
