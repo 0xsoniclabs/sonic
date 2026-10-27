@@ -104,9 +104,9 @@ comments other than `//go:embed` directives, compares constants by value, and
 counts the imports a declaration refers to as part of it. So if the code reads
 the same, look at the imports the declaration uses, at the values of its
 constants and at the files a variable embeds. `file` and `cgo` rows compare
-the text as it is, comments included. `-` in the Base or Head cell
-means that side lacks the declaration, or does not import its package; check
-whether it exists there.
+the text as it is, comments included. `-` in the Base or Head cell means that
+side lacks the declaration, or rarely that its package could not be loaded
+there; check whether it exists there.
 
 The tool does not say how Sonic reaches a declaration. Search the head checkout
 for callers, and follow them through go-ethereum if there are none in Sonic.

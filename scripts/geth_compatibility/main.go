@@ -54,16 +54,32 @@ func run(base, head, file string) error {
 	if err != nil {
 		return err
 	}
-	baseSide, err := analyze(top, mergeBase)
+	baseDir, err := checkout(top, mergeBase)
 	if err != nil {
 		return fmt.Errorf("base: %w", err)
 	}
-	headSide, err := analyze(top, head)
+	defer func() { _ = os.RemoveAll(baseDir) }()
+	headDir, err := checkout(top, head)
+	if err != nil {
+		return fmt.Errorf("head: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(headDir) }()
+	baseSide, err := analysis.Analyze(baseDir, analysis.Sonic)
+	if err != nil {
+		return fmt.Errorf("base: %w", err)
+	}
+	headSide, err := analysis.Analyze(headDir, analysis.Sonic)
 	if err != nil {
 		return fmt.Errorf("head: %w", err)
 	}
 	if missing := analysis.Missing(baseSide, headSide); len(missing) > 0 {
 		return fmt.Errorf("missing %s", strings.Join(missing, ", "))
+	}
+	if err := analysis.Complete(baseDir, baseSide, headSide); err != nil {
+		return fmt.Errorf("base: %w", err)
+	}
+	if err := analysis.Complete(headDir, headSide, baseSide); err != nil {
+		return fmt.Errorf("head: %w", err)
 	}
 	findings := analysis.Compare(baseSide, headSide)
 	todo, err := review.Update(file, baseSide, headSide, findings)
@@ -84,17 +100,22 @@ func git(args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func analyze(repo, rev string) (*analysis.Side, error) {
-	dir, err := os.MkdirTemp("", "geth_compatibility-")
+// checkout extracts the committed files of rev into a new temporary directory.
+func checkout(repo, rev string) (dir string, err error) {
+	dir, err = os.MkdirTemp("", "geth_compatibility-")
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	defer func() { _ = os.RemoveAll(dir) }()
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(dir)
+		}
+	}()
 	archive := exec.Command("git", "-C", repo, "archive", rev)
 	untar := exec.Command("tar", "-x", "-C", dir)
 	tarball, err := archive.StdoutPipe()
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	untar.Stdin = tarball
 	archive.Stderr, untar.Stderr = os.Stderr, os.Stderr
@@ -103,16 +124,16 @@ func analyze(repo, rev string) (*analysis.Side, error) {
 	// instead of blocking if tar exits early.
 	_ = tarball.Close()
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	if err := archive.Run(); err != nil {
 		if tarErr := untar.Wait(); tarErr != nil {
-			return nil, fmt.Errorf("tar: %w", tarErr)
+			return "", fmt.Errorf("tar: %w", tarErr)
 		}
-		return nil, fmt.Errorf("git archive %s: %w", rev, err)
+		return "", fmt.Errorf("git archive %s: %w", rev, err)
 	}
 	if err := untar.Wait(); err != nil {
-		return nil, fmt.Errorf("tar: %w", err)
+		return "", fmt.Errorf("tar: %w", err)
 	}
-	return analysis.Analyze(dir, analysis.Sonic)
+	return dir, nil
 }

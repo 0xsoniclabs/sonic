@@ -214,6 +214,42 @@ func TestAnalyze_ReportsExactlyTheReachableDifferences(t *testing.T) {
 	}
 }
 
+func TestComplete_LoadsThePackagesOnlyTheOtherSideImports(t *testing.T) {
+	const core = "package core\n\nfunc Run() int { return 1 }\n"
+	const extra = "package extra\n\nfunc Same() int { return 1 }\n"
+	const baseApp = "package main\n\nimport \"github.com/ethereum/go-ethereum/core\"\n\nfunc main() { println(core.Run()) }\n"
+	const headApp = "package main\n\nimport (\n\t\"github.com/ethereum/go-ethereum/core\"\n\t\"github.com/ethereum/go-ethereum/extra\"\n)\n\n" +
+		"func main() { println(core.Run(), extra.Same(), extra.Added()) }\n"
+	dir := t.TempDir()
+	baseDir := writeProgram(t, filepath.Join(dir, "base"),
+		map[string]string{"core/core.go": core, "extra/extra.go": extra}, map[string]string{"main.go": baseApp})
+	headDir := writeProgram(t, filepath.Join(dir, "head"),
+		map[string]string{"core/core.go": core, "extra/extra.go": extra + "\nfunc Added() int { return 2 }\n"}, map[string]string{"main.go": headApp})
+	c := Config{Mains: []string{"."}}
+	base, err := Analyze(baseDir, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	head, err := Analyze(headDir, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Complete(baseDir, base, head); err != nil {
+		t.Fatal(err)
+	}
+	if err := Complete(headDir, head, base); err != nil {
+		t.Fatal(err)
+	}
+
+	findings := Compare(base, head)
+	if got, want := keysOf(findings), []string{"extra func Added"}; !slices.Equal(got, want) {
+		t.Fatalf("got findings %v, want %v", got, want)
+	}
+	if findings[0].Base != "-" {
+		t.Errorf("got Base %s for a declaration the base lacks, want -", findings[0].Base)
+	}
+}
+
 func TestAnalyze_RefusesOtherPlatforms(t *testing.T) {
 	app := writeProgram(t, t.TempDir(), map[string]string{"core/core.go": oldCore}, map[string]string{"main.go": "package main\n\nfunc main() {}\n"})
 	_, err := Analyze(app, Config{Mains: []string{"."}, Platform: "plan9/386"})

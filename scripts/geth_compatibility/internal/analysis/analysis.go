@@ -42,11 +42,13 @@ const gethModule = "github.com/ethereum/go-ethereum"
 // modules compared like it, and of every other dependency module, by key, Used
 // the keys the program uses, and Consensus those it uses on the consensus path.
 // Geth is the version of go-ethereum and Modules those of the modules compared
-// like it. Upgrades lists the lowercase names of the program's upgrades, and
+// like it, and Packages lists the packages of these modules that are loaded, as
+// in keys. Upgrades lists the lowercase names of the program's upgrades, and
 // Missing the parts of the config that the program lacks.
 type Side struct {
 	Geth      string
 	Modules   []string
+	Packages  map[string]bool
 	Symbols   map[string]string
 	Used      map[string]bool
 	Consensus map[string]bool
@@ -56,13 +58,7 @@ type Side struct {
 
 // Analyze loads the main packages of c in dir and returns their side.
 func Analyze(dir string, c Config) (*Side, error) {
-	cfg := &packages.Config{
-		Mode: packages.LoadAllSyntax | packages.NeedModule | packages.NeedEmbedFiles,
-		Dir:  dir,
-		// Each version resolves its dependencies by its own go.mod, whatever
-		// the workspace or flags of the caller.
-		Env: append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=readonly"),
-	}
+	cfg := loadConfig(dir, packages.LoadAllSyntax)
 	if c.Platform != "" {
 		if err := checkPlatform(cfg, c.Platform); err != nil {
 			return nil, err
@@ -109,6 +105,10 @@ func Analyze(dir string, c Config) (*Side, error) {
 		ix.modules[p.Types] = p.Module.Path
 	})
 	side.Modules = slices.Sorted(maps.Values(modules))
+	side.Packages = map[string]bool{}
+	for p := range ix.compared {
+		side.Packages[pkgKey(p)] = true
+	}
 	consensusRoots, skips, upgrades, missing := c.resolve(prog, lim.mod, ix.symbols)
 	side.Upgrades, side.Missing = upgrades, missing
 
@@ -122,6 +122,46 @@ func Analyze(dir string, c Config) (*Side, error) {
 	cr := reach(prog, consensusRoots, lim)
 	side.Consensus = ix.use(cr.order, c.Cuts, cr.vars)
 	return side, nil
+}
+
+// Complete adds to side the declarations, files and cgo preambles of the
+// compared packages that other uses but side has not loaded, by loading them in
+// dir, the program of side. Then side lacks a symbol of other only if its
+// package lacks it, or cannot be loaded in dir.
+func Complete(dir string, side, other *Side) error {
+	var paths []string
+	for key := range other.Used {
+		pkg, _, _ := strings.Cut(key, " ")
+		if path := importPath(pkg); !isModule(key) && !side.Packages[pkg] && !slices.Contains(paths, path) {
+			paths = append(paths, path)
+		}
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+	pkgs, err := packages.Load(loadConfig(dir, packages.LoadSyntax), paths...)
+	if err != nil {
+		return err
+	}
+	ix := newIndex()
+	ix.symbols = side.Symbols
+	for _, p := range pkgs {
+		if len(p.Errors) == 0 && p.Module != nil {
+			ix.addCompared(p)
+			side.Packages[pkgKey(p.PkgPath)] = true
+		}
+	}
+	return nil
+}
+
+func loadConfig(dir string, mode packages.LoadMode) *packages.Config {
+	return &packages.Config{
+		Mode: mode | packages.NeedModule | packages.NeedEmbedFiles,
+		Dir:  dir,
+		// Each version resolves its dependencies by its own go.mod, whatever
+		// the workspace or flags of the caller.
+		Env: append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=readonly"),
+	}
 }
 
 // checkPlatform returns an error unless the toolchain of cfg builds for
@@ -294,6 +334,17 @@ func isModule(key string) bool {
 
 func isGeth(pkgPath string) bool {
 	return pkgPath == gethModule || strings.HasPrefix(pkgPath, gethModule+"/")
+}
+
+// importPath is the import path of pkg, the package of a key.
+func importPath(pkg string) string {
+	switch first, _, _ := strings.Cut(pkg, "/"); {
+	case pkg == "go-ethereum":
+		return gethModule
+	case strings.Contains(first, "."):
+		return pkg
+	}
+	return gethModule + "/" + pkg
 }
 
 // pkgKey is the package of a key: relative to go-ethereum for its packages,

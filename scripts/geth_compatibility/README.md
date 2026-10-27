@@ -158,9 +158,11 @@ other rows follow in a section per verdict, `todo` first.
   code, and would reopen reviewed rows. Run it with the Go release named by
   the `go` line of the client's `go.mod`, as a dependency may not build with
   others.
-- Each side only knows the go-ethereum packages it imports. If only the head
-  imports a package, its reachable declarations get the Base `-` even if they
-  did not change.
+- If only one side imports a package of go-ethereum or of a module compared
+  like it, the package is loaded in the other side's program as well, so that
+  `-` means that side lacks the declaration. A package that cannot be loaded
+  there, for instance because a module it needs is not in that side's
+  `go.sum`, still gets `-` for all its declarations.
 - Quoted `#include`s are resolved relative to the including file, not in the
   directories that `#cgo CFLAGS: -I` adds, so a file found only there is not
   compared. go-ethereum's secp256k1 library resolves all its includes
