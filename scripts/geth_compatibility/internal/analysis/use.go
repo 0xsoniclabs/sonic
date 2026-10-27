@@ -32,8 +32,9 @@ import (
 // variables and constants these declarations read. The syntax of a
 // package initializer is the initializers of the package's variables.
 // Symbols covered by cuts, and variables of a cut type, are not used. If vars
-// is not nil, the declarations of the package variables outside vars, which
-// funcs only store to, are not followed.
+// is not nil, of the package variables outside vars, whose values funcs do not
+// read, only the declared types are followed, such as an array length that
+// len folds to a constant.
 func (ix *index) use(funcs []*ssa.Function, cuts []string, vars map[types.Object]bool) map[string]bool {
 	u := &user{index: ix, cuts: cuts, vars: vars, seen: map[string]bool{}}
 	tops := map[*ssa.Function]bool{}
@@ -72,13 +73,19 @@ func (ix *index) use(funcs []*ssa.Function, cuts []string, vars map[types.Object
 		u.walk(d, p.TypesInfo)
 	}
 	for len(u.queue) > 0 {
-		k := u.queue[0]
+		q := u.queue[0]
 		u.queue = u.queue[1:]
-		for _, d := range ix.decls[k] {
-			if s, ok := d.node.(*ast.ValueSpec); ok {
+		for _, d := range ix.decls[q.key] {
+			s, isValue := d.spec.(*ast.ValueSpec)
+			switch {
+			case !isValue:
+				u.walk(d.spec, d.info)
+			case q.follow:
 				u.markModule(ix.pkgs[d.info.Defs[s.Names[0]].Pkg()])
+				u.walk(s, d.info)
+			case s.Type != nil:
+				u.walk(s.Type, d.info)
 			}
-			u.walk(d.node, d.info)
 		}
 	}
 
@@ -104,19 +111,23 @@ type user struct {
 	cuts  []string
 	vars  map[types.Object]bool
 	seen  map[string]bool
-	queue []string
+	queue []queued
 }
 
-// mark uses the symbol key, and if follow, the declarations it refers to.
+type queued struct {
+	key    string
+	follow bool
+}
+
+// mark uses the symbol key and the declarations it refers to, of a variable
+// only those of its declared type unless follow.
 func (u *user) mark(key string, follow bool) {
 	_, isSymbol := u.symbols[key]
 	if u.seen[key] || !isSymbol && u.decls[key] == nil || covered(u.cuts, key) {
 		return
 	}
 	u.seen[key] = true
-	if follow {
-		u.queue = append(u.queue, key)
-	}
+	u.queue = append(u.queue, queued{key, follow})
 }
 
 // markModule uses the module providing p, unless it is go-ethereum or the main

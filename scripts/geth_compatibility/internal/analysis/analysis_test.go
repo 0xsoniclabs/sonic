@@ -309,7 +309,8 @@ func TestAnalyze_MarksTheConsensusPath(t *testing.T) {
 			"var Codes = map[int]int{}\n\nfunc init() { Codes[0] = code() }\n\nfunc code() int { return " + v + " }\n\n" +
 			"type Box struct{ X int }\n\nvar Boxed = &Box{}\n\nfunc init() { Boxed.X = box() }\n\nfunc box() int { return " + v + " }\n\n" +
 			"var Slots = make([]int, 1)\n\nfunc init() { fillSlots(Slots) }\n\nfunc fillSlots(s []int) { s[0] = slot() }\n\nfunc slot() int { return " + v + " }\n\n" +
-			"var Sizes = map[int]int{}\n\nvar tally int\n\nfunc init() { tally = Sizes[0] + sized() }\n\nfunc sized() int { return " + v + " }\n"
+			"var Sizes = map[int]int{}\n\nvar tally int\n\nfunc init() { tally = Sizes[0] + sized() }\n\nfunc sized() int { return " + v + " }\n\n" +
+			"const Size = " + v + "\n\nvar Cells [Size]int\n"
 	}
 	const chainPkg = `package chain
 
@@ -329,7 +330,7 @@ func Process(r Runner, s fmt.Stringer) int {
 	println(s.String(), core.Ops, core.Labelled())
 	core.Written = 3
 	return core.Apply(core.Config{}) + r.Run() + core.Traced() + core.Step() + Importer{}.Legacy() + core.Gas + core.Table + legacy + core.Done + len(core.Addrs) +
-		core.Seeded + core.Codes[0] + core.Boxed.X + core.Slots[0] + core.Sizes[0]
+		core.Seeded + core.Codes[0] + core.Boxed.X + core.Slots[0] + core.Sizes[0] + len(core.Cells)
 }
 
 var legacy = Importer{}.Legacy()
@@ -388,6 +389,7 @@ func main() {
 		"core func box":             true,
 		"core func slot":            true,
 		"core func sized":           false,
+		"core const Size":           true,
 	}
 	if !maps.Equal(got, want) {
 		t.Errorf("got consensus path %v, want %v", got, want)

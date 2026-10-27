@@ -143,9 +143,22 @@ other rows follow in a section per verdict, `todo` first.
   results. Values reaching such a package indirectly are not covered.
 - `go:linkname`, changes of the Go toolchain, and the content of dependency
   modules are not covered; dependency modules are compared by version only.
+- Both sides are loaded with the Go toolchain the tool runs under, for the
+  platform and cgo setting of its environment (`GOOS`, `GOARCH`,
+  `CGO_ENABLED`). Run it with the Go release named by the `go` line of the
+  client's `go.mod`, on a platform the client is built for, with cgo enabled.
+  Otherwise build constraints select other files, such as go-ethereum's pure-Go
+  signature code instead of secp256k1, or a dependency does not build at all.
 - Each side only knows the go-ethereum packages it imports. If only the head
   imports a package, its reachable declarations get the Base `-` even if they
   did not change.
+- Quoted `#include`s are resolved relative to the including file, not in the
+  directories that `#cgo CFLAGS: -I` adds, so a file found only there is not
+  compared. go-ethereum's secp256k1 library resolves all its includes
+  relative, and a change of its behavior would have to be specified in an EIP.
+- A declaration does not include its dot imports, whose names it uses
+  unqualified, so it does not change when only such an import's path does.
+  go-ethereum has no dot imports outside tests.
 - The consensus path over-approximates through interfaces, but does not follow
   function values that are created outside of it and called on it, unless the
   initializer of a package variable it reads, or an init function writing that
@@ -153,3 +166,8 @@ other rows follow in a section per verdict, `todo` first.
 - Writes at startup are followed from init functions and the functions they
   call, but not from callbacks they hand to other functions, such as
   `sync.Once.Do`, nor from the initializers of other package variables.
+- Generic functions called by the initializer of a package variable that the
+  consensus path reads are followed in their generic form, in which calls and
+  conversions through a type parameter are not followed. A method that such a
+  function calls through a type parameter is listed, but marked off the
+  consensus path.

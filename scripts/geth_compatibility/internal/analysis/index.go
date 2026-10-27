@@ -55,7 +55,7 @@ type index struct {
 }
 
 type decl struct {
-	node ast.Node
+	spec ast.Spec
 	info *types.Info
 }
 
@@ -258,8 +258,8 @@ func (ix *index) add(key string, node ast.Node, p *packages.Package) {
 		fmt.Fprintf(&buf, "unprintable: %v", err)
 	}
 	ix.symbols[key] += importLines(node, p.TypesInfo) + dropBlankLines(buf.Bytes())
-	if _, isFunc := node.(*ast.FuncDecl); !isFunc {
-		ix.decls[key] = append(ix.decls[key], decl{node, p.TypesInfo})
+	if g, ok := node.(*ast.GenDecl); ok {
+		ix.decls[key] = append(ix.decls[key], decl{g.Specs[0], p.TypesInfo})
 	}
 }
 
