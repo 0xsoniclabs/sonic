@@ -148,7 +148,7 @@ func (r *reacher) addVar(v types.Object) {
 	}
 	for _, d := range r.lim.ix.decls[key] {
 		r.addConversions(d)
-		ast.Inspect(d.node, func(n ast.Node) bool {
+		ast.Inspect(d.spec, func(n ast.Node) bool {
 			switch n := n.(type) {
 			case *ast.FuncLit:
 				for _, f := range r.prog.Package(v.Pkg()).Func("init").AnonFuncs {
@@ -177,10 +177,7 @@ func (r *reacher) addVar(v types.Object) {
 // addConversions adds the types that the declaration d of a package variable
 // converts to interfaces.
 func (r *reacher) addConversions(d decl) {
-	gen, ok := d.node.(*ast.GenDecl)
-	if !ok {
-		gen = &ast.GenDecl{Tok: token.VAR, Specs: []ast.Spec{d.node.(*ast.ValueSpec)}}
-	}
+	gen := &ast.GenDecl{Tok: token.VAR, Specs: []ast.Spec{d.spec}}
 	r.finder.Result = nil
 	r.finder.Find(d.info, []*ast.File{{Decls: []ast.Decl{gen}}})
 	for c := range r.finder.Result {
