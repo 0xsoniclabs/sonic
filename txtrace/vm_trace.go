@@ -73,13 +73,34 @@ type vmTraceFrame struct {
 	memSize   uint64    // memory size lastOp is about to write, if memWrite
 }
 
-// vmTraceSizeLimit caps the approximate number of bytes a single vmTrace
-// retains (code, memory diffs and per-op overhead), protecting the node
-// from running out of memory on pathological traces.
+// vmTraceSizeLimit caps the bytes a single vmTrace retains when its caller
+// sets no budget, protecting the node from running out of memory on
+// pathological traces.
 const vmTraceSizeLimit = 256 << 20
 
-// vmTraceOpSize approximates the fixed footprint of one traced operation.
-const vmTraceOpSize = 128
+// The sizes a vmTrace counts for what it keeps: for each part the larger of
+// what it keeps in memory and what it takes in a response, so that neither
+// a trace in memory nor its answer grows past the limit. A fixed size per
+// operation alone lets the most expensive operations through: SWAP16 and
+// DUP16 push 17 words for 3 gas, a copy pushes memory.
+const (
+	// vmTraceOpSize is an operation with its executed part.
+	vmTraceOpSize = 128
+	// vmTracePushSize is a pushed word: a big integer in memory, up to 64
+	// hex digits with their prefix, quotes and separator in a response.
+	vmTracePushSize = 80
+	// vmTraceStoreSize is a storage write: two words in memory, two
+	// quoted hashes with their keys in a response.
+	vmTraceStoreSize = 160
+	// vmTraceDiffOverhead is the frame of a memory diff around its data.
+	vmTraceDiffOverhead = 32
+)
+
+// hexSize is the size of bytes kept as hex: two digits per byte, the prefix
+// and the quotes, without wrapping around.
+func hexSize(length uint64) uint64 {
+	return saturatingAdd(saturatingAdd(length, length), 4)
+}
 
 var errVmTraceTooLarge = errors.New("vmTrace exceeds size limit")
 
@@ -89,14 +110,22 @@ type VmTraceLogger struct {
 	result       *VmTrace
 	stateDB      tracing.StateDB
 	pendingStore *StorageDiff // latest storage write, attributed to the current op
-	size         uint64       // approximate bytes retained so far
+	size         uint64       // bytes retained so far, as counted above
 	sizeLimit    uint64
-	err          error // set once the trace is dropped for exceeding sizeLimit
+	exceeded     func() // called once when the trace is dropped, if not nil
+	err          error  // set once the trace is dropped for exceeding sizeLimit
 }
 
-// NewVmTraceLogger creates a new VmTraceLogger.
+// NewVmTraceLogger creates a new VmTraceLogger with the default limit.
 func NewVmTraceLogger() *VmTraceLogger {
-	return &VmTraceLogger{sizeLimit: vmTraceSizeLimit}
+	return NewVmTraceLoggerWithLimit(vmTraceSizeLimit, nil)
+}
+
+// NewVmTraceLoggerWithLimit creates a VmTraceLogger that keeps at most limit
+// bytes and calls exceeded, if not nil, once it drops the trace, so that its
+// caller can stop the execution instead of running it to the end.
+func NewVmTraceLoggerWithLimit(limit uint64, exceeded func()) *VmTraceLogger {
+	return &VmTraceLogger{sizeLimit: limit, exceeded: exceeded}
 }
 
 // Hooks returns the tracing hooks.
@@ -134,6 +163,9 @@ func (l *VmTraceLogger) grow(n uint64) bool {
 		l.traceStack = nil
 		l.result = nil
 		l.pendingStore = nil
+		if l.exceeded != nil {
+			l.exceeded()
+		}
 		return false
 	}
 	l.size += n
@@ -177,7 +209,7 @@ func (l *VmTraceLogger) onEnter(depth int, typ byte, _ common.Address, to common
 		}
 	}
 
-	if !l.grow(uint64(len(code))) {
+	if !l.grow(hexSize(uint64(len(code)))) {
 		return
 	}
 
@@ -215,11 +247,12 @@ func (l *VmTraceLogger) onExit(depth int, _ []byte, _ uint64, _ error, _ bool) {
 	// in onExit since scope is gone.
 	if frame.lastOpIdx >= 0 {
 		op := &frame.trace.Ops[frame.lastOpIdx]
-		if op.Ex != nil {
-			if l.pendingStore != nil {
-				op.Ex.Store = l.pendingStore
-				l.pendingStore = nil
+		if op.Ex != nil && l.pendingStore != nil {
+			if !l.grow(vmTraceStoreSize) {
+				return
 			}
+			op.Ex.Store = l.pendingStore
+			l.pendingStore = nil
 		}
 	}
 
@@ -243,16 +276,23 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 	if frame.lastOpIdx >= 0 {
 		prevOp := &frame.trace.Ops[frame.lastOpIdx]
 		if prevOp.Ex != nil {
-			prevOp.Ex.Push = computePushed(frame.lastOp, scope.StackData())
+			pushed := computePushed(frame.lastOp, scope.StackData())
+			if !l.grow(vmTracePushSize * uint64(len(pushed))) {
+				return
+			}
+			prevOp.Ex.Push = pushed
 			if frame.memWrite && frame.memSize > 0 {
 				// Report the full reserved [off, off+size) region, matching Parity/OpenEthereum's vmTrace semantics.
-				if !l.grow(frame.memSize) {
+				if !l.grow(saturatingAdd(hexSize(frame.memSize), vmTraceDiffOverhead)) {
 					return
 				}
 				data := memoryRegion(scope.MemoryData(), frame.memOff, frame.memSize)
 				prevOp.Ex.Mem = &MemoryDiff{Off: frame.memOff, Data: data}
 			}
 			if l.pendingStore != nil {
+				if !l.grow(vmTraceStoreSize) {
+					return
+				}
 				prevOp.Ex.Store = l.pendingStore
 				l.pendingStore = nil
 			}
@@ -287,6 +327,15 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 	frame.lastOp = vm.OpCode(op)
 	// Determine the memory range this opcode is about to write
 	frame.memOff, frame.memSize, frame.memWrite = memWriteRange(vm.OpCode(op), scope.StackData())
+}
+
+// saturatingAdd adds without wrapping around, so that a size near the
+// largest integer still exceeds every limit.
+func saturatingAdd(left, right uint64) uint64 {
+	if sum := left + right; sum >= left {
+		return sum
+	}
+	return ^uint64(0)
 }
 
 // memWriteRange returns the memory byte range the opcode is about to

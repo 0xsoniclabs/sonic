@@ -703,3 +703,56 @@ func TestVmTraceLogger_MemDiffsFromRealEvm(t *testing.T) {
 		require.Nil(t, l.GetResult())
 	})
 }
+
+// TestVmTraceLogger_CountsWhatItKeeps holds V12: pushed values, code and
+// memory count by their size in a response, not one fixed size per
+// operation.
+func TestVmTraceLogger_CountsWhatItKeeps(t *testing.T) {
+	l := NewVmTraceLoggerWithLimit(1<<20, nil)
+	code := make([]byte, 100)
+	l.onEnter(0, byte(vm.CREATE), addr(1), addr(2), code, 1000, big.NewInt(0))
+	require.Equal(t, hexSize(100), l.size, "code counts as hex")
+
+	stack := makeStack(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+	l.onOpcode(0, byte(vm.DUP16), 1000, 3, &mockOpContext{stack: stack[:16]}, nil, 0, nil)
+	before := l.size
+	l.onOpcode(1, byte(vm.STOP), 997, 0, &mockOpContext{stack: stack}, nil, 0, nil)
+	require.Equal(t, before+17*vmTracePushSize+vmTraceOpSize, l.size, "DUP16 pushes 17 words")
+
+	l.onOpcode(2, byte(vm.MSTORE), 997, 3, &mockOpContext{stack: makeStack(0, 0)}, nil, 0, nil)
+	before = l.size
+	l.onOpcode(3, byte(vm.STOP), 994, 0, &mockOpContext{memory: make([]byte, 32)}, nil, 0, nil)
+	require.Equal(t, before+hexSize(32)+vmTraceDiffOverhead+vmTraceOpSize, l.size, "memory counts as hex")
+
+	l.OnStorageChange(addr(2), common.Hash{1}, common.Hash{}, common.Hash{2})
+	before = l.size
+	l.onExit(0, nil, 0, nil, false)
+	require.Equal(t, before+vmTraceStoreSize, l.size, "a storage write counts too")
+	require.NoError(t, l.Err())
+}
+
+// TestVmTraceLogger_TellsItsCallerOnceWhenItDropsTheTrace holds V12: the
+// caller can stop the execution as soon as the budget is spent.
+func TestVmTraceLogger_TellsItsCallerOnceWhenItDropsTheTrace(t *testing.T) {
+	calls := 0
+	l := NewVmTraceLoggerWithLimit(hexSize(0)+vmTraceOpSize, func() { calls++ })
+	l.onEnter(0, 0x00, addr(1), addr(2), nil, 1000, big.NewInt(0))
+	l.onOpcode(0, byte(vm.PUSH1), 1000, 3, &mockOpContext{}, nil, 0, nil)
+	require.Zero(t, calls)
+	l.onOpcode(2, byte(vm.PUSH1), 997, 3, &mockOpContext{stack: makeStack(1)}, nil, 0, nil)
+	l.onOpcode(4, byte(vm.STOP), 994, 0, &mockOpContext{stack: makeStack(1, 1)}, nil, 0, nil)
+	require.Equal(t, 1, calls)
+	require.ErrorIs(t, l.Err(), errVmTraceTooLarge)
+	require.Nil(t, l.GetResult())
+}
+
+func TestSaturatingAdd_DoesNotWrapAround(t *testing.T) {
+	require.Equal(t, uint64(3), saturatingAdd(1, 2))
+	require.Equal(t, ^uint64(0), saturatingAdd(^uint64(0)-1, 2))
+}
+
+func TestHexSize_DoesNotWrapAround(t *testing.T) {
+	require.Equal(t, uint64(68), hexSize(32))
+	require.Equal(t, ^uint64(0), hexSize(^uint64(0)/2+1), "a size above 2^63 bytes")
+	require.Equal(t, ^uint64(0), hexSize(^uint64(0)/2-1), "a size whose quotes would wrap")
+}
