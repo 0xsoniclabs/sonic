@@ -89,7 +89,7 @@ func analyze(repo, rev string) (*analysis.Side, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	archive := exec.Command("git", "-C", repo, "archive", rev)
 	untar := exec.Command("tar", "-x", "-C", dir)
 	tarball, err := archive.StdoutPipe()
@@ -101,7 +101,7 @@ func analyze(repo, rev string) (*analysis.Side, error) {
 	err = untar.Start()
 	// Only tar may hold the read end, so that git archive gets a broken pipe
 	// instead of blocking if tar exits early.
-	tarball.Close()
+	_ = tarball.Close()
 	if err != nil {
 		return nil, err
 	}

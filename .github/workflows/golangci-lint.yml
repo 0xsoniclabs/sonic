@@ -22,3 +22,8 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12
+      - name: golangci-lint geth_compatibility
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12
+          working-directory: scripts/geth_compatibility
