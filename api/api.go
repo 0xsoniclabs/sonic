@@ -17,73 +17,56 @@
 package api
 
 import (
-	"github.com/0xsoniclabs/sonic/api/ethapi"
-	"github.com/0xsoniclabs/sonic/api/sonicapi"
-	"github.com/0xsoniclabs/sonic/api/testapi"
 	"github.com/ethereum/go-ethereum/rpc"
+
+	"github.com/0xsoniclabs/sonic/api/legacy"
+	"github.com/0xsoniclabs/sonic/api/testapi"
 )
 
-// Backend is an aggreate of all the APIs' backends.
-// This is a compromise solution because of the monolithic nature of the
-// original api backend object. This interface allows to develop and
-// maintain the APIs independently of the backend implementation.
+// backend is what the legacy namespaces need of the node.
 type backend interface {
-	ethapi.Backend
-	sonicapi.BundleApiBackend
+	legacy.Backend
 	testapi.Backend
 }
 
-func GetAPIs(apiBackend backend) []rpc.API {
-	nonceLock := new(ethapi.AddrLocker)
+// GetAPIs returns the legacy namespaces the node's own handler serves (X3):
+// the RPC module serves everything else.
+func GetAPIs(apiBackend backend, defaults legacy.Defaults) []rpc.API {
+	nonceLock := new(legacy.AddrLocker)
 	return []rpc.API{
 		{
 			Namespace: "eth",
 			Version:   "1.0",
-			Service:   ethapi.NewPublicEthereumAPI(apiBackend),
-			Public:    true,
-		}, {
-			Namespace: "eth",
-			Version:   "1.0",
-			Service:   ethapi.NewPublicBlockChainAPI(apiBackend),
+			Service:   legacy.NewPublicBlockChainAPI(apiBackend),
 			Public:    true,
 		}, {
 			Namespace: "dag",
 			Version:   "1.0",
-			Service:   ethapi.NewPublicDAGChainAPI(apiBackend),
+			Service:   legacy.NewPublicDAGChainAPI(apiBackend),
 			Public:    true,
 		}, {
 			Namespace: "eth",
 			Version:   "1.0",
-			Service:   ethapi.NewPublicTransactionPoolAPI(apiBackend, nonceLock),
-			Public:    true,
-		}, {
-			Namespace: "txpool",
-			Version:   "1.0",
-			Service:   ethapi.NewPublicTxPoolAPI(apiBackend),
+			Service:   legacy.NewPublicTransactionPoolAPI(apiBackend, nonceLock, defaults),
 			Public:    true,
 		}, {
 			Namespace: "debug",
 			Version:   "1.0",
-			Service:   ethapi.NewPrivateDebugAPI(apiBackend),
+			Service:   legacy.NewPrivateDebugAPI(apiBackend),
 		}, {
 			Namespace: "eth",
 			Version:   "1.0",
-			Service:   ethapi.NewPublicAccountAPI(apiBackend.AccountManager()),
+			Service:   legacy.NewPublicAccountAPI(apiBackend.AccountManager()),
 			Public:    true,
 		}, {
 			Namespace: "personal",
 			Version:   "1.0",
-			Service:   ethapi.NewPrivateAccountAPI(apiBackend, nonceLock),
+			Service:   legacy.NewPrivateAccountAPI(apiBackend, nonceLock, defaults),
 			Public:    false,
 		}, {
 			Namespace: "abft",
 			Version:   "1.0",
-			Service:   ethapi.NewPublicAbftAPI(apiBackend),
-			Public:    true,
-		}, {
-			Namespace: "sonic",
-			Version:   "1.0",
-			Service:   sonicapi.NewPublicBundleAPI(apiBackend),
+			Service:   legacy.NewPublicAbftAPI(apiBackend),
 			Public:    true,
 		}, {
 			Namespace: "test",

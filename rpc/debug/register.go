@@ -45,4 +45,5 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment) {
 		dispatch.Required[exec.CallArguments]("transaction"),
 		dispatch.Required[chain.BlockReference]("block"),
 		dispatch.Optional[exec.TraceCallConfig]("config"))
+	registerProfiling(dispatcher)
 }

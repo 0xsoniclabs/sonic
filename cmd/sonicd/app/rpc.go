@@ -30,6 +30,7 @@ import (
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/0xsoniclabs/sonic/api/legacy"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/rpc"
@@ -39,7 +40,9 @@ import (
 
 // newRPCModule creates the RPC module of the node, takes over the endpoints
 // it serves and registers it with the node, which starts it after the
-// gossip service and stops it before.
+// gossip service and stops it before. The node's own handler serves the
+// legacy namespaces (X3), whose wallet methods take their defaults from the
+// module: the one place the node and the module refer to each other (ADR5).
 func newRPCModule(stack *node.Node, service *gossip.Service, configuration *config.Config) (*rpc.Module, error) {
 	moduleConfig := rpcModuleConfig(configuration)
 	moduleConfig.ClientVersion = stack.Server().Name
@@ -50,6 +53,7 @@ func newRPCModule(stack *node.Node, service *gossip.Service, configuration *conf
 	if err != nil {
 		return nil, fmt.Errorf("failed to reach the node's RPC handler: %w", err)
 	}
+	stack.RegisterAPIs(service.APIs(moduleWallet{module: module}))
 	client := gethrpc.DialInProc(handler)
 	module.Forward(nodeForwarder{client: client})
 	stack.RegisterLifecycle(moduleLifecycle{Module: module, client: client})
@@ -175,6 +179,26 @@ func httpEndpoint(stack *node.Node, module *rpc.Module) string {
 		return endpoint
 	}
 	return stack.HTTPEndpoint()
+}
+
+// moduleWallet gives the legacy wallet methods the tip and the gas of the
+// transactions they complete from the module (ADR5).
+type moduleWallet struct {
+	module *rpc.Module
+}
+
+func (wallet moduleWallet) MaxPriorityFeePerGas(ctx context.Context) (*big.Int, error) {
+	var tip hexutil.Big
+	if err := wallet.module.Call(ctx, &tip, "eth_maxPriorityFeePerGas"); err != nil {
+		return nil, err
+	}
+	return tip.ToInt(), nil
+}
+
+func (wallet moduleWallet) EstimateGas(ctx context.Context, arguments legacy.TransactionArgs) (hexutil.Uint64, error) {
+	var gas hexutil.Uint64
+	err := wallet.module.Call(ctx, &gas, "eth_estimateGas", arguments, "pending")
+	return gas, err
 }
 
 // moduleChainReader reads the chain state through the module, for the

@@ -17,9 +17,12 @@
 package tests
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +34,9 @@ import (
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	sonicrpc "github.com/0xsoniclabs/sonic/rpc"
+	"github.com/0xsoniclabs/sonic/rpc/dispatch"
+	rpctests "github.com/0xsoniclabs/sonic/rpc/tests"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/vecmt"
 	"github.com/Fantom-foundation/lachesis-base/abft"
@@ -41,6 +47,7 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/rpc/rpc_test_utils"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -72,10 +79,19 @@ var (
 
 type namespaceMap map[string]map[string]interface{}
 
-// TestRPCApis checks if all go-ethereum RPC APIs are implemented in Sonic
+// TestRPCApis checks if all go-ethereum RPC APIs are implemented in Sonic:
+// by the RPC module, or by the legacy namespaces of the node's own handler.
 func TestRPCApis(t *testing.T) {
 	ethAPIs := parseAPIs(rpc_test_utils.GetRpcApis())
-	sonicAPIs := parseAPIs(getNodeService(t).APIs())
+	sonicAPIs := parseAPIs(getNodeService(t).APIs(nil))
+	for namespace, methods := range servedByTheModule(t, ethAPIs) {
+		if sonicAPIs[namespace] == nil {
+			sonicAPIs[namespace] = map[string]interface{}{}
+		}
+		for method := range methods {
+			sonicAPIs[namespace][method] = true
+		}
+	}
 
 	// look for missing methods which are in go-ethereum and not in Sonic
 	missingInSonic := findMissingMethods(ethAPIs, sonicAPIs)
@@ -83,6 +99,42 @@ func TestRPCApis(t *testing.T) {
 	// look for missing methods which are in Sonic and are not in known missing
 	missing := findMissingMethods(missingInSonic, knownMissingAPIs)
 	require.Zero(t, len(missing), "missing namespaces %v", missing)
+}
+
+// moduleSubscriptions are the subscriptions the RPC module serves through
+// eth_subscribe, which go-ethereum's server lists as methods.
+var moduleSubscriptions = map[string]bool{"NewHeads": true, "Logs": true, "NewPendingTransactions": true}
+
+// servedByTheModule returns the methods of the APIs the RPC module answers
+// with anything but "method not found".
+func servedByTheModule(t *testing.T, apis namespaceMap) namespaceMap {
+	module := sonicrpc.New(sonicrpc.DefaultConfig(), rpctests.NewFakeCore(t), prometheus.NewRegistry())
+	served := namespaceMap{}
+	for namespace, methods := range apis {
+		for name := range methods {
+			if namespace == "eth" && moduleSubscriptions[name] {
+				served[namespace] = served.with(namespace, name)
+				continue
+			}
+			method := namespace + "_" + strings.ToLower(name[:1]) + name[1:]
+			var failure *dispatch.Error
+			err := module.Call(t.Context(), new(json.RawMessage), method)
+			if errors.As(err, &failure) && failure.Code == dispatch.CodeMethodNotFound {
+				continue
+			}
+			served[namespace] = served.with(namespace, name)
+		}
+	}
+	return served
+}
+
+func (nm namespaceMap) with(namespace, method string) map[string]interface{} {
+	methods := nm[namespace]
+	if methods == nil {
+		methods = map[string]interface{}{}
+	}
+	methods[method] = true
+	return methods
 }
 
 // getNodeService returns a gossip service
@@ -309,4 +361,40 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 
 	require.Equal(t, fmt.Sprintf("0x%x", expectedForkId), response["current"]["forkId"],
 		"fork ID after upgrade is incorrect")
+}
+
+// TestNodeHandler_ServesExactlyTheLegacyMethods pins what the node's own
+// handler serves besides go-ethereum's built-in namespaces: the legacy
+// namespaces of X3 and the p2p facts of net. The RPC module forwards to it
+// on IPC only, so nothing reaches IPC unlisted.
+func TestNodeHandler_ServesExactlyTheLegacyMethods(t *testing.T) {
+	var served []string
+	for _, api := range getNodeService(t).APIs(nil) {
+		kind := reflect.TypeOf(api.Service)
+		for index := range kind.NumMethod() {
+			name := kind.Method(index).Name
+			served = append(served, api.Namespace+"_"+strings.ToLower(name[:1])+name[1:])
+		}
+	}
+	slices.Sort(served)
+	signing := []string{"accounts", "fillTransaction", "getEpochBlock", "getEpochStats", "resend", "sendTransaction", "sign", "signTransaction"}
+	var expected []string
+	for _, namespace := range []string{"eth", "ftm"} {
+		for _, method := range signing {
+			expected = append(expected, namespace+"_"+method)
+		}
+	}
+	expected = append(expected,
+		"abft_getDowntime", "abft_getEpochUptime", "abft_getOriginatedEpochFee", "abft_getValidators",
+		"dag_getEvent", "dag_getEventPayload", "dag_getHeads",
+		"debug_chaindbCompact", "debug_chaindbProperty", "debug_setHead",
+		"net_listening", "net_peerCount",
+		"personal_deriveAccount", "personal_ecRecover", "personal_importRawKey", "personal_initializeWallet",
+		"personal_listAccounts", "personal_listWallets", "personal_lockAccount", "personal_newAccount",
+		"personal_openWallet", "personal_sendTransaction", "personal_sign", "personal_signAndSendTransaction",
+		"personal_signTransaction", "personal_unlockAccount", "personal_unpair",
+		"test_addTransactions", "test_proposeTransactions",
+	)
+	slices.Sort(expected)
+	require.Equal(t, expected, served)
 }

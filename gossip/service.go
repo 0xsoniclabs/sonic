@@ -43,7 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/0xsoniclabs/sonic/api"
-	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/api/legacy"
 	"github.com/0xsoniclabs/sonic/eventcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/basiccheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
@@ -60,7 +60,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
-	"github.com/0xsoniclabs/sonic/gossip/filters"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/proclogger"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -277,10 +276,7 @@ type Service struct {
 	operaDialCandidates enode.Iterator
 
 	EthAPI        *EthAPIBackend
-	netRPCService *ethapi.PublicNetAPI
-
-	// filterAPI must be stopped during shutdown before the store is closed.
-	filterAPI *filters.PublicFilterAPI
+	netRPCService *legacy.PublicNetAPI
 
 	procLogger *proclogger.Logger
 
@@ -311,7 +307,7 @@ func NewService(stack *node.Node, config Config, store *Store, blockProc BlockPr
 	svc.accountManager = stack.AccountManager()
 	svc.EthAPI.SetExtRPCEnabled(stack.Config().ExtRPCEnabled())
 	// Create the net API service
-	svc.netRPCService = ethapi.NewPublicNetAPI(svc.p2pServer, store.GetRules().NetworkID)
+	svc.netRPCService = legacy.NewPublicNetAPI(svc.p2pServer, store.GetRules().NetworkID)
 	svc.haltCheck = haltCheck
 
 	return svc, nil
@@ -548,41 +544,16 @@ func (s *Service) Protocols() ([]p2p.Protocol, CleanupFunc) {
 	return MakeProtocols(s, s.handler, s.operaDialCandidates)
 }
 
-// APIs returns api methods the service wants to expose on rpc channels.
-func (s *Service) APIs() []rpc.API {
-	apis := api.GetAPIs(s.EthAPI)
-
-	// Retained so its event loop can be stopped before the store is closed.
-	s.filterAPI = filters.NewPublicFilterAPI(s.EthAPI, s.config.FilterAPI)
-
-	apis = append(apis, []rpc.API{
-		{
-			Namespace: "eth",
-			Version:   "1.0",
-			Service:   NewPublicEthereumAPI(s),
-			Public:    true,
-		}, {
-			Namespace: "eth",
-			Version:   "1.0",
-			Service:   s.filterAPI,
-			Public:    true,
-		}, {
-			Namespace: "net",
-			Version:   "1.0",
-			Service:   s.netRPCService,
-			Public:    true,
-		}, {
-			Namespace: "debug",
-			Version:   "1.0",
-			Service:   ethapi.NewPublicDebugAPI(s.EthAPI, s.config.MaxResponseSize, s.config.StructLogLimit, s.config.AllowJSTracers),
-			Public:    true,
-		}, {
-			Namespace: "trace",
-			Version:   "1.0",
-			Service:   ethapi.NewPublicTxTraceAPI(s.EthAPI, s.config.MaxResponseSize, s.config.MaxTraceFilterRange),
-			Public:    true,
-		},
-	}...)
+// APIs returns the methods the node's own handler serves: the legacy
+// namespaces the RPC module does not port (X3), whose wallet methods take
+// their defaults from the module, and the p2p facts of net.
+func (s *Service) APIs(defaults legacy.Defaults) []rpc.API {
+	apis := append(api.GetAPIs(s.EthAPI, defaults), rpc.API{
+		Namespace: "net",
+		Version:   "1.0",
+		Service:   s.netRPCService,
+		Public:    true,
+	})
 
 	// eth-namespace is doubled as ftm-namespace for branding purpose
 	for _, api := range apis {
@@ -686,10 +657,6 @@ func (s *Service) Stop() error {
 
 	s.stopPeerHandling()
 
-	// Must stop before the store is closed to avoid reading from a closed store.
-	if s.filterAPI != nil {
-		filters.StopPublicFilterAPI(s.filterAPI)
-	}
 	s.stopStoreReaders()
 	s.gpo.Stop()
 	// it's safe to stop tflusher only before locking engineMu

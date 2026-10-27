@@ -201,7 +201,6 @@ func MakeNode(sigCtx context.Context, ctx *cli.Context, cfg *Config) (*node.Node
 		))
 	}
 
-	stack.RegisterAPIs(svc.APIs())
 	protocols, cleanupProtocols := svc.Protocols()
 	cleanup = append(cleanup, cleanupProtocols)
 	stack.RegisterProtocols(protocols)

@@ -178,6 +178,19 @@ func (chain matrixChain) requests() map[string][]string {
 		all["eth_"+name] = shapes
 		all["ftm_"+name] = shapes
 	}
+	// The profiling methods answer without reaching Core, in a build
+	// without enable_debug only.
+	for _, name := range []string{
+		"debug_verbosity", "debug_vmodule", "debug_memStats", "debug_gcStats", "debug_cpuProfile",
+		"debug_startCPUProfile", "debug_stopCPUProfile", "debug_goTrace", "debug_startGoTrace",
+		"debug_stopGoTrace", "debug_blockProfile", "debug_setBlockProfileRate", "debug_writeBlockProfile",
+		"debug_mutexProfile", "debug_setMutexProfileFraction", "debug_writeMutexProfile",
+		"debug_writeMemProfile", "debug_stacks", "debug_freeOSMemory", "debug_setGCPercent", "debug_setMemoryLimit",
+	} {
+		if chain.harness.Dispatcher.Has(name) {
+			all[name] = []string{`[]`}
+		}
+	}
 	return all
 }
 

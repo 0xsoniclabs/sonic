@@ -27,11 +27,13 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/node"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
+	"github.com/0xsoniclabs/sonic/api/legacy"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/rpc"
@@ -273,4 +275,32 @@ func TestModuleChainReader_ReadsTheChainThroughTheModule(t *testing.T) {
 
 	_, err = reader.BalanceAt(t.Context(), account, big.NewInt(9))
 	require.ErrorContains(t, err, "not found", "a block above the head")
+}
+
+func TestModuleWallet_DefaultsComeFromTheModule(t *testing.T) {
+	sender := common.HexToAddress("0xa1")
+	carmenCore := tests.NewCarmenCore(t, map[common.Address]tests.Account{
+		sender: {Balance: new(big.Int).Lsh(big.NewInt(1), 80)},
+	})
+	carmenCore.AppendBlock(tests.BlockSpec{})
+	carmenCore.PublishHead(1)
+	module := rpc.New(rpc.DefaultConfig(), carmenCore, prometheus.NewRegistry())
+	require.NoError(t, module.Start())
+	defer func() { require.NoError(t, module.Stop()) }()
+	wallet := moduleWallet{module: module}
+
+	var suggested hexutil.Big
+	require.NoError(t, module.Call(t.Context(), &suggested, "eth_maxPriorityFeePerGas"))
+	tip, err := wallet.MaxPriorityFeePerGas(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, suggested.ToInt(), tip)
+
+	recipient := common.HexToAddress("0xb2")
+	gas, err := wallet.EstimateGas(t.Context(), legacy.TransactionArgs{From: &sender, To: &recipient})
+	require.NoError(t, err)
+	require.Equal(t, hexutil.Uint64(21_000), gas)
+
+	value := hexutil.Big(*new(big.Int).Lsh(big.NewInt(1), 90))
+	_, err = wallet.EstimateGas(t.Context(), legacy.TransactionArgs{From: &sender, To: &recipient, Value: &value})
+	require.ErrorContains(t, err, "insufficient balance for transfer", "the module's answer")
 }

@@ -38,7 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/pkg/errors"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/api/legacy"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
@@ -52,7 +52,9 @@ import (
 
 //go:generate go tool mockgen -source=ethapi_backend.go -destination=ethapi_backend_mock.go -package=gossip
 
-// EthAPIBackend implements ethapi.Backend.
+// EthAPIBackend implements legacy.Backend and testapi.Backend for the
+// namespaces of the node's own handler (X3), and backs the RPC module's Core
+// adapter.
 type EthAPIBackend struct {
 	extRPCEnabled       bool
 	svc                 *Service
@@ -495,12 +497,12 @@ func (b *EthAPIBackend) TxPoolContent() (map[common.Address]types.Transactions, 
 }
 
 // Progress returns current synchronization status of this node
-func (b *EthAPIBackend) Progress() ethapi.PeerProgress {
+func (b *EthAPIBackend) Progress() legacy.PeerProgress {
 	p2pProgress := b.svc.handler.myProgress()
 	highestP2pProgress := b.svc.handler.highestPeerProgress()
 	lastBlock := b.svc.store.GetBlock(p2pProgress.LastBlockIdx)
 
-	return ethapi.PeerProgress{
+	return legacy.PeerProgress{
 		CurrentEpoch:     p2pProgress.Epoch,
 		CurrentBlock:     p2pProgress.LastBlockIdx,
 		CurrentBlockHash: p2pProgress.LastBlockAtropos,
