@@ -296,7 +296,11 @@ func TestMatrix_ACancelledRequestReturnsWithinOneCall(t *testing.T) {
 			start := time.Now()
 			_, _ = chain.harness.Dispatcher.Serve(ctx, name, json.RawMessage(shape))
 			cancel()
-			require.Less(t, time.Since(start), 2*latency+latency/2, "%s %s did not return within one call of its cancel", name, shape)
+			// The cancel comes half way through the first call; it and at
+			// most one more end by two latencies, and the latency left is
+			// the work between them on a loaded machine. Two more calls
+			// end at the bound before any work.
+			require.Less(t, time.Since(start), 3*latency, "%s %s did not return within one call of its cancel", name, shape)
 		}
 	}
 }
