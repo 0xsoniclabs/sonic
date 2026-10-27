@@ -34,7 +34,6 @@ import (
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/rpc"
-	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
 )
 
@@ -95,7 +94,7 @@ func rpcModuleConfig(configuration *config.Config) rpc.Config {
 	limits.UnindexedLogsBlockRangeLimit = uint64(opera.FilterAPI.UnindexedLogsBlockRangeLimit)
 	limits.TxSyncDefaultTimeout = opera.TxSyncDefaultTimeout
 	limits.TxSyncMaxTimeout = opera.TxSyncMaxTimeout
-	moduleConfig.Oracle = oracle.Config(opera.GPO)
+	moduleConfig.Oracle = opera.GPO
 	return moduleConfig
 }
 

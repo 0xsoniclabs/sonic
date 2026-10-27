@@ -22,11 +22,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/stretchr/testify/require"
-
-	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 )
 
 // TestDefaultConfig_KeepsTheDefaultsOfTheReference holds O1: the defaults
@@ -47,7 +46,7 @@ func TestDefaultConfig_KeepsTheDefaultsOfTheReference(t *testing.T) {
 	require.Equal(t, idx.Block(100), config.FilterAPI.UnindexedLogsBlockRangeLimit)
 	require.Equal(t, uint(1000), config.FilterAPI.LogQueryParameterLimit)
 	require.Equal(t, uint(5000), config.FilterAPI.LogQueryResultLimit)
-	require.Equal(t, gasprice.Config{
+	require.Equal(t, oracle.Config{
 		MaxGasPrice:      big.NewInt(10_000_000_000_000_000),
 		MinGasPrice:      new(big.Int),
 		DefaultCertainty: 500_000,

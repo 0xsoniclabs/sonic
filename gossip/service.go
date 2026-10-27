@@ -60,7 +60,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
-	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/proclogger"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
@@ -268,8 +267,6 @@ type Service struct {
 
 	feed ServiceFeed
 
-	gpo *gasprice.Oracle
-
 	// application protocol
 	handler *handler
 
@@ -355,17 +352,12 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	svc.proposalCheckReader = newProposalCheckReader(store)
 	svc.checkers = makeCheckers(config.HeavyCheck, txSigner, &svc.heavyCheckReader, &svc.gasPowerCheckReader, &svc.proposalCheckReader, svc.store)
 
-	// create GPO
-	svc.gpo = gasprice.NewOracle(svc.config.GPO, nil)
-
 	// create tx pool
 	stateReader := &EvmStateReader{
 		ServiceFeed: &svc.feed,
 		store:       svc.store,
-		gpo:         svc.gpo,
 	}
 	svc.txpool = newTxPool(stateReader)
-	svc.gpo.SetReader(&GPOBackend{svc.store, svc.txpool})
 
 	// create the long-lived ledger driven by the consensus block callback
 	svc.ledger = NewLedger(svc.store)
@@ -572,7 +564,6 @@ func (s *Service) APIs(defaults legacy.Defaults) []rpc.API {
 
 // Start method invoked when the node is ready to start the service.
 func (s *Service) Start() error {
-	s.gpo.Start()
 	// start tflusher before starting snapshots generation
 	s.tflusher.Start()
 	blockState := s.store.GetBlockState()
@@ -658,7 +649,6 @@ func (s *Service) Stop() error {
 	s.stopPeerHandling()
 
 	s.stopStoreReaders()
-	s.gpo.Stop()
 	// it's safe to stop tflusher only before locking engineMu
 	s.tflusher.Stop()
 

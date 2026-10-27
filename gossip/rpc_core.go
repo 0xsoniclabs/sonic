@@ -53,7 +53,6 @@ type rpcCore struct {
 	feed    *ServiceFeed
 	handler *handler
 	config  Config
-	oracle  *GPOBackend
 }
 
 // RPCCore returns the node as the RPC module sees it.
@@ -65,7 +64,6 @@ func (s *Service) RPCCore() core.Core {
 		feed:    &s.feed,
 		handler: s.handler,
 		config:  s.config,
-		oracle:  &GPOBackend{store: s.store, txpool: s.txpool},
 	}
 }
 
@@ -268,8 +266,8 @@ func (adapter *rpcCore) Progress() core.Progress {
 
 func (adapter *rpcCore) OracleInputs() core.OracleInputs {
 	return core.OracleInputs{
-		PendingRules:      adapter.oracle.GetPendingRules(),
-		TotalGasPowerLeft: adapter.oracle.TotalGasPowerLeft(),
+		PendingRules:      pendingRules(adapter.store),
+		TotalGasPowerLeft: totalGasPowerLeft(adapter.store),
 		MinTip:            adapter.txpool.MinTip(),
 	}
 }

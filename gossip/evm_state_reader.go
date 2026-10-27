@@ -26,7 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 )
@@ -74,7 +73,6 @@ type EvmStateReader struct {
 	*ServiceFeed
 
 	store *Store
-	gpo   *gasprice.Oracle
 }
 
 // CurrentBaseFee returns the base fee of the most recent block.

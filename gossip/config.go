@@ -30,7 +30,6 @@ import (
 
 	"github.com/0xsoniclabs/sonic/eventcheck/heavycheck"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
-	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamleecher"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamseeder"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
@@ -109,7 +108,7 @@ type (
 		HeavyCheck heavycheck.Config
 
 		// Gas Price Oracle options
-		GPO gasprice.Config
+		GPO oracle.Config
 
 		// RPCGasCap is the global gas cap for eth-call variants.
 		RPCGasCap uint64 `toml:",omitempty"`
@@ -256,7 +255,7 @@ func DefaultConfig(scale cachescale.Func) Config {
 
 		RPCEVMTimeout: limits.RPCEVMTimeout,
 
-		GPO: gasprice.Config(oracle.DefaultConfig()),
+		GPO: oracle.DefaultConfig(),
 
 		RPCBlockExt: true,
 

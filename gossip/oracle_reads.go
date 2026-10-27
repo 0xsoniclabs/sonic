@@ -17,12 +17,8 @@
 package gossip
 
 import (
-	"math/big"
-
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -30,43 +26,23 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/concurrent"
 )
 
-type GPOBackend struct {
-	store  *Store
-	txpool TxPool
-}
-
-func (b *GPOBackend) GetLatestBlockIndex() idx.Block {
-	return b.store.GetLatestBlockIndex()
-}
-
-func (b *GPOBackend) GetRules() opera.Rules {
-	return b.store.GetRules()
-}
-
-func (b *GPOBackend) GetPendingRules() opera.Rules {
-	bs, es := b.store.GetBlockEpochState()
+// pendingRules are the rules the next block is processed with: those an
+// update of the open epoch set, the epoch's otherwise. The module's oracle
+// reads its minimum gas price.
+func pendingRules(store *Store) opera.Rules {
+	bs, es := store.GetBlockEpochState()
 	if bs.DirtyRules != nil {
 		return *bs.DirtyRules
 	}
 	return es.Rules
 }
 
-func (b *GPOBackend) PendingTxs() map[common.Address]types.Transactions {
-	txs, err := b.txpool.Pending(false)
-	if err != nil {
-		return map[common.Address]types.Transactions{}
-	}
-	return txs
-}
-
-func (b *GPOBackend) MinGasTip() *big.Int {
-	return b.txpool.MinTip()
-}
-
-// TotalGasPowerLeft returns a total amount of obtained gas power by the validators, according to the latest events from each validator
-func (b *GPOBackend) TotalGasPowerLeft() uint64 {
-	bs, es := b.store.GetBlockEpochState()
-	set := b.store.GetLastEvents(es.Epoch)
+// totalGasPowerLeft returns a total amount of obtained gas power by the
+// validators, according to the latest events from each validator, the gas
+// power the module's oracle weighs against.
+func totalGasPowerLeft(store *Store) uint64 {
+	bs, es := store.GetBlockEpochState()
+	set := store.GetLastEvents(es.Epoch)
 	if set == nil {
 		set = concurrent.WrapValidatorEventsSet(map[idx.ValidatorID]hash.Event{})
 	}
@@ -84,7 +60,7 @@ func (b *GPOBackend) TotalGasPowerLeft() uint64 {
 	}
 	// count GasPowerLeft from latest events of this epoch
 	for _, tip := range set.Val {
-		e := b.store.GetEvent(tip)
+		e := store.GetEvent(tip)
 		left := e.GasPowerLeft().Gas[inter.LongTermGas]
 		left += bs.GetValidatorState(e.Creator(), es.Validators).DirtyGasRefund
 
