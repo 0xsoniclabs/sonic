@@ -23,7 +23,12 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
+	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
@@ -191,4 +196,17 @@ func TestServiceFeed_ArchiveState(t *testing.T) {
 			feed.Stop()
 		})
 	}
+}
+
+func TestNewService_LedgerExecutesWithGivenEvm(t *testing.T) {
+	store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
+	engine, vecClock := makeTestEngine(store)
+	blockProc := DefaultBlockProc()
+	blockProc.EVMModule = blockproc.NewMockEVM(gomock.NewController(t))
+
+	svc, err := newService(DefaultConfig(cachescale.Identity), store, blockProc, engine, vecClock, func(evmcore.StateReader) TxPool {
+		return &dummyTxPool{}
+	}, enode.ID{})
+	require.NoError(t, err)
+	require.Same(t, blockProc.EVMModule, svc.ledger.(*ledger).evmModule)
 }
