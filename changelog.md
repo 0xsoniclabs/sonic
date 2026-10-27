@@ -27,6 +27,25 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Fixed
 
+## [2.2.6] - 27 October 2026
+
+Version 2.2.6 is a stability release. Upgrading is recommended for all node operators.
+
+### Removed
+
+- Removed the `eth_stop` RPC method, which let any RPC client stop log filters and subscriptions on the node.
+
+### Fixed
+
+- Fixed `sonictool heal` on networks with transaction bundles, where a healed node diverged from the network at the next epoch sealing.
+- Fixed `gasUsed` reported for some receipts in blocks with failed bundles after a node restart, or on nodes started from a genesis file.
+- Fixed tracing results differing from the actual execution for transactions reading the hash of the parent block.
+- Fixed `trace_filter` failing when `fromBlock` or `toBlock` is given as a block hash.
+- Fixed rare incorrect results under concurrent load, including in `eth_getLogs` and `eth_getBlockReceipts`.
+- Fixed the event throttler setting in the configuration file being ignored.
+- Fixed the documented defaults of several command-line flags. `--rpc.batch-request-limit` and `--rpc.batch-response-max-size` are unlimited by default.
+- Fixed `eth_call` and `eth_estimateGas` undercharging storage writes to slots set by a state override, on blocks before the Allegro upgrade.
+
 ## [2.2.5] - 7 October 2026
 
 ### Added
