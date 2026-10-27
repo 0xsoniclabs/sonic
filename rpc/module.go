@@ -34,6 +34,7 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/net"
 	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/sonic"
+	"github.com/0xsoniclabs/sonic/rpc/trace"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
 	"github.com/0xsoniclabs/sonic/rpc/txpool"
 	"github.com/0xsoniclabs/sonic/rpc/web3"
@@ -139,6 +140,7 @@ func registerNamespaces(dispatcher *dispatch.Dispatcher, environment *exec.Envir
 	sonic.Register(dispatcher, environment)
 	txpool.Register(dispatcher, environment, nodeCore)
 	debug.Register(dispatcher, environment)
+	trace.Register(dispatcher, environment)
 }
 
 // enabledNamespaces are the namespaces each transport serves; IPC serves
