@@ -26,6 +26,7 @@ import (
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/node"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/prometheus/client_golang/prometheus"
@@ -243,4 +244,33 @@ func TestModuleLifecycle_ClosesTheForwardingClientWhenItStops(t *testing.T) {
 
 	require.NoError(t, lifecycle.Stop())
 	require.ErrorIs(t, client.Call(new(map[string]string), "rpc_modules"), gethrpc.ErrClientQuit)
+}
+
+func TestModuleChainReader_ReadsTheChainThroughTheModule(t *testing.T) {
+	account := common.HexToAddress("0xa1")
+	carmenCore := tests.NewCarmenCore(t, map[common.Address]tests.Account{
+		account: {Balance: big.NewInt(7), Nonce: 3, Code: []byte{0x60, 0x00}, Storage: map[common.Hash]common.Hash{{1}: {2}}},
+	})
+	carmenCore.AppendBlock(tests.BlockSpec{})
+	carmenCore.PublishHead(1)
+	module := rpc.New(rpc.DefaultConfig(), carmenCore, prometheus.NewRegistry())
+	require.NoError(t, module.Start())
+	defer func() { require.NoError(t, module.Stop()) }()
+	reader := moduleChainReader{module: module}
+
+	balance, err := reader.BalanceAt(t.Context(), account, nil)
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt(7), balance)
+	nonce, err := reader.NonceAt(t.Context(), account, big.NewInt(1))
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), nonce)
+	code, err := reader.CodeAt(t.Context(), account, nil)
+	require.NoError(t, err)
+	require.Equal(t, []byte{0x60, 0x00}, code)
+	value, err := reader.StorageAt(t.Context(), account, common.Hash{1}, nil)
+	require.NoError(t, err)
+	require.Equal(t, common.Hash{2}.Bytes(), value)
+
+	_, err = reader.BalanceAt(t.Context(), account, big.NewInt(9))
+	require.ErrorContains(t, err, "not found", "a block above the head")
 }

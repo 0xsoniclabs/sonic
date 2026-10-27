@@ -31,9 +31,9 @@ import (
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/0xsoniclabs/sonic/version"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/console/prompt"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p/discover/discfilter"
@@ -316,7 +316,7 @@ func lachesisMainInternal(
 
 	startFreeDiskSpaceMonitor(sigCtx, ctx, cancel, node.InstanceDir())
 
-	if err := startNode(sigCtx, ctx, node, externalRPCServed(node, module)); err != nil {
+	if err := startNode(sigCtx, ctx, node, externalRPCServed(node, module), moduleChainReader{module: module}); err != nil {
 		return fmt.Errorf("failed to start the node: %w", err)
 	}
 
@@ -345,8 +345,9 @@ func lachesisMainInternal(
 // startNode boots up the system node and all registered protocols, after which
 // it unlocks any requested accounts, and starts the RPC/IPC interfaces.
 // externalRPC tells whether RPC is served to other processes, by the node or
-// by the RPC module.
-func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node, externalRPC bool) error {
+// by the RPC module; wallets derive their accounts reading the chain from
+// chainReader.
+func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node, externalRPC bool, chainReader ethereum.ChainStateReader) error {
 	// Start up the node itself
 	if err := stack.Start(); err != nil {
 		return fmt.Errorf("error starting protocol stack: %w", err)
@@ -370,11 +371,7 @@ func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node, exter
 	events := make(chan accounts.WalletEvent, 16)
 	stack.AccountManager().Subscribe(events)
 
-	// Create a client to interact with local sonic node.
-	rpcClient := stack.Attach()
-	ethClient := ethclient.NewClient(rpcClient)
 	go func() {
-		defer ethClient.Close()
 		// Open any wallets already attached
 		for _, wallet := range stack.AccountManager().Wallets() {
 			if err := wallet.Open(""); err != nil {
@@ -400,7 +397,7 @@ func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node, exter
 					}
 					derivationPaths = append(derivationPaths, accounts.DefaultBaseDerivationPath)
 
-					event.Wallet.SelfDerive(derivationPaths, ethClient)
+					event.Wallet.SelfDerive(derivationPaths, chainReader)
 
 				case accounts.WalletDropped:
 					log.Info("Old wallet dropped", "url", event.Wallet.URL())

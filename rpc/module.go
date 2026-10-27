@@ -20,6 +20,8 @@
 package rpc
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -232,6 +234,20 @@ func (module *Module) Stop() error {
 	}
 	module.dispatcher.Stop()
 	return nil
+}
+
+// Call serves a call of a client in the node's own process, as the
+// dispatcher serves one of a transport, and decodes its result into result.
+func (module *Module) Call(ctx context.Context, result any, method string, parameters ...any) error {
+	encoded, err := json.Marshal(parameters)
+	if err != nil {
+		return err
+	}
+	answer, failure := module.dispatcher.Serve(ctx, method, encoded)
+	if failure != nil {
+		return failure
+	}
+	return json.Unmarshal(answer, result)
 }
 
 // HTTPEndpoint returns the URL of the HTTP endpoint, empty without one.

@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
+	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/tests"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
 )
@@ -95,4 +96,19 @@ func TestModule_ForwardsWhatItDoesNotServe(t *testing.T) {
 	var answer string
 	require.NoError(t, client.Call(&answer, "dag_getHeads"))
 	require.Equal(t, "from the node", answer)
+}
+
+func TestModule_CallServesAClientInTheProcess(t *testing.T) {
+	module := New(DefaultConfig(), tests.NewFakeCore(t), prometheus.NewRegistry())
+	require.NoError(t, module.Start())
+	defer func() { require.NoError(t, module.Stop()) }()
+	var hash string
+	require.NoError(t, module.Call(t.Context(), &hash, "web3_sha3", "0x"))
+	require.Equal(t, "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", hash)
+
+	var dispatchError *dispatch.Error
+	require.ErrorAs(t, module.Call(t.Context(), &hash, "web3_none"), &dispatchError)
+	require.Equal(t, dispatch.CodeMethodNotFound, dispatchError.Code)
+	require.ErrorContains(t, module.Call(t.Context(), &hash, "web3_sha3", func() {}), "unsupported type")
+	require.Error(t, module.Call(t.Context(), new(int), "web3_sha3", "0x"), "a result that does not decode")
 }

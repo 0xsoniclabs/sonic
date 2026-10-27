@@ -20,9 +20,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net"
 	"strconv"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/node"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/prometheus/client_golang/prometheus"
@@ -172,6 +175,47 @@ func httpEndpoint(stack *node.Node, module *rpc.Module) string {
 		return endpoint
 	}
 	return stack.HTTPEndpoint()
+}
+
+// moduleChainReader reads the chain state through the module, for the
+// self-derivation of hardware wallets (O5): the node's own handler does not
+// serve the eth namespace.
+type moduleChainReader struct {
+	module *rpc.Module
+}
+
+func (reader moduleChainReader) BalanceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (*big.Int, error) {
+	var balance hexutil.Big
+	if err := reader.module.Call(ctx, &balance, "eth_getBalance", account, blockArgument(blockNumber)); err != nil {
+		return nil, err
+	}
+	return balance.ToInt(), nil
+}
+
+func (reader moduleChainReader) StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNumber *big.Int) ([]byte, error) {
+	var value hexutil.Bytes
+	err := reader.module.Call(ctx, &value, "eth_getStorageAt", account, key, blockArgument(blockNumber))
+	return value, err
+}
+
+func (reader moduleChainReader) CodeAt(ctx context.Context, account common.Address, blockNumber *big.Int) ([]byte, error) {
+	var code hexutil.Bytes
+	err := reader.module.Call(ctx, &code, "eth_getCode", account, blockArgument(blockNumber))
+	return code, err
+}
+
+func (reader moduleChainReader) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
+	var nonce hexutil.Uint64
+	err := reader.module.Call(ctx, &nonce, "eth_getTransactionCount", account, blockArgument(blockNumber))
+	return uint64(nonce), err
+}
+
+// blockArgument names a block as ethclient does: none is the head.
+func blockArgument(number *big.Int) string {
+	if number == nil {
+		return "latest"
+	}
+	return hexutil.EncodeBig(number)
 }
 
 // nodeForwarder hands the calls the module does not serve to the node's own
