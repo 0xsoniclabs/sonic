@@ -66,6 +66,18 @@ func (environment *Environment) PrepareCall(head Head, header *evmcore.EvmHeader
 	}, nil
 }
 
+// OverrideBlock applies block overrides to the context of the call and keeps
+// the chain configuration of the call's block, as debug_traceCall does
+// (section 6).
+func (call *Call) OverrideBlock(overrides *BlockOverrides) {
+	overrides.Apply(&call.context)
+}
+
+// ChainConfig is the chain configuration the call runs under.
+func (call *Call) ChainConfig() *params.ChainConfig {
+	return call.chainConfig
+}
+
 // BlockContext returns the EVM's context of a block of the chain. BLOCKHASH
 // is answered by one lookup by number, with the zero hash at and above the
 // block, whatever block number an override sets (V11).
@@ -88,10 +100,10 @@ func (environment *Environment) blockHashes(head Head, below uint64) vm.GetHashF
 	}
 }
 
-// newEVM returns an EVM for runs on the state, with the hooks of a tracer if
+// NewEVM returns an EVM for runs on the state, with the hooks of a tracer if
 // any and without the base fee check of calls. It is cancelled when ctx ends;
 // stop ends the watch.
-func (call *Call) newEVM(ctx context.Context, statedb state.StateDB, hooks *tracing.Hooks) (evm *vm.EVM, stop func() bool) {
+func (call *Call) NewEVM(ctx context.Context, statedb state.StateDB, hooks *tracing.Hooks) (evm *vm.EVM, stop func() bool) {
 	config := call.config
 	config.Tracer = hooks
 	config.NoBaseFee = true
@@ -107,7 +119,7 @@ func (call *Call) newEVM(ctx context.Context, statedb state.StateDB, hooks *trac
 func (call *Call) Run(ctx context.Context, statedb state.StateDB, previous []*core.Message, message *core.Message, timeout time.Duration) (*core.ExecutionResult, error) {
 	ctx, cancel := WithOptionalTimeout(ctx, timeout)
 	defer cancel()
-	evm, stop := call.newEVM(ctx, statedb, nil)
+	evm, stop := call.NewEVM(ctx, statedb, nil)
 	defer stop()
 	gasPool := core.NewGasPool(math.MaxUint64)
 	for index, previousMessage := range previous {
@@ -130,7 +142,7 @@ func (call *Call) Run(ctx context.Context, statedb state.StateDB, previous []*co
 // message's gas. A message that cannot be applied is reported with the bare
 // error.
 func (call *Call) Trace(ctx context.Context, statedb state.StateDB, message *core.Message, hooks *tracing.Hooks) (*core.ExecutionResult, error) {
-	evm, stop := call.newEVM(ctx, statedb, hooks)
+	evm, stop := call.NewEVM(ctx, statedb, hooks)
 	defer stop()
 	return core.ApplyMessage(evm, message, core.NewGasPool(message.GasLimit))
 }

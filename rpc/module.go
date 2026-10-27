@@ -26,6 +26,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/rpc/chain"
 	"github.com/0xsoniclabs/sonic/rpc/core"
+	"github.com/0xsoniclabs/sonic/rpc/debug"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/eth"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
@@ -137,6 +138,7 @@ func registerNamespaces(dispatcher *dispatch.Dispatcher, environment *exec.Envir
 	web3.Register(dispatcher, config.ClientVersion)
 	sonic.Register(dispatcher, environment)
 	txpool.Register(dispatcher, environment, nodeCore)
+	debug.Register(dispatcher, environment)
 }
 
 // enabledNamespaces are the namespaces each transport serves; IPC serves

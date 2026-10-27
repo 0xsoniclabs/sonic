@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	_ "github.com/ethereum/go-ethereum/eth/tracers/native"
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
@@ -147,13 +148,19 @@ func (chain matrixChain) requests() map[string][]string {
 	}
 	proposal := `{"steps": [{"from": ` + sender + `, "to": ` + contract + `, "nonce": "0x1"}]}`
 	all := map[string][]string{
-		"txpool_content":      {`[]`},
-		"txpool_contentFrom":  {`[` + sender + `]`},
-		"txpool_status":       {`[]`},
-		"txpool_inspect":      {`[]`},
-		"sonic_prepareBundle": {`[` + proposal + `]`, `[{"blockRange": {"first": "0x9", "length": "0x2"}, "steps": [{"from": ` + sender + `, "to": ` + contract + `, "nonce": "0x1", "gas": "0x5208"}]}]`},
-		"sonic_submitBundle":  {`[{"signedTransactions": [` + raw + `], "executionPlan": {"blockRange": {"first": "0x9", "length": "0x2"}, "steps": [{"from": ` + sender + `, "hash": ` + pending + `}]}}]`, `[{"signedTransactions": []}]`},
-		"sonic_getBundleInfo": {`[` + mined + `]`},
+		"debug_getBlockRlp":        {`[1]`, `[5]`},
+		"debug_printBlock":         {`[1]`, `[5]`},
+		"debug_traceTransaction":   {`[` + mined + `]`, `[` + mined + `, {"tracer": "callTracer"}]`, `[` + pending + `]`},
+		"debug_traceBlockByNumber": {`["0x1"]`, `["0x5"]`, `["latest", {"tracer": "callTracer"}]`},
+		"debug_traceBlockByHash":   {`[` + block + `]`, `[` + mined + `]`},
+		"debug_traceCall":          {`[` + message + `, "latest"]`, `[` + message + `, "0x5"]`, `[` + message + `, ` + block + `, {"txIndex": "0x1", "stateOverrides": {}}]`},
+		"txpool_content":           {`[]`},
+		"txpool_contentFrom":       {`[` + sender + `]`},
+		"txpool_status":            {`[]`},
+		"txpool_inspect":           {`[]`},
+		"sonic_prepareBundle":      {`[` + proposal + `]`, `[{"blockRange": {"first": "0x9", "length": "0x2"}, "steps": [{"from": ` + sender + `, "to": ` + contract + `, "nonce": "0x1", "gas": "0x5208"}]}]`},
+		"sonic_submitBundle":       {`[{"signedTransactions": [` + raw + `], "executionPlan": {"blockRange": {"first": "0x9", "length": "0x2"}, "steps": [{"from": ` + sender + `, "hash": ` + pending + `}]}}]`, `[{"signedTransactions": []}]`},
+		"sonic_getBundleInfo":      {`[` + mined + `]`},
 		"sonic_estimateGasForTransactions": {
 			`[[` + message + `, ` + message + `]]`, `[[` + message + `], "latest", null, null]`, `[[` + created + `], "0x5"]`, `[[]]`,
 		},
