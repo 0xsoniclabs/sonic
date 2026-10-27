@@ -103,7 +103,7 @@ func (ix *index) addGeth(p *packages.Package) {
 								ix.symbols[key] += embeds
 								ix.add(key, &ast.GenDecl{Tok: token.VAR, Specs: []ast.Spec{spec}}, p)
 								if callsFunction(spec.Values, p.TypesInfo) {
-									ix.initVars[p.PkgPath] = append(ix.initVars[p.PkgPath], key)
+									ix.addInitVar(p.PkgPath, key)
 								}
 							}
 						}
@@ -166,6 +166,12 @@ func preamble(path string) string {
 	return text.String()
 }
 
+func (ix *index) addInitVar(pkg, key string) {
+	if !slices.Contains(ix.initVars[pkg], key) {
+		ix.initVars[pkg] = append(ix.initVars[pkg], key)
+	}
+}
+
 // addOther records the package-level types, variables and constants of p, a
 // package outside go-ethereum, so that the go-ethereum declarations they refer
 // to are used if they are.
@@ -194,7 +200,7 @@ func (ix *index) addOther(p *packages.Package) {
 					key := fmt.Sprintf("%s %s %s", p.PkgPath, g.Tok, n.Name)
 					ix.decls[key] = append(ix.decls[key], decl{spec, p.TypesInfo})
 					if g.Tok == token.VAR {
-						ix.initVars[p.PkgPath] = append(ix.initVars[p.PkgPath], key)
+						ix.addInitVar(p.PkgPath, key)
 					}
 				}
 			}
