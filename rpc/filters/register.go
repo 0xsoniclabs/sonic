@@ -40,7 +40,7 @@ type handlers struct {
 // and ftm), which share their filters, as in the reference, and starts the
 // loops that feed and expire the polled filters.
 func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, logIndex core.LogIndex, namespaces ...string) {
-	polled := newPolledFilters(environment.Config().FilterTimeout, journalLimit)
+	polled := newPolledFilters(environment.Config().FilterTimeout, journalLimit, dispatcher)
 	built := &headers{environment: environment, hub: chain.NewHub[*evmcore.EvmHeaderJson](headerQueue)}
 	handler := &handlers{environment: environment, logIndex: logIndex, polled: polled, headers: built}
 	criteria := dispatch.Required[Criteria]("criteria")

@@ -221,7 +221,7 @@ func (subscription *Subscription) Notify(ctx context.Context, result any) error 
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-	return subscription.notifier.write(ctx, notification{
+	err := subscription.notifier.write(ctx, notification{
 		Version: "2.0",
 		Method:  subscription.method,
 		Parameters: notificationParameters{
@@ -229,6 +229,19 @@ func (subscription *Subscription) Notify(ctx context.Context, result any) error 
 			Result:       result,
 		},
 	})
+	outcome := OutcomeDelivered
+	if err != nil {
+		outcome = OutcomeFailed
+	}
+	subscription.notifier.dispatcher.CountEvents(subscription.kind, outcome, 1)
+	return err
+}
+
+// Lost ends a subscription whose feed lost events, as Fail does, and counts
+// the loss (I18).
+func (subscription *Subscription) Lost(reason error) {
+	subscription.notifier.dispatcher.CountEvents(subscription.kind, OutcomeLost, 1)
+	subscription.Fail(reason)
 }
 
 // Fail ends the subscription and its connection: a subscription that lost
@@ -259,6 +272,18 @@ type notification struct {
 type notificationParameters struct {
 	Subscription string `json:"subscription"`
 	Result       any    `json:"result"`
+}
+
+// CountEvents counts events of a subscription or polled filter kind with an
+// outcome in rpc_subscription_events_total.
+func (dispatcher *Dispatcher) CountEvents(kind, outcome string, count int) {
+	dispatcher.metrics.SubscriptionEvents.WithLabelValues(kind, outcome).Add(float64(count))
+}
+
+// CountFilters adds a change of the number of polled filters of a kind to
+// rpc_subscriptions, where the subscriptions count themselves.
+func (dispatcher *Dispatcher) CountFilters(kind string, change int) {
+	dispatcher.metrics.Subscriptions.WithLabelValues(kind).Add(float64(change))
 }
 
 // NewID returns an unguessable identifier in go-ethereum's format: a quantity

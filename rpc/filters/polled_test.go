@@ -143,6 +143,10 @@ func TestFilters_OfADroppedFeedAreRemoved(t *testing.T) {
 		return failure != nil && chain.core.Calls("SubscribeHead") > subscriptions
 	}, "the block filter to be removed and the head feed taken again")
 	require.Equal(t, "filter not found", chain.harness.Failure("eth_getFilterChanges", logs).Message)
+	for _, kind := range []string{"blockFilter", "logFilter"} {
+		require.Equal(t, 1.0, tests.Labeled(t, chain.harness.Registry, "rpc_subscription_events_total", map[string]string{"kind": kind, "outcome": "lost"}), kind)
+		require.Zero(t, tests.Labeled(t, chain.harness.Registry, "rpc_subscriptions", map[string]string{"kind": kind}), kind)
+	}
 
 	after := chain.install(t, "eth_newBlockFilter")
 	tests.Eventually(t, func() bool {
@@ -150,4 +154,29 @@ func TestFilters_OfADroppedFeedAreRemoved(t *testing.T) {
 		changes := chain.changes(t, after)
 		return len(changes) > 0 && changes[len(changes)-1] == block.Hash.Hex()
 	}, "a new filter to see the blocks after the drop")
+}
+
+// TestFilters_AreCounted holds MON2 for the polled filters: the filters of
+// each kind and the events their polls answer.
+func TestFilters_AreCounted(t *testing.T) {
+	chain := newLogChain(t)
+	count := func(name string, labels map[string]string) float64 {
+		return tests.Labeled(t, chain.harness.Registry, name, labels)
+	}
+	blocks := chain.install(t, "eth_newBlockFilter")
+	chain.install(t, "eth_newBlockFilter")
+	transactions := chain.install(t, "eth_newPendingTransactionFilter")
+	require.Equal(t, 2.0, count("rpc_subscriptions", map[string]string{"kind": "blockFilter"}))
+	require.Equal(t, 1.0, count("rpc_subscriptions", map[string]string{"kind": "pendingTransactionFilter"}))
+
+	chain.core.AppendAndPublish(tests.BlockSpec{})
+	answered := 0
+	tests.Eventually(t, func() bool {
+		answered += len(chain.changes(t, blocks))
+		return answered > 0
+	}, "the block")
+	require.Equal(t, float64(answered), count("rpc_subscription_events_total", map[string]string{"kind": "blockFilter", "outcome": "delivered"}))
+
+	require.True(t, tests.Decode[bool](t, chain.harness.Result("eth_uninstallFilter", transactions)))
+	require.Zero(t, count("rpc_subscriptions", map[string]string{"kind": "pendingTransactionFilter"}))
 }

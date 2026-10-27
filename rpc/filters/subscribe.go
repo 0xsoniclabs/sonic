@@ -206,7 +206,7 @@ func relay[Event any](subscription *dispatch.Subscription, consumer *chain.Consu
 				return
 			case event, open := <-consumer.Events():
 				if !open {
-					subscription.Fail(consumer.Err())
+					subscription.Lost(consumer.Err())
 					return
 				}
 				if notify(ctx, event) != nil {

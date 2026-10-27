@@ -26,7 +26,7 @@ import (
 
 // TestPolledFilters_KeepAnEventOnceForAllFilters holds I17.
 func TestPolledFilters_KeepAnEventOnceForAllFilters(t *testing.T) {
-	polled := newPolledFilters(time.Minute, 16)
+	polled := newPolledFilters(time.Minute, 16, uncounted{})
 	identifiers := make([]string, 1000)
 	for index := range identifiers {
 		identifier, err := polled.install(&filter{kind: blocksKind})
@@ -47,7 +47,7 @@ func TestPolledFilters_KeepAnEventOnceForAllFilters(t *testing.T) {
 // TestPolledFilters_RemoveAFilterThatFellBehind holds I17: a filter whose
 // events left the journal is gone, one that polled gets every event.
 func TestPolledFilters_RemoveAFilterThatFellBehind(t *testing.T) {
-	polled := newPolledFilters(time.Minute, 4)
+	polled := newPolledFilters(time.Minute, 4, uncounted{})
 	behind, err := polled.install(&filter{kind: blocksKind})
 	require.NoError(t, err)
 	current, err := polled.install(&filter{kind: blocksKind})
@@ -67,7 +67,7 @@ func TestPolledFilters_RemoveAFilterThatFellBehind(t *testing.T) {
 }
 
 func TestPolledFilters_TrimToWhatALiveFilterHasNotPolled(t *testing.T) {
-	polled := newPolledFilters(time.Minute, 100)
+	polled := newPolledFilters(time.Minute, 100, uncounted{})
 	identifier, err := polled.install(&filter{kind: blocksKind})
 	require.NoError(t, err)
 	polled.hashes.append(common.Hash{1}, common.Hash{2})
@@ -85,7 +85,7 @@ func TestPolledFilters_TrimToWhatALiveFilterHasNotPolled(t *testing.T) {
 }
 
 func TestPolledFilters_AreBounded(t *testing.T) {
-	polled := newPolledFilters(time.Minute, 1)
+	polled := newPolledFilters(time.Minute, 1, uncounted{})
 	for range maxFilters {
 		_, err := polled.install(&filter{kind: logsKind})
 		require.NoError(t, err)
@@ -110,3 +110,9 @@ func TestJournal_DropsTheOldestAboveItsLimit(t *testing.T) {
 	require.Equal(t, uint64(5), events.end(), "trimming keeps the positions")
 	require.Empty(t, events.events)
 }
+
+// uncounted is a counter that counts nothing.
+type uncounted struct{}
+
+func (uncounted) CountFilters(string, int)        {}
+func (uncounted) CountEvents(string, string, int) {}

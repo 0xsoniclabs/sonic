@@ -207,3 +207,30 @@ func TestNewID_IsAQuantityOf128RandomBits(t *testing.T) {
 		seen[identifier] = true
 	}
 }
+
+// TestNotifier_CountsTheEventsByOutcome holds MON2 for the subscriptions.
+func TestNotifier_CountsTheEventsByOutcome(t *testing.T) {
+	dispatcher := newTestDispatcher(t)
+	failing := errors.New("the client is gone")
+	written := 0
+	write := func(context.Context, any) error {
+		written++
+		if written > 1 {
+			return failing
+		}
+		return nil
+	}
+	notifier := NewNotifier(context.Background(), dispatcher.Dispatcher, write, func(error) {}, 10)
+	t.Cleanup(notifier.Close)
+	call := notifier.NewCall()
+	subscription, err := call.Subscribe("eth", "logs")
+	require.NoError(t, err)
+	call.Activate()
+	require.NoError(t, subscription.Notify(t.Context(), "first"))
+	require.ErrorIs(t, subscription.Notify(t.Context(), "second"), failing)
+	subscription.Lost(errors.New("events were lost"))
+	for outcome, expected := range map[string]float64{OutcomeDelivered: 1, OutcomeFailed: 1, OutcomeLost: 1} {
+		require.Equal(t, expected, dispatcher.scrape(t, "rpc_subscription_events_total", "kind", "logs", "outcome", outcome), outcome)
+	}
+	require.Zero(t, dispatcher.scrape(t, "rpc_subscriptions", "kind", "logs"), "a lost subscription ends")
+}

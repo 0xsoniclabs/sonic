@@ -57,6 +57,21 @@ const (
 	kindCount
 )
 
+// kindNames are the labels of the kinds in the metrics, after the methods
+// that install them.
+var kindNames = [kindCount]string{"blockFilter", "pendingTransactionFilter", "logFilter"}
+
+func (kind kind) String() string {
+	return kindNames[kind]
+}
+
+// counter is where the polled filters count themselves and their events
+// (MON2): the dispatcher.
+type counter interface {
+	CountFilters(kind string, change int)
+	CountEvents(kind, outcome string, count int)
+}
+
 // filter is one polled filter: its criteria and the position up to which
 // its client polled.
 type filter struct {
@@ -73,6 +88,7 @@ type filter struct {
 // while it calls the node (P4); each journal has its own.
 type polledFilters struct {
 	timeout      time.Duration
+	counter      counter
 	hashes       *journal[common.Hash]
 	logs         *journal[*types.Log]
 	transactions *journal[*types.Transaction]
@@ -82,9 +98,10 @@ type polledFilters struct {
 	counts  [kindCount]int
 }
 
-func newPolledFilters(timeout time.Duration, limit int) *polledFilters {
+func newPolledFilters(timeout time.Duration, limit int, counter counter) *polledFilters {
 	return &polledFilters{
 		timeout:      timeout,
+		counter:      counter,
 		hashes:       newJournal[common.Hash](limit),
 		logs:         newJournal[*types.Log](limit),
 		transactions: newJournal[*types.Transaction](limit),
@@ -114,6 +131,7 @@ func (polled *polledFilters) install(added *filter) (string, error) {
 	identifier := dispatch.NewID()
 	polled.filters[identifier] = added
 	polled.counts[added.kind]++
+	polled.counter.CountFilters(added.kind.String(), 1)
 	return identifier, nil
 }
 
@@ -129,6 +147,7 @@ func (polled *polledFilters) remove(identifier string) bool {
 	if found {
 		delete(polled.filters, identifier)
 		polled.counts[removed.kind]--
+		polled.counter.CountFilters(removed.kind.String(), -1)
 	}
 	return found
 }
@@ -174,6 +193,7 @@ func (polled *polledFilters) poll(identifier string) (changes, error) {
 	}
 	if lost {
 		polled.remove(identifier)
+		polled.counter.CountEvents(found.kind.String(), dispatch.OutcomeLost, 1)
 		return changes{}, errFilterNotFound
 	}
 	found.position = end
@@ -197,6 +217,7 @@ func (polled *polledFilters) dropKinds(kinds ...kind) {
 		for _, dropped := range kinds {
 			if installed.kind == dropped {
 				polled.remove(identifier)
+				polled.counter.CountEvents(dropped.String(), dispatch.OutcomeLost, 1)
 			}
 		}
 	}
@@ -353,16 +374,21 @@ func (handler *handlers) getFilterChanges(_ context.Context, arguments dispatch.
 	if err != nil {
 		return nil, err
 	}
+	label := taken.filter.kind.String()
 	switch taken.filter.kind {
 	case blocksKind:
+		handler.polled.counter.CountEvents(label, dispatch.OutcomeDelivered, len(taken.hashes))
 		if taken.hashes == nil {
 			return []common.Hash{}, nil
 		}
 		return taken.hashes, nil
 	case transactionsKind:
+		handler.polled.counter.CountEvents(label, dispatch.OutcomeDelivered, len(taken.transactions))
 		return handler.pendingTransactions(taken.transactions, taken.filter.fullTransactions), nil
 	}
-	return matchingLogs(taken.logs, taken.filter), nil
+	matched := matchingLogs(taken.logs, taken.filter)
+	handler.polled.counter.CountEvents(label, dispatch.OutcomeDelivered, len(matched))
+	return matched, nil
 }
 
 // pendingTransactions answers the hashes of transactions, or their pool

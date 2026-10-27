@@ -35,6 +35,19 @@ const (
 // client cannot add label values.
 const OtherMethod = "other"
 
+// The outcomes an event of a subscription or polled filter is counted under
+// in rpc_subscription_events_total.
+const (
+	// OutcomeDelivered is an event written to the client, or answered by a
+	// poll.
+	OutcomeDelivered = "delivered"
+	// OutcomeFailed is a notification whose write to the client failed.
+	OutcomeFailed = "failed"
+	// OutcomeLost counts a subscription or filter that ended because its
+	// feed lost events, once each: how many it lost is not known.
+	OutcomeLost = "lost"
+)
+
 // Metrics are the module's Prometheus metrics. Labels are bounded by
 // construction: methods by the registered names, transports, subscription
 // kinds and loops by the module's own constants; no label names an address,
@@ -89,7 +102,7 @@ func NewMetrics(registerer prometheus.Registerer) *Metrics {
 		}, []string{"kind"})),
 		SubscriptionEvents: register(registerer, prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "rpc_subscription_events_total",
-			Help: "Events handed to subscriptions and filters, by kind and outcome.",
+			Help: "Events handed to subscriptions and filters, by kind and outcome: delivered, failed, and lost (a subscription or filter that ended because its feed lost events).",
 		}, []string{"kind", "outcome"})),
 		LoopRestarts: register(registerer, prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "rpc_loop_restarts_total",
