@@ -30,7 +30,6 @@ import (
 
 	"github.com/0xsoniclabs/sonic/eventcheck/heavycheck"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
-	"github.com/0xsoniclabs/sonic/gossip/filters"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamleecher"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamseeder"
@@ -72,9 +71,31 @@ type (
 		PeerCache PeerCacheConfig
 	}
 
+	// FilterConfig holds the limits of the log queries. The RPC module
+	// serves the log methods and reads them; the section keeps its TOML
+	// keys (O4).
+	FilterConfig struct {
+		// Block range limit for logs search (indexed).
+		IndexedLogsBlockRangeLimit idx.Block
+		// Block range limit for logs search (unindexed).
+		UnindexedLogsBlockRangeLimit idx.Block
+
+		// LogQueryParameterLimit is the maximum number of parameters that can be
+		// specified in log filter criteria, for eth_getLogs, eth_newFilter and
+		// logs subscriptions alike. A parameter is either an address or a topic.
+		// A value of 0 means no cap.
+		LogQueryParameterLimit uint
+
+		// LogQueryResultLimit is the maximum number of logs that can be returned in
+		// a single eth_getLogs query. The limit is only enforced if the query covers
+		// a range of more than one block. For a single block, there is no limit.
+		// A value of 0 means no cap.
+		LogQueryResultLimit uint
+	}
+
 	// Config for the gossip service.
 	Config struct {
-		FilterAPI filters.Config
+		FilterAPI FilterConfig
 
 		// This can be set to list of enrtree:// URLs which will be queried
 		// for nodes to connect to.
@@ -175,7 +196,12 @@ type PeerCacheConfig struct {
 func DefaultConfig(scale cachescale.Func) Config {
 	limits := exec.DefaultConfig()
 	cfg := Config{
-		FilterAPI: filters.DefaultConfig(),
+		FilterAPI: FilterConfig{
+			IndexedLogsBlockRangeLimit:   idx.Block(limits.IndexedLogsBlockRangeLimit),
+			UnindexedLogsBlockRangeLimit: idx.Block(limits.UnindexedLogsBlockRangeLimit),
+			LogQueryParameterLimit:       limits.LogQueryParameterLimit,
+			LogQueryResultLimit:          limits.LogQueryResultLimit,
+		},
 
 		TxIndex: true,
 
