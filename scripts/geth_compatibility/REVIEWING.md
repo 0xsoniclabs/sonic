@@ -75,9 +75,10 @@ Symbol, Base and Head cells, and do not edit `review.md` yourself.
   `go mod download -json <module>@<version>` prints the source directory as
   `Dir`. A version without a module path is a directory relative to the Sonic
   checkout.
-- Tosca, the EVM implementations, and Carmen, the state database: run
-  `go list -m -f '{{.Dir}}' github.com/0xsoniclabs/tosca` and
-  `github.com/0xsoniclabs/carmen/go` in the head checkout.
+- Tosca, the EVM implementations, and Carmen, the state database: the header
+  of `review.md` names their versions at the base and at the head after those
+  of go-ethereum; find their directories with `go mod download -json` as
+  well.
 - Read first, where the head has them: the documents of the upcoming upgrade
   among its top-level Markdown files, which say which EIPs Sonic takes, the
   open items, and the fixture results.
@@ -89,10 +90,12 @@ go-ethereum module, `go-ethereum` for its root, or a full path for other
 modules. The kind is `func` (methods as `Type.Method`), `type`, `var`,
 `const`, `file` (a C, assembly or embedded file, relative to the package
 directory), `cgo` (the cgo preamble of the named Go file, with its `#cgo`
-directives) or `module` (a dependency module, other than go-ethereum, that
-provides reachable code or a value it reads).
+directives) or `module` (a dependency module, other than go-ethereum, Tosca and
+Carmen, that provides reachable code or a value it reads).
 
-Find the declaration in both go-ethereum directories, for instance with
+Find the declaration in both go-ethereum directories, or for a row starting
+with `github.com/0xsoniclabs/tosca/` or `github.com/0xsoniclabs/carmen/go/` in
+both directories of that module, for instance with
 `grep -n 'func (.*Type) Method(' <dir>/<package>/*.go`, and compare the two
 versions. `<package> func init` stands for all `init` functions of the
 package, and `<package> var _` for all its variables named `_`. In Go

@@ -41,13 +41,15 @@ import (
 // package-level declarations other than functions, of go-ethereum and of the
 // other modules, to follow their references.
 // initVars lists per package the variables used once it is initialized: all of
-// a package outside go-ethereum, and those of go-ethereum whose initializer
-// calls a function. files lists the keys of the files and cgo preambles of
-// each go-ethereum package.
+// a package of another module, and those of go-ethereum and of the modules
+// compared like it whose initializer calls a function. files lists the keys of
+// the files and cgo preambles of each package of these modules, and compared
+// their package paths.
 // modules maps the packages outside the standard library to their module.
 type index struct {
 	pkgs     map[*types.Package]*packages.Package
 	modules  map[*types.Package]string
+	compared map[string]bool
 	symbols  map[string]string
 	decls    map[string][]decl
 	initVars map[string][]string
@@ -63,6 +65,7 @@ func newIndex() *index {
 	return &index{
 		pkgs:     map[*types.Package]*packages.Package{},
 		modules:  map[*types.Package]string{},
+		compared: map[string]bool{},
 		symbols:  map[string]string{},
 		decls:    map[string][]decl{},
 		initVars: map[string][]string{},
@@ -70,8 +73,11 @@ func newIndex() *index {
 	}
 }
 
-func (ix *index) addGeth(p *packages.Package) {
-	rel := relPkg(p.PkgPath)
+// addCompared records the declarations, files and cgo preambles of p, a package
+// of go-ethereum or of a module compared like it.
+func (ix *index) addCompared(p *packages.Package) {
+	rel := pkgKey(p.PkgPath)
+	ix.compared[p.PkgPath] = true
 	goFiles := map[string]bool{}
 	for _, f := range p.GoFiles {
 		goFiles[f] = true
@@ -173,8 +179,8 @@ func (ix *index) addInitVar(pkg, key string) {
 }
 
 // addOther records the package-level types, variables and constants of p, a
-// package outside go-ethereum, so that the go-ethereum declarations they refer
-// to are used if they are.
+// package of another module, so that the compared declarations they refer to
+// are used if they are.
 func (ix *index) addOther(p *packages.Package) {
 	for _, f := range p.Syntax {
 		for _, d := range f.Decls {

@@ -4,8 +4,9 @@ When Sonic moves to a new go-ethereum version, the compiler catches changed
 signatures but not changed behavior. `geth_compatibility` writes a review file
 with a row for every go-ethereum declaration that `sonicd` and `sonictool` can
 reach and whose source differs between the go-ethereum version of a base
-revision and the one of a head revision. Reviewers record a verdict in each row,
-as [REVIEWING.md](REVIEWING.md) describes.
+revision and the one of a head revision, and likewise for the declarations of
+Tosca and Carmen. Reviewers record a verdict in each row, as
+[REVIEWING.md](REVIEWING.md) describes.
 
 ## Workflow
 
@@ -65,9 +66,14 @@ A finding is a difference in one of:
   tests of a bundled C library, are not compiled and do not count,
 - the cgo preamble of a Go file of such a package, the comment above
   `import "C"` with its C code and `#cgo` directives,
-- the version of a module, other than go-ethereum, that provides reachable code,
-  including the initializers of package variables, or the value of a variable
-  or constant that reachable code reads.
+- the version of a module, other than go-ethereum and the modules compared like
+  it, that provides reachable code, including the initializers of package
+  variables, or the value of a variable or constant that reachable code reads.
+
+The modules in `Modules` of `internal/analysis/consensus.go`, Tosca and Carmen
+for Sonic, are compared like go-ethereum, by their declarations, files and cgo
+preambles, instead of by version. Their keys start with the full package path,
+and their rows follow those of go-ethereum.
 
 The Base and Head cells hold hashes of the two versions, `-` for a side that
 lacks the declaration or does not import its package. In Go declarations,
@@ -141,8 +147,8 @@ other rows follow in a section per verdict, `todo` first.
   RPC server of go-ethereum, makes the exported methods of its type reachable,
   together with those of its exported and embedded fields, elements and method
   results. Values reaching such a package indirectly are not covered.
-- `go:linkname`, changes of the Go toolchain, and the content of dependency
-  modules are not covered; dependency modules are compared by version only.
+- `go:linkname`, changes of the Go toolchain, and the content of the other
+  dependency modules are not covered; these are compared by version only.
 - Both sides are loaded with the Go toolchain the tool runs under, for the
   platform and cgo setting of its environment (`GOOS`, `GOARCH`,
   `CGO_ENABLED`). Run it with the Go release named by the `go` line of the

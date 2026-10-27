@@ -26,7 +26,7 @@ import (
 )
 
 // use returns the symbols used by the functions in funcs: their declarations,
-// the declarations these refer to, the files of the go-ethereum packages
+// the declarations these refer to, the files of the compared packages
 // declaring any of them, and the modules providing the functions, except
 // package initializers without variables to initialize, or the values of the
 // variables and constants these declarations read. The syntax of a
@@ -67,7 +67,7 @@ func (ix *index) use(funcs []*ssa.Function, cuts []string, vars map[types.Object
 		if !ok {
 			continue
 		}
-		if isGeth(p.PkgPath) {
+		if ix.compared[p.PkgPath] {
 			u.mark(funcKey(p.PkgPath, d), true)
 		}
 		u.walk(d, p.TypesInfo)
@@ -130,10 +130,10 @@ func (u *user) mark(key string, follow bool) {
 	u.queue = append(u.queue, queued{key, follow})
 }
 
-// markModule uses the module providing p, unless it is go-ethereum or the main
-// module.
+// markModule uses the module providing p, unless its declarations are compared,
+// as those of go-ethereum, or it is the main module.
 func (u *user) markModule(p *packages.Package) {
-	if !isGeth(p.PkgPath) && !p.Module.Main {
+	if !u.compared[p.PkgPath] && !p.Module.Main {
 		u.mark("module "+p.Module.Path, true)
 	}
 }

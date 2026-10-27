@@ -32,8 +32,11 @@ import (
 // packages, nor variables of a cut type: this code reaches them, but they
 // cannot affect its results. Upgrades is the struct type of the main module
 // whose fields name the upgrades that gate changes of the consensus path.
+// Modules lists the dependency modules whose declarations, files and cgo
+// preambles are compared like those of go-ethereum, instead of by version.
 type Config struct {
 	Mains    []string
+	Modules  []string
 	Roots    []string
 	Skips    []string
 	Cuts     []string
@@ -42,6 +45,10 @@ type Config struct {
 
 var Sonic = Config{
 	Mains: []string{"./cmd/sonicd", "./cmd/sonictool"},
+	Modules: []string{
+		"github.com/0xsoniclabs/carmen/go", // the state database
+		"github.com/0xsoniclabs/tosca",     // the EVM implementations
+	},
 	Roots: []string{
 		"gossip func consensusCallbackBeginBlockFn", // forms and executes blocks
 		"eventcheck func Checkers.Validate",         // decides which events are valid

@@ -84,7 +84,8 @@ func Update(path string, base, head *analysis.Side, findings []analysis.Finding)
 		}
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(format(base.Geth, head.Geth, findings, rows)), 0o644); err != nil {
+	versions := func(s *analysis.Side) []string { return append([]string{s.Geth}, s.Modules...) }
+	if err := os.WriteFile(tmp, []byte(format(versions(base), versions(head), findings, rows)), 0o644); err != nil {
 		return 0, err
 	}
 	return todo, os.Rename(tmp, path)
@@ -189,8 +190,9 @@ func isSeparator(cells []string) bool {
 }
 
 const header = "# go-ethereum compatibility review\n\n" +
-	"- Base: `%s`\n- Head: `%s`\n\n" +
-	"Each row is a go-ethereum difference reachable from Sonic. See\n" +
+	"- Base: %s\n- Head: %s\n\n" +
+	"Each row is a difference reachable from Sonic, in go-ethereum or in a module\n" +
+	"the tool compares like it, such as Tosca and Carmen. See\n" +
 	"`scripts/geth_compatibility/README.md` for the tool and `REVIEWING.md` next to\n" +
 	"it for how to review. Record a verdict and a note in each row; the tool\n" +
 	"regroups the rows when it runs. Verdicts:\n\n" +
@@ -209,7 +211,7 @@ const header = "# go-ethereum compatibility review\n\n" +
 
 // format renders the rows of the findings. Consensus critical rows come first,
 // grouped by classification and verdict; the others are grouped by verdict.
-func format(baseGeth, headGeth string, findings []analysis.Finding, rows []row) string {
+func format(base, head []string, findings []analysis.Finding, rows []row) string {
 	byVerdict := map[string][][]string{}
 	critical := map[[2]string][][]string{}
 	for i, f := range findings {
@@ -223,7 +225,7 @@ func format(baseGeth, headGeth string, findings []analysis.Finding, rows []row) 
 		}
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, header, baseGeth, headGeth)
+	fmt.Fprintf(&b, header, "`"+strings.Join(base, "`, `")+"`", "`"+strings.Join(head, "`, `")+"`")
 	tags := map[string]bool{}
 	for group := range critical {
 		tags[group[0]] = true

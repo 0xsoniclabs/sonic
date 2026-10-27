@@ -96,7 +96,7 @@ func TestUpdate_KeepsMatchingRowsAndReopensChangedOnes(t *testing.T) {
 		t.Fatal(err)
 	}
 	upgrades := []string{"canto"}
-	todo, err := Update(path, &analysis.Side{Geth: "geth old"}, &analysis.Side{Geth: "geth new", Upgrades: upgrades}, findings)
+	todo, err := Update(path, &analysis.Side{Geth: "geth old"}, &analysis.Side{Geth: "geth new", Modules: []string{"vm v2"}, Upgrades: upgrades}, findings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestUpdate_KeepsMatchingRowsAndReopensChangedOnes(t *testing.T) {
 	if !maps.Equal(rows, want) {
 		t.Errorf("got rows %+v, want %+v", rows, want)
 	}
-	if !strings.Contains(string(text), "- Base: `geth old`\n- Head: `geth new`") {
+	if !strings.Contains(string(text), "- Base: `geth old`\n- Head: `geth new`, `vm v2`") {
 		t.Errorf("header does not name the versions:\n%s", text)
 	}
 }
@@ -144,7 +144,7 @@ func TestFormat_ListsCriticalRowsFirstThenGroupsByVerdict(t *testing.T) {
 		findings = append(findings, analysis.Finding{Key: r.key, Base: "a", Head: "b"})
 		rows = append(rows, row{verdict: r.verdict, consensus: r.consensus, base: "a", head: "b", note: "checked | twice"})
 	}
-	text := format("old", "new", findings, rows)
+	text := format([]string{"old"}, []string{"new"}, findings, rows)
 
 	var got []string
 	for _, line := range strings.Split(text, "\n") {

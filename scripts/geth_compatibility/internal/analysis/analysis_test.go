@@ -611,15 +611,47 @@ func TestAnalyze_MarksTheModulesProvidingReadValues(t *testing.T) {
 	}
 }
 
+func TestAnalyze_ComparesTheDeclarationsOfConfiguredModules(t *testing.T) {
+	const appPkg = "package main\n\nimport \"example.com/vm/interp\"\n\nfunc main() { println(interp.Run(1)) }\n"
+	dir := t.TempDir()
+	var sides []*Side
+	for _, v := range []string{"1", "2"} {
+		app := writeProgram(t, filepath.Join(dir, "v"+v), nil, map[string]string{
+			"go.mod": "module example.com/app\n\ngo 1.26\n\nrequire (\n\texample.com/vm v0.0.0\n\tgithub.com/ethereum/go-ethereum v0.0.0\n)\n\n" +
+				"replace (\n\texample.com/vm => ../vm" + v + "\n\tgithub.com/ethereum/go-ethereum => ../geth\n)\n",
+			"main.go":               appPkg,
+			"../vm" + v + "/go.mod": "module example.com/vm\n\ngo 1.26\n",
+			"../vm" + v + "/interp/interp.go": "package interp\n\nconst Step = " + v + "\n\n" +
+				"func Run(n int) int { return n + Step }\n\nfunc Unused() int { return " + v + " }\n",
+		})
+		side, err := Analyze(app, Config{Mains: []string{"."}, Modules: []string{"example.com/vm"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sides = append(sides, side)
+	}
+
+	want := []string{"example.com/vm/interp const Step"}
+	if got := keysOf(Compare(sides[0], sides[1])); !slices.Equal(got, want) {
+		t.Errorf("got findings %v, want %v", got, want)
+	}
+	if !sides[1].Used["example.com/vm/interp func Run"] || sides[1].Used["module example.com/vm"] {
+		t.Errorf("want Run used and no module row, got %v", sides[1].Used)
+	}
+	if !slices.Equal(sides[1].Modules, []string{"../vm2"}) {
+		t.Errorf("got module versions %v, want the replacement", sides[1].Modules)
+	}
+}
+
 func TestCompare_OrdersByKeyWithModulesLast(t *testing.T) {
-	keys := []string{"rpc func B", "module example.com/a", "core func A", "module example.com/b", "p2p func C"}
+	keys := []string{"rpc func B", "module example.com/a", "example.com/vm func D", "core func A", "module example.com/b", "p2p func C"}
 	base := &Side{Symbols: map[string]string{}, Used: map[string]bool{}}
 	head := &Side{Symbols: map[string]string{}, Used: map[string]bool{}}
 	for _, k := range keys {
 		base.Symbols[k], head.Symbols[k] = "old", "new"
 		base.Used[k], head.Used[k] = true, true
 	}
-	want := []string{"core func A", "p2p func C", "rpc func B", "module example.com/a", "module example.com/b"}
+	want := []string{"core func A", "p2p func C", "rpc func B", "example.com/vm func D", "module example.com/a", "module example.com/b"}
 	if got := keysOf(Compare(base, head)); !slices.Equal(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}

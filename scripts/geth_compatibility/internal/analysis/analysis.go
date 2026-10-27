@@ -37,13 +37,15 @@ import (
 const gethModule = "github.com/ethereum/go-ethereum"
 
 // Side is the go-ethereum surface of one version of the program. Symbols holds
-// the text of every go-ethereum declaration, file and cgo preamble and of every
-// dependency module by key, Used the keys the program uses, and Consensus those
-// it uses on the consensus path. Upgrades lists the lowercase names of the
-// program's upgrades, and Missing the parts of the config that the program
-// lacks.
+// the text of every declaration, file and cgo preamble of go-ethereum and of the
+// modules compared like it, and of every other dependency module, by key, Used
+// the keys the program uses, and Consensus those it uses on the consensus path.
+// Geth is the version of go-ethereum and Modules those of the modules compared
+// like it. Upgrades lists the lowercase names of the program's upgrades, and
+// Missing the parts of the config that the program lacks.
 type Side struct {
 	Geth      string
+	Modules   []string
 	Symbols   map[string]string
 	Used      map[string]bool
 	Consensus map[string]bool
@@ -79,14 +81,18 @@ func Analyze(dir string, c Config) (*Side, error) {
 	ix := newIndex()
 	side := &Side{Symbols: ix.symbols}
 	lim := &limits{ix: ix, skip: map[*ssa.Function]bool{}, cuts: c.Cuts}
+	modules := map[string]string{}
 	packages.Visit(initial, nil, func(p *packages.Package) {
 		ix.pkgs[p.Types] = p
 		switch m := p.Module; {
 		case m == nil:
 			return
 		case isGeth(p.PkgPath):
-			ix.addGeth(p)
+			ix.addCompared(p)
 			side.Geth = version(m)
+		case slices.Contains(c.Modules, m.Path):
+			ix.addCompared(p)
+			modules[m.Path] = version(m)
 		case m.Main:
 			ix.addOther(p)
 			lim.mod = m.Path
@@ -96,6 +102,7 @@ func Analyze(dir string, c Config) (*Side, error) {
 		}
 		ix.modules[p.Types] = p.Module.Path
 	})
+	side.Modules = slices.Sorted(maps.Values(modules))
 	consensusRoots, skips, upgrades, missing := c.resolve(prog, lim.mod, ix.symbols)
 	side.Upgrades, side.Missing = upgrades, missing
 
@@ -130,7 +137,7 @@ type Finding struct {
 }
 
 // Compare returns the findings of the symbols used by either side, ordered by
-// key with the dependency modules last.
+// key: those of go-ethereum first, the dependency modules last.
 func Compare(base, head *Side) []Finding {
 	keys := maps.Clone(base.Used)
 	maps.Copy(keys, head.Used)
@@ -144,15 +151,27 @@ func Compare(base, head *Side) []Finding {
 		out = append(out, Finding{k, hash(b, inBase), hash(h, inHead), base.Consensus[k] || head.Consensus[k]})
 	}
 	slices.SortFunc(out, func(a, b Finding) int {
-		if ma, mb := isModule(a.Key), isModule(b.Key); ma != mb {
-			if ma {
-				return 1
-			}
-			return -1
+		if c := rank(a.Key) - rank(b.Key); c != 0 {
+			return c
 		}
 		return strings.Compare(a.Key, b.Key)
 	})
 	return out
+}
+
+// rank orders the keys of go-ethereum before those of other modules, whose
+// package path starts with an element containing a dot, and these before the
+// dependency modules.
+func rank(key string) int {
+	pkg, _, _ := strings.Cut(key, " ")
+	first, _, _ := strings.Cut(pkg, "/")
+	switch {
+	case isModule(key):
+		return 2
+	case strings.Contains(first, "."):
+		return 1
+	}
+	return 0
 }
 
 func hash(text string, ok bool) string {
@@ -184,10 +203,7 @@ func (ix *index) objKey(obj types.Object) (string, bool) {
 	if obj == nil || ix.modules[obj.Pkg()] == "" {
 		return "", false
 	}
-	rel := obj.Pkg().Path()
-	if isGeth(rel) {
-		rel = relPkg(rel)
-	}
+	rel := pkgKey(obj.Pkg().Path())
 	scope := obj.Pkg().Scope()
 	switch obj := obj.(type) {
 	case *types.Func:
@@ -225,7 +241,7 @@ func funcKey(pkgPath string, d *ast.FuncDecl) string {
 	if d.Recv != nil && len(d.Recv.List) > 0 {
 		name = recvName(d.Recv.List[0].Type) + "." + name
 	}
-	return relPkg(pkgPath) + " func " + name
+	return pkgKey(pkgPath) + " func " + name
 }
 
 func recvName(e ast.Expr) string {
@@ -255,7 +271,12 @@ func isGeth(pkgPath string) bool {
 	return pkgPath == gethModule || strings.HasPrefix(pkgPath, gethModule+"/")
 }
 
-func relPkg(pkgPath string) string {
+// pkgKey is the package of a key: relative to go-ethereum for its packages,
+// "go-ethereum" for its root, and the full path for other packages.
+func pkgKey(pkgPath string) string {
+	if !isGeth(pkgPath) {
+		return pkgPath
+	}
 	if rel, ok := strings.CutPrefix(pkgPath, gethModule+"/"); ok {
 		return rel
 	}
