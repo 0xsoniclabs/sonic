@@ -258,6 +258,7 @@ type IntegrationTestNet struct {
 type integrationTestNode struct {
 	directory string
 	httpPort  int
+	ipcPath   string
 	shutdown  chan<- struct{}
 	done      <-chan struct{}
 
@@ -548,15 +549,16 @@ func (n *IntegrationTestNet) start() error {
 		done := make(chan struct{})
 		n.nodes[i].shutdown = stop
 		n.nodes[i].done = done
+
+		// MacOS uses other temporary directories than Linux, which is a too long name for the Unix domain socket.
+		// Since /tmp is also available on MacOS, we can use it as a short temporary directory.
+		tmp, err := os.MkdirTemp("/tmp", "sonic_integration_test_*")
+		if err != nil {
+			return fmt.Errorf("failed to create temporary directory: %w", err)
+		}
+		n.nodes[i].ipcPath = filepath.Join(tmp, "sonic.ipc")
 		go func() {
 			defer close(done)
-
-			// MacOS uses other temporary directories than Linux, which is a too long name for the Unix domain socket.
-			// Since /tmp is also available on MacOS, we can use it as a short temporary directory.
-			tmp, err := os.MkdirTemp("/tmp", "sonic_integration_test_*")
-			if err != nil {
-				panic(fmt.Sprintf("Failed to create temporary directory: %v", err))
-			}
 			defer func() {
 				if err := os.RemoveAll(tmp); err != nil {
 					fmt.Printf("Failed to remove temporary directory: %v\n", err)
@@ -599,7 +601,7 @@ func (n *IntegrationTestNet) start() error {
 				"--statedb.archivecache", fmt.Sprintf("%d", caches.ArchiveBytes),
 				"--statedb.cache", fmt.Sprintf("%d", caches.StateDbItems),
 
-				"--ipcpath", fmt.Sprintf("%s/sonic.ipc", tmp),
+				"--ipcpath", n.nodes[i].ipcPath,
 
 				// enable test-only API
 				"--enable-test-only-api",
@@ -742,13 +744,13 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 	// discfilter.Ban(), after which postHandshakeChecks rejects further
 	// connection attempts. Trusted peers are exempt from that check.
 	for i := range n.nodes {
-		client, err := n.GetClientConnectedToNode(i)
+		client, err := n.GetIPCClientConnectedToNode(i)
 		if err != nil {
 			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 		}
 
 		enode := enodes[(i+1)%len(n.nodes)]
-		err = client.Client().Call(nil, "admin_addTrustedPeer", enode)
+		err = client.Call(nil, "admin_addTrustedPeer", enode)
 		client.Close()
 		if err != nil {
 			return fmt.Errorf("failed to add trusted peer on node %d: %v", i, err)
@@ -758,12 +760,12 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 	// Then dial, once per pair of nodes, see ringDialEdges.
 	for _, edge := range ringDialEdges(len(n.nodes)) {
 		dialer, target := edge[0], edge[1]
-		client, err := n.GetClientConnectedToNode(dialer)
+		client, err := n.GetIPCClientConnectedToNode(dialer)
 		if err != nil {
 			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 		}
 
-		err = client.Client().Call(nil, "admin_addPeer", enodes[target])
+		err = client.Call(nil, "admin_addPeer", enodes[target])
 		client.Close()
 		if err != nil {
 			return fmt.Errorf("failed to add peer on node %d: %v", dialer, err)
@@ -772,7 +774,7 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 
 	// Now wait for each node to have the expected number of connections.
 	for i := range n.nodes {
-		client, err := n.GetClientConnectedToNode(i)
+		client, err := n.GetIPCClientConnectedToNode(i)
 		if err != nil {
 			return fmt.Errorf("failed to connect to the client: %w", err)
 		}
@@ -781,7 +783,7 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 		err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
 			// Fetch the list of connected peers
 			var res []map[string]any
-			if err := client.Client().Call(&res, "admin_peers"); err != nil {
+			if err := client.Call(&res, "admin_peers"); err != nil {
 				return false, fmt.Errorf("failed to query peers on node %d: %v", i, err)
 			}
 
@@ -872,6 +874,22 @@ func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*PooledEhtClient, 
 		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 	}
 	return &PooledEhtClient{*ethclient, n.nodes[i].clients}, nil
+}
+
+// GetIPCClient provides a fresh connection to node zero over IPC, the only
+// transport that serves the legacy namespaces (dag_*, abft_*, test_*, the
+// account methods; X3). The resulting client must be closed after use.
+func (n *IntegrationTestNet) GetIPCClient() (*rpc.Client, error) {
+	return n.GetIPCClientConnectedToNode(0)
+}
+
+// GetIPCClientConnectedToNode provides a fresh connection to a selected node
+// over IPC. The resulting client must be closed after use.
+func (n *IntegrationTestNet) GetIPCClientConnectedToNode(i int) (*rpc.Client, error) {
+	if i < 0 || i >= len(n.nodes) {
+		return nil, fmt.Errorf("node index out of bounds: %d", i)
+	}
+	return rpc.Dial(n.nodes[i].ipcPath)
 }
 
 // GetWebSocketClient provides raw access to a fresh connection to the network
@@ -1280,7 +1298,7 @@ func (s *Session) ForceEmitAll(ctx context.Context, txs []*types.Transaction) ([
 }
 
 func (s *Session) callWithEncodedTxs(ctx context.Context, method string, txs []*types.Transaction) ([]common.Hash, error) {
-	client, err := s.GetClient()
+	client, err := s.net.GetIPCClient()
 	if err != nil {
 		return nil, err
 	}
@@ -1295,7 +1313,7 @@ func (s *Session) callWithEncodedTxs(ctx context.Context, method string, txs []*
 		data[i] = encoded
 	}
 
-	if err := client.Client().CallContext(ctx, nil, method, data); err != nil {
+	if err := client.CallContext(ctx, nil, method, data); err != nil {
 		return nil, err
 	}
 
@@ -1577,6 +1595,13 @@ func (s *Session) GetClient() (*PooledEhtClient, error) {
 // the network. The resulting client must be closed after use.
 func (s *Session) GetClientConnectedToNode(i int) (*PooledEhtClient, error) {
 	return s.net.GetClientConnectedToNode(i)
+}
+
+// GetIPCClient provides a fresh connection to node zero over IPC, the only
+// transport that serves the legacy namespaces. The resulting client must be
+// closed after use.
+func (s *Session) GetIPCClient() (*rpc.Client, error) {
+	return s.net.GetIPCClient()
 }
 
 // GetWebSocketClient provides raw access to a fresh connection to the network

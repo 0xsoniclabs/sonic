@@ -488,14 +488,16 @@ func WaitForProofOf(t *testing.T, client *PooledEhtClient, blockNumber int) {
 	require.NoError(t, err, "failed to get witness proof")
 }
 
-// GetEventHeads retrieves the current consensus DAG heads (events tips, childless events)
-func GetEventHeads(t *testing.T, client *PooledEhtClient) []hash.Event {
+// GetEventHeads retrieves the current consensus DAG heads (events tips,
+// childless events) over IPC, the only transport that serves dag_*.
+func GetEventHeads(t *testing.T, client *rpc.Client) []hash.Event {
 
-	epoch := GetCurrentEpoch(t, client)
+	var epoch hexutil.Uint64
+	require.NoError(t, client.Call(&epoch, "eth_currentEpoch"))
 
 	// Get the head res of the given epoch.
 	res := []string{}
-	err := client.Client().Call(&res, "dag_getHeads", rpc.BlockNumber(epoch))
+	err := client.Call(&res, "dag_getHeads", rpc.BlockNumber(epoch))
 	require.NoError(t, err)
 
 	events := make([]hash.Event, len(res))

@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"path/filepath"
 	"testing"
 
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
@@ -85,17 +86,30 @@ func (stubForwarder) Forward(context.Context, string, []json.RawMessage) (json.R
 	return json.RawMessage(`"from the node"`), nil
 }
 
-func TestModule_ForwardsWhatItDoesNotServe(t *testing.T) {
-	module := newTestModule(t, "127.0.0.1:0")
+func TestModule_ForwardsTheLegacyNamespacesOnIPCOnly(t *testing.T) {
+	config := DefaultConfig()
+	config.HTTP = &HTTPEndpoint{Address: "127.0.0.1:0", HTTPConfig: transport.HTTPConfig{VirtualHosts: []string{"localhost"}}}
+	config.IPC = &IPCEndpoint{Path: filepath.Join(t.TempDir(), "sonic.ipc")}
+	module := New(config, tests.NewFakeCore(t), prometheus.NewRegistry())
 	module.Forward(stubForwarder{})
 	require.NoError(t, module.Start())
 	defer func() { require.NoError(t, module.Stop()) }()
-	client, err := gethrpc.Dial(module.HTTPEndpoint())
+	httpClient, err := gethrpc.Dial(module.HTTPEndpoint())
 	require.NoError(t, err)
-	defer client.Close()
+	defer httpClient.Close()
+	ipcClient, err := gethrpc.DialIPC(t.Context(), config.IPC.Path)
+	require.NoError(t, err)
+	defer ipcClient.Close()
+
 	var answer string
-	require.NoError(t, client.Call(&answer, "dag_getHeads"))
+	require.NoError(t, ipcClient.Call(&answer, "dag_getHeads"))
 	require.Equal(t, "from the node", answer)
+	var rpcError gethrpc.Error
+	require.ErrorAs(t, httpClient.Call(&answer, "dag_getHeads"), &rpcError)
+	require.Equal(t, dispatch.CodeMethodNotFound, rpcError.ErrorCode())
+	answer = ""
+	require.NoError(t, httpClient.Call(&answer, "net_peerCount"))
+	require.Equal(t, "from the node", answer, "a p2p fact")
 }
 
 func TestModule_CallServesAClientInTheProcess(t *testing.T) {

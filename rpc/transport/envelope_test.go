@@ -445,29 +445,44 @@ func (forwarder *recordingForwarder) Forward(_ context.Context, method string, p
 	return json.RawMessage(`"forwarded"`), nil
 }
 
-func TestFront_ForwardsWhatTheModuleDoesNotServe(t *testing.T) {
+// TestFront_ForwardsOnIPCAndThePeerFactsEverywhere holds S1 and X3: the
+// node's handler serves the legacy namespaces on IPC only, and the p2p facts
+// on every transport.
+func TestFront_ForwardsOnIPCAndThePeerFactsEverywhere(t *testing.T) {
 	dispatcher := dispatch.New(dispatch.DefaultConfig(), dispatch.NewMetrics(prometheus.NewRegistry()))
 	t.Cleanup(dispatcher.Stop)
 	registerModuleService(dispatcher, 0)
 	forwarder := &recordingForwarder{}
-	front := NewFront(dispatcher, map[string][]string{HTTP: {"test", "dag", "eth"}})
+	front := NewFront(dispatcher, map[string][]string{HTTP: {"test", "dag", "eth", "net"}, WebSocket: {"dag", "net"}})
 	front.Forward(forwarder)
 
-	result, err := front.Route(context.Background(), HTTP, "dag_getHeads", json.RawMessage(`["latest"]`))
+	result, err := front.Route(context.Background(), IPC, "dag_getHeads", json.RawMessage(`["latest"]`))
 	require.Nil(t, err)
 	require.Equal(t, `"forwarded"`, string(result))
-	result, err = front.Route(context.Background(), HTTP, "test_echo", json.RawMessage(`[1]`))
+	for _, transport := range []string{HTTP, WebSocket} {
+		_, err = front.Route(context.Background(), transport, "dag_getHeads", json.RawMessage(`["latest"]`))
+		require.Equal(t, dispatch.MethodNotFound("dag_getHeads"), err, "a legacy method on %s", transport)
+		result, err = front.Route(context.Background(), transport, "net_peerCount", nil)
+		require.Nil(t, err)
+		require.Equal(t, `"forwarded"`, string(result), "a p2p fact on %s", transport)
+	}
+	result, err = front.Route(context.Background(), IPC, "test_echo", json.RawMessage(`[1]`))
 	require.Nil(t, err)
 	require.Equal(t, `[1,null]`, string(result), "a method the module serves is not forwarded")
+	_, err = front.Route(context.Background(), HTTP, "net_listening", nil)
+	require.Nil(t, err)
 	_, err = front.Route(context.Background(), HTTP, "admin_peers", nil)
 	require.Equal(t, dispatch.CodeMethodNotFound, err.Code, "a namespace not enabled is not forwarded")
-	_, err = front.Route(context.Background(), HTTP, "dag_getHeads", json.RawMessage(`{"epoch":1}`))
+	_, err = front.Route(context.Background(), IPC, "dag_getHeads", json.RawMessage(`{"epoch":1}`))
 	require.Equal(t, &dispatch.Error{Code: dispatch.CodeInvalidParameters, Message: "non-array args"}, err)
-	require.Equal(t, []string{`dag_getHeads["latest"]`}, forwarder.calls)
+	require.Equal(t, []string{`dag_getHeads["latest"]`, `net_peerCountnull`, `net_peerCountnull`, `net_listeningnull`}, forwarder.calls)
 
 	modules, err := front.Route(context.Background(), HTTP, "rpc_modules", nil)
 	require.Nil(t, err)
-	require.JSONEq(t, `{"rpc":"1.0","test":"1.0","dag":"1.0","eth":"1.0"}`, string(modules))
+	require.JSONEq(t, `{"rpc":"1.0","test":"1.0"}`, string(modules), "the node's namespaces are not listed off IPC")
+	modules, err = front.Route(context.Background(), IPC, "rpc_modules", nil)
+	require.Nil(t, err)
+	require.JSONEq(t, `{"rpc":"1.0","test":"1.0","dag":"1.0","eth":"1.0","admin":"1.0"}`, string(modules))
 }
 
 // TestFront_AMethodNoRegisterNamesIsNotFoundOnEveryTransport holds S1.

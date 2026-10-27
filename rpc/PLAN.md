@@ -880,6 +880,7 @@ entry; a new row is added with its entry in the same change.
 | `eth_getRules` | an epoch number, `null` for an epoch with no state | the rules in force at a block; the tags that select the head answer the rules the next block is processed with, as the open epoch did | X2; lakme `rpc-module-getRules-block-selector` |
 | `eth_blockNumber` | committed head | archived head | I3 (ADR4) |
 | any method of the legacy namespaces (X1, X2) | served on every transport that enables its namespace | served on IPC only, by the node's handler (X3) | ADR5; lakme `rpc-module-ipc-only-methods` |
+| `admin_*` | served on every transport whose API list names `admin` | served on IPC only, by the node's handler | D5: the module forwards to the node's handler on IPC only; `sonictool attach` reaches it |
 | `rpc_modules` | every namespace the node's server registered | over HTTP and WebSocket, the namespaces the module serves on that transport and the p2p facts; on IPC, those and the node handler's | the legacy namespaces are not served there |
 | `debug_*` profiling methods (go-ethereum's `internal/debug`) | `this method is not enabled` unless built with `enable_debug` | the same without `enable_debug`; with it, the node's handler serves them on IPC only | the module does not import the node's debug handler |
 | a subscription that loses events | not detected | the subscription ends and its connection closes with the reason | I18 |

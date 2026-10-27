@@ -216,7 +216,7 @@ func TestNode_ServesHTTPThroughTheModule(t *testing.T) {
 	require.Equal(t, "0xfa3", chainID)
 
 	var balance string
-	require.NoError(t, client.Call(&balance, "eth_getBalance", "0x0000000000000000000000000000000000000000", "latest"), "a method the module forwards")
+	require.NoError(t, client.Call(&balance, "eth_getBalance", "0x0000000000000000000000000000000000000000", "latest"))
 
 	var listening bool
 	require.NoError(t, client.Call(&listening, "net_listening"), "a p2p fact of the node")
@@ -230,6 +230,9 @@ func TestNode_ServesHTTPThroughTheModule(t *testing.T) {
 	var rpcError gethrpc.Error
 	require.ErrorAs(t, err, &rpcError)
 	require.Equal(t, -32601, rpcError.ErrorCode(), "a namespace not enabled on HTTP")
+	err = client.Call(new(json.RawMessage), "eth_accounts")
+	require.ErrorAs(t, err, &rpcError)
+	require.Equal(t, -32601, rpcError.ErrorCode(), "a legacy method of an enabled namespace, served on IPC only")
 
 	_, err = client.Subscribe(context.Background(), "eth", make(chan any), "newHeads")
 	require.ErrorIs(t, err, gethrpc.ErrNotificationsUnsupported)

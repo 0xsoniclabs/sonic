@@ -21,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/rpc"
+
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/tests"
@@ -156,7 +158,7 @@ func eventsAfterAllValidatorsResumed(events eventMap, numValidators int) eventMa
 func getEventsInEpoch(t *testing.T, net *tests.IntegrationTestNet) eventMap {
 	t.Helper()
 
-	client, err := net.GetClient()
+	client, err := net.GetIPCClient()
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -177,7 +179,7 @@ func getEventsInEpoch(t *testing.T, net *tests.IntegrationTestNet) eventMap {
 // collectEventsAncestry recursively collects all ancestor events of the given event
 func collectEventsAncestry(
 	t *testing.T,
-	client *tests.PooledEhtClient,
+	client *rpc.Client,
 	event testEvent,
 	ancestry eventMap) {
 	t.Helper()
@@ -193,9 +195,9 @@ func collectEventsAncestry(
 }
 
 // fetchEvent retrieves the event details for the given event ID.
-func fetchEvent(t *testing.T, client *tests.PooledEhtClient, eventID hash.Event) testEvent {
+func fetchEvent(t *testing.T, client *rpc.Client, eventID hash.Event) testEvent {
 	var result map[string]any
-	err := client.Client().Call(&result, "dag_getEvent", eventID.Hex())
+	err := client.Call(&result, "dag_getEvent", eventID.Hex())
 	require.NoError(t, err)
 
 	var event testEvent

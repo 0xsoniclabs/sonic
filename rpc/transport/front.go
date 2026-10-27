@@ -44,7 +44,8 @@ type Forwarder interface {
 // each transport only the namespaces enabled there, answers rpc_modules and
 // the subscription methods of any namespace as go-ethereum's server does,
 // and hands a call of a method the module does not serve to the node's own
-// handler.
+// handler on IPC only, where the legacy namespaces live until they are
+// removed (X3), and the p2p facts on every transport (S1).
 type Front struct {
 	dispatcher *dispatch.Dispatcher
 	enabled    map[string]map[string]bool
@@ -115,10 +116,20 @@ func (front *Front) Route(ctx context.Context, transport string, method string, 
 	if !found || !front.serves(transport, namespace) {
 		return nil, dispatch.MethodNotFound(method)
 	}
-	if front.dispatcher.Has(method) || front.forwarder == nil {
+	if front.dispatcher.Has(method) || !front.forwards(transport, method) {
 		return front.dispatcher.Serve(ctx, method, parameters)
 	}
 	return front.dispatcher.Forward(ctx, method, parameters, front.forward)
+}
+
+// p2pFacts are the methods the node's handler answers on every transport:
+// what only the node's p2p server knows.
+var p2pFacts = map[string]bool{"net_listening": true, "net_peerCount": true}
+
+// forwards tells whether a call of a method the module does not serve goes
+// to the node's handler.
+func (front *Front) forwards(transport, method string) bool {
+	return front.forwarder != nil && (transport == IPC || p2pFacts[method])
 }
 
 func (front *Front) serves(transport, namespace string) bool {
@@ -127,8 +138,8 @@ func (front *Front) serves(transport, namespace string) bool {
 }
 
 // modules answers rpc_modules: the namespaces the transport serves, the
-// module's and those of the node's handler, with the version every namespace
-// reports.
+// module's and, on IPC, those of the node's handler, with the version every
+// namespace reports.
 func (front *Front) modules(ctx context.Context, transport string) (json.RawMessage, *dispatch.Error) {
 	modules := map[string]string{"rpc": "1.0"}
 	for _, method := range front.dispatcher.Methods() {
@@ -137,7 +148,7 @@ func (front *Front) modules(ctx context.Context, transport string) (json.RawMess
 			modules[namespace] = "1.0"
 		}
 	}
-	if front.forwarder != nil {
+	if front.forwarder != nil && transport == IPC {
 		forwarded, err := front.forwarder.Forward(ctx, "rpc_modules", nil)
 		if err != nil {
 			return nil, dispatch.ToError(err)

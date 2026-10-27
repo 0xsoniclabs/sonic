@@ -243,13 +243,14 @@ func TestIntegrationTestNet_CanRunMultipleNodes(t *testing.T) {
 			// the connected nodes are indeed different nodes
 			accounts := make([]string, numNodes)
 			for i := range numNodes {
-				client, err := net.GetClientConnectedToNode(i)
+				client, err := net.GetIPCClientConnectedToNode(i)
 				require.NoError(t, err)
 				defer client.Close()
 
-				// by asking for the managed accounts, nodes can be identified
+				// by asking for the managed accounts, nodes can be identified;
+				// eth_accounts is a legacy method, served on IPC only
 				res := []string{}
-				require.NoError(t, client.Client().Call(&res, "eth_accounts"))
+				require.NoError(t, client.Call(&res, "eth_accounts"))
 				require.NotEmpty(t, res)
 				accounts[i] = res[0]
 			}
