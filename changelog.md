@@ -21,11 +21,31 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Added
 
+- A new RPC module (`rpc/`) serves the JSON-RPC API over HTTP, WebSocket and IPC in place of go-ethereum's server. The flags and configuration keys of the endpoints and limits are unchanged. Operator notes, the metrics and the recommended alerts are in `rpc/README.md`.
+- Prometheus metrics of the RPC API on the default registry: requests, durations and response sizes per method, requests in flight, connections per transport, subscriptions and polled filters, their events, recovered panics, loop restarts, and the served head and its lag (`rpc_*`).
+- At most 100,000 polled filters per node and 10,000 subscriptions per WebSocket or IPC connection. A polled filter more than 2^20 events of its kind behind its last poll is removed.
+
 ### Changed
+
+- `admin_*`, `test_*` and the legacy methods `personal_*`, `eth_accounts`, `eth_sign`, `eth_signTransaction`, `eth_sendTransaction`, `eth_fillTransaction`, `eth_resend`, `dag_*`, `abft_*`, `eth_getEpochBlock`, `eth_getEpochStats`, `debug_chaindbProperty`, `debug_chaindbCompact` and `debug_setHead` (and their `ftm_` twins) are served on IPC only.
+- `eth_blockNumber` and the block tags name the newest archived block, the same block for every method.
+- An undecodable parameter is answered `-32602` with `parameter N (name): …` instead of `invalid argument N: …`.
+- `eth_pendingTransactions` answers the pending transactions of the pool.
+- A subscription that loses events ends, and its connection is closed with the reason; a WebSocket or IPC client that does not read its notifications is disconnected.
+- `debug_trace*` refuse a tracer `timeout` that does not parse or is above `--rpc.evmtimeout`, with `-32602`.
+- `trace_call` and `trace_callMany` are bounded by `--rpc.maxresponsesize` for the whole response, the calls of `trace_callMany` sharing it; a vmTrace stops once it reaches the limit.
+- `sonic_getBundleInfo` reports `block` as a quantity.
 
 ### Removed
 
+- The `api/ethapi`, `api/sonicapi` and `gossip/filters` packages and the gas price oracle of `gossip/gasprice`; the `GPO` and `FilterAPI` configuration sections keep their keys and effect.
+
 ### Fixed
+
+- The vmTrace of `trace_call` counted 128 bytes per operation and nothing for pushed values, so a trace of cheap operations pushing many words could hold gigabytes under its limit; it now counts everything it keeps.
+- `trace_*` methods no longer panic when a block's receipt list is shorter than its transactions.
+- `debug_traceBlockByNumber` and `debug_traceBlockByHash` report a transaction they cannot convert into a message instead of failing on it later.
+- `BLOCKHASH` in calls with a block override above the head no longer walks every header down to genesis.
 
 ## [2.2.5] - 7 October 2026
 
