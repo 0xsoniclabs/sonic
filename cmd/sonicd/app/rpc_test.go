@@ -28,12 +28,14 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/node"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/rpc"
 	"github.com/0xsoniclabs/sonic/rpc/oracle"
+	"github.com/0xsoniclabs/sonic/rpc/tests"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
 )
 
@@ -228,4 +230,17 @@ func TestNode_ServesHTTPThroughTheModule(t *testing.T) {
 
 	_, err = client.Subscribe(context.Background(), "eth", make(chan any), "newHeads")
 	require.ErrorIs(t, err, gethrpc.ErrNotificationsUnsupported)
+}
+
+func TestModuleLifecycle_ClosesTheForwardingClientWhenItStops(t *testing.T) {
+	handler := gethrpc.NewServer()
+	defer handler.Stop()
+	client := gethrpc.DialInProc(handler)
+	module := rpc.New(rpc.DefaultConfig(), tests.NewFakeCore(t), prometheus.NewRegistry())
+	lifecycle := moduleLifecycle{Module: module, client: client}
+	require.NoError(t, lifecycle.Start())
+	require.NoError(t, client.Call(new(map[string]string), "rpc_modules"))
+
+	require.NoError(t, lifecycle.Stop())
+	require.ErrorIs(t, client.Call(new(map[string]string), "rpc_modules"), gethrpc.ErrClientQuit)
 }

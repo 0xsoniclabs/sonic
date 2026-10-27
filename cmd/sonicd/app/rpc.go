@@ -47,9 +47,24 @@ func newRPCModule(stack *node.Node, service *gossip.Service, configuration *conf
 	if err != nil {
 		return nil, fmt.Errorf("failed to reach the node's RPC handler: %w", err)
 	}
-	module.Forward(nodeForwarder{client: gethrpc.DialInProc(handler)})
-	stack.RegisterLifecycle(module)
+	client := gethrpc.DialInProc(handler)
+	module.Forward(nodeForwarder{client: client})
+	stack.RegisterLifecycle(moduleLifecycle{Module: module, client: client})
 	return module, nil
+}
+
+// moduleLifecycle stops the module and then closes the client its forwarder
+// calls the node's handler with: the client's goroutine runs until it is
+// closed and keeps the handler, and with it the whole node, alive.
+type moduleLifecycle struct {
+	*rpc.Module
+	client *gethrpc.Client
+}
+
+func (lifecycle moduleLifecycle) Stop() error {
+	err := lifecycle.Module.Stop()
+	lifecycle.client.Close()
+	return err
 }
 
 // rpcModuleConfig maps the node configuration into the module's.
