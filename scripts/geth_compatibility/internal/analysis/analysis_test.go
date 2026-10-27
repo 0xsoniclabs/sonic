@@ -250,6 +250,47 @@ func TestComplete_LoadsThePackagesOnlyTheOtherSideImports(t *testing.T) {
 	}
 }
 
+func TestAnalyze_IgnoresTheTargetsOfErrorsAs(t *testing.T) {
+	core := func(v string) string {
+		return "package core\n\ntype Err struct{}\n\nfunc (*Err) Error() string { return \"" + v + "\" }\n"
+	}
+	const appPkg = "package main\n\nimport (\n\t\"errors\"\n\n\t\"github.com/ethereum/go-ethereum/core\"\n)\n\n" +
+		"func main() {\n\terr := errors.New(\"x\")\n\tvar target *core.Err\n\tprintln(errors.As(err, &target), err.Error())\n}\n"
+	base, head := analyzeBoth(t, Config{},
+		map[string]string{"core/core.go": core("old")},
+		map[string]string{"core/core.go": core("new")},
+		map[string]string{"main.go": appPkg})
+
+	if got := keysOf(Compare(base, head)); len(got) > 0 {
+		t.Errorf("got findings %v, want none: errors.As creates no *core.Err", got)
+	}
+}
+
+func TestAnalyze_ImplementsCodecsOnlyByTypesOfTheConsensusPath(t *testing.T) {
+	core := func(v string) string {
+		return "package core\n\ntype Block struct{}\n\nfunc (*Block) DecodeRLP() int { return " + v + " }\n\n" +
+			"type Header struct{}\n\nfunc (*Header) DecodeRLP() int { return " + v + " }\n"
+	}
+	const rlpPkg = "package rlp\n\ntype Decoder interface{ DecodeRLP() int }\n\n" +
+		"func Decode(v any) int {\n\tif d, ok := v.(Decoder); ok {\n\t\treturn d.DecodeRLP()\n\t}\n\treturn 0\n}\n"
+	const chainPkg = "package chain\n\nimport (\n\t\"github.com/ethereum/go-ethereum/core\"\n\t\"github.com/ethereum/go-ethereum/rlp\"\n)\n\n" +
+		"func Process() int { return rlp.Decode(&core.Header{}) }\n"
+	const appPkg = "package main\n\nimport (\n\t\"example.com/app/chain\"\n\n\t\"github.com/ethereum/go-ethereum/core\"\n\t\"github.com/ethereum/go-ethereum/rlp\"\n)\n\n" +
+		"func main() { println(chain.Process(), rlp.Decode(&core.Block{})) }\n"
+	base, head := analyzeBoth(t, Config{Roots: []string{"chain func Process"}, Codecs: []string{"rlp type Decoder"}},
+		map[string]string{"core/core.go": core("1"), "rlp/rlp.go": rlpPkg},
+		map[string]string{"core/core.go": core("2"), "rlp/rlp.go": rlpPkg},
+		map[string]string{"main.go": appPkg, "chain/chain.go": chainPkg})
+
+	got := map[string]bool{}
+	for _, f := range Compare(base, head) {
+		got[f.Key] = f.Consensus
+	}
+	if want := map[string]bool{"core func Block.DecodeRLP": false, "core func Header.DecodeRLP": true}; !maps.Equal(got, want) {
+		t.Errorf("got findings %v, want %v", got, want)
+	}
+}
+
 func TestAnalyze_RefusesOtherPlatforms(t *testing.T) {
 	app := writeProgram(t, t.TempDir(), map[string]string{"core/core.go": oldCore}, map[string]string{"main.go": "package main\n\nfunc main() {}\n"})
 	_, err := Analyze(app, Config{Mains: []string{"."}, Platform: "plan9/386"})

@@ -36,7 +36,9 @@ import (
 // preambles are compared like those of go-ethereum, instead of by version.
 // Platform is the GOOS/GOARCH the program is released for; if set, the program
 // is only loaded for it, with cgo, as build constraints select other files on
-// other platforms.
+// other platforms. Codecs are interfaces of go-ethereum that a package calls by
+// reflection on the values it encodes or decodes, so that on the consensus path
+// only the types of values converted on it implement them.
 type Config struct {
 	Mains    []string
 	Platform string
@@ -44,6 +46,7 @@ type Config struct {
 	Roots    []string
 	Skips    []string
 	Cuts     []string
+	Codecs   []string
 	Upgrades string
 }
 
@@ -78,6 +81,12 @@ var Sonic = Config{
 		"core/tracing",
 		"log",
 		"metrics",
+	},
+	Codecs: []string{
+		// rlp calls these on the values it encodes and decodes, which code on
+		// the consensus path hands to it.
+		"rlp type Decoder",
+		"rlp type Encoder",
 	},
 	Upgrades: "opera type Upgrades",
 }
@@ -133,6 +142,11 @@ func (c Config) resolve(prog *ssa.Program, mod string, symbols map[string]string
 	for _, p := range c.Cuts {
 		if !found[p] {
 			missing = append(missing, "cut "+p)
+		}
+	}
+	for _, key := range c.Codecs {
+		if _, ok := symbols[key]; !ok {
+			missing = append(missing, "codec "+key)
 		}
 	}
 	if c.Upgrades != "" {
@@ -203,17 +217,19 @@ func findFunc(prog *ssa.Program, mod, key string) *ssa.Function {
 // main module mod and of go-ethereum, through which the program connects its
 // parts, and for those of other modules if they are of the same module. Code
 // calls the interfaces of the standard library, and unnamed ones, on all kinds
-// of values, so only the types converted in reachable code implement them.
+// of values, and codecs call theirs on the values they are handed, so only the
+// types converted in reachable code implement them.
 // Functions in skip, and go-ethereum functions and types covered by cuts, with
 // the methods of those types, are never reachable, and neither the initializers
 // of variables covered by cuts or of a cut type nor the init functions writing
 // them are followed.
 type limits struct {
-	ix   *index
-	seed *typeutil.Map
-	mod  string
-	skip map[*ssa.Function]bool
-	cuts []string
+	ix     *index
+	seed   *typeutil.Map
+	mod    string
+	skip   map[*ssa.Function]bool
+	cuts   []string
+	codecs []string
 }
 
 func (l *limits) cutFunc(f *ssa.Function) bool {
@@ -240,8 +256,9 @@ func (l *limits) admits(t, iface types.Type) bool {
 		return false
 	}
 	mod := l.ix.modules[pkg]
+	key, _ := l.ix.objKey(namedOf(iface).Obj())
 	switch {
-	case mod == "":
+	case mod == "" || slices.Contains(l.codecs, key):
 		return false
 	case isGeth(pkg.Path()) || mod == l.mod:
 		return true

@@ -111,11 +111,13 @@ there:
   metrics.
 - Types converted to an interface outside the consensus path implement the
   interfaces of Sonic and go-ethereum, and those of other modules only if they
-  are of the same module, but not those of the standard library.
+  are of the same module, but not those of the standard library, nor the codec
+  interfaces `rlp.Decoder` and `rlp.Encoder`, which rlp calls by reflection on
+  the values that code on the consensus path hands to it.
 
-The tool stops if neither the base nor the head has a root, skip or cut, or if
-the head lacks Sonic's upgrades type `opera.Upgrades`; update `analysis.Sonic`
-then. List a symbol renamed between the two under both names.
+The tool stops if neither the base nor the head has a root, skip, cut or codec,
+or if the head lacks Sonic's upgrades type `opera.Upgrades`; update
+`analysis.Sonic` then. List a symbol renamed between the two under both names.
 
 The Consensus column records the reviewer's classification:
 
@@ -142,7 +144,9 @@ other rows follow in a section per verdict, `todo` first.
   `./cmd/sonictool`; code reached only from tests is not included. A method
   called through an interface is reachable for every type implementing it that
   reachable code converts to an interface, or that is the type of an exported
-  or embedded field or of an element of such a type.
+  or embedded field or of an element of such a type. A pointer handed to
+  `errors.As` as its target does not count, as `errors.As` only assigns an
+  error that already exists.
 - A value handed to a package that looks up methods by reflection, such as the
   RPC server of go-ethereum, makes the exported methods of its type reachable,
   together with those of its exported and embedded fields, elements and method

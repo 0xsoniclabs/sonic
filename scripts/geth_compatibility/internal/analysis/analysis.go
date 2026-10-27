@@ -82,7 +82,7 @@ func Analyze(dir string, c Config) (*Side, error) {
 
 	ix := newIndex()
 	side := &Side{Symbols: ix.symbols}
-	lim := &limits{ix: ix, skip: map[*ssa.Function]bool{}, cuts: c.Cuts}
+	lim := &limits{ix: ix, skip: map[*ssa.Function]bool{}, cuts: c.Cuts, codecs: c.Codecs}
 	modules := map[string]string{}
 	packages.Visit(initial, nil, func(p *packages.Package) {
 		ix.pkgs[p.Types] = p

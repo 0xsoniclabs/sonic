@@ -38,7 +38,8 @@ import (
 // the initializers of these variables, and all types reflection can derive
 // from them. If a value is handed to a package that looks up methods by
 // reflection, all exported methods of its type and of the types derived from
-// it are reachable.
+// it are reachable. A pointer handed to errors.As as its target is no
+// conversion: errors.As only assigns an error that already exists.
 //
 // x/tools' rta package does the same without the reflection, but panics on
 // generic methods such as math/rand/v2.Rand.N.
@@ -301,6 +302,9 @@ func (ix *index) isStd(f *ssa.Function) bool {
 }
 
 func (r *reacher) convert(mi *ssa.MakeInterface) {
+	if isErrorsAsTarget(mi) {
+		return
+	}
 	t := mi.X.Type()
 	r.addType(t, false)
 	for _, p := range handedTo(mi) {
@@ -483,6 +487,20 @@ func handedTo(v ssa.Value) []*types.Package {
 		}
 	}
 	return out
+}
+
+// isErrorsAsTarget reports whether v is only handed to errors.As as its target.
+func isErrorsAsTarget(v ssa.Value) bool {
+	refs := *v.Referrers()
+	return len(refs) > 0 && !slices.ContainsFunc(refs, func(ref ssa.Instruction) bool {
+		c, ok := ref.(ssa.CallInstruction)
+		if !ok {
+			return true
+		}
+		f := c.Common().StaticCallee()
+		return f == nil || f.Pkg == nil || f.Pkg.Pkg.Path() != "errors" || f.Name() != "As" ||
+			len(c.Common().Args) != 2 || c.Common().Args[1] != v
+	})
 }
 
 func looksUpMethod(c *ssa.CallCommon) bool {
