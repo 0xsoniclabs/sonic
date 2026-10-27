@@ -44,6 +44,7 @@ Version 2.2.6 is a stability release. Upgrading is recommended for all node oper
 - Fixed rare incorrect results under concurrent load, including in `eth_getLogs` and `eth_getBlockReceipts`.
 - Fixed the event throttler setting in the configuration file being ignored.
 - Fixed the documented defaults of several command-line flags. `--rpc.batch-request-limit` and `--rpc.batch-response-max-size` are unlimited by default.
+- Fixed `eth_call` and `eth_estimateGas` undercharging storage writes to slots set by a state override, on blocks before the Allegro upgrade.
 
 ## [2.2.5] - 7 October 2026
 
