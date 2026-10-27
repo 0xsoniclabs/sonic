@@ -21,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/config"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -28,6 +30,16 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/stretchr/testify/require"
 )
+
+// emitInterval is the interval each validator waits between two events.
+// The integration test network defaults to 1ms, which is far below the 11ms
+// period in which an emitter checks whether to emit. The emission rate is then
+// bound by how often each node's emitter gets to run rather than by the
+// interval, and on a busy machine the two validators drift apart by more than
+// the tolerance asserted below. An interval well above the check period makes
+// both of them emit at the same, clock-bound rate, while still being short
+// enough to keep the test fast.
+const emitInterval = 50 * time.Millisecond
 
 func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottlerIsEnabled(t *testing.T) {
 	// this test checks that when event throttler is enabled,
@@ -52,20 +64,29 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 			net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 				ValidatorsStake:      initialStake,
 				ClientExtraArguments: extraArguments,
+				ModifyConfig: func(config *config.Config) {
+					config.Emitter.EmitIntervals.Min = emitInterval
+					config.Emitter.EmitIntervals.Confirming = emitInterval
+				},
 			})
 
 			net.AdvanceEpoch(t, 1)
 
-			// Poll until enough events are collected for statistical stability
+			// Poll until enough events are collected for statistical stability.
+			// Only events created once every validator has resumed emitting in
+			// the new epoch are considered, see eventsAfterAllValidatorsResumed.
+			// Each poll fetches the full epoch DAG event by event, so it must
+			// not run so often that it slows down the node it measures.
 			const minEvents = 120
-			var eventsInEpoch eventMap
+			var eventsInWindow eventMap
 			require.Eventually(t, func() bool {
-				eventsInEpoch = getEventsInEpoch(t, net)
-				return len(eventsInEpoch) >= minEvents
-			}, 100*time.Second, 50*time.Millisecond,
-				"timed out waiting for at least %d events", minEvents)
+				eventsInWindow = eventsAfterAllValidatorsResumed(
+					getEventsInEpoch(t, net), len(initialStake))
+				return len(eventsInWindow) >= minEvents
+			}, 100*time.Second, 250*time.Millisecond,
+				"timed out waiting for at least %d events created while all validators were emitting", minEvents)
 
-			percentages := calculateValidatorEmissionPercentages(eventsInEpoch)
+			percentages := calculateValidatorEmissionPercentages(eventsInWindow)
 
 			if throttlerEnabled {
 				require.GreaterOrEqual(t, percentages[1], 0.9,
@@ -74,7 +95,7 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 					"Low stake validator should create very few events")
 			} else {
 				// Without emitter throttling, both validators should create the same amount of events
-				require.InDelta(t, percentages[1], percentages[2], 0.2,
+				require.InDelta(t, percentages[1], percentages[2], 0.1,
 					"Both validators should create equal amount of events")
 			}
 		})
@@ -84,10 +105,50 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 type eventMap map[hash.Event]testEvent
 
 type testEvent struct {
-	Epoch   idx.Block
-	Id      hash.Event
-	Creator idx.ValidatorID
-	Parents []hash.Event
+	Epoch        idx.Block
+	Id           hash.Event
+	Creator      idx.ValidatorID
+	CreationTime inter.Timestamp
+	Parents      []hash.Event
+}
+
+// eventsAfterAllValidatorsResumed reduces the given events to those created
+// after the last of the numValidators validators has created its first event
+// of the epoch.
+//
+// After an epoch change validators do not resume emitting at the same instant;
+// one of them can be several hundred milliseconds ahead of the others. At an
+// emitInterval of 50ms such a delay is worth a dozen events, a tenth of the
+// events this test samples, and would distort any measurement of the relative
+// emission rates. The events created before all validators are back are
+// therefore not representative and get discarded.
+//
+// An empty map is returned while some validator has not emitted any event yet.
+func eventsAfterAllValidatorsResumed(events eventMap, numValidators int) eventMap {
+	firstEventTime := map[idx.ValidatorID]inter.Timestamp{}
+	for _, event := range events {
+		cur, found := firstEventTime[event.Creator]
+		if !found || event.CreationTime < cur {
+			firstEventTime[event.Creator] = event.CreationTime
+		}
+	}
+	if len(firstEventTime) < numValidators {
+		return eventMap{}
+	}
+
+	// The window starts when the last validator created its first event.
+	var windowStart inter.Timestamp
+	for _, first := range firstEventTime {
+		windowStart = max(windowStart, first)
+	}
+
+	inWindow := eventMap{}
+	for id, event := range events {
+		if event.CreationTime >= windowStart {
+			inWindow[id] = event
+		}
+	}
+	return inWindow
 }
 
 // getEventsInEpoch returns the events created in the current epoch up to the latest event heads.
@@ -148,6 +209,7 @@ func fetchEvent(t *testing.T, client *tests.PooledEhtClient, eventID hash.Event)
 
 	event.Epoch = idx.Block(toUint64(result["epoch"].(string)))
 	event.Creator = idx.ValidatorID(toUint64(result["creator"].(string)))
+	event.CreationTime = inter.Timestamp(toUint64(result["creationTime"].(string)))
 	event.Id = hash.Event(common.HexToHash(result["id"].(string)))
 	event.Parents = make([]hash.Event, 0)
 	for _, parent := range result["parents"].([]any) {
