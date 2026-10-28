@@ -50,7 +50,11 @@ func TestTraceConsistency_TracesReproduceBlockProcessing(t *testing.T) {
 	require := req.New(t)
 
 	// Allegro enables Prague, and with it the EIP-2935 pre-block system call.
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	// A dedicated network keeps other tests from producing blocks between
+	// reading the head and including the probe transaction.
+	session := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+	})
 	t.Parallel()
 
 	client, err := session.GetClient()
