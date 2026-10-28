@@ -415,7 +415,6 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 			}
 
 			vmConfig := vm.Config{}
-			usedGas := new(uint64)
 
 			tests := map[string]struct {
 				gasLimit uint64
@@ -454,8 +453,9 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 			for name, test := range tests {
 				t.Run(name, func(t *testing.T) {
 					require := require.New(t)
+					usedGas := uint64(1_000_000)
 					gasLimit := test.gasLimit
-					processed := process(block, state, vmConfig, gasLimit, usedGas, 0, nil, math.MaxUint64).ProcessedTransactions
+					processed := process(block, state, vmConfig, gasLimit, &usedGas, 0, nil, math.MaxUint64).ProcessedTransactions
 					require.Len(processed, 3)
 
 					for i, tx := range transactions {

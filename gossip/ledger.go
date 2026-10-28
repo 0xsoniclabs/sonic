@@ -25,6 +25,8 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
@@ -64,10 +66,10 @@ type ExecutingBlock interface {
 	stateDB() state.StateDB
 
 	// Run executes a batch of user transactions against the block being
-	// assembled, honoring UserTransactionsGasLimit and the block size limit,
-	// appends the accepted ones, and maps each processed transaction to the
-	// transaction that caused it.
-	Run(txs types.Transactions) map[common.Hash]common.Hash
+	// assembled, honoring the UserTransactionsGasLimit shared by all calls on
+	// the block and the block size limit, appends the accepted ones, and
+	// returns the execution summary.
+	Run(txs types.Transactions) evmcore.ProcessSummary
 
 	// runInternal executes a batch of system (consensus-internal) transactions
 	// within the block gas limit and without a size limit, appends the accepted
@@ -103,8 +105,8 @@ type BlockParams struct {
 	// GasLimit is the block's header gas limit; internal transactions run
 	// within it.
 	GasLimit uint64
-	// UserTransactionsGasLimit is the gas available to user transactions
-	// executed by Run. It must be at most GasLimit.
+	// UserTransactionsGasLimit is the gas available to the user transactions
+	// of all Run calls on the block. It must be at most GasLimit.
 	UserTransactionsGasLimit uint64
 	Rules                    opera.Rules
 }
@@ -200,12 +202,13 @@ func (h *head) BeginBlock(
 
 // executingBlock is the main implementation of ExecutingBlock.
 type executingBlock struct {
-	statedb      state.StateDB
-	number       uint64
-	params       BlockParams
-	evmProcessor blockproc.EVMProcessor
-	blockBuilder *inter.BlockBuilder
-	finalized    bool
+	statedb                 state.StateDB
+	number                  uint64
+	params                  BlockParams
+	evmProcessor            blockproc.EVMProcessor
+	blockBuilder            *inter.BlockBuilder
+	userTransactionsGasUsed uint64
+	finalized               bool
 }
 
 func (eb *executingBlock) stateDB() state.StateDB {
@@ -215,17 +218,38 @@ func (eb *executingBlock) stateDB() state.StateDB {
 	return eb.statedb
 }
 
-func (eb *executingBlock) Run(txs types.Transactions) map[common.Hash]common.Hash {
+func (eb *executingBlock) Run(txs types.Transactions) evmcore.ProcessSummary {
 	if eb.finalized {
 		panic("executing block already consumed")
 	}
-	return processUserTransactions(
-		eb.evmProcessor,
-		eb.blockBuilder,
-		txs,
-		eb.params.UserTransactionsGasLimit,
-		eb.params.Rules.Upgrades,
-	)
+	remainingSize := uint64(math.MaxUint64)
+	if eb.params.Rules.Upgrades.Brio {
+		remainingSize = uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
+		for _, tx := range eb.blockBuilder.GetTransactions() {
+			txSize := tx.Size()
+			if txSize > remainingSize {
+				// Still call evmProcessor execute with 0 remaining size to
+				// track skipped transactions correctly.
+				log.Warn("block filled with recorded transactions")
+				remainingSize = 0
+				break
+			}
+			remainingSize -= txSize
+		}
+	}
+
+	summary := eb.evmProcessor.Execute(txs, eb.params.UserTransactionsGasLimit-eb.userTransactionsGasUsed, remainingSize)
+	for _, processed := range summary.ProcessedTransactions {
+		if processed.Receipt != nil { // < nil if skipped
+			eb.blockBuilder.AddTransaction(
+				processed.Transaction,
+				processed.Receipt,
+			)
+			eb.userTransactionsGasUsed += processed.Receipt.GasUsed
+		}
+	}
+
+	return summary
 }
 
 func (eb *executingBlock) runInternal(txs types.Transactions) evmcore.ProcessSummary {
