@@ -47,6 +47,7 @@ import (
 // The ground truth is taken from the real execution of the transaction: the
 // event emitted during block processing and recorded in the receipt.
 func TestTraceConsistency_TracesReproduceBlockProcessing(t *testing.T) {
+	t.Parallel()
 	require := req.New(t)
 
 	// Allegro enables Prague, and with it the EIP-2935 pre-block system call.
@@ -55,7 +56,6 @@ func TestTraceConsistency_TracesReproduceBlockProcessing(t *testing.T) {
 	session := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
 	})
-	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(err)
