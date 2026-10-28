@@ -274,7 +274,7 @@ func TestExecutingBlock_Run_ExecutesWithinRemainingUserGasAndBlockSize(t *testin
 		recorded    types.Transactions
 		userGasUsed uint64
 		txs         types.Transactions
-		added       types.Transactions
+		processed   types.Transactions
 		skipped     types.Transactions
 		wantSize    uint64
 		want        types.Transactions
@@ -341,17 +341,30 @@ func TestExecutingBlock_Run_ExecutesWithinRemainingUserGasAndBlockSize(t *testin
 			want:     types.Transactions{tx1},
 		},
 		"before Brio, transactions added by the processor are included": {
-			txs:      types.Transactions{tx0, tx1},
-			added:    types.Transactions{addedTx},
-			wantSize: math.MaxUint64,
-			want:     types.Transactions{tx0, tx1, addedTx},
+			txs:       types.Transactions{tx0, tx1},
+			processed: types.Transactions{tx0, tx1, addedTx},
+			wantSize:  math.MaxUint64,
+			want:      types.Transactions{tx0, tx1, addedTx},
 		},
 		"with Brio, transactions added by the processor are included": {
-			brio:     true,
-			txs:      types.Transactions{tx0, tx1},
-			added:    types.Transactions{addedTx},
-			wantSize: maxSize,
-			want:     types.Transactions{tx0, tx1, addedTx},
+			brio:      true,
+			txs:       types.Transactions{tx0, tx1},
+			processed: types.Transactions{tx0, tx1, addedTx},
+			wantSize:  maxSize,
+			want:      types.Transactions{tx0, tx1, addedTx},
+		},
+		"before Brio, transactions added by the processor in-between keep their position": {
+			txs:       types.Transactions{tx0, tx1},
+			processed: types.Transactions{tx0, addedTx, tx1},
+			wantSize:  math.MaxUint64,
+			want:      types.Transactions{tx0, addedTx, tx1},
+		},
+		"with Brio, transactions added by the processor in-between keep their position": {
+			brio:      true,
+			txs:       types.Transactions{tx0, tx1},
+			processed: types.Transactions{tx0, addedTx, tx1},
+			wantSize:  maxSize,
+			want:      types.Transactions{tx0, addedTx, tx1},
 		},
 		"user gas used by earlier batches reduces the user gas limit": {
 			userGasUsed: 4_000,
@@ -365,17 +378,21 @@ func TestExecutingBlock_Run_ExecutesWithinRemainingUserGasAndBlockSize(t *testin
 		t.Run(name, func(t *testing.T) {
 			summary := evmcore.ProcessSummary{CausedBy: map[common.Hash]common.Hash{}}
 			wantUserGasUsed := test.userGasUsed
-			for _, tx := range append(slices.Clone(test.txs), test.added...) {
+			if test.processed == nil {
+				test.processed = test.txs
+			}
+			var cause common.Hash
+			for _, tx := range test.processed {
+				if slices.Contains(test.txs, tx) {
+					cause = tx.Hash()
+				}
 				processed := evmcore.ProcessedTransaction{Transaction: tx}
 				if !slices.Contains(test.skipped, tx) {
 					processed.Receipt = &types.Receipt{GasUsed: 100}
-					summary.CausedBy[tx.Hash()] = tx.Hash()
+					summary.CausedBy[tx.Hash()] = cause
 					wantUserGasUsed += 100
 				}
 				summary.ProcessedTransactions = append(summary.ProcessedTransactions, processed)
-			}
-			for _, tx := range test.added {
-				summary.CausedBy[tx.Hash()] = tx1.Hash()
 			}
 			evmProcessor := blockproc.NewMockEVMProcessor(gomock.NewController(t))
 			evmProcessor.EXPECT().Execute(test.txs, 10_000-test.userGasUsed, test.wantSize).Return(summary)
@@ -389,7 +406,8 @@ func TestExecutingBlock_Run_ExecutesWithinRemainingUserGasAndBlockSize(t *testin
 			for _, tx := range test.recorded {
 				executing.blockBuilder.AddTransaction(tx, &types.Receipt{})
 			}
-			require.Equal(t, summary, executing.Run(test.txs))
+			got := executing.Run(test.txs)
+			require.Equal(t, summary, got)
 			require.Equal(t, test.want, executing.blockBuilder.GetTransactions())
 			require.Equal(t, wantUserGasUsed, executing.userTransactionsGasUsed)
 		})
