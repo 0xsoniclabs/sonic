@@ -288,8 +288,9 @@ func (c *CarmenStateDB) SetStorage(addr common.Address, storage map[common.Hash]
 	origNonce := c.db.GetNonce(cc.Address(addr))
 	origBalance := c.db.GetBalance(cc.Address(addr))
 
-	// Suicide the account to clear the storage
-	c.db.Suicide(cc.Address(addr))
+	// Suicide the account to clear the storage; the pre-Amsterdam variant also
+	// zeroes the balance, which is needed since it is re-added below.
+	c.db.SuicidePreAmsterdam(cc.Address(addr))
 	c.db.CreateAccount(cc.Address(addr))
 
 	// insert new storage
@@ -305,6 +306,10 @@ func (c *CarmenStateDB) SetStorage(addr common.Address, storage map[common.Hash]
 
 func (c *CarmenStateDB) SelfDestruct(addr common.Address) {
 	c.db.Suicide(cc.Address(addr))
+}
+
+func (c *CarmenStateDB) SelfDestructPreAmsterdam(addr common.Address) {
+	c.db.SuicidePreAmsterdam(cc.Address(addr))
 }
 
 func (c *CarmenStateDB) CreateAccount(addr common.Address) {
