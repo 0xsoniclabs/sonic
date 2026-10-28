@@ -67,6 +67,14 @@ pipeline {
                 sh("codecov upload-process -r 0xsoniclabs/sonic -f ./build/coverage.cov -t $CODECOV_TOKEN")
             }
         }
+
+        stage('Test geth compatibility tool') {
+            steps {
+                dir('scripts/geth_compatibility') {
+                    sh 'go test ./...'
+                }
+            }
+        }
     }
 
     post {
