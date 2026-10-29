@@ -40,7 +40,7 @@ previous execution paid for is a rule or a gate here.
 | Own entry point | A dispatcher is the only place that starts request goroutines; it decodes, applies the deadline, recovers panics and counts every call on every transport; methods exist by registration, never by reflection |
 | Own dependencies | go-ethereum stays for the data model, the EVM and the tracers; its `rpc`, `node` and `event` packages leave the module (section 3) |
 | Monitored by design | Prometheus `client_golang`, per-method accounting, bounded cardinality, alerts named up front |
-| Smaller surface | Wallet, signing and consensus-internal namespaces are not ported (X1, X2); filters and the gas price oracle move out of `gossip` (G1–G3) |
+| Smaller surface | Wallet, signing and consensus-internal namespaces are not ported (X1, X2); the deprecated `ftm` twin of `eth` is not served (X7); filters and the gas price oracle move out of `gossip` (G1–G3) |
 | Test-first | A step is done when lakme, the handler tests and the integration tests say so; every difference from the reference is justified in writing (section 6) |
 
 ### Layout
@@ -53,7 +53,7 @@ previous execution paid for is a rule or a gate here.
 | `rpc/exec` | what the methods share: the one set of block, header, transaction and state lookups on `Environment` (H1, H2); `CallArguments`, overrides, EVM environment, `ChainConfig` derived from rules, `RevertError`; the send path (V7); `Config`, the semantic limits of the methods (section 8) | chain, dispatch, core, oracle, evmcore, opera |
 | `rpc/format` | the JSON forms of blocks, headers, transactions, receipts and logs that several namespaces answer with | core, evmcore |
 | `rpc/oracle` | gas price oracle, its sampler and its `Config` (the `GPO` keys) | core |
-| `rpc/eth`, `filters`, `trace`, `debug`, `txpool`, `net`, `web3`, `sonic` | one namespace each; `Register(dispatcher, environment[, role][, namespace])` (H8); `eth` and `filters` register twice, as `eth_` and `ftm_`. A namespace imports no other namespace | dispatch, chain, exec, format, oracle, core (role interfaces, H8) |
+| `rpc/eth`, `filters`, `trace`, `debug`, `txpool`, `net`, `web3`, `sonic` | one namespace each; `Register(dispatcher, environment[, role])` (H8); `eth` and `filters` register under `eth_` only (D7). A namespace imports no other namespace | dispatch, chain, exec, format, oracle, core (role interfaces, H8) |
 | `rpc/transport` | HTTP, WebSocket, unix-socket transports over one `Front` that routes the module's methods to the dispatcher and forwards, on IPC, what the node's handler serves (X3) and, everywhere, the p2p facts | dispatch |
 | `rpc/tests` | the test support of 7.4: `FakeCore`, `NewCarmenCore` (real in-memory Carmen with an in-memory S5 archive, so that witness proofs work), the replay chain, accounts, contract code, the harness; successor of `api/rpctest` | core, dispatch, chain, exec, oracle |
 | `rpc` | `Module`: wiring of namespaces, start and stop | all of the above |
@@ -573,6 +573,8 @@ names.
      so nothing reaches IPC unlisted; its wallet methods default fees and gas
      through the module (X3, ADR5)
    - `Front` forwards only X3 on IPC and the p2p facts (S1)
+   - remove the `ftm` namespace from the module and from the node's handler;
+     an API list that still names it starts the node with a warning (D7, X7)
    - delete `gossip/filters` (G1)
    - delete the legacy oracle and its plumbing (G2)
    - delete what of `api/*` is left unreachable and shrink `EthAPIBackend`
@@ -582,7 +584,7 @@ names.
    Then the review of the whole branch against the reference by someone who did
    not write it, with section 7.6 as the checklist (T7); each finding is fixed
    in the commit it belongs to, with a test that fails without the fix. Gates:
-   H4, H5, H7, H9–H11, Q1–Q6, D10, O1–O5, P6–P8, MON1–MON6, the import test, lakme, the
+   H4, H5, H7, H9–H11, Q1–Q6, D7, D10, O1–O5, P6–P8, MON1–MON6, the import test, lakme, the
    fixtures (T3) and the benchmark gate (T2) against the reference, every line
    of 7.7, T7. No escape hatch (ADR11).
 
@@ -631,7 +633,7 @@ denial of service. Where a client can see one, section 6 has a deviations row.
 | D4 | WebSocket: requests, batches, subscriptions (`newHeads`, `logs`, `newPendingTransactions`), subscription cap per connection, bounded buffer per subscription, disconnect of a client that does not read | I (`log_subscription_test.go`, `pending_transactions_subscription_test.go`), U |
 | D5 | IPC unix socket at `<datadir>/sonic.ipc`, mode 0600, same features as WebSocket; the only transport that serves `admin_*`, `test_*` and the legacy namespaces | I (harness client), U |
 | D6 | Filters installed over HTTP expire after 5 minutes without a poll; ids are unguessable and per node | L, U |
-| D7 | The `eth` namespace is mirrored as `ftm` | L |
+| D7 | No `ftm` namespace (X7). Neither the module nor the node's handler registers an `ftm_` method; `ftm_*` answers -32601 and `ftm_subscribe` `no "x" subscription in ftm namespace` on every transport; `rpc_modules` lists no `ftm`. An `--http.api` or `--ws.api` list that still names `ftm` is accepted and starts the node with the warning `The 'ftm' API has been removed, use 'eth' instead`. No method was served under `ftm` alone, so none moves to `sonic` | U (`TestModule_ServesNoFtmNamespace`, `TestModule_RegistersExactlyTheInventory`, `TestRemovedAPIWarnings_NameEachListWithTheFtmNamespace`), I (`TestNodeHandler_ServesExactlyTheLegacyMethods`) |
 | D8 | Namespaces are enabled per transport by `--http.api`, `--ws.api`; defaults as today | I |
 | D9 | Unknown method → -32601; malformed JSON → -32700; a parameter the dispatcher cannot decode or count → -32602 naming it; internal → -32603; a handler's own check keeps the code and words of its legacy counterpart (-32000 for a plain error, revert data on `eth_call`, the simulate codes) | L (error rows), E, U |
 | D10 | `Stop` drains in-flight requests up to the deadline, closes listeners and subscriptions, and returns with no goroutine of the module alive | U (goroutine count), I (`node_restart_test.go`) |
@@ -659,7 +661,7 @@ denial of service. Where a client can see one, section 6 has a deviations row.
 | Q3 | Nil safety: every method answers without panic when any `Core` method returns nil, not-found or an error, and for any `null` or absent optional argument; `rpc_panics_total` stays zero over the matrix | R (`FakeCore` failure modes × methods × argument shapes) |
 | Q4 | Line coverage of every module package at or above the floor (ADR10), measured in CI; `rpc/core` and `rpc/tests` and generated files are excluded; every registered method has a handler test (T4) | C |
 | Q5 | Compliance with geth: every method in geth's OpenRPC specification for `eth`, `debug`, `txpool`, `net`, `web3` is served or listed in X with its reason (a test diffs the sets); the JSON-RPC 2.0 envelope (ids, batches, notifications, error codes, `null` results, timeouts) matches geth's `rpc.Server`, checked by a differential test that sends the same requests to both. The test includes the cases that only show under a configured limit: a method slower than the write timeout (call and batch), a batch over each cap | C, E, L, U |
-| Q6 | Sonic extensions are served and listed by origin in section 6: `ftm` mirror, `sonic_*`, OpenEthereum `trace_*`, `eth_getRules`, `eth_currentEpoch`, `eth_config`, `eth_sendRawTransactionSync`; each has the handler tests and lakme rows geth methods have | L, I, R |
+| Q6 | Sonic extensions are served and listed by origin in section 6: `sonic_*`, OpenEthereum `trace_*`, `eth_getRules`, `eth_currentEpoch`, `eth_config`, `eth_sendRawTransactionSync`; each has the handler tests and lakme rows geth methods have | L, I, R |
 
 ### V. Validation (every method, before the handler)
 
@@ -762,6 +764,7 @@ line by line (section 4), so the code is written for that reader.
 | X4 | `CalcBlockExtApi`, `RPCBlockExt` and the gossip `PublicEthereumAPI` shims (`gossip/api.go`) are not carried over; `eth_chainId` has one implementation |
 | X5 | `MinGasPrice`, `MaxGasLimit` are derived in the module, not exposed by `Core`; `MaxGasLimit` from `Rules(head+1)`, the open epoch (section 2) |
 | X6 | Not added: `debug_getRaw{Block,Header,Receipts,Transaction}` and `debug_getBadBlocks`. geth serves them, the reference does not, and the reference defines parity (F1). Listed here for Q5; their execution-apis fixtures are allow-listed (7.3) |
+| X7 | Not served: the `ftm` namespace, the twin of `eth` the reference registered for branding and announced as deprecated at start (`The 'ftm' API is deprecated, use 'eth' instead`). Every `ftm_` method, the legacy ones of X3 included, and every `ftm_subscribe` kind was an `eth_` one under a second name, so nothing moves to `sonic`: clients call `eth_`. Checked by D7 |
 
 ### G. Moves out of gossip (step 6)
 
@@ -791,7 +794,7 @@ Decision: **port** (new handler), **local** (answered without `Core`),
 IPC only), **absent** (a geth method the reference does not serve; X6). Coverage: **L** lakme, **E** execution-apis fixture, **I**
 integration test. Every ported method also has an R test (T4).
 
-### eth (mirrored as ftm)
+### eth
 
 | Method | Decision | Inherits from | Cov. | Notes |
 |---|---|---|---|---|
@@ -880,6 +883,7 @@ entry; a new row is added with its entry in the same change.
 | `eth_getRules` | an epoch number, `null` for an epoch with no state | the rules in force at a block; the tags that select the head answer the rules the next block is processed with, as the open epoch did | X2; lakme `rpc-module-getRules-block-selector` |
 | `eth_blockNumber` | committed head | archived head | I3 (ADR4) |
 | any method of the legacy namespaces (X1, X2) | served on every transport that enables its namespace | served on IPC only, by the node's handler (X3) | ADR5; lakme `rpc-module-ipc-only-methods` |
+| `ftm_*`, every method and subscription of the `eth` twin | served as `eth_` under a second name; an API list naming `ftm` logs that it is deprecated | not served: -32601, and `no "x" subscription in ftm namespace`; an API list naming `ftm` logs that it was removed | X7, D7; lakme draws no `ftm_` method |
 | `admin_*` | served on every transport whose API list names `admin` | served on IPC only, by the node's handler | D5: the module forwards to the node's handler on IPC only; `sonictool attach` reaches it |
 | `rpc_modules` | every namespace the node's server registered | over HTTP and WebSocket, the namespaces the module serves on that transport and the p2p facts; on IPC, those and the node handler's | the legacy namespaces are not served there |
 | `debug_*` profiling methods (go-ethereum's `internal/debug`) | `this method is not enabled` unless built with `enable_debug` | the same without `enable_debug`; with it, the node's handler serves them on IPC only | the module does not import the node's debug handler |
@@ -1175,6 +1179,9 @@ Module (`go test -race ./rpc/...`, which is also P6):
 - D8, D11: namespaces per transport; a disallowed Host, a disallowed origin, an
   oversize body, a stalled client.
 - D5, X3: legacy methods answer on IPC only.
+- D7, X7: no `ftm_` method is registered; `ftm_*` and `ftm_subscribe` answer
+  -32601 and `rpc_modules` lists no `ftm` on every transport, also where the
+  API list still names it.
 - MON1–MON5: counters per method and transport, cardinality bounded, head and
   lag, the default registry.
 
@@ -1182,7 +1189,8 @@ Node:
 
 - Adapter guards (section 2): one test per `svc.config` read, `TxIndex` off
   among them.
-- X3 surface: a test pins the exact method set of the node's handler.
+- X3 surface: a test pins the exact method set of the node's handler, with no
+  `ftm_` method (D7); an API list naming `ftm` warns that it was removed.
 - O4: flags and TOML keys against the golden files of the reference; changing
   each key the module consumes changes its effect.
 - Section 8: the node's default of each knob equals its module definition, and

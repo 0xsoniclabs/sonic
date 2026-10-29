@@ -37,7 +37,7 @@ only (`sonictool attach` reaches it):
   `eth_accounts`, `eth_sign`, `eth_signTransaction`, `eth_sendTransaction`,
   `eth_fillTransaction`, `eth_resend`, `dag_*`, `abft_*`, `eth_getEpochBlock`,
   `eth_getEpochStats`, `debug_chaindbProperty`, `debug_chaindbCompact`,
-  `debug_setHead`, and their `ftm_` twins. Their wallet methods take the tip
+  `debug_setHead`. Their wallet methods take the tip
   and the gas of the transactions they complete from the module.
 
 Over HTTP and WebSocket these answer `-32601`, and `rpc_modules` does not list
@@ -55,6 +55,10 @@ or a client may notice:
 
 - `eth_blockNumber`, `latest` and every tag name the newest *archived* block
   the module has seen, the same block for every method (ADR4).
+- The deprecated `ftm` namespace is gone (D7): `ftm_*` answer `-32601` on
+  every transport, so clients call the `eth_*` method of the same name. An
+  `--http.api` or `--ws.api` list that still names `ftm` starts the node with
+  the warning `The 'ftm' API has been removed, use 'eth' instead`.
 - A parameter that does not decode is answered `-32602` with
   `parameter N (name): …` instead of `invalid argument N: …`.
 - `eth_pendingTransactions` answers the pool's pending transactions.

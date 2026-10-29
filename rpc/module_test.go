@@ -22,6 +22,7 @@ import (
 	"net"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
@@ -113,6 +114,41 @@ func TestModule_ForwardsTheLegacyNamespacesOnIPCOnly(t *testing.T) {
 	require.Equal(t, "from the node", answer, "a p2p fact")
 }
 
+// TestModule_ServesNoFtmNamespace holds D7: the ftm twin of the eth namespace
+// is served on no transport, also where the configuration still names it,
+// and rpc_modules does not list it.
+func TestModule_ServesNoFtmNamespace(t *testing.T) {
+	config := DefaultConfig()
+	config.HTTP = &HTTPEndpoint{Address: "127.0.0.1:0", Namespaces: []string{"eth", "ftm"}, HTTPConfig: transport.HTTPConfig{VirtualHosts: []string{"localhost"}}}
+	config.IPC = &IPCEndpoint{Path: filepath.Join(t.TempDir(), "sonic.ipc")}
+	module := New(config, tests.NewFakeCore(t), prometheus.NewRegistry())
+	for _, method := range module.dispatcher.Methods() {
+		require.False(t, strings.HasPrefix(method, "ftm_"), "%s is registered", method)
+	}
+	require.NoError(t, module.Start())
+	defer func() { require.NoError(t, module.Stop()) }()
+	httpClient, err := gethrpc.Dial(module.HTTPEndpoint())
+	require.NoError(t, err)
+	defer httpClient.Close()
+	ipcClient, err := gethrpc.DialIPC(t.Context(), config.IPC.Path)
+	require.NoError(t, err)
+	defer ipcClient.Close()
+
+	for name, client := range map[string]*gethrpc.Client{"HTTP": httpClient, "IPC": ipcClient} {
+		var chainID string
+		require.NoError(t, client.Call(&chainID, "eth_chainId"), name)
+		var rpcError gethrpc.Error
+		require.ErrorAs(t, client.Call(&chainID, "ftm_chainId"), &rpcError, name)
+		require.Equal(t, dispatch.CodeMethodNotFound, rpcError.ErrorCode(), name)
+		var modules map[string]string
+		require.NoError(t, client.Call(&modules, "rpc_modules"), name)
+		require.Contains(t, modules, "eth", name)
+		require.NotContains(t, modules, "ftm", name)
+	}
+	_, err = ipcClient.Subscribe(t.Context(), "ftm", make(chan any), "newHeads")
+	require.ErrorContains(t, err, `no "newHeads" subscription in ftm namespace`)
+}
+
 func TestModule_CallServesAClientInTheProcess(t *testing.T) {
 	module := New(DefaultConfig(), tests.NewFakeCore(t), prometheus.NewRegistry())
 	require.NoError(t, module.Start())
@@ -175,7 +211,7 @@ func TestModule_RegistersExactlyTheInventory(t *testing.T) {
 	module := New(DefaultConfig(), tests.NewFakeCore(t), prometheus.NewRegistry())
 	expected := slices.Clone(inventory.others)
 	for _, name := range inventory.eth {
-		expected = append(expected, "eth_"+name, "ftm_"+name)
+		expected = append(expected, "eth_"+name)
 	}
 	if module.dispatcher.Has(profiling[0]) {
 		expected = append(expected, profiling...)

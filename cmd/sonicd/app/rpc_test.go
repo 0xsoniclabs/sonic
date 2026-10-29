@@ -307,3 +307,13 @@ func TestModuleWallet_DefaultsComeFromTheModule(t *testing.T) {
 	_, err = wallet.EstimateGas(t.Context(), legacy.TransactionArgs{From: &sender, To: &recipient, Value: &value})
 	require.ErrorContains(t, err, "insufficient balance for transfer", "the module's answer")
 }
+
+// TestRemovedAPIWarnings_NameEachListWithTheFtmNamespace holds D7 for the
+// operator: an API list that still names ftm starts the node with a warning.
+func TestRemovedAPIWarnings_NameEachListWithTheFtmNamespace(t *testing.T) {
+	require.Empty(t, removedAPIWarnings([]string{"eth", "net"}, nil))
+	require.Equal(t, []string{
+		"The 'ftm' API has been removed, use 'eth' instead (--http.api).",
+		"The 'ftm' API has been removed, use 'eth' instead (--ws.api).",
+	}, removedAPIWarnings([]string{"eth", "FTM"}, []string{"ftm"}))
+}

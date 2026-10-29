@@ -65,7 +65,7 @@ func newLogChain(t *testing.T, mutations ...tests.Mutate) logChain {
 	}
 	fake.PublishHead(3)
 	harness := tests.NewHarness(t, fake, func(dispatcher *dispatch.Dispatcher, environment *exec.Environment) {
-		filters.Register(dispatcher, environment, fake, "eth", "ftm")
+		filters.Register(dispatcher, environment, fake)
 	}, mutations...)
 	harness.WaitForHead(3)
 	// A block published before the head loop subscribes is caught up, and
@@ -138,7 +138,7 @@ func TestGetLogs_ReadsTheBlockOfAHash(t *testing.T) {
 	require.Len(t, logs, 1)
 	require.Equal(t, chain.blocks[1].Hex(), logs[0]["blockHash"])
 	unknown := common.Hash{0xee}
-	require.Equal(t, "block with hash "+unknown.Hex()+" not found", chain.harness.Failure("ftm_getLogs", map[string]any{"blockHash": unknown}).Message)
+	require.Equal(t, "block with hash "+unknown.Hex()+" not found", chain.harness.Failure("eth_getLogs", map[string]any{"blockHash": unknown}).Message)
 }
 
 // TestGetLogs_KeepsTheLimitsOfTheReference holds V2, V4 and O1.

@@ -176,7 +176,6 @@ func (chain matrixChain) requests() map[string][]string {
 	}
 	for name, shapes := range requests {
 		all["eth_"+name] = shapes
-		all["ftm_"+name] = shapes
 	}
 	// The profiling methods answer without reaching Core, in a build
 	// without enable_debug only.

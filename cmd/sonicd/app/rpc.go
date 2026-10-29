@@ -22,7 +22,9 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -32,6 +34,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/api/legacy"
 	"github.com/0xsoniclabs/sonic/config"
+	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/rpc"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
@@ -178,6 +181,26 @@ func httpEndpoint(stack *node.Node, module *rpc.Module) string {
 		return endpoint
 	}
 	return stack.HTTPEndpoint()
+}
+
+// removedAPIWarnings tells the operator of each API list that still names the
+// ftm namespace, which no transport serves any more (plan, D7). The name is
+// accepted and ignored, so a configuration that has it keeps starting.
+func removedAPIWarnings(httpModules, webSocketModules []string) []string {
+	isFtm := func(module string) bool { return strings.EqualFold(module, "ftm") }
+	var warnings []string
+	for _, list := range []struct {
+		flag    string
+		modules []string
+	}{
+		{flags.HTTPApiFlag.Name, httpModules},
+		{flags.WSApiFlag.Name, webSocketModules},
+	} {
+		if slices.ContainsFunc(list.modules, isFtm) {
+			warnings = append(warnings, fmt.Sprintf("The 'ftm' API has been removed, use 'eth' instead (--%s).", list.flag))
+		}
+	}
+	return warnings
 }
 
 // moduleWallet gives the legacy wallet methods the tip and the gas of the

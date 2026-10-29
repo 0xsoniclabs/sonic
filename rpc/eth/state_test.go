@@ -80,7 +80,7 @@ func TestStateGetters_ReadTheStateOfTheBlock(t *testing.T) {
 	require.JSONEq(t, `"0x0000000000000000000000000000000000000000000000000000000000000007"`, string(harness.Result("eth_getStorageAt", contract, "0x0")))
 	require.JSONEq(t, `"0x0000000000000000000000000000000000000000000000000000000000000007"`, string(harness.Result("eth_getStorageAt", contract, "0", "latest")), "the key is converted leniently")
 	require.JSONEq(t, `"0x5"`, string(harness.Result("eth_getTransactionCount", holder)))
-	require.JSONEq(t, `"0x5"`, string(harness.Result("ftm_getTransactionCount", holder, "latest")))
+	require.JSONEq(t, `"0x5"`, string(harness.Result("eth_getTransactionCount", holder, "latest")))
 }
 
 // TestGetTransactionCount_AnswersThePoolForPending holds I5.

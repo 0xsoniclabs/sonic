@@ -134,9 +134,8 @@ func New(config Config, nodeCore core.Core, registerer prometheus.Registerer) *M
 
 // registerNamespaces adds the methods of every namespace the module serves.
 func registerNamespaces(dispatcher *dispatch.Dispatcher, environment *exec.Environment, nodeCore core.Core, config Config) {
-	eth.Register(dispatcher, environment, nodeCore, "eth")
-	eth.Register(dispatcher, environment, nodeCore, "ftm")
-	filters.Register(dispatcher, environment, nodeCore, "eth", "ftm")
+	eth.Register(dispatcher, environment, nodeCore)
+	filters.Register(dispatcher, environment, nodeCore)
 	net.Register(dispatcher, environment)
 	web3.Register(dispatcher, config.ClientVersion)
 	sonic.Register(dispatcher, environment)

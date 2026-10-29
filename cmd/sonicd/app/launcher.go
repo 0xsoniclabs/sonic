@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os/signal"
 	"sort"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -271,15 +270,8 @@ func lachesisMainInternal(
 	}
 
 	// Provide some user feedback on past and future RPC changes.
-	for flag, modules := range map[string][]string{
-		flags.HTTPApiFlag.Name: cfg.Node.HTTPModules,
-		flags.WSApiFlag.Name:   cfg.Node.WSModules,
-	} {
-		for _, module := range modules {
-			if strings.ToLower(module) == "ftm" {
-				log.Warn(fmt.Sprintf("The 'ftm' API is deprecated, use 'eth' instead (--%s).", flag))
-			}
-		}
+	for _, warning := range removedAPIWarnings(cfg.Node.HTTPModules, cfg.Node.WSModules) {
+		log.Warn(warning)
 	}
 
 	metrics.SetDataDir(cfg.Node.DataDir) // report disk space usage into metrics

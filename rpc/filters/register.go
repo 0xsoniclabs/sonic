@@ -15,7 +15,7 @@
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
 // Package filters serves the log queries, the polled filters and the
-// subscriptions of the eth namespace, which the node also serves as ftm.
+// subscriptions of the eth namespace.
 package filters
 
 import (
@@ -36,28 +36,29 @@ type handlers struct {
 	headers     *headers
 }
 
-// Register adds the methods of the package under each namespace name (eth
-// and ftm), which share their filters, as in the reference, and starts the
-// loops that feed and expire the polled filters.
-func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, logIndex core.LogIndex, namespaces ...string) {
+// namespace is the one namespace the package serves; the ftm twin of the
+// reference is not served (plan, D7).
+const namespace = "eth"
+
+// Register adds the methods of the package and starts the loops that feed
+// and expire the polled filters.
+func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, logIndex core.LogIndex) {
 	polled := newPolledFilters(environment.Config().FilterTimeout, journalLimit, dispatcher)
 	built := &headers{environment: environment, hub: chain.NewHub[*evmcore.EvmHeaderJson](headerQueue)}
 	handler := &handlers{environment: environment, logIndex: logIndex, polled: polled, headers: built}
 	criteria := dispatch.Required[Criteria]("criteria")
 	identifier := dispatch.Required[string]("filter")
-	for _, namespace := range namespaces {
-		add := func(name string, function dispatch.Handler, parameters ...dispatch.Parameter) {
-			dispatcher.Add(namespace+"_"+name, function, parameters...)
-		}
-		add("getLogs", handler.getLogs, criteria)
-		add("newFilter", handler.newFilter, criteria)
-		add("newBlockFilter", handler.newBlockFilter)
-		add("newPendingTransactionFilter", handler.newPendingTransactionFilter, dispatch.Optional[bool]("fullTransactions"))
-		add("getFilterChanges", handler.getFilterChanges, identifier)
-		add("getFilterLogs", handler.getFilterLogs, identifier)
-		add("uninstallFilter", handler.uninstallFilter, identifier)
-		add("subscribe", handler.subscribe(namespace), dispatch.Required[string]("subscription"), dispatch.Optional[json.RawMessage]("argument"))
+	add := func(name string, function dispatch.Handler, parameters ...dispatch.Parameter) {
+		dispatcher.Add(namespace+"_"+name, function, parameters...)
 	}
+	add("getLogs", handler.getLogs, criteria)
+	add("newFilter", handler.newFilter, criteria)
+	add("newBlockFilter", handler.newBlockFilter)
+	add("newPendingTransactionFilter", handler.newPendingTransactionFilter, dispatch.Optional[bool]("fullTransactions"))
+	add("getFilterChanges", handler.getFilterChanges, identifier)
+	add("getFilterLogs", handler.getFilterLogs, identifier)
+	add("uninstallFilter", handler.uninstallFilter, identifier)
+	add("subscribe", handler.subscribe, dispatch.Required[string]("subscription"), dispatch.Optional[json.RawMessage]("argument"))
 	dispatcher.Loop("subscriptions-heads", built.follow(environment.Heads()))
 	dispatcher.Loop("filters-heads", polled.followHeads(environment.Heads()))
 	dispatcher.Loop("filters-pool", polled.followPool(environment.Transactions()))

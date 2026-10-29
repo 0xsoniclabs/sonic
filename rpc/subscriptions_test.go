@@ -76,16 +76,16 @@ func receive[Value any](t *testing.T, events chan Value) Value {
 }
 
 // TestSubscriptions_NewHeadsIsBuiltOncePerBlock holds I16 and D4, D5: every
-// subscriber, on every stream transport and namespace, gets the header,
-// built with one read of the receipts.
+// subscriber, two on every stream transport, gets the header, built with one
+// read of the receipts.
 func TestSubscriptions_NewHeadsIsBuiltOncePerBlock(t *testing.T) {
 	stream := newStreamModule(t)
 	channels := []chan map[string]any{}
 	for name, client := range stream.clients {
-		for _, namespace := range []string{"eth", "ftm"} {
+		for range 2 {
 			headers := make(chan map[string]any, 4)
-			_, err := client.Subscribe(context.Background(), namespace, headers, "newHeads")
-			require.NoError(t, err, "%s %s", name, namespace)
+			_, err := client.Subscribe(context.Background(), "eth", headers, "newHeads")
+			require.NoError(t, err, name)
 			channels = append(channels, headers)
 		}
 	}

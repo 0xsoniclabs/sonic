@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-// Package eth serves the eth namespace, which the node also serves as ftm.
+// Package eth serves the eth namespace.
 package eth
 
 import (
@@ -40,12 +40,12 @@ type handlers struct {
 	node        Node
 }
 
-// Register adds the methods of the namespace, under the given namespace name
-// (eth or ftm).
-func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, node Node, namespace string) {
+// Register adds the methods of the namespace. They are served as eth_ only;
+// the ftm twin of the reference is not (plan, D7).
+func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, node Node) {
 	handler := &handlers{environment: environment, node: node}
 	add := func(name string, function dispatch.Handler, parameters ...dispatch.Parameter) {
-		dispatcher.Add(namespace+"_"+name, function, parameters...)
+		dispatcher.Add("eth_"+name, function, parameters...)
 	}
 	block := dispatch.Required[chain.BlockNumber]("block")
 	hash := dispatch.Required[common.Hash]("hash")

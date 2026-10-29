@@ -27,7 +27,7 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Changed
 
-- `admin_*`, `test_*` and the legacy methods `personal_*`, `eth_accounts`, `eth_sign`, `eth_signTransaction`, `eth_sendTransaction`, `eth_fillTransaction`, `eth_resend`, `dag_*`, `abft_*`, `eth_getEpochBlock`, `eth_getEpochStats`, `debug_chaindbProperty`, `debug_chaindbCompact` and `debug_setHead` (and their `ftm_` twins) are served on IPC only.
+- `admin_*`, `test_*` and the legacy methods `personal_*`, `eth_accounts`, `eth_sign`, `eth_signTransaction`, `eth_sendTransaction`, `eth_fillTransaction`, `eth_resend`, `dag_*`, `abft_*`, `eth_getEpochBlock`, `eth_getEpochStats`, `debug_chaindbProperty`, `debug_chaindbCompact` and `debug_setHead` are served on IPC only.
 - `eth_blockNumber` and the block tags name the newest archived block, the same block for every method.
 - An undecodable parameter is answered `-32602` with `parameter N (name): …` instead of `invalid argument N: …`.
 - `eth_pendingTransactions` answers the pending transactions of the pool.
@@ -38,6 +38,7 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Removed
 
+- The deprecated `ftm` namespace, which repeated every `eth` method and subscription under a second name: `ftm_*` methods now answer `-32601`; use the `eth_*` method of the same name. An `--http.api` or `--ws.api` list that still names `ftm` is accepted and logs that it was removed.
 - The `api/ethapi`, `api/sonicapi` and `gossip/filters` packages and the gas price oracle of `gossip/gasprice`; the `GPO` and `FilterAPI` configuration sections keep their keys and effect.
 
 ### Fixed

@@ -57,7 +57,7 @@ func callTo(recipient common.Address, fields ...any) map[string]any {
 func TestCall_RunsTheMessageOnTheStateOfTheBlock(t *testing.T) {
 	chain := newStateChain(t, callAccounts)
 	require.JSONEq(t, `"0x0000000000000000000000000000000000000000000000000000000000000008"`, string(chain.harness.Result("eth_call", callTo(contract))))
-	require.JSONEq(t, `"0x0000000000000000000000000000000000000000000000000000000000000008"`, string(chain.harness.Result("ftm_call", callTo(contract), "0x1")))
+	require.JSONEq(t, `"0x0000000000000000000000000000000000000000000000000000000000000008"`, string(chain.harness.Result("eth_call", callTo(contract), "0x1")))
 
 	overrides := map[string]any{contract.Hex(): map[string]any{"stateDiff": map[string]any{common.Hash{}.Hex(): common.BigToHash(big.NewInt(41)).Hex()}}}
 	require.JSONEq(t, `"0x000000000000000000000000000000000000000000000000000000000000002a"`, string(chain.harness.Result("eth_call", callTo(contract), "latest", overrides)))
@@ -130,7 +130,7 @@ func TestCreateAccessList_IsBoundedByTheRequestDeadline(t *testing.T) {
 func TestEstimateGas_AnswersTheLeastGas(t *testing.T) {
 	chain := newStateChain(t, callAccounts)
 	require.JSONEq(t, `"0x5208"`, string(chain.harness.Result("eth_estimateGas", callTo(readAccount))))
-	require.JSONEq(t, `"0x5208"`, string(chain.harness.Result("ftm_estimateGas", callTo(readAccount), "0x1")))
+	require.JSONEq(t, `"0x5208"`, string(chain.harness.Result("eth_estimateGas", callTo(readAccount), "0x1")))
 	require.Equal(t, &dispatch.Error{Code: 3, Message: "execution reverted", Data: "0xdeadbeef"}, chain.harness.Failure("eth_estimateGas", callTo(reverter)))
 	require.Equal(t, "block does not exists", chain.harness.Failure("eth_estimateGas", callTo(readAccount), "0x9").Message)
 	unknown := common.Hash{0xee}

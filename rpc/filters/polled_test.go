@@ -46,8 +46,8 @@ func TestBlockFilter_ReportsTheBlocksSinceTheLastPoll(t *testing.T) {
 	chain.core.AppendAndPublish(tests.BlockSpec{})
 	chain.core.AppendAndPublish(tests.BlockSpec{})
 	tests.Eventually(t, func() bool {
-		return len(tests.Decode[[]any](t, chain.harness.Result("ftm_getFilterChanges", identifier))) > 0
-	}, "the filter, shared with ftm, to see the blocks")
+		return len(tests.Decode[[]any](t, chain.harness.Result("eth_getFilterChanges", identifier))) > 0
+	}, "the filter to see the blocks")
 	// The poll above took one or both blocks; publish one more and check
 	// that it comes last.
 	third := chain.core.AppendAndPublish(tests.BlockSpec{})
@@ -112,7 +112,7 @@ func TestFilters_RefuseAndForgetAsTheReference(t *testing.T) {
 	identifier := chain.install(t, "eth_newBlockFilter")
 	require.Equal(t, "filter not found", chain.harness.Failure("eth_getFilterLogs", identifier).Message, "a block filter has no logs")
 	require.JSONEq(t, `true`, string(chain.harness.Result("eth_uninstallFilter", identifier)))
-	require.JSONEq(t, `false`, string(chain.harness.Result("ftm_uninstallFilter", identifier)))
+	require.JSONEq(t, `false`, string(chain.harness.Result("eth_uninstallFilter", identifier)), "an uninstalled filter is forgotten")
 	require.Equal(t, "filter not found", chain.harness.Failure("eth_getFilterChanges", identifier).Message)
 	require.Equal(t, "filter not found", chain.harness.Failure("eth_getFilterChanges", "0x1").Message)
 }

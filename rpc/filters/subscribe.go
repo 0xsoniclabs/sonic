@@ -78,24 +78,22 @@ func (built *headers) notification(ctx context.Context, block *evmcore.EvmBlock)
 
 // subscribe serves eth_subscribe: the feed of a subscription is taken before
 // its id is answered, so it misses nothing after the answer.
-func (handler *handlers) subscribe(namespace string) dispatch.Handler {
-	return func(ctx context.Context, arguments dispatch.Arguments) (any, error) {
-		call, ok := dispatch.CallFrom(ctx)
-		if !ok {
-			return nil, dispatch.ErrNotificationsUnsupported
-		}
-		kind := dispatch.Argument[string](arguments, 0)
-		argument := dispatch.ArgumentOr(arguments, 1, json.RawMessage(nil))
-		switch kind {
-		case "newHeads":
-			return handler.subscribeHeads(call, namespace, argument)
-		case "logs":
-			return handler.subscribeLogs(call, namespace, argument)
-		case "newPendingTransactions":
-			return handler.subscribeTransactions(call, namespace, argument)
-		}
-		return nil, dispatch.SubscriptionNotFound(namespace, kind)
+func (handler *handlers) subscribe(ctx context.Context, arguments dispatch.Arguments) (any, error) {
+	call, ok := dispatch.CallFrom(ctx)
+	if !ok {
+		return nil, dispatch.ErrNotificationsUnsupported
 	}
+	kind := dispatch.Argument[string](arguments, 0)
+	argument := dispatch.ArgumentOr(arguments, 1, json.RawMessage(nil))
+	switch kind {
+	case "newHeads":
+		return handler.subscribeHeads(call, argument)
+	case "logs":
+		return handler.subscribeLogs(call, argument)
+	case "newPendingTransactions":
+		return handler.subscribeTransactions(call, argument)
+	}
+	return nil, dispatch.SubscriptionNotFound(namespace, kind)
 }
 
 var (
@@ -114,7 +112,7 @@ func subscriptionArguments(argument json.RawMessage, parameters []dispatch.Param
 	return dispatch.DecodeParameters(raw, parameters)
 }
 
-func (handler *handlers) subscribeHeads(call *dispatch.Call, namespace string, argument json.RawMessage) (any, error) {
+func (handler *handlers) subscribeHeads(call *dispatch.Call, argument json.RawMessage) (any, error) {
 	if _, err := subscriptionArguments(argument, noParameters); err != nil {
 		return nil, err
 	}
@@ -130,7 +128,7 @@ func (handler *handlers) subscribeHeads(call *dispatch.Call, namespace string, a
 
 // subscribeLogs notifies the logs of new blocks the criteria match, one by
 // one, as the reference did.
-func (handler *handlers) subscribeLogs(call *dispatch.Call, namespace string, argument json.RawMessage) (any, error) {
+func (handler *handlers) subscribeLogs(call *dispatch.Call, argument json.RawMessage) (any, error) {
 	arguments, err := subscriptionArguments(argument, logsParameters)
 	if err != nil {
 		return nil, err
@@ -165,7 +163,7 @@ func (handler *handlers) subscribeLogs(call *dispatch.Call, namespace string, ar
 
 // subscribeTransactions notifies the transactions entering the pool, one by
 // one, as hashes or, asked for, whole and priced at their own gas price.
-func (handler *handlers) subscribeTransactions(call *dispatch.Call, namespace string, argument json.RawMessage) (any, error) {
+func (handler *handlers) subscribeTransactions(call *dispatch.Call, argument json.RawMessage) (any, error) {
 	arguments, err := subscriptionArguments(argument, pendingTransactionsParameters)
 	if err != nil {
 		return nil, err

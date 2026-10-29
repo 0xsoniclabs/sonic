@@ -37,13 +37,11 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/tests"
 )
 
-// newEth starts a harness over the core with the namespace registered as
-// eth and as ftm.
+// newEth starts a harness over the core with the namespace registered.
 func newEth(t *testing.T, fake *tests.FakeCore, mutations ...tests.Mutate) *tests.Harness {
 	t.Helper()
 	return tests.NewHarness(t, fake, func(dispatcher *dispatch.Dispatcher, environment *exec.Environment) {
-		eth.Register(dispatcher, environment, fake, "eth")
-		eth.Register(dispatcher, environment, fake, "ftm")
+		eth.Register(dispatcher, environment, fake)
 	}, mutations...)
 }
 
@@ -76,7 +74,6 @@ func decodeMap(t *testing.T, raw json.RawMessage) map[string]any {
 func TestChainID_IsTheNetworkID(t *testing.T) {
 	harness := newEth(t, tests.NewFakeCore(t))
 	require.JSONEq(t, `"0xfa3"`, string(harness.Result("eth_chainId")))
-	require.JSONEq(t, `"0xfa3"`, string(harness.Result("ftm_chainId")))
 }
 
 func TestBlockNumber_IsTheServedHead(t *testing.T) {
@@ -231,7 +228,7 @@ func TestGetBlockByNumber_HandsOnAReceiptFailure(t *testing.T) {
 func TestGetBlockByHash_AnswersTheBlock(t *testing.T) {
 	fake, block, _ := chainWithTransfer(t)
 	harness := newEth(t, fake)
-	answer := decodeMap(t, harness.Result("ftm_getBlockByHash", block.Hash, false))
+	answer := decodeMap(t, harness.Result("eth_getBlockByHash", block.Hash, false))
 	require.Equal(t, "0x1", answer["number"])
 }
 

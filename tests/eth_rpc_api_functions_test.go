@@ -376,14 +376,10 @@ func TestNodeHandler_ServesExactlyTheLegacyMethods(t *testing.T) {
 		}
 	}
 	slices.Sort(served)
-	signing := []string{"accounts", "fillTransaction", "getEpochBlock", "getEpochStats", "resend", "sendTransaction", "sign", "signTransaction"}
-	var expected []string
-	for _, namespace := range []string{"eth", "ftm"} {
-		for _, method := range signing {
-			expected = append(expected, namespace+"_"+method)
-		}
-	}
-	expected = append(expected,
+	// No ftm twin of the eth methods (D7).
+	expected := []string{
+		"eth_accounts", "eth_fillTransaction", "eth_getEpochBlock", "eth_getEpochStats",
+		"eth_resend", "eth_sendTransaction", "eth_sign", "eth_signTransaction",
 		"abft_getDowntime", "abft_getEpochUptime", "abft_getOriginatedEpochFee", "abft_getValidators",
 		"dag_getEvent", "dag_getEventPayload", "dag_getHeads",
 		"debug_chaindbCompact", "debug_chaindbProperty", "debug_setHead",
@@ -393,7 +389,7 @@ func TestNodeHandler_ServesExactlyTheLegacyMethods(t *testing.T) {
 		"personal_openWallet", "personal_sendTransaction", "personal_sign", "personal_signAndSendTransaction",
 		"personal_signTransaction", "personal_unlockAccount", "personal_unpair",
 		"test_addTransactions", "test_proposeTransactions",
-	)
+	}
 	slices.Sort(expected)
 	require.Equal(t, expected, served)
 }

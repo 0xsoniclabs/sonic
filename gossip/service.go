@@ -540,26 +540,12 @@ func (s *Service) Protocols() ([]p2p.Protocol, CleanupFunc) {
 // namespaces the RPC module does not port (X3), whose wallet methods take
 // their defaults from the module, and the p2p facts of net.
 func (s *Service) APIs(defaults legacy.Defaults) []rpc.API {
-	apis := append(api.GetAPIs(s.EthAPI, defaults), rpc.API{
+	return append(api.GetAPIs(s.EthAPI, defaults), rpc.API{
 		Namespace: "net",
 		Version:   "1.0",
 		Service:   s.netRPCService,
 		Public:    true,
 	})
-
-	// eth-namespace is doubled as ftm-namespace for branding purpose
-	for _, api := range apis {
-		if api.Namespace == "eth" {
-			apis = append(apis, rpc.API{
-				Namespace: "ftm",
-				Version:   api.Version,
-				Service:   api.Service,
-				Public:    api.Public,
-			})
-		}
-	}
-
-	return apis
 }
 
 // Start method invoked when the node is ready to start the service.
