@@ -23,6 +23,7 @@ import (
 	"math/big"
 	"os"
 	"os/exec"
+	"reflect"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -36,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	tracing "github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -122,16 +124,19 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 
 func TestEVMModule_New_And_NewForReplay_ConfigureReplayFlag(t *testing.T) {
 	require.False(t, New().forReplay)
-	require.True(t, NewForReplay().forReplay)
+	require.True(t, NewForReplay(nil).forReplay)
 }
 
-func TestEVMModule_Start_HandsReplayModeToProcessor(t *testing.T) {
+func TestEVMModule_Start_HandsReplayModeAndInterpreterFactoryToProcessor(t *testing.T) {
+	interpreterFactory := func(*vm.EVM) vm.Interpreter { return nil }
 	tests := map[string]struct {
-		module        *EVMModule
-		wantForReplay bool
+		module                 *EVMModule
+		wantForReplay          bool
+		wantInterpreterFactory bool
 	}{
-		"head-state module": {module: New(), wantForReplay: false},
-		"replay module":     {module: NewForReplay(), wantForReplay: true},
+		"head-state module":                      {module: New(), wantForReplay: false},
+		"replay module":                          {module: NewForReplay(nil), wantForReplay: true},
+		"replay module with interpreter factory": {module: NewForReplay(interpreterFactory), wantForReplay: true, wantInterpreterFactory: true},
 	}
 
 	for name, test := range tests {
@@ -139,8 +144,9 @@ func TestEVMModule_Start_HandsReplayModeToProcessor(t *testing.T) {
 			stateDb := state.NewMockStateDB(gomock.NewController(t))
 			stateDb.EXPECT().BeginBlock(uint64(0))
 
-			processor := test.module.Start(0, 0, 0, stateDb, nil, nil, opera.Rules{}, nil, common.Hash{}, nil)
-			require.Equal(t, test.wantForReplay, processor.(*OperaEVMProcessor).forReplay)
+			processor := test.module.Start(0, 0, 0, stateDb, nil, nil, opera.Rules{}, nil, common.Hash{}, nil).(*OperaEVMProcessor)
+			require.Equal(t, test.wantForReplay, processor.forReplay)
+			require.Equal(t, test.wantInterpreterFactory, processor.interpreterFactory != nil)
 		})
 	}
 }
@@ -187,6 +193,34 @@ func TestOperaEVMProcessor_Execute_SelectsStateProcessorByReplayMode(t *testing.
 				metrics:          metrics,
 				forReplay:        test.forReplay,
 			}
+			processor.Execute(nil, 0, 0)
+		})
+	}
+}
+
+func TestOperaEVMProcessor_Execute_UsesGivenInterpreterFactoryOrDefault(t *testing.T) {
+	given := func(*vm.EVM) vm.Interpreter { return nil }
+	tests := map[string]struct {
+		interpreterFactory vm.InterpreterFactory
+		want               vm.InterpreterFactory
+	}{
+		"given interpreter factory": {interpreterFactory: given, want: given},
+		"no interpreter factory":    {interpreterFactory: nil, want: opera.GetVmConfig(opera.Rules{}).Interpreter},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			factory := NewMock_stateProcessorFactory(ctrl)
+			stateProcessor := NewMock_stateProcessor(ctrl)
+			any := gomock.Any()
+			sameFactory := gomock.Cond(func(cfg vm.Config) bool {
+				return reflect.ValueOf(test.want).Pointer() == reflect.ValueOf(cfg.Interpreter).Pointer()
+			})
+			factory.EXPECT().NewStateProcessorForReplay(any, any, any).Return(stateProcessor)
+			stateProcessor.EXPECT().Process(any, any, sameFactory, any, any, any, any, any)
+
+			processor := &OperaEVMProcessor{processorFactory: factory, forReplay: true, interpreterFactory: test.interpreterFactory}
 			processor.Execute(nil, 0, 0)
 		})
 	}

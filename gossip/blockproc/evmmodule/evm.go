@@ -41,6 +41,10 @@ import (
 type EVMModule struct {
 	// Whether the module is used for replaying blocks or for head state processing.
 	forReplay bool
+
+	// interpreterFactory, if not nil, replaces the interpreter factory of the VM
+	// configuration of the network rules.
+	interpreterFactory vm.InterpreterFactory
 }
 
 // New creates an EVM module for head state processing.
@@ -48,9 +52,11 @@ func New() *EVMModule {
 	return &EVMModule{}
 }
 
-// NewForReplay creates an EVM module for replaying blocks.
-func NewForReplay() *EVMModule {
-	return &EVMModule{forReplay: true}
+// NewForReplay creates an EVM module for replaying blocks. If interpreterFactory
+// is not nil, the interpreters it creates execute the transactions instead of the
+// default ones.
+func NewForReplay(interpreterFactory vm.InterpreterFactory) *EVMModule {
+	return &EVMModule{forReplay: true, interpreterFactory: interpreterFactory}
 }
 
 func (p *EVMModule) Start(
@@ -83,20 +89,21 @@ func (p *EVMModule) Start(
 	statedb.BeginBlock(uint64(blockNumber))
 
 	return &OperaEVMProcessor{
-		blockTime:        blockTime,
-		epoch:            epoch,
-		reader:           reader,
-		statedb:          statedb,
-		onNewLog:         onNewLog,
-		rules:            rules,
-		evmCfg:           evmCfg,
-		blockIdx:         uint64(blockNumber),
-		prevBlockHash:    prevBlockHash,
-		prevRandao:       prevrandao,
-		gasBaseFee:       baseFee,
-		processorFactory: stateProcessorFactory{},
-		metrics:          metrics,
-		forReplay:        p.forReplay,
+		blockTime:          blockTime,
+		epoch:              epoch,
+		reader:             reader,
+		statedb:            statedb,
+		onNewLog:           onNewLog,
+		rules:              rules,
+		evmCfg:             evmCfg,
+		blockIdx:           uint64(blockNumber),
+		prevBlockHash:      prevBlockHash,
+		prevRandao:         prevrandao,
+		gasBaseFee:         baseFee,
+		processorFactory:   stateProcessorFactory{},
+		metrics:            metrics,
+		forReplay:          p.forReplay,
+		interpreterFactory: p.interpreterFactory,
 	}
 }
 
@@ -124,6 +131,10 @@ type OperaEVMProcessor struct {
 
 	// Whether the processor is used for replaying blocks or for head state processing.
 	forReplay bool
+
+	// interpreterFactory, if not nil, creates the interpreters executing the
+	// transactions (see EVMModule).
+	interpreterFactory vm.InterpreterFactory
 }
 
 func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlock {
@@ -179,6 +190,9 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64, siz
 	}
 
 	vmConfig := opera.GetVmConfig(p.rules)
+	if p.interpreterFactory != nil {
+		vmConfig.Interpreter = p.interpreterFactory
+	}
 
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
