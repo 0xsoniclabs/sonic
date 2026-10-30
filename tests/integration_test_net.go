@@ -737,22 +737,25 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 		return nil
 	}
 
-	// First mark each node's ring neighbor as trusted, before any connection is
-	// initiated. A failed gossip handshake bans the peer's node ID via
-	// discfilter.Ban(), after which postHandshakeChecks rejects further
-	// connection attempts. Trusted peers are exempt from that check.
+	// First mark both ring neighbors of each node as trusted, before any
+	// connection is initiated. A failed gossip handshake bans the peer's node
+	// ID via discfilter.Ban(), after which postHandshakeChecks rejects further
+	// connection attempts. Both ends of a connection run that check, and only
+	// trusted peers are exempt from it.
+	numNodes := len(n.nodes)
 	for i := range n.nodes {
 		client, err := n.GetClientConnectedToNode(i)
 		if err != nil {
 			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 		}
 
-		enode := enodes[(i+1)%len(n.nodes)]
-		err = client.Client().Call(nil, "admin_addTrustedPeer", enode)
-		client.Close()
-		if err != nil {
-			return fmt.Errorf("failed to add trusted peer on node %d: %v", i, err)
+		for _, neighbor := range []int{(i + 1) % numNodes, (i + numNodes - 1) % numNodes} {
+			if err := client.Client().Call(nil, "admin_addTrustedPeer", enodes[neighbor]); err != nil {
+				client.Close()
+				return fmt.Errorf("failed to add trusted peer on node %d: %v", i, err)
+			}
 		}
+		client.Close()
 	}
 
 	// Then dial, once per pair of nodes, see ringDialEdges.

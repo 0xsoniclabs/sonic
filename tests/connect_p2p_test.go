@@ -17,6 +17,7 @@
 package tests
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -30,12 +31,20 @@ func TestConnectP2PNetwork_TrustedPeersBypassBan(t *testing.T) {
 	// can reconnect even when their node IDs have been banned by discfilter.
 	//
 	// This test would consistently fail if connectP2PNetwork did not call
-	// admin_addTrustedPeer, because a restart after banning would be unable
-	// to re-establish P2P connections.
+	// admin_addTrustedPeer on both ends of each connection, because a restart
+	// after banning would be unable to re-establish P2P connections.
+	for _, numNodes := range []int{2, 3} {
+		t.Run(fmt.Sprintf("nodes=%d", numNodes), func(t *testing.T) {
+			testTrustedPeersBypassBan(t, numNodes)
+		})
+	}
+}
+
+func testTrustedPeersBypassBan(t *testing.T, numNodes int) {
 	require := require.New(t)
 
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		NumNodes: 2,
+		NumNodes: numNodes,
 	})
 
 	// Get the enode IDs of all nodes in the running network.
@@ -70,7 +79,7 @@ func TestConnectP2PNetwork_TrustedPeersBypassBan(t *testing.T) {
 		t.Fatal("network restart timed out, likely due to discfilter bans")
 	}
 
-	// Verify both nodes are connected after the restart.
+	// Verify all nodes are connected after the restart.
 	for i := range net.NumNodes() {
 		client, err := net.GetClientConnectedToNode(i)
 		require.NoError(err)
