@@ -138,12 +138,10 @@ func testConsensusCallback(t *testing.T, upgrades opera.Upgrades) {
 }
 
 func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testing.T) {
-	t.Parallel()
 	runPreAndPostDolce(t, opera.GetAllegroUpgrades(), testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly)
 }
 
 func testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testing.T, upgrades opera.Upgrades) {
-	t.Parallel()
 	MaxEmptyBlockSkipPeriod := inter.Timestamp(10_000)
 
 	tests := map[string]struct {
@@ -205,7 +203,6 @@ func testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			// Evaluate a confirmed block with a two events, one carrying the
 			// proposal given in the test, the other being the atropos.
 
@@ -363,12 +360,10 @@ func testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 // with Brio enabled and the sealed epoch disables it; therefore observing the
 // finite, Brio-derived limit proves the start rules were used.
 func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
-	t.Parallel()
 	runPreAndPostDolce(t, opera.GetBrioUpgrades(), testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing)
 }
 
 func testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T, upgrades opera.Upgrades) {
-	t.Parallel()
 	require := require.New(t)
 
 	const maxEmptyBlockSkipPeriod = inter.Timestamp(10_000)
@@ -511,8 +506,6 @@ func testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T, u
 }
 
 func TestConsensusCallback_UsesLedgerFromTheBlockAfterTheOneEnablingDolce(t *testing.T) {
-	t.Parallel()
-
 	store := newInMemoryStoreWithGenesisData(t, opera.GetCantoUpgrades(), 1, 2)
 
 	// Let the next block seal the epoch and enable Dolce.
@@ -553,8 +546,6 @@ func TestConsensusCallback_UsesLedgerFromTheBlockAfterTheOneEnablingDolce(t *tes
 }
 
 func TestConsensusCallback_BeginsBlockWithParamsFromConsensusAndLogsToTxListener(t *testing.T) {
-	t.Parallel()
-
 	upgrades := opera.GetDolceUpgrades()
 	upgrades.SingleProposerBlockFormation = true
 	store := newInMemoryStoreWithGenesisData(t, upgrades, 1, 2)
@@ -646,12 +637,10 @@ func TestConsensusCallback_BeginsBlockWithParamsFromConsensusAndLogsToTxListener
 // validator 1 as the reported originator proves the start rules were used; the
 // buggy (post-seal) behavior would report validator 0.
 func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testing.T) {
-	t.Parallel()
 	runPreAndPostDolce(t, opera.GetBrioUpgrades(), testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking)
 }
 
 func testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testing.T, upgrades opera.Upgrades) {
-	t.Parallel()
 	require := require.New(t)
 
 	const maxEmptyBlockSkipPeriod = inter.Timestamp(10_000)
@@ -814,12 +803,10 @@ func testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 // the transactions handed to the EVM processor proves the ordering step ran, and
 // that its result is what gets executed.
 func TestConsensusCallback_AppliesTransactionPriorities(t *testing.T) {
-	t.Parallel()
 	runPreAndPostDolce(t, opera.GetBrioUpgrades(), testConsensusCallback_AppliesTransactionPriorities)
 }
 
 func testConsensusCallback_AppliesTransactionPriorities(t *testing.T, upgrades opera.Upgrades) {
-	t.Parallel()
 	require := require.New(t)
 
 	upgrades.SingleProposerBlockFormation = true
@@ -1052,7 +1039,6 @@ func TestConsensusCallback_SkippedBlock_OpensLiveStateOnlyBeforeDolce(t *testing
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			store := newInMemoryStoreWithGenesisData(t, test.upgrades, 1, 2)
 			beginBlock := consensusCallbackBeginBlockFn(
 				nil, new(sync.WaitGroup), new(uint32), store, NewLedger(store, evmmodule.New(), nil, false), DefaultBlockProc(), false, nil, &[]*emitter.Emitter{}, nil, new(bool),
@@ -1157,7 +1143,6 @@ func testEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransact
 }
 
 func TestConsensusCallback_CommitsThenAdvancesHeadThenPublishes(t *testing.T) {
-	t.Parallel()
 	store := newInMemoryStoreWithGenesisData(t, opera.GetDolceUpgrades(), 1, 2)
 
 	atropos := (&inter.MutableEventPayload{}).Build()
@@ -2566,8 +2551,6 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupFromBrio(t *te
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
 			// Store has 1 validator (ValidatorID 1).
 			store := newInMemoryStoreWithGenesisData(t, test.upgrades, 1, 2)
 
