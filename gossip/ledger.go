@@ -19,6 +19,7 @@ package gossip
 import (
 	"fmt"
 	"math"
+	"sync/atomic"
 	"time"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -31,9 +32,11 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 )
 
 //go:generate go tool mockgen -source=ledger.go -package=gossip -destination=ledger_mock.go
@@ -55,7 +58,8 @@ type Head interface {
 
 	// BeginBlock opens the live state at the head's state root and starts
 	// executing the next block on it, forwarding emitted logs to onNewLog.
-	// A successful call consumes the head; any later call panics.
+	// It panics if another block is still in progress. A successful call
+	// consumes the head; any later BeginBlock panics.
 	BeginBlock(params BlockParams, onNewLog func(*core_types.Log)) (ExecutingBlock, error)
 }
 
@@ -88,6 +92,20 @@ type ExecutingBlock interface {
 type FinalizedBlock interface {
 	// Candidate returns the assembled block and its execution results.
 	Candidate() *BlockCandidate
+
+	// Commit persists the block without notifying the RPC layer. It consumes
+	// the finalized block; any later Commit panics.
+	Commit() CommittedBlock
+}
+
+// CommittedBlock is a persisted block that is not yet published.
+type CommittedBlock interface {
+	// Publish notifies the RPC layer of the block, logs it, and releases the
+	// ledger so the next block can begin. Before calling it, the caller has to
+	// make the block the store's latest block (BlockState.LastBlock), which
+	// Head reads; otherwise it panics. It consumes the committed block; any
+	// later call panics.
+	Publish()
 }
 
 var (
@@ -95,6 +113,7 @@ var (
 	_ Head           = (*head)(nil)
 	_ ExecutingBlock = (*executingBlock)(nil)
 	_ FinalizedBlock = (*finalizedBlock)(nil)
+	_ CommittedBlock = (*committedBlock)(nil)
 )
 
 // BlockParams holds the inputs for executing the next block.
@@ -113,15 +132,23 @@ type BlockParams struct {
 
 // ledger is the main implementation of Ledger.
 type ledger struct {
-	evmModule blockproc.EVM
-	store     *Store
-	feed      *ServiceFeed
+	evmModule         blockproc.EVM
+	store             *Store
+	feed              *ServiceFeed
+	indexTransactions bool
+	log               log.Logger
+
+	// blockInProgress is set from BeginBlock until Publish. It is atomic
+	// because endBlock calls Publish from a worker goroutine, not the one that
+	// called BeginBlock.
+	blockInProgress atomic.Bool
 }
 
 // NewLedger creates a Ledger over the given store, executing blocks with the
-// given EVM module. The new-block feed may be nil.
-func NewLedger(store *Store, evm blockproc.EVM, feed *ServiceFeed) *ledger {
-	return &ledger{evmModule: evm, store: store, feed: feed}
+// given EVM module. The new-block feed may be nil. If indexTransactions is set,
+// committed blocks also store their receipts, logs and transaction positions.
+func NewLedger(store *Store, evm blockproc.EVM, feed *ServiceFeed, indexTransactions bool) *ledger {
+	return &ledger{evmModule: evm, store: store, feed: feed, indexTransactions: indexTransactions, log: log.Root()}
 }
 
 func (l *ledger) Head() (Head, error) {
@@ -147,10 +174,21 @@ func (h *head) Block() *inter.Block {
 func (h *head) BeginBlock(
 	params BlockParams,
 	onNewLog func(*core_types.Log),
-) (ExecutingBlock, error) {
+) (_ ExecutingBlock, err error) {
 	if h.consumed {
 		panic("head already consumed")
 	}
+	if !h.ledger.blockInProgress.CompareAndSwap(false, true) {
+		panic("another block is in progress")
+	}
+	defer func() {
+		if err != nil {
+			h.ledger.blockInProgress.Store(false)
+		}
+	}()
+
+	start := time.Now()
+
 	if params.Time <= h.block.Time {
 		return nil, fmt.Errorf("block time %d is not after head time %d", params.Time, h.block.Time)
 	}
@@ -192,16 +230,19 @@ func (h *head) BeginBlock(
 		WithGasLimit(params.GasLimit).
 		WithDuration(time.Duration(params.Time - h.block.Time))
 	return &executingBlock{
+		ledger:       h.ledger,
 		statedb:      statedb,
 		number:       number,
 		params:       params,
 		evmProcessor: evmProcessor,
 		blockBuilder: blockBuilder,
+		start:        start,
 	}, nil
 }
 
 // executingBlock is the main implementation of ExecutingBlock.
 type executingBlock struct {
+	ledger                  *ledger
 	statedb                 state.StateDB
 	number                  uint64
 	params                  BlockParams
@@ -209,6 +250,10 @@ type executingBlock struct {
 	blockBuilder            *inter.BlockBuilder
 	userTransactionsGasUsed uint64
 	finalized               bool
+
+	// start is the wall-clock time the block processing started, used to
+	// measure and log the block processing latency.
+	start time.Time
 }
 
 func (eb *executingBlock) stateDB() state.StateDB {
@@ -230,7 +275,7 @@ func (eb *executingBlock) Run(txs types.Transactions) evmcore.ProcessSummary {
 			if txSize > remainingSize {
 				// Still call evmProcessor execute with 0 remaining size to
 				// track skipped transactions correctly.
-				log.Warn("block filled with recorded transactions")
+				eb.ledger.log.Warn("block filled with recorded transactions")
 				remainingSize = 0
 				break
 			}
@@ -314,6 +359,8 @@ func (eb *executingBlock) Finalize() FinalizedBlock {
 	}
 
 	return &finalizedBlock{
+		ledger: eb.ledger,
+		start:  eb.start,
 		candidate: &BlockCandidate{
 			Block:      block,
 			EvmBlock:   evmBlock,
@@ -325,9 +372,92 @@ func (eb *executingBlock) Finalize() FinalizedBlock {
 
 // finalizedBlock is the main implementation of FinalizedBlock.
 type finalizedBlock struct {
+	ledger    *ledger
+	start     time.Time
 	candidate *BlockCandidate
+	committed bool
 }
 
 func (fb *finalizedBlock) Candidate() *BlockCandidate {
 	return fb.candidate
+}
+
+func (fb *finalizedBlock) Commit() CommittedBlock {
+	if fb.committed {
+		panic("block already committed")
+	}
+	fb.committed = true
+
+	blockIdx := idx.Block(fb.candidate.Block.Number)
+
+	// Everything is written before the indexes leading to it, so that a reader
+	// following an index finds what it points to.
+	for _, tx := range fb.candidate.EvmBlock.Transactions {
+		fb.ledger.store.evm.SetTx(tx.Hash(), tx)
+	}
+
+	if fb.ledger.indexTransactions && fb.candidate.Receipts.Len() != 0 {
+		fb.ledger.store.evm.SetReceipts(blockIdx, fb.candidate.Receipts)
+		for _, r := range fb.candidate.Receipts {
+			fb.ledger.store.evm.IndexLogs(r.Logs...)
+		}
+	}
+
+	fb.ledger.store.SetBlock(blockIdx, fb.candidate.Block)
+	fb.ledger.store.evm.SetCachedEvmBlock(blockIdx, fb.candidate.EvmBlock)
+	fb.ledger.store.SetBlockIndex(fb.candidate.Block.Hash(), blockIdx)
+
+	if fb.ledger.indexTransactions {
+		for i, tx := range fb.candidate.EvmBlock.Transactions {
+			fb.ledger.store.evm.SetTxPosition(tx.Hash(), evmstore.TxPosition{
+				Block:       blockIdx,
+				BlockOffset: uint32(i),
+			})
+		}
+	}
+
+	return &committedBlock{ledger: fb.ledger, start: fb.start, candidate: fb.candidate}
+}
+
+// committedBlock is the main implementation of CommittedBlock.
+type committedBlock struct {
+	ledger    *ledger
+	start     time.Time
+	candidate *BlockCandidate
+	published bool
+}
+
+func (cb *committedBlock) Publish() {
+	if cb.published {
+		panic("block already published")
+	}
+	if latest := cb.ledger.store.GetLatestBlock(); latest == nil || latest.Hash() != cb.candidate.Block.Hash() {
+		panic("block was not made the latest block before publishing")
+	}
+	cb.published = true
+
+	if cb.ledger.feed != nil {
+		var logs []*types.Log
+		for _, r := range cb.candidate.Receipts {
+			logs = append(logs, r.Logs...)
+		}
+		cb.ledger.feed.notifyAboutNewBlock(cb.candidate.EvmBlock, logs)
+	}
+
+	blockDuration := time.Duration(cb.candidate.Block.Duration)
+	now := time.Now()
+	blockAge := now.Sub(cb.candidate.Block.Time.Time())
+	cb.ledger.log.Info("New block",
+		"index", cb.candidate.Block.Number,
+		"id", cb.candidate.Block.Hash(),
+		"gas_used", cb.candidate.EvmBlock.GasUsed,
+		"gas_rate", float64(cb.candidate.EvmBlock.GasUsed)/blockDuration.Seconds(),
+		"base_fee", cb.candidate.EvmBlock.BaseFee.String(),
+		"txs", fmt.Sprintf("%d/%d", len(cb.candidate.EvmBlock.Transactions), cb.candidate.NumSkipped),
+		"age", utils.PrettyDuration(blockAge),
+		"t", utils.PrettyDuration(now.Sub(cb.start)),
+		"epoch", cb.candidate.EvmBlock.Epoch,
+	)
+
+	cb.ledger.blockInProgress.Store(false)
 }

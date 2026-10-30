@@ -210,3 +210,24 @@ func TestNewService_LedgerExecutesWithGivenEvm(t *testing.T) {
 	require.NoError(t, err)
 	require.Same(t, blockProc.EVMModule, svc.ledger.(*ledger).evmModule)
 }
+
+func TestNewService_ConfiguresLedgerTransactionIndexing(t *testing.T) {
+	tests := map[string]bool{
+		"with transaction indexing":    true,
+		"without transaction indexing": false,
+	}
+	for name, txIndex := range tests {
+		t.Run(name, func(t *testing.T) {
+			store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
+			engine, vecClock := makeTestEngine(store)
+			config := DefaultConfig(cachescale.Identity)
+			config.TxIndex = txIndex
+
+			svc, err := newService(config, store, DefaultBlockProc(), engine, vecClock, func(evmcore.StateReader) TxPool {
+				return &dummyTxPool{}
+			}, enode.ID{})
+			require.NoError(t, err)
+			require.Equal(t, txIndex, svc.ledger.(*ledger).indexTransactions)
+		})
+	}
+}
