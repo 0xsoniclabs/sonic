@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -50,7 +51,7 @@ type StateDB interface {
 
 	BeginBlock(number uint64)
 	EndBlock(number uint64) (state.StagedBlock, error)
-	EndTransaction()
+	EndTransaction(rules params.Rules)
 	Release()
 	InterTxSnapshot() int
 	RevertToInterTxSnapshot(id int)

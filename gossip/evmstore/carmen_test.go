@@ -23,9 +23,13 @@ import (
 	"testing"
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
+	"github.com/0xsoniclabs/carmen/go/state/gostate"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -702,4 +706,132 @@ func TestCarmenStagedBlock_Rollback_FailsWithError(t *testing.T) {
 
 	err = block.Rollback()
 	require.ErrorContains(err, "rollback is not supported")
+}
+
+func TestCarmenStateDB_EndTransaction_PassesTheRevisionToCarmen(t *testing.T) {
+	tests := map[string]struct {
+		rules params.Rules
+		want  carmen.Revision
+	}{
+		"before Amsterdam":  {rules: params.Rules{}, want: carmen.CANCUN},
+		"from Amsterdam on": {rules: params.Rules{IsAmsterdam: true}, want: carmen.AMSTERDAM},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			db := carmen.NewMockVmStateDB(ctrl)
+			db.EXPECT().EndTransaction(test.want)
+			state := &CarmenStateDB{db: db}
+
+			state.EndTransaction(test.rules)
+		})
+	}
+}
+
+func TestCarmenStateDB_SelfDestruct_KeepsTheBalanceFromAmsterdamOn(t *testing.T) {
+	contract := common.Address{1}
+	key := common.Hash{2}
+	tests := map[string]struct {
+		rules       params.Rules
+		wantExists  bool
+		wantBalance uint64
+	}{
+		"before Amsterdam":  {rules: params.Rules{}},
+		"from Amsterdam on": {rules: params.Rules{IsAmsterdam: true}, wantExists: true, wantBalance: 17},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			state := newTestCarmenStateDb(t)
+
+			state.BeginBlock(1)
+			state.CreateAccount(contract)
+			state.CreateContract(contract)
+			state.SetNonce(contract, 1, tracing.NonceChangeUnspecified)
+			state.SetCode(contract, []byte{1, 2, 3}, tracing.CodeChangeUnspecified)
+			state.SetState(contract, key, common.Hash{3})
+			state.AddBalance(contract, uint256.NewInt(12), tracing.BalanceChangeUnspecified)
+			state.SelfDestruct(contract)
+			state.AddBalance(contract, uint256.NewInt(5), tracing.BalanceChangeUnspecified)
+			state.EndTransaction(test.rules)
+			require.NoError(EndBlockAndCommit(state, 1))
+
+			require.Equal(test.wantExists, state.Exist(contract))
+			require.Equal(uint256.NewInt(test.wantBalance), state.GetBalance(contract))
+			require.Zero(state.GetNonce(contract))
+			require.Empty(state.GetCode(contract))
+			require.Equal(common.Hash{}, state.GetState(contract, key))
+		})
+	}
+}
+
+func TestCarmenStateDB_RevertToInterTxSnapshot_RevertsABalanceOnlyAccountFromAmsterdamOn(t *testing.T) {
+	require := require.New(t)
+	contract := common.Address{1}
+	state := newTestCarmenStateDb(t)
+
+	state.BeginBlock(1)
+	snapshot := state.InterTxSnapshot()
+	state.CreateAccount(contract)
+	state.CreateContract(contract)
+	state.AddBalance(contract, uint256.NewInt(12), tracing.BalanceChangeUnspecified)
+	state.SelfDestruct(contract)
+	state.EndTransaction(params.Rules{IsAmsterdam: true})
+	require.True(state.Exist(contract))
+
+	state.RevertToInterTxSnapshot(snapshot)
+	require.NoError(EndBlockAndCommit(state, 1))
+
+	require.False(state.Exist(contract))
+	require.True(state.GetBalance(contract).IsZero())
+}
+
+func TestCarmenStateDB_SetStorage_ReplacesTheStorageAndKeepsTheAccount(t *testing.T) {
+	addr := common.Address{1}
+	oldKey, newKey := common.Hash{2}, common.Hash{3}
+	code := []byte{1, 2, 3}
+	tests := map[string]params.Rules{
+		"before Amsterdam":  {},
+		"from Amsterdam on": {IsAmsterdam: true},
+	}
+	for name, rules := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			state := newTestCarmenStateDb(t)
+
+			state.BeginBlock(1)
+			state.CreateAccount(addr)
+			state.AddBalance(addr, uint256.NewInt(100), tracing.BalanceChangeUnspecified)
+			state.SetNonce(addr, 3, tracing.NonceChangeUnspecified)
+			state.SetCode(addr, code, tracing.CodeChangeUnspecified)
+			state.SetState(addr, oldKey, common.Hash{4})
+			state.EndTransaction(rules)
+
+			state.SetStorage(addr, map[common.Hash]common.Hash{newKey: {5}})
+			state.EndTransaction(rules)
+			require.NoError(EndBlockAndCommit(state, 1))
+
+			require.Equal(uint256.NewInt(100), state.GetBalance(addr))
+			require.Equal(uint64(3), state.GetNonce(addr))
+			require.Equal(code, state.GetCode(addr))
+			require.Equal(common.Hash{}, state.GetState(addr, oldKey))
+			require.Equal(common.Hash{5}, state.GetState(addr, newKey))
+		})
+	}
+}
+
+func newTestCarmenStateDb(t *testing.T) *CarmenStateDB {
+	t.Helper()
+	st, err := carmen.NewState(carmen.Parameters{
+		Variant:   gostate.VariantGoMemory,
+		Schema:    carmen.Schema(5),
+		Archive:   carmen.NoArchive,
+		Directory: t.TempDir(),
+	})
+	require.NoError(t, err)
+	db := carmen.CreateStateDBUsing(st)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+	return CreateCarmenStateDb(db, nil)
 }

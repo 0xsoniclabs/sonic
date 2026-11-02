@@ -26,6 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -50,7 +51,7 @@ func newTestState(t *testing.T) state.StateDB {
 
 func TestStateDiffLogger_NoModificationsGiveEmptyDiff(t *testing.T) {
 	s := NewStateDiffLogger(newTestState(t))
-	s.EndTransaction()
+	s.EndTransaction(params.Rules{})
 
 	result := s.GetResult()
 	require.NotNil(t, result)
@@ -206,11 +207,11 @@ func TestStateDiffLogger_GetResult(t *testing.T) {
 			if tt.prepare != nil {
 				tt.prepare(db)
 			}
-			db.EndTransaction()
+			db.EndTransaction(params.Rules{})
 
 			s := NewStateDiffLogger(db)
 			tt.modify(s)
-			s.EndTransaction()
+			s.EndTransaction(params.Rules{})
 
 			got, err := json.Marshal(s.GetResult())
 			require.NoError(t, err)
