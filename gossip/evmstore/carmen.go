@@ -288,9 +288,10 @@ func (c *CarmenStateDB) SetStorage(addr common.Address, storage map[common.Hash]
 	origNonce := c.db.GetNonce(cc.Address(addr))
 	origBalance := c.db.GetBalance(cc.Address(addr))
 
-	// Suicide the account to clear the storage; the pre-Amsterdam variant also
-	// zeroes the balance, which is needed since it is re-added below.
-	c.db.SuicidePreAmsterdam(cc.Address(addr))
+	// Suicide the account to clear the storage. Suicide keeps the balance,
+	// so it is cleared to avoid doubling it below.
+	c.db.Suicide(cc.Address(addr))
+	c.SetBalance(addr, uint256.NewInt(0))
 	c.db.CreateAccount(cc.Address(addr))
 
 	// insert new storage
@@ -306,10 +307,6 @@ func (c *CarmenStateDB) SetStorage(addr common.Address, storage map[common.Hash]
 
 func (c *CarmenStateDB) SelfDestruct(addr common.Address) {
 	c.db.Suicide(cc.Address(addr))
-}
-
-func (c *CarmenStateDB) SelfDestructPreAmsterdam(addr common.Address) {
-	c.db.SuicidePreAmsterdam(cc.Address(addr))
 }
 
 func (c *CarmenStateDB) CreateAccount(addr common.Address) {
@@ -354,8 +351,12 @@ func (c *CarmenStateDB) GetRefund() uint64 {
 	return c.db.GetRefund()
 }
 
-func (c *CarmenStateDB) EndTransaction() {
-	c.db.EndTransaction()
+func (c *CarmenStateDB) EndTransaction(rules params.Rules) {
+	revision := carmen.CANCUN
+	if rules.IsAmsterdam {
+		revision = carmen.AMSTERDAM
+	}
+	c.db.EndTransaction(revision)
 }
 
 func (c *CarmenStateDB) InterTxSnapshot() int {

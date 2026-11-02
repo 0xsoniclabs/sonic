@@ -26,6 +26,8 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -50,6 +52,35 @@ func TestCarmenStateDB_CreateNonCommittableCarmenStateDb_CreatesANonCommittableI
 	require.Same(state.db, backend)
 	require.Same(state.processedExecPlanStore, processedBundleStore)
 	require.False(state.committable)
+}
+
+func TestCarmenStateDB_SetStorage_KeepsBalance(t *testing.T) {
+	require := require.New(t)
+	db := newGoFileCarmenStateDb(t)
+
+	addr := common.Address{1}
+	db.SetBalance(addr, uint256.NewInt(10))
+	db.SetStorage(addr, map[common.Hash]common.Hash{{1}: {2}})
+
+	require.Equal(uint256.NewInt(10), db.GetBalance(addr))
+	require.Equal(common.Hash{2}, db.GetState(addr, common.Hash{1}))
+}
+
+func newGoFileCarmenStateDb(t *testing.T) state.StateDB {
+	t.Helper()
+	carmenState, err := carmen.NewState(carmen.Parameters{
+		Variant:   "go-file",
+		Schema:    carmen.Schema(5),
+		Archive:   carmen.NoArchive,
+		Directory: t.TempDir(),
+	})
+	require.NoError(t, err)
+	db := CreateNonCommittableCarmenStateDb(carmen.CreateNonCommittableStateDBUsing(carmenState), nil)
+	t.Cleanup(func() {
+		db.Release()
+		require.NoError(t, carmenState.Close())
+	})
+	return db
 }
 
 func TestCarmenStateDB_Copy_CopiesNonCommittableStateDB(t *testing.T) {
@@ -326,6 +357,25 @@ func TestCarmenStateDB_EndBlock_CanEndBlockWithoutProcessedBundleStore(t *testin
 
 	_, err := state.EndBlock(123) // exec plan store is nil, but EndBlock passes
 	require.NoError(t, err)
+}
+
+func TestCarmenStateDB_EndTransaction_PassesRevisionOfRules(t *testing.T) {
+	tests := map[string]struct {
+		rules    params.Rules
+		revision carmen.Revision
+	}{
+		"before Amsterdam": {rules: params.Rules{}, revision: carmen.CANCUN},
+		"Amsterdam":        {rules: params.Rules{IsAmsterdam: true}, revision: carmen.AMSTERDAM},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			db := carmen.NewMockVmStateDB(gomock.NewController(t))
+			db.EXPECT().EndTransaction(test.revision)
+
+			state := &CarmenStateDB{db: db}
+			state.EndTransaction(test.rules)
+		})
+	}
 }
 
 func TestCarmenStateDB_InterTxSnapshot_DelegatesToUnderlyingDb(t *testing.T) {

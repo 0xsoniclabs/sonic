@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/tests"
 	"github.com/holiman/uint256"
 )
@@ -47,7 +48,7 @@ func (f carmenFactory) NewTestStateDB(accounts types.GenesisAlloc) tests.StateTe
 		}
 	}
 	// Commit and re-open to start with a clean state.
-	statedb.EndTransaction()
+	statedb.EndTransaction(params.Rules{})
 	if err := evmstore.EndBlockAndCommit(statedb, 0); err != nil {
 		panic(fmt.Sprintf("failed to commit genesis state: %v", err))
 	}
@@ -60,7 +61,14 @@ func (f carmenFactory) NewTestStateDB(accounts types.GenesisAlloc) tests.StateTe
 // carmenStateDB is a wrapper for tests.TestStateDB adapting to Carmen.
 type carmenStateDB struct {
 	*evmstore.CarmenStateDB
-	logs []*types.Log
+	logs  []*types.Log
+	rules params.Rules
+}
+
+// Prepare records the rules of the transaction, used to end it on commit.
+func (c *carmenStateDB) Prepare(rules params.Rules, sender, coinbase common.Address, dest *common.Address, precompiles []common.Address, txAccesses types.AccessList) {
+	c.rules = rules
+	c.CarmenStateDB.Prepare(rules, sender, coinbase, dest, precompiles, txAccesses)
 }
 
 // Database method not supported by Carmen.
@@ -86,7 +94,7 @@ func (c *carmenStateDB) SetBalance(addr common.Address, amount *uint256.Int, rea
 // required for failing transaction. Rather than calculating the intermediate root,
 // we can just end the transaction and block, and return the resulting state root.
 func (c *carmenStateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
-	c.EndTransaction()
+	c.EndTransaction(c.rules)
 	if err := evmstore.EndBlockAndCommit(c.CarmenStateDB, 0); err != nil {
 		panic(fmt.Sprintf("failed to commit block: %v", err))
 	}
@@ -96,7 +104,7 @@ func (c *carmenStateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 // Commit ends transaction, ends block, and returns the state hash.
 func (c *carmenStateDB) Commit(block uint64, deleteEmptyObjects bool, noStorageWiping bool) (common.Hash, error) {
 	c.logs = c.CarmenStateDB.Logs() // backup logs, they are deleted on committing a tx/block
-	c.EndTransaction()
+	c.EndTransaction(c.rules)
 	if err := evmstore.EndBlockAndCommit(c.CarmenStateDB, block); err != nil {
 		return common.Hash{}, err
 	}

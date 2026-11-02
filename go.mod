@@ -21,7 +21,7 @@ go 1.26.0
 tool go.uber.org/mock/mockgen
 
 require (
-	github.com/0xsoniclabs/carmen/go v0.0.0-20260925152836-62f625a466a9
+	github.com/0xsoniclabs/carmen/go v0.0.0-20261102143110-699ba6794ad5
 	github.com/0xsoniclabs/tosca v0.0.0-20261006082751-39dec245cca5
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
@@ -160,5 +160,3 @@ require (
 replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20260507120815-e9dfccd41dbe
 
 replace github.com/Fantom-foundation/lachesis-base => github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20260429065829-930ae462cd09
-
-replace github.com/0xsoniclabs/carmen/go => ../carmen/go

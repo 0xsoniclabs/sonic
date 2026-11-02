@@ -86,7 +86,7 @@ func TestIntegration_OneTransactions_ProducesScheduleWithOneTransaction(t *testi
 	state.EXPECT().Exist(any).Return(true).AnyTimes()
 	state.EXPECT().GetRefund().AnyTimes()
 	state.EXPECT().GetLogs(any, any).AnyTimes()
-	state.EXPECT().EndTransaction().AnyTimes()
+	state.EXPECT().EndTransaction(gomock.Any()).AnyTimes()
 	state.EXPECT().TxIndex().AnyTimes()
 	state.EXPECT().Release()
 

@@ -845,7 +845,7 @@ func setExpectedStateCalls(mockState *state.MockStateDB) {
 	mockState.EXPECT().GetCode(any).Return(nil).AnyTimes()
 	mockState.EXPECT().Witness().AnyTimes()
 	mockState.EXPECT().GetRefund().AnyTimes()
-	mockState.EXPECT().EndTransaction().AnyTimes()
+	mockState.EXPECT().EndTransaction(gomock.Any()).AnyTimes()
 	mockState.EXPECT().GetLogs(any, any).AnyTimes()
 	mockState.EXPECT().TxIndex().AnyTimes()
 }
@@ -1166,14 +1166,14 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		mockState.EXPECT().Exist(params.HistoryStorageAddress).Return(true)
 		mockState.EXPECT().GetRefund().Return(uint64(0))
 		mockState.EXPECT().Finalise(true)
-		mockState.EXPECT().EndTransaction()
+		mockState.EXPECT().EndTransaction(gomock.Any())
 	}
 
 	expectedTraceReplayBlock := func(mockState *state.MockStateDB) {
 		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
 		mockState.EXPECT().GetCode(sender).Return([]byte{})
 		mockState.EXPECT().GetNonce(sender).Return(uint64(0))
-		mockState.EXPECT().EndTransaction()
+		mockState.EXPECT().EndTransaction(gomock.Any())
 
 		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
 		mockState.EXPECT().GetNonce(sender).Return(uint64(1)).Times(2)
@@ -1187,7 +1187,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		mockState.EXPECT().Snapshot()
 		mockState.EXPECT().Exist(recipient)
 		mockState.EXPECT().GetRefund().Times(2)
-		mockState.EXPECT().EndTransaction()
+		mockState.EXPECT().EndTransaction(gomock.Any())
 		mockState.EXPECT().TxIndex()
 	}
 
@@ -1213,7 +1213,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
 				mockState.EXPECT().GetCode(sender).Return([]byte{})
 				mockState.EXPECT().GetNonce(sender).Return(uint64(0))
-				mockState.EXPECT().EndTransaction()
+				mockState.EXPECT().EndTransaction(gomock.Any())
 
 				expectedCallsFromTxCall(mockState)
 			},
@@ -1225,7 +1225,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
 				mockState.EXPECT().GetCode(sender).Return([]byte{})
 				mockState.EXPECT().GetNonce(sender).Return(uint64(0))
-				mockState.EXPECT().EndTransaction()
+				mockState.EXPECT().EndTransaction(gomock.Any())
 
 				expectedCallsFromHistoryStorageContract(mockState)
 				expectedCallsFromTxCall(mockState)

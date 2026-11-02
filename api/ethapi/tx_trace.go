@@ -337,7 +337,7 @@ func (s *PublicTxTraceAPI) traceCallExec(
 	}
 
 	// Finalize the transaction state regardless of execution outcome.
-	tracedEVM.activeState.EndTransaction()
+	tracedEVM.activeState.EndTransaction(evmcore.RulesOf(tracedEVM.vmenv))
 
 	// Build a synthetic receipt and call OnTxEnd to finalize the trace.
 	var receipt *types.Receipt
@@ -530,7 +530,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 				log.Debug("Error replaying transaction", "txHash", tx.Hash().String(), "err", res.Err.Error())
 			}
 
-			state.EndTransaction()
+			state.EndTransaction(evmcore.RulesOf(vmenv))
 
 			// Check correct replay status according to receipt data
 			if (failed && receipts[i].Status == 1) || (!failed && receipts[i].Status == 0) {

@@ -195,7 +195,7 @@ func mockStateDbExecutionUsageForAccountWithNonce(
 	stateDb.EXPECT().InterTxSnapshot().AnyTimes()
 	stateDb.EXPECT().RevertToInterTxSnapshot(any).AnyTimes()
 	stateDb.EXPECT().SetTxContext(any, any).AnyTimes()
-	stateDb.EXPECT().EndTransaction().AnyTimes()
+	stateDb.EXPECT().EndTransaction(gomock.Any()).AnyTimes()
 	stateDb.EXPECT().AddProcessedBundle(any, any).AnyTimes()
 	stateDb.EXPECT().AddAddressToAccessList(any).AnyTimes()
 	stateDb.EXPECT().Snapshot().AnyTimes()

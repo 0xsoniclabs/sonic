@@ -123,6 +123,12 @@ func MustNewEVMTxContext(msg *core.Message) vm.TxContext {
 	return txContext
 }
 
+// RulesOf returns the chain rules applied by the given EVM.
+func RulesOf(evm *vm.EVM) params.Rules {
+	// Mirrors the rules computed by vm.NewEVM, which are not exposed.
+	return evm.ChainConfig().Rules(evm.Context.BlockNumber, evm.Context.Random != nil, evm.Context.Time)
+}
+
 // GetHashFn returns a GetHashFunc which retrieves header hashes by number
 func GetHashFn(ref *EvmHeader, chain DummyChain) func(n uint64) common.Hash {
 	// Cache will initially contain [refHash.parent],
