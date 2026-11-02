@@ -653,7 +653,7 @@ func Test_trialRunBundle_DoesRunTransactionsThroughEVMAndReturnsIfTransactionsGo
 			stateDb.EXPECT().SubRefund(any).AnyTimes()
 			stateDb.EXPECT().GetLogs(any, any).AnyTimes()
 			stateDb.EXPECT().TxIndex().AnyTimes()
-			stateDb.EXPECT().EndTransaction().AnyTimes()
+			stateDb.EXPECT().EndTransaction(gomock.Any()).AnyTimes()
 
 			// run the bundle through the EVM and check the result
 			gasEfficiency, valid := trialRunBundle(tc.envelope, chainState, stateDb)
@@ -805,7 +805,7 @@ func Test_trialRunBundle_UsesRandomPrevRandaoValue(t *testing.T) {
 	db.EXPECT().SubRefund(any).AnyTimes()
 	db.EXPECT().GetLogs(any, any).AnyTimes()
 	db.EXPECT().TxIndex().AnyTimes()
-	db.EXPECT().EndTransaction().AnyTimes()
+	db.EXPECT().EndTransaction(gomock.Any()).AnyTimes()
 	db.EXPECT().HasBundleRecentlyBeenProcessed(any).AnyTimes()
 	db.EXPECT().AddProcessedBundle(any, any).AnyTimes()
 	db.EXPECT().SlotInAccessList(any, any).AnyTimes()

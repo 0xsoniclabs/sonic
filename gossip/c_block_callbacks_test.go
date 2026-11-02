@@ -2127,7 +2127,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 	statedb.EXPECT().GetRefund().AnyTimes()
 	statedb.EXPECT().AddBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	statedb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).AnyTimes()
-	statedb.EXPECT().EndTransaction().AnyTimes()
+	statedb.EXPECT().EndTransaction(gomock.Any()).AnyTimes()
 	statedb.EXPECT().TxIndex().AnyTimes()
 
 	evmModule := evmmodule.New()
@@ -2182,7 +2182,7 @@ func TestProcessUserTransactions_MetricsAreForwardedToStateProcessor(t *testing.
 	statedb.EXPECT().AddBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	statedb.EXPECT().GetRefund().AnyTimes()
 	statedb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).AnyTimes()
-	statedb.EXPECT().EndTransaction().AnyTimes()
+	statedb.EXPECT().EndTransaction(gomock.Any()).AnyTimes()
 	statedb.EXPECT().TxIndex().AnyTimes()
 
 	evmModule := evmmodule.New()

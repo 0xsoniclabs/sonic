@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -90,26 +91,24 @@ func (l *LoggingStateDB) AddLog(log *types.Log) {
 
 func (l *LoggingStateDB) SelfDestruct(addr common.Address) {
 	if l.logger.OnBalanceChange != nil {
-		prev := l.GetBalance(addr)
-		if prev.Sign() > 0 {
-			l.logger.OnBalanceChange(addr, prev.ToBig(), new(big.Int), tracing.BalanceDecreaseSelfdestruct)
-		}
 		l.selfDestructed[addr] = struct{}{}
 	}
 
 	l.StateDB.SelfDestruct(addr)
 }
 
-func (l *LoggingStateDB) EndTransaction() {
-	// If tokens were sent to account post-selfdestruct it is burnt.
+func (l *LoggingStateDB) EndTransaction(rules params.Rules) {
+	// From Amsterdam on, a self-destructed account keeps its balance (EIP-8246).
 	if l.logger.OnBalanceChange != nil {
-		for addr := range l.selfDestructed {
-			if l.HasSelfDestructed(addr) {
-				prev := l.GetBalance(addr)
-				l.logger.OnBalanceChange(addr, prev.ToBig(), new(big.Int), tracing.BalanceDecreaseSelfdestructBurn)
+		if !rules.IsAmsterdam {
+			for addr := range l.selfDestructed {
+				if l.HasSelfDestructed(addr) {
+					prev := l.GetBalance(addr)
+					l.logger.OnBalanceChange(addr, prev.ToBig(), new(big.Int), tracing.BalanceDecreaseSelfdestructBurn)
+				}
 			}
 		}
 		l.selfDestructed = make(map[common.Address]struct{})
 	}
-	l.StateDB.EndTransaction()
+	l.StateDB.EndTransaction(rules)
 }

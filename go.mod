@@ -21,7 +21,7 @@ go 1.27.0
 tool go.uber.org/mock/mockgen
 
 require (
-	github.com/0xsoniclabs/carmen/go v0.0.0-20260925152836-62f625a466a9
+	github.com/0xsoniclabs/carmen/go v0.0.0-20261103125827-991ad26cc2a1
 	github.com/0xsoniclabs/tosca v0.0.0-20261104143532-da7e3457f32d
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1

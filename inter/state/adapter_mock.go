@@ -244,15 +244,15 @@ func (mr *MockStateDBMockRecorder) EndBlock(number any) *gomock.Call {
 }
 
 // EndTransaction mocks base method.
-func (m *MockStateDB) EndTransaction() {
+func (m *MockStateDB) EndTransaction(rules params.Rules) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "EndTransaction")
+	m.ctrl.Call(m, "EndTransaction", rules)
 }
 
 // EndTransaction indicates an expected call of EndTransaction.
-func (mr *MockStateDBMockRecorder) EndTransaction() *gomock.Call {
+func (mr *MockStateDBMockRecorder) EndTransaction(rules any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EndTransaction", reflect.TypeOf((*MockStateDB)(nil).EndTransaction))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EndTransaction", reflect.TypeOf((*MockStateDB)(nil).EndTransaction), rules)
 }
 
 // Error mocks base method.

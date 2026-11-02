@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/selfdestruct"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -29,22 +30,29 @@ import (
 )
 
 func TestSelfDestruct(t *testing.T) {
+	for name, upgrades := range map[string]opera.Upgrades{
+		"sonic": opera.GetSonicUpgrades(),
+		"canto": opera.GetCantoUpgrades(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			session := getIntegrationTestNetSession(t, upgrades)
 
-	net := StartIntegrationTestNet(t)
+			t.Run("constructor", func(t *testing.T) {
+				t.Parallel()
+				testSelfDestruct_Constructor(t, session)
+			})
 
-	t.Run("constructor", func(t *testing.T) {
-		t.Parallel()
-		testSelfDestruct_Constructor(t, net)
-	})
-
-	t.Run("nested call", func(t *testing.T) {
-		t.Parallel()
-		testSelfDestruct_NestedCall(t, net)
-	})
+			t.Run("nested call", func(t *testing.T) {
+				t.Parallel()
+				testSelfDestruct_NestedCall(t, session)
+			})
+		})
+	}
 }
 
-func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
+func testSelfDestruct_Constructor(t *testing.T, session IntegrationTestNetSession) {
 	contractInitialBalance := int64(1234)
+	retainedBalance := balanceRetainedOnSelfDestructToSelf(session.GetUpgrades(), contractInitialBalance)
 
 	tests := map[string]struct {
 		deployTx  deployTxFunction[selfdestruct.SelfDestruct]
@@ -130,10 +138,10 @@ func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
 					common.Address{}) // ignored
 			},
 			effects: map[string]effectFunction{
-				"the current execution frame halts": executionHalted(),
-				"code is deleted":                   contractCodeSizeIs(0),
-				"storage is deleted":                contractStorageIs(0),
-				"balance is burned":                 contractBalanceIs(0),
+				"the current execution frame halts":   executionHalted(),
+				"code is deleted":                     contractCodeSizeIs(0),
+				"storage is deleted":                  contractStorageIs(0),
+				"balance is burned only before Canto": contractBalanceIs(retainedBalance),
 			},
 		},
 	}
@@ -142,7 +150,7 @@ func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			t.Parallel()
-			session := net.SpawnSession(t)
+			session := session.SpawnSession(t)
 
 			// New beneficiary address for each test
 			beneficiaryAddress := common.Address{}
@@ -201,8 +209,9 @@ func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
 	}
 }
 
-func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
+func testSelfDestruct_NestedCall(t *testing.T, session IntegrationTestNetSession) {
 	contractInitialBalance := int64(1234)
+	retainedBalance := balanceRetainedOnSelfDestructToSelf(session.GetUpgrades(), contractInitialBalance)
 
 	tests := map[string]struct {
 		transactions []executeTxFunction[selfdestruct.SelfDestructFactory]
@@ -282,11 +291,11 @@ func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
 				},
 			},
 			effects: map[string]effectFunction{
-				"nested execution frame halts":   executionHalted(),
-				"code is deleted":                contractCodeSizeIs(0),
-				"storage is deleted":             contractStorageIs(0),
-				"contract looses balance":        contractBalanceIs(0),
-				"storage exists until end of tx": nestedContractValueAfterSelfDestructIs(123),
+				"nested execution frame halts":        executionHalted(),
+				"code is deleted":                     contractCodeSizeIs(0),
+				"storage is deleted":                  contractStorageIs(0),
+				"balance is burned only before Canto": contractBalanceIs(retainedBalance),
+				"storage exists until end of tx":      nestedContractValueAfterSelfDestructIs(123),
 			},
 		},
 	}
@@ -295,7 +304,7 @@ func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			t.Parallel()
-			session := net.SpawnSession(t)
+			session := session.SpawnSession(t)
 
 			// generate a new beneficiary address for each test
 			beneficiaryAddress := common.Address{}
@@ -316,9 +325,13 @@ func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
 			// execute all described transactions
 			for _, tx := range test.transactions {
 				receipt, err := session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+					// From Canto on, the contract the factory creates costs
+					// state gas (EIP-8037) beyond the default gas limit.
+					opts.GasLimit = 10_000_000
 					return tx(factory, opts, beneficiaryAddress)
 				})
 				require.NoError(err)
+				require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 				allLogs = append(allLogs, receipt.Logs...)
 			}
 			var contractAddress common.Address
@@ -373,6 +386,16 @@ type effectContext struct {
 	allLogs            []*types.Log                      //< all logs generated by all transactions
 	contractAddress    common.Address                    //< address of the contract that may selfdestruct
 	beneficiaryAddress common.Address                    //< address of the beneficiary account
+}
+
+// balanceRetainedOnSelfDestructToSelf returns what is left of the given balance
+// of a contract that self-destructs to itself in the transaction creating it.
+// From Canto on, EIP-8246 keeps the balance instead of burning it.
+func balanceRetainedOnSelfDestructToSelf(upgrades opera.Upgrades, balance int64) int64 {
+	if upgrades.Canto {
+		return balance
+	}
+	return 0
 }
 
 type effectFunction func(t testing.TB, ctx *effectContext)

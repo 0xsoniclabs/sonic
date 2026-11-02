@@ -1,5 +1,5 @@
-github.com/0xsoniclabs/carmen/go v0.0.0-20260925152836-62f625a466a9 h1:WYwujM8CAA7yHbPvcvNxdbLLN3JDMcrTfTvqNE82JYA=
-github.com/0xsoniclabs/carmen/go v0.0.0-20260925152836-62f625a466a9/go.mod h1:hqRaE66FNXefSgAj5VU/8Lmr2YCq00/c6N7sF5HJD20=
+github.com/0xsoniclabs/carmen/go v0.0.0-20261103125827-991ad26cc2a1 h1:Zjcx+v1XLfWwsko6AOaty4AifISEhyaCv4uwUVT7BMw=
+github.com/0xsoniclabs/carmen/go v0.0.0-20261103125827-991ad26cc2a1/go.mod h1:QnwT0239tbmW4zTMnIPVM9sum/AdqXfSyMllnG6eQds=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20261104135344-b486ef367ef6 h1:6Tgy1DLoOWbn0RE8ioNwpQ8BP+awYq6K4TuqzBuSSI0=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20261104135344-b486ef367ef6/go.mod h1:UgurD1+WJErJiVUBGQM9Q2wP+BwxsY7c15uAveKQ2YE=
 github.com/0xsoniclabs/tosca v0.0.0-20261104143532-da7e3457f32d h1:L4TWywzFCSqAPfty1A41Fr8QBSaEiNR91O48pTCxxBA=

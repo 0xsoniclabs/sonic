@@ -1192,7 +1192,7 @@ func (diff *StateOverride) Apply(state state.StateDB) error {
 		}
 	}
 	// Calls must see the overrides as committed state of a preceding transaction.
-	state.EndTransaction()
+	state.EndTransaction(params.Rules{})
 	return nil
 }
 
@@ -1276,7 +1276,7 @@ func DoCall(
 		if _, err := core.ApplyMessage(evm, preMsg, gp); err != nil {
 			log.Warn("failed to apply previous transaction", "index", i, "err", err)
 		}
-		state.EndTransaction()
+		state.EndTransaction(evm.GetRules())
 	}
 
 	// Execute the message.
@@ -3010,7 +3010,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 			return nil, nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
 		}
 		// Ensure any modifications are committed to the state
-		statedb.EndTransaction()
+		statedb.EndTransaction(vmenv.GetRules())
 	}
 	return nil, nil, fmt.Errorf("transaction index %d out of range for block %#x", txIndex, block.Hash)
 }

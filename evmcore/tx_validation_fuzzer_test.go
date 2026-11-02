@@ -404,7 +404,7 @@ func stateExpectCalls(state *state.MockStateDB) {
 
 	state.EXPECT().CreateAccount(any).AnyTimes()
 	state.EXPECT().CreateContract(any).AnyTimes()
-	state.EXPECT().EndTransaction().AnyTimes()
+	state.EXPECT().EndTransaction(gomock.Any()).AnyTimes()
 	state.EXPECT().TxIndex().Return(4).AnyTimes()
 
 	state.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()

@@ -48,7 +48,7 @@ func (f carmenFactory) NewTestStateDB(accounts types.GenesisAlloc) tests.StateTe
 		}
 	}
 	// Commit and re-open to start with a clean state.
-	statedb.EndTransaction()
+	statedb.EndTransaction(params.Rules{})
 	if err := evmstore.EndBlockAndCommit(statedb, 0); err != nil {
 		panic(fmt.Sprintf("failed to commit genesis state: %v", err))
 	}
@@ -86,8 +86,8 @@ func (c *carmenStateDB) SetBalance(addr common.Address, amount *uint256.Int, rea
 // IntermediateRoot is not supported by Carmen, but for ethereum tests it is only
 // required for failing transaction. Rather than calculating the intermediate root,
 // we can just end the transaction and block, and return the resulting state root.
-func (c *carmenStateDB) IntermediateRoot(params.Rules) common.Hash {
-	c.EndTransaction()
+func (c *carmenStateDB) IntermediateRoot(rules params.Rules) common.Hash {
+	c.EndTransaction(rules)
 	if err := evmstore.EndBlockAndCommit(c.CarmenStateDB, 0); err != nil {
 		panic(fmt.Sprintf("failed to commit block: %v", err))
 	}
@@ -95,9 +95,9 @@ func (c *carmenStateDB) IntermediateRoot(params.Rules) common.Hash {
 }
 
 // Commit ends transaction, ends block, and returns the state hash.
-func (c *carmenStateDB) Commit(_ params.Rules, block uint64) (common.Hash, error) {
+func (c *carmenStateDB) Commit(rules params.Rules, block uint64) (common.Hash, error) {
 	c.logs = c.CarmenStateDB.Logs() // backup logs, they are deleted on committing a tx/block
-	c.EndTransaction()
+	c.EndTransaction(rules)
 	if err := evmstore.EndBlockAndCommit(c.CarmenStateDB, block); err != nil {
 		return common.Hash{}, err
 	}
