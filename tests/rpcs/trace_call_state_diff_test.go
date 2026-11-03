@@ -43,7 +43,7 @@ type traceCallResult struct {
 //   - "=" (plain string) — no change
 //   - {"*": ...}         — persisting account, field changed
 //   - {"+": ...}         — account/slot was born (created)
-//   - {"-": ...}         — account died (self-destructed)
+//   - {"-": ...}         — account died (existed before but not after)
 type accountDiff struct {
 	Balance json.RawMessage            `json:"balance"`
 	Code    json.RawMessage            `json:"code"`
@@ -85,16 +85,15 @@ func diffValue(t *testing.T, raw json.RawMessage) any {
 }
 
 // senderOverride returns a trace_call config that pre-sets addr's balance to
-// senderBalance so that state-changing hooks fire correctly regardless of the
-// block state that trace_call uses as its starting point.
+// senderBalance regardless of the block state that trace_call uses as its
+// starting point.
 //
 // trace_call evaluates the call against the state at the beginning of the
 // "latest" block (parent-block state). Because the integration test may call
 // trace_call immediately after the block that first endowed the sender, the
 // sender's balance can be zero in that parent-block state. A state override
-// ensures the simulation always has enough funds and that the balance-change
-// hook provides a non-zero "before" value, allowing StateDiffLogger to
-// correctly classify the sender as a pre-existing (persisting) account.
+// ensures the simulation always has enough funds and that the sender is a
+// pre-existing (persisting) account.
 func senderOverride(addr common.Address, senderBalance *big.Int) map[string]any {
 	return map[string]any{
 		// JSON key matches TraceCallConfig.StateOverrides field name (Go's default encoding).
@@ -127,8 +126,8 @@ func waitForBlockAfter(t *testing.T, client *tests.PooledEhtClient, afterBlock *
 //   - the sender appears as a persisting account whose balance and nonce changed
 //   - the recipient appears as a newly born account with an increased balance
 //
-// A state override is used to pre-fund the sender so that both the transfer and
-// the balance-change hook succeed regardless of the current block-state timing.
+// A state override is used to pre-fund the sender so that the transfer succeeds
+// regardless of the current block-state timing.
 func TestStateDiff_TraceCall_Transfer(t *testing.T) {
 	net := tests.StartIntegrationTestNet(t)
 

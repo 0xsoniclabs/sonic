@@ -74,7 +74,7 @@ type evmSetup struct {
 	txTracer        *txtrace.TraceStructLogger
 	stateDiffLogger *txtrace.StateDiffLogger
 	vmTraceLogger   *txtrace.VmTraceLogger
-	activeState     state.StateDB // may be wrapped with stateDiff/vmTrace hooks
+	activeState     state.StateDB // may be wrapped for stateDiff/vmTrace
 }
 
 // setupTracedEVM creates an EVM configured with the requested tracing hooks and
@@ -107,21 +107,10 @@ func setupTracedEVM(
 	}
 
 	if tracers.StateDiff {
-		setup.stateDiffLogger = txtrace.NewStateDiffLogger()
-		setup.activeState = evmstore.WrapStateDbWithLogger(setup.activeState, setup.stateDiffLogger.Hooks())
-
-		sdOnEnter := setup.stateDiffLogger.OnEnter
-		if cfg.Tracer == nil {
-			cfg.Tracer = &tracing.Hooks{OnEnter: sdOnEnter}
-		} else {
-			existing := cfg.Tracer.OnEnter
-			cfg.Tracer.OnEnter = func(depth int, typ byte, from, to common.Address, input []byte, gas uint64, value *big.Int) {
-				if existing != nil {
-					existing(depth, typ, from, to, input, gas, value)
-				}
-				sdOnEnter(depth, typ, from, to, input, gas, value)
-			}
-		}
+		setup.stateDiffLogger = txtrace.NewStateDiffLogger(setup.activeState)
+		setup.activeState = setup.stateDiffLogger
+		// Tosca's interpreter does not stop on vmenv.Cancel.
+		cfg.Interpreter = cfg.InterpreterForTracing
 	}
 
 	if tracers.VmTrace {
