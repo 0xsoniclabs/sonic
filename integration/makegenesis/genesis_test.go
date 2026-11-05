@@ -18,11 +18,13 @@ package makegenesis
 
 import (
 	"crypto/ecdsa"
+	"errors"
 	"io"
 	"math/big"
 	"path/filepath"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -39,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestGenesisBuilder_NewGenesisBuilder_ReturnsErrorWhenTmpDirDoesNotExist(t *testing.T) {
@@ -72,6 +75,26 @@ func TestGenesisBuilder_ExecuteGenesisTxs_ExecutesTransactionsAccordingToUpgrade
 	// TODO: investigate the suitability of containing log.Crit inside of block processing
 	err = builder.ExecuteGenesisTxs(blockProc, []*types.Transaction{setCodeTx})
 	require.NoError(t, err)
+}
+
+func TestGenesisBuilder_ExecuteGenesisTxs_ReturnsErrorOfFinalize(t *testing.T) {
+	builder, err := NewGenesisBuilder(t.TempDir())
+	require.NoError(t, err)
+	finalizeBlockZero(t, builder, opera.FakeNetRules(opera.GetAllegroUpgrades()))
+
+	ctrl := gomock.NewController(t)
+	_any := gomock.Any()
+	injectedErr := errors.New("injected error")
+	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+	evmProcessor.EXPECT().Execute(_any, _any, _any).Times(3)
+	evmProcessor.EXPECT().Finalize().Return(nil, 0, nil, injectedErr)
+	evmModule := blockproc.NewMockEVM(ctrl)
+	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+	blockProc := DefaultBlockProc()
+	blockProc.EVMModule = evmModule
+
+	err = builder.ExecuteGenesisTxs(blockProc, nil)
+	require.ErrorIs(t, err, injectedErr)
 }
 
 func TestGenesisBuilder_Build_CleansScratchDirAfterDBExport(t *testing.T) {

@@ -289,7 +289,7 @@ func testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 						BaseFee: big.NewInt(0),
 						TxHash:  common.Hash{1, 2, 3},
 					},
-				}, 0, nil)
+				}, 0, nil, nil)
 
 				evmModule.EXPECT().
 					Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).
@@ -436,7 +436,7 @@ func testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T, u
 			BaseFee: big.NewInt(0),
 			TxHash:  common.Hash{1, 2, 3},
 		},
-	}, 0, nil)
+	}, 0, nil, nil)
 	evmModule := blockproc.NewMockEVM(ctrl)
 	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
 
@@ -721,7 +721,7 @@ func testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 		Transactions: types.Transactions{receiptTx},
 	}, 0, types.Receipts{
 		&types.Receipt{TxHash: receiptTx.Hash(), Status: 1},
-	})
+	}, nil)
 	evmModule := blockproc.NewMockEVM(ctrl)
 	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
 
@@ -881,7 +881,7 @@ func testConsensusCallback_AppliesTransactionPriorities(t *testing.T, upgrades o
 			// A non-empty transaction root, as required for caching the block.
 			TxHash: common.Hash{1, 2, 3},
 		},
-	}, 0, nil)
+	}, 0, nil, nil)
 	evmModule := blockproc.NewMockEVM(ctrl)
 	evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
 
@@ -1026,6 +1026,80 @@ func TestConsensusCallback_InconsistentHead_TerminatesProcess(t *testing.T) {
 			require.Contains(t, stderr.String(), test.message)
 		})
 	}
+}
+
+func TestConsensusCallback_FailedFinalize_TerminatesProcess(t *testing.T) {
+	const envChild = "SONIC_TEST_FINALIZE_FAILURE_CHILD"
+	runPreAndPostDolce(t, opera.GetCantoUpgrades(), func(t *testing.T, upgrades opera.Upgrades) {
+		if os.Getenv(envChild) == "1" {
+			log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelCrit, false)))
+			store := newInMemoryStoreWithGenesisData(t, upgrades, 1, 2)
+			es := store.GetEpochState()
+			es.Rules.Blocks.MaxEmptyBlockSkipPeriod = 0
+			store.SetBlockEpochState(store.GetBlockState(), es)
+
+			ctrl := gomock.NewController(t)
+			_any := gomock.Any()
+			eventProcessor := blockproc.NewMockConfirmedEventsProcessor(ctrl)
+			eventProcessor.EXPECT().ProcessConfirmedEvent(_any)
+			eventProcessor.EXPECT().Finalize(_any, _any).Return(store.GetBlockState())
+			eventsModule := blockproc.NewMockConfirmedEventsModule(ctrl)
+			eventsModule.EXPECT().Start(_any, _any).Return(eventProcessor)
+			sealer := blockproc.NewMockSealerProcessor(ctrl)
+			sealer.EXPECT().EpochSealing()
+			sealerModule := blockproc.NewMockSealerModule(ctrl)
+			sealerModule.EXPECT().Start(_any, _any, _any).Return(sealer)
+			txListener := blockproc.NewMockTxListener(ctrl)
+			txListener.EXPECT().Finalize()
+			txListenerModule := blockproc.NewMockTxListenerModule(ctrl)
+			txListenerModule.EXPECT().Start(_any, _any, _any).Return(txListener)
+			txTransactor := blockproc.NewMockTxTransactor(ctrl)
+			txTransactor.EXPECT().PopInternalTxs(_any, _any, _any, _any, _any).Times(2)
+			evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+			evmProcessor.EXPECT().Execute(_any, _any, _any).Times(3)
+			evmProcessor.EXPECT().Finalize().Return(nil, 0, nil, fmt.Errorf("injected error"))
+			evmModule := blockproc.NewMockEVM(ctrl)
+			evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)
+			proc := BlockProc{
+				EventsModule:     eventsModule,
+				SealerModule:     sealerModule,
+				TxListenerModule: txListenerModule,
+				EVMModule:        evmModule,
+				PreTxTransactor:  txTransactor,
+				PostTxTransactor: txTransactor,
+			}
+
+			atroposBuilder := inter.MutableEventPayload{}
+			atroposBuilder.SetVersion(3)
+			atroposBuilder.SetEpoch(es.Epoch)
+			atropos := atroposBuilder.Build()
+
+			var wg sync.WaitGroup
+			bootstrapping := false
+			blockBusyFlag := uint32(0)
+			emitters := []*emitter.Emitter{}
+			beginBlock := consensusCallbackBeginBlockFn(
+				nil, &wg, &blockBusyFlag, store, NewLedger(store, evmModule, nil, false), proc, false, nil, &emitters, nil, &bootstrapping,
+			)
+			callbacks := beginBlock(&lachesis.Block{Atropos: atropos.ID()})
+			callbacks.ApplyEvent(atropos)
+			callbacks.EndBlock()
+			// reached only if log.Crit did not terminate the process
+			os.Exit(2)
+		}
+
+		cmd := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
+		cmd.Env = append(os.Environ(), envChild+"=1")
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+
+		var exitErr *exec.ExitError
+		require.ErrorAs(t, err, &exitErr)
+		require.Equal(t, 1, exitErr.ExitCode())
+		require.Contains(t, stderr.String(), "Failed to finalize block")
+		require.Contains(t, stderr.String(), "injected error")
+	})
 }
 
 func TestConsensusCallback_SkippedBlock_OpensLiveStateOnlyBeforeDolce(t *testing.T) {
@@ -1175,7 +1249,7 @@ func TestConsensusCallback_CommitsThenAdvancesHeadThenPublishes(t *testing.T) {
 	executing.EXPECT().stateDB()
 	executing.EXPECT().runInternal(_any).Times(2)
 	executing.EXPECT().Run(_any)
-	executing.EXPECT().Finalize().Return(finalized)
+	executing.EXPECT().Finalize().Return(finalized, nil)
 	ledgerHead := NewMockHead(ctrl)
 	ledgerHead.EXPECT().Block().Return(store.GetLatestBlock())
 	ledgerHead.EXPECT().BeginBlock(_any, _any).Return(executing, nil)
@@ -2638,7 +2712,7 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupFromBrio(t *te
 					TxHash:  common.Hash{1, 2, 3},
 				},
 				Transactions: types.Transactions{originTx, derivedTx},
-			}, 0, types.Receipts{originReceipt, derivedReceipt})
+			}, 0, types.Receipts{originReceipt, derivedReceipt}, nil)
 
 			evmModule := blockproc.NewMockEVM(ctrl)
 			evmModule.EXPECT().Start(_any, _any, _any, _any, _any, _any, _any, _any, _any, _any).Return(evmProcessor)

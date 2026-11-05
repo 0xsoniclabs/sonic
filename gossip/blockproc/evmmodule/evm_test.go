@@ -17,12 +17,9 @@
 package evmmodule
 
 import (
-	"bytes"
 	"fmt"
 	"math"
 	"math/big"
-	"os"
-	"os/exec"
 	"reflect"
 	"testing"
 	"testing/synctest"
@@ -39,7 +36,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	uint256 "github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -591,7 +587,8 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	require.Equal(validTx, processed[0].Transaction)
 	require.NotNil(processed[0].Receipt)
 
-	_, numSkipped, _ := processor.Finalize()
+	_, numSkipped, _, err := processor.Finalize()
+	require.NoError(err)
 	require.Equal(0, numSkipped)
 
 	processed = processor.Execute(types.Transactions{skippedTx}, math.MaxUint64, math.MaxUint64).ProcessedTransactions
@@ -599,7 +596,8 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	require.Equal(skippedTx, processed[0].Transaction)
 	require.Nil(processed[0].Receipt)
 
-	_, numSkipped, _ = processor.Finalize()
+	_, numSkipped, _, err = processor.Finalize()
+	require.NoError(err)
 	require.Equal(1, numSkipped)
 
 	processed = processor.Execute(types.Transactions{skippedTx, validTx, skippedTx}, math.MaxUint64, math.MaxUint64).ProcessedTransactions
@@ -611,7 +609,8 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	require.Equal(skippedTx, processed[2].Transaction)
 	require.Nil(processed[2].Receipt)
 
-	_, numSkipped, _ = processor.Finalize()
+	_, numSkipped, _, err = processor.Finalize()
+	require.NoError(err)
 	require.Equal(3, numSkipped)
 }
 
@@ -637,7 +636,8 @@ func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenBlockIsOlderTh
 		nil,
 	)
 
-	_, _, _ = processor.Finalize()
+	_, _, _, err := processor.Finalize()
+	require.NoError(t, err)
 	require.False(t, waitCalled)
 }
 
@@ -660,7 +660,8 @@ func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenWaitHandleIsNi
 
 	// A wait on a nil handle would panic
 	require.NotPanics(t, func() {
-		_, _, _ = processor.Finalize()
+		_, _, _, err := processor.Finalize()
+		require.NoError(t, err)
 	})
 }
 
@@ -688,7 +689,7 @@ func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOne
 
 		finalizeDone := false
 		go func() {
-			_, _, _ = processor.Finalize()
+			_, _, _, _ = processor.Finalize()
 			finalizeDone = true
 		}()
 
@@ -702,35 +703,30 @@ func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOne
 	})
 }
 
-// envFinalizeFatalCase marks the re-executed test binary that runs one of the
-// fatal Finalize paths; log.Crit terminates the process, so the outcome can only
-// be observed from a parent process.
-const envFinalizeFatalCase = "SONIC_TEST_FINALIZE_FATAL_CASE"
-
-func TestOperaEVMProcessor_Finalize_TerminatesProcess_OnFatalErrors(t *testing.T) {
+func TestOperaEVMProcessor_Finalize_ReturnsError_OnFailures(t *testing.T) {
 	injectedErr := fmt.Errorf("injected error")
 	tests := map[string]struct {
 		setup   func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock)
-		message string
+		wantErr string
 	}{
 		"EndBlockFails": {
 			setup: func(stateDb *state.MockStateDB, _ *carmen_state.MockStagedBlock) {
 				stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil, injectedErr)
 			},
-			message: "Failed to finalize block",
+			wantErr: "failed to end block 0: injected error",
 		},
 		"NilStagedBlock": {
 			setup: func(stateDb *state.MockStateDB, _ *carmen_state.MockStagedBlock) {
 				stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil, nil)
 			},
-			message: "Staged block is nil",
+			wantErr: "staged block 0 is nil",
 		},
 		"CommitFails": {
 			setup: func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock) {
 				stateDb.EXPECT().EndBlock(gomock.Any()).Return(stagedBlock, nil)
 				stagedBlock.EXPECT().Commit().Return(nil, injectedErr)
 			},
-			message: "Failed to commit block",
+			wantErr: "failed to commit block 0: injected error",
 		},
 		"WaitFails": {
 			setup: func(stateDb *state.MockStateDB, stagedBlock *carmen_state.MockStagedBlock) {
@@ -739,44 +735,25 @@ func TestOperaEVMProcessor_Finalize_TerminatesProcess_OnFatalErrors(t *testing.T
 				done <- injectedErr
 				stagedBlock.EXPECT().Commit().Return(carmen_state.NewWaitHandle(done), nil)
 			},
-			message: "Failed to finalize block on archive",
+			wantErr: "failed to finalize block 0 on archive: injected error",
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			if os.Getenv(envFinalizeFatalCase) == "1" {
-				// child process: run the fatal path, log.Crit must exit with 1
-				log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelCrit, false)))
-				ctrl := gomock.NewController(t)
-				stateDb := state.NewMockStateDB(ctrl)
-				stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
-				stateDb.EXPECT().BeginBlock(gomock.Any())
-				stateDb.EXPECT().GetStateHash().AnyTimes()
-				test.setup(stateDb, stagedBlock)
+			ctrl := gomock.NewController(t)
+			stateDb := state.NewMockStateDB(ctrl)
+			stagedBlock := carmen_state.NewMockStagedBlock(ctrl)
+			stateDb.EXPECT().BeginBlock(gomock.Any())
+			test.setup(stateDb, stagedBlock)
 
-				processor := New().Start(
-					0, inter.FromUnix(time.Now().Unix()), 0,
-					stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
-					nil,
-				)
-				_, _, _ = processor.Finalize()
-				// reached only if log.Crit did not terminate the process; exit
-				// with a code the parent does not expect
-				os.Exit(2)
-			}
-
-			// parent process: re-run exactly this subtest in a child
-			cmd := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
-			cmd.Env = append(os.Environ(), envFinalizeFatalCase+"=1")
-			var stderr bytes.Buffer
-			cmd.Stderr = &stderr
-			err := cmd.Run()
-
-			var exitErr *exec.ExitError
-			require.ErrorAs(t, err, &exitErr, "Finalize must terminate the process")
-			require.Equal(t, 1, exitErr.ExitCode(), "log.Crit exits with code 1; stderr: %s", stderr.String())
-			require.Contains(t, stderr.String(), test.message)
+			processor := New().Start(
+				0, inter.FromUnix(time.Now().Unix()), 0,
+				stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+				nil,
+			)
+			_, _, _, err := processor.Finalize()
+			require.EqualError(t, err, test.wantErr)
 		})
 	}
 }
