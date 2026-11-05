@@ -116,6 +116,27 @@ var (
 	_ CommittedBlock = (*committedBlock)(nil)
 )
 
+// LedgerStore is the storage a ledger runs on. gossip.Store implements it.
+type LedgerStore interface {
+	evmcore.DummyChain
+
+	// gossip.Store methods.
+	GetLatestBlockIndex() idx.Block
+	GetLatestBlock() *inter.Block
+	GetBlock(n idx.Block) *inter.Block
+	SetBlock(n idx.Block, b *inter.Block)
+	SetBlockIndex(id common.Hash, n idx.Block)
+	GetUpgradeHeights() []opera.UpgradeHeight
+
+	// evmstore.Store methods.
+	GetLiveStateDb(stateRoot hash.Hash) (state.StateDB, error)
+	SetTx(txid common.Hash, tx *types.Transaction)
+	SetTxPosition(txid common.Hash, position evmstore.TxPosition)
+	SetReceipts(n idx.Block, receipts types.Receipts)
+	IndexLogs(logs ...*types.Log)
+	SetCachedEvmBlock(n idx.Block, b *evmcore.EvmBlock)
+}
+
 // BlockParams holds the inputs for executing the next block.
 type BlockParams struct {
 	Time       inter.Timestamp
@@ -133,7 +154,7 @@ type BlockParams struct {
 // ledger is the main implementation of Ledger.
 type ledger struct {
 	evmModule         blockproc.EVM
-	store             *Store
+	store             LedgerStore
 	feed              *ServiceFeed
 	indexTransactions bool
 	log               log.Logger
@@ -147,7 +168,7 @@ type ledger struct {
 // NewLedger creates a Ledger over the given store, executing blocks with the
 // given EVM module. The new-block feed may be nil. If indexTransactions is set,
 // committed blocks also store their receipts, logs and transaction positions.
-func NewLedger(store *Store, evm blockproc.EVM, feed *ServiceFeed, indexTransactions bool) *ledger {
+func NewLedger(store LedgerStore, evm blockproc.EVM, feed *ServiceFeed, indexTransactions bool) *ledger {
 	return &ledger{evmModule: evm, store: store, feed: feed, indexTransactions: indexTransactions, log: log.Root()}
 }
 
@@ -198,7 +219,7 @@ func (h *head) BeginBlock(
 		return nil, fmt.Errorf("block %d is no longer the ledger's head",
 			h.block.Number)
 	}
-	statedb, err := h.ledger.store.evm.GetLiveStateDb(hash.Hash(h.block.StateRoot))
+	statedb, err := h.ledger.store.GetLiveStateDb(hash.Hash(h.block.StateRoot))
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +235,7 @@ func (h *head) BeginBlock(
 		params.Time,
 		params.Epoch,
 		statedb,
-		&EvmStateReader{ServiceFeed: h.ledger.feed, store: h.ledger.store},
+		h.ledger.store,
 		onNewLog,
 		params.Rules,
 		evmCfg,
@@ -393,23 +414,23 @@ func (fb *finalizedBlock) Commit() CommittedBlock {
 	// Everything is written before the indexes leading to it, so that a reader
 	// following an index finds what it points to.
 	for _, tx := range fb.candidate.EvmBlock.Transactions {
-		fb.ledger.store.evm.SetTx(tx.Hash(), tx)
+		fb.ledger.store.SetTx(tx.Hash(), tx)
 	}
 
 	if fb.ledger.indexTransactions && fb.candidate.Receipts.Len() != 0 {
-		fb.ledger.store.evm.SetReceipts(blockIdx, fb.candidate.Receipts)
+		fb.ledger.store.SetReceipts(blockIdx, fb.candidate.Receipts)
 		for _, r := range fb.candidate.Receipts {
-			fb.ledger.store.evm.IndexLogs(r.Logs...)
+			fb.ledger.store.IndexLogs(r.Logs...)
 		}
 	}
 
 	fb.ledger.store.SetBlock(blockIdx, fb.candidate.Block)
-	fb.ledger.store.evm.SetCachedEvmBlock(blockIdx, fb.candidate.EvmBlock)
+	fb.ledger.store.SetCachedEvmBlock(blockIdx, fb.candidate.EvmBlock)
 	fb.ledger.store.SetBlockIndex(fb.candidate.Block.Hash(), blockIdx)
 
 	if fb.ledger.indexTransactions {
 		for i, tx := range fb.candidate.EvmBlock.Transactions {
-			fb.ledger.store.evm.SetTxPosition(tx.Hash(), evmstore.TxPosition{
+			fb.ledger.store.SetTxPosition(tx.Hash(), evmstore.TxPosition{
 				Block:       blockIdx,
 				BlockOffset: uint32(i),
 			})

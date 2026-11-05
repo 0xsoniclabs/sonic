@@ -106,33 +106,33 @@ func TestHead_BeginBlock_WhileBlockIsInProgress_Panics(t *testing.T) {
 
 func TestHead_BeginBlock_FailedCallDoesNotConsumeHead(t *testing.T) {
 	tests := map[string]struct {
-		setup   func(l *ledger, blockParams *BlockParams) (undo func())
+		setup   func(store *Store, blockParams *BlockParams) (undo func())
 		wantErr string
 	}{
 		"block time not after head": {
-			setup: func(_ *ledger, blockParams *BlockParams) func() {
+			setup: func(_ *Store, blockParams *BlockParams) func() {
 				blockParams.Time--
 				return func() { blockParams.Time++ }
 			},
 			wantErr: "is not after head time",
 		},
 		"head pointer moved on": {
-			setup: func(l *ledger, _ *BlockParams) func() {
-				bs := l.store.GetBlockState()
+			setup: func(store *Store, _ *BlockParams) func() {
+				bs := store.GetBlockState()
 				bs.LastBlock.Idx++
-				l.store.SetBlockEpochState(bs, l.store.GetEpochState())
+				store.SetBlockEpochState(bs, store.GetEpochState())
 				return func() {
 					bs.LastBlock.Idx--
-					l.store.SetBlockEpochState(bs, l.store.GetEpochState())
+					store.SetBlockEpochState(bs, store.GetEpochState())
 				}
 			},
 			wantErr: "is no longer the ledger's head",
 		},
 		"live state cannot be opened": {
-			setup: func(l *ledger, _ *BlockParams) func() {
-				evm := l.store.evm
-				l.store.evm = &evmstore.Store{}
-				return func() { l.store.evm = evm }
+			setup: func(store *Store, _ *BlockParams) func() {
+				evm := store.evm
+				store.evm = &evmstore.Store{}
+				return func() { store.evm = evm }
 			},
 			wantErr: "EvmStore is not open",
 		},
@@ -146,7 +146,7 @@ func TestHead_BeginBlock_FailedCallDoesNotConsumeHead(t *testing.T) {
 			require.NoError(t, err)
 			blockParams := BlockParams{Time: head.Block().Time + 1}
 
-			undo := test.setup(l, &blockParams)
+			undo := test.setup(store, &blockParams)
 			_, err = head.BeginBlock(blockParams, nil)
 			require.ErrorContains(t, err, test.wantErr)
 
@@ -161,9 +161,8 @@ func TestHead_BeginBlock_StartsEvmAndBlockBuilderFromParamsAndHead(t *testing.T)
 	ctrl := gomock.NewController(t)
 
 	store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
-	feed := &ServiceFeed{}
 	evm := blockproc.NewMockEVM(ctrl)
-	head, err := NewLedger(store, evm, feed, false).Head()
+	head, err := NewLedger(store, evm, nil, false).Head()
 	require.NoError(t, err)
 
 	parent := head.Block()
@@ -184,7 +183,7 @@ func TestHead_BeginBlock_StartsEvmAndBlockBuilderFromParamsAndHead(t *testing.T)
 
 	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
 	evm.EXPECT().Start(
-		idx.Block(parent.Number+1), blockParams.Time, blockParams.Epoch, gomock.Any(), &EvmStateReader{ServiceFeed: feed, store: store},
+		idx.Block(parent.Number+1), blockParams.Time, blockParams.Epoch, gomock.Any(), store,
 		gomock.Any(), blockParams.Rules, evmCfg, blockParams.PrevRandao, sonicFeaturesMetrics,
 	).DoAndReturn(func(
 		_ idx.Block, _ inter.Timestamp, _ idx.Epoch, statedb state.StateDB, _ evmcore.DummyChain,
@@ -219,37 +218,37 @@ func TestHead_BeginBlock_StartsEvmAndBlockBuilderFromParamsAndHead(t *testing.T)
 
 func TestHead_BeginBlock_FailedPrecondition_ReportsError(t *testing.T) {
 	tests := map[string]struct {
-		beforeHead func(l *ledger)
-		afterHead  func(l *ledger, h Head, blockParams *BlockParams)
+		beforeHead func(store *Store)
+		afterHead  func(store *Store, h Head, blockParams *BlockParams)
 		wantErr    string
 	}{
 		"block time not after head": {
-			afterHead: func(_ *ledger, _ Head, blockParams *BlockParams) {
+			afterHead: func(_ *Store, _ Head, blockParams *BlockParams) {
 				blockParams.Time--
 			},
 			wantErr: "is not after head time",
 		},
 		"head pointer moved on": {
-			afterHead: func(l *ledger, _ Head, _ *BlockParams) {
-				bs := l.store.GetBlockState()
+			afterHead: func(store *Store, _ Head, _ *BlockParams) {
+				bs := store.GetBlockState()
 				bs.LastBlock.Idx++
-				l.store.SetBlockEpochState(bs, l.store.GetEpochState())
+				store.SetBlockEpochState(bs, store.GetEpochState())
 			},
 			wantErr: "is no longer the ledger's head",
 		},
 		"head block replaced": {
-			afterHead: func(l *ledger, h Head, _ *BlockParams) {
+			afterHead: func(store *Store, h Head, _ *BlockParams) {
 				number := h.Block().Number
-				l.store.SetBlock(idx.Block(number), inter.NewBlockBuilder().
+				store.SetBlock(idx.Block(number), inter.NewBlockBuilder().
 					WithNumber(number).
 					Build())
 			},
 			wantErr: "is no longer the ledger's head",
 		},
 		"live state does not match the head": {
-			beforeHead: func(l *ledger) {
-				number := l.store.GetLatestBlockIndex()
-				l.store.SetBlock(number, inter.NewBlockBuilder().
+			beforeHead: func(store *Store) {
+				number := store.GetLatestBlockIndex()
+				store.SetBlock(number, inter.NewBlockBuilder().
 					WithNumber(uint64(number)).
 					WithStateRoot(common.Hash{1}).
 					Build())
@@ -263,14 +262,14 @@ func TestHead_BeginBlock_FailedPrecondition_ReportsError(t *testing.T) {
 			store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
 			l := NewLedger(store, nil, nil, false)
 			if test.beforeHead != nil {
-				test.beforeHead(l)
+				test.beforeHead(store)
 			}
 			head, err := l.Head()
 			require.NoError(t, err)
 
 			blockParams := BlockParams{Time: head.Block().Time + 1}
 			if test.afterHead != nil {
-				test.afterHead(l, head, &blockParams)
+				test.afterHead(store, head, &blockParams)
 			}
 			executing, err := head.BeginBlock(blockParams, nil)
 			require.ErrorContains(t, err, test.wantErr)
