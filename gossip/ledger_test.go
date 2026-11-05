@@ -17,7 +17,7 @@
 package gossip
 
 import (
-	"bytes"
+	"errors"
 	"math"
 	"math/big"
 	"slices"
@@ -26,9 +26,6 @@ import (
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/flushable"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/memorydb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -45,26 +42,26 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/topicsdb"
 )
 
 func TestLedger_Head_ReturnsHandleToBlockAtHeadPointer(t *testing.T) {
-	store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
-	headIdx := store.GetLatestBlockIndex()
+	block := inter.NewBlockBuilder().WithNumber(5).Build()
+	store := NewMockLedgerStore(gomock.NewController(t))
+	store.EXPECT().GetLatestBlockIndex().Return(idx.Block(5))
+	store.EXPECT().GetBlock(idx.Block(5)).Return(block)
 
 	head, err := NewLedger(store, nil, nil, false).Head()
 	require.NoError(t, err)
-	require.Equal(t, store.GetBlock(headIdx).Hash(), head.Block().Hash())
+	require.Same(t, block, head.Block())
 }
 
 func TestLedger_Head_HeadBlockMissingFromStore_ReportsError(t *testing.T) {
-	store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
-	bs := store.GetBlockState()
-	bs.LastBlock.Idx++
-	store.SetBlockEpochState(bs, store.GetEpochState())
+	store := NewMockLedgerStore(gomock.NewController(t))
+	store.EXPECT().GetLatestBlockIndex().Return(idx.Block(5))
+	store.EXPECT().GetBlock(idx.Block(5))
 
 	head, err := NewLedger(store, nil, nil, false).Head()
-	require.ErrorContains(t, err, "not found in store")
+	require.ErrorContains(t, err, "head block 5 not found in store")
 	require.Nil(t, head)
 }
 
@@ -102,59 +99,6 @@ func TestHead_BeginBlock_WhileBlockIsInProgress_Panics(t *testing.T) {
 	second, err := l.Head()
 	require.NoError(t, err)
 	require.PanicsWithValue(t, "another block is in progress", func() { _, _ = second.BeginBlock(blockParams, nil) })
-}
-
-func TestHead_BeginBlock_FailedCallDoesNotConsumeHead(t *testing.T) {
-	tests := map[string]struct {
-		setup   func(store *Store, blockParams *BlockParams) (undo func())
-		wantErr string
-	}{
-		"block time not after head": {
-			setup: func(_ *Store, blockParams *BlockParams) func() {
-				blockParams.Time--
-				return func() { blockParams.Time++ }
-			},
-			wantErr: "is not after head time",
-		},
-		"head pointer moved on": {
-			setup: func(store *Store, _ *BlockParams) func() {
-				bs := store.GetBlockState()
-				bs.LastBlock.Idx++
-				store.SetBlockEpochState(bs, store.GetEpochState())
-				return func() {
-					bs.LastBlock.Idx--
-					store.SetBlockEpochState(bs, store.GetEpochState())
-				}
-			},
-			wantErr: "is no longer the ledger's head",
-		},
-		"live state cannot be opened": {
-			setup: func(store *Store, _ *BlockParams) func() {
-				evm := store.evm
-				store.evm = &evmstore.Store{}
-				return func() { store.evm = evm }
-			},
-			wantErr: "EvmStore is not open",
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
-			l := NewLedger(store, evmmodule.New(), nil, false)
-			head, err := l.Head()
-			require.NoError(t, err)
-			blockParams := BlockParams{Time: head.Block().Time + 1}
-
-			undo := test.setup(store, &blockParams)
-			_, err = head.BeginBlock(blockParams, nil)
-			require.ErrorContains(t, err, test.wantErr)
-
-			undo()
-			_, err = head.BeginBlock(blockParams, nil)
-			require.NoError(t, err)
-		})
-	}
 }
 
 func TestHead_BeginBlock_StartsEvmAndBlockBuilderFromParamsAndHead(t *testing.T) {
@@ -216,64 +160,63 @@ func TestHead_BeginBlock_StartsEvmAndBlockBuilderFromParamsAndHead(t *testing.T)
 	require.Equal(t, blockParams.GasLimit, block.GasLimit)
 }
 
-func TestHead_BeginBlock_FailedPrecondition_ReportsError(t *testing.T) {
+func TestHead_BeginBlock_FailedPrecondition_ReportsErrorWithoutConsumingHead(t *testing.T) {
+	block := inter.NewBlockBuilder().WithNumber(5).WithTime(10).WithStateRoot(common.Hash{1}).Build()
+
 	tests := map[string]struct {
-		beforeHead func(store *Store)
-		afterHead  func(store *Store, h Head, blockParams *BlockParams)
-		wantErr    string
+		setup   func(store *MockLedgerStoreMockRecorder, blockParams *BlockParams)
+		wantErr string
 	}{
 		"block time not after head": {
-			afterHead: func(_ *Store, _ Head, blockParams *BlockParams) {
-				blockParams.Time--
+			setup: func(_ *MockLedgerStoreMockRecorder, blockParams *BlockParams) {
+				blockParams.Time = block.Time
 			},
 			wantErr: "is not after head time",
 		},
-		"head pointer moved on": {
-			afterHead: func(store *Store, _ Head, _ *BlockParams) {
-				bs := store.GetBlockState()
-				bs.LastBlock.Idx++
-				store.SetBlockEpochState(bs, store.GetEpochState())
-			},
-			wantErr: "is no longer the ledger's head",
-		},
 		"head block replaced": {
-			afterHead: func(store *Store, h Head, _ *BlockParams) {
-				number := h.Block().Number
-				store.SetBlock(idx.Block(number), inter.NewBlockBuilder().
-					WithNumber(number).
-					Build())
+			setup: func(store *MockLedgerStoreMockRecorder, _ *BlockParams) {
+				store.GetLatestBlock().Return(inter.NewBlockBuilder().WithNumber(5).Build())
 			},
 			wantErr: "is no longer the ledger's head",
 		},
-		"live state does not match the head": {
-			beforeHead: func(store *Store) {
-				number := store.GetLatestBlockIndex()
-				store.SetBlock(number, inter.NewBlockBuilder().
-					WithNumber(uint64(number)).
-					WithStateRoot(common.Hash{1}).
-					Build())
+		"no latest block": {
+			setup: func(store *MockLedgerStoreMockRecorder, _ *BlockParams) {
+				store.GetLatestBlock()
 			},
-			wantErr: "unexpected state root",
+			wantErr: "is no longer the ledger's head",
+		},
+		"live state cannot be opened": {
+			setup: func(store *MockLedgerStoreMockRecorder, _ *BlockParams) {
+				store.GetLatestBlock().Return(block)
+				store.GetLiveStateDb(hash.Hash(block.StateRoot)).Return(nil, errors.New("injected"))
+			},
+			wantErr: "injected",
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			store := newInMemoryStoreWithGenesisData(t, opera.GetSonicUpgrades(), 1, 2)
-			l := NewLedger(store, nil, nil, false)
-			if test.beforeHead != nil {
-				test.beforeHead(store)
-			}
-			head, err := l.Head()
+			ctrl := gomock.NewController(t)
+			store := NewMockLedgerStore(ctrl)
+			store.EXPECT().GetLatestBlockIndex().Return(idx.Block(5))
+			store.EXPECT().GetBlock(idx.Block(5)).Return(block)
+			evm := blockproc.NewMockEVM(ctrl)
+			head, err := NewLedger(store, evm, nil, false).Head()
 			require.NoError(t, err)
 
-			blockParams := BlockParams{Time: head.Block().Time + 1}
-			if test.afterHead != nil {
-				test.afterHead(store, head, &blockParams)
-			}
+			blockParams := BlockParams{Time: block.Time + 1}
+			test.setup(store.EXPECT(), &blockParams)
 			executing, err := head.BeginBlock(blockParams, nil)
 			require.ErrorContains(t, err, test.wantErr)
 			require.Nil(t, executing)
+
+			store.EXPECT().GetLatestBlock().Return(block)
+			store.EXPECT().GetLiveStateDb(hash.Hash(block.StateRoot))
+			store.EXPECT().GetUpgradeHeights()
+			evm.EXPECT().Start(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+				gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
+			_, err = head.BeginBlock(BlockParams{Time: block.Time + 1}, nil)
+			require.NoError(t, err)
 		})
 	}
 }
@@ -675,63 +618,30 @@ func TestFinalizedBlock_Commit_PersistsBlockAndIndexesTransactionsWhenEnabled(t 
 func TestFinalizedBlock_Commit_StoresDataBeforeTheIndexesLeadingToIt(t *testing.T) {
 	const number = 5
 	txs := types.Transactions{types.NewTx(&types.LegacyTx{Nonce: 0}), types.NewTx(&types.LegacyTx{Nonce: 1})}
-	builder := inter.NewBlockBuilder().WithNumber(number)
-	var receipts types.Receipts
-	for _, tx := range txs {
-		receipt := &types.Receipt{TxHash: tx.Hash(), Logs: []*types.Log{{BlockNumber: number, TxHash: tx.Hash()}}}
-		builder.AddTransaction(tx, receipt)
-		receipts = append(receipts, receipt)
-	}
-	block := builder.Build()
+	logs := []*types.Log{{TxHash: txs[0].Hash()}, {TxHash: txs[1].Hash()}}
+	receipts := types.Receipts{{Logs: logs[:1]}, {Logs: logs[1:]}}
+	block := inter.NewBlockBuilder().WithNumber(number).Build()
+	evmBlock := &evmcore.EvmBlock{Transactions: txs}
 
-	var store *Store
-	var keys [][]byte
-	cached := false
-	dbs := recordingDBProducer{
-		FlushableDBProducer: flushable.NewSyncedPool(memorydb.NewProducer(""), []byte{0}),
-		onPut: func(key []byte) {
-			// Marks when the EVM block was cached, relative to the keys put.
-			if !cached && store != nil && store.EvmStore().GetCachedEvmBlock(number) != nil {
-				cached = true
-				keys = append(keys, []byte("cached"))
-			}
-			keys = append(keys, slices.Clone(key))
-		},
-	}
-	store, err := NewStore(dbs, MemTestStoreConfig(t.TempDir()))
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	store := NewMockLedgerStore(gomock.NewController(t))
+	gomock.InOrder(
+		store.EXPECT().SetTx(txs[0].Hash(), txs[0]),
+		store.EXPECT().SetTx(txs[1].Hash(), txs[1]),
+		store.EXPECT().SetReceipts(idx.Block(number), receipts),
+		store.EXPECT().IndexLogs(logs[0]),
+		store.EXPECT().IndexLogs(logs[1]),
+		store.EXPECT().SetBlock(idx.Block(number), block),
+		store.EXPECT().SetCachedEvmBlock(idx.Block(number), evmBlock),
+		store.EXPECT().SetBlockIndex(block.Hash(), idx.Block(number)),
+		store.EXPECT().SetTxPosition(txs[0].Hash(), evmstore.TxPosition{Block: number, BlockOffset: 0}),
+		store.EXPECT().SetTxPosition(txs[1].Hash(), evmstore.TxPosition{Block: number, BlockOffset: 1}),
+	)
 
 	finalized := &finalizedBlock{
-		ledger: &ledger{store: store, indexTransactions: true},
-		candidate: &BlockCandidate{
-			Block:    block,
-			EvmBlock: &evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{TxHash: common.Hash{1}}, Transactions: txs},
-			Receipts: receipts,
-		},
+		ledger:    &ledger{store: store, indexTransactions: true},
+		candidate: &BlockCandidate{Block: block, EvmBlock: evmBlock, Receipts: receipts},
 	}
 	finalized.Commit()
-
-	indexOf := func(table string, id []byte) int {
-		return slices.IndexFunc(keys, func(key []byte) bool {
-			return bytes.Equal(key, append([]byte(table), id...))
-		})
-	}
-	receiptsAt := indexOf("r", idx.Block(number).Bytes())
-	blockAt := indexOf("b", idx.Block(number).Bytes())
-	evmBlockAt := indexOf("cached", nil)
-	blockIndexAt := indexOf("B", block.Hash().Bytes())
-	for _, tx := range txs {
-		txAt := indexOf("X", tx.Hash().Bytes())
-		// The log's address index entry, the last key written for it, is
-		// keyed by the zero address at topic position 0.
-		logID := topicsdb.NewID(number, tx.Hash(), 0)
-		logIndexAt := indexOf("t", append(make([]byte, common.HashLength+1), logID.Bytes()...))
-		txPositionAt := indexOf("x", tx.Hash().Bytes())
-
-		require.NotEqual(t, -1, txAt)
-		require.IsIncreasing(t, []int{txAt, receiptsAt, logIndexAt, blockAt, evmBlockAt, blockIndexAt, txPositionAt})
-	}
 }
 
 func TestFinalizedBlock_Commit_SecondCall_Panics(t *testing.T) {
@@ -846,26 +756,4 @@ func TestCommittedBlock_Publish_BlockIsNotTheLatest_PanicsWithoutConsumingIt(t *
 	bs.LastBlock.Idx++
 	store.SetBlockEpochState(bs, store.GetEpochState())
 	require.NotPanics(t, committed.Publish)
-}
-
-// recordingDBProducer calls onPut with each key put into the databases it
-// opens, before putting it.
-type recordingDBProducer struct {
-	kvdb.FlushableDBProducer
-	onPut func(key []byte)
-}
-
-func (p recordingDBProducer) OpenDB(name string) (kvdb.Store, error) {
-	db, err := p.FlushableDBProducer.OpenDB(name)
-	return recordingDB{Store: db, onPut: p.onPut}, err
-}
-
-type recordingDB struct {
-	kvdb.Store
-	onPut func(key []byte)
-}
-
-func (db recordingDB) Put(key []byte, value []byte) error {
-	db.onPut(key)
-	return db.Store.Put(key, value)
 }
