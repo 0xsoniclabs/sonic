@@ -21,17 +21,25 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"path/filepath"
 	"testing"
 
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/amount"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
+	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
+	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
+	"github.com/0xsoniclabs/sonic/gossip"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/trie"
@@ -39,8 +47,9 @@ import (
 )
 
 // VerifyBlocks verifies the entire chain of blocks starting from the given
-// genesis. It processes each block in sequence, applying all transactions and
-// ensuring that the resulting block hashes match the expected values.
+// genesis. It replays the blocks twice, on a standalone Carmen state and on a
+// gossip ledger, ensuring that the resulting block hashes match the expected
+// values.
 func VerifyBlocks(
 	t *testing.T,
 	genesis *makefakegenesis.GenesisJson,
@@ -49,6 +58,20 @@ func VerifyBlocks(
 	require := require.New(t)
 	require.NotEmpty(blocks)
 	require.Equal(uint64(0), blocks[0].NumberU64())
+
+	verifyBlocksOnState(t, genesis, blocks)
+	verifyBlocksOnLedger(t, genesis, blocks)
+}
+
+// verifyBlocksOnState verifies the chain of blocks by replaying them directly on
+// a standalone Carmen state, checking the state root, gas usage, and receipts
+// hash of each block, and re-deriving and comparing the full block hash.
+func verifyBlocksOnState(
+	t *testing.T,
+	genesis *makefakegenesis.GenesisJson,
+	blocks []*types.Block,
+) {
+	require := require.New(t)
 
 	// Create a new state-DB instance.
 	state, err := NewState(t.TempDir())
@@ -117,6 +140,88 @@ func VerifyBlocks(
 		require.Equal(block.Hash(), restored.Hash(),
 			"block %d: block hash mismatch", block.NumberU64(),
 		)
+	}
+}
+
+// verifyBlocksOnLedger verifies the chain of blocks by replaying them on a
+// gossip ledger in replay mode, checking the state root, gas usage, and block
+// hash of each block.
+func verifyBlocksOnLedger(
+	t *testing.T,
+	genesisJson *makefakegenesis.GenesisJson,
+	blocks []*types.Block,
+) {
+	require := require.New(t)
+
+	genesisStore, err := makefakegenesis.ApplyGenesisJson(genesisJson, t.TempDir())
+	require.NoError(err)
+	defer func() { require.NoError(genesisStore.Close()) }()
+
+	dataDir := t.TempDir()
+	storeConfig := gossip.MemTestStoreConfig(dataDir)
+	require.NoError(genesis.ImportGenesisStore(genesis.ImportParams{
+		GenesisStore: genesisStore,
+		DataDir:      dataDir,
+		CacheRatio:   cachescale.Identity,
+		LiveDbCache:  storeConfig.EVM.StateDb.LiveCache,
+		ArchiveCache: storeConfig.EVM.StateDb.ArchiveCache,
+	}))
+
+	dbs, err := db.MakeDbProducer(filepath.Join(dataDir, "chaindata"), cachescale.Identity)
+	require.NoError(err)
+	store, err := gossip.NewStore(dbs, storeConfig)
+	require.NoError(err)
+	require.NoError(store.EvmStore().Open())
+	defer func() {
+		require.NoError(store.Close())
+		require.NoError(dbs.Close())
+	}()
+
+	ledger := gossip.NewLedger(store, evmmodule.NewForReplay(), nil, false)
+
+	// Check the last block the genesis wrote into the store.
+	head, err := ledger.Head()
+	require.NoError(err)
+	firstReplayed := head.Block().Number + 1
+	require.LessOrEqual(firstReplayed, uint64(len(blocks)))
+	require.Equal(blocks[firstReplayed-1].Hash(), head.Block().Hash())
+
+	// Verify all later blocks by replaying them on the ledger.
+	for i := firstReplayed; i < uint64(len(blocks)); i++ {
+		block := blocks[i]
+
+		nanos, _, err := inter.DecodeExtraData(block.Header().Extra)
+		require.NoError(err)
+
+		executing, err := head.BeginBlock(gossip.BlockParams{
+			Time: inter.Timestamp(block.Time()*1e9 + uint64(nanos)),
+			// Epoch stays zero: it is not hashed, and the state reader drops a
+			// parent's base fee unless it knows that epoch's rules, which it
+			// hard-codes for epoch 0 but lacks for epochs begun after genesis.
+			PrevRandao:               block.MixDigest(),
+			GasLimit:                 block.GasLimit(),
+			UserTransactionsGasLimit: block.GasLimit(),
+			Rules:                    genesisJson.Rules,
+		}, func(*core_types.Log) {})
+		require.NoError(err)
+
+		executing.Run(block.Transactions())
+		finalized := executing.Finalize()
+		candidate := finalized.Candidate()
+
+		require.Zero(candidate.NumSkipped)
+		require.Equal(block.Root(), common.Hash(candidate.Block.StateRoot))
+		require.Equal(block.GasUsed(), candidate.Block.GasUsed)
+		require.Equal(block.Hash(), candidate.Block.Hash())
+
+		// Make the block the head, which the consensus does on a running node.
+		committed := finalized.Commit()
+		blockState := store.GetBlockState().Copy()
+		blockState.LastBlock = iblockproc.BlockCtx{Idx: idx.Block(candidate.Block.Number)}
+		store.SetBlockEpochState(blockState, store.GetEpochState())
+		committed.Publish()
+		head, err = ledger.Head()
+		require.NoError(err)
 	}
 }
 
