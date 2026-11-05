@@ -17,6 +17,7 @@
 package evmmodule
 
 import (
+	"fmt"
 	"math/big"
 	"time"
 
@@ -24,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -203,7 +203,7 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64, siz
 	return summary
 }
 
-func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts) {
+func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts, err error) {
 	transactions := make(types.Transactions, 0, len(p.processedTxs))
 	receipts = make(types.Receipts, 0, len(p.processedTxs))
 	for _, tx := range p.processedTxs {
@@ -221,16 +221,16 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 	stagedBlock, err := p.statedb.EndBlock(evmBlock.Number.Uint64())
 	if err != nil {
 		// Any failures invalidate the DB, and there is no way of recovering from it.
-		log.Crit("Failed to finalize block", "block", evmBlock.Number, "err", err)
+		return nil, 0, nil, fmt.Errorf("failed to end block %d: %w", evmBlock.Number, err)
 	}
 	if stagedBlock == nil {
 		// defensive: a committable StateDB never returns a nil staged block
-		log.Crit("Staged block is nil", "block", evmBlock.Number)
+		return nil, 0, nil, fmt.Errorf("staged block %d is nil", evmBlock.Number)
 	}
 	// Commits to the archive right away as no staging is supported in sonic.
 	done, err := stagedBlock.Commit()
 	if err != nil {
-		log.Crit("Failed to commit block", "block", evmBlock.Number, "err", err)
+		return nil, 0, nil, fmt.Errorf("failed to commit block %d: %w", evmBlock.Number, err)
 	}
 	// Use asynchronous archive update for blocks older than one hour to speed up catching up.
 	// For recent blocks (within the last hour), wait for the update to complete
@@ -240,7 +240,7 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 			// the underlying database has collected an error during finalize or
 			// a previous operation. State consistency and its persistence my
 			// have been compromised.
-			log.Crit("Failed to finalize block on archive", "block", evmBlock.Number, "err", err)
+			return nil, 0, nil, fmt.Errorf("failed to finalize block %d on archive: %w", evmBlock.Number, err)
 		}
 	}
 

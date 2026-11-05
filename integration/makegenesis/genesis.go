@@ -310,7 +310,10 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, true, blockproc.NewNonceSource(b.tmpStateDB))
 	evmProcessor.Execute(internalTxs, es.Rules.Blocks.MaxBlockGas, math.MaxUint64)
 
-	evmBlock, numSkippedTxs, receipts := evmProcessor.Finalize()
+	evmBlock, numSkippedTxs, receipts, err := evmProcessor.Finalize()
+	if err != nil {
+		return err
+	}
 	for i, r := range receipts {
 		if r.Status == 0 {
 			return fmt.Errorf("genesis transaction %d of %d reverted", i, len(receipts))
