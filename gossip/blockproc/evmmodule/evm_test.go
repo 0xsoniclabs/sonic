@@ -146,7 +146,7 @@ func TestEVMModule_Start_HandsReplayModeAndInterpreterFactoryToProcessor(t *test
 
 			processor := test.module.Start(0, 0, 0, stateDb, nil, nil, opera.Rules{}, nil, common.Hash{}, nil).(*OperaEVMProcessor)
 			require.Equal(t, test.wantForReplay, processor.forReplay)
-			require.Equal(t, test.wantInterpreterFactory, processor.interpreterFactory != nil)
+			require.Equal(t, test.wantInterpreterFactory, processor.overrideInterpreter != nil)
 		})
 	}
 }
@@ -220,7 +220,7 @@ func TestOperaEVMProcessor_Execute_UsesGivenInterpreterFactoryOrDefault(t *testi
 			factory.EXPECT().NewStateProcessorForReplay(any, any, any).Return(stateProcessor)
 			stateProcessor.EXPECT().Process(any, any, sameFactory, any, any, any, any, any)
 
-			processor := &OperaEVMProcessor{processorFactory: factory, forReplay: true, interpreterFactory: test.interpreterFactory}
+			processor := &OperaEVMProcessor{processorFactory: factory, forReplay: true, overrideInterpreter: test.interpreterFactory}
 			processor.Execute(nil, 0, 0)
 		})
 	}
