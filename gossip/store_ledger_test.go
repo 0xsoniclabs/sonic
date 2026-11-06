@@ -19,7 +19,9 @@ package gossip
 import (
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -63,4 +65,9 @@ func TestStore_Header_ReturnsHeaderOfBlockUpToHeadMatchingHash(t *testing.T) {
 			require.Equal(t, uint64(test.number), header.Number.Uint64())
 		})
 	}
+}
+
+func TestStore_GetLiveStateDb_NotOpen_ReportsError(t *testing.T) {
+	_, err := (&Store{evm: &evmstore.Store{}}).GetLiveStateDb(hash.Hash{})
+	require.ErrorContains(t, err, "EvmStore is not open")
 }
