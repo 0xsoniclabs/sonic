@@ -25,34 +25,42 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestStore_Header_ReturnsHeaderOfStoredBlockMatchingHash(t *testing.T) {
-	const number = idx.Block(12)
-	block := inter.NewBlockBuilder().WithNumber(uint64(number)).Build()
+func TestStore_Header_ReturnsHeaderOfBlockUpToHeadMatchingHash(t *testing.T) {
+	const head = idx.Block(12)
+	blocks := map[idx.Block]*inter.Block{}
+	for _, n := range []idx.Block{head - 1, head, head + 1} {
+		blocks[n] = inter.NewBlockBuilder().WithNumber(uint64(n)).Build()
+	}
 
 	tests := map[string]struct {
-		hash common.Hash
-		want bool
+		number        idx.Block
+		hash          common.Hash
+		valueReturned bool
 	}{
-		"no hash":        {want: true},
-		"matching hash":  {hash: block.Hash(), want: true},
-		"different hash": {hash: common.Hash{1}},
+		"below head":     {number: head - 1, valueReturned: true},
+		"head":           {number: head, valueReturned: true},
+		"above head":     {number: head + 1},
+		"matching hash":  {number: head, hash: blocks[head].Hash(), valueReturned: true},
+		"different hash": {number: head, hash: common.Hash{1}},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			store, err := NewMemStore(t)
 			require.NoError(t, err)
-			store.SetBlock(number, block)
-			setLatestBlockIndex(store, number)
+			for n, block := range blocks {
+				store.SetBlock(n, block)
+			}
+			setLatestBlockIndex(store, head)
 
-			header := store.Header(test.hash, uint64(number))
+			header := store.Header(test.hash, uint64(test.number))
 
-			if !test.want {
+			if !test.valueReturned {
 				require.Nil(t, header)
 				return
 			}
-			require.Equal(t, block.Hash(), header.Hash)
-			require.Equal(t, uint64(number), header.Number.Uint64())
+			require.Equal(t, blocks[test.number].Hash(), header.Hash)
+			require.Equal(t, uint64(test.number), header.Number.Uint64())
 		})
 	}
 }
