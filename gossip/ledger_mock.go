@@ -14,8 +14,13 @@ import (
 
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	core_types "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	evmstore "github.com/0xsoniclabs/sonic/gossip/evmstore"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	state "github.com/0xsoniclabs/sonic/inter/state"
+	opera "github.com/0xsoniclabs/sonic/opera"
+	hash "github.com/Fantom-foundation/lachesis-base/hash"
+	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
+	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -278,4 +283,201 @@ func (m *MockCommittedBlock) Publish() {
 func (mr *MockCommittedBlockMockRecorder) Publish() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Publish", reflect.TypeOf((*MockCommittedBlock)(nil).Publish))
+}
+
+// MockLedgerStore is a mock of LedgerStore interface.
+type MockLedgerStore struct {
+	ctrl     *gomock.Controller
+	recorder *MockLedgerStoreMockRecorder
+	isgomock struct{}
+}
+
+// MockLedgerStoreMockRecorder is the mock recorder for MockLedgerStore.
+type MockLedgerStoreMockRecorder struct {
+	mock *MockLedgerStore
+}
+
+// NewMockLedgerStore creates a new mock instance.
+func NewMockLedgerStore(ctrl *gomock.Controller) *MockLedgerStore {
+	mock := &MockLedgerStore{ctrl: ctrl}
+	mock.recorder = &MockLedgerStoreMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockLedgerStore) EXPECT() *MockLedgerStoreMockRecorder {
+	return m.recorder
+}
+
+// GetBlock mocks base method.
+func (m *MockLedgerStore) GetBlock(n idx.Block) *inter.Block {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBlock", n)
+	ret0, _ := ret[0].(*inter.Block)
+	return ret0
+}
+
+// GetBlock indicates an expected call of GetBlock.
+func (mr *MockLedgerStoreMockRecorder) GetBlock(n any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBlock", reflect.TypeOf((*MockLedgerStore)(nil).GetBlock), n)
+}
+
+// GetLatestBlock mocks base method.
+func (m *MockLedgerStore) GetLatestBlock() *inter.Block {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLatestBlock")
+	ret0, _ := ret[0].(*inter.Block)
+	return ret0
+}
+
+// GetLatestBlock indicates an expected call of GetLatestBlock.
+func (mr *MockLedgerStoreMockRecorder) GetLatestBlock() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestBlock", reflect.TypeOf((*MockLedgerStore)(nil).GetLatestBlock))
+}
+
+// GetLatestBlockIndex mocks base method.
+func (m *MockLedgerStore) GetLatestBlockIndex() idx.Block {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLatestBlockIndex")
+	ret0, _ := ret[0].(idx.Block)
+	return ret0
+}
+
+// GetLatestBlockIndex indicates an expected call of GetLatestBlockIndex.
+func (mr *MockLedgerStoreMockRecorder) GetLatestBlockIndex() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestBlockIndex", reflect.TypeOf((*MockLedgerStore)(nil).GetLatestBlockIndex))
+}
+
+// GetLiveStateDb mocks base method.
+func (m *MockLedgerStore) GetLiveStateDb(stateRoot hash.Hash) (state.StateDB, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLiveStateDb", stateRoot)
+	ret0, _ := ret[0].(state.StateDB)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLiveStateDb indicates an expected call of GetLiveStateDb.
+func (mr *MockLedgerStoreMockRecorder) GetLiveStateDb(stateRoot any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLiveStateDb", reflect.TypeOf((*MockLedgerStore)(nil).GetLiveStateDb), stateRoot)
+}
+
+// GetUpgradeHeights mocks base method.
+func (m *MockLedgerStore) GetUpgradeHeights() []opera.UpgradeHeight {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUpgradeHeights")
+	ret0, _ := ret[0].([]opera.UpgradeHeight)
+	return ret0
+}
+
+// GetUpgradeHeights indicates an expected call of GetUpgradeHeights.
+func (mr *MockLedgerStoreMockRecorder) GetUpgradeHeights() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUpgradeHeights", reflect.TypeOf((*MockLedgerStore)(nil).GetUpgradeHeights))
+}
+
+// Header mocks base method.
+func (m *MockLedgerStore) Header(arg0 common.Hash, number uint64) *evmcore.EvmHeader {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Header", arg0, number)
+	ret0, _ := ret[0].(*evmcore.EvmHeader)
+	return ret0
+}
+
+// Header indicates an expected call of Header.
+func (mr *MockLedgerStoreMockRecorder) Header(arg0, number any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockLedgerStore)(nil).Header), arg0, number)
+}
+
+// IndexLogs mocks base method.
+func (m *MockLedgerStore) IndexLogs(logs ...*types.Log) {
+	m.ctrl.T.Helper()
+	varargs := []any{}
+	for _, a := range logs {
+		varargs = append(varargs, a)
+	}
+	m.ctrl.Call(m, "IndexLogs", varargs...)
+}
+
+// IndexLogs indicates an expected call of IndexLogs.
+func (mr *MockLedgerStoreMockRecorder) IndexLogs(logs ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IndexLogs", reflect.TypeOf((*MockLedgerStore)(nil).IndexLogs), logs...)
+}
+
+// SetBlock mocks base method.
+func (m *MockLedgerStore) SetBlock(n idx.Block, b *inter.Block) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetBlock", n, b)
+}
+
+// SetBlock indicates an expected call of SetBlock.
+func (mr *MockLedgerStoreMockRecorder) SetBlock(n, b any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBlock", reflect.TypeOf((*MockLedgerStore)(nil).SetBlock), n, b)
+}
+
+// SetBlockIndex mocks base method.
+func (m *MockLedgerStore) SetBlockIndex(id common.Hash, n idx.Block) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetBlockIndex", id, n)
+}
+
+// SetBlockIndex indicates an expected call of SetBlockIndex.
+func (mr *MockLedgerStoreMockRecorder) SetBlockIndex(id, n any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBlockIndex", reflect.TypeOf((*MockLedgerStore)(nil).SetBlockIndex), id, n)
+}
+
+// SetCachedEvmBlock mocks base method.
+func (m *MockLedgerStore) SetCachedEvmBlock(n idx.Block, b *evmcore.EvmBlock) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetCachedEvmBlock", n, b)
+}
+
+// SetCachedEvmBlock indicates an expected call of SetCachedEvmBlock.
+func (mr *MockLedgerStoreMockRecorder) SetCachedEvmBlock(n, b any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCachedEvmBlock", reflect.TypeOf((*MockLedgerStore)(nil).SetCachedEvmBlock), n, b)
+}
+
+// SetReceipts mocks base method.
+func (m *MockLedgerStore) SetReceipts(n idx.Block, receipts types.Receipts) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetReceipts", n, receipts)
+}
+
+// SetReceipts indicates an expected call of SetReceipts.
+func (mr *MockLedgerStoreMockRecorder) SetReceipts(n, receipts any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetReceipts", reflect.TypeOf((*MockLedgerStore)(nil).SetReceipts), n, receipts)
+}
+
+// SetTx mocks base method.
+func (m *MockLedgerStore) SetTx(txid common.Hash, tx *types.Transaction) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetTx", txid, tx)
+}
+
+// SetTx indicates an expected call of SetTx.
+func (mr *MockLedgerStoreMockRecorder) SetTx(txid, tx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetTx", reflect.TypeOf((*MockLedgerStore)(nil).SetTx), txid, tx)
+}
+
+// SetTxPosition mocks base method.
+func (m *MockLedgerStore) SetTxPosition(txid common.Hash, position evmstore.TxPosition) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetTxPosition", txid, position)
+}
+
+// SetTxPosition indicates an expected call of SetTxPosition.
+func (mr *MockLedgerStoreMockRecorder) SetTxPosition(txid, position any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetTxPosition", reflect.TypeOf((*MockLedgerStore)(nil).SetTxPosition), txid, position)
 }
