@@ -567,7 +567,11 @@ func endBlockPreDolce(
 			thisBlocksRules.Upgrades,
 		)
 
-		evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
+		evmBlock, numSkippedTxs, allReceipts, err := evmProcessor.Finalize()
+		if err != nil {
+			// The node has no clean shutdown on a broken state yet, so it exits.
+			log.Crit("Failed to finalize block", "block", blockCtx.Idx, "err", err)
+		}
 
 		// Add results of the transaction processing to the block.
 		blockBuilder.
@@ -988,7 +992,11 @@ func endBlock(
 
 		txCausedBy := executingBlock.Run(proposal.Transactions).CausedBy
 
-		finalizedBlock := executingBlock.Finalize()
+		finalizedBlock, err := executingBlock.Finalize()
+		if err != nil {
+			// The node has no clean shutdown on a broken state yet, so it exits.
+			log.Crit("Failed to finalize block", "block", blockCtx.Idx, "err", err)
+		}
 		candidate := finalizedBlock.Candidate()
 		block := candidate.Block
 		evmBlock := candidate.EvmBlock

@@ -206,7 +206,8 @@ func verifyBlocksOnLedger(
 		require.NoError(err)
 
 		executing.Run(block.Transactions())
-		finalized := executing.Finalize()
+		finalized, err := executing.Finalize()
+		require.NoError(err)
 		candidate := finalized.Candidate()
 
 		require.Zero(candidate.NumSkipped)

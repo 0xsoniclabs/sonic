@@ -84,8 +84,9 @@ type ExecutingBlock interface {
 
 	// Finalize commits the EVM state, assembles and hashes the block, and
 	// returns the finalized block. It consumes the executing block; any later
-	// call on it panics.
-	Finalize() FinalizedBlock
+	// call on it panics. If committing the EVM state fails, the live state is
+	// unusable and any later BeginBlock on the ledger panics.
+	Finalize() (FinalizedBlock, error)
 }
 
 // FinalizedBlock is an assembled and hashed block that is not yet persisted.
@@ -339,7 +340,7 @@ type BlockCandidate struct {
 	NumSkipped int
 }
 
-func (eb *executingBlock) Finalize() FinalizedBlock {
+func (eb *executingBlock) Finalize() (FinalizedBlock, error) {
 	if eb.finalized {
 		panic("executing block already consumed")
 	}
@@ -357,7 +358,10 @@ func (eb *executingBlock) Finalize() FinalizedBlock {
 		eb.blockBuilder.WithGasLimit(0x12a05f200)
 	}
 
-	evmBlock, numSkipped, receipts := eb.evmProcessor.Finalize()
+	evmBlock, numSkipped, receipts, err := eb.evmProcessor.Finalize()
+	if err != nil {
+		return nil, err
+	}
 
 	// Add results of the transaction processing to the block.
 	eb.blockBuilder.
@@ -388,7 +392,7 @@ func (eb *executingBlock) Finalize() FinalizedBlock {
 			Receipts:   receipts,
 			NumSkipped: numSkipped,
 		},
-	}
+	}, nil
 }
 
 // finalizedBlock is the main implementation of FinalizedBlock.

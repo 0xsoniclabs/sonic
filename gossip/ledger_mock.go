@@ -142,11 +142,12 @@ func (m *MockExecutingBlock) EXPECT() *MockExecutingBlockMockRecorder {
 }
 
 // Finalize mocks base method.
-func (m *MockExecutingBlock) Finalize() FinalizedBlock {
+func (m *MockExecutingBlock) Finalize() (FinalizedBlock, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Finalize")
 	ret0, _ := ret[0].(FinalizedBlock)
-	return ret0
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // Finalize indicates an expected call of Finalize.
