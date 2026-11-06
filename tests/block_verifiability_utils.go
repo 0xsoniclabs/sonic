@@ -177,7 +177,7 @@ func verifyBlocksOnLedger(
 		require.NoError(dbs.Close())
 	}()
 
-	ledger := gossip.NewLedger(store, evmmodule.NewForReplay(), nil, false)
+	ledger := gossip.NewLedger(store, evmmodule.NewForReplay(nil), nil, false)
 
 	// Check the last block the genesis wrote into the store.
 	head, err := ledger.Head()
