@@ -48,6 +48,25 @@ const (
 	errCodeSendRawSyncNonceGap = 6
 )
 
+// InvalidParamsError is an error reporting a malformed request parameter. It is
+// answered with the JSON-RPC "invalid params" code instead of the generic server
+// error code.
+//
+// go-ethereum has the same type in eth/filters and in the rpc package, but both
+// are unexported, so an equivalent is needed here.
+type InvalidParamsError struct {
+	message string
+}
+
+func (e *InvalidParamsError) Error() string  { return e.message }
+func (e *InvalidParamsError) ErrorCode() int { return errCodeInvalidParams }
+
+// NewInvalidParamsError creates an error reported to the client with the
+// JSON-RPC "invalid params" code.
+func NewInvalidParamsError(message string) error {
+	return &InvalidParamsError{message: message}
+}
+
 // simInvalidTxError is an error type for invalid transactions
 // in simulation, with an associated error code for JSON-RPC responses.
 type simInvalidTxError struct {
