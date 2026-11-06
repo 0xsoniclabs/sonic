@@ -105,6 +105,10 @@ func (c *CarmenStateDB) AddLog(log *types.Log) {
 		carmenLog.Topics = append(carmenLog.Topics, cc.Hash(topic))
 	}
 	c.db.AddLog(&carmenLog)
+	// Carmen assigns the block-level index to its own copy of the log. Hand it
+	// back to the caller, so that tracers hooked in after this
+	// call see the same index later reported in receipts.
+	log.Index = carmenLog.Index
 }
 
 func (c *CarmenStateDB) GetLogs(txHash common.Hash, blockHash common.Hash) []*types.Log {
