@@ -57,7 +57,7 @@ func TestGetAccount(t *testing.T) {
 		&proofRes,
 		"eth_getProof",
 		addr,
-		nil,
+		[]string{},
 		rpc.LatestBlockNumber,
 	)
 	require.NoError(t, err, "failed call to get proof")

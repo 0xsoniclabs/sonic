@@ -437,7 +437,7 @@ func GetErrorTraceFromMsg(msg *core.Message, blockHash common.Hash, blockNumber 
 		return createErrorTrace(blockHash, blockNumber, nil, &common.Address{}, txHash, 0, []byte{}, hexutil.Big{}, index, err)
 	} else {
 		from := msg.From
-		return createErrorTrace(blockHash, blockNumber, &from, msg.To, txHash, msg.GasLimit, msg.Data, hexutil.Big(*msg.Value), index, err)
+		return createErrorTrace(blockHash, blockNumber, &from, msg.To, txHash, msg.GasLimit, msg.Data, hexutil.Big(*msg.Value.ToBig()), index, err)
 	}
 }
 
