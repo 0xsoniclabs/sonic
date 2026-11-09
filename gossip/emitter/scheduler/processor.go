@@ -109,6 +109,7 @@ func (p *evmProcessor) run(tx *types.Transaction) (bool, uint64) {
 }
 
 func (p *evmProcessor) release() {
+	p.processor.Release()
 	p.stateDb.Release()
 }
 
@@ -119,4 +120,8 @@ type evmProcessorRunner interface {
 	// Run runs the given transaction in the context of the current block
 	// where the index is the position of the transaction in the block.
 	Run(index int, tx *types.Transaction) evmcore.ProcessSummary
+
+	// Release frees the resources of the runner, which must not be used
+	// afterwards.
+	Release()
 }

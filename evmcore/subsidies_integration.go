@@ -61,6 +61,7 @@ func (s *SubsidiesIntegrationImplementation) isSponsored(tx *types.Transaction) 
 	blockContext := NewEVMBlockContext(currentBlock.Header(), s.chain, nil)
 	vmConfig := opera.GetVmConfig(s.rules)
 	vm := vm.NewEVM(blockContext, s.state, s.chain.CurrentConfig(), vmConfig)
+	defer vm.Release()
 
 	// Query the subsidies registry contract to determine if the transaction is sponsored.
 	result, err := subsidies.IsCovered(s.rules.Upgrades, vm, s.signer, tx, baseFee)

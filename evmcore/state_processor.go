@@ -167,6 +167,7 @@ func (p *StateProcessor) ProcessWithDifficulty(
 		blockNumber  = block.Number
 		signer       = types.LatestSignerForChainID(p.config.ChainID)
 	)
+	defer vmenv.Release()
 
 	// execute EIP-2935 HistoryStorage contract.
 	if p.config.IsPrague(blockNumber, time) {
@@ -869,6 +870,12 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary
 		&tp.usedGas, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
 		false, tp.metrics,
 	), []*types.Transaction{tx}, i, math.MaxUint64)
+}
+
+// Release returns the EVM's resources for reuse. The processor must not be
+// used afterwards.
+func (tp *TransactionProcessor) Release() {
+	tp.vmEnvironment.Release()
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database

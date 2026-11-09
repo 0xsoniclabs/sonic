@@ -1249,6 +1249,7 @@ func DoCall(
 	if err != nil {
 		return nil, err
 	}
+	defer evm.Release()
 	// Skip gas price checks for API runs.
 	evm.Config.NoBaseFee = true
 	// Wait for the context to be done and cancel the evm. Even if the
@@ -1861,6 +1862,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		stopCancel := context.AfterFunc(ctx, vmenv.Cancel)
 		res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
 		stopCancel()
+		vmenv.Release()
 		statedb.Release()
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, 0, nil, ctxErr
@@ -2736,6 +2738,7 @@ func (api *PublicDebugAPI) traceTx(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get EVM for tracing: %w", err)
 	}
+	defer vmenv.Release()
 
 	// Define a meaningful timeout of a single transaction trace
 	if config.Timeout != nil {
@@ -2851,9 +2854,11 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 	}
 	defer statedb.Release()
 
-	if _, err := applyPreBlockSystemCalls(ctx, api.b, block, statedb); err != nil {
+	vmenv, err := applyPreBlockSystemCalls(ctx, api.b, block, statedb)
+	if err != nil {
 		return nil, err
 	}
+	vmenv.Release()
 
 	var (
 		chainConfig   = api.b.ChainConfig(idx.Block(block.Header().Number.Uint64()))
@@ -2916,6 +2921,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 	if err != nil {
 		return nil, nil, err
 	}
+	defer vmenv.Release()
 
 	if txIndex == 0 && len(block.Transactions) == 0 {
 		return nil, statedb, nil

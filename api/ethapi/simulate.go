@@ -338,6 +338,7 @@ func (sim *simulator) processBlock(
 	activeState := evmstore.WrapStateDbWithLogger(sim.state, tracer.Hooks())
 
 	evm := vm.NewEVM(blockContext, activeState, sim.chainConfig, vmConfig)
+	defer evm.Release()
 	if precompiles != nil {
 		evm.SetPrecompiles(precompiles)
 	}
