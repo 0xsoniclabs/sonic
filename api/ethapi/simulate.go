@@ -372,7 +372,6 @@ func (sim *simulator) processBlock(
 			return nil, nil, nil, nil, simTxValidationError(err)
 		}
 		msg.SkipNonceChecks = !sim.validate
-		msg.SkipTransactionChecks = !sim.validate
 
 		result, applyErr := applySimMessage(ctx, evm, msg, timeout, sim.gp)
 		if applyErr != nil {

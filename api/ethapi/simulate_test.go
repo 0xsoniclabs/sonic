@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
@@ -102,6 +103,54 @@ func TestSimulateV1_SingleCall_NonceValidationFailure(t *testing.T) {
 	simTxError, ok := err.(*simInvalidTxError)
 	require.True(t, ok)
 	require.Equal(t, errCodeNonceTooHigh, simTxError.ErrorCode())
+}
+
+func TestSimulateV1_Validation_SkipsGasLimitCapAndEOAChecks(t *testing.T) {
+	from := common.Address{1}
+	to := common.Address{2}
+	gas := hexutil.Uint64(21_000)
+
+	tests := map[string]struct {
+		call       TransactionArgs
+		senderCode []byte
+	}{
+		"gas defaults to more than the EIP-7825 cap": {
+			call: TransactionArgs{From: &from, To: &to},
+		},
+		"sender has code": {
+			call:       TransactionArgs{From: &from, To: &to, Gas: &gas},
+			senderCode: []byte{byte(vm.STOP)},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			osakaTime := uint64(0)
+			chainConfig := &params.ChainConfig{
+				ChainID:     big.NewInt(1234),
+				LondonBlock: big.NewInt(0),
+				OsakaTime:   &osakaTime,
+			}
+			base := newSimTestBase()
+			base.GasLimit = 2 * params.MaxTxGas
+			f := newSimulateV1HelperWith(t, base, chainConfig, 2*params.MaxTxGas)
+			f.mockState.EXPECT().GetCode(from).Return(test.senderCode).AnyTimes()
+			setExpectedStateCalls(f.mockState)
+			f.mockState.EXPECT().GetStateHash().Return(common.Hash{})
+
+			opts := simOpts{
+				BlockStateCalls: []simBlock{{Calls: []TransactionArgs{test.call}}},
+				Validation:      true,
+			}
+
+			results, err := f.api.SimulateV1(t.Context(), opts, &f.blkNr)
+
+			require.NoError(t, err)
+			require.Len(t, results, 1)
+			require.Len(t, results[0].calls, 1)
+			require.Equal(t, hexutil.Uint64(types.ReceiptStatusSuccessful), results[0].calls[0].Status)
+		})
+	}
 }
 
 func TestSimulateV1_MultipleBlocks_ReturnsResultsPerBlock(t *testing.T) {
@@ -184,16 +233,25 @@ type simulateV1Helper struct {
 // newSimulateV1Helper sets up the common mocks and returns a fixture for SimulateV1 tests.
 func newSimulateV1Helper(t *testing.T) *simulateV1Helper {
 	t.Helper()
+	return newSimulateV1HelperWith(t, newSimTestBase(), newSimTestChainConfig(), 10_000_000)
+}
+
+func newSimulateV1HelperWith(
+	t *testing.T,
+	baseBlock *evmcore.EvmBlock,
+	chainConfig *params.ChainConfig,
+	gasCap uint64,
+) *simulateV1Helper {
+	t.Helper()
 	ctrl := gomock.NewController(t)
 	mockBackend := NewMockBackend(ctrl)
 	mockState := state.NewMockStateDB(ctrl)
 
-	baseBlock := newSimTestBase()
 	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
 	mockBackend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), blkNr).Return(mockState, baseBlock, nil)
-	mockBackend.EXPECT().RPCGasCap().Return(uint64(10_000_000))
-	mockBackend.EXPECT().ChainConfig(idx.Block(10)).Return(newSimTestChainConfig())
+	mockBackend.EXPECT().RPCGasCap().Return(gasCap)
+	mockBackend.EXPECT().ChainConfig(idx.Block(baseBlock.Number.Uint64())).Return(chainConfig)
 	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0))
 
 	return &simulateV1Helper{
