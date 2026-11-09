@@ -17,12 +17,14 @@
 package txtrace
 
 import (
+	"bytes"
 	"math/big"
 
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/tracing"
-	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/holiman/uint256"
 )
 
 // TraceCallResult is the result structure for trace_call RPC.
@@ -42,7 +44,7 @@ type StateDiff map[common.Address]*StateDiffAccount
 //   - "=" string: no change
 //   - {"*": StateDiffBalance/Nonce/Code} map: changed (persisting accounts)
 //   - {"+": value} map: created/born (new account or new storage slot in born account)
-//   - {"-": value} map: deleted/died (self-destructed account)
+//   - {"-": value} map: deleted/died (account existed before but not after)
 type StateDiffAccount struct {
 	Balance any                 `json:"balance"`
 	Code    any                 `json:"code"`
@@ -74,324 +76,156 @@ type StateDiffStorage struct {
 	To   common.Hash `json:"to"`
 }
 
-// StateDiffLogger captures account state changes during EVM execution using tracing hooks.
-// Use Hooks() with evmstore.WrapStateDbWithLogger to capture state changes.
+// StateDiffLogger wraps a StateDB to capture the state diff of a transaction.
+// It records each account and storage slot as it was before its first
+// modification, and GetResult compares them with the state after the
+// transaction.
 type StateDiffLogger struct {
-	balances       map[common.Address]*balanceDiff
-	nonces         map[common.Address]*nonceDiff
-	codes          map[common.Address]*codeDiff
-	storage        map[common.Address]map[common.Hash]*storageDiff
-	selfDestructed map[common.Address]struct{} // tracks self-destructed (died) accounts
+	state.StateDB
+	accounts map[common.Address]*accountState
+	storage  map[common.Address]map[common.Hash]common.Hash
 }
 
-type balanceDiff struct {
-	before *big.Int
-	after  *big.Int
+type accountState struct {
+	exists  bool
+	balance *big.Int
+	nonce   uint64
+	code    []byte
 }
 
-type nonceDiff struct {
-	before uint64
-	after  uint64
-}
-
-type codeDiff struct {
-	before []byte
-	after  []byte
-}
-
-type storageDiff struct {
-	before common.Hash
-	after  common.Hash
-}
-
-// NewStateDiffLogger creates a new StateDiffLogger.
-func NewStateDiffLogger() *StateDiffLogger {
+func NewStateDiffLogger(db state.StateDB) *StateDiffLogger {
 	return &StateDiffLogger{
-		balances:       make(map[common.Address]*balanceDiff),
-		nonces:         make(map[common.Address]*nonceDiff),
-		codes:          make(map[common.Address]*codeDiff),
-		storage:        make(map[common.Address]map[common.Hash]*storageDiff),
-		selfDestructed: make(map[common.Address]struct{}),
+		StateDB:  db,
+		accounts: make(map[common.Address]*accountState),
+		storage:  make(map[common.Address]map[common.Hash]common.Hash),
 	}
 }
 
-// Hooks returns the tracing hooks for the StateDiffLogger.
-// The hooks track balance, nonce, code, and storage changes.
-func (s *StateDiffLogger) Hooks() *tracing.Hooks {
-	return &tracing.Hooks{
-		OnBalanceChange: s.onBalanceChange,
-		OnNonceChange:   s.onNonceChange,
-		OnCodeChange:    s.onCodeChange,
-		OnStorageChange: s.onStorageChange,
-	}
+func (s *StateDiffLogger) CreateAccount(addr common.Address) {
+	s.touch(addr)
+	s.StateDB.CreateAccount(addr)
 }
 
-func (s *StateDiffLogger) onBalanceChange(addr common.Address, prev, newBal *big.Int, reason tracing.BalanceChangeReason) {
-	prevCopy := new(big.Int)
-	if prev != nil {
-		prevCopy.Set(prev)
-	}
-	newCopy := new(big.Int)
-	if newBal != nil {
-		newCopy.Set(newBal)
-	}
-
-	// Track self-destructed accounts to show them as "died" in the diff.
-	if reason == tracing.BalanceDecreaseSelfdestruct || reason == tracing.BalanceDecreaseSelfdestructBurn {
-		s.selfDestructed[addr] = struct{}{}
-	}
-
-	if existing, ok := s.balances[addr]; ok {
-		existing.after = newCopy
-	} else {
-		s.balances[addr] = &balanceDiff{before: prevCopy, after: newCopy}
-	}
+func (s *StateDiffLogger) CreateContract(addr common.Address) {
+	s.touch(addr)
+	s.StateDB.CreateContract(addr)
 }
 
-func (s *StateDiffLogger) onNonceChange(addr common.Address, prev, newNonce uint64) {
-	if existing, ok := s.nonces[addr]; ok {
-		existing.after = newNonce
-	} else {
-		s.nonces[addr] = &nonceDiff{before: prev, after: newNonce}
-	}
+func (s *StateDiffLogger) AddBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
+	s.touch(addr)
+	return s.StateDB.AddBalance(addr, amount, reason)
 }
 
-func (s *StateDiffLogger) onCodeChange(addr common.Address, _ common.Hash, prevCode []byte, _ common.Hash, newCode []byte) {
-	prevCopy := make([]byte, len(prevCode))
-	copy(prevCopy, prevCode)
-	newCopy := make([]byte, len(newCode))
-	copy(newCopy, newCode)
-	if existing, ok := s.codes[addr]; ok {
-		existing.after = newCopy
-	} else {
-		s.codes[addr] = &codeDiff{before: prevCopy, after: newCopy}
-	}
+func (s *StateDiffLogger) SubBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
+	s.touch(addr)
+	return s.StateDB.SubBalance(addr, amount, reason)
 }
 
-func (s *StateDiffLogger) onStorageChange(addr common.Address, slot common.Hash, prev, newVal common.Hash) {
+func (s *StateDiffLogger) SetNonce(addr common.Address, nonce uint64, reason tracing.NonceChangeReason) {
+	s.touch(addr)
+	s.StateDB.SetNonce(addr, nonce, reason)
+}
+
+func (s *StateDiffLogger) SetCode(addr common.Address, code []byte, reason tracing.CodeChangeReason) []byte {
+	s.touch(addr)
+	return s.StateDB.SetCode(addr, code, reason)
+}
+
+func (s *StateDiffLogger) SetState(addr common.Address, slot common.Hash, value common.Hash) common.Hash {
+	s.touch(addr)
+	prev := s.StateDB.SetState(addr, slot, value)
 	if s.storage[addr] == nil {
-		s.storage[addr] = make(map[common.Hash]*storageDiff)
+		s.storage[addr] = make(map[common.Hash]common.Hash)
 	}
-	if existing, ok := s.storage[addr][slot]; ok {
-		existing.after = newVal
-	} else {
-		s.storage[addr][slot] = &storageDiff{before: prev, after: newVal}
+	if _, ok := s.storage[addr][slot]; !ok {
+		s.storage[addr][slot] = prev
+	}
+	return prev
+}
+
+func (s *StateDiffLogger) SelfDestruct(addr common.Address) {
+	s.touch(addr)
+	s.StateDB.SelfDestruct(addr)
+}
+
+func (s *StateDiffLogger) touch(addr common.Address) {
+	if _, ok := s.accounts[addr]; !ok {
+		s.accounts[addr] = s.readAccount(addr)
 	}
 }
 
-// OnEnter is called by the EVM for each call frame entry.
-// It tracks SELFDESTRUCT opcodes to correctly identify accounts that die,
-// even when the state is in read-only mode (where LoggingStateDB.SelfDestruct is never called).
-func (s *StateDiffLogger) OnEnter(_ int, typ byte, from common.Address, _ common.Address, _ []byte, _ uint64, _ *big.Int) {
-	if vm.OpCode(typ) == vm.SELFDESTRUCT {
-		s.selfDestructed[from] = struct{}{}
+func (s *StateDiffLogger) readAccount(addr common.Address) *accountState {
+	return &accountState{
+		exists:  s.Exist(addr),
+		balance: s.GetBalance(addr).ToBig(),
+		nonce:   s.GetNonce(addr),
+		code:    bytes.Clone(s.GetCode(addr)),
 	}
 }
 
-// GetResult returns the StateDiff capturing all state changes recorded so far.
-// Produces output compatible with Erigon's stateDiff format:
-//   - Persisting accounts: "=" for unchanged, {"*": {from, to}} for changed fields
-//   - Born (new) accounts: {"+" : value} for all fields, {"+" : slot_value} for storage
-//   - Died (self-destructed) accounts: {"-": value} for all fields
+// GetResult compares the modified accounts with their current state and
+// returns the diff in Erigon's stateDiff format:
+//   - Persisting accounts: "=" for unchanged, {"*": {from, to}} for changed fields;
+//     left out if nothing changed
+//   - Born accounts: {"+": value} for all fields and storage slots
+//   - Died accounts: {"-": value} for all fields
+//
+// It must be called after the transaction has ended.
 func (s *StateDiffLogger) GetResult() StateDiff {
-	// Collect all changed addresses.
-	addrs := make(map[common.Address]struct{})
-	for addr := range s.balances {
-		addrs[addr] = struct{}{}
-	}
-	for addr := range s.nonces {
-		addrs[addr] = struct{}{}
-	}
-	for addr := range s.codes {
-		addrs[addr] = struct{}{}
-	}
-	for addr := range s.storage {
-		addrs[addr] = struct{}{}
-	}
-
 	diff := make(StateDiff)
-	for addr := range addrs {
-		account := &StateDiffAccount{
-			Storage: make(map[common.Hash]any),
-		}
-
-		_, died := s.selfDestructed[addr]
-		existedBefore := s.accountExistedBefore(addr)
-
-		// Account created and self-destructed in same tx: exclude entirely from diff.
-		if died && !existedBefore {
-			continue
-		}
-
-		born := !died && !existedBefore
-
+	for addr, before := range s.accounts {
+		after := s.readAccount(addr)
 		switch {
-		case died:
-			// Self-destructed account: show pre-death values with "-" operator.
-			account.Balance = s.diedBalanceDiff(addr)
-			account.Code = s.diedCodeDiff(addr)
-			account.Nonce = s.diedNonceDiff(addr)
-			// Storage changes that happened before death keep "*" format.
-			if storageChanges, ok := s.storage[addr]; ok {
-				for slot, sc := range storageChanges {
-					account.Storage[slot] = map[string]any{
-						"*": &StateDiffStorage{From: sc.before, To: sc.after},
-					}
-				}
+		case before.exists && after.exists:
+			storage := s.storageDiff(addr, false)
+			sameBalance := before.balance.Cmp(after.balance) == 0
+			sameCode := bytes.Equal(before.code, after.code)
+			sameNonce := before.nonce == after.nonce
+			if sameBalance && sameCode && sameNonce && len(storage) == 0 {
+				continue
 			}
-
-		case born:
-			// Newly created account: show post-creation values with "+" operator.
-			account.Balance = s.bornBalanceDiff(addr)
-			account.Code = s.bornCodeDiff(addr)
-			account.Nonce = s.bornNonceDiff(addr)
-			// For born accounts, storage shows only the final value with "+".
-			if storageChanges, ok := s.storage[addr]; ok {
-				for slot, sc := range storageChanges {
-					account.Storage[slot] = map[string]any{"+": sc.after}
-				}
+			diff[addr] = &StateDiffAccount{
+				Balance: fieldDiff(sameBalance, &StateDiffBalance{From: (*hexutil.Big)(before.balance), To: (*hexutil.Big)(after.balance)}),
+				Code:    fieldDiff(sameCode, &StateDiffCode{From: before.code, To: after.code}),
+				Nonce:   fieldDiff(sameNonce, &StateDiffNonce{From: hexutil.Uint64(before.nonce), To: hexutil.Uint64(after.nonce)}),
+				Storage: storage,
 			}
-
-		default:
-			// Persisting account: use "=" for unchanged, {"*": {from, to}} for changed.
-			if bc, ok := s.balances[addr]; ok {
-				if bc.before.Cmp(bc.after) == 0 {
-					account.Balance = "="
-				} else {
-					account.Balance = map[string]any{
-						"*": &StateDiffBalance{
-							From: (*hexutil.Big)(bc.before),
-							To:   (*hexutil.Big)(bc.after),
-						},
-					}
-				}
-			} else {
-				account.Balance = "="
-			}
-
-			if nc, ok := s.nonces[addr]; ok {
-				if nc.before == nc.after {
-					account.Nonce = "="
-				} else {
-					account.Nonce = map[string]any{
-						"*": &StateDiffNonce{
-							From: hexutil.Uint64(nc.before),
-							To:   hexutil.Uint64(nc.after),
-						},
-					}
-				}
-			} else {
-				account.Nonce = "="
-			}
-
-			if cc, ok := s.codes[addr]; ok {
-				if string(cc.before) == string(cc.after) {
-					account.Code = "="
-				} else {
-					account.Code = map[string]any{
-						"*": &StateDiffCode{
-							From: hexutil.Bytes(cc.before),
-							To:   hexutil.Bytes(cc.after),
-						},
-					}
-				}
-			} else {
-				account.Code = "="
-			}
-
-			// Persisting account storage: always use "*" with from/to pair
-			// (even for zero→nonzero slots, matching Erigon's format).
-			if storageChanges, ok := s.storage[addr]; ok {
-				for slot, sc := range storageChanges {
-					account.Storage[slot] = map[string]any{
-						"*": &StateDiffStorage{From: sc.before, To: sc.after},
-					}
-				}
-			}
+		case before.exists:
+			diff[addr] = markedAccount("-", before, s.storageDiff(addr, false))
+		case after.exists:
+			diff[addr] = markedAccount("+", after, s.storageDiff(addr, true))
 		}
-
-		diff[addr] = account
 	}
 	return diff
 }
 
-// accountExistedBefore returns true if the account existed before this transaction,
-// inferred from the "before" values captured at the time of the first state change.
-// An account is considered non-existent (dead) if its nonce, balance, and code
-// were all zero/empty — matching Ethereum's EIP-161 empty account definition.
-// A storage-only change (no balance/nonce/code hooks) implies a pre-existing contract.
-func (s *StateDiffLogger) accountExistedBefore(addr common.Address) bool {
-	if bc, ok := s.balances[addr]; ok && bc.before.Sign() > 0 {
-		return true
+func markedAccount(marker string, account *accountState, storage map[common.Hash]any) *StateDiffAccount {
+	return &StateDiffAccount{
+		Balance: map[string]any{marker: (*hexutil.Big)(account.balance)},
+		Code:    map[string]any{marker: hexutil.Bytes(account.code)},
+		Nonce:   map[string]any{marker: hexutil.Uint64(account.nonce)},
+		Storage: storage,
 	}
-	if nc, ok := s.nonces[addr]; ok && nc.before > 0 {
-		return true
-	}
-	if cc, ok := s.codes[addr]; ok && len(cc.before) > 0 {
-		return true
-	}
-	// Storage-only changes (no balance/nonce/code hooks) means the account
-	// already existed as a contract with code but no other field changed.
-	_, hasStorage := s.storage[addr]
-	_, hasBalance := s.balances[addr]
-	_, hasNonce := s.nonces[addr]
-	_, hasCode := s.codes[addr]
-	if hasStorage && !hasBalance && !hasNonce && !hasCode {
-		return true
-	}
-	return false
 }
 
-// diedBalanceDiff returns the "{-: before_balance}" marker for a self-destructed account.
-func (s *StateDiffLogger) diedBalanceDiff(addr common.Address) any {
-	before := new(big.Int)
-	if bc, ok := s.balances[addr]; ok {
-		before = bc.before
+func (s *StateDiffLogger) storageDiff(addr common.Address, born bool) map[common.Hash]any {
+	diff := make(map[common.Hash]any)
+	for slot, before := range s.storage[addr] {
+		after := s.GetState(addr, slot)
+		switch {
+		case before == after:
+		case born:
+			diff[slot] = map[string]any{"+": after}
+		default:
+			diff[slot] = map[string]any{"*": &StateDiffStorage{From: before, To: after}}
+		}
 	}
-	return map[string]any{"-": (*hexutil.Big)(before)}
+	return diff
 }
 
-// diedCodeDiff returns the "{-: before_code}" marker for a self-destructed account.
-func (s *StateDiffLogger) diedCodeDiff(addr common.Address) any {
-	var before []byte
-	if cc, ok := s.codes[addr]; ok {
-		before = cc.before
+func fieldDiff(same bool, change any) any {
+	if same {
+		return "="
 	}
-	return map[string]any{"-": hexutil.Bytes(before)}
-}
-
-// diedNonceDiff returns the "{-: before_nonce}" marker for a self-destructed account.
-func (s *StateDiffLogger) diedNonceDiff(addr common.Address) any {
-	var before uint64
-	if nc, ok := s.nonces[addr]; ok {
-		before = nc.before
-	}
-	return map[string]any{"-": hexutil.Uint64(before)}
-}
-
-// bornBalanceDiff returns the "{+: after_balance}" marker for a newly created account.
-func (s *StateDiffLogger) bornBalanceDiff(addr common.Address) any {
-	after := new(big.Int)
-	if bc, ok := s.balances[addr]; ok {
-		after = bc.after
-	}
-	return map[string]any{"+": (*hexutil.Big)(after)}
-}
-
-// bornCodeDiff returns the "{+: after_code}" marker for a newly created account.
-func (s *StateDiffLogger) bornCodeDiff(addr common.Address) any {
-	var after []byte
-	if cc, ok := s.codes[addr]; ok {
-		after = cc.after
-	}
-	return map[string]any{"+": hexutil.Bytes(after)}
-}
-
-// bornNonceDiff returns the "{+: after_nonce}" marker for a newly created account.
-func (s *StateDiffLogger) bornNonceDiff(addr common.Address) any {
-	var after uint64
-	if nc, ok := s.nonces[addr]; ok {
-		after = nc.after
-	}
-	return map[string]any{"+": hexutil.Uint64(after)}
+	return map[string]any{"*": change}
 }

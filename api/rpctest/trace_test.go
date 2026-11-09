@@ -18,8 +18,11 @@ package rpctest
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/big"
+	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -223,4 +226,222 @@ func Test_TraceFilter_ZeroLimitMeansUnlimited(t *testing.T) {
 	require.NoError(t, err)
 	require.JSONEq(t, "[]", string(res))
 	require.EqualValues(t, head+1, be.reads.Load())
+}
+
+func Test_TraceCall_StateDiff(t *testing.T) {
+	sender := common.Address{0x5e}
+	contract := common.Address{0xc0}
+	beneficiary := common.Address{0xbe}
+	reverter := common.Address{0xee}
+	drained := common.Address{0xd0}
+	factory := common.Address{0xfa}
+	child := crypto.CreateAddress(factory, 1)
+
+	selfDestructTo := func(addr common.Address) []byte {
+		return slices.Concat([]byte{0x73}, addr[:], []byte{0xff})
+	}
+	// Calls the address given as first calldata word, then reverts.
+	reverterCode := []byte{
+		0x60, 0x00, 0x60, 0x00, 0x60, 0x00, 0x60, 0x00, 0x60, 0x00,
+		0x60, 0x00, 0x35, 0x5a, 0xf1, 0x50,
+		0x60, 0x00, 0x60, 0x00, 0xfd,
+	}
+	// The factory creates a child with runtime code CALLER SELFDESTRUCT, then
+	// calls the reverter with the child's address.
+	childInitCode := []byte{0x61, 0x33, 0xff, 0x60, 0x00, 0x52, 0x60, 0x02, 0x60, 0x1e, 0xf3}
+	factoryCode := slices.Concat(
+		[]byte{0x6a}, childInitCode,
+		[]byte{0x60, 0x00, 0x52, 0x60, 0x0b, 0x60, 0x15, 0x60, 0x00, 0xf0, 0x60, 0x00, 0x52},
+		[]byte{0x60, 0x00, 0x60, 0x00, 0x60, 0x20, 0x60, 0x00, 0x60, 0x00, 0x73}, reverter[:],
+		[]byte{0x5a, 0xf1, 0x50, 0x00},
+	)
+
+	const senderNonceOnly = `"0x5e00000000000000000000000000000000000000": {
+		"balance": "=", "code": "=", "nonce": {"*": {"from": "0x0", "to": "0x1"}}, "storage": {}
+	}`
+
+	tests := map[string]struct {
+		accounts map[common.Address]AccountState
+		to       *common.Address
+		value    int64
+		data     []byte
+		want     string
+	}{
+		"value to a new account": {
+			to:    &beneficiary,
+			value: 1,
+			want: `{
+				"0x5e00000000000000000000000000000000000000": {
+					"balance": {"*": {"from": "0x64", "to": "0x63"}}, "code": "=", "nonce": {"*": {"from": "0x0", "to": "0x1"}}, "storage": {}
+				},
+				"0xbe00000000000000000000000000000000000000": {
+					"balance": {"+": "0x1"}, "code": {"+": "0x"}, "nonce": {"+": "0x0"}, "storage": {}
+				}
+			}`,
+		},
+		"deployment": {
+			data: []byte{0x60, 0x01, 0x60, 0x00, 0x55, 0x60, 0x01, 0x60, 0x00, 0xf3},
+			want: `{` + senderNonceOnly + `,
+				"` + strings.ToLower(crypto.CreateAddress(sender, 0).Hex()) + `": {
+					"balance": {"+": "0x0"}, "code": {"+": "0x00"}, "nonce": {"+": "0x1"}, "storage": {
+						"0x0000000000000000000000000000000000000000000000000000000000000000": {
+							"+": "0x0000000000000000000000000000000000000000000000000000000000000001"
+						}
+					}
+				}
+			}`,
+		},
+		"contract created and destroyed in the same transaction": {
+			value: 3,
+			data:  selfDestructTo(beneficiary),
+			want: `{
+				"0x5e00000000000000000000000000000000000000": {
+					"balance": {"*": {"from": "0x64", "to": "0x61"}}, "code": "=", "nonce": {"*": {"from": "0x0", "to": "0x1"}}, "storage": {}
+				},
+				"0xbe00000000000000000000000000000000000000": {
+					"balance": {"+": "0x3"}, "code": {"+": "0x"}, "nonce": {"+": "0x0"}, "storage": {}
+				}
+			}`,
+		},
+		"value to an existing contract with zero balance": {
+			accounts: map[common.Address]AccountState{
+				contract: {Nonce: 1, Code: []byte{0x00}},
+			},
+			to:    &contract,
+			value: 1,
+			want: `{
+				"0x5e00000000000000000000000000000000000000": {
+					"balance": {"*": {"from": "0x64", "to": "0x63"}}, "code": "=", "nonce": {"*": {"from": "0x0", "to": "0x1"}}, "storage": {}
+				},
+				"0xc000000000000000000000000000000000000000": {
+					"balance": {"*": {"from": "0x0", "to": "0x1"}}, "code": "=", "nonce": "=", "storage": {}
+				}
+			}`,
+		},
+		"value to a drained account": {
+			accounts: map[common.Address]AccountState{
+				drained: {Nonce: 1},
+			},
+			to:    &drained,
+			value: 1,
+			want: `{
+				"0x5e00000000000000000000000000000000000000": {
+					"balance": {"*": {"from": "0x64", "to": "0x63"}}, "code": "=", "nonce": {"*": {"from": "0x0", "to": "0x1"}}, "storage": {}
+				},
+				"0xd000000000000000000000000000000000000000": {
+					"balance": {"*": {"from": "0x0", "to": "0x1"}}, "code": "=", "nonce": "=", "storage": {}
+				}
+			}`,
+		},
+		"selfdestruct of an existing contract": {
+			accounts: map[common.Address]AccountState{
+				contract: {Nonce: 1, Balance: big.NewInt(5), Code: selfDestructTo(beneficiary)},
+			},
+			to: &contract,
+			want: `{` + senderNonceOnly + `,
+				"0xc000000000000000000000000000000000000000": {
+					"balance": {"*": {"from": "0x5", "to": "0x0"}}, "code": "=", "nonce": "=", "storage": {}
+				},
+				"0xbe00000000000000000000000000000000000000": {
+					"balance": {"+": "0x5"}, "code": {"+": "0x"}, "nonce": {"+": "0x0"}, "storage": {}
+				}
+			}`,
+		},
+		"selfdestruct of an existing contract to itself after a storage write": {
+			accounts: map[common.Address]AccountState{
+				contract: {Nonce: 1, Balance: big.NewInt(5), Code: []byte{0x60, 0x01, 0x60, 0x00, 0x55, 0x30, 0xff}},
+			},
+			to: &contract,
+			want: `{` + senderNonceOnly + `,
+				"0xc000000000000000000000000000000000000000": {
+					"balance": "=", "code": "=", "nonce": "=", "storage": {
+						"0x0000000000000000000000000000000000000000000000000000000000000000": {"*": {
+							"from": "0x0000000000000000000000000000000000000000000000000000000000000000",
+							"to": "0x0000000000000000000000000000000000000000000000000000000000000001"
+						}}
+					}
+				}
+			}`,
+		},
+		"storage write and value transfer in a reverted call": {
+			accounts: map[common.Address]AccountState{
+				contract: {Nonce: 1, Code: []byte{0x60, 0x01, 0x60, 0x00, 0x55, 0x60, 0x00, 0x60, 0x00, 0xfd}},
+			},
+			to:    &contract,
+			value: 7,
+			want:  `{` + senderNonceOnly + `}`,
+		},
+		"creation with a reverting constructor": {
+			value: 3,
+			data:  []byte{0x60, 0x00, 0x60, 0x00, 0xfd},
+			want:  `{` + senderNonceOnly + `}`,
+		},
+		"selfdestruct of an existing contract in a reverted call": {
+			accounts: map[common.Address]AccountState{
+				contract: {Nonce: 1, Balance: big.NewInt(5), Code: selfDestructTo(beneficiary)},
+				reverter: {Nonce: 1, Code: reverterCode},
+			},
+			to:   &reverter,
+			data: common.LeftPadBytes(contract[:], 32),
+			want: `{` + senderNonceOnly + `}`,
+		},
+		"selfdestruct of a new contract in a reverted call": {
+			accounts: map[common.Address]AccountState{
+				factory:  {Nonce: 1, Code: factoryCode},
+				reverter: {Nonce: 1, Code: reverterCode},
+			},
+			to: &factory,
+			want: `{` + senderNonceOnly + `,
+				"0xfa00000000000000000000000000000000000000": {
+					"balance": "=", "code": "=", "nonce": {"*": {"from": "0x1", "to": "0x2"}}, "storage": {}
+				},
+				"` + strings.ToLower(child.Hex()) + `": {
+					"balance": {"+": "0x0"}, "code": {"+": "0x33ff"}, "nonce": {"+": "0x1"}, "storage": {}
+				}
+			}`,
+		},
+		"storage slot written back to its original value": {
+			accounts: map[common.Address]AccountState{
+				contract: {Nonce: 1, Code: []byte{0x60, 0x01, 0x60, 0x00, 0x55, 0x60, 0x00, 0x60, 0x00, 0x55, 0x00}},
+			},
+			to:   &contract,
+			want: `{` + senderNonceOnly + `}`,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			builder := NewBackendBuilder(t).
+				WithAccount(sender, AccountState{Balance: big.NewInt(100)}).
+				WithBlockHistory([]Block{
+					{Number: 1, Hash: common.HexToHash("0x1")},
+					{Number: 2, Hash: common.HexToHash("0x2"), ParentHash: common.HexToHash("0x1"), PrevRandao: common.HexToHash("0x42")},
+				})
+			for addr, account := range tt.accounts {
+				builder = builder.WithAccount(addr, account)
+			}
+			api := ethapi.NewPublicTxTraceAPI(builder.Build(), 100_000, 1000)
+
+			for _, traceTypes := range [][]string{{"stateDiff"}, {"trace", "stateDiff", "vmTrace"}} {
+				res, err := api.Call(
+					t.Context(),
+					ethapi.TransactionArgs{
+						From:  &sender,
+						To:    tt.to,
+						Gas:   ToHexUint64(1_000_000),
+						Value: ToHexBigInt(big.NewInt(tt.value)),
+						Data:  ToHexBytes(tt.data),
+					},
+					traceTypes,
+					rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
+					nil,
+				)
+				require.NoError(t, err)
+
+				got, err := json.Marshal(res.StateDiff)
+				require.NoError(t, err)
+				require.JSONEq(t, tt.want, string(got), "trace types %v", traceTypes)
+			}
+		})
+	}
 }
