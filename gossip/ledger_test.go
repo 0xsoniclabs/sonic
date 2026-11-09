@@ -458,7 +458,7 @@ func TestExecutingBlock_Finalize_AppliesSonicMainnetGasLimitException(t *testing
 			evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
 			evmProcessor.EXPECT().Finalize().Return(&evmcore.EvmBlock{
 				EvmHeader: evmcore.EvmHeader{BaseFee: big.NewInt(0)},
-			}, 0, types.Receipts{})
+			}, 0, types.Receipts{}, nil)
 
 			executing := &executingBlock{
 				number:       test.number,
@@ -475,7 +475,9 @@ func TestExecutingBlock_Finalize_AppliesSonicMainnetGasLimitException(t *testing
 				},
 			}
 
-			candidate := executing.Finalize().Candidate()
+			finalized, err := executing.Finalize()
+			require.NoError(t, err)
+			candidate := finalized.Candidate()
 			require.Equal(t, test.want, candidate.Block.GasLimit)
 		})
 	}
@@ -489,14 +491,16 @@ func TestExecutingBlock_Finalize_AssemblesBlockFromExecutionResults(t *testing.T
 		Root:    common.Hash{1},
 		GasUsed: 2,
 		BaseFee: big.NewInt(3),
-	}}, 4, receipts)
+	}}, 4, receipts, nil)
 
 	executing := &executingBlock{
 		evmProcessor: evmProcessor,
 		blockBuilder: inter.NewBlockBuilder().WithTime(inter.Timestamp(5 * time.Second)).WithDuration(6),
 	}
 
-	candidate := executing.Finalize().Candidate()
+	finalized, err := executing.Finalize()
+	require.NoError(t, err)
+	candidate := finalized.Candidate()
 	block := candidate.Block
 	require.Equal(t, common.Hash{1}, block.StateRoot)
 	require.Equal(t, uint64(2), block.GasUsed)
@@ -514,20 +518,35 @@ func TestExecutingBlock_Finalize_AssemblesBlockFromExecutionResults(t *testing.T
 	}
 }
 
+func TestExecutingBlock_Finalize_ForwardsErrorOfEvmProcessorAndKeepsBlockInProgress(t *testing.T) {
+	injectedErr := errors.New("injected error")
+	evmProcessor := blockproc.NewMockEVMProcessor(gomock.NewController(t))
+	evmProcessor.EXPECT().Finalize().Return(nil, 0, nil, injectedErr)
+	l := &ledger{}
+	l.blockInProgress.Store(true)
+	executing := &executingBlock{ledger: l, evmProcessor: evmProcessor, blockBuilder: inter.NewBlockBuilder()}
+
+	finalized, err := executing.Finalize()
+	require.ErrorIs(t, err, injectedErr)
+	require.Nil(t, finalized)
+	require.True(t, l.blockInProgress.Load())
+}
+
 func TestExecutingBlock_AfterFinalize_Panics(t *testing.T) {
 	tests := map[string]func(ExecutingBlock){
 		"stateDB":     func(executing ExecutingBlock) { executing.stateDB() },
 		"Run":         func(executing ExecutingBlock) { executing.Run(nil) },
 		"runInternal": func(executing ExecutingBlock) { executing.runInternal(nil) },
-		"Finalize":    func(executing ExecutingBlock) { executing.Finalize() },
+		"Finalize":    func(executing ExecutingBlock) { _, _ = executing.Finalize() },
 	}
 
 	for name, call := range tests {
 		t.Run(name, func(t *testing.T) {
 			evmProcessor := blockproc.NewMockEVMProcessor(gomock.NewController(t))
-			evmProcessor.EXPECT().Finalize().Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{BaseFee: big.NewInt(0)}}, 0, nil)
+			evmProcessor.EXPECT().Finalize().Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{BaseFee: big.NewInt(0)}}, 0, nil, nil)
 			executing := &executingBlock{evmProcessor: evmProcessor, blockBuilder: inter.NewBlockBuilder()}
-			executing.Finalize()
+			_, err := executing.Finalize()
+			require.NoError(t, err)
 
 			require.PanicsWithValue(t, "executing block already consumed", func() { call(executing) })
 		})
@@ -539,11 +558,13 @@ func TestExecutingBlock_FinalizeAndCommit_KeepTheStartTime(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, store.Close()) })
 	evmProcessor := blockproc.NewMockEVMProcessor(gomock.NewController(t))
-	evmProcessor.EXPECT().Finalize().Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{TxHash: common.Hash{1}, BaseFee: big.NewInt(0)}}, 0, nil)
+	evmProcessor.EXPECT().Finalize().Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{TxHash: common.Hash{1}, BaseFee: big.NewInt(0)}}, 0, nil, nil)
 	start := time.Unix(1, 0)
 	executing := &executingBlock{ledger: &ledger{store: store}, evmProcessor: evmProcessor, blockBuilder: inter.NewBlockBuilder(), start: start}
 
-	committed := executing.Finalize().Commit()
+	finalized, err := executing.Finalize()
+	require.NoError(t, err)
+	committed := finalized.Commit()
 
 	require.Equal(t, start, committed.(*committedBlock).start)
 }
