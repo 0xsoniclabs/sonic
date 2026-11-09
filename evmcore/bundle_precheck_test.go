@@ -721,6 +721,7 @@ func Test_trialRunBundleInternal_RejectsBundlesWhereEfficiencyIsBelowThreshold(t
 			any := gomock.Any()
 
 			processor := NewMocktransactionProcessor(ctrl)
+			processor.EXPECT().Release()
 			processor.EXPECT().Run(any, any).Return(
 				ProcessSummary{
 					ProcessedTransactions: tc.processedTxs,
@@ -860,6 +861,7 @@ func Test_trialRunBundleInternal_CreatesSnapshotAndRevertsAfterExecution(t *test
 
 	any := gomock.Any()
 	processor := NewMocktransactionProcessor(ctrl)
+	processor.EXPECT().Release()
 	processor.EXPECT().Run(any, any)
 
 	factory := NewMocktransactionProcessorFactory(ctrl)
@@ -909,6 +911,7 @@ func Test_trialRunBundleInternal_UsesRandomSourceToFillPrevRandao(t *testing.T) 
 
 			any := gomock.Any()
 			processor := NewMocktransactionProcessor(ctrl)
+			processor.EXPECT().Release()
 			processor.EXPECT().Run(any, any)
 
 			factory := NewMocktransactionProcessorFactory(ctrl)
@@ -977,6 +980,7 @@ func Test_trialRunBundleInternal_DerivesHeaderFieldsFromChainState(t *testing.T)
 
 	any := gomock.Any()
 	processor := NewMocktransactionProcessor(ctrl)
+	processor.EXPECT().Release()
 	processor.EXPECT().Run(any, any)
 
 	factory := NewMocktransactionProcessorFactory(ctrl)
@@ -1019,6 +1023,7 @@ func Test_trialRunBundleInternal_ForwardsEnvelopeToProcessor(t *testing.T) {
 
 	any := gomock.Any()
 	processor := NewMocktransactionProcessor(ctrl)
+	processor.EXPECT().Release()
 	processor.EXPECT().Run(0, myEnvelope) // < test target
 
 	factory := NewMocktransactionProcessorFactory(ctrl)
@@ -1029,6 +1034,31 @@ func Test_trialRunBundleInternal_ForwardsEnvelopeToProcessor(t *testing.T) {
 	db.EXPECT().RevertToInterTxSnapshot(any)
 
 	trialRunBundleInternal(myEnvelope, chainState, db, factory, rand.Read, evaluatedBundlesCounter, evaluatedBundlesExecutionCostCounter)
+}
+
+func Test_trialRunBundleInternal_ReleasesProcessorAfterRun(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	chainState := NewMockChainStateForBundleEval(ctrl)
+	chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+		Number: big.NewInt(0),
+	})
+
+	any := gomock.Any()
+	processor := NewMocktransactionProcessor(ctrl)
+	gomock.InOrder(
+		processor.EXPECT().Run(any, any),
+		processor.EXPECT().Release(),
+	)
+
+	factory := NewMocktransactionProcessorFactory(ctrl)
+	factory.EXPECT().newTransactionProcessor(any, any, any).Return(processor)
+
+	db := state.NewMockStateDB(ctrl)
+	db.EXPECT().InterTxSnapshot()
+	db.EXPECT().RevertToInterTxSnapshot(any)
+
+	trialRunBundleInternal(nil, chainState, db, factory, rand.Read, evaluatedBundlesCounter, evaluatedBundlesExecutionCostCounter)
 }
 
 func Test_trialRunBundleInternal_UsesPresentsOfReceiptToDecideResult(t *testing.T) {
@@ -1074,6 +1104,7 @@ func Test_trialRunBundleInternal_UsesPresentsOfReceiptToDecideResult(t *testing.
 
 			any := gomock.Any()
 			processor := NewMocktransactionProcessor(ctrl)
+			processor.EXPECT().Release()
 			processor.EXPECT().Run(any, any).Return(ProcessSummary{
 				ProcessedTransactions: tc.processedTxs,
 				ExecutionCost:         1,
@@ -1401,6 +1432,7 @@ func Test_trialRunBundleInternal_ReturnsCorrectGasEfficiency(t *testing.T) {
 			any := gomock.Any()
 
 			processor := NewMocktransactionProcessor(ctrl)
+			processor.EXPECT().Release()
 			processor.EXPECT().Run(any, any).Return(
 				ProcessSummary{
 					ProcessedTransactions: tc.processedTxs,
@@ -1503,6 +1535,7 @@ func Test_trialRunBundleInternal_IncrementsMetrics(t *testing.T) {
 
 	any := gomock.Any()
 	processor := NewMocktransactionProcessor(ctrl)
+	processor.EXPECT().Release()
 	processor.EXPECT().Run(any, any).Return(ProcessSummary{
 		ProcessedTransactions: []ProcessedTransaction{processedTx},
 		ExecutionCost:         expectedExecCost,

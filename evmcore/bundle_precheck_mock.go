@@ -200,6 +200,18 @@ func (m *MocktransactionProcessor) EXPECT() *MocktransactionProcessorMockRecorde
 	return m.recorder
 }
 
+// Release mocks base method.
+func (m *MocktransactionProcessor) Release() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Release")
+}
+
+// Release indicates an expected call of Release.
+func (mr *MocktransactionProcessorMockRecorder) Release() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Release", reflect.TypeOf((*MocktransactionProcessor)(nil).Release))
+}
+
 // Run mocks base method.
 func (m *MocktransactionProcessor) Run(arg0 int, arg1 *types.Transaction) ProcessSummary {
 	m.ctrl.T.Helper()
