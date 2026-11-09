@@ -385,6 +385,50 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	require.NotNil(t, processed[1].Receipt)
 }
 
+func TestProcess_OversizedInitCodeTakesGasFromThePoolBeforeCanto(t *testing.T) {
+	tests := map[string]struct {
+		upgrades     opera.Upgrades
+		callIncluded bool
+	}{
+		"before Canto": {upgrades: opera.Upgrades{}},
+		"Canto":        {upgrades: opera.Upgrades{Canto: true}, callIncluded: true},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			ctrl := gomock.NewController(t)
+			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, NewMockDummyChain(ctrl), test.upgrades, nil)
+
+			key, err := crypto.GenerateKey()
+			require.NoError(err)
+			signer := types.LatestSignerForChainID(nil)
+			const creationGas = 1_000_000
+			creation := types.MustSignNewTx(key, signer, &types.LegacyTx{
+				Gas: creationGas, Data: make([]byte, opera.SonicBrioMaxInitCodeSize+1),
+			})
+			call := types.MustSignNewTx(key, signer, &types.LegacyTx{
+				To: &common.Address{1}, Gas: params.TxGas,
+			})
+			transactions := []*types.Transaction{creation, call}
+			state := getStateDbMockForTransactions(ctrl, transactions)
+
+			block := &EvmBlock{
+				EvmHeader:    EvmHeader{Number: big.NewInt(1), GasLimit: math.MaxUint64},
+				Transactions: transactions,
+			}
+			maxInitCodeSize := opera.SonicBrioMaxInitCodeSize
+			vmConfig := vm.Config{MaxInitCodeSize: &maxInitCodeSize}
+
+			// The pool only holds the creation's gas limit, so the call fits only if
+			// the skipped creation did not take it.
+			processed := processor.Process(block, state, vmConfig, creationGas, new(uint64), 0, nil, math.MaxUint64).ProcessedTransactions
+			require.Len(processed, 2)
+			require.Nil(processed[0].Receipt)
+			require.Equal(test.callIncluded, processed[1].Receipt != nil)
+		})
+	}
+}
+
 func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainConfig := params.ChainConfig{}
@@ -1057,7 +1101,7 @@ func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 			// this is not relevant. We just want to check if the base fee
 			// configuration flag is updated to match whether the transaction
 			// is internal.
-			_, _, err := applyTransaction(msg, gp, state, nil, tx, nil, evm)
+			_, _, err := applyTransaction(msg, gp, state, nil, tx, nil, evm, opera.Upgrades{})
 			if err == nil {
 				t.Errorf("expected transaction to fail")
 			}
@@ -1074,7 +1118,7 @@ func TestApplyTransaction_FailsForTransactionWithMissingGasPrice(t *testing.T) {
 	stateDb := state.NewMockStateDB(ctrl)
 	stateDb.EXPECT().EndTransaction()
 
-	_, _, err := applyTransaction(&core.Message{}, nil, stateDb, nil, nil, nil, nil)
+	_, _, err := applyTransaction(&core.Message{}, nil, stateDb, nil, nil, nil, nil, opera.Upgrades{})
 	require.ErrorContains(t, err, "failed to create EVM transaction context")
 }
 
@@ -1124,14 +1168,76 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 			gomock.InOrder(
 				state.EXPECT().Snapshot().Return(42).Times(callToSnapshot),
 				state.EXPECT().RevertToSnapshot(42).Times(callToSnapshot),
+				state.EXPECT().GetBalance(msg.From).Return(uint256.NewInt(1000000)),
 				state.EXPECT().EndTransaction(),
 			)
 
 			receipt, gasUsed, err :=
-				applyTransaction(msg, gp, state, blockNumber, types.NewTx(&types.LegacyTx{}), new(uint64), evm)
+				applyTransaction(msg, gp, state, blockNumber, types.NewTx(&types.LegacyTx{}), new(uint64), evm, opera.Upgrades{})
 			require.ErrorContains(t, err, "max initcode size exceeded")
 			require.Nil(t, receipt)
 			require.Equal(t, uint64(0), gasUsed)
+		})
+	}
+}
+
+func TestApplyTransaction_SkippedTransaction_ChargesGasPoolOnlyAfterBalanceCheck(t *testing.T) {
+	call := &common.Address{1}
+	tests := map[string]struct {
+		to          *common.Address
+		balance     uint64
+		pool        uint64
+		upgrades    opera.Upgrades
+		err         error
+		gasBought   bool
+		poolCharged bool
+	}{
+		"insufficient funds": {to: call, balance: 0, pool: 1_000_000, err: core.ErrInsufficientFunds},
+		"intrinsic gas too low": {
+			to: call, balance: 1_000_000, pool: 1_000_000, err: core.ErrIntrinsicGas, gasBought: true, poolCharged: true,
+		},
+		"oversized init code": {
+			balance: 1_000_000, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded, poolCharged: true,
+		},
+		"oversized init code, insufficient funds": {
+			balance: 999, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded,
+		},
+		"oversized init code, exhausted pool": {
+			balance: 1_000_000, pool: 999, err: vm.ErrMaxInitCodeSizeExceeded,
+		},
+		"oversized init code from Canto": {
+			balance: 1_000_000, pool: 1_000_000, upgrades: opera.Upgrades{Canto: true}, err: vm.ErrMaxInitCodeSizeExceeded,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(test.balance)).MaxTimes(1)
+			if test.gasBought {
+				state.EXPECT().SubBalance(gomock.Any(), gomock.Any(), gomock.Any())
+			}
+			state.EXPECT().EndTransaction()
+
+			maxInitCodeSize := 0
+			evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{}, vm.Config{MaxInitCodeSize: &maxInitCodeSize})
+			gp := core.NewGasPool(test.pool)
+			msg := (&core.Message{
+				To:       test.to,
+				GasLimit: 1_000,
+				GasPrice: uint256.NewInt(1),
+				Value:    uint256.NewInt(0),
+				Data:     []byte{0},
+			}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
+
+			_, _, err := applyTransaction(msg, gp, state, nil, types.NewTx(&types.LegacyTx{}), new(uint64), evm, test.upgrades)
+			require.ErrorIs(t, err, test.err)
+
+			want := test.pool
+			if test.poolCharged {
+				want -= msg.GasLimit
+			}
+			require.Equal(t, want, gp.Available(false, params.MaxTxGas))
 		})
 	}
 }
@@ -1209,7 +1315,7 @@ func TestApplyTransaction_SetsEffectiveGasPriceInReceipt(t *testing.T) {
 				GasLimit:  21_000,
 			}
 
-			receipt, _, err := applyTransaction(msg, gp, state, blockNum, tx, &usedGas, evm)
+			receipt, _, err := applyTransaction(msg, gp, state, blockNum, tx, &usedGas, evm, opera.Upgrades{})
 			require.NoError(err)
 
 			require.Equal(price.ToBig(), receipt.EffectiveGasPrice)
@@ -1267,7 +1373,7 @@ func TestApplyTransaction_CollectsLogsFromStateDbIntoReceipt(t *testing.T) {
 		Value:     uint256.NewInt(0),
 	}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
 
-	receipt, _, err := applyTransaction(msg, gp, stateDb, big.NewInt(1), tx, &usedGas, evmInstance)
+	receipt, _, err := applyTransaction(msg, gp, stateDb, big.NewInt(1), tx, &usedGas, evmInstance, opera.Upgrades{})
 	require.NoError(t, err)
 	require.Equal(t, expectedLogs, receipt.Logs)
 }
