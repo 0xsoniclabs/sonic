@@ -285,21 +285,13 @@ func testSkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t *testin
 		}
 	}
 
-	// Make sure the skipped transaction was included in the block by checking the balance of the sender.
 	balanceBefore, err := client.BalanceAt(t.Context(), senderSkipped.Address(), big.NewInt(int64(before)))
 	require.NoError(t, err)
 	balanceAfter, err := client.BalanceAt(t.Context(), senderSkipped.Address(), big.NewInt(int64(after)))
 	require.NoError(t, err)
-
-	if !upgrades.Allegro {
-		require.Greater(t, balanceBefore.Uint64(), balanceAfter.Uint64(),
-			"Balance should have decreased",
-		)
-	} else {
-		require.Equal(t, balanceBefore.Uint64(), balanceAfter.Uint64(),
-			"Balance should remain unchanged",
-		)
-	}
+	require.Equal(t, balanceBefore.Uint64(), balanceAfter.Uint64(),
+		"Balance should remain unchanged",
+	)
 
 	require.Greater(t, after, before, "Block number should have increased")
 
