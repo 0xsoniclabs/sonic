@@ -2344,6 +2344,48 @@ func TestAccessList_StopsWhenContextIsCancelled(t *testing.T) {
 	}
 }
 
+func TestAccessList_FailingNetworkRules_ReleasesAllStateCopies(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBackend := NewMockBackend(ctrl)
+	mockState := state.NewMockStateDB(ctrl)
+	stateCopy := state.NewMockStateDB(ctrl)
+
+	block := &evmcore.EvmBlock{}
+	block.Number = big.NewInt(1)
+	chainConfig := &params.ChainConfig{ChainID: big.NewInt(1)}
+	injectedErr := errors.New("injected error")
+
+	any := gomock.Any()
+	mockBackend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(mockState, block, nil)
+	mockBackend.EXPECT().ChainConfig(any).Return(chainConfig).AnyTimes()
+	mockBackend.EXPECT().CurrentBlock().Return(block).AnyTimes()
+	mockBackend.EXPECT().ChainID().Return(big.NewInt(1)).AnyTimes()
+	mockBackend.EXPECT().RPCGasCap().Return(uint64(10_000_000)).AnyTimes()
+	mockBackend.EXPECT().GetNetworkRules(any, any).Return(nil, injectedErr)
+
+	unreleased := 0
+	mockState.EXPECT().Copy().DoAndReturn(func() state.StateDB {
+		unreleased++
+		return stateCopy
+	}).AnyTimes()
+	stateCopy.EXPECT().Release().Do(func() { unreleased-- }).AnyTimes()
+	mockState.EXPECT().Release()
+
+	nonce := hexutil.Uint64(0)
+	gas := hexutil.Uint64(21_000)
+	args := TransactionArgs{
+		From:     &common.Address{1},
+		To:       &common.Address{2},
+		Nonce:    &nonce,
+		Gas:      &gas,
+		GasPrice: (*hexutil.Big)(big.NewInt(0)),
+	}
+
+	_, _, _, err := AccessList(t.Context(), mockBackend, rpc.BlockNumberOrHashWithNumber(1), args)
+	require.ErrorIs(t, err, injectedErr)
+	require.Zero(t, unreleased, "state copies were not released")
+}
+
 func TestBlockNrOrHashOrLatest_DefaultsOmittedParameterToLatest(t *testing.T) {
 	latest := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	pending := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
