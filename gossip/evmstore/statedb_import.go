@@ -171,7 +171,7 @@ func (s *Store) ImportLegacyEvmData(evmItems genesis.EvmItems, blockNum uint64, 
 	}
 
 	chaindb := rawdb.NewDatabase(kvdb2ethdb.Wrap(nokeyiserr.Wrap(db)))
-	tdb := triedb.NewDatabase(chaindb, &triedb.Config{Preimages: false, IsVerkle: false})
+	tdb := triedb.NewDatabase(chaindb, &triedb.Config{Preimages: false})
 	t, err := trie.NewStateTrie(trie.StateTrieID(root), tdb)
 	if err != nil {
 		return fmt.Errorf("failed to open trie; %w", err)

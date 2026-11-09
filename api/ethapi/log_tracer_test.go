@@ -193,7 +193,7 @@ func runWithSimTracer(t *testing.T, tracer *simTracer, entryCode []byte, value u
 	}
 	chainConfig := makeChainConfig(opera.GetBrioUpgrades())
 	evm := vm.NewEVM(blockCtx, gethstate.NewHookedState(statedb, hooks), chainConfig, vm.Config{Tracer: hooks})
-	_, _, err = evm.Call(simTracerSender, simTracerEntry, nil, 1_000_000, uint256.NewInt(value))
+	_, _, err = evm.Call(simTracerSender, simTracerEntry, nil, vm.NewGasBudget(1_000_000, 0), uint256.NewInt(value))
 	return err
 }
 

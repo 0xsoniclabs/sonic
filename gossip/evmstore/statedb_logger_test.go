@@ -114,7 +114,7 @@ func TestLoggingStateDB_AddLog_HookIndexesMatchLogsOfRealStateDB(t *testing.T) {
 			var receiptIndexes []uint
 			for txIndex, numLogs := range test.logsPerTx {
 				txHash := common.Hash{byte(txIndex + 1)}
-				wrapped.SetTxContext(txHash, txIndex)
+				wrapped.SetTxContext(txHash, txIndex, uint32(txIndex+1))
 
 				for i := range numLogs {
 					wrapped.AddLog(&types.Log{
@@ -168,7 +168,7 @@ func TestLoggingStateDB_AddLog_RevertedLogsFreeTheirIndexForLaterLogs(t *testing
 
 			txHash := common.Hash{1}
 			wrapped.BeginBlock(1)
-			wrapped.SetTxContext(txHash, 0)
+			wrapped.SetTxContext(txHash, 0, 1)
 
 			addLogs := func(n int) []uint {
 				hookIndexes = nil

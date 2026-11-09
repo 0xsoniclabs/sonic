@@ -210,6 +210,6 @@ func createWithInitCodeSize(
 		Random:      &common.Hash{},
 	}
 	evm := vm.NewEVM(blockContext, stateDB, chainConfig, vmConfig)
-	ret, gasLeft, err := evm.Call(common.Address{2}, factory, nil, 10_000_000, uint256.NewInt(0))
-	return common.BytesToAddress(ret), gasLeft, err
+	ret, gasLeft, err := evm.Call(common.Address{2}, factory, nil, vm.NewGasBudget(10_000_000, 0), uint256.NewInt(0))
+	return common.BytesToAddress(ret), gasLeft.ExecutionGas, err
 }

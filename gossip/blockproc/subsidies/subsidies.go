@@ -26,6 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/holiman/uint256"
 )
 
@@ -90,7 +91,7 @@ func IsCovered(
 	}
 
 	// Run the query on the EVM and the provided state.
-	result, _, err := evm.Call(caller, target, input, gasConfig.gasLimitForChooseFund, uint256.NewInt(0))
+	result, _, err := evm.Call(caller, target, input, vm.NewGasBudget(gasConfig.gasLimitForChooseFund, 0), uint256.NewInt(0))
 	if err != nil {
 		return Sponsorship{}, fmt.Errorf("EVM call failed: %w", err)
 	}
@@ -195,11 +196,11 @@ type VirtualMachine interface {
 		from common.Address,
 		to common.Address,
 		input []byte,
-		gas uint64,
+		gas vm.GasBudget,
 		value *uint256.Int,
 	) (
 		result []byte,
-		gasLeft uint64,
+		gasLeft vm.GasBudget,
 		err error,
 	)
 }
@@ -350,7 +351,7 @@ func getGasConfig(
 
 	// Run the query on the EVM and the provided state.
 	const initialGas = registry.GasLimitForGetGasConfig
-	result, _, err := evm.Call(caller, target, input, initialGas, uint256.NewInt(0))
+	result, _, err := evm.Call(caller, target, input, vm.NewGasBudget(initialGas, 0), uint256.NewInt(0))
 	if err != nil {
 		return gasConfig{}, fmt.Errorf("EVM call failed: %w", err)
 	}
