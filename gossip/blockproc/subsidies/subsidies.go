@@ -52,7 +52,7 @@ type Identifier [32]byte
 // otherwise IsSponsored returns false.
 func IsCovered(
 	upgrades opera.Upgrades,
-	vm VirtualMachine,
+	evm VirtualMachine,
 	signer types.Signer,
 	tx *types.Transaction,
 	baseFee *big.Int,
@@ -71,7 +71,7 @@ func IsCovered(
 	}
 
 	// Fetch the current configuration from the subsidies registry.
-	gasConfig, err := getGasConfig(vm)
+	gasConfig, err := getGasConfig(evm)
 	if err != nil {
 		return Sponsorship{}, fmt.Errorf("failed to get gas config: %w", err)
 	}
@@ -90,7 +90,7 @@ func IsCovered(
 	}
 
 	// Run the query on the EVM and the provided state.
-	result, _, err := vm.Call(caller, target, input, gasConfig.gasLimitForChooseFund, uint256.NewInt(0))
+	result, _, err := evm.Call(caller, target, input, gasConfig.gasLimitForChooseFund, uint256.NewInt(0))
 	if err != nil {
 		return Sponsorship{}, fmt.Errorf("EVM call failed: %w", err)
 	}
@@ -337,7 +337,7 @@ func allModes() []sponsorshipMode {
 // `chooseFund`, `deductFees`, and `track` functions, as well as the per-mode
 // overhead to charge for sponsored transactions.
 func getGasConfig(
-	vm VirtualMachine,
+	evm VirtualMachine,
 ) (gasConfig, error) {
 	// Call the getGasConfig function on the subsidies registry contract, which
 	// takes no arguments and returns three or five uint64 values.
@@ -350,7 +350,7 @@ func getGasConfig(
 
 	// Run the query on the EVM and the provided state.
 	const initialGas = registry.GasLimitForGetGasConfig
-	result, _, err := vm.Call(caller, target, input, initialGas, uint256.NewInt(0))
+	result, _, err := evm.Call(caller, target, input, initialGas, uint256.NewInt(0))
 	if err != nil {
 		return gasConfig{}, fmt.Errorf("EVM call failed: %w", err)
 	}

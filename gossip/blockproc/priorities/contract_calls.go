@@ -54,7 +54,7 @@ type VirtualMachine interface {
 // metrics only and must never abort block formation.
 func GetPriority(
 	upgrades opera.Upgrades,
-	vm VirtualMachine,
+	evm VirtualMachine,
 	signer types.Signer,
 	tx *types.Transaction,
 ) (Priority, error) {
@@ -77,7 +77,7 @@ func GetPriority(
 
 	caller := common.Address{}
 	target := registry.GetAddress()
-	result, _, err := vm.Call(caller, target, input, registry.GasLimitForGetPriority, uint256.NewInt(0))
+	result, _, err := evm.Call(caller, target, input, registry.GasLimitForGetPriority, uint256.NewInt(0))
 	if err != nil {
 		return Priority{}, fmt.Errorf("EVM call failed: %w", err)
 	}
@@ -90,7 +90,7 @@ func GetPriority(
 
 // GetConfig queries the priority registry for the current per-entity rate-limit
 // configuration. If the feature is disabled it returns a zero Config.
-func GetConfig(upgrades opera.Upgrades, vm VirtualMachine) (Config, error) {
+func GetConfig(upgrades opera.Upgrades, evm VirtualMachine) (Config, error) {
 	if !upgrades.TransactionPriorities {
 		return Config{}, nil
 	}
@@ -100,7 +100,7 @@ func GetConfig(upgrades opera.Upgrades, vm VirtualMachine) (Config, error) {
 
 	caller := common.Address{}
 	target := registry.GetAddress()
-	result, _, err := vm.Call(caller, target, input, registry.GasLimitForGetPriorityConfig, uint256.NewInt(0))
+	result, _, err := evm.Call(caller, target, input, registry.GasLimitForGetPriorityConfig, uint256.NewInt(0))
 	if err != nil {
 		return Config{}, fmt.Errorf("EVM call failed: %w", err)
 	}
@@ -123,8 +123,8 @@ var FallbackConfig = Config{
 // GetConfigOrFallback queries the registry configuration via GetConfig and, on
 // error, reports the failure to the failures meter and returns the deterministic
 // FallbackConfig.
-func GetConfigOrFallback(upgrades opera.Upgrades, vm VirtualMachine, failures Meter) Config {
-	cfg, err := GetConfig(upgrades, vm)
+func GetConfigOrFallback(upgrades opera.Upgrades, evm VirtualMachine, failures Meter) Config {
+	cfg, err := GetConfig(upgrades, evm)
 	if err != nil {
 		failures.Mark(1)
 		return FallbackConfig
