@@ -566,6 +566,12 @@ func (env *testEnv) SendTransaction(ctx context.Context, tx *types.Transaction) 
 	return nil
 }
 
+// TransactionByHash retrieves a transaction from the pending pool. Since
+// SendTransaction never enqueues anything, no transaction is ever found.
+func (env *testEnv) TransactionByHash(ctx context.Context, hash common.Hash) (*types.Transaction, bool, error) {
+	return nil, false, ethereum.NotFound
+}
+
 /*
  *  bind.ContractFilterer interface
  */
@@ -584,18 +590,16 @@ func (env *testEnv) SubscribeFilterLogs(ctx context.Context, query ethereum.Filt
 
 // CallMsgToMessage converts the given CallMsg to an evmcore.Message to allow passing it as a transaction simulator.
 func CallMsgToMessage(msg ethereum.CallMsg) *core.Message {
-	return &core.Message{
-		From:                  msg.From,
-		To:                    msg.To,
-		GasPrice:              msg.GasPrice,
-		GasTipCap:             msg.GasTipCap,
-		GasFeeCap:             msg.GasFeeCap,
-		GasLimit:              msg.Gas,
-		Value:                 msg.Value,
-		Nonce:                 0,
-		SkipNonceChecks:       true,
-		SkipTransactionChecks: true,
-		Data:                  msg.Data,
-		AccessList:            msg.AccessList,
-	}
+	return (&core.Message{
+		From:       msg.From,
+		To:         msg.To,
+		GasPrice:   uint256.MustFromBig(msg.GasPrice),
+		GasTipCap:  uint256.MustFromBig(msg.GasTipCap),
+		GasFeeCap:  uint256.MustFromBig(msg.GasFeeCap),
+		GasLimit:   msg.Gas,
+		Value:      uint256.MustFromBig(msg.Value),
+		Nonce:      0,
+		Data:       msg.Data,
+		AccessList: msg.AccessList,
+	}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
 }

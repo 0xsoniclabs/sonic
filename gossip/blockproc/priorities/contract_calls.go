@@ -24,6 +24,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/holiman/uint256"
 )
 
@@ -36,11 +37,11 @@ type VirtualMachine interface {
 		from common.Address,
 		to common.Address,
 		input []byte,
-		gas uint64,
+		gas vm.GasBudget,
 		value *uint256.Int,
 	) (
 		result []byte,
-		gasLeft uint64,
+		gasLeft vm.GasBudget,
 		err error,
 	)
 }
@@ -77,7 +78,7 @@ func GetPriority(
 
 	caller := common.Address{}
 	target := registry.GetAddress()
-	result, _, err := evm.Call(caller, target, input, registry.GasLimitForGetPriority, uint256.NewInt(0))
+	result, _, err := evm.Call(caller, target, input, vm.NewGasBudget(registry.GasLimitForGetPriority, 0), uint256.NewInt(0))
 	if err != nil {
 		return Priority{}, fmt.Errorf("EVM call failed: %w", err)
 	}
@@ -100,7 +101,7 @@ func GetConfig(upgrades opera.Upgrades, evm VirtualMachine) (Config, error) {
 
 	caller := common.Address{}
 	target := registry.GetAddress()
-	result, _, err := evm.Call(caller, target, input, registry.GasLimitForGetPriorityConfig, uint256.NewInt(0))
+	result, _, err := evm.Call(caller, target, input, vm.NewGasBudget(registry.GasLimitForGetPriorityConfig, 0), uint256.NewInt(0))
 	if err != nil {
 		return Config{}, fmt.Errorf("EVM call failed: %w", err)
 	}
