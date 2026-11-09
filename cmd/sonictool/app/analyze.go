@@ -67,7 +67,7 @@ func analyzeDbs(ctx *cli.Context) error {
 }
 
 func analyzeDb(path string) (res map[string]*prefixStats, err error) {
-	db, err := pebble.New(path, 0, 0, "pebble", true)
+	db, err := pebble.NewV1(path, 0, 0, "pebble", true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open DB: %v", err)
 	}

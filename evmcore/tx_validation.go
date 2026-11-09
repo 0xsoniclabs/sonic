@@ -171,15 +171,21 @@ func ValidateTxForNetwork(tx *types.Transaction, rules NetworkRules, chain State
 		}
 	}
 
+	gasRules := params.Rules{
+		IsHomestead: true,
+		IsIstanbul:  rules.istanbul,
+		IsShanghai:  rules.shanghai,
+	}
+
 	// Ensure the transaction has more gas than the basic tx fee.
 	intrGas, err := core.IntrinsicGas(
 		tx.Data(),
 		tx.AccessList(),
 		tx.SetCodeAuthorizations(),
-		tx.To() == nil, // is contract creation
-		true,           // is homestead
-		rules.istanbul, // is eip-2028 (transactional data gas cost reduction)
-		rules.shanghai, // is eip-3860 (limit and meter init-code )
+		common.Address{},
+		tx.To(),
+		nil,
+		gasRules,
 	)
 	if err != nil {
 		return err
@@ -191,7 +197,7 @@ func ValidateTxForNetwork(tx *types.Transaction, rules NetworkRules, chain State
 	// EIP-7623 part of Prague revision: Floor data gas
 	// see: https://eips.ethereum.org/EIPS/eip-7623
 	if rules.eip7623 {
-		floorDataGas, err := core.FloorDataGas(tx.Data())
+		floorDataGas, err := core.FloorDataGas(gasRules, common.Address{}, tx.To(), nil, tx.Data(), tx.AccessList())
 		if err != nil {
 			return err
 		}
