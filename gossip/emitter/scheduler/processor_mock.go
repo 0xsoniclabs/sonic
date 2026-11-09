@@ -214,6 +214,18 @@ func (m *MockevmProcessorRunner) EXPECT() *MockevmProcessorRunnerMockRecorder {
 	return m.recorder
 }
 
+// Release mocks base method.
+func (m *MockevmProcessorRunner) Release() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Release")
+}
+
+// Release indicates an expected call of Release.
+func (mr *MockevmProcessorRunnerMockRecorder) Release() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Release", reflect.TypeOf((*MockevmProcessorRunner)(nil).Release))
+}
+
 // Run mocks base method.
 func (m *MockevmProcessorRunner) Run(index int, tx *types.Transaction) evmcore.ProcessSummary {
 	m.ctrl.T.Helper()

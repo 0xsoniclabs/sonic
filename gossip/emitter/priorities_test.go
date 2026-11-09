@@ -103,12 +103,12 @@ func TestEmitter_NewPriorityContext_IsNilExactlyWithoutClassifiableHeadState(t *
 	}
 }
 
-func TestPriorityContext_Release_CallsReleaseDBFunctionIfContextNotNil(t *testing.T) {
+func TestPriorityContext_Release_CallsReleaseAllFunctionIfContextNotNil(t *testing.T) {
 	var context *priorityContext
 	context.release() // no-op (does not panic)
 
 	called := false
-	context = &priorityContext{releaseDB: func() { called = true }}
+	context = &priorityContext{releaseAll: func() { called = true }}
 	context.release()
 	require.True(t, called)
 }

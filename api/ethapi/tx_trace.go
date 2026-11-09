@@ -79,7 +79,8 @@ type evmSetup struct {
 
 // setupTracedEVM creates an EVM configured with the requested tracing hooks and
 // returns it together with the associated loggers and a cancel function.
-// The caller is responsible for calling cancel when execution is complete.
+// The caller is responsible for calling cancel when execution is complete,
+// which also releases the EVM.
 // noBaseFee should be true for simulated calls, false for historical replay.
 func setupTracedEVM(
 	ctx context.Context,
@@ -141,7 +142,10 @@ func setupTracedEVM(
 	}()
 
 	setup.vmenv = vmenv
-	return setup, cancel, nil
+	return setup, sync.OnceFunc(func() {
+		cancel()
+		vmenv.Release()
+	}), nil
 }
 
 // Transaction - trace_transaction function returns transaction inner traces
@@ -449,9 +453,11 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 	}
 	defer state.Release()
 
-	if _, err := applyPreBlockSystemCalls(ctx, s.b, block, state); err != nil {
+	preBlockEvm, err := applyPreBlockSystemCalls(ctx, s.b, block, state)
+	if err != nil {
 		return nil, fmt.Errorf("cannot apply pre-block system calls for block %v, error: %v", block.NumberU64(), err.Error())
 	}
+	preBlockEvm.Release()
 
 	receipts, err := s.b.GetReceiptsByNumber(ctx, rpc.BlockNumber(blockNumber))
 	if err != nil {
@@ -508,6 +514,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 			}
 
 			res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
+			vmenv.Release()
 			failed := false
 			if err != nil {
 				failed = true
