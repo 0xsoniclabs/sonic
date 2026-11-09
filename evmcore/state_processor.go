@@ -17,6 +17,7 @@
 package evmcore
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -753,7 +754,7 @@ func (e evm) _runTransaction(
 	ctxt.statedb.SetTxContext(tx.Hash(), txIndex, uint32(txIndex+1))
 	receipt, _, err := applyTransaction(
 		msg, ctxt.gasPool, ctxt.statedb, ctxt.blockNumber, tx,
-		ctxt.usedGas, e.EVM,
+		ctxt.usedGas, e.EVM, ctxt.upgrades,
 	)
 	if err != nil {
 		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
@@ -982,6 +983,7 @@ func applyTransaction(
 	tx *types.Transaction,
 	usedGas *uint64,
 	evm *vm.EVM,
+	upgrades opera.Upgrades,
 ) (
 	*types.Receipt,
 	uint64,
@@ -1003,11 +1005,27 @@ func applyTransaction(
 	if isAllegro {
 		snapshot = statedb.Snapshot()
 	}
+	gasPool := gp.Snapshot()
 	// Apply the transaction to the current state (included in the env).
 	result, err := core.ApplyMessage(evm, msg, gp)
 	if err != nil {
 		if isAllegro {
 			statedb.RevertToSnapshot(snapshot)
+		}
+		// Skipped transactions are not in the block, but the gas they take from
+		// the pool is. go-ethereum charges the pool before checking the sender's
+		// balance since 1.17.8; Sonic keeps charging it only after that check.
+		if errors.Is(err, core.ErrInsufficientFunds) {
+			gp.Set(gasPool)
+		}
+		// go-ethereum checks the init code size before that balance check since
+		// 1.17.10; until Canto, Sonic keeps charging the pool for creations whose
+		// sender can pay for the gas limit.
+		if !upgrades.Canto && errors.Is(err, vm.ErrMaxInitCodeSizeExceeded) {
+			cost, overflow := new(uint256.Int).MulOverflow(uint256.NewInt(msg.GasLimit), msg.GasPrice)
+			if !overflow && !statedb.GetBalance(msg.From).Lt(cost) {
+				_ = gp.CheckGasLegacy(msg.GasLimit)
+			}
 		}
 		statedb.EndTransaction()
 		return nil, 0, err
