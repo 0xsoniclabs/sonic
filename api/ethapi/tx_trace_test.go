@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"reflect"
 	"testing"
 	"time"
 
@@ -141,7 +142,7 @@ func TestSetupTracedEVM_LoggersRespectFlags(t *testing.T) {
 			wantStateDiff:     true,
 			expectTxTracer:    false,
 			expectStateDiff:   true,
-			expectTracerHooks: true, // OnEnter hook is added for SELFDESTRUCT detection
+			expectTracerHooks: false,
 		},
 		{
 			name:              "trace and stateDiff",
@@ -262,6 +263,29 @@ func TestSetupTracedEVM_StateDiffWrapsState(t *testing.T) {
 	require.NotEqual(t, mockState, evmReceivedState, "GetEVM must receive the wrapped state, not the raw MockStateDB")
 	// The setup's activeState must also be the wrapped state.
 	require.Equal(t, evmReceivedState, setup.activeState)
+}
+
+func TestSetupTracedEVM_StateDiffUsesTracingInterpreter(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+	backend := NewMockBackend(ctrl)
+
+	backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).Return(&opera.Rules{}, nil)
+	backend.EXPECT().RPCEVMTimeout().Return(time.Duration(0))
+
+	var cfg vm.Config
+	backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, statedb vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
+			cfg = *vmConfig
+			return makeTestEVM(opera.Upgrades{})(t.Context(), statedb, header, vmConfig, blockContext)
+		})
+
+	_, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, false, true, false)
+	defer cancel()
+
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Interpreter)
+	require.Equal(t, reflect.ValueOf(cfg.InterpreterForTracing).Pointer(), reflect.ValueOf(cfg.Interpreter).Pointer())
 }
 
 func TestTraceCallExec_VmConfigError(t *testing.T) {
