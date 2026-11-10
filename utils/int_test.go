@@ -190,6 +190,18 @@ func TestBigIntToUint256_ErrorCases(t *testing.T) {
 	}
 }
 
+func TestUint256Converter_ConvertsValuesAndKeepsFirstError(t *testing.T) {
+	var converter Uint256Converter
+
+	require.Equal(t, uint256.NewInt(1), converter.Convert("a", big.NewInt(1)))
+	require.NoError(t, converter.Err)
+
+	require.Nil(t, converter.Convert("b", big.NewInt(-1)))
+	require.Equal(t, uint256.NewInt(2), converter.Convert("c", big.NewInt(2)))
+	require.Nil(t, converter.Convert("d", new(big.Int).Lsh(big.NewInt(1), 256)))
+	require.ErrorContains(t, converter.Err, "invalid b: unable to convert negative")
+}
+
 func TestBigIntToUint256Clamped_Clamps_Inputs(t *testing.T) {
 	tests := map[string]struct {
 		input    *big.Int

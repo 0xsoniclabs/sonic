@@ -1185,6 +1185,8 @@ func TestApplyTransaction_SkippedTransaction_ChargesGasPoolOnlyAfterBalanceCheck
 	call := &common.Address{1}
 	tests := map[string]struct {
 		to          *common.Address
+		gasPrice    *uint256.Int
+		gasFeeCap   *uint256.Int
 		balance     uint64
 		pool        uint64
 		upgrades    opera.Upgrades
@@ -1198,6 +1200,15 @@ func TestApplyTransaction_SkippedTransaction_ChargesGasPoolOnlyAfterBalanceCheck
 		},
 		"oversized init code": {
 			balance: 1_000_000, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded, poolCharged: true,
+		},
+		"oversized init code, exact balance": {
+			balance: 1_000, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded, poolCharged: true,
+		},
+		"oversized init code, balance covers gas price but not fee cap": {
+			gasFeeCap: uint256.NewInt(2), balance: 1_000, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded, poolCharged: true,
+		},
+		"oversized init code, cost overflows": {
+			gasPrice: new(uint256.Int).Lsh(uint256.NewInt(1), 255), balance: 1_000_000, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded,
 		},
 		"oversized init code, insufficient funds": {
 			balance: 999, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded,
@@ -1222,12 +1233,17 @@ func TestApplyTransaction_SkippedTransaction_ChargesGasPoolOnlyAfterBalanceCheck
 			maxInitCodeSize := 0
 			evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{}, vm.Config{MaxInitCodeSize: &maxInitCodeSize})
 			gp := core.NewGasPool(test.pool)
+			gasPrice := test.gasPrice
+			if gasPrice == nil {
+				gasPrice = uint256.NewInt(1)
+			}
 			msg := (&core.Message{
-				To:       test.to,
-				GasLimit: 1_000,
-				GasPrice: uint256.NewInt(1),
-				Value:    uint256.NewInt(0),
-				Data:     []byte{0},
+				To:        test.to,
+				GasLimit:  1_000,
+				GasPrice:  gasPrice,
+				GasFeeCap: test.gasFeeCap,
+				Value:     uint256.NewInt(0),
+				Data:      []byte{0},
 			}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
 
 			_, _, err := applyTransaction(msg, gp, state, nil, types.NewTx(&types.LegacyTx{}), new(uint64), evm, test.upgrades)
@@ -4704,6 +4720,17 @@ func TestNewTransactionProcessorForBlock_ConfiguresTransactionProcessorWithValue
 	require.Equal(currentRules.Upgrades, processor.upgrades)
 }
 
+func TestTransactionProcessor_Release_CanBeCalledRepeatedly(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	processor := &TransactionProcessor{
+		vmEnvironment: vm.NewEVM(vm.BlockContext{}, state.NewMockStateDB(ctrl), &params.ChainConfig{}, vm.Config{}),
+	}
+
+	processor.Release()
+	require.Nil(t, processor.vmEnvironment)
+	processor.Release()
+}
+
 func TestTransactionProcessor_Run_ForwardsTimeToBundleProcessing(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	stateDb := state.NewMockStateDB(ctrl)
@@ -5772,19 +5799,19 @@ func TestTxAsMessage_RejectsInternalTransactionsWithValuesNotFittingIntoUint256(
 	}{
 		"negative value": {
 			tx:      &types.LegacyTx{GasPrice: big.NewInt(1), Value: big.NewInt(-1)},
-			wantErr: "invalid internal transaction value",
+			wantErr: "invalid internal transaction: invalid value",
 		},
 		"too large value": {
 			tx:      &types.LegacyTx{GasPrice: big.NewInt(1), Value: new(big.Int).Lsh(big.NewInt(1), 256)},
-			wantErr: "invalid internal transaction value",
+			wantErr: "invalid internal transaction: invalid value",
 		},
 		"negative gas price": {
 			tx:      &types.LegacyTx{GasPrice: big.NewInt(-1), Value: big.NewInt(1)},
-			wantErr: "invalid internal transaction gas price",
+			wantErr: "invalid internal transaction: invalid gas price",
 		},
 		"too large gas price": {
 			tx:      &types.LegacyTx{GasPrice: new(big.Int).Lsh(big.NewInt(1), 256), Value: big.NewInt(1)},
-			wantErr: "invalid internal transaction gas price",
+			wantErr: "invalid internal transaction: invalid gas price",
 		},
 	}
 	for name, test := range tests {
