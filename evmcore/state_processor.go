@@ -875,7 +875,10 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary
 // Release returns the EVM's resources for reuse. The processor must not be
 // used afterwards.
 func (tp *TransactionProcessor) Release() {
-	tp.vmEnvironment.Release()
+	if tp.vmEnvironment != nil {
+		tp.vmEnvironment.Release()
+		tp.vmEnvironment = nil
+	}
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
@@ -1027,7 +1030,9 @@ func applyTransaction(
 		}
 		// go-ethereum checks the init code size before that balance check since
 		// 1.17.10; until Canto, Sonic keeps charging the pool for creations whose
-		// sender can pay for the gas limit.
+		// sender can pay for the gas limit. That balance check was gasLimit*gasPrice
+		// only because opera.GetVmConfig sets IgnoreGasFeeCap and, until Canto,
+		// InsufficientBalanceIsNotAnError.
 		if !upgrades.Canto && errors.Is(err, vm.ErrMaxInitCodeSizeExceeded) {
 			cost, overflow := new(uint256.Int).MulOverflow(uint256.NewInt(msg.GasLimit), msg.GasPrice)
 			if !overflow && !statedb.GetBalance(msg.From).Lt(cost) {
@@ -1080,31 +1085,23 @@ func applyTransaction(
 
 func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (*core.Message, error) {
 	if internaltx.IsInternal(tx) {
-		var conversionErr error
-		toUint256 := func(name string, value *big.Int) *uint256.Int {
-			converted, err := utils.BigIntToUint256(value)
-			if err != nil && conversionErr == nil {
-				conversionErr = fmt.Errorf("invalid internal transaction %s: %w", name, err)
-			}
-			return converted
-		}
-
+		var converter utils.Uint256Converter
 		msg := (&core.Message{ // internal tx - no signature checking
 			From:          internaltx.InternalSender(tx),
 			To:            tx.To(),
 			Nonce:         tx.Nonce(),
-			Value:         toUint256("value", tx.Value()),
+			Value:         converter.Convert("value", tx.Value()),
 			GasLimit:      tx.Gas(),
-			GasPrice:      toUint256("gas price", tx.GasPrice()),
-			GasFeeCap:     toUint256("gas fee cap", tx.GasFeeCap()),
-			GasTipCap:     toUint256("gas tip cap", tx.GasTipCap()),
+			GasPrice:      converter.Convert("gas price", tx.GasPrice()),
+			GasFeeCap:     converter.Convert("gas fee cap", tx.GasFeeCap()),
+			GasTipCap:     converter.Convert("gas tip cap", tx.GasTipCap()),
 			Data:          tx.Data(),
 			AccessList:    tx.AccessList(),
-			BlobGasFeeCap: toUint256("blob gas fee cap", tx.BlobGasFeeCap()),
+			BlobGasFeeCap: converter.Convert("blob gas fee cap", tx.BlobGasFeeCap()),
 			BlobHashes:    tx.BlobHashes(),
 		}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
-		if conversionErr != nil {
-			return nil, conversionErr
+		if converter.Err != nil {
+			return nil, fmt.Errorf("invalid internal transaction: %w", converter.Err)
 		}
 		return msg, nil
 	}

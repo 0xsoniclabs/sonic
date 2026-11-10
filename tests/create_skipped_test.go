@@ -51,6 +51,7 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 			defer client.Close()
 
 			sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
+			other := MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 			gasPrice, err := client.SuggestGasPrice(t.Context())
 			require.NoError(t, err)
@@ -76,12 +77,18 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 			preBalance, err := client.BalanceAt(t.Context(), sender.Address(), nil)
 			require.NoError(t, err)
 
-			// Send the transaction
-			_, err = net.ForceEmit(t.Context(), tx)
+			// Emit the creation in one event with a simple transaction, so the
+			// block holding the simple transaction is the one that skipped it.
+			simpleTx := SignTransaction(t, chainId, &types.LegacyTx{
+				Gas:      21000,
+				GasPrice: gasPrice,
+				To:       &common.Address{0x42},
+				Value:    big.NewInt(42),
+			}, other)
+			_, err = net.ForceEmitAll(t.Context(), []*types.Transaction{tx, simpleTx})
 			require.NoError(t, err)
 
-			// Send another simple transaction to ensure a block is created
-			receipt, err := net.EndowAccount(common.Address{0x42}, big.NewInt(42))
+			receipt, err := net.GetReceipt(simpleTx.Hash())
 			require.NoError(t, err)
 			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
@@ -101,6 +108,10 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 			require.NoError(t, err)
 
 			require.Equal(t, preBalance, postBalance, "balance should not change after skipped contract creation")
+
+			postNonce, err := client.NonceAt(t.Context(), sender.Address(), receipt.BlockNumber)
+			require.NoError(t, err)
+			require.Zero(t, postNonce, "nonce should not change after skipped contract creation")
 		})
 	}
 }

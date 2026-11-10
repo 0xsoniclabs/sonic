@@ -32,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/holiman/uint256"
 
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -304,32 +303,24 @@ func (args *TransactionArgs) toMessage(globalGasCap uint64, baseFee *big.Int, lo
 		blobHashes = nil
 	}
 
-	var conversionErr error
-	toUint256 := func(name string, value *big.Int) *uint256.Int {
-		converted, err := utils.BigIntToUint256(value)
-		if err != nil && conversionErr == nil {
-			conversionErr = fmt.Errorf("invalid %s: %w", name, err)
-		}
-		return converted
-	}
-
+	var converter utils.Uint256Converter
 	msg := &core.Message{
 		From:                  addr,
 		To:                    args.To,
 		Nonce:                 nonce,
-		Value:                 toUint256("value", value),
+		Value:                 converter.Convert("value", value),
 		GasLimit:              gas,
-		GasPrice:              toUint256("gas price", gasPrice),
-		GasFeeCap:             toUint256("maxFeePerGas", gasFeeCap),
-		GasTipCap:             toUint256("maxPriorityFeePerGas", gasTipCap),
+		GasPrice:              converter.Convert("gas price", gasPrice),
+		GasFeeCap:             converter.Convert("maxFeePerGas", gasFeeCap),
+		GasTipCap:             converter.Convert("maxPriorityFeePerGas", gasTipCap),
 		Data:                  data,
 		AccessList:            accessList,
-		BlobGasFeeCap:         toUint256("maxFeePerBlobGas", blobGasFeeCap),
+		BlobGasFeeCap:         converter.Convert("maxFeePerBlobGas", blobGasFeeCap),
 		BlobHashes:            blobHashes,
 		SetCodeAuthorizations: args.AuthorizationList,
 	}
-	if conversionErr != nil {
-		return nil, conversionErr
+	if converter.Err != nil {
+		return nil, converter.Err
 	}
 	return msg, nil
 }

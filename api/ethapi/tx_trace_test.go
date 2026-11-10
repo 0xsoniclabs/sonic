@@ -113,6 +113,19 @@ func TestSetupTracedEVM_GetEVMError(t *testing.T) {
 	require.Nil(t, setup)
 }
 
+func TestSetupTracedEVM_CancelStopsTheEVMAndCanBeCalledRepeatedly(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+	backend := setupBackendForTracing(ctrl, mockState)
+
+	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, TraceOptions{}, false)
+	require.NoError(t, err)
+
+	cancel()
+	cancel()
+	require.Eventually(t, setup.vmenv.Cancelled, time.Second, time.Millisecond)
+}
+
 func TestSetupTracedEVM_LoggersRespectFlags(t *testing.T) {
 	tests := []struct {
 		name              string
