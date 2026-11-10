@@ -138,7 +138,7 @@ func testConsensusCallback(t *testing.T, upgrades opera.Upgrades) {
 }
 
 func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testing.T) {
-	runPreAndPostDolce(t, opera.GetAllegroUpgrades(), testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly)
+	runPreAndPostCanto(t, opera.GetAllegroUpgrades(), testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly)
 }
 
 func testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testing.T, upgrades opera.Upgrades) {
@@ -360,7 +360,7 @@ func testConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 // with Brio enabled and the sealed epoch disables it; therefore observing the
 // finite, Brio-derived limit proves the start rules were used.
 func TestConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T) {
-	runPreAndPostDolce(t, opera.GetBrioUpgrades(), testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing)
+	runPreAndPostCanto(t, opera.GetBrioUpgrades(), testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing)
 }
 
 func testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T, upgrades opera.Upgrades) {
@@ -505,13 +505,13 @@ func testConsensusCallback_UsesBlockStartRulesAcrossEpochSealing(t *testing.T, u
 		"user transactions must be executed with the block's start rules (Brio enabled), got size limits %v", executeSizeLimits)
 }
 
-func TestConsensusCallback_UsesLedgerFromTheBlockAfterTheOneEnablingDolce(t *testing.T) {
-	store := newInMemoryStoreWithGenesisData(t, opera.GetCantoUpgrades(), 1, 2)
+func TestConsensusCallback_UsesLedgerFromTheBlockAfterTheOneEnablingCanto(t *testing.T) {
+	store := newInMemoryStoreWithGenesisData(t, opera.GetBrioUpgrades(), 1, 2)
 
-	// Let the next block seal the epoch and enable Dolce.
+	// Let the next block seal the epoch and enable Canto.
 	bs, es := store.GetBlockState(), store.GetEpochState()
 	rules := es.Rules.Copy()
-	rules.Upgrades.Dolce = true
+	rules.Upgrades.Canto = true
 	bs.DirtyRules = &rules
 	bs.AdvanceEpochs = 1
 	store.SetBlockEpochState(bs, es)
@@ -539,14 +539,14 @@ func TestConsensusCallback_UsesLedgerFromTheBlockAfterTheOneEnablingDolce(t *tes
 	}
 
 	produceBlock()
-	require.True(t, store.GetEpochState().Rules.Upgrades.Dolce)
+	require.True(t, store.GetEpochState().Rules.Upgrades.Canto)
 
 	ledger.EXPECT().Head().DoAndReturn(NewLedger(store, evmmodule.New(), nil, false).Head)
 	produceBlock()
 }
 
 func TestConsensusCallback_BeginsBlockWithParamsFromConsensusAndLogsToTxListener(t *testing.T) {
-	upgrades := opera.GetDolceUpgrades()
+	upgrades := opera.GetCantoUpgrades()
 	upgrades.SingleProposerBlockFormation = true
 	store := newInMemoryStoreWithGenesisData(t, upgrades, 1, 2)
 	es := store.GetEpochState()
@@ -637,7 +637,7 @@ func TestConsensusCallback_BeginsBlockWithParamsFromConsensusAndLogsToTxListener
 // validator 1 as the reported originator proves the start rules were used; the
 // buggy (post-seal) behavior would report validator 0.
 func TestConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testing.T) {
-	runPreAndPostDolce(t, opera.GetBrioUpgrades(), testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking)
+	runPreAndPostCanto(t, opera.GetBrioUpgrades(), testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking)
 }
 
 func testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testing.T, upgrades opera.Upgrades) {
@@ -803,7 +803,7 @@ func testConsensusCallback_UsesBlockStartRulesForReceiptOriginTracking(t *testin
 // the transactions handed to the EVM processor proves the ordering step ran, and
 // that its result is what gets executed.
 func TestConsensusCallback_AppliesTransactionPriorities(t *testing.T) {
-	runPreAndPostDolce(t, opera.GetBrioUpgrades(), testConsensusCallback_AppliesTransactionPriorities)
+	runPreAndPostCanto(t, opera.GetBrioUpgrades(), testConsensusCallback_AppliesTransactionPriorities)
 }
 
 func testConsensusCallback_AppliesTransactionPriorities(t *testing.T, upgrades opera.Upgrades) {
@@ -979,7 +979,7 @@ func TestConsensusCallback_InconsistentHead_TerminatesProcess(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if os.Getenv(envChild) == "1" {
 				log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelCrit, false)))
-				store := newInMemoryStoreWithGenesisData(t, opera.GetDolceUpgrades(), 1, 2)
+				store := newInMemoryStoreWithGenesisData(t, opera.GetCantoUpgrades(), 1, 2)
 				es := store.GetEpochState()
 				es.Rules.Blocks.MaxEmptyBlockSkipPeriod = 0
 				store.SetBlockEpochState(store.GetBlockState(), es)
@@ -1030,7 +1030,7 @@ func TestConsensusCallback_InconsistentHead_TerminatesProcess(t *testing.T) {
 
 func TestConsensusCallback_FailedFinalize_TerminatesProcess(t *testing.T) {
 	const envChild = "SONIC_TEST_FINALIZE_FAILURE_CHILD"
-	runPreAndPostDolce(t, opera.GetCantoUpgrades(), func(t *testing.T, upgrades opera.Upgrades) {
+	runPreAndPostCanto(t, opera.GetBrioUpgrades(), func(t *testing.T, upgrades opera.Upgrades) {
 		if os.Getenv(envChild) == "1" {
 			log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelCrit, false)))
 			store := newInMemoryStoreWithGenesisData(t, upgrades, 1, 2)
@@ -1102,13 +1102,13 @@ func TestConsensusCallback_FailedFinalize_TerminatesProcess(t *testing.T) {
 	})
 }
 
-func TestConsensusCallback_SkippedBlock_OpensLiveStateOnlyBeforeDolce(t *testing.T) {
+func TestConsensusCallback_SkippedBlock_OpensLiveStateOnlyBeforeCanto(t *testing.T) {
 	tests := map[string]struct {
 		upgrades   opera.Upgrades
 		wantOpened bool
 	}{
-		"Canto": {upgrades: opera.GetCantoUpgrades(), wantOpened: true},
-		"Dolce": {upgrades: opera.GetDolceUpgrades()},
+		"Brio":  {upgrades: opera.GetBrioUpgrades(), wantOpened: true},
+		"Canto": {upgrades: opera.GetCantoUpgrades()},
 	}
 
 	for name, test := range tests {
@@ -1138,7 +1138,7 @@ func TestConsensusCallback_SkippedBlock_OpensLiveStateOnlyBeforeDolce(t *testing
 }
 
 func TestEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransaction(t *testing.T) {
-	runPreAndPostDolce(t, opera.GetBrioUpgrades(), testEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransaction)
+	runPreAndPostCanto(t, opera.GetBrioUpgrades(), testEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransaction)
 }
 
 func testEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransaction(t *testing.T, upgrades opera.Upgrades) {
@@ -1217,7 +1217,7 @@ func testEventChecksAndBlockProcessing_HandlesProposalWithNonPermissibleTransact
 }
 
 func TestConsensusCallback_CommitsThenAdvancesHeadThenPublishes(t *testing.T) {
-	store := newInMemoryStoreWithGenesisData(t, opera.GetDolceUpgrades(), 1, 2)
+	store := newInMemoryStoreWithGenesisData(t, opera.GetCantoUpgrades(), 1, 2)
 
 	atropos := (&inter.MutableEventPayload{}).Build()
 
@@ -2613,8 +2613,8 @@ func TestConsensusCallback_TxCausedBy_UsesOriginTxForCreatorLookupFromBrio(t *te
 			upgrades:             opera.GetBrioUpgrades(),
 			wantDerivedTxCreator: idx.ValidatorID(1),
 		},
-		"with Dolce, derived tx uses origin tx's event creator": {
-			upgrades:             opera.GetDolceUpgrades(),
+		"with Canto, derived tx uses origin tx's event creator": {
+			upgrades:             opera.GetCantoUpgrades(),
 			wantDerivedTxCreator: idx.ValidatorID(1),
 		},
 		"without Brio, derived tx uses its own txPosition (zero, not in any event)": {
@@ -3030,10 +3030,10 @@ func packSenderPriority(level, weight, id uint64) common.Hash {
 	return common.Hash(v.Bytes32())
 }
 
-func runPreAndPostDolce(t *testing.T, pre opera.Upgrades, test func(*testing.T, opera.Upgrades)) {
+func runPreAndPostCanto(t *testing.T, pre opera.Upgrades, test func(*testing.T, opera.Upgrades)) {
 	for name, upgrades := range map[string]opera.Upgrades{
-		"pre-Dolce": pre,
-		"Dolce":     opera.GetDolceUpgrades(),
+		"pre-Canto": pre,
+		"Canto":     opera.GetCantoUpgrades(),
 	} {
 		t.Run(name, func(t *testing.T) {
 			test(t, upgrades)
