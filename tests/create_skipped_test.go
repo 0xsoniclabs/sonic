@@ -37,7 +37,6 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 		// From Brio onwards, the limit is doubled
 		"Brio":  50000 * 2,
 		"Canto": 50000 * 2,
-		"Dolce": 50000 * 2,
 	}
 
 	for name, version := range opera.GetAllHardForksInOrder() {
