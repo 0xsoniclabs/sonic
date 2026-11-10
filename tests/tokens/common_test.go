@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/sonic/tests/contracts/tokenreceiver"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -32,7 +33,10 @@ import (
 
 // tokenActor names the parties of a token test case. Alice holds the tokens,
 // Bob is the spender or operator, and Carol is the recipient. The deployer
-// receives all tokens when the contract is created and funds Alice.
+// receives all tokens when the contract is created and funds Alice. The token
+// contract itself serves as a recipient that implements no receiver hooks;
+// the accepting and the rejecting receivers implement them, answering with
+// the right and a wrong value respectively.
 type tokenActor int
 
 const (
@@ -41,11 +45,13 @@ const (
 	carol
 	deployer
 	tokenContract
+	acceptingReceiver
+	rejectingReceiver
 	zeroAddress
 )
 
 func (a tokenActor) String() string {
-	return [...]string{"alice", "bob", "carol", "deployer", "tokenContract", "zeroAddress"}[a]
+	return [...]string{"alice", "bob", "carol", "deployer", "tokenContract", "acceptingReceiver", "rejectingReceiver", "zeroAddress"}[a]
 }
 
 // GoString makes failure messages show actors by name instead of number.
@@ -105,6 +111,27 @@ func deployToken[T any](
 		deployer:      session.GetSessionSponsor().Address(),
 		tokenContract: deployment.ContractAddress,
 	}
+}
+
+// addTokenReceivers deploys a pair of receivers, accepting and rejecting
+// tokens, and adds them to the shared actors.
+func addTokenReceivers(t *testing.T, session tests.IntegrationTestNetSession, shared tokenActors) tokenActors {
+	t.Helper()
+	shared[acceptingReceiver] = deployTokenReceiver(t, session, true)
+	shared[rejectingReceiver] = deployTokenReceiver(t, session, false)
+	return shared
+}
+
+func deployTokenReceiver(t *testing.T, session tests.IntegrationTestNetSession, accept bool) common.Address {
+	t.Helper()
+	_, receipt, err := tests.DeployContract(session, func(o *bind.TransactOpts, b bind.ContractBackend) (common.Address, *types.Transaction, *tokenreceiver.Tokenreceiver, error) {
+		return tokenreceiver.DeployTokenreceiver(o, b, accept)
+	})
+	require.NoError(t, err, "deploying a token receiver")
+	require.Equal(t,
+		types.ReceiptStatusSuccessful, receipt.Status,
+		"deploying a token receiver must succeed")
+	return receipt.ContractAddress
 }
 
 // tokenParties are the funded accounts of Alice, Bob and Carol of one case,
@@ -168,6 +195,24 @@ func issue[T any](token *T, p tokenParties, action tokenAction[T]) func(*bind.Tr
 	}
 }
 
+var (
+	erc165InterfaceId  = [4]byte{0x01, 0xff, 0xc9, 0xa7}
+	erc721InterfaceId  = [4]byte{0x80, 0xac, 0x58, 0xcd}
+	erc1155InterfaceId = [4]byte{0xd9, 0xb6, 0x7a, 0x26}
+)
+
+// checkSupportedInterfaces checks supportsInterface for the given interface
+// ids, and that it rejects 0xffffffff as ERC-165 requires.
+func checkSupportedInterfaces(t *testing.T, supports func(*bind.CallOpts, [4]byte) (bool, error), want map[[4]byte]bool) {
+	t.Helper()
+	want[[4]byte{0xff, 0xff, 0xff, 0xff}] = false
+	for id, expected := range want {
+		got, err := supports(nil, id)
+		require.NoError(t, err, "supportsInterface(%x)", id)
+		require.Equal(t, expected, got, "supportsInterface(%x) must return %v", id, expected)
+	}
+}
+
 // tokenLog is an emitted event in a form that can be written in a test table:
 // addresses are replaced by actors, amounts and ids by ints, and the token id
 // of an ERC-721 case by caseToken.
@@ -213,8 +258,8 @@ func parseEvents(definition string) *abi.ABI {
 }
 
 // decodeTokenLogs decodes the logs of the receipt, checking that each was
-// emitted by the token contract. Logs are decoded with tokenEvents, the event
-// layouts of the token standard, rather than with the
+// emitted by the token contract or a receiver. Token logs are decoded with
+// tokenEvents, the event layouts of the token standard, rather than with the
 // ABI of the contract under test, so that an event with a wrong signature or
 // wrong indexed parameters fails to decode. If caseTokenId is non-nil, its
 // occurrences are reported as caseToken.
@@ -226,8 +271,12 @@ func decodeTokenLogs(
 	caseTokenId *big.Int,
 ) tokenLogs {
 	t.Helper()
+	receiverAbi, err := tokenreceiver.TokenreceiverMetaData.GetAbi()
+	require.NoError(t, err, "ABI of the token receiver")
 	abis := map[common.Address]*abi.ABI{
-		actors[tokenContract]: tokenEvents,
+		actors[tokenContract]:     tokenEvents,
+		actors[acceptingReceiver]: receiverAbi,
+		actors[rejectingReceiver]: receiverAbi,
 	}
 
 	var res tokenLogs
@@ -235,7 +284,7 @@ func decodeTokenLogs(
 		contractAbi, found := abis[log.Address]
 		require.True(t,
 			found,
-			"log emitted by %v, which is not the token contract", log.Address)
+			"log emitted by %v, which is neither the token contract nor a receiver", log.Address)
 		require.NotEmpty(t, log.Topics, "events must not be anonymous")
 		event, err := contractAbi.EventByID(log.Topics[0])
 		require.NoError(t,
