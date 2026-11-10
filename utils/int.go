@@ -40,6 +40,20 @@ func BigIntToUint256(value *big.Int) (*uint256.Int, error) {
 	return res, nil
 }
 
+// Uint256Converter converts several values with BigIntToUint256 and keeps the
+// first error, naming the value that caused it.
+type Uint256Converter struct {
+	Err error
+}
+
+func (c *Uint256Converter) Convert(name string, value *big.Int) *uint256.Int {
+	converted, err := BigIntToUint256(value)
+	if err != nil && c.Err == nil {
+		c.Err = fmt.Errorf("invalid %s: %w", name, err)
+	}
+	return converted
+}
+
 // BigIntToUint256Clamped converts a big.Int to a uint256.Int. If the value is
 // negative, zero is returned. If the value is too large to fit
 // into a uint256.Int, the maximum uint256.Int value is returned.

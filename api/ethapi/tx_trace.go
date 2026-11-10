@@ -453,11 +453,11 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 	}
 	defer state.Release()
 
-	preBlockEvm, err := applyPreBlockSystemCalls(ctx, s.b, block, state)
+	vmenv, err := applyPreBlockSystemCalls(ctx, s.b, block, state)
 	if err != nil {
 		return nil, fmt.Errorf("cannot apply pre-block system calls for block %v, error: %v", block.NumberU64(), err.Error())
 	}
-	preBlockEvm.Release()
+	defer vmenv.Release()
 
 	receipts, err := s.b.GetReceiptsByNumber(ctx, rpc.BlockNumber(blockNumber))
 	if err != nil {
@@ -501,20 +501,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 			}
 
 			state.SetTxContext(tx.Hash(), i, uint32(i+1))
-			vmConfig, err := GetVmConfig(ctx, s.b, idx.Block(block.NumberU64()))
-			if err != nil {
-				return nil, fmt.Errorf("cannot get vm config for block %d, error: %w", block.NumberU64(), err)
-			}
-			vmConfig.NoBaseFee = true
-			vmConfig.Tracer = nil
-
-			vmenv, _, err := s.b.GetEVM(ctx, state, block.Header(), &vmConfig, nil)
-			if err != nil {
-				return nil, fmt.Errorf("cannot initialize vm for transaction %s, error: %s", tx.Hash().String(), err.Error())
-			}
-
 			res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
-			vmenv.Release()
 			failed := false
 			if err != nil {
 				failed = true
