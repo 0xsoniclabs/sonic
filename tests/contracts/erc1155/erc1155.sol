@@ -16,10 +16,14 @@ interface IERC1155Receiver {
 }
 
 // A minimal ERC-1155 multi token, https://eips.ethereum.org/EIPS/eip-1155
-// The given amounts of the given ids are created for the deployer.
+// The given amounts of the given ids are created for the deployer. The total
+// supply of an id is the sum of the balances of all holders, so that it
+// reflects every balance update.
 contract ERC1155 {
     mapping(address => mapping(uint256 => uint256)) public balanceOf;
     mapping(address => mapping(address => bool)) public isApprovedForAll;
+    address[] holders;
+    mapping(address => bool) isHolder;
 
     event TransferSingle(
         address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value
@@ -32,11 +36,18 @@ contract ERC1155 {
 
     constructor(uint256[] memory ids, uint256[] memory values) {
         require(ids.length == values.length, "length mismatch");
+        _addHolder(msg.sender);
         for (uint256 i = 0; i < ids.length; i++) {
             balanceOf[msg.sender][ids[i]] += values[i];
         }
         emit TransferBatch(msg.sender, address(0), msg.sender, ids, values);
         _checkBatchReceived(address(0), msg.sender, ids, values, "");
+    }
+
+    function totalSupply(uint256 id) external view returns (uint256 sum) {
+        for (uint256 i = 0; i < holders.length; i++) {
+            sum += balanceOf[holders[i]][id];
+        }
     }
 
     function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
@@ -65,6 +76,7 @@ contract ERC1155 {
         require(msg.sender == from || isApprovedForAll[from][msg.sender], "not authorized");
         balanceOf[from][id] -= value;
         balanceOf[to][id] += value;
+        _addHolder(to);
         emit TransferSingle(msg.sender, from, to, id, value);
         _checkReceived(from, to, id, value, data);
     }
@@ -83,6 +95,7 @@ contract ERC1155 {
             balanceOf[from][ids[i]] -= values[i];
             balanceOf[to][ids[i]] += values[i];
         }
+        _addHolder(to);
         emit TransferBatch(msg.sender, from, to, ids, values);
         _checkBatchReceived(from, to, ids, values, data);
     }
@@ -110,6 +123,13 @@ contract ERC1155 {
                     == IERC1155Receiver.onERC1155Received.selector,
                 "unsafe recipient"
             );
+        }
+    }
+
+    function _addHolder(address account) internal {
+        if (!isHolder[account]) {
+            isHolder[account] = true;
+            holders.push(account);
         }
     }
 }

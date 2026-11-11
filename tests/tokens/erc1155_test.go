@@ -208,8 +208,21 @@ func TestTokenStandards_ERC1155(t *testing.T) {
 	t.Parallel()
 	session := tests.StartIntegrationTestNet(t).SpawnSession(t)
 	n := len(cases)
-	token, deployment, shared := deployToken(t, session, deployErc1155([]int64{10 * int64(n), 5 * int64(n)}))
+	minted := []int64{10 * int64(n), 5 * int64(n)}
+	token, deployment, shared := deployToken(t, session, deployErc1155(minted))
 	shared = addTokenReceivers(t, session, shared)
+
+	// Cleanups run after all subtests, including the parallel cases, and
+	// before the network registered earlier is stopped.
+	t.Cleanup(func() {
+		for i, id := range toBigInts(erc1155Ids) {
+			supply, err := token.TotalSupply(nil, id)
+			require.NoError(t, err, "totalSupply of id %v", id)
+			require.Equal(t,
+				uint64(minted[i]), supply.Uint64(),
+				"transfers must not change the total supply of id %v", id)
+		}
+	})
 
 	t.Run("contract is correctly deployed for defined cases", func(t *testing.T) {
 		require.Equal(t,
