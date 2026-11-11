@@ -1821,6 +1821,11 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 	if args.AccessList != nil {
 		prevTracer = logger.NewAccessListTracer(*args.AccessList, addressesToExclude)
 	}
+	vmConfig, err := GetVmConfig(ctx, b, idx.Block(block.Number.Uint64()))
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	vmConfig.NoBaseFee = true
 	for {
 		// Retrieve the current access list to expand
 		accessList := prevTracer.AccessList()
@@ -1847,12 +1852,8 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 
 		// Apply the transaction with the access list tracer
 		tracer := logger.NewAccessListTracer(accessList, addressesToExclude)
-		config, err := GetVmConfig(ctx, b, idx.Block(block.Number.Uint64()))
-		if err != nil {
-			return nil, 0, nil, err
-		}
+		config := vmConfig
 		config.Tracer = tracer.Hooks()
-		config.NoBaseFee = true
 		vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &config, nil)
 		if err != nil {
 			statedb.Release()
