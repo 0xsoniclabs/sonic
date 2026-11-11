@@ -169,11 +169,11 @@ func consensusCallbackBeginBlockFn(
 		// otherwise cheaters would get punished after a first block where cheaters were observed
 		bs.EpochCheaters = mergeCheaters(bs.EpochCheaters, cBlock.Cheaters)
 
-		// Before Dolce, the live state is opened here and captured by the callbacks.
-		// From Dolce on, the ledger owns it.
+		// Before Canto, the live state is opened here and captured by the callbacks.
+		// From Canto on, the ledger owns it.
 		var statedb state.StateDB
 		var nonceSource blockproc.NonceSource
-		if !es.Rules.Upgrades.Dolce {
+		if !es.Rules.Upgrades.Canto {
 			var err error
 			statedb, err = store.evm.GetLiveStateDb(bs.FinalizedStateRoot)
 			if err != nil {
@@ -210,7 +210,7 @@ func consensusCallbackBeginBlockFn(
 				confirmedEventsMeter.Mark(1)
 			},
 			EndBlock: func() (newValidators *pos.Validators) {
-				if es.Rules.Upgrades.Dolce {
+				if es.Rules.Upgrades.Canto {
 					return endBlock(
 						parallelTasks,
 						wg,
@@ -229,7 +229,7 @@ func consensusCallbackBeginBlockFn(
 						confirmedEvents,
 					)
 				}
-				return endBlockPreDolce(
+				return endBlockPreCanto(
 					parallelTasks,
 					wg,
 					blockBusyFlag,
@@ -255,9 +255,9 @@ func consensusCallbackBeginBlockFn(
 	}
 }
 
-// endBlockPreDolce produces the block of a consensus block before Dolce. It
-// is frozen so that blocks before Dolce are produced as they always were.
-func endBlockPreDolce(
+// endBlockPreCanto produces the block of a consensus block before Canto. It
+// is frozen so that blocks before Canto are produced as they always were.
+func endBlockPreCanto(
 	parallelTasks *workers.Workers,
 	wg *sync.WaitGroup,
 	blockBusyFlag *uint32,
@@ -724,7 +724,7 @@ func endBlockPreDolce(
 	return newValidators
 }
 
-// endBlock produces the block of a consensus block from Dolce on.
+// endBlock produces the block of a consensus block from Canto on.
 func endBlock(
 	parallelTasks *workers.Workers,
 	wg *sync.WaitGroup,

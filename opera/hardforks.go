@@ -65,20 +65,6 @@ func GetCantoUpgrades() Upgrades {
 	}
 }
 
-// GetDolceUpgrades contains the feature flags for the Dolce upgrade.
-func GetDolceUpgrades() Upgrades {
-	return Upgrades{
-		Berlin:  true,
-		London:  true,
-		Llr:     false,
-		Sonic:   true,
-		Allegro: true,
-		Brio:    true,
-		Canto:   true,
-		Dolce:   true,
-	}
-}
-
 // GetAllHardForksInOrder returns an iterator over all hard forks and their
 // corresponding feature flags in order.
 // This function returns an iterator and not a map to preserve the hardfork order.
@@ -93,7 +79,6 @@ func GetAllHardForksInOrder() iter.Seq2[string, Upgrades] {
 		{"Allegro", GetAllegroUpgrades()},
 		{"Brio", GetBrioUpgrades()},
 		{"Canto", GetCantoUpgrades()},
-		{"Dolce", GetDolceUpgrades()},
 	}
 
 	return func(yield func(string, Upgrades) bool) {
