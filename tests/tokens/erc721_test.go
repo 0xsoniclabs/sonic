@@ -344,6 +344,7 @@ func erc721Owned(owner, approved tokenActor, operator bool) *erc721State {
 // observeErc721 also checks that the balances of Alice, Bob and Carol match
 // the owner of the case's token.
 func observeErc721(t *testing.T, token *erc721.Erc721, a tokenActors, id *big.Int) erc721State {
+	t.Helper()
 	owner, err := token.OwnerOf(nil, id)
 	require.NoError(t, err, "ownerOf the case's token")
 	approved, err := token.GetApproved(nil, id)
