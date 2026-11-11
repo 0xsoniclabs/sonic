@@ -67,9 +67,8 @@ projects. This work only keeps the deletion small: the removal list
 section 6. No pull request is opened. On every commit, legacy mode answers as
 `main` does, and module mode serves only what is ported so far: nothing is
 forwarded to the legacy stack, and an unported method answers -32601. The
-user is the person who directs this work. The user approves twice: at the end
-of step 1, before the other steps build on `Core` and the dispatcher, and at
-the end of step 7, which ends M1. Nothing of M2 starts before that approval.
+user is the person who directs this work. The user approves and at the
+end of step 7, which ends M1. Nothing of M2 starts before that approval.
 
 **M2** cuts the work branch into stacked pull requests, so that the work is
 reviewed in public and reaches `main` with a history that can be read. Each
@@ -665,9 +664,7 @@ commit passes the gates it names.
    Gates: SW1–SW3, SW6 (with its list of files still importing legacy types),
    the `Core` surface test, the import table, H1, H3, H6, H8–H12, I1–I4, I13,
    I15, D1–D3, D5 without subscriptions, D9, D11, D13, P1–P5, P7, S1, X2,
-   MON1–MON5, O3, O5, T8 for the adapter's calls so far. With these gates
-   green, the user approves `Core`, the adapter and the dispatcher before any
-   later step starts (section 1).
+   MON1–MON5, O3, O5, T8 for the adapter's calls so far.
 2. **Oracle, state and execution.** The oracle comes first: call defaulting
    asks it for the tip. Commits:
    - `rpc/oracle` and `eth_gasPrice`, `eth_maxPriorityFeePerGas`,
