@@ -220,6 +220,11 @@ func TestRules_Copy_CopiesAreDisjoint(t *testing.T) {
 				rule.Upgrades.TransactionPriorities = !rule.Upgrades.TransactionPriorities
 			},
 		},
+		"upgrade Upgrades.AccountFreeze": {
+			update: func(rule *Rules) {
+				rule.Upgrades.AccountFreeze = !rule.Upgrades.AccountFreeze
+			},
+		},
 	}
 
 	for name, test := range tests {

@@ -136,6 +136,9 @@ func (u Upgrades) EncodeRLP(w io.Writer) error {
 	if u.TransactionPriorities {
 		bitmap.V |= transactionPrioritiesBit
 	}
+	if u.AccountFreeze {
+		bitmap.V |= accountFreezeBit
+	}
 	return rlp.Encode(w, &bitmap)
 }
 
@@ -161,6 +164,7 @@ func (u *Upgrades) DecodeRLP(s *rlp.Stream) error {
 	u.GasSubsidies = (bitmap.V & gasSubsidiesBit) != 0
 	u.TransactionBundles = (bitmap.V & transactionBundlesBit) != 0
 	u.TransactionPriorities = (bitmap.V & transactionPrioritiesBit) != 0
+	u.AccountFreeze = (bitmap.V & accountFreezeBit) != 0
 	return nil
 }
 

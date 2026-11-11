@@ -311,5 +311,7 @@ func validateUpgrades(old, new Upgrades) error {
 
 	// The TransactionPriorities feature can be freely modified.
 
+	// The AccountFreeze feature can be freely modified.
+
 	return errors.Join(issues...)
 }
