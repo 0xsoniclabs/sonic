@@ -37,25 +37,25 @@ func TestTokenStandards_ERC20(t *testing.T) {
 			sender:   alice,
 			action:   erc20Transfer(carol, 30),
 			wantLogs: emits("Transfer", alice, carol, 30),
-			want:     erc20Balances(70, 0, 30, 0),
+			want:     erc20Balances(balances{70, 0, 30}, 0),
 		},
 		"transfer of the entire balance succeeds": {
 			sender:   alice,
 			action:   erc20Transfer(carol, 100),
 			wantLogs: emits("Transfer", alice, carol, 100),
-			want:     erc20Balances(0, 0, 100, 0),
+			want:     erc20Balances(balances{0, 0, 100}, 0),
 		},
 		"transfer of zero tokens succeeds": {
 			sender:   alice,
 			action:   erc20Transfer(carol, 0),
 			wantLogs: emits("Transfer", alice, carol, 0),
-			want:     erc20Balances(100, 0, 0, 0),
+			want:     erc20Balances(balances{100, 0, 0}, 0),
 		},
 		"transfer to oneself succeeds": {
 			sender:   alice,
 			action:   erc20Transfer(alice, 30),
 			wantLogs: emits("Transfer", alice, alice, 30),
-			want:     erc20Balances(100, 0, 0, 0),
+			want:     erc20Balances(balances{100, 0, 0}, 0),
 		},
 		"transfer with insufficient funds fails": {
 			sender: alice,
@@ -71,21 +71,21 @@ func TestTokenStandards_ERC20(t *testing.T) {
 			sender:   bob,
 			action:   erc20TransferFrom(alice, carol, 40),
 			wantLogs: emits("Transfer", alice, carol, 40),
-			want:     erc20Balances(60, 0, 40, 10),
+			want:     erc20Balances(balances{60, 0, 40}, 10),
 		},
 		"transferFrom of the entire allowance succeeds": {
 			setup:    erc20Allowance(50),
 			sender:   bob,
 			action:   erc20TransferFrom(alice, carol, 50),
 			wantLogs: emits("Transfer", alice, carol, 50),
-			want:     erc20Balances(50, 0, 50, 0),
+			want:     erc20Balances(balances{50, 0, 50}, 0),
 		},
 		"transferFrom to the spender succeeds": {
 			setup:    erc20Allowance(50),
 			sender:   bob,
 			action:   erc20TransferFrom(alice, bob, 50),
 			wantLogs: emits("Transfer", alice, bob, 50),
-			want:     erc20Balances(50, 50, 0, 0),
+			want:     erc20Balances(balances{50, 50, 0}, 0),
 		},
 		"transferFrom without approval fails": {
 			sender: bob,
@@ -125,27 +125,27 @@ func TestTokenStandards_ERC20(t *testing.T) {
 			sender:   alice,
 			action:   erc20Approve(bob, 20),
 			wantLogs: emits("Approval", alice, bob, 20),
-			want:     erc20Balances(100, 0, 0, 20),
+			want:     erc20Balances(balances{100, 0, 0}, 20),
 		},
 		"approve overwrites a previous allowance": {
 			setup:    erc20Allowance(50),
 			sender:   alice,
 			action:   erc20Approve(bob, 20),
 			wantLogs: emits("Approval", alice, bob, 20),
-			want:     erc20Balances(100, 0, 0, 20),
+			want:     erc20Balances(balances{100, 0, 0}, 20),
 		},
 		"approve of zero revokes the allowance": {
 			setup:    erc20Allowance(50),
 			sender:   alice,
 			action:   erc20Approve(bob, 0),
 			wantLogs: emits("Approval", alice, bob, 0),
-			want:     erc20Balances(100, 0, 0, 0),
+			want:     erc20Balances(balances{100, 0, 0}, 0),
 		},
 		"approve beyond the balance succeeds": {
 			sender:   alice,
 			action:   erc20Approve(bob, 1000),
 			wantLogs: emits("Approval", alice, bob, 1000),
-			want:     erc20Balances(100, 0, 0, 1000),
+			want:     erc20Balances(balances{100, 0, 0}, 1000),
 		},
 	}
 
@@ -222,16 +222,20 @@ var erc20Events = parseEvents(`[
 
 type erc20Step = tokenStep[erc20.Erc20]
 
+// balances are those of Alice, Bob and Carol.
+type balances = [3]uint64
+
 type erc20State struct {
-	balances  [3]uint64 // of Alice, Bob and Carol
-	allowance uint64    // of Bob over Alice's tokens
+	balances  balances
+	allowance uint64 // of Bob over Alice's tokens
 }
 
-func erc20Balances(a, b, c, allowance uint64) *erc20State {
-	return &erc20State{[3]uint64{a, b, c}, allowance}
+func erc20Balances(b balances, allowance uint64) *erc20State {
+	return &erc20State{b, allowance}
 }
 
 func observeErc20(t *testing.T, token *erc20.Erc20, a tokenActors) erc20State {
+	t.Helper()
 	var s erc20State
 	for i := range s.balances {
 		balance, err := token.BalanceOf(nil, a[i])
