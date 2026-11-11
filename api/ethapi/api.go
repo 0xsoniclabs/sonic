@@ -1249,6 +1249,7 @@ func DoCall(
 	if err != nil {
 		return nil, err
 	}
+	defer evm.Release()
 	// Skip gas price checks for API runs.
 	evm.Config.NoBaseFee = true
 	// Wait for the context to be done and cancel the evm. Even if the
@@ -1862,6 +1863,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		stopCancel := context.AfterFunc(ctx, vmenv.Cancel)
 		res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
 		stopCancel()
+		vmenv.Release()
 		statedb.Release()
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, 0, nil, ctxErr
@@ -2737,6 +2739,7 @@ func (api *PublicDebugAPI) traceTx(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get EVM for tracing: %w", err)
 	}
+	defer vmenv.Release()
 
 	// Define a meaningful timeout of a single transaction trace
 	if config.Timeout != nil {
@@ -2756,7 +2759,7 @@ func (api *PublicDebugAPI) traceTx(
 	defer cancel()
 
 	// Call SetTxContext to clear out the statedb access list
-	loggingStateDB.SetTxContext(txctx.TxHash, txctx.TxIndex)
+	loggingStateDB.SetTxContext(txctx.TxHash, txctx.TxIndex, uint32(txctx.TxIndex+1))
 
 	// Run the transaction with tracing enabled.
 	_, err = evmcore.ApplyTransactionWithEVM(
@@ -2852,9 +2855,11 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 	}
 	defer statedb.Release()
 
-	if _, err := applyPreBlockSystemCalls(ctx, api.b, block, statedb); err != nil {
+	vmenv, err := applyPreBlockSystemCalls(ctx, api.b, block, statedb)
+	if err != nil {
 		return nil, err
 	}
+	vmenv.Release()
 
 	var (
 		chainConfig   = api.b.ChainConfig(idx.Block(block.Header().Number.Uint64()))
@@ -2917,6 +2922,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 	if err != nil {
 		return nil, nil, err
 	}
+	defer vmenv.Release()
 
 	if txIndex == 0 && len(block.Transactions) == 0 {
 		return nil, statedb, nil
@@ -2944,7 +2950,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 			msg.BlobHashes = nil
 		}
 
-		statedb.SetTxContext(tx.Hash(), idx)
+		statedb.SetTxContext(tx.Hash(), idx, uint32(idx+1))
 		if _, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(tx.Gas())); err != nil {
 			return nil, nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
 		}
@@ -3052,8 +3058,8 @@ func getTxAndMessage(args *TransactionArgs, block *evmcore.EvmBlock, b Backend) 
 		To:       msg.To,
 		Nonce:    msg.Nonce,
 		Gas:      msg.GasLimit,
-		GasPrice: msg.GasPrice,
-		Value:    msg.Value,
+		GasPrice: msg.GasPrice.ToBig(),
+		Value:    msg.Value.ToBig(),
 		Data:     msg.Data,
 	})
 

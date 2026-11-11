@@ -210,6 +210,15 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 // If the argument baseFee is nil, pre-EIP1559 gas pricing is assumed, otherwise
 // EIP1559 gas pricing is assumed.
 func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int, log log.Logger) (*core.Message, error) {
+	msg, err := args.toMessage(globalGasCap, baseFee, log)
+	if err != nil {
+		return nil, err
+	}
+	return msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck(), nil
+}
+
+// toMessage is like ToMessage, but keeps all message checks enabled.
+func (args *TransactionArgs) toMessage(globalGasCap uint64, baseFee *big.Int, log log.Logger) (*core.Message, error) {
 	// Reject invalid combinations of pre- and post-1559 fee styles
 	if args.GasPrice != nil && (args.MaxFeePerGas != nil || args.MaxPriorityFeePerGas != nil) {
 		return nil, errors.New("both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified")
@@ -294,23 +303,26 @@ func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int, lo
 		blobHashes = nil
 	}
 
-	return &core.Message{
+	var converter utils.Uint256Converter
+	msg := &core.Message{
 		From:                  addr,
 		To:                    args.To,
 		Nonce:                 nonce,
-		Value:                 value,
+		Value:                 converter.Convert("value", value),
 		GasLimit:              gas,
-		GasPrice:              gasPrice,
-		GasFeeCap:             gasFeeCap,
-		GasTipCap:             gasTipCap,
+		GasPrice:              converter.Convert("gas price", gasPrice),
+		GasFeeCap:             converter.Convert("maxFeePerGas", gasFeeCap),
+		GasTipCap:             converter.Convert("maxPriorityFeePerGas", gasTipCap),
 		Data:                  data,
 		AccessList:            accessList,
-		BlobGasFeeCap:         blobGasFeeCap,
+		BlobGasFeeCap:         converter.Convert("maxFeePerBlobGas", blobGasFeeCap),
 		BlobHashes:            blobHashes,
 		SetCodeAuthorizations: args.AuthorizationList,
-		SkipNonceChecks:       true,
-		SkipTransactionChecks: true,
-	}, nil
+	}
+	if converter.Err != nil {
+		return nil, converter.Err
+	}
+	return msg, nil
 }
 
 // ToTransaction converts the arguments to an unsigned `types.transaction`.

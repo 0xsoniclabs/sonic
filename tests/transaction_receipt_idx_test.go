@@ -221,6 +221,7 @@ func testSkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t *testin
 	require.NoError(t, err)
 	sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
 	senderSkipped := MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	senderMarkers := MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	numSimpleTxs := 10
 	// Create simple transactions
@@ -253,6 +254,18 @@ func testSkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t *testin
 	}
 	skippedTx := SignTransaction(t, chainId, txData, senderSkipped)
 
+	// The skipped transaction is emitted between two marker transactions in a
+	// single event, so the markers' block is the one that processed it.
+	markers := make([]*types.Transaction, 2)
+	for nonce := range markers {
+		markers[nonce] = SignTransaction(t, chainId, &types.LegacyTx{
+			Nonce:    uint64(nonce),
+			Gas:      21000,
+			GasPrice: gasPrice,
+			To:       &common.Address{0x42},
+		}, senderMarkers)
+	}
+
 	// Run one transaction to not interfere with any still pending transactions.
 	receipt, err := net.EndowAccount(common.Address{}, big.NewInt(1e18))
 	require.NoError(t, err)
@@ -264,8 +277,7 @@ func testSkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t *testin
 		require.NoError(t, err)
 	}
 
-	// Send skipped transaction
-	_, err = net.ForceEmit(t.Context(), skippedTx)
+	_, err = net.ForceEmitAll(t.Context(), []*types.Transaction{markers[0], skippedTx, markers[1]})
 	require.NoError(t, err)
 
 	// Send second half of simple transactions
@@ -284,22 +296,22 @@ func testSkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t *testin
 			after = receipt.BlockNumber.Uint64()
 		}
 	}
+	markerReceipts, err := net.GetReceipts([]common.Hash{markers[0].Hash(), markers[1].Hash()})
+	require.NoError(t, err)
+	require.Equal(t, markerReceipts[0].BlockNumber, markerReceipts[1].BlockNumber)
+	require.Equal(t, markerReceipts[0].TransactionIndex+1, markerReceipts[1].TransactionIndex)
+	after = max(after, markerReceipts[0].BlockNumber.Uint64())
 
-	// Make sure the skipped transaction was included in the block by checking the balance of the sender.
 	balanceBefore, err := client.BalanceAt(t.Context(), senderSkipped.Address(), big.NewInt(int64(before)))
 	require.NoError(t, err)
 	balanceAfter, err := client.BalanceAt(t.Context(), senderSkipped.Address(), big.NewInt(int64(after)))
 	require.NoError(t, err)
-
-	if !upgrades.Allegro {
-		require.Greater(t, balanceBefore.Uint64(), balanceAfter.Uint64(),
-			"Balance should have decreased",
-		)
-	} else {
-		require.Equal(t, balanceBefore.Uint64(), balanceAfter.Uint64(),
-			"Balance should remain unchanged",
-		)
-	}
+	require.Equal(t, balanceBefore.Uint64(), balanceAfter.Uint64(),
+		"Balance should remain unchanged",
+	)
+	nonceAfter, err := client.NonceAt(t.Context(), senderSkipped.Address(), big.NewInt(int64(after)))
+	require.NoError(t, err)
+	require.Zero(t, nonceAfter, "Nonce should remain unchanged")
 
 	require.Greater(t, after, before, "Block number should have increased")
 

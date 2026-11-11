@@ -79,7 +79,8 @@ type evmSetup struct {
 
 // setupTracedEVM creates an EVM configured with the requested tracing hooks and
 // returns it together with the associated loggers and a cancel function.
-// The caller is responsible for calling cancel when execution is complete.
+// The caller is responsible for calling cancel when execution is complete,
+// which also releases the EVM.
 // noBaseFee should be true for simulated calls, false for historical replay.
 func setupTracedEVM(
 	ctx context.Context,
@@ -141,7 +142,10 @@ func setupTracedEVM(
 	}()
 
 	setup.vmenv = vmenv
-	return setup, cancel, nil
+	return setup, sync.OnceFunc(func() {
+		cancel()
+		vmenv.Release()
+	}), nil
 }
 
 // Transaction - trace_transaction function returns transaction inner traces
@@ -305,7 +309,7 @@ func (s *PublicTxTraceAPI) traceCallExec(
 	}
 	defer cancel()
 
-	tracedEVM.activeState.SetTxContext(tx.Hash(), int(index))
+	tracedEVM.activeState.SetTxContext(tx.Hash(), int(index), uint32(index+1))
 
 	// Call OnTxStart manually before execution so the trace logger can initialize.
 	if tracedEVM.tracer != nil && tracedEVM.tracer.OnTxStart != nil {
@@ -449,9 +453,11 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 	}
 	defer state.Release()
 
-	if _, err := applyPreBlockSystemCalls(ctx, s.b, block, state); err != nil {
+	vmenv, err := applyPreBlockSystemCalls(ctx, s.b, block, state)
+	if err != nil {
 		return nil, fmt.Errorf("cannot apply pre-block system calls for block %v, error: %v", block.NumberU64(), err.Error())
 	}
+	defer vmenv.Release()
 
 	receipts, err := s.b.GetReceiptsByNumber(ctx, rpc.BlockNumber(blockNumber))
 	if err != nil {
@@ -494,19 +500,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 				return nil, fmt.Errorf("cannot get message from transaction %s, error %s", tx.Hash().String(), err)
 			}
 
-			state.SetTxContext(tx.Hash(), i)
-			vmConfig, err := GetVmConfig(ctx, s.b, idx.Block(block.NumberU64()))
-			if err != nil {
-				return nil, fmt.Errorf("cannot get vm config for block %d, error: %w", block.NumberU64(), err)
-			}
-			vmConfig.NoBaseFee = true
-			vmConfig.Tracer = nil
-
-			vmenv, _, err := s.b.GetEVM(ctx, state, block.Header(), &vmConfig, nil)
-			if err != nil {
-				return nil, fmt.Errorf("cannot initialize vm for transaction %s, error: %s", tx.Hash().String(), err.Error())
-			}
-
+			state.SetTxContext(tx.Hash(), i, uint32(i+1))
 			res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
 			failed := false
 			if err != nil {
@@ -557,7 +551,7 @@ func (s *PublicTxTraceAPI) traceTx(
 	}
 	defer cancel()
 
-	statedb.SetTxContext(tx.Hash(), int(index))
+	statedb.SetTxContext(tx.Hash(), int(index), uint32(index+1))
 	chainConfig := s.b.ChainConfig(idx.Block(block.Number.Uint64()))
 	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, core.NewGasPool(msg.GasLimit), statedb, block.Number, block.Hash, tx, &index, tracedEVM.vmenv)
 

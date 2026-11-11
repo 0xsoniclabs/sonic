@@ -84,6 +84,7 @@ func TestEmitter_NewPriorityContext_IsNilExactlyWithoutClassifiableHeadState(t *
 					db.EXPECT().Snapshot(),
 					db.EXPECT().Exist(gomock.Any()).Return(false),
 					db.EXPECT().RevertToInterTxSnapshot(42),
+					db.EXPECT().Release(),
 				)
 				world.EXPECT().StateDB().Return(db)
 				world.EXPECT().GetUpgradeHeights().Return(nil)
@@ -99,16 +100,17 @@ func TestEmitter_NewPriorityContext_IsNilExactlyWithoutClassifiableHeadState(t *
 			em := &Emitter{world: World{External: world}}
 			context := em.newPriorityContext()
 			require.Equal(t, test.expectNil, context == nil)
+			context.release()
 		})
 	}
 }
 
-func TestPriorityContext_Release_CallsReleaseDBFunctionIfContextNotNil(t *testing.T) {
+func TestPriorityContext_Release_CallsReleaseAllFunctionIfContextNotNil(t *testing.T) {
 	var context *priorityContext
 	context.release() // no-op (does not panic)
 
 	called := false
-	context = &priorityContext{releaseDB: func() { called = true }}
+	context = &priorityContext{releaseAll: func() { called = true }}
 	context.release()
 	require.True(t, called)
 }

@@ -1457,6 +1457,7 @@ func applyTransactionPriorities(
 	header := priorityQueryHeader(rules, blockIdx, blockTime, randao, parent)
 	blockContext := evmcore.NewEVMBlockContext(header, reader, nil)
 	evm := vm.NewEVM(blockContext, statedb, chainCfg, opera.GetVmConfig(rules))
+	defer evm.Release()
 
 	snapshot := statedb.InterTxSnapshot()
 	cfg := priorities.GetConfigOrFallback(rules.Upgrades, evm, failures.config)

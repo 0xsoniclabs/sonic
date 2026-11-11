@@ -16,6 +16,7 @@ import (
 	opera "github.com/0xsoniclabs/sonic/opera"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
+	vm "github.com/ethereum/go-ethereum/core/vm"
 	params "github.com/ethereum/go-ethereum/params"
 	uint256 "github.com/holiman/uint256"
 	gomock "go.uber.org/mock/gomock"
@@ -116,11 +117,11 @@ func (m *Mock_evm) EXPECT() *Mock_evmMockRecorder {
 }
 
 // Call mocks base method.
-func (m *Mock_evm) Call(from, to common.Address, input []byte, gas uint64, value *uint256.Int) ([]byte, uint64, error) {
+func (m *Mock_evm) Call(from, to common.Address, input []byte, gas vm.GasBudget, value *uint256.Int) ([]byte, vm.GasBudget, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Call", from, to, input, gas, value)
 	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(uint64)
+	ret1, _ := ret[1].(vm.GasBudget)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }

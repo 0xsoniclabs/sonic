@@ -17,6 +17,7 @@
 package evmcore
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"math/big"
@@ -603,7 +604,7 @@ func TestValidateTxForNetwork_Gas_RejectsTx_IntrinsicGasTooLow(t *testing.T) {
 func TestValidateTxForNetwork_Gas_RejectsTx_GasLowerThanFloorDataGas(t *testing.T) {
 
 	someData := make([]byte, 1024)
-	floorDataGas, err := core.FloorDataGas(someData)
+	floorDataGas, err := core.FloorDataGas(params.Rules{}, common.Address{}, nil, nil, someData, nil)
 	require.NoError(t, err)
 
 	// 0 gas is always lower than any required intrinsic gas
@@ -649,6 +650,56 @@ func TestValidateTxForNetwork_Gas_RejectsTx_GasLowerThanFloorDataGas(t *testing.
 			require.NoError(t, err)
 
 		})
+	}
+}
+
+func TestValidateTxForNetwork_Gas_RequiredGasDependsOnActiveRevisions(t *testing.T) {
+	const nonZeroBytes, zeroBytes, words = 1000, 24, 32
+	data := append(bytes.Repeat([]byte{1}, nonZeroBytes), make([]byte, zeroBytes)...)
+	accessList := types.AccessList{{StorageKeys: []common.Hash{{}}}}
+
+	for _, istanbul := range []bool{false, true} {
+		for _, shanghai := range []bool{false, true} {
+			for _, eip7623 := range []bool{false, true} {
+				for _, create := range []bool{false, true} {
+					name := fmt.Sprintf("istanbul=%t/shanghai=%t/eip7623=%t/create=%t", istanbul, shanghai, eip7623, create)
+					t.Run(name, func(t *testing.T) {
+						intrinsic := params.TxGas
+						if create {
+							intrinsic = params.TxGasContractCreation
+						}
+						nonZeroGas := params.TxDataNonZeroGasFrontier
+						if istanbul {
+							nonZeroGas = params.TxDataNonZeroGasEIP2028
+						}
+						intrinsic += nonZeroBytes*nonZeroGas + zeroBytes*params.TxDataZeroGas
+						intrinsic += params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
+						if create && shanghai {
+							intrinsic += words * params.InitCodeWordGas
+						}
+						required, wantErr := intrinsic, ErrIntrinsicGas
+						floor := params.TxGas + (nonZeroBytes*params.TxTokenPerNonZeroByte+zeroBytes)*params.TxCostFloorPerToken
+						if eip7623 && floor > intrinsic {
+							required, wantErr = floor, ErrFloorDataGas
+						}
+
+						var to *common.Address
+						if !create {
+							to = &common.Address{42}
+						}
+						tx := func(gas uint64) *types.Transaction {
+							return types.NewTx(&types.AccessListTx{To: to, Gas: gas, Data: data, AccessList: accessList})
+						}
+						rules := NetworkRules{eip2718: true, istanbul: istanbul, shanghai: shanghai, eip7623: eip7623}
+						signer := NewMockSigner(gomock.NewController(t))
+						signer.EXPECT().Sender(gomock.Any()).Return(common.Address{1}, nil)
+
+						require.NoError(t, ValidateTxForNetwork(tx(required), rules, nil, signer))
+						require.ErrorIs(t, ValidateTxForNetwork(tx(required-1), rules, nil, signer), wantErr)
+					})
+				}
+			}
+		}
 	}
 }
 
@@ -707,7 +758,8 @@ func TestValidateTxForNetwork_GasLimitIsCheckedAfterOsaka(t *testing.T) {
 func TestValidateTxForNetwork_InitCodeTooLarge_ReturnsError(t *testing.T) {
 
 	data := make([]byte, params.MaxInitCodeSize+1)
-	gas, err := core.IntrinsicGas(data, nil, nil, true, true, true, true)
+	gas, err := core.IntrinsicGas(data, nil, nil, common.Address{}, nil, nil,
+		params.Rules{IsHomestead: true, IsIstanbul: true, IsShanghai: true})
 	require.NoError(t, err)
 
 	tests := []types.TxData{
@@ -889,7 +941,8 @@ func TestValidateTxForNetwork_CustomSonicCodeSizeLimitIsEnforced(t *testing.T) {
 			}
 
 			data := make([]byte, test.initCodeSize)
-			gas, err := core.IntrinsicGas(data, nil, nil, true, true, true, true)
+			gas, err := core.IntrinsicGas(data, nil, nil, common.Address{}, nil, nil,
+				params.Rules{IsHomestead: true, IsIstanbul: true, IsShanghai: true})
 			require.NoError(t, err)
 
 			chain.EXPECT().CurrentMaxGasLimit().Return(gas).AnyTimes()

@@ -436,6 +436,8 @@ func makeSetCodeTx(
 	require.NoError(t, err, "failed to sign SetCode authorization")
 
 	txData := &types.SetCodeTx{
+		// Gas estimation rejects SetCode transactions before Prague.
+		Gas:      150_000,
 		AuthList: []types.SetCodeAuthorization{authorization},
 	}
 	return tests.CreateTransaction(t, net, txData, account)
