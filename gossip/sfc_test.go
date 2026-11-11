@@ -66,7 +66,7 @@ import (
 )
 
 func TestSFC(t *testing.T) {
-	runPreAndPostDolce(t, opera.GetSonicUpgrades(), testSFC)
+	runPreAndPostCanto(t, opera.GetSonicUpgrades(), testSFC)
 }
 
 func testSFC(t *testing.T, upgrades opera.Upgrades) {

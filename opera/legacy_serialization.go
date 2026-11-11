@@ -121,9 +121,6 @@ func (u Upgrades) EncodeRLP(w io.Writer) error {
 	if u.Canto {
 		bitmap.V |= cantoBit
 	}
-	if u.Dolce {
-		bitmap.V |= dolceBit
-	}
 	if u.SingleProposerBlockFormation {
 		bitmap.V |= singleProposerBlockFormationBit
 	}
@@ -155,7 +152,6 @@ func (u *Upgrades) DecodeRLP(s *rlp.Stream) error {
 	u.Allegro = (bitmap.V & allegroBit) != 0
 	u.Brio = (bitmap.V & brioBit) != 0
 	u.Canto = (bitmap.V & cantoBit) != 0
-	u.Dolce = (bitmap.V & dolceBit) != 0
 
 	u.SingleProposerBlockFormation = (bitmap.V & singleProposerBlockFormationBit) != 0
 	u.GasSubsidies = (bitmap.V & gasSubsidiesBit) != 0
