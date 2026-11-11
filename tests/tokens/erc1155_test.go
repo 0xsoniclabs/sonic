@@ -34,7 +34,7 @@ func TestTokenStandards_ERC1155(t *testing.T) {
 	operatorBob := []erc1155Step{{alice, erc1155SetApprovalForAll(bob, true)}}
 	operatorOfCarol := []erc1155Step{{carol, erc1155SetApprovalForAll(bob, true)}}
 	revokedOperator := append(operatorBob, erc1155Step{alice, erc1155SetApprovalForAll(bob, false)})
-	initial := [3][2]uint64{{10, 5}, {0, 0}, {0, 0}}
+	initial := erc1155Balances{{10, 5}, {0, 0}, {0, 0}}
 
 	// Alice starts with 10 tokens of id 1 and 5 tokens of id 2.
 	cases := map[string]tokenTest[erc1155.Erc1155, erc1155State]{
@@ -42,20 +42,20 @@ func TestTokenStandards_ERC1155(t *testing.T) {
 			sender:   alice,
 			action:   erc1155SafeTransferFrom(alice, carol, 1, 3),
 			wantLogs: emits("TransferSingle", alice, alice, carol, 1, 3),
-			want:     erc1155Held([3][2]uint64{{7, 5}, {0, 0}, {3, 0}}, false),
+			want:     erc1155Held(erc1155Balances{{7, 5}, {0, 0}, {3, 0}}, false),
 		},
 		"safeTransferFrom by an operator succeeds": {
 			setup:    operatorBob,
 			sender:   bob,
 			action:   erc1155SafeTransferFrom(alice, carol, 1, 3),
 			wantLogs: emits("TransferSingle", bob, alice, carol, 1, 3),
-			want:     erc1155Held([3][2]uint64{{7, 5}, {0, 0}, {3, 0}}, true),
+			want:     erc1155Held(erc1155Balances{{7, 5}, {0, 0}, {3, 0}}, true),
 		},
 		"safeTransferFrom of the entire balance succeeds": {
 			sender:   alice,
 			action:   erc1155SafeTransferFrom(alice, carol, 2, 5),
 			wantLogs: emits("TransferSingle", alice, alice, carol, 2, 5),
-			want:     erc1155Held([3][2]uint64{{10, 0}, {0, 0}, {0, 5}}, false),
+			want:     erc1155Held(erc1155Balances{{10, 0}, {0, 0}, {0, 5}}, false),
 		},
 		"safeTransferFrom of zero tokens succeeds": {
 			sender:   alice,
@@ -74,7 +74,7 @@ func TestTokenStandards_ERC1155(t *testing.T) {
 			action: erc1155SafeTransferFrom(alice, acceptingReceiver, 1, 3),
 			wantLogs: emits("TransferSingle", alice, alice, acceptingReceiver, 1, 3).
 				then("ERC1155Received", alice, alice, 1, 3, erc1155HookData),
-			want: erc1155Held([3][2]uint64{{7, 5}, {0, 0}, {0, 0}}, false),
+			want: erc1155Held(erc1155Balances{{7, 5}, {0, 0}, {0, 0}}, false),
 		},
 		"safeTransferFrom by an operator to an accepting receiver succeeds": {
 			setup:  operatorBob,
@@ -82,7 +82,7 @@ func TestTokenStandards_ERC1155(t *testing.T) {
 			action: erc1155SafeTransferFrom(alice, acceptingReceiver, 1, 3),
 			wantLogs: emits("TransferSingle", bob, alice, acceptingReceiver, 1, 3).
 				then("ERC1155Received", bob, alice, 1, 3, erc1155HookData),
-			want: erc1155Held([3][2]uint64{{7, 5}, {0, 0}, {0, 0}}, true),
+			want: erc1155Held(erc1155Balances{{7, 5}, {0, 0}, {0, 0}}, true),
 		},
 		"safeTransferFrom without approval fails": {
 			sender: bob,
@@ -123,14 +123,14 @@ func TestTokenStandards_ERC1155(t *testing.T) {
 			sender:   alice,
 			action:   erc1155SafeBatchTransferFrom(alice, carol, []int64{1, 2}, []int64{3, 5}),
 			wantLogs: emits("TransferBatch", alice, alice, carol, []int{1, 2}, []int{3, 5}),
-			want:     erc1155Held([3][2]uint64{{7, 0}, {0, 0}, {3, 5}}, false),
+			want:     erc1155Held(erc1155Balances{{7, 0}, {0, 0}, {3, 5}}, false),
 		},
 		"safeBatchTransferFrom by an operator succeeds": {
 			setup:    operatorBob,
 			sender:   bob,
 			action:   erc1155SafeBatchTransferFrom(alice, carol, []int64{1, 2}, []int64{3, 5}),
 			wantLogs: emits("TransferBatch", bob, alice, carol, []int{1, 2}, []int{3, 5}),
-			want:     erc1155Held([3][2]uint64{{7, 0}, {0, 0}, {3, 5}}, true),
+			want:     erc1155Held(erc1155Balances{{7, 0}, {0, 0}, {3, 5}}, true),
 		},
 		"safeBatchTransferFrom of an empty batch succeeds": {
 			sender:   alice,
@@ -142,14 +142,14 @@ func TestTokenStandards_ERC1155(t *testing.T) {
 			sender:   alice,
 			action:   erc1155SafeBatchTransferFrom(alice, carol, []int64{1, 1}, []int64{6, 4}),
 			wantLogs: emits("TransferBatch", alice, alice, carol, []int{1, 1}, []int{6, 4}),
-			want:     erc1155Held([3][2]uint64{{0, 5}, {0, 0}, {10, 0}}, false),
+			want:     erc1155Held(erc1155Balances{{0, 5}, {0, 0}, {10, 0}}, false),
 		},
 		"safeBatchTransferFrom to an accepting receiver succeeds": {
 			sender: alice,
 			action: erc1155SafeBatchTransferFrom(alice, acceptingReceiver, []int64{1, 2}, []int64{3, 5}),
 			wantLogs: emits("TransferBatch", alice, alice, acceptingReceiver, []int{1, 2}, []int{3, 5}).
 				then("ERC1155BatchReceived", alice, alice, []int{1, 2}, []int{3, 5}, erc1155HookData),
-			want: erc1155Held([3][2]uint64{{7, 0}, {0, 0}, {0, 0}}, false),
+			want: erc1155Held(erc1155Balances{{7, 0}, {0, 0}, {0, 0}}, false),
 		},
 		"safeBatchTransferFrom without approval fails": {
 			sender: bob,
@@ -283,13 +283,16 @@ var erc1155Events = parseEvents(`[
 
 type erc1155Step = tokenStep[erc1155.Erc1155]
 
+// erc1155Balances are those of Alice, Bob and Carol for ids 1 and 2.
+type erc1155Balances = [3][2]uint64
+
 type erc1155State struct {
-	balances [3][2]uint64 // of Alice, Bob and Carol for ids 1 and 2
-	operator bool         // whether Bob is an operator for Alice
+	balances erc1155Balances
+	operator bool // whether Bob is an operator for Alice
 }
 
-func erc1155Held(balances [3][2]uint64, operator bool) *erc1155State {
-	return &erc1155State{balances, operator}
+func erc1155Held(b erc1155Balances, operator bool) *erc1155State {
+	return &erc1155State{b, operator}
 }
 
 // erc1155Ids are the ids created for the deployer, of which Alice of each case
@@ -301,6 +304,7 @@ var erc1155HookData = []byte{0x01, 0x02}
 
 // observeErc1155 also checks that balanceOfBatch agrees with balanceOf.
 func observeErc1155(t *testing.T, token *erc1155.Erc1155, a tokenActors) erc1155State {
+	t.Helper()
 	var s erc1155State
 	var owners []common.Address
 	var ids []*big.Int
