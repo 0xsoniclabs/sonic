@@ -26,8 +26,9 @@ import (
 )
 
 const (
-	SonicPostAllegroMaxCodeSize     = 1<<15 + 1<<14                   // 48 KiB
-	SonicPostAllegroMaxInitCodeSize = SonicPostAllegroMaxCodeSize * 2 // 96 KiB
+	SonicPostAllegroMaxCodeSize             = 1<<15 + 1<<14                   // 48 KiB
+	SonicPostAllegroMaxInitCodeSize         = SonicPostAllegroMaxCodeSize * 2 // 96 KiB
+	SonicPostAllegroVMCreateMaxInitCodeSize = 1<<15 + 1<<14                   // 48 KiB
 )
 
 // sonicVmConfig is the initial Ethereum VM configuration used for processing
@@ -98,8 +99,10 @@ func GetVmConfig(rules Rules) vm.Config {
 		// Starting from Brio, sonic enforces its own code size limits.
 		maxCodeSize := SonicPostAllegroMaxCodeSize
 		maxInitCodeSize := SonicPostAllegroMaxInitCodeSize
+		vmCreateMaxInitCodeSize := SonicPostAllegroVMCreateMaxInitCodeSize
 		res.MaxCodeSize = &maxCodeSize
 		res.MaxInitCodeSize = &maxInitCodeSize
+		res.MaxInitCodeSizeVMCreate = &vmCreateMaxInitCodeSize
 	}
 
 	return res
