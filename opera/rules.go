@@ -221,7 +221,7 @@ type Upgrades struct {
 	Sonic   bool // < launch version of the Sonic chain, introducing Cancun features
 	Allegro bool // < first hard fork of the Sonic chain, introducing Prague features
 	Brio    bool // < second hard fork of the Sonic chain, introducing Osaka features
-	Canto   bool // < third hard fork of the Sonic chain, introducing Amsterdam features
+	Canto   bool // < third hard fork of the Sonic chain
 
 	// -- Optional Features --
 
