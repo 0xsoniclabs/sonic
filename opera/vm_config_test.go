@@ -145,16 +145,21 @@ func TestCodeSizeLimits_CreateOpcodesHaveTheSameInitCodeSizeLimitInAllInterprete
 						"processing": vmConfig.Interpreter,
 						"tracing":    vmConfig.InterpreterForTracing,
 					}
+					gasLeft := map[string]uint64{}
 					for interpreterName, interpreter := range interpreters {
 						vmConfig.Interpreter = interpreter
-						created, err := createWithInitCodeSize(t, upgrades, vmConfig, op, size)
+						created, left, err := createWithInitCodeSize(t, upgrades, vmConfig, op, size)
+						gasLeft[interpreterName] = left
 						if wantSuccess {
 							require.NoError(t, err, interpreterName)
 							require.NotZero(t, created, interpreterName)
+						} else if interpreterName == "tracing" {
+							require.ErrorContains(t, err, vm.ErrMaxInitCodeSizeExceeded.Error())
 						} else {
 							require.Error(t, err, interpreterName)
 						}
 					}
+					require.Equal(t, gasLeft["processing"], gasLeft["tracing"])
 				})
 			}
 		}
@@ -162,14 +167,15 @@ func TestCodeSizeLimits_CreateOpcodesHaveTheSameInitCodeSizeLimitInAllInterprete
 }
 
 // createWithInitCodeSize runs a contract that creates a contract from
-// initCodeSize zero bytes with the given opcode and returns its address.
+// initCodeSize zero bytes with the given opcode and returns its address
+// and the gas left.
 func createWithInitCodeSize(
 	t *testing.T,
 	upgrades opera.Upgrades,
 	vmConfig vm.Config,
 	op vm.OpCode,
 	initCodeSize uint64,
-) (common.Address, error) {
+) (common.Address, uint64, error) {
 	t.Helper()
 	stateDB, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	require.NoError(t, err)
@@ -204,6 +210,6 @@ func createWithInitCodeSize(
 		Random:      &common.Hash{},
 	}
 	evm := vm.NewEVM(blockContext, stateDB, chainConfig, vmConfig)
-	ret, _, err := evm.Call(common.Address{2}, factory, nil, 10_000_000, uint256.NewInt(0))
-	return common.BytesToAddress(ret), err
+	ret, gasLeft, err := evm.Call(common.Address{2}, factory, nil, 10_000_000, uint256.NewInt(0))
+	return common.BytesToAddress(ret), gasLeft, err
 }
