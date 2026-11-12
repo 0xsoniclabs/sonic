@@ -291,6 +291,38 @@ func TestSimulateV1_EndsTransactionAfterEachCall(t *testing.T) {
 	require.Len(t, results[0].calls, 2)
 }
 
+func TestSimulateV1_BlobCallWithoutBlobFeeCapSucceeds(t *testing.T) {
+	zero := uint64(0)
+	setup := newSimulateV1Setup()
+	setup.chainConfig = &params.ChainConfig{
+		ChainID:      big.NewInt(1234),
+		LondonBlock:  big.NewInt(0),
+		ShanghaiTime: &zero,
+		CancunTime:   &zero,
+	}
+	f := newSimulateV1HelperWith(t, setup)
+	setExpectedStateCalls(f.mockState)
+	f.mockState.EXPECT().GetStateHash().Return(common.Hash{})
+
+	from := common.Address{1}
+	to := common.Address{2}
+	gas := hexutil.Uint64(100_000)
+	call := TransactionArgs{
+		From:       &from,
+		To:         &to,
+		Gas:        &gas,
+		BlobHashes: []common.Hash{{0x01}},
+	}
+	opts := simOpts{BlockStateCalls: []simBlock{{Calls: []TransactionArgs{call}}}}
+
+	results, err := f.api.SimulateV1(t.Context(), opts, &f.blkNr)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Len(t, results[0].calls, 1)
+	require.Equal(t, hexutil.Uint64(types.ReceiptStatusSuccessful), results[0].calls[0].Status)
+}
+
 func TestSimulateV1_FailsWithoutNetworkRules(t *testing.T) {
 	injectedErr := errors.New("injected error")
 	tests := map[string]struct {
