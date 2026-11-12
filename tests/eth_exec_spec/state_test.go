@@ -193,6 +193,7 @@ func newEthSpecVmConfig() vm.Config {
 	config.MaxTxGas = nil
 	config.MaxCodeSize = nil
 	config.MaxInitCodeSize = nil
+	config.MaxInitCodeSizeVMCreate = nil
 	return config
 }
 
