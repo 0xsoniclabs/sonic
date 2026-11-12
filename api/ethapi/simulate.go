@@ -380,6 +380,7 @@ func (sim *simulator) processBlock(
 		if applyErr != nil {
 			return nil, nil, nil, nil, simTxValidationError(applyErr)
 		}
+		activeState.EndTransaction()
 		gasUsed += result.UsedGas
 
 		// Build the per-call result.
@@ -502,8 +503,8 @@ func (sim *simulator) applyStateOverrides(
 			}
 		}
 	}
-	// Finalise the overrides as if they were a transaction.
-	state.Finalise(false)
+	// Calls must see the overrides as committed state of a preceding transaction.
+	state.EndTransaction()
 	return nil
 }
 

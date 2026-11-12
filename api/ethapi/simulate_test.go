@@ -238,7 +238,6 @@ func TestSimulateV1_CodeOverrideTakesPrecedenceOverStatePrecompile(t *testing.T)
 	code := hexutil.Bytes{0x60, 0x42, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3}
 	precompile := evmwriter.ContractAddress
 	f.mockState.EXPECT().SetCode(precompile, []byte(code), gomock.Any())
-	f.mockState.EXPECT().Finalise(false)
 	f.mockState.EXPECT().GetCode(precompile).Return([]byte(code)).AnyTimes()
 	f.mockState.EXPECT().GetCodeHash(precompile).Return(crypto.Keccak256Hash(code)).AnyTimes()
 	f.mockState.EXPECT().RevertToSnapshot(gomock.Any()).AnyTimes()
@@ -264,6 +263,32 @@ func TestSimulateV1_CodeOverrideTakesPrecedenceOverStatePrecompile(t *testing.T)
 
 	vmConfig := opera.GetVmConfig(opera.FakeNetRules(opera.GetBrioUpgrades()))
 	require.Contains(t, vmConfig.StatePrecompiles, precompile, "shared network configuration must not be modified")
+}
+
+func TestSimulateV1_EndsTransactionAfterEachCall(t *testing.T) {
+	f := newSimulateV1Helper(t)
+	gomock.InOrder(
+		f.mockState.EXPECT().SetTxContext(gomock.Any(), 0),
+		f.mockState.EXPECT().EndTransaction(),
+		f.mockState.EXPECT().SetTxContext(gomock.Any(), 1),
+		f.mockState.EXPECT().EndTransaction(),
+	)
+	setExpectedStateCalls(f.mockState)
+	f.mockState.EXPECT().GetStateHash().Return(common.Hash{})
+
+	from := common.Address{1}
+	to := common.Address{2}
+	gas := hexutil.Uint64(100_000)
+	call := TransactionArgs{From: &from, To: &to, Gas: &gas}
+	opts := simOpts{
+		BlockStateCalls: []simBlock{{Calls: []TransactionArgs{call, call}}},
+	}
+
+	results, err := f.api.SimulateV1(t.Context(), opts, &f.blkNr)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Len(t, results[0].calls, 2)
 }
 
 func TestSimulateV1_FailsWithoutNetworkRules(t *testing.T) {
