@@ -17,8 +17,8 @@
 package tests
 
 import (
-	"strings"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
