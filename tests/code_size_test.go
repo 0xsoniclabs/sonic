@@ -198,26 +198,31 @@ func TestCodeSizeLimits_CreateTransactionsAndCreateOpcodesHaveTheirOwnInitCodeSi
 				},
 			}
 
+			type frame struct {
+				Error string `json:"error"`
+			}
+			rpcClient := client.Client()
 			sender := net.GetSessionSponsor()
 			const gas = 2_000_000
 			for kindName, kind := range kinds {
 				for _, initCodeSize := range []uint64{kind.limit, kind.limit + 1} {
-					data := kind.data(initCodeSize)
 					withinLimit := initCodeSize <= kind.limit
+					skipped := !withinLimit && kind.to == nil
 
-					t.Run(fmt.Sprintf("%s/initCodeSize=%d/processing", kindName, initCodeSize), func(t *testing.T) {
+					t.Run(fmt.Sprintf("%s/initCodeSize=%d", kindName, initCodeSize), func(t *testing.T) {
+						args := ethapi.TransactionArgs{
+							From: AsPointer(sender.Address()),
+							To:   kind.to,
+							Gas:  AsPointer(hexutil.Uint64(gas)),
+							Data: AsPointer(hexutil.Bytes(kind.data(initCodeSize))),
+						}
 						tx := CreateTransaction(t, net, &types.LegacyTx{
 							To:   kind.to,
 							Gas:  gas,
-							Data: data,
+							Data: *args.Data,
 						}, sender)
 
-						switch {
-						case withinLimit:
-							receipt, err := net.Run(tx)
-							require.NoError(t, err)
-							require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-						case kind.to == nil:
+						if skipped {
 							_, err := net.Send(tx)
 							require.NoError(t, err)
 							_, err = net.TryGetReceipt(3*time.Second, tx.Hash())
@@ -234,34 +239,56 @@ func TestCodeSizeLimits_CreateTransactionsAndCreateOpcodesHaveTheirOwnInitCodeSi
 							receipt, err := net.Run(replacement)
 							require.NoError(t, err)
 							require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-						default:
+						} else {
 							receipt, err := net.Run(tx)
 							require.NoError(t, err)
-							require.Equal(t, types.ReceiptStatusFailed, receipt.Status)
+							wantStatus := types.ReceiptStatusFailed
+							if withinLimit {
+								wantStatus = types.ReceiptStatusSuccessful
+							}
+							require.Equal(t, wantStatus, receipt.Status)
 						}
-					})
 
-					t.Run(fmt.Sprintf("%s/initCodeSize=%d/tracing", kindName, initCodeSize), func(t *testing.T) {
-						var trace struct {
-							Error string `json:"error"`
+						maxInitCodeSizeExceeded := vm.ErrMaxInitCodeSizeExceeded.Error()
+						const notFound = "not found"
+						requireTraces := func(t *testing.T, err error, traces []frame, errorIfSkipped string) {
+							if skipped {
+								require.ErrorContains(t, err, errorIfSkipped)
+								return
+							}
+							require.NoError(t, err)
+							require.NotEmpty(t, traces)
+							if !withinLimit {
+								require.Contains(t, traces[0].Error, maxInitCodeSizeExceeded)
+								return
+							}
+							for _, trace := range traces {
+								require.Empty(t, trace.Error)
+							}
 						}
-						err := client.Client().Call(&trace, "debug_traceCall", ethapi.TransactionArgs{
-							From: AsPointer(sender.Address()),
-							To:   kind.to,
-							Gas:  AsPointer(hexutil.Uint64(gas)),
-							Data: AsPointer(hexutil.Bytes(data)),
-						}, "latest", callTracerConfig())
 
-						switch {
-						case withinLimit:
-							require.NoError(t, err)
-							require.Empty(t, trace.Error)
-						case kind.to == nil:
-							require.ErrorContains(t, err, vm.ErrMaxInitCodeSizeExceeded.Error())
-						default:
-							require.NoError(t, err)
-							require.Contains(t, trace.Error, vm.ErrMaxInitCodeSizeExceeded.Error())
-						}
+						t.Run("debug_traceCall", func(t *testing.T) {
+							var trace frame
+							err := rpcClient.Call(&trace, "debug_traceCall", args, "latest", callTracerConfig())
+							requireTraces(t, err, []frame{trace}, maxInitCodeSizeExceeded)
+						})
+						t.Run("debug_traceTransaction", func(t *testing.T) {
+							var trace frame
+							err := rpcClient.Call(&trace, "debug_traceTransaction", tx.Hash(), callTracerConfig())
+							requireTraces(t, err, []frame{trace}, notFound)
+						})
+						t.Run("trace_call", func(t *testing.T) {
+							var result struct {
+								Trace []frame `json:"trace"`
+							}
+							err := rpcClient.Call(&result, "trace_call", args, []string{"trace"}, "latest")
+							requireTraces(t, err, result.Trace, maxInitCodeSizeExceeded)
+						})
+						t.Run("trace_transaction", func(t *testing.T) {
+							var traces []frame
+							err := rpcClient.Call(&traces, "trace_transaction", tx.Hash())
+							requireTraces(t, err, traces, notFound)
+						})
 					})
 				}
 			}
