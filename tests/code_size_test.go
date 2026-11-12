@@ -17,9 +17,17 @@
 package tests
 
 import (
+	"context"
+	"fmt"
+	"math/big"
 	"testing"
+	"time"
 
+	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/tests/contracts/contractcreator"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/stretchr/testify/require"
@@ -132,6 +140,131 @@ func TestCodeSizeLimits_MaxContractCodeSizeIsUpdatedWithBrio(t *testing.T) {
 			receipt, err := session.Run(signedTx)
 			require.NoError(t, err)
 			require.Equal(t, test.receiptStatus, receipt.Status)
+		})
+	}
+}
+
+func TestCodeSizeLimits_CreateTransactionsAndCreateOpcodesHaveTheirOwnInitCodeSizeLimit(t *testing.T) {
+	for name, upgrades := range opera.GetAllHardForksInOrder() {
+		if !upgrades.Brio {
+			continue
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			// The pool rejects creation transactions above the limit on its
+			// own; without its validation they reach the block processing.
+			net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+				Upgrades:             &upgrades,
+				ClientExtraArguments: []string{"--disable-txPool-validation"},
+			})
+
+			client, err := net.GetClient()
+			require.NoError(t, err)
+			defer client.Close()
+
+			_, receipt, err := DeployContract(net, contractcreator.DeployContractcreator)
+			require.NoError(t, err)
+			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+			creator := receipt.ContractAddress
+
+			creatorAbi, err := contractcreator.ContractcreatorMetaData.GetAbi()
+			require.NoError(t, err)
+			callCreator := func(method string) func(initCodeSize uint64) []byte {
+				return func(initCodeSize uint64) []byte {
+					data, err := creatorAbi.Pack(method, new(big.Int).SetUint64(initCodeSize))
+					require.NoError(t, err)
+					return data
+				}
+			}
+
+			kinds := map[string]struct {
+				to    *common.Address
+				data  func(initCodeSize uint64) []byte
+				limit uint64
+			}{
+				"transaction": {
+					data:  func(initCodeSize uint64) []byte { return make([]byte, initCodeSize) },
+					limit: opera.SonicBrioMaxInitCodeSize,
+				},
+				"CREATE": {
+					to:    &creator,
+					data:  callCreator("CreatetWith"),
+					limit: opera.SonicBrioVMCreateMaxInitCodeSize,
+				},
+				"CREATE2": {
+					to:    &creator,
+					data:  callCreator("Create2With"),
+					limit: opera.SonicBrioVMCreateMaxInitCodeSize,
+				},
+			}
+
+			sender := net.GetSessionSponsor()
+			const gas = 2_000_000
+			for kindName, kind := range kinds {
+				for _, initCodeSize := range []uint64{kind.limit, kind.limit + 1} {
+					data := kind.data(initCodeSize)
+					withinLimit := initCodeSize <= kind.limit
+
+					t.Run(fmt.Sprintf("%s/initCodeSize=%d/processing", kindName, initCodeSize), func(t *testing.T) {
+						tx := CreateTransaction(t, net, &types.LegacyTx{
+							To:   kind.to,
+							Gas:  gas,
+							Data: data,
+						}, sender)
+
+						switch {
+						case withinLimit:
+							receipt, err := net.Run(tx)
+							require.NoError(t, err)
+							require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+						case kind.to == nil:
+							_, err := net.Send(tx)
+							require.NoError(t, err)
+							_, err = net.TryGetReceipt(3*time.Second, tx.Hash())
+							require.ErrorIs(t, err, context.DeadlineExceeded, "transaction should be skipped")
+
+							// The skipped transaction stays in the pool, where it keeps
+							// being re-emitted and blocks the later nonces of its sender.
+							replacement := SignTransaction(t, net.GetChainId(), &types.LegacyTx{
+								Nonce:    tx.Nonce(),
+								To:       &common.Address{},
+								Gas:      21_000,
+								GasPrice: new(big.Int).Mul(tx.GasPrice(), big.NewInt(2)),
+							}, sender)
+							receipt, err := net.Run(replacement)
+							require.NoError(t, err)
+							require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+						default:
+							receipt, err := net.Run(tx)
+							require.NoError(t, err)
+							require.Equal(t, types.ReceiptStatusFailed, receipt.Status)
+						}
+					})
+
+					t.Run(fmt.Sprintf("%s/initCodeSize=%d/tracing", kindName, initCodeSize), func(t *testing.T) {
+						var trace struct {
+							Error string `json:"error"`
+						}
+						err := client.Client().Call(&trace, "debug_traceCall", ethapi.TransactionArgs{
+							From: AsPointer(sender.Address()),
+							To:   kind.to,
+							Gas:  AsPointer(hexutil.Uint64(gas)),
+							Data: AsPointer(hexutil.Bytes(data)),
+						}, "latest", callTracerConfig())
+
+						switch {
+						case withinLimit:
+							require.NoError(t, err)
+							require.Empty(t, trace.Error)
+						case kind.to == nil:
+							require.ErrorContains(t, err, vm.ErrMaxInitCodeSizeExceeded.Error())
+						default:
+							require.NoError(t, err)
+							require.Contains(t, trace.Error, vm.ErrMaxInitCodeSizeExceeded.Error())
+						}
+					})
+				}
+			}
 		})
 	}
 }

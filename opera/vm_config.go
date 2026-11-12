@@ -25,8 +25,9 @@ import (
 )
 
 const (
-	SonicBrioMaxCodeSize     = 1<<15 + 1<<14            // 48 KiB
-	SonicBrioMaxInitCodeSize = SonicBrioMaxCodeSize * 2 // 96 KiB
+	SonicBrioMaxCodeSize             = 1<<15 + 1<<14            // 48 KiB
+	SonicBrioMaxInitCodeSize         = SonicBrioMaxCodeSize * 2 // 96 KiB
+	SonicBrioVMCreateMaxInitCodeSize = 1<<15 + 1<<14            // 48 KiB
 )
 
 // sonicVmConfig is the initial Ethereum VM configuration used for processing
@@ -83,8 +84,10 @@ func GetVmConfig(rules Rules) vm.Config {
 		// Starting from Brio, sonic enforces its own code size limits.
 		maxCodeSize := SonicBrioMaxCodeSize
 		maxInitCodeSize := SonicBrioMaxInitCodeSize
+		vmCreateMaxInitCodeSize := SonicBrioVMCreateMaxInitCodeSize
 		res.MaxCodeSize = &maxCodeSize
 		res.MaxInitCodeSize = &maxInitCodeSize
+		res.MaxInitCodeSizeVMCreate = &vmCreateMaxInitCodeSize
 	}
 
 	// Starting from Canto, transactions whose sender cannot cover the
