@@ -21,10 +21,12 @@ import (
 	"slices"
 	"testing"
 
+	cc "github.com/0xsoniclabs/carmen/go/common"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -496,4 +498,68 @@ func TestCarmenStateDB_ReportedExecutionPlansCanBeRolledBackSkippingSnapshots(t 
 	require.False(state.HasBundleRecentlyBeenProcessed(plan1))
 	require.False(state.HasBundleRecentlyBeenProcessed(plan2))
 	require.False(state.HasBundleRecentlyBeenProcessed(plan3))
+}
+
+func TestCarmenStateDB_AddLog_ForwardsLogAndReportsAssignedIndexToCaller(t *testing.T) {
+	tests := map[string]struct {
+		log           *types.Log
+		assignedIndex uint
+	}{
+		"first log of block": {
+			log:           &types.Log{Address: common.Address{1}},
+			assignedIndex: 0,
+		},
+		"later log of block": {
+			log:           &types.Log{Address: common.Address{2}},
+			assignedIndex: 7,
+		},
+		"large index": {
+			log:           &types.Log{Address: common.Address{3}},
+			assignedIndex: 1 << 20,
+		},
+		"log with topics and data": {
+			log: &types.Log{
+				Address: common.Address{4},
+				Topics:  []common.Hash{{1}, {2}, {3}},
+				Data:    []byte{4, 5, 6},
+			},
+			assignedIndex: 3,
+		},
+		"log without topics and data": {
+			log:           &types.Log{Address: common.Address{5}},
+			assignedIndex: 1,
+		},
+		"stale index set by caller is overwritten": {
+			log:           &types.Log{Address: common.Address{6}, Index: 99},
+			assignedIndex: 2,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			ctrl := gomock.NewController(t)
+			db := carmen.NewMockVmStateDB(ctrl)
+
+			want := *test.log
+			want.Index = test.assignedIndex
+
+			// Carmen assigns the index to the log it is handed, which is not
+			// the log object owned by the caller.
+			db.EXPECT().AddLog(gomock.Any()).Do(func(log *cc.Log) {
+				require.Equal(cc.Address(want.Address), log.Address)
+				require.Equal(want.Data, log.Data)
+				require.Len(log.Topics, len(want.Topics))
+				for i, topic := range want.Topics {
+					require.Equal(cc.Hash(topic), log.Topics[i])
+				}
+				log.Index = test.assignedIndex
+			})
+
+			state := &CarmenStateDB{db: db}
+			state.AddLog(test.log)
+
+			require.Equal(&want, test.log)
+		})
+	}
 }
