@@ -1910,12 +1910,17 @@ func (s *PublicBlockChainAPI) SimulateV1(ctx context.Context, opts simOpts, bloc
 	}
 
 	chainConfig := s.b.ChainConfig(idx.Block(base.Number.Uint64()))
+	vmConfig, err := GetVmConfig(ctx, s.b, idx.Block(base.Number.Uint64()))
+	if err != nil {
+		return nil, err
+	}
 
 	sim := &simulator{
 		b:              s.b,
 		state:          state,
 		base:           base.Header(),
 		chainConfig:    chainConfig,
+		vmConfig:       vmConfig,
 		gp:             core.NewGasPool(gasCap),
 		traceTransfers: opts.TraceTransfers,
 		validate:       opts.Validation,

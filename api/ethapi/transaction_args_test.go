@@ -143,6 +143,19 @@ func TestTransactionArgs_ToMessage_Empty(t *testing.T) {
 	require.Equal(t, uint64(0), msg.Nonce)
 }
 
+func TestTransactionArgs_ToMessage_DefaultsBlobFeeCapOfBlobCallsToZero(t *testing.T) {
+	t.Parallel()
+
+	args := TransactionArgs{
+		To:         &common.Address{0x1},
+		BlobHashes: []common.Hash{{0x01}},
+	}
+
+	msg, err := args.ToMessage(0x4321, big.NewInt(100), nil)
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt(0), msg.BlobGasFeeCap)
+}
+
 func TestTransactionArgs_ToMessage_TrivialFieldsAreCopied(t *testing.T) {
 	t.Parallel()
 	// this test checks that the trivial fields of TransactionArgs

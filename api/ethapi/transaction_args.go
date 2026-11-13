@@ -283,14 +283,16 @@ func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int, lo
 		accessList = *args.AccessList
 	}
 
-	var blobGasFeeCap *big.Int
-	if args.BlobFeeCap != nil {
-		blobGasFeeCap = args.BlobFeeCap.ToInt()
-	}
-
 	blobHashes := args.BlobHashes
 	if len(blobHashes) == 0 {
 		blobHashes = nil
+	}
+
+	var blobGasFeeCap *big.Int
+	if args.BlobFeeCap != nil {
+		blobGasFeeCap = args.BlobFeeCap.ToInt()
+	} else if blobHashes != nil {
+		blobGasFeeCap = new(big.Int)
 	}
 
 	return &core.Message{

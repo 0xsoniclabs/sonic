@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -27,11 +28,15 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
@@ -102,6 +107,256 @@ func TestSimulateV1_SingleCall_NonceValidationFailure(t *testing.T) {
 	simTxError, ok := err.(*simInvalidTxError)
 	require.True(t, ok)
 	require.Equal(t, errCodeNonceTooHigh, simTxError.ErrorCode())
+}
+
+func TestSimulateV1_Validation_SkipsGasLimitCapAndEOAChecks(t *testing.T) {
+	from := common.Address{1}
+	to := common.Address{2}
+	setup := newSimulateV1Setup()
+	txGasCap := opera.FakeNetRules(setup.upgrades).Economy.Gas.MaxEventGas
+	gas := hexutil.Uint64(21_000)
+	gasAboveCap := hexutil.Uint64(txGasCap + 1)
+
+	tests := map[string]struct {
+		call       TransactionArgs
+		senderCode []byte
+	}{
+		"gas defaults to more than the transaction gas cap": {
+			call: TransactionArgs{From: &from, To: &to},
+		},
+		"gas is set above the transaction gas cap": {
+			call: TransactionArgs{From: &from, To: &to, Gas: &gasAboveCap},
+		},
+		"sender has code": {
+			call:       TransactionArgs{From: &from, To: &to, Gas: &gas},
+			senderCode: []byte{byte(vm.STOP)},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			osakaTime := uint64(0)
+			setup := newSimulateV1Setup()
+			setup.chainConfig.LondonBlock = big.NewInt(0)
+			setup.chainConfig.OsakaTime = &osakaTime
+			setup.base.GasLimit = 2 * txGasCap
+			setup.gasCap = 2 * txGasCap
+			f := newSimulateV1HelperWith(t, setup)
+			f.mockState.EXPECT().GetCode(from).Return(test.senderCode).AnyTimes()
+			setExpectedStateCalls(f.mockState)
+			f.mockState.EXPECT().GetStateHash().Return(common.Hash{})
+
+			opts := simOpts{
+				BlockStateCalls: []simBlock{{Calls: []TransactionArgs{test.call}}},
+				Validation:      true,
+			}
+
+			results, err := f.api.SimulateV1(t.Context(), opts, &f.blkNr)
+
+			require.NoError(t, err)
+			require.Len(t, results, 1)
+			require.Len(t, results[0].calls, 1)
+			require.Equal(t, hexutil.Uint64(types.ReceiptStatusSuccessful), results[0].calls[0].Status)
+		})
+	}
+}
+
+func TestSimulateV1_ChargesUnusedGasAsConfiguredByNetworkRules(t *testing.T) {
+	singleProposer := opera.GetBrioUpgrades()
+	singleProposer.SingleProposerBlockFormation = true
+
+	tests := map[string]struct {
+		upgrades    opera.Upgrades
+		wantGasUsed hexutil.Uint64
+	}{
+		"multiple proposers charge 10% of unused gas": {
+			upgrades:    opera.GetBrioUpgrades(),
+			wantGasUsed: 21_000 + (100_000-21_000)/10,
+		},
+		"single proposer does not charge unused gas": {
+			upgrades:    singleProposer,
+			wantGasUsed: 21_000,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			setup := newSimulateV1Setup()
+			setup.upgrades = test.upgrades
+			f := newSimulateV1HelperWith(t, setup)
+			setExpectedStateCalls(f.mockState)
+			f.mockState.EXPECT().GetStateHash().Return(common.Hash{})
+
+			from := common.Address{1}
+			to := common.Address{2}
+			gas := hexutil.Uint64(100_000)
+			opts := simOpts{
+				BlockStateCalls: []simBlock{
+					{Calls: []TransactionArgs{{From: &from, To: &to, Gas: &gas}}},
+				},
+			}
+
+			results, err := f.api.SimulateV1(t.Context(), opts, &f.blkNr)
+
+			require.NoError(t, err)
+			require.Len(t, results, 1)
+			require.Len(t, results[0].calls, 1)
+			require.Equal(t, test.wantGasUsed, results[0].calls[0].GasUsed)
+		})
+	}
+}
+
+func TestSimulateV1_AppliesSonicInitCodeSizeLimit(t *testing.T) {
+	shanghaiTime := uint64(0)
+	setup := newSimulateV1Setup()
+	setup.chainConfig.LondonBlock = big.NewInt(0)
+	setup.chainConfig.ShanghaiTime = &shanghaiTime
+	setup.base.PrevRandao = common.Hash{1}
+	f := newSimulateV1HelperWith(t, setup)
+	setExpectedStateCalls(f.mockState)
+
+	from := common.Address{1}
+	gas := hexutil.Uint64(500_000)
+	initCode := hexutil.Bytes(make([]byte, opera.SonicPostAllegroMaxInitCodeSize+1))
+	opts := simOpts{
+		BlockStateCalls: []simBlock{
+			{Calls: []TransactionArgs{{From: &from, Gas: &gas, Data: &initCode}}},
+		},
+	}
+
+	_, err := f.api.SimulateV1(t.Context(), opts, &f.blkNr)
+
+	simTxError, ok := err.(*simInvalidTxError)
+	require.True(t, ok)
+	require.Equal(t, errCodeMaxInitCodeSizeExceeded, simTxError.ErrorCode())
+	require.ErrorContains(t, err, fmt.Sprintf("limit %d", opera.SonicPostAllegroMaxInitCodeSize))
+}
+
+func TestSimulateV1_CodeOverrideTakesPrecedenceOverStatePrecompile(t *testing.T) {
+	f := newSimulateV1Helper(t)
+	// PUSH1 0x42 PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 RETURN
+	code := hexutil.Bytes{0x60, 0x42, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3}
+	precompile := evmwriter.ContractAddress
+	f.mockState.EXPECT().SetCode(precompile, []byte(code), gomock.Any())
+	f.mockState.EXPECT().GetCode(precompile).Return([]byte(code)).AnyTimes()
+	f.mockState.EXPECT().GetCodeHash(precompile).Return(crypto.Keccak256Hash(code)).AnyTimes()
+	f.mockState.EXPECT().RevertToSnapshot(gomock.Any()).AnyTimes()
+	setExpectedStateCalls(f.mockState)
+	f.mockState.EXPECT().GetStateHash().Return(common.Hash{})
+
+	from := common.Address{1}
+	gas := hexutil.Uint64(100_000)
+	opts := simOpts{
+		BlockStateCalls: []simBlock{{
+			StateOverrides: &StateOverride{precompile: {Code: &code}},
+			Calls:          []TransactionArgs{{From: &from, To: &precompile, Gas: &gas}},
+		}},
+	}
+
+	results, err := f.api.SimulateV1(t.Context(), opts, &f.blkNr)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Len(t, results[0].calls, 1)
+	require.Equal(t, hexutil.Uint64(types.ReceiptStatusSuccessful), results[0].calls[0].Status)
+	require.Equal(t, hexutil.Bytes(common.LeftPadBytes([]byte{0x42}, 32)), results[0].calls[0].ReturnValue)
+
+	vmConfig := opera.GetVmConfig(opera.FakeNetRules(opera.GetBrioUpgrades()))
+	require.Contains(t, vmConfig.StatePrecompiles, precompile, "shared network configuration must not be modified")
+}
+
+func TestSimulateV1_EndsTransactionAfterEachCall(t *testing.T) {
+	f := newSimulateV1Helper(t)
+	gomock.InOrder(
+		f.mockState.EXPECT().SetTxContext(gomock.Any(), 0),
+		f.mockState.EXPECT().EndTransaction(),
+		f.mockState.EXPECT().SetTxContext(gomock.Any(), 1),
+		f.mockState.EXPECT().EndTransaction(),
+	)
+	setExpectedStateCalls(f.mockState)
+	f.mockState.EXPECT().GetStateHash().Return(common.Hash{})
+
+	from := common.Address{1}
+	to := common.Address{2}
+	gas := hexutil.Uint64(100_000)
+	call := TransactionArgs{From: &from, To: &to, Gas: &gas}
+	opts := simOpts{
+		BlockStateCalls: []simBlock{{Calls: []TransactionArgs{call, call}}},
+	}
+
+	results, err := f.api.SimulateV1(t.Context(), opts, &f.blkNr)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Len(t, results[0].calls, 2)
+}
+
+func TestSimulateV1_BlobCallWithoutBlobFeeCapSucceeds(t *testing.T) {
+	zero := uint64(0)
+	setup := newSimulateV1Setup()
+	setup.chainConfig = &params.ChainConfig{
+		ChainID:      big.NewInt(1234),
+		LondonBlock:  big.NewInt(0),
+		ShanghaiTime: &zero,
+		CancunTime:   &zero,
+	}
+	f := newSimulateV1HelperWith(t, setup)
+	setExpectedStateCalls(f.mockState)
+	f.mockState.EXPECT().GetStateHash().Return(common.Hash{})
+
+	from := common.Address{1}
+	to := common.Address{2}
+	gas := hexutil.Uint64(100_000)
+	call := TransactionArgs{
+		From:       &from,
+		To:         &to,
+		Gas:        &gas,
+		BlobHashes: []common.Hash{{0x01}},
+	}
+	opts := simOpts{BlockStateCalls: []simBlock{{Calls: []TransactionArgs{call}}}}
+
+	results, err := f.api.SimulateV1(t.Context(), opts, &f.blkNr)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Len(t, results[0].calls, 1)
+	require.Equal(t, hexutil.Uint64(types.ReceiptStatusSuccessful), results[0].calls[0].Status)
+}
+
+func TestSimulateV1_FailsWithoutNetworkRules(t *testing.T) {
+	injectedErr := errors.New("injected error")
+	tests := map[string]struct {
+		rules   *opera.Rules
+		err     error
+		wantErr string
+	}{
+		"lookup fails": {
+			err:     injectedErr,
+			wantErr: injectedErr.Error(),
+		},
+		"no rules": {
+			wantErr: "no network rules found for block height 10",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockBackend := NewMockBackend(ctrl)
+			mockState := state.NewMockStateDB(ctrl)
+			blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+
+			mockBackend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), blkNr).Return(mockState, newSimTestBase(), nil)
+			mockBackend.EXPECT().RPCGasCap().Return(uint64(10_000_000))
+			mockBackend.EXPECT().ChainConfig(idx.Block(baseBlockNumber)).Return(newSimTestChainConfig())
+			mockBackend.EXPECT().GetNetworkRules(gomock.Any(), idx.Block(baseBlockNumber)).Return(test.rules, test.err)
+			mockState.EXPECT().Release()
+
+			_, err := NewPublicBlockChainAPI(mockBackend).SimulateV1(t.Context(), simOpts{BlockStateCalls: []simBlock{{}}}, &blkNr)
+
+			require.ErrorContains(t, err, test.wantErr)
+		})
+	}
 }
 
 func TestSimulateV1_MultipleBlocks_ReturnsResultsPerBlock(t *testing.T) {
@@ -181,19 +436,41 @@ type simulateV1Helper struct {
 	blkNr     rpc.BlockNumberOrHash
 }
 
+type simulateV1Setup struct {
+	upgrades    opera.Upgrades
+	base        *evmcore.EvmBlock
+	chainConfig *params.ChainConfig
+	gasCap      uint64
+}
+
+func newSimulateV1Setup() simulateV1Setup {
+	return simulateV1Setup{
+		upgrades:    opera.GetBrioUpgrades(),
+		base:        newSimTestBase(),
+		chainConfig: newSimTestChainConfig(),
+		gasCap:      10_000_000,
+	}
+}
+
 // newSimulateV1Helper sets up the common mocks and returns a fixture for SimulateV1 tests.
 func newSimulateV1Helper(t *testing.T) *simulateV1Helper {
+	t.Helper()
+	return newSimulateV1HelperWith(t, newSimulateV1Setup())
+}
+
+func newSimulateV1HelperWith(t *testing.T, setup simulateV1Setup) *simulateV1Helper {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	mockBackend := NewMockBackend(ctrl)
 	mockState := state.NewMockStateDB(ctrl)
 
-	baseBlock := newSimTestBase()
 	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+	rules := opera.FakeNetRules(setup.upgrades)
 
-	mockBackend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), blkNr).Return(mockState, baseBlock, nil)
-	mockBackend.EXPECT().RPCGasCap().Return(uint64(10_000_000))
-	mockBackend.EXPECT().ChainConfig(idx.Block(10)).Return(newSimTestChainConfig())
+	mockBackend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), blkNr).Return(mockState, setup.base, nil)
+	mockBackend.EXPECT().RPCGasCap().Return(setup.gasCap)
+	mockBackend.EXPECT().ChainConfig(idx.Block(baseBlockNumber)).Return(setup.chainConfig)
+	mockBackend.EXPECT().GetNetworkRules(gomock.Any(), idx.Block(baseBlockNumber)).Return(&rules, nil)
 	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0))
 
 	return &simulateV1Helper{
