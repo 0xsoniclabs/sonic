@@ -82,10 +82,12 @@ func (l *LoggingStateDB) SetState(addr common.Address, slot common.Hash, value c
 }
 
 func (l *LoggingStateDB) AddLog(log *types.Log) {
+	// The inner StateDB assigns the block-level log index, so the hook has to
+	// fire after it for tracers to observe the final index.
+	l.StateDB.AddLog(log)
 	if l.logger.OnLog != nil {
 		l.logger.OnLog(log)
 	}
-	l.StateDB.AddLog(log)
 }
 
 func (l *LoggingStateDB) SelfDestruct(addr common.Address) {

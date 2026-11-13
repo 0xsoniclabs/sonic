@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"time"
 
@@ -227,6 +228,7 @@ type simulator struct {
 	state          interState.StateDB
 	base           *evmcore.EvmHeader
 	chainConfig    *params.ChainConfig
+	vmConfig       vm.Config
 	gp             *core.GasPool
 	traceTransfers bool
 	validate       bool
@@ -314,8 +316,9 @@ func (sim *simulator) processBlock(
 	blockContext := evmcore.NewEVMBlockContext(header, chain, nil)
 
 	precompiles := sim.activePrecompiles(sim.base)
+	statePrecompiles := maps.Clone(sim.vmConfig.StatePrecompiles)
 
-	if err := sim.applyStateOverrides(block.StateOverrides, precompiles, sim.state); err != nil {
+	if err := sim.applyStateOverrides(block.StateOverrides, precompiles, statePrecompiles, sim.state); err != nil {
 		return nil, nil, nil, nil, err
 	}
 
@@ -325,10 +328,10 @@ func (sim *simulator) processBlock(
 		callResults = make([]simCallResult, len(block.Calls))
 		senders     = make(map[common.Hash]common.Address)
 		receipts    = make([]*types.Receipt, len(block.Calls))
-		vmConfig    = vm.Config{
-			NoBaseFee: !sim.validate,
-		}
+		vmConfig    = sim.vmConfig
 	)
+	vmConfig.NoBaseFee = !sim.validate
+	vmConfig.StatePrecompiles = statePrecompiles
 
 	tracer := newSimTracer(sim.traceTransfers, blockContext.BlockNumber.Uint64(), blockContext.Time,
 		common.Hash{}, common.Hash{}, 0)
@@ -372,12 +375,12 @@ func (sim *simulator) processBlock(
 			return nil, nil, nil, nil, simTxValidationError(err)
 		}
 		msg.SkipNonceChecks = !sim.validate
-		msg.SkipTransactionChecks = !sim.validate
 
 		result, applyErr := applySimMessage(ctx, evm, msg, timeout, sim.gp)
 		if applyErr != nil {
 			return nil, nil, nil, nil, simTxValidationError(applyErr)
 		}
+		activeState.EndTransaction()
 		gasUsed += result.UsedGas
 
 		// Build the per-call result.
@@ -464,7 +467,12 @@ func applySimMessage(ctx context.Context, evm *vm.EVM, msg *core.Message, timeou
 }
 
 // applyStateOverrides applies account overrides to the state before a block's transactions run
-func (sim *simulator) applyStateOverrides(overrides *StateOverride, precompiles vm.PrecompiledContracts, state interState.StateDB) error {
+func (sim *simulator) applyStateOverrides(
+	overrides *StateOverride,
+	precompiles vm.PrecompiledContracts,
+	statePrecompiles map[common.Address]vm.PrecompiledStateContract,
+	state interState.StateDB,
+) error {
 	if overrides == nil {
 		return nil
 	}
@@ -472,6 +480,7 @@ func (sim *simulator) applyStateOverrides(overrides *StateOverride, precompiles 
 		// If this address is a precompile, remove it (the account override takes
 		// precedence and the code/state can be replaced below).
 		delete(precompiles, addr)
+		delete(statePrecompiles, addr)
 
 		if account.Nonce != nil {
 			state.SetNonce(addr, uint64(*account.Nonce), tracing.NonceChangeUnspecified)
@@ -494,8 +503,8 @@ func (sim *simulator) applyStateOverrides(overrides *StateOverride, precompiles 
 			}
 		}
 	}
-	// Finalise the overrides as if they were a transaction.
-	state.Finalise(false)
+	// Calls must see the overrides as committed state of a preceding transaction.
+	state.EndTransaction()
 	return nil
 }
 
