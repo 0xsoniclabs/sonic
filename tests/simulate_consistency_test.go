@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/core/vm/program"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,34 +37,6 @@ func TestSimulateV1_MatchesOnChainExecution(t *testing.T) {
 		}
 	}
 	receiver := common.Address{0x42}
-
-	tests := map[string]struct {
-		to         *common.Address
-		gas        uint64
-		data       []byte
-		wantStatus uint64
-	}{
-		"transfer with unused gas": {
-			to:         &receiver,
-			gas:        100_000,
-			wantStatus: types.ReceiptStatusSuccessful,
-		},
-		"init code of maximum size": {
-			gas:        20_000_000,
-			data:       make([]byte, opera.SonicBrioMaxInitCodeSize),
-			wantStatus: types.ReceiptStatusSuccessful,
-		},
-		"deployed code of maximum size": {
-			gas:        20_000_000,
-			data:       deployCodeOfSize(opera.SonicBrioMaxCodeSize),
-			wantStatus: types.ReceiptStatusSuccessful,
-		},
-		"deployed code above maximum size": {
-			gas:        20_000_000,
-			data:       deployCodeOfSize(opera.SonicBrioMaxCodeSize + 1),
-			wantStatus: types.ReceiptStatusFailed,
-		},
-	}
 
 	forks := map[string]opera.Upgrades{
 		"Brio":  opera.GetBrioUpgrades(),
@@ -78,6 +51,65 @@ func TestSimulateV1_MatchesOnChainExecution(t *testing.T) {
 			client, err := session.GetClient()
 			require.NoError(t, err)
 			defer client.Close()
+
+			deploy := func(code *program.Program) *common.Address {
+				tx := CreateTransaction(t, session, &types.LegacyTx{
+					Gas:  10_000_000,
+					Data: program.New().ReturnViaCodeCopy(code.Bytes()).Bytes(),
+				}, sender)
+				receipt, err := session.Run(tx)
+				require.NoError(t, err)
+				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+				return &receipt.ContractAddress
+			}
+			logger := deploy(emitLog(program.New(), 0x01).Op(vm.STOP))
+			reverter := deploy(emitLog(program.New(), 0x02).
+				Call(nil, logger, 0, 0, 0, 0, 0).Op(vm.POP).
+				Push(0).Push(0).Op(vm.REVERT))
+			callsReverterAndLogger := deploy(emitLog(emitLog(program.New(), 0x03).
+				Call(nil, reverter, 0, 0, 0, 0, 0).Op(vm.POP).
+				Call(nil, logger, 0, 0, 0, 0, 0).Op(vm.POP), 0x04).
+				Op(vm.STOP))
+
+			tests := map[string]struct {
+				to         *common.Address
+				gas        uint64
+				data       []byte
+				wantStatus uint64
+				wantLogs   int
+			}{
+				"transfer with unused gas": {
+					to:         &receiver,
+					gas:        100_000,
+					wantStatus: types.ReceiptStatusSuccessful,
+				},
+				"init code of maximum size": {
+					gas:        20_000_000,
+					data:       make([]byte, opera.SonicBrioMaxInitCodeSize),
+					wantStatus: types.ReceiptStatusSuccessful,
+				},
+				"deployed code of maximum size": {
+					gas:        20_000_000,
+					data:       deployCodeOfSize(opera.SonicBrioMaxCodeSize),
+					wantStatus: types.ReceiptStatusSuccessful,
+				},
+				"deployed code above maximum size": {
+					gas:        20_000_000,
+					data:       deployCodeOfSize(opera.SonicBrioMaxCodeSize + 1),
+					wantStatus: types.ReceiptStatusFailed,
+				},
+				"logs around a reverted and a successful call": {
+					to:         callsReverterAndLogger,
+					gas:        1_000_000,
+					wantStatus: types.ReceiptStatusSuccessful,
+					wantLogs:   3,
+				},
+				"failed call with a successful inner call": {
+					to:         reverter,
+					gas:        1_000_000,
+					wantStatus: types.ReceiptStatusFailed,
+				},
+			}
 
 			for name, test := range tests {
 				t.Run(name, func(t *testing.T) {
@@ -105,6 +137,7 @@ func TestSimulateV1_MatchesOnChainExecution(t *testing.T) {
 						Calls []struct {
 							Status  hexutil.Uint64 `json:"status"`
 							GasUsed hexutil.Uint64 `json:"gasUsed"`
+							Logs    []*types.Log   `json:"logs"`
 						} `json:"calls"`
 					}
 					parent := hexutil.Uint64(receipt.BlockNumber.Uint64() - 1)
@@ -112,10 +145,25 @@ func TestSimulateV1_MatchesOnChainExecution(t *testing.T) {
 					require.NoError(t, err)
 					require.Len(t, result, 1)
 					require.Len(t, result[0].Calls, 1)
-					require.Equal(t, receipt.Status, uint64(result[0].Calls[0].Status))
-					require.Equal(t, receipt.GasUsed, uint64(result[0].Calls[0].GasUsed))
+					simulated := result[0].Calls[0]
+					require.Equal(t, receipt.Status, uint64(simulated.Status))
+					require.Equal(t, receipt.GasUsed, uint64(simulated.GasUsed))
+
+					require.Len(t, receipt.Logs, test.wantLogs)
+					require.Len(t, simulated.Logs, len(receipt.Logs))
+					for i, log := range receipt.Logs {
+						require.Equal(t, log.Address, simulated.Logs[i].Address)
+						require.Equal(t, log.Topics, simulated.Logs[i].Topics)
+						require.Equal(t, log.Data, simulated.Logs[i].Data)
+						// The simulated block holds only this call, unlike the block on chain.
+						require.Equal(t, log.Index-receipt.Logs[0].Index, simulated.Logs[i].Index)
+					}
 				})
 			}
 		})
 	}
+}
+
+func emitLog(p *program.Program, topic byte) *program.Program {
+	return p.Push(common.Hash{topic}).Push(0).Push(0).Op(vm.LOG1)
 }
