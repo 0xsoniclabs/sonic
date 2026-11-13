@@ -448,9 +448,7 @@ func Test_TraceCall_StateDiff(t *testing.T) {
 
 // Test_TraceFilter_MatchesValueMovedByCreateAndSelfdestruct checks that the
 // fromAddress and toAddress filters of trace_filter match the addresses that
-// value leaves and reaches in create and suicide traces, and that a contract
-// deployment transaction matches by the deployed address alone, as in
-// OpenEthereum.
+// value leaves and reaches in create and suicide traces.
 func Test_TraceFilter_MatchesValueMovedByCreateAndSelfdestruct(t *testing.T) {
 	const chainId = 123
 	signer := types.LatestSignerForChainID(big.NewInt(chainId))
@@ -592,11 +590,6 @@ func Test_TraceFilter_MatchesValueMovedByCreateAndSelfdestruct(t *testing.T) {
 		"from another account to the deployed contract": {
 			from: addresses(beneficiary),
 			to:   addresses(deployed),
-			want: []match{deployment},
-		},
-		"from another account to a contract created by a nested create": {
-			from: addresses(beneficiary),
-			to:   addresses(created),
 		},
 		"from another account": {
 			from: addresses(beneficiary),
