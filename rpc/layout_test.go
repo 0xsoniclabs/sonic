@@ -321,7 +321,6 @@ var testsUsingLegacyTypes = []string{
 	"tests/call_tracer_log_index_test.go",
 	"tests/chainid_test.go",
 	"tests/code_size_test.go",
-	"tests/eth_rpc_api_functions_test.go",
 	"tests/gas_estimate_test.go",
 	"tests/get_account_test.go",
 	"tests/network_rules_update/network_rules_update_test.go",

@@ -17,14 +17,17 @@
 package tests
 
 import (
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -54,8 +57,7 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 		Height:   1,
 	}
 	genesisId := net.GetGenesisId()
-	expectedForkId, err := ethapi.MakeForkId(upgradeHeight, genesisId)
-	require.NoError(t, err, "could not make expected fork ID")
+	expectedForkId := forkIdOf(t, upgradeHeight, genesisId)
 
 	want := map[string]map[string]any{
 		"current": {
@@ -130,9 +132,20 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 		Upgrades: originalRules.Upgrades,
 		Height:   idx.Block(heightUint),
 	}
-	expectedForkId, err = ethapi.MakeForkId(upgradeHeight, genesisId)
-	require.NoError(t, err, "could not make expected fork ID after upgrade")
+	expectedForkId = forkIdOf(t, upgradeHeight, genesisId)
 
 	require.Equal(t, fmt.Sprintf("0x%x", expectedForkId), response["current"]["forkId"],
 		"fork ID after upgrade is incorrect")
+}
+
+// forkIdOf is the fork id of EIP-7910 as the network forms it:
+// CRC32(genesisId || bigEndian(upgrade.Height) || Rlp(upgrade)).
+func forkIdOf(t *testing.T, upgrade opera.UpgradeHeight, genesisId common.Hash) []byte {
+	t.Helper()
+	encoded, err := rlp.EncodeToBytes(upgrade.Upgrades)
+	require.NoError(t, err)
+	checksum := crc32.ChecksumIEEE(genesisId.Bytes())
+	checksum = crc32.Update(checksum, crc32.IEEETable, binary.BigEndian.AppendUint64(nil, uint64(upgrade.Height)))
+	checksum = crc32.Update(checksum, crc32.IEEETable, encoded)
+	return binary.BigEndian.AppendUint32(nil, checksum)
 }

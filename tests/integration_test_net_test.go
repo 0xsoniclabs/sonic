@@ -240,27 +240,22 @@ func TestIntegrationTestNet_CanRunMultipleNodes(t *testing.T) {
 			require.NoError(t, err)
 
 			// check that a connection to all nodes can be established and that
-			// the connected nodes are indeed different nodes
-			accounts := make([]string, numNodes)
+			// the connected nodes are indeed different nodes, told by their ids
+			seen := make(map[string]struct{})
 			for i := range numNodes {
-				client, err := net.GetClientConnectedToNode(i)
+				client, err := net.GetIpcClient(i)
 				require.NoError(t, err)
 				defer client.Close()
 
-				// by asking for the managed accounts, nodes can be identified
-				res := []string{}
-				require.NoError(t, client.Client().Call(&res, "eth_accounts"))
-				require.NotEmpty(t, res)
-				accounts[i] = res[0]
-			}
-
-			// check that all accounts are different
-			seen := make(map[string]struct{})
-			for _, account := range accounts {
-				if _, found := seen[account]; found {
-					t.Fatalf("Duplicate account %v", account)
+				var info struct {
+					ID string `json:"id"`
 				}
-				seen[account] = struct{}{}
+				require.NoError(t, client.Call(&info, "admin_nodeInfo"))
+				require.NotEmpty(t, info.ID)
+				if _, found := seen[info.ID]; found {
+					t.Fatalf("Duplicate node %v", info.ID)
+				}
+				seen[info.ID] = struct{}{}
 			}
 		})
 	}
