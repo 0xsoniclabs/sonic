@@ -945,14 +945,36 @@ func getTracesForBlock(
 
 	for _, trace := range *traces {
 
-		if trace.Action != nil {
-			if containsAddress(trace.Action.From, trace.Action.To, fromAddresses, toAddresses) {
-				resultTraces = append(resultTraces, trace)
-			}
+		if trace.Action == nil {
+			continue
+		}
+		from, to := traceFilterAddresses(&trace)
+		if containsAddress(from, to, fromAddresses, toAddresses) {
+			resultTraces = append(resultTraces, trace)
 		}
 	}
 
 	return resultTraces, nil
+}
+
+// traceFilterAddresses returns the addresses trace_filter matches against the
+// fromAddress and toAddress filters. Like OpenEthereum, these are the addresses
+// value leaves and reaches; a failed create has no "to" address.
+func traceFilterAddresses(trace *txtrace.ActionTrace) (from *common.Address, to *common.Address) {
+	if trace.Action == nil {
+		return nil, nil
+	}
+	switch trace.TraceType {
+	case txtrace.CREATE:
+		if trace.Result != nil {
+			to = trace.Result.Address
+		}
+		return trace.Action.From, to
+	case txtrace.SELFDESTRUCT:
+		return trace.Action.Address, trace.Action.RefundAddress
+	default:
+		return trace.Action.From, trace.Action.To
+	}
 }
 
 // Check if from or to address is contained in the map

@@ -445,3 +445,184 @@ func Test_TraceCall_StateDiff(t *testing.T) {
 		})
 	}
 }
+
+// Test_TraceFilter_MatchesValueMovedByCreateAndSelfdestruct checks that the
+// fromAddress and toAddress filters of trace_filter match the addresses that
+// value leaves and reaches in create and suicide traces.
+func Test_TraceFilter_MatchesValueMovedByCreateAndSelfdestruct(t *testing.T) {
+	const chainId = 123
+	signer := types.LatestSignerForChainID(big.NewInt(chainId))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	sender := crypto.PubkeyToAddress(key.PublicKey)
+
+	factory := common.Address{0xfa}
+	destroyer := common.Address{0xd0}
+	beneficiary := common.Address{0xbe}
+	created := crypto.CreateAddress(factory, 1)
+	created2 := crypto.CreateAddress2(factory, common.Hash{}, crypto.Keccak256(nil))
+	failedCreate := crypto.CreateAddress(factory, 3)
+	deployed := crypto.CreateAddress(sender, 0)
+
+	// The factory executes CREATE and CREATE2 with an endowment of 500 and
+	// empty init code, then a CREATE with an endowment of 500 and init code
+	// that reverts.
+	factoryCode := []byte{
+		0x60, 0x00, 0x60, 0x00, 0x61, 0x01, 0xf4, 0xf0, 0x50, // CREATE(500, 0, 0)
+		0x60, 0x00, 0x60, 0x00, 0x60, 0x00, 0x61, 0x01, 0xf4, 0xf5, 0x50, // CREATE2(500, 0, 0, 0)
+		0x64, 0x60, 0x00, 0x60, 0x00, 0xfd, 0x60, 0x00, 0x52, // MSTORE(0, PUSH1 0 PUSH1 0 REVERT)
+		0x60, 0x05, 0x60, 0x1b, 0x61, 0x01, 0xf4, 0xf0, 0x50, // CREATE(500, 27, 5)
+		0x00,
+	}
+	// The destroyer executes SELFDESTRUCT with the beneficiary.
+	destroyerCode := slices.Concat([]byte{0x73}, beneficiary[:], []byte{0xff})
+
+	// The fake backend replays every block on the same initial state, so
+	// both transactions use nonce 0.
+	callTx := func(to common.Address) *types.Transaction {
+		return types.MustSignNewTx(key, signer, &types.LegacyTx{
+			Gas:      1_000_000,
+			GasPrice: big.NewInt(0),
+			To:       &to,
+		})
+	}
+	createTx := callTx(factory)
+	destroyTx := callTx(destroyer)
+	// A deployment transaction with an endowment of 300 and empty init code.
+	deployTx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+		Gas:      1_000_000,
+		GasPrice: big.NewInt(0),
+		Value:    big.NewInt(300),
+	})
+	block := func(number uint64, tx *types.Transaction) Block {
+		return Block{
+			Number:     number,
+			Hash:       common.BigToHash(big.NewInt(int64(number))),
+			ParentHash: common.BigToHash(big.NewInt(int64(number - 1))),
+			PrevRandao: common.HexToHash("0x42"),
+			Transactions: map[common.Hash]*Transaction{
+				tx.Hash(): {
+					tx:          tx,
+					blockNumber: number,
+					receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful},
+				},
+			},
+		}
+	}
+
+	be := NewBackendBuilder(t).
+		WithChainID(chainId).
+		WithAccount(sender, AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(factory, AccountState{Nonce: 1, Balance: big.NewInt(1500), Code: factoryCode}).
+		WithAccount(destroyer, AccountState{Nonce: 1, Balance: big.NewInt(700), Code: destroyerCode}).
+		WithBlockHistory([]Block{
+			{Number: 0, Hash: common.BigToHash(big.NewInt(0))},
+			block(1, createTx),
+			block(2, destroyTx),
+			block(3, deployTx),
+		}).
+		Build()
+	api := ethapi.NewPublicTxTraceAPI(be, 100_000, 1000)
+
+	type match struct {
+		Type   string
+		TxHash common.Hash
+	}
+	call := func(tx *types.Transaction) match { return match{"call", tx.Hash()} }
+	create := match{"create", createTx.Hash()}
+	suicide := match{"suicide", destroyTx.Hash()}
+	deployment := match{"create", deployTx.Hash()}
+
+	addresses := func(addrs ...common.Address) *[]common.Address { return &addrs }
+	tests := map[string]struct {
+		from, to *[]common.Address
+		want     []match
+	}{
+		"to the created address": {
+			to:   addresses(created),
+			want: []match{create},
+		},
+		"to the address created by CREATE2": {
+			to:   addresses(created2),
+			want: []match{create},
+		},
+		"to the address of a failed create": {
+			to: addresses(failedCreate),
+		},
+		"from the creator": {
+			from: addresses(factory),
+			want: []match{create, create, create},
+		},
+		"from the creator to the created address": {
+			from: addresses(factory),
+			to:   addresses(created),
+			want: []match{create},
+		},
+		"to the selfdestruct beneficiary": {
+			to:   addresses(beneficiary),
+			want: []match{suicide},
+		},
+		"from the selfdestructed contract": {
+			from: addresses(destroyer),
+			want: []match{suicide},
+		},
+		"from the selfdestructed contract to the beneficiary": {
+			from: addresses(destroyer),
+			to:   addresses(beneficiary),
+			want: []match{suicide},
+		},
+		"to the selfdestructed contract": {
+			to:   addresses(destroyer),
+			want: []match{call(destroyTx)},
+		},
+		"from the sender to the beneficiary": {
+			from: addresses(sender),
+			to:   addresses(beneficiary),
+		},
+		"from the sender": {
+			from: addresses(sender),
+			want: []match{call(createTx), call(destroyTx), deployment},
+		},
+		"to the deployed contract": {
+			to:   addresses(deployed),
+			want: []match{deployment},
+		},
+		"from another account to the deployed contract": {
+			from: addresses(beneficiary),
+			to:   addresses(deployed),
+		},
+		"from another account": {
+			from: addresses(beneficiary),
+		},
+	}
+
+	from := rpc.BlockNumberOrHashWithNumber(1)
+	to := rpc.BlockNumberOrHashWithNumber(3)
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			// count forces the filter to process blocks in series; without it,
+			// blocks are processed in parallel and the result is unordered.
+			for _, count := range []uint{0, 100} {
+				res, err := api.Filter(t.Context(), ethapi.FilterArgs{
+					FromAddress: tt.from,
+					ToAddress:   tt.to,
+					FromBlock:   &from,
+					ToBlock:     &to,
+					Count:       count,
+				})
+				require.NoError(t, err)
+
+				var traces []struct {
+					Type            string      `json:"type"`
+					TransactionHash common.Hash `json:"transactionHash"`
+				}
+				require.NoError(t, json.Unmarshal(res, &traces))
+				got := make([]match, 0, len(traces))
+				for _, trace := range traces {
+					got = append(got, match{trace.Type, trace.TransactionHash})
+				}
+				require.ElementsMatch(t, tt.want, got, "count %d", count)
+			}
+		})
+	}
+}
