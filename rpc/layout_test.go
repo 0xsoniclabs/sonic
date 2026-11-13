@@ -76,6 +76,7 @@ var nodeLibraries = []string{
 	"inter/state",
 	"inter/iblockproc",
 	"utils",
+	"utils/signers/internaltx", // the sender of an internal transaction
 }
 
 // leafExceptions are node packages of consensus-critical definitions, which
@@ -164,6 +165,18 @@ func TestLayout_ModulePackagesImportOnlyWhatTheirRowLists(t *testing.T) {
 				continue
 			}
 			require.NoError(t, checkExternalImport(pkg, imported))
+		}
+	}
+}
+
+// The module's tests import no legacy package either, so that deleting the
+// legacy stack leaves the module as it is.
+func TestLayout_ModuleImportsNoLegacyPackage(t *testing.T) {
+	for _, pkg := range modulePackages(t) {
+		for _, imported := range allImports(t, pkg) {
+			for _, legacy := range append([]string{"gossip"}, legacyPackages...) {
+				require.NotEqual(t, repository+legacy, imported, "%s imports the legacy package %s", pkg, imported)
+			}
 		}
 	}
 }
