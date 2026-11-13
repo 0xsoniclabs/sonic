@@ -945,14 +945,56 @@ func getTracesForBlock(
 
 	for _, trace := range *traces {
 
-		if trace.Action != nil {
-			if containsAddress(trace.Action.From, trace.Action.To, fromAddresses, toAddresses) {
-				resultTraces = append(resultTraces, trace)
-			}
+		if trace.Action != nil && traceMatchesFilter(&trace, fromAddresses, toAddresses) {
+			resultTraces = append(resultTraces, trace)
 		}
 	}
 
 	return resultTraces, nil
+}
+
+// traceMatchesFilter tells whether trace_filter returns the trace for the given
+// fromAddress and toAddress filters. A trace matches when both filters match
+// the addresses of traceFilterAddresses. Like OpenEthereum, a successful
+// top-level create (a contract deployment transaction) also matches when the
+// toAddress filter contains the deployed address, whatever its sender is.
+// OpenEthereum applies this rule with an empty toAddress filter too, which
+// returns every deployment for any fromAddress filter; this is not done here.
+func traceMatchesFilter(trace *txtrace.ActionTrace, fromAddresses map[common.Address]struct{}, toAddresses map[common.Address]struct{}) bool {
+	from, to := traceFilterAddresses(trace)
+	if containsAddress(from, to, fromAddresses, toAddresses) {
+		return true
+	}
+	if trace.TraceType != txtrace.CREATE || len(trace.TraceAddress) != 0 || to == nil {
+		return false
+	}
+	_, ok := toAddresses[*to]
+	return ok
+}
+
+// traceFilterAddresses returns the addresses trace_filter matches against the
+// fromAddress and toAddress filters. Like OpenEthereum, it uses the side of the
+// trace that value leaves and reaches:
+//   - call: Action.From and Action.To
+//   - create: Action.From and the created address in Result.Address; a failed
+//     create has no result, so it has no "to" address
+//   - suicide: the destroyed contract in Action.Address and the beneficiary in
+//     Action.RefundAddress
+func traceFilterAddresses(trace *txtrace.ActionTrace) (from *common.Address, to *common.Address) {
+	if trace.Action == nil {
+		return nil, nil
+	}
+	switch trace.TraceType {
+	case txtrace.CREATE:
+		if trace.Result != nil {
+			to = trace.Result.Address
+		}
+		return trace.Action.From, to
+	case txtrace.SELFDESTRUCT:
+		return trace.Action.Address, trace.Action.RefundAddress
+	default:
+		return trace.Action.From, trace.Action.To
+	}
 }
 
 // Check if from or to address is contained in the map

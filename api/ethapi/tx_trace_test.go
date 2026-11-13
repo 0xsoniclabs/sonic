@@ -27,6 +27,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/txtrace"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -985,4 +986,124 @@ func TestParseFilterArguments_AcceptsBlockHashes(t *testing.T) {
 	data := getLogData(args, time.Now())
 	require.Contains(t, data, fromHash.String())
 	require.Contains(t, data, toHash.String())
+}
+
+func TestTraceFilterAddresses_UsesTheAddressesValueLeavesAndReaches(t *testing.T) {
+	from := common.Address{0x1}
+	to := common.Address{0x2}
+
+	tests := map[string]struct {
+		trace    txtrace.ActionTrace
+		from, to *common.Address
+	}{
+		"no action": {
+			trace: txtrace.ActionTrace{TraceType: txtrace.CALL},
+		},
+		"call": {
+			trace: txtrace.ActionTrace{
+				TraceType: txtrace.CALL,
+				Action:    &txtrace.AddressAction{From: &from, To: &to},
+			},
+			from: &from, to: &to,
+		},
+		"create": {
+			trace: txtrace.ActionTrace{
+				TraceType: txtrace.CREATE,
+				Action:    &txtrace.AddressAction{From: &from},
+				Result:    &txtrace.TraceActionResult{Address: &to},
+			},
+			from: &from, to: &to,
+		},
+		"failed create": {
+			trace: txtrace.ActionTrace{
+				TraceType: txtrace.CREATE,
+				Action:    &txtrace.AddressAction{From: &from},
+			},
+			from: &from,
+		},
+		"suicide": {
+			trace: txtrace.ActionTrace{
+				TraceType: txtrace.SELFDESTRUCT,
+				Action:    &txtrace.AddressAction{Address: &from, RefundAddress: &to},
+			},
+			from: &from, to: &to,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			gotFrom, gotTo := traceFilterAddresses(&tt.trace)
+			require.Equal(t, tt.from, gotFrom)
+			require.Equal(t, tt.to, gotTo)
+		})
+	}
+}
+
+func TestTraceMatchesFilter_TopLevelCreateMatchesByDeployedAddress(t *testing.T) {
+	sender := common.Address{0x1}
+	deployed := common.Address{0x2}
+	other := common.Address{0x3}
+	set := func(addrs ...common.Address) map[common.Address]struct{} {
+		res := make(map[common.Address]struct{})
+		for _, addr := range addrs {
+			res[addr] = struct{}{}
+		}
+		return res
+	}
+	create := func(traceAddress []uint32, result *txtrace.TraceActionResult) *txtrace.ActionTrace {
+		return &txtrace.ActionTrace{
+			TraceType:    txtrace.CREATE,
+			TraceAddress: traceAddress,
+			Action:       &txtrace.AddressAction{From: &sender},
+			Result:       result,
+		}
+	}
+	succeeded := &txtrace.TraceActionResult{Address: &deployed}
+
+	tests := map[string]struct {
+		trace    *txtrace.ActionTrace
+		from, to map[common.Address]struct{}
+		want     bool
+	}{
+		"top-level create, other sender, deployed address": {
+			trace: create([]uint32{}, succeeded),
+			from:  set(other), to: set(deployed),
+			want: true,
+		},
+		"top-level create, other sender, other address": {
+			trace: create([]uint32{}, succeeded),
+			from:  set(other), to: set(other),
+		},
+		"top-level create, other sender, no to filter": {
+			trace: create([]uint32{}, succeeded),
+			from:  set(other),
+		},
+		"failed top-level create, other sender, deployed address": {
+			trace: create([]uint32{}, nil),
+			from:  set(other), to: set(deployed),
+		},
+		"nested create, other sender, deployed address": {
+			trace: create([]uint32{0}, succeeded),
+			from:  set(other), to: set(deployed),
+		},
+		"nested create, sender, deployed address": {
+			trace: create([]uint32{0}, succeeded),
+			from:  set(sender), to: set(deployed),
+			want: true,
+		},
+		"top-level call, other sender, callee": {
+			trace: &txtrace.ActionTrace{
+				TraceType:    txtrace.CALL,
+				TraceAddress: []uint32{},
+				Action:       &txtrace.AddressAction{From: &sender, To: &deployed},
+			},
+			from: set(other), to: set(deployed),
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tt.want, traceMatchesFilter(tt.trace, tt.from, tt.to))
+		})
+	}
 }
