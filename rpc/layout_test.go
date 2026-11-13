@@ -17,7 +17,10 @@
 package rpc_test
 
 import (
+	"go/ast"
 	"go/build"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -174,6 +177,26 @@ func TestLayout_LegacyStackImportsNothingOfTheModule(t *testing.T) {
 	for _, file := range legacyGossipFiles {
 		for _, imported := range fileImports(t, file) {
 			require.False(t, isModulePackage(imported), "legacy file %s imports %s", file, imported)
+		}
+	}
+}
+
+// The dispatcher starts every goroutine of the module, so that shutdown can
+// wait for all of them and a panic in one is recovered.
+func TestLayout_OnlyTheDispatcherStartsGoroutines(t *testing.T) {
+	for _, pkg := range modulePackages(t) {
+		if pkg == "rpc/dispatch" {
+			continue
+		}
+		for _, file := range importPackage(t, pkg).GoFiles {
+			path := filepath.Join(repositoryPath(pkg), file)
+			parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+			require.NoError(t, err)
+			ast.Inspect(parsed, func(node ast.Node) bool {
+				_, isGo := node.(*ast.GoStmt)
+				require.False(t, isGo, "%s starts a goroutine; use the dispatcher's Go or Loop", path)
+				return true
+			})
 		}
 	}
 }
