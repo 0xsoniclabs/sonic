@@ -228,6 +228,78 @@ func Test_TraceFilter_ZeroLimitMeansUnlimited(t *testing.T) {
 	require.EqualValues(t, head+1, be.reads.Load())
 }
 
+// Test_TraceFilter_PagesWithAfterAndCount checks that after skips the first
+// matching traces and that a zero count returns all remaining ones.
+func Test_TraceFilter_PagesWithAfterAndCount(t *testing.T) {
+	const chainId = 123
+	signer := types.LatestSignerForChainID(big.NewInt(chainId))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	sender := crypto.PubkeyToAddress(key.PublicKey)
+
+	// The fake backend replays every block on the same initial state, so
+	// all transactions use nonce 0.
+	history := []Block{{Number: 0, Hash: common.BigToHash(big.NewInt(0))}}
+	var txs []common.Hash
+	for n := uint64(1); n <= 3; n++ {
+		tx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+			Gas:      21_000,
+			GasPrice: big.NewInt(0),
+			To:       &common.Address{byte(n)},
+		})
+		txs = append(txs, tx.Hash())
+		history = append(history, Block{
+			Number:     n,
+			Hash:       common.BigToHash(big.NewInt(int64(n))),
+			ParentHash: common.BigToHash(big.NewInt(int64(n - 1))),
+			Transactions: map[common.Hash]*Transaction{
+				tx.Hash(): {tx: tx, blockNumber: n, receipt: &types.Receipt{Status: types.ReceiptStatusSuccessful}},
+			},
+		})
+	}
+	be := NewBackendBuilder(t).
+		WithChainID(chainId).
+		WithAccount(sender, AccountState{Balance: big.NewInt(1e18)}).
+		WithBlockHistory(history).
+		Build()
+	api := ethapi.NewPublicTxTraceAPI(be, 100_000, 1000)
+
+	tests := []struct {
+		after, count uint
+		want         []common.Hash
+	}{
+		{after: 0, count: 0, want: txs},
+		{after: 1, count: 0, want: txs[1:]},
+		{after: 3, count: 0, want: nil},
+		{after: 0, count: 2, want: txs[:2]},
+		{after: 1, count: 1, want: txs[1:2]},
+		{after: 2, count: 5, want: txs[2:]},
+	}
+	from := rpc.BlockNumberOrHashWithNumber(1)
+	to := rpc.BlockNumberOrHashWithNumber(3)
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("after %d count %d", tt.after, tt.count), func(t *testing.T) {
+			res, err := api.Filter(t.Context(), ethapi.FilterArgs{
+				FromBlock: &from,
+				ToBlock:   &to,
+				After:     tt.after,
+				Count:     tt.count,
+			})
+			require.NoError(t, err)
+
+			var traces []struct {
+				TransactionHash common.Hash `json:"transactionHash"`
+			}
+			require.NoError(t, json.Unmarshal(res, &traces))
+			var got []common.Hash
+			for _, trace := range traces {
+				got = append(got, trace.TransactionHash)
+			}
+			require.ElementsMatch(t, tt.want, got)
+		})
+	}
+}
+
 func Test_TraceCall_StateDiff(t *testing.T) {
 	sender := common.Address{0x5e}
 	contract := common.Address{0xc0}
