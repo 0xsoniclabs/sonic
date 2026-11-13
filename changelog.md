@@ -27,6 +27,25 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Fixed
 
+## [2.2.7] - Unreleased
+
+Version 2.2.7 fixes several RPC and tracing methods so they report what actually happens on chain. Upgrading is recommended for node operators who serve RPC, tracing or simulation requests.
+
+### Fixed
+
+- Fixed tracing (`debug_trace*`, `trace_*`) of `CREATE` and `CREATE2` with init code between 48 KiB and 96 KiB. Tracing applied the 96 KiB limit for a whole transaction, so it reported these creates as successful, but on chain they fail.
+- Fixed `eth_simulateV1` using geth's VM configuration instead of Sonic's. Simulated calls now use Sonic's code size limits (48 KiB code, 96 KiB init code), fee and balance handling, and the 10% charge on unused gas. Their `gasUsed` now matches the receipt the same transaction would get on chain.
+- Fixed `eth_simulateV1` with `validation: true` rejecting calls above the transaction gas limit on Osaka networks, and rejecting senders that have code. As in go-ethereum, validation now only turns on the nonce check.
+- Fixed `eth_simulateV1` returning logs from call frames that failed, including the value `Transfer` of a failed call.
+- Fixed `eth_simulateV1` with `traceTransfers` reporting a `Transfer` for `CALLCODE`, which moves no value.
+- Fixed `eth_simulateV1` leaving gaps in `logIndex`. Logs are now numbered one after another across the block, as in receipts.
+- Fixed the `trace_call` `stateDiff` for accounts that are self-destructed, receive value, or are created and destroyed in the same transaction. Accounts and storage slots whose value does not change overall are now left out.
+- Fixed `callTracer` reporting `0x0` as the log index of every log.
+- Fixed the `fromAddress` and `toAddress` filters of `trace_filter` missing traces of `CREATE`, `CREATE2` and `SELFDESTRUCT`. They now match the deployed contract, the destroyed contract and the beneficiary, as OpenEthereum does.
+- Fixed `trace_filter` with `after` and no `count` returning an empty result. A missing `count` now means no limit.
+- Fixed `eth_createAccessList` without `gas` failing with `intrinsic gas too low` for calls that access storage.
+- Fixed the default gas of transactions that send their calldata as `input` instead of `data`, which was estimated without the calldata. This affected `eth_createAccessList`, `eth_sendTransaction`, `eth_signTransaction` and `eth_fillTransaction` when `gas` is omitted.
+
 ## [2.2.6] - 27 October 2026
 
 Version 2.2.6 is a stability release. Upgrading is recommended for all node operators.
