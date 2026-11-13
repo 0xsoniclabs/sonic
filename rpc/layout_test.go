@@ -308,6 +308,64 @@ func parseFile(t *testing.T, file string) *ast.File {
 	return parsed
 }
 
+// testsUsingLegacyTypes are the files of the integration tests that still
+// decode into types of a legacy package. A type moves to the module or to
+// the tests when its namespace is ported, and its files leave the list.
+var testsUsingLegacyTypes = []string{
+	"tests/block_header/block_header.go",
+	"tests/block_override_test.go",
+	"tests/bundles/bundle_test_utils.go",
+	"tests/bundles/bundle_tx_test.go",
+	"tests/bundles/rpc_single_tx_bundle_test.go",
+	"tests/bundles/stop_start_network_test.go",
+	"tests/call_tracer_log_index_test.go",
+	"tests/chainid_test.go",
+	"tests/code_size_test.go",
+	"tests/eth_rpc_api_functions_test.go",
+	"tests/gas_estimate_test.go",
+	"tests/get_account_test.go",
+	"tests/network_rules_update/network_rules_update_test.go",
+	"tests/pending_transactions_subscription_test.go",
+	"tests/rpc_replay_test.go",
+	"tests/set_code_trace_test.go",
+	"tests/test_utils.go",
+	"tests/trace_consistency_test.go",
+	"tests/tx_max_gas/tx_max_gas_test.go",
+}
+
+// The integration tests run against both RPC stacks, so they import no
+// legacy package, except the tests of what only the legacy stack serves,
+// which live in files ending in _legacy_test.go.
+func TestLayout_IntegrationTestsImportLegacyPackagesOnlyInLegacyTests(t *testing.T) {
+	importing := map[string]bool{}
+	err := filepath.WalkDir(repositoryPath("tests"), func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() || !strings.HasSuffix(path, ".go") {
+			return err
+		}
+		file := filepath.ToSlash(strings.TrimPrefix(path, ".."+string(filepath.Separator)))
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, spec := range parsed.Imports {
+			imported := strings.Trim(spec.Path.Value, `"`)
+			if slices.ContainsFunc(legacyPackages, func(legacy string) bool { return repository+legacy == imported }) {
+				importing[file] = true
+			}
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	for file := range importing {
+		if !strings.HasSuffix(file, "_legacy_test.go") {
+			require.Contains(t, testsUsingLegacyTypes, file, "%s imports a legacy package", file)
+		}
+	}
+	for _, file := range testsUsingLegacyTypes {
+		require.True(t, importing[file], "%s imports no legacy package any more; remove it from the list", file)
+	}
+}
+
 func TestLayout_LegacyStackImportsNothingOfTheModule(t *testing.T) {
 	for _, pkg := range legacyPackages {
 		for _, imported := range allImports(t, pkg) {

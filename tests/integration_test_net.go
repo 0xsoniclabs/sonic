@@ -47,6 +47,7 @@ import (
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/integration/makegenesis"
@@ -167,6 +168,11 @@ type IntegrationTestNetSession interface {
 	// in the test network.
 	GetClientConnectedToNode(node int) (*PooledEhtClient, error)
 
+	// GetIpcClient returns a client connected to the IPC endpoint of the
+	// specified node, which serves the node's administration on both RPC
+	// stacks. The resulting client must be closed after use.
+	GetIpcClient(node int) (*rpc.Client, error)
+
 	// GetGenesisJson returns the genesis JSON used to start the network.
 	GetGenesisId() common.Hash
 }
@@ -218,6 +224,9 @@ type IntegrationTestNetOptions struct {
 	// about the cache itself: the default is sized to the Accounts above, which is what a genesis of
 	// thousands of accounts needs -- see cacheSizes.
 	CacheSize *int
+	// RPCStack is the RPC stack the nodes serve; empty means the stack of the
+	// test run, see RPCStackOfRun.
+	RPCStack string
 }
 
 // IntegrationTestNet is a in-process test network for integration tests. When
@@ -258,8 +267,11 @@ type IntegrationTestNet struct {
 type integrationTestNode struct {
 	directory string
 	httpPort  int
-	shutdown  chan<- struct{}
-	done      <-chan struct{}
+	// ipcPath is the node's IPC socket, which also serves the node's
+	// administration on both RPC stacks.
+	ipcPath  string
+	shutdown chan<- struct{}
+	done     <-chan struct{}
 
 	clients *sync.Pool
 }
@@ -546,15 +558,16 @@ func (n *IntegrationTestNet) start() error {
 		done := make(chan struct{})
 		n.nodes[i].shutdown = stop
 		n.nodes[i].done = done
+
+		// MacOS uses other temporary directories than Linux, which is a too long name for the Unix domain socket.
+		// Since /tmp is also available on MacOS, we can use it as a short temporary directory.
+		tmp, err := os.MkdirTemp("/tmp", "sonic_integration_test_*")
+		if err != nil {
+			return fmt.Errorf("failed to create temporary directory: %w", err)
+		}
+		n.nodes[i].ipcPath = filepath.Join(tmp, "sonic.ipc")
 		go func() {
 			defer close(done)
-
-			// MacOS uses other temporary directories than Linux, which is a too long name for the Unix domain socket.
-			// Since /tmp is also available on MacOS, we can use it as a short temporary directory.
-			tmp, err := os.MkdirTemp("/tmp", "sonic_integration_test_*")
-			if err != nil {
-				panic(fmt.Sprintf("Failed to create temporary directory: %v", err))
-			}
 			defer func() {
 				if err := os.RemoveAll(tmp); err != nil {
 					fmt.Printf("Failed to remove temporary directory: %v\n", err)
@@ -597,10 +610,12 @@ func (n *IntegrationTestNet) start() error {
 				"--statedb.archivecache", fmt.Sprintf("%d", caches.ArchiveBytes),
 				"--statedb.cache", fmt.Sprintf("%d", caches.StateDbItems),
 
-				"--ipcpath", fmt.Sprintf("%s/sonic.ipc", tmp),
+				"--ipcpath", n.nodes[i].ipcPath,
 
 				// enable test-only API
 				"--enable-test-only-api",
+
+				"--rpc.stack", n.options.RPCStack,
 			},
 				// append extra arguments
 				n.options.ClientExtraArguments...,
@@ -742,13 +757,13 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 	// trusted peers are exempt from it.
 	numNodes := len(n.nodes)
 	for i := range n.nodes {
-		client, err := n.GetClientConnectedToNode(i)
+		client, err := n.GetIpcClient(i)
 		if err != nil {
-			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+			return fmt.Errorf("failed to connect to the IPC endpoint: %w", err)
 		}
 
 		for _, neighbor := range []int{(i + 1) % numNodes, (i + numNodes - 1) % numNodes} {
-			if err := client.Client().Call(nil, "admin_addTrustedPeer", enodes[neighbor]); err != nil {
+			if err := client.Call(nil, "admin_addTrustedPeer", enodes[neighbor]); err != nil {
 				client.Close()
 				return fmt.Errorf("failed to add trusted peer on node %d: %v", i, err)
 			}
@@ -759,12 +774,12 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 	// Then dial, once per pair of nodes, see ringDialEdges.
 	for _, edge := range ringDialEdges(len(n.nodes)) {
 		dialer, target := edge[0], edge[1]
-		client, err := n.GetClientConnectedToNode(dialer)
+		client, err := n.GetIpcClient(dialer)
 		if err != nil {
-			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+			return fmt.Errorf("failed to connect to the IPC endpoint: %w", err)
 		}
 
-		err = client.Client().Call(nil, "admin_addPeer", enodes[target])
+		err = client.Call(nil, "admin_addPeer", enodes[target])
 		client.Close()
 		if err != nil {
 			return fmt.Errorf("failed to add peer on node %d: %v", dialer, err)
@@ -773,16 +788,16 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 
 	// Now wait for each node to have the expected number of connections.
 	for i := range n.nodes {
-		client, err := n.GetClientConnectedToNode(i)
+		client, err := n.GetIpcClient(i)
 		if err != nil {
-			return fmt.Errorf("failed to connect to the client: %w", err)
+			return fmt.Errorf("failed to connect to the IPC endpoint: %w", err)
 		}
 		defer client.Close()
 
 		err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
 			// Fetch the list of connected peers
 			var res []map[string]any
-			if err := client.Client().Call(&res, "admin_peers"); err != nil {
+			if err := client.Call(&res, "admin_peers"); err != nil {
 				return false, fmt.Errorf("failed to query peers on node %d: %v", i, err)
 			}
 
@@ -873,6 +888,17 @@ func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*PooledEhtClient, 
 		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 	}
 	return &PooledEhtClient{*ethclient, n.nodes[i].clients}, nil
+}
+
+// GetIpcClient provides a fresh connection to the IPC endpoint of a selected
+// node, which serves every namespace of the node, the node's administration
+// included, on both RPC stacks. The resulting client must be closed after
+// use.
+func (n *IntegrationTestNet) GetIpcClient(i int) (*rpc.Client, error) {
+	if i < 0 || i >= len(n.nodes) {
+		return nil, fmt.Errorf("node index out of bounds: %d", i)
+	}
+	return rpc.Dial(n.nodes[i].ipcPath)
 }
 
 // GetWebSocketClient provides raw access to a fresh connection to the network
@@ -1580,6 +1606,12 @@ func (s *Session) GetClientConnectedToNode(i int) (*PooledEhtClient, error) {
 	return s.net.GetClientConnectedToNode(i)
 }
 
+// GetIpcClient provides a fresh connection to the IPC endpoint of a selected
+// node on the network. The resulting client must be closed after use.
+func (s *Session) GetIpcClient(i int) (*rpc.Client, error) {
+	return s.net.GetIpcClient(i)
+}
+
 // GetWebSocketClient provides raw access to a fresh connection to the network
 // using the WebSocket protocol. The resulting client must be closed after use.
 func (s *Session) GetWebSocketClient() (*ethClient, error) {
@@ -1602,11 +1634,7 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 	}
 
 	if len(options) == 0 {
-		return IntegrationTestNetOptions{
-			Upgrades:        AsPointer(opera.GetSonicUpgrades()),
-			NumNodes:        1,
-			ValidatorsStake: makefakegenesis.CreateEqualValidatorStake(1),
-		}, nil
+		options = []IntegrationTestNetOptions{{}}
 	}
 
 	if options[0].NumNodes <= 0 {
@@ -1627,7 +1655,43 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 		options[0].Upgrades = AsPointer(opera.GetSonicUpgrades())
 	}
 
+	if options[0].RPCStack == "" {
+		stack, err := RPCStackOfRun()
+		if err != nil {
+			return IntegrationTestNetOptions{}, err
+		}
+		options[0].RPCStack = stack
+	}
+
 	return options[0], nil
+}
+
+// rpcStackVariable names the RPC stack the networks of a test run serve.
+const rpcStackVariable = "SONIC_TESTS_RPC_STACK"
+
+// RPCStackOfRun is the RPC stack the networks of the test run serve, set by
+// SONIC_TESTS_RPC_STACK to "legacy", the default, or "module"; another value
+// fails the run.
+func RPCStackOfRun() (string, error) {
+	switch stack := os.Getenv(rpcStackVariable); stack {
+	case "":
+		return gossip.LegacyRPCStack, nil
+	case gossip.LegacyRPCStack, gossip.ModuleRPCStack:
+		return stack, nil
+	default:
+		return "", fmt.Errorf("%s is %q, want %q or %q", rpcStackVariable, stack, gossip.LegacyRPCStack, gossip.ModuleRPCStack)
+	}
+}
+
+// RequireRPCStack skips a test on a run of the other RPC stack, for a test
+// of what only one stack serves.
+func RequireRPCStack(t testing.TB, stack string) {
+	t.Helper()
+	runStack, err := RPCStackOfRun()
+	require.NoError(t, err)
+	if runStack != stack {
+		t.Skipf("the test applies to the %s RPC stack, the run serves the %s stack", stack, runStack)
+	}
 }
 
 // cacheSizes are the state database cache sizes to run with: the caller's where given, otherwise the
