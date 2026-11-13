@@ -121,6 +121,13 @@ func TestSimTracer_ReportsOnlyLogsAndTransfersThatHappened(t *testing.T) {
 				emittedLog(entry, 0xaa, 3),
 			},
 		},
+		"callcode with value moves no value": {
+			entryCode: program.New().CallCode(nil, logger, 1, 0, 0, 0, 0).Op(vm.POP, vm.STOP).Bytes(),
+			want: []simLog{
+				transferLog(sender, entry, 5, 0),
+				emittedLog(entry, 0xcc, 1),
+			},
+		},
 		"delegatecall moves no value": {
 			entryCode: program.New().DelegateCall(nil, logger, 0, 0, 0, 0).Op(vm.POP, vm.STOP).Bytes(),
 			want: []simLog{

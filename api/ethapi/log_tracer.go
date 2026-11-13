@@ -70,7 +70,7 @@ func (t *simTracer) Hooks() *tracing.Hooks {
 func (t *simTracer) onEnter(depth int, typ byte, from, to common.Address, input []byte, gas uint64, value *big.Int) {
 	t.logs = append(t.logs, nil)
 	op := vm.OpCode(typ)
-	if op != vm.DELEGATECALL && value != nil && value.Sign() > 0 {
+	if op != vm.DELEGATECALL && op != vm.CALLCODE && value != nil && value.Sign() > 0 {
 		t.captureTransfer(from, to, value)
 	}
 }
