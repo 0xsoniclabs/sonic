@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -149,6 +150,46 @@ func TestSimulateV1(t *testing.T) {
 		require.NoError(t, err, "must decode returnData")
 		require.Len(t, data, 32, "returnData must be 32 bytes")
 		require.Equal(t, byte(0x42), data[31], "last byte of returnData must be 0x42")
+	})
+
+	t.Run("code_override_takes_precedence_over_state_precompile", func(t *testing.T) {
+		client, err := net.GetClient()
+		require.NoError(t, err)
+		defer client.Close()
+
+		const returnsFortyTwoCode = "0x604260005260206000f3"
+		call := map[string]any{
+			"to":  evmwriter.ContractAddress.Hex(),
+			"gas": hexutil.EncodeUint64(100_000),
+		}
+
+		opts := map[string]any{
+			"blockStateCalls": []any{
+				map[string]any{
+					"calls": []any{call},
+				},
+				map[string]any{
+					"stateOverrides": map[string]any{
+						evmwriter.ContractAddress.Hex(): map[string]any{
+							"code": returnsFortyTwoCode,
+						},
+					},
+					"calls": []any{call},
+				},
+			},
+		}
+		var result []simulateV1BlockResult
+		err = client.Client().Call(&result, "eth_simulateV1", opts, "latest")
+		require.NoError(t, err, "eth_simulateV1 must succeed")
+		require.Len(t, result, 2)
+		require.Len(t, result[0].Calls, 1)
+		require.Len(t, result[1].Calls, 1)
+		require.Equal(t, "0x0", result[0].Calls[0].Status, "EVMWriter must reject a call from a normal sender")
+		require.Equal(t, "0x1", result[1].Calls[0].Status, "code override must replace EVMWriter")
+
+		data, err := hexutil.Decode(result[1].Calls[0].ReturnData)
+		require.NoError(t, err, "must decode returnData")
+		require.Equal(t, common.LeftPadBytes([]byte{0x42}, 32), data)
 	})
 
 	t.Run("reverted_call_has_failed_status_and_error", func(t *testing.T) {
@@ -482,6 +523,43 @@ func TestSimulateV1(t *testing.T) {
 		require.NoError(t, err, "eth_getBalance must succeed after simulation")
 		require.Equal(t, "0x0", balanceAfter,
 			"chain state must not be modified by eth_simulateV1")
+	})
+
+	t.Run("transient_storage_is_cleared_between_calls", func(t *testing.T) {
+		client, err := net.GetClient()
+		require.NoError(t, err)
+		defer client.Close()
+
+		// Returns the transient slot 0 and then sets it to 1:
+		// PUSH1 0 TLOAD PUSH1 0 MSTORE PUSH1 1 PUSH1 0 TSTORE PUSH1 0x20 PUSH1 0 RETURN
+		contractAddr := common.HexToAddress("0x1010101010101010101010101010101010101010")
+		const swapTransientCode = "0x60005c600052600160005d60206000f3"
+		call := map[string]any{"to": contractAddr.Hex()}
+
+		opts := map[string]any{
+			"blockStateCalls": []any{
+				map[string]any{
+					"stateOverrides": map[string]any{
+						contractAddr.Hex(): map[string]any{
+							"code": swapTransientCode,
+						},
+					},
+					"calls": []any{call, call},
+				},
+			},
+		}
+		var result []simulateV1BlockResult
+		err = client.Client().Call(&result, "eth_simulateV1", opts, "latest")
+		require.NoError(t, err, "eth_simulateV1 must succeed")
+		require.Len(t, result, 1)
+		require.Len(t, result[0].Calls, 2)
+		for i, call := range result[0].Calls {
+			require.Equal(t, "0x1", call.Status, "call %d must succeed", i)
+			data, err := hexutil.Decode(call.ReturnData)
+			require.NoError(t, err, "must decode returnData of call %d", i)
+			require.Equal(t, make([]byte, 32), data,
+				"call %d must not see transient storage of a previous call", i)
+		}
 	})
 
 	t.Run("multiple_calls_in_single_block", func(t *testing.T) {
