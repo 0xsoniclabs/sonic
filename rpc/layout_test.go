@@ -214,6 +214,45 @@ func TestLayout_TheAdapterUsesNothingOfTheLegacyFilesOfItsPackage(t *testing.T) 
 	}
 }
 
+// compositionRoot is the one package that builds the module and the adapter
+// and picks the stack the node serves.
+const compositionRoot = "cmd/sonicd/app"
+
+// Outside the module, the composition root and the adapter's package import
+// it, the adapter's package only its core, so that the module can be
+// replaced without touching the node.
+func TestLayout_OnlyTheCompositionRootAndTheAdapterImportTheModule(t *testing.T) {
+	err := filepath.WalkDir("..", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || !entry.IsDir() {
+			return err
+		}
+		pkg := filepath.ToSlash(strings.TrimPrefix(path, ".."+string(filepath.Separator)))
+		if entry.Name() == "testdata" || strings.HasPrefix(entry.Name(), ".") || pkg == "rpc" || strings.HasPrefix(pkg, "rpc/") {
+			return skipDirUnlessRoot(path)
+		}
+		imported, err := build.ImportDir(path, 0)
+		if err != nil {
+			return nil // no Go files
+		}
+		for _, dependency := range imported.Imports {
+			if !isModulePackage(dependency) || pkg == compositionRoot {
+				continue
+			}
+			require.Equal(t, "gossip", pkg, "%s imports %s", pkg, dependency)
+			require.Equal(t, repository+"rpc/core", dependency, "gossip imports %s", dependency)
+		}
+		return nil
+	})
+	require.NoError(t, err)
+}
+
+func skipDirUnlessRoot(path string) error {
+	if path == ".." {
+		return nil
+	}
+	return filepath.SkipDir
+}
+
 func TestLayout_GossipImportsOnlyTheCoreOfTheModule(t *testing.T) {
 	for _, imported := range allImports(t, "gossip") {
 		if isModulePackage(imported) {

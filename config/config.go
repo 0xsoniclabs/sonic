@@ -271,6 +271,9 @@ func gossipConfigWithFlags(ctx *cli.Context, src gossip.Config) gossip.Config {
 	if ctx.GlobalIsSet(flags.RPCLogQueryResultLimit.Name) {
 		cfg.FilterAPI.LogQueryResultLimit = ctx.GlobalUint(flags.RPCLogQueryResultLimit.Name)
 	}
+	if ctx.GlobalIsSet(flags.RPCStackFlag.Name) {
+		cfg.RPCStack = ctx.GlobalString(flags.RPCStackFlag.Name)
+	}
 	return cfg
 }
 

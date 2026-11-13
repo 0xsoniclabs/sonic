@@ -49,6 +49,7 @@ func makeAllConfigsFromArgs(t *testing.T, tomlContent string, args ...string) *C
 		flags.EnableThrottlingFlag,
 		flags.BatchRequestLimit,
 		flags.BatchResponseMaxSize,
+		flags.RPCStackFlag,
 	}
 	app.Action = func(ctx *cli.Context) error {
 		var err error
@@ -174,6 +175,24 @@ func TestMakeAllConfigs_RpcBatchLimits_FlagOverridesConfigFileOverridesDefault(t
 			cfg := makeAllConfigsFromArgs(t, test.toml, test.args...)
 			require.Equal(t, test.expectedRequestLimit, cfg.Node.BatchRequestLimit)
 			require.Equal(t, test.expectedResponseSize, cfg.Node.BatchResponseMaxSize)
+		})
+	}
+}
+
+func TestMakeAllConfigs_RPCStack_FlagOverridesConfigFileOverridesDefault(t *testing.T) {
+	tests := map[string]struct {
+		toml  string
+		args  []string
+		stack string
+	}{
+		"default":                    {stack: "legacy"},
+		"config file":                {toml: "[Opera]\nRPCStack = \"module\"\n", stack: "module"},
+		"flag":                       {args: []string{"--rpc.stack=module"}, stack: "module"},
+		"flag overrides config file": {toml: "[Opera]\nRPCStack = \"module\"\n", args: []string{"--rpc.stack=legacy"}, stack: "legacy"},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.stack, makeAllConfigsFromArgs(t, test.toml, test.args...).Opera.RPCStack)
 		})
 	}
 }

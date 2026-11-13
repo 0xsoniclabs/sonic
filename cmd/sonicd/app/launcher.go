@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os/signal"
 	"sort"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -163,6 +162,7 @@ func initFlags() {
 		flags.MaxTraceFilterRangeFlag,
 		flags.StructLogLimitFlag,
 		flags.AllowJSTracersFlag,
+		flags.RPCStackFlag,
 	}
 
 	metricsFlags = []cli.Flag{
@@ -270,18 +270,6 @@ func lachesisMainInternal(
 		return err
 	}
 
-	// Provide some user feedback on past and future RPC changes.
-	for flag, modules := range map[string][]string{
-		flags.HTTPApiFlag.Name: cfg.Node.HTTPModules,
-		flags.WSApiFlag.Name:   cfg.Node.WSModules,
-	} {
-		for _, module := range modules {
-			if strings.ToLower(module) == "ftm" {
-				log.Warn(fmt.Sprintf("The 'ftm' API is deprecated, use 'eth' instead (--%s).", flag))
-			}
-		}
-	}
-
 	metrics.SetDataDir(cfg.Node.DataDir) // report disk space usage into metrics
 	liveCache := ctx.GlobalInt64(flags.LiveDbCacheFlag.Name)
 	if liveCache > 0 {
@@ -296,22 +284,34 @@ func lachesisMainInternal(
 	sigCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	node, _, nodeClose, err := config.MakeNode(sigCtx, ctx, cfg)
+	// A dumped configuration keeps the endpoints the operator configured, so
+	// the RPC stack prepares the node only for a node that runs.
+	dumping := ctx.GlobalIsSet(flags.DumpConfigFileFlag.Name)
+	rpcStack := chooseRPCStack(cfg)
+	if !dumping {
+		rpcStack.prepare(cfg)
+	}
+
+	node, service, nodeClose, err := config.MakeNode(sigCtx, ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize the node: %w", err)
 	}
 	defer nodeClose()
 
-	if ctx.GlobalIsSet(flags.DumpConfigFileFlag.Name) {
+	if dumping {
 		// At this point the node is fully configured,
 		// if the dump-config flag is set, dump the config into the file and exit
 		outputConfigFile := ctx.GlobalString(flags.DumpConfigFileFlag.Name)
 		return config.SaveAllConfigs(outputConfigFile, cfg)
 	}
 
+	if err := rpcStack.attach(node, service); err != nil {
+		return fmt.Errorf("failed to attach the RPC stack: %w", err)
+	}
+
 	startFreeDiskSpaceMonitor(sigCtx, ctx, cancel, node.InstanceDir())
 
-	if err := startNode(sigCtx, ctx, node); err != nil {
+	if err := startNode(sigCtx, ctx, node, rpcStack.servesAccounts()); err != nil {
 		return fmt.Errorf("failed to start the node: %w", err)
 	}
 
@@ -321,7 +321,7 @@ func lachesisMainInternal(
 		}
 
 		if control.HttpPortAnnouncement != nil {
-			control.HttpPortAnnouncement <- node.HTTPEndpoint()
+			control.HttpPortAnnouncement <- rpcStack.httpEndpoint(node)
 		}
 
 		if control.Shutdown != nil {
@@ -338,8 +338,9 @@ func lachesisMainInternal(
 }
 
 // startNode boots up the system node and all registered protocols, after which
-// it unlocks any requested accounts, and starts the RPC/IPC interfaces.
-func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error {
+// it unlocks any requested accounts, and starts the RPC/IPC interfaces. A node
+// whose RPC stack serves no account leaves the accounts as they are.
+func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node, servesAccounts bool) error {
 	// Start up the node itself
 	if err := stack.Start(); err != nil {
 		return fmt.Errorf("error starting protocol stack: %w", err)
@@ -352,6 +353,11 @@ func startNode(sigCtx context.Context, ctx *cli.Context, stack *node.Node) error
 			log.Warn("Error during shutdown", "err", err)
 		}
 	}()
+
+	if !servesAccounts {
+		warnAboutAccountFlags(ctx)
+		return nil
+	}
 
 	// Unlock any account specifically requested
 	err := unlockAccounts(sigCtx, ctx, stack)

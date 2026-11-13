@@ -156,6 +156,7 @@ Opera.Protocol.TxFetcher.MaxQueuedBatches
 Opera.RPCBlockExt
 Opera.RPCEVMTimeout
 Opera.RPCGasCap
+Opera.RPCStack
 Opera.RPCTimeout
 Opera.RPCTxFeeCap
 Opera.StructLogLimit

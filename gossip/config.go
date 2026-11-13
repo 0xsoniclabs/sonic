@@ -129,6 +129,10 @@ type (
 		// in the future. This is intended to be used in integration tests to
 		// simulate malicious behavior of a node.
 		EnableTestOnlyApi bool `toml:"-"` // not to be set in config file, only via CLI flag
+
+		// RPCStack selects the RPC stack the node serves: LegacyRPCStack or
+		// ModuleRPCStack.
+		RPCStack string
 	}
 
 	StoreCacheConfig struct {
@@ -167,12 +171,21 @@ type PeerCacheConfig struct {
 	MaxQueuedSize  uint64
 }
 
+// The RPC stacks a node can serve: the legacy stack, go-ethereum's RPC server
+// with the handlers of the api packages, or the node's own RPC module.
+const (
+	LegacyRPCStack = "legacy"
+	ModuleRPCStack = "module"
+)
+
 // DefaultConfig returns the default configurations for the gossip service.
 func DefaultConfig(scale cachescale.Func) Config {
 	cfg := Config{
 		FilterAPI: filters.DefaultConfig(),
 
 		TxIndex: true,
+
+		RPCStack: LegacyRPCStack,
 
 		HeavyCheck: heavycheck.DefaultConfig(),
 
@@ -269,6 +282,9 @@ func DefaultConfig(scale cachescale.Func) Config {
 }
 
 func (c *Config) Validate() error {
+	if c.RPCStack != LegacyRPCStack && c.RPCStack != ModuleRPCStack {
+		return fmt.Errorf("the RPC stack is %q or %q, not %q", LegacyRPCStack, ModuleRPCStack, c.RPCStack)
+	}
 	p := c.Protocol
 	defaultChunkSize := dag.Metric{
 		Num:  idx.Event(p.DagStreamLeecher.Session.DefaultChunkItemsNum),

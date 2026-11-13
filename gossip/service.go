@@ -310,8 +310,9 @@ func NewService(stack *node.Node, config Config, store *Store, blockProc BlockPr
 	svc.p2pServer = stack.Server()
 	svc.accountManager = stack.AccountManager()
 	svc.EthAPI.SetExtRPCEnabled(stack.Config().ExtRPCEnabled())
-	// Create the net API service
-	svc.netRPCService = ethapi.NewPublicNetAPI(svc.p2pServer, store.GetRules().NetworkID)
+	if svc.servesLegacyRPC() {
+		svc.netRPCService = ethapi.NewPublicNetAPI(svc.p2pServer, store.GetRules().NetworkID)
+	}
 	svc.haltCheck = haltCheck
 
 	return svc, nil
@@ -548,6 +549,13 @@ func (s *Service) Protocols() ([]p2p.Protocol, CleanupFunc) {
 	return MakeProtocols(s, s.handler, s.operaDialCandidates)
 }
 
+// servesLegacyRPC tells whether the node serves the legacy RPC stack, whose
+// components the service then runs: its gas price oracle and net API. The
+// RPC module brings its own.
+func (s *Service) servesLegacyRPC() bool {
+	return s.config.RPCStack == LegacyRPCStack
+}
+
 // APIs returns api methods the service wants to expose on rpc channels.
 func (s *Service) APIs() []rpc.API {
 	apis := api.GetAPIs(s.EthAPI)
@@ -601,7 +609,9 @@ func (s *Service) APIs() []rpc.API {
 
 // Start method invoked when the node is ready to start the service.
 func (s *Service) Start() error {
-	s.gpo.Start()
+	if s.servesLegacyRPC() {
+		s.gpo.Start()
+	}
 	// start tflusher before starting snapshots generation
 	s.tflusher.Start()
 	blockState := s.store.GetBlockState()
@@ -691,7 +701,9 @@ func (s *Service) Stop() error {
 		filters.StopPublicFilterAPI(s.filterAPI)
 	}
 	s.stopStoreReaders()
-	s.gpo.Stop()
+	if s.servesLegacyRPC() {
+		s.gpo.Stop()
+	}
 	// it's safe to stop tflusher only before locking engineMu
 	s.tflusher.Stop()
 

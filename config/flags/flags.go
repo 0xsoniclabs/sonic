@@ -353,6 +353,11 @@ var (
 		Name:  "rpc.allow-js-tracers",
 		Usage: "Allow custom (user-supplied) JavaScript debug tracers (unsafe); default permits only built-in tracers",
 	}
+	RPCStackFlag = cli.StringFlag{
+		Name:  "rpc.stack",
+		Usage: `RPC stack the node serves ("legacy" or "module")`,
+		Value: gossip.LegacyRPCStack,
+	}
 	ModeFlag = cli.StringFlag{
 		Name:  "mode",
 		Usage: `Mode of the node ("rpc" or "validator")`,

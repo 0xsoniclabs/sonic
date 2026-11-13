@@ -69,6 +69,7 @@ rpc.gascap
 rpc.log-query-parameter-limit
 rpc.log-query-result-limit
 rpc.maxresponsesize
+rpc.stack
 rpc.structloglimit
 rpc.timeout
 rpc.tracefilterrange

@@ -17,8 +17,11 @@
 package gossip
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 )
@@ -65,5 +68,24 @@ func checkNoSharedReferences(t *testing.T, a, b interface{}, path string) {
 		if va.Pointer() == vb.Pointer() {
 			t.Errorf("shared reference at %s", path)
 		}
+	}
+}
+
+func TestConfig_Validate_AcceptsTheRPCStacksOnly(t *testing.T) {
+	for stack, valid := range map[string]bool{LegacyRPCStack: true, ModuleRPCStack: true, "": false, "other": false} {
+		config := DefaultConfig(cachescale.Identity)
+		config.RPCStack = stack
+		err := config.Validate()
+		if valid {
+			require.NoError(t, err, stack)
+			continue
+		}
+		require.EqualError(t, err, fmt.Sprintf(`the RPC stack is "legacy" or "module", not %q`, stack))
+	}
+}
+
+func TestService_ServesTheLegacyRPCInLegacyModeOnly(t *testing.T) {
+	for stack, legacy := range map[string]bool{LegacyRPCStack: true, ModuleRPCStack: false} {
+		require.Equal(t, legacy, (&Service{config: Config{RPCStack: stack}}).servesLegacyRPC(), stack)
 	}
 }
