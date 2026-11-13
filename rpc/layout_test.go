@@ -181,6 +181,94 @@ func TestLayout_ModuleImportsNoLegacyPackage(t *testing.T) {
 	}
 }
 
+// adapterFile is the node's implementation of rpc/core, which is part of the
+// module although it lives in the gossip package.
+const adapterFile = "gossip/rpc_core.go"
+
+// adapterLegacyImports are the legacy packages the adapter may import: the
+// node's log query code, which both stacks use, so that they find the same
+// logs.
+var adapterLegacyImports = []string{"gossip/filters"}
+
+func TestLayout_TheAdapterImportsNoLegacyPackageButTheLogQueries(t *testing.T) {
+	for _, imported := range fileImports(t, adapterFile) {
+		for _, legacy := range legacyPackages {
+			if repository+legacy == imported {
+				require.Contains(t, adapterLegacyImports, legacy, "the adapter imports the legacy package %s", legacy)
+			}
+		}
+	}
+}
+
+// The adapter shares no code with the legacy files of its package: what it
+// needs of them is copied, so that the legacy stack can be deleted.
+func TestLayout_TheAdapterUsesNothingOfTheLegacyFilesOfItsPackage(t *testing.T) {
+	legacy := map[string]bool{"EthAPI": true} // the service's legacy backend
+	for _, file := range legacyGossipFiles {
+		for _, name := range declaredNames(t, file) {
+			legacy[name] = true
+		}
+	}
+	for _, name := range usedNames(t, adapterFile) {
+		require.False(t, legacy[name], "the adapter uses %s of the legacy files", name)
+	}
+}
+
+func TestLayout_GossipImportsOnlyTheCoreOfTheModule(t *testing.T) {
+	for _, imported := range allImports(t, "gossip") {
+		if isModulePackage(imported) {
+			require.Equal(t, repository+"rpc/core", imported)
+		}
+	}
+}
+
+// declaredNames lists the names a file declares at its top level.
+func declaredNames(t *testing.T, file string) []string {
+	t.Helper()
+	parsed := parseFile(t, file)
+	var names []string
+	for _, declaration := range parsed.Decls {
+		switch declaration := declaration.(type) {
+		case *ast.FuncDecl:
+			if declaration.Recv == nil {
+				names = append(names, declaration.Name.Name)
+			}
+		case *ast.GenDecl:
+			for _, spec := range declaration.Specs {
+				switch spec := spec.(type) {
+				case *ast.TypeSpec:
+					names = append(names, spec.Name.Name)
+				case *ast.ValueSpec:
+					for _, name := range spec.Names {
+						names = append(names, name.Name)
+					}
+				}
+			}
+		}
+	}
+	return names
+}
+
+// usedNames lists the identifiers a file uses.
+func usedNames(t *testing.T, file string) []string {
+	t.Helper()
+	var names []string
+	ast.Inspect(parseFile(t, file), func(node ast.Node) bool {
+		if identifier, isIdentifier := node.(*ast.Ident); isIdentifier {
+			names = append(names, identifier.Name)
+		}
+		return true
+	})
+	return names
+}
+
+func parseFile(t *testing.T, file string) *ast.File {
+	t.Helper()
+	parsed, err := parser.ParseFile(token.NewFileSet(), repositoryPath(file), nil, 0)
+	require.NoError(t, err)
+	return parsed
+}
+
 func TestLayout_LegacyStackImportsNothingOfTheModule(t *testing.T) {
 	for _, pkg := range legacyPackages {
 		for _, imported := range allImports(t, pkg) {
@@ -197,15 +285,18 @@ func TestLayout_LegacyStackImportsNothingOfTheModule(t *testing.T) {
 // The dispatcher starts every goroutine of the module, so that shutdown can
 // wait for all of them and a panic in one is recovered.
 func TestLayout_OnlyTheDispatcherStartsGoroutines(t *testing.T) {
+	ast.Inspect(parseFile(t, adapterFile), func(node ast.Node) bool {
+		_, isGo := node.(*ast.GoStmt)
+		require.False(t, isGo, "the adapter starts a goroutine")
+		return true
+	})
 	for _, pkg := range modulePackages(t) {
 		if pkg == "rpc/dispatch" {
 			continue
 		}
 		for _, file := range importPackage(t, pkg).GoFiles {
-			path := filepath.Join(repositoryPath(pkg), file)
-			parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-			require.NoError(t, err)
-			ast.Inspect(parsed, func(node ast.Node) bool {
+			path := pkg + "/" + file
+			ast.Inspect(parseFile(t, path), func(node ast.Node) bool {
 				_, isGo := node.(*ast.GoStmt)
 				require.False(t, isGo, "%s starts a goroutine; use the dispatcher's Go or Loop", path)
 				return true
