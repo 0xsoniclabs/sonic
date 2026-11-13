@@ -99,7 +99,7 @@ func (m *Module) register(environment *exec.Environment) {
 	eth.Register(m.dispatcher, environment, m.core)
 	net.Register(m.dispatcher, environment, m.core)
 	web3.Register(m.dispatcher, m.config.ClientVersion)
-	debug.Register(m.dispatcher)
+	debug.Register(m.dispatcher, environment)
 }
 
 // modules answers the namespaces served on the transport of the call.

@@ -28,7 +28,7 @@ import (
 )
 
 func TestProfiling_IsNotEnabled(t *testing.T) {
-	h := tests.NewHarness(t, tests.NewFakeCore(), func(h *tests.Harness) { debug.Register(h.Dispatcher) })
+	h := tests.NewHarness(t, tests.NewFakeCore(), func(h *tests.Harness) { debug.Register(h.Dispatcher, h.Environment) })
 	cases := map[string][]any{
 		"debug_verbosity":               {3},
 		"debug_vmodule":                 {"eth/*=5"},

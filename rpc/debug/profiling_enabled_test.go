@@ -27,6 +27,6 @@ import (
 )
 
 func TestProfiling_IsLeftToTheNode(t *testing.T) {
-	h := tests.NewHarness(t, tests.NewFakeCore(), func(h *tests.Harness) { debug.Register(h.Dispatcher) })
+	h := tests.NewHarness(t, tests.NewFakeCore(), func(h *tests.Harness) { debug.Register(h.Dispatcher, h.Environment) })
 	require.False(t, h.Dispatcher.Serves("debug_verbosity"))
 }

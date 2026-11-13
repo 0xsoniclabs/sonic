@@ -17,9 +17,19 @@
 // Package debug serves the debug namespace of the RPC module.
 package debug
 
-import "github.com/0xsoniclabs/sonic/rpc/dispatch"
+import (
+	"github.com/0xsoniclabs/sonic/rpc/dispatch"
+	"github.com/0xsoniclabs/sonic/rpc/exec"
+)
+
+type handlers struct {
+	environment *exec.Environment
+}
 
 // Register adds the methods of the namespace to the dispatcher.
-func Register(dispatcher *dispatch.Dispatcher) {
+func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment) {
+	h := &handlers{environment: environment}
+	dispatch.Add(dispatcher, "debug_getBlockRlp", h.getBlockRlp)
+	dispatch.Add(dispatcher, "debug_printBlock", h.printBlock)
 	registerProfiling(dispatcher)
 }
