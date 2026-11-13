@@ -38,7 +38,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/txtrace"
 )
@@ -73,7 +72,7 @@ type evmSetup struct {
 	tracer          *tracing.Hooks // cfg.Tracer at time of EVM creation
 	txTracer        *txtrace.TraceStructLogger
 	stateDiffLogger *txtrace.StateDiffLogger
-	activeState     state.StateDB // may be wrapped with stateDiff hooks
+	activeState     state.StateDB // may be wrapped for stateDiff
 }
 
 // setupTracedEVM creates an EVM configured with the requested tracing hooks and
@@ -107,21 +106,10 @@ func setupTracedEVM(
 	}
 
 	if wantStateDiff {
-		setup.stateDiffLogger = txtrace.NewStateDiffLogger()
-		setup.activeState = evmstore.WrapStateDbWithLogger(statedb, setup.stateDiffLogger.Hooks())
-
-		sdOnEnter := setup.stateDiffLogger.OnEnter
-		if cfg.Tracer == nil {
-			cfg.Tracer = &tracing.Hooks{OnEnter: sdOnEnter}
-		} else {
-			existing := cfg.Tracer.OnEnter
-			cfg.Tracer.OnEnter = func(depth int, typ byte, from, to common.Address, input []byte, gas uint64, value *big.Int) {
-				if existing != nil {
-					existing(depth, typ, from, to, input, gas, value)
-				}
-				sdOnEnter(depth, typ, from, to, input, gas, value)
-			}
-		}
+		setup.stateDiffLogger = txtrace.NewStateDiffLogger(statedb)
+		setup.activeState = setup.stateDiffLogger
+		// Tosca's interpreter does not stop on vmenv.Cancel.
+		cfg.Interpreter = cfg.InterpreterForTracing
 	}
 	setup.tracer = cfg.Tracer
 
