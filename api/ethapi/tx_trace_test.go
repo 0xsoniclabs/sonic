@@ -27,6 +27,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/txtrace"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -728,4 +729,55 @@ func TestParseFilterArguments_AcceptsBlockHashes(t *testing.T) {
 	data := getLogData(args, time.Now())
 	require.Contains(t, data, fromHash.String())
 	require.Contains(t, data, toHash.String())
+}
+
+func TestTraceFilterAddresses_UsesTheAddressesValueLeavesAndReaches(t *testing.T) {
+	from := common.Address{0x1}
+	to := common.Address{0x2}
+
+	tests := map[string]struct {
+		trace    txtrace.ActionTrace
+		from, to *common.Address
+	}{
+		"no action": {
+			trace: txtrace.ActionTrace{TraceType: txtrace.CALL},
+		},
+		"call": {
+			trace: txtrace.ActionTrace{
+				TraceType: txtrace.CALL,
+				Action:    &txtrace.AddressAction{From: &from, To: &to},
+			},
+			from: &from, to: &to,
+		},
+		"create": {
+			trace: txtrace.ActionTrace{
+				TraceType: txtrace.CREATE,
+				Action:    &txtrace.AddressAction{From: &from},
+				Result:    &txtrace.TraceActionResult{Address: &to},
+			},
+			from: &from, to: &to,
+		},
+		"failed create": {
+			trace: txtrace.ActionTrace{
+				TraceType: txtrace.CREATE,
+				Action:    &txtrace.AddressAction{From: &from},
+			},
+			from: &from,
+		},
+		"suicide": {
+			trace: txtrace.ActionTrace{
+				TraceType: txtrace.SELFDESTRUCT,
+				Action:    &txtrace.AddressAction{Address: &from, RefundAddress: &to},
+			},
+			from: &from, to: &to,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			gotFrom, gotTo := traceFilterAddresses(&tt.trace)
+			require.Equal(t, tt.from, gotFrom)
+			require.Equal(t, tt.to, gotTo)
+		})
+	}
 }
