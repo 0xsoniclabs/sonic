@@ -727,7 +727,7 @@ func filterBlocks(ctx context.Context, s *PublicTxTraceAPI, args FilterArgs) (js
 				}
 				traceAdded++
 			}
-			if traceAdded >= args.Count {
+			if args.Count > 0 && traceAdded >= args.Count {
 				return resultBuffer.GetResult()
 			}
 			traceCount++
