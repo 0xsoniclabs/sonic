@@ -105,7 +105,7 @@ func TestSimTracer_ReportsOnlyLogsAndTransfersThatHappened(t *testing.T) {
 			entryCode: emitLog(program.New().Call(nil, reverter, 1, 0, 0, 0, 0).Op(vm.POP), 0xaa).Op(vm.STOP).Bytes(),
 			want: []simLog{
 				transferLog(sender, entry, 5, 0),
-				emittedLog(entry, 0xaa, 4),
+				emittedLog(entry, 0xaa, 1),
 			},
 		},
 		"failed transaction with a successful inner call": {
@@ -143,8 +143,28 @@ func TestSimTracer_ReportsOnlyLogsAndTransfersThatHappened(t *testing.T) {
 			err := runWithSimTracer(t, tracer, test.entryCode, 5)
 			require.ErrorIs(t, err, test.wantErr)
 			require.Equal(t, test.want, toSimLogs(tracer.Logs()))
+			require.Equal(t, len(test.want), tracer.count)
 		})
 	}
+}
+
+func TestSimTracer_NumbersLogsOfABlockWithoutGaps(t *testing.T) {
+	tracer := newSimTracer(true, 1, 0, common.Hash{}, common.Hash{}, 0)
+
+	tracer.reset(common.Hash{1}, 0)
+	revertingInnerCall := emitLog(program.New().Call(nil, simTracerReverter, 1, 0, 0, 0, 0).Op(vm.POP), 0xaa).Op(vm.STOP).Bytes()
+	require.NoError(t, runWithSimTracer(t, tracer, revertingInnerCall, 5))
+	require.Equal(t, []simLog{
+		transferLog(simTracerSender, simTracerEntry, 5, 0),
+		emittedLog(simTracerEntry, 0xaa, 1),
+	}, toSimLogs(tracer.Logs()))
+
+	tracer.reset(common.Hash{2}, 1)
+	innerCall := program.New().Call(nil, simTracerLogger, 0, 0, 0, 0, 0).Op(vm.POP, vm.STOP).Bytes()
+	require.NoError(t, runWithSimTracer(t, tracer, innerCall, 0))
+	require.Equal(t, []simLog{
+		emittedLog(simTracerLogger, 0xcc, 2),
+	}, toSimLogs(tracer.Logs()))
 }
 
 // runWithSimTracer runs a call from simTracerSender to simTracerEntry, which

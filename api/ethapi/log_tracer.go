@@ -86,13 +86,17 @@ func (t *simTracer) onExit(depth int, output []byte, gasUsed uint64, err error, 
 	}
 	call := t.logs[size-1]
 	t.logs = t.logs[:size-1]
-	if !reverted {
+	// The logs of a failed frame are the latest ones, so their indices are free again.
+	if reverted {
+		t.count -= len(call)
+	} else {
 		t.logs[size-2] = append(t.logs[size-2], call...)
 	}
 }
 
 func (t *simTracer) onEnd(reverted bool) {
 	if reverted {
+		t.count -= len(t.logs[0])
 		t.logs[0] = nil
 	}
 }
