@@ -105,9 +105,9 @@ func (c *CarmenStateDB) AddLog(log *types.Log) {
 		carmenLog.Topics = append(carmenLog.Topics, cc.Hash(topic))
 	}
 	c.db.AddLog(&carmenLog)
-	// Carmen assigns the block-level index to its own copy of the log. Hand it
-	// back to the caller, so that tracers hooked in after this
-	// call see the same index later reported in receipts.
+	// Carmen assigns the block-level index to its own copy of the log. The
+	// index is the only derived field OnLog tracers read, so it is copied
+	// back here; the remaining fields are filled in by GetLogs.
 	log.Index = carmenLog.Index
 }
 
