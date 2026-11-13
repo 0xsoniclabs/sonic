@@ -180,7 +180,8 @@ func TestTokenStandards_ERC721(t *testing.T) {
 			sender: alice,
 			action: erc721SafeTransferFromWithData(alice, tokenContract),
 		},
-		"safeTransferFrom to a rejecting receiver fails": {
+		"safeTransferFrom to a rejecting receiver fails and keeps the approval": {
+			setup:  approvedBob,
 			sender: alice,
 			action: erc721SafeTransferFrom(alice, rejectingReceiver),
 		},
