@@ -26,15 +26,19 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	notify "github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
+	"github.com/0xsoniclabs/sonic/gossip/filters"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/rpc/core"
+	"github.com/0xsoniclabs/sonic/topicsdb"
 	"github.com/0xsoniclabs/sonic/utils/concurrent"
 )
 
@@ -61,11 +65,6 @@ var (
 	errReceiptsNotIndexed     = errors.New("transactions index is disabled (enable TxIndex and re-process the DAGs)")
 	errTransactionsNotIndexed = errors.New("transactions index is disabled (enable TxIndex and re-process the DAG)")
 )
-
-// errNotServedYet names a call of core.Core the adapter does not answer yet.
-func errNotServedYet(call string) error {
-	return fmt.Errorf("the RPC core does not serve %s yet", call)
-}
 
 func (c *RPCCore) store() *Store {
 	return c.service.store
@@ -257,8 +256,124 @@ func (c *RPCCore) SubscribeTransactions(events chan<- evmcore.NewTxsNotify) core
 	return orEnded(c.service.txpool.SubscribeNewTxsNotify(events))
 }
 
+// Logs answers a log query with the node's own log query code, on the node's
+// configuration of it, so that both RPC stacks find the same logs.
 func (c *RPCCore) Logs(ctx context.Context, query core.LogQuery) ([]*types.Log, error) {
-	return nil, errNotServedYet("Logs")
+	backend := logBackend{core: c, head: query.Head}
+	config := c.service.config.FilterAPI
+	var filter *filters.Filter
+	var err error
+	if query.BlockHash != nil {
+		filter, err = filters.NewBlockFilter(backend, config, *query.BlockHash, query.Addresses, query.Topics)
+	} else {
+		filter, err = filters.NewRangeFilter(backend, config, query.Begin, query.End, query.Addresses, query.Topics, config.LogQueryResultLimit)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return filter.Logs(ctx)
+}
+
+// logBackend is what the node's log query code reads, with the lookups of
+// the legacy backend, bounded by the served head of a query: a tag names the
+// served head, and a block above it is unknown. The query code subscribes to
+// nothing, so the feeds are ended subscriptions.
+type logBackend struct {
+	core *RPCCore
+	head uint64
+}
+
+var _ filters.Backend = logBackend{}
+
+// number is the block a number or tag names, the pruning cutoff being 0.
+func (b logBackend) number(number rpc.BlockNumber) uint64 {
+	switch {
+	case number == rpc.EarliestBlockNumber:
+		return 0
+	case number < 0:
+		return b.head
+	}
+	return uint64(number)
+}
+
+func (b logBackend) HeaderByNumber(_ context.Context, number rpc.BlockNumber) (*evmcore.EvmHeader, error) {
+	block := b.core.reader.Block(common.Hash{}, b.number(number))
+	if block == nil {
+		return nil, nil
+	}
+	return block.Header(), nil
+}
+
+func (b logBackend) HeaderByHash(ctx context.Context, blockHash common.Hash) (*evmcore.EvmHeader, error) {
+	number := b.core.store().GetBlockIndex(hash.Event(blockHash))
+	if number == nil {
+		return nil, fmt.Errorf("block with hash %s not found", blockHash.String())
+	}
+	if uint64(*number) > b.head {
+		return nil, nil
+	}
+	return b.HeaderByNumber(ctx, rpc.BlockNumber(*number))
+}
+
+func (b logBackend) GetReceipts(ctx context.Context, blockHash common.Hash) (types.Receipts, error) {
+	number := b.core.store().GetBlockIndex(hash.Event(blockHash))
+	if number == nil {
+		return nil, nil
+	}
+	return b.GetReceiptsByNumber(ctx, rpc.BlockNumber(*number))
+}
+
+func (b logBackend) GetReceiptsByNumber(_ context.Context, number rpc.BlockNumber) (types.Receipts, error) {
+	receipts, err := b.core.Receipts(b.number(number))
+	if errors.Is(err, core.ErrNotFound) {
+		return nil, nil
+	}
+	return receipts, err
+}
+
+func (b logBackend) GetLogs(ctx context.Context, blockHash common.Hash) ([][]*types.Log, error) {
+	receipts, err := b.GetReceipts(ctx, blockHash)
+	if receipts == nil || err != nil {
+		return nil, err
+	}
+	logs := make([][]*types.Log, receipts.Len())
+	for i, receipt := range receipts {
+		logs[i] = receipt.Logs
+	}
+	return logs, nil
+}
+
+// GetTxPosition finds a transaction of a committed block.
+func (b logBackend) GetTxPosition(transactionHash common.Hash) *evmstore.TxPosition {
+	position := b.core.store().evm.GetTxPosition(transactionHash)
+	if position == nil || position.Block > b.core.store().GetLatestBlockIndex() {
+		return nil
+	}
+	return position
+}
+
+func (b logBackend) ChainID() *big.Int {
+	return new(big.Int).SetUint64(b.core.ChainInfo().ChainID)
+}
+
+func (b logBackend) EvmLogIndex() topicsdb.Index {
+	return b.core.store().evm.EvmLogs
+}
+
+func (b logBackend) CalcBlockExtApi() bool {
+	return b.core.service.config.RPCBlockExt
+}
+
+func (b logBackend) SubscribeNewBlockNotify(chan<- evmcore.ChainHeadNotify) notify.Subscription {
+	return endedSubscription{}
+}
+
+func (b logBackend) SubscribeNewTxsNotify(chan<- evmcore.NewTxsNotify) notify.Subscription {
+	return endedSubscription{}
+}
+
+func (b logBackend) SubscribeLogsNotify(chan<- []*types.Log) notify.Subscription {
+	return endedSubscription{}
 }
 
 func (c *RPCCore) Progress() core.Progress {

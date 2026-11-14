@@ -39,6 +39,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/rpc/core"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // newRPCCoreChain runs a node of one validator that has produced a block with
@@ -388,11 +389,52 @@ func TestRPCCore_ReportsProgressAndPeers(t *testing.T) {
 	require.Zero(t, rpcCore.PeerCount())
 }
 
-// The calls of core.Core the adapter does not answer yet.
-func TestRPCCore_CallsNotServedYet(t *testing.T) {
-	rpcCore, _ := newRPCCoreStore(t, Config{})
-	_, err := rpcCore.Logs(context.Background(), core.LogQuery{})
-	require.EqualError(t, err, "the RPC core does not serve Logs yet")
+// A contract whose creation emits a log of topic 1, which the log query
+// code finds by range, by criteria and by block hash, bounded by the served
+// head a query names.
+func TestRPCCore_AnswersLogQueries(t *testing.T) {
+	env := newTestEnv(2, 1, t)
+	t.Cleanup(func() { require.NoError(t, env.Close()) })
+	creation := env.Contract(1, new(big.Int), "0x600160006000a100")
+	receipts, err := env.ApplyTxs(sameEpoch, creation)
+	require.NoError(t, err)
+	rpcCore := NewRPCCore(env.Service)
+	emitted := receipts[0].Logs[0]
+	number := emitted.BlockNumber
+	topic := common.Hash{31: 0x01}
+	latest := int64(rpc.LatestBlockNumber)
+
+	// The block of the creation holds the creation's log only.
+	cases := map[string]core.LogQuery{
+		"range":         {Begin: int64(number), End: int64(number) + 5, Head: number},
+		"criteria":      {Begin: latest, End: latest, Addresses: []common.Address{emitted.Address}, Topics: [][]common.Hash{{topic}}, Head: number},
+		"block hash":    {BlockHash: &emitted.BlockHash, Head: number},
+		"tags are head": {Begin: latest, End: latest, Head: number},
+	}
+	for name, query := range cases {
+		t.Run(name, func(t *testing.T) {
+			logs, err := rpcCore.Logs(context.Background(), query)
+			require.NoError(t, err)
+			require.Len(t, logs, 1)
+			require.Equal(t, creation.Hash(), logs[0].TxHash)
+			require.Equal(t, []common.Hash{topic}, logs[0].Topics)
+			require.Zero(t, logs[0].TxIndex)
+			require.NotZero(t, logs[0].BlockTimestamp)
+		})
+	}
+
+	logs, err := rpcCore.Logs(context.Background(), core.LogQuery{Begin: latest, End: latest, Head: number - 1})
+	require.NoError(t, err)
+	for _, log := range logs {
+		require.Equal(t, number-1, log.BlockNumber, "a tag names the served head")
+	}
+	_, err = rpcCore.Logs(context.Background(), core.LogQuery{BlockHash: &emitted.BlockHash, Head: number - 1})
+	require.EqualError(t, err, "unknown block", "a block above the served head is unknown")
+	unknown := common.Hash{0x01}
+	_, err = rpcCore.Logs(context.Background(), core.LogQuery{BlockHash: &unknown, Head: number})
+	require.EqualError(t, err, "block with hash "+unknown.String()+" not found")
+	_, err = rpcCore.Logs(context.Background(), core.LogQuery{Topics: [][]common.Hash{make([]common.Hash, 1001)}, Head: number})
+	require.EqualError(t, err, "too many query parameters, the limit is 1000")
 }
 
 // On a node without an archive, as in validator mode, the head is the

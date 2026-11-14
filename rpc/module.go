@@ -32,6 +32,7 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/eth"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
+	"github.com/0xsoniclabs/sonic/rpc/filters"
 	"github.com/0xsoniclabs/sonic/rpc/net"
 	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/sonic"
@@ -107,6 +108,7 @@ func (m *Module) Start() error {
 func (m *Module) register(environment *exec.Environment) {
 	dispatch.Add(m.dispatcher, "rpc_modules", modules)
 	eth.Register(m.dispatcher, environment, m.core)
+	filters.Register(m.dispatcher, environment, m.core)
 	net.Register(m.dispatcher, environment, m.core)
 	web3.Register(m.dispatcher, m.config.ClientVersion)
 	debug.Register(m.dispatcher, environment)

@@ -91,6 +91,7 @@ type FakeCore struct {
 	liveEpoch   core.EpochSnapshot
 	epochHeads  map[uint64][]common.Hash
 	events      map[common.Hash]*inter.EventPayload
+	logQueries  []core.LogQuery
 	modes       map[string]Mode
 	calls       map[string]int
 	gates       map[string]chan struct{}
@@ -438,14 +439,17 @@ func (f *FakeCore) storedBlock(number uint64) (*evmcore.EvmBlock, error) {
 }
 
 func (f *FakeCore) BlockNumberByHash(hash common.Hash) (uint64, error) {
-	return lookup(f, "BlockNumberByHash", func() (uint64, error) {
-		for _, block := range f.blocks {
-			if block.Hash == hash {
-				return block.NumberU64(), nil
-			}
+	return lookup(f, "BlockNumberByHash", func() (uint64, error) { return f.blockNumberByHash(hash) })
+}
+
+// blockNumberByHash finds a stored block; the caller holds the lock.
+func (f *FakeCore) blockNumberByHash(hash common.Hash) (uint64, error) {
+	for _, block := range f.blocks {
+		if block.Hash == hash {
+			return block.NumberU64(), nil
 		}
-		return 0, core.ErrNotFound
-	})
+	}
+	return 0, core.ErrNotFound
 }
 
 func (f *FakeCore) Receipts(number uint64) (types.Receipts, error) {
@@ -585,8 +589,42 @@ func (f *FakeCore) SubscribeTransactions(events chan<- evmcore.NewTxsNotify) cor
 	return read(f, "SubscribeTransactions", func() core.Subscription { return f.transactions.subscribe(events) })
 }
 
+// Logs answers every log of the blocks a query names, the block of its hash
+// or its range, a tag bound naming the query's head; it leaves the criteria
+// to the node's query code, which it does not copy. LogQueries tells the
+// queries it was asked.
 func (f *FakeCore) Logs(ctx context.Context, query core.LogQuery) ([]*types.Log, error) {
-	return lookup(f, "Logs", func() ([]*types.Log, error) { return []*types.Log{}, nil })
+	return lookup(f, "Logs", func() ([]*types.Log, error) {
+		f.logQueries = append(f.logQueries, query)
+		bound := func(number int64) int64 {
+			if number < 0 {
+				return int64(query.Head)
+			}
+			return number
+		}
+		begin, end := bound(query.Begin), min(bound(query.End), int64(len(f.blocks)-1))
+		if query.BlockHash != nil {
+			number, err := f.blockNumberByHash(*query.BlockHash)
+			if err != nil {
+				return nil, err
+			}
+			begin, end = int64(number), int64(number)
+		}
+		var logs []*types.Log
+		for number := begin; number <= end; number++ {
+			for _, receipt := range f.receipts[number] {
+				logs = append(logs, receipt.Logs...)
+			}
+		}
+		return logs, nil
+	})
+}
+
+// LogQueries are the queries Logs was asked, in order.
+func (f *FakeCore) LogQueries() []core.LogQuery {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	return slices.Clone(f.logQueries)
 }
 
 func (f *FakeCore) Progress() core.Progress {
