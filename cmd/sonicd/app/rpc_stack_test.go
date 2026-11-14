@@ -138,6 +138,10 @@ func TestSetModuleConfig_MapsEachKey(t *testing.T) {
 		TxSyncMaxTimeout:     9 * time.Second,
 		EnableTestOnlyApi:    true,
 		FilterAPI:            filters.Config{LogQueryParameterLimit: 10},
+		MaxResponseSize:      11,
+		StructLogLimit:       12,
+		MaxTraceFilterRange:  13,
+		AllowJSTracers:       true,
 	}
 	var module rpc.Config
 	setModuleConfig(&module, node)
@@ -145,7 +149,8 @@ func TestSetModuleConfig_MapsEachKey(t *testing.T) {
 		Dispatch: dispatch.Config{RequestTimeout: 1 * time.Second},
 		Exec: rpcexec.Config{RPCGasCap: 2, RPCEVMTimeout: 3 * time.Second, RPCTxFeeCap: 7, AllowUnprotectedTxs: true,
 			TxSyncDefaultTimeout: 8 * time.Second, TxSyncMaxTimeout: 9 * time.Second, EnableTestOnlyApi: true,
-			LogQueryParameterLimit: 10, FilterTimeout: 5 * time.Minute},
+			LogQueryParameterLimit: 10, FilterTimeout: 5 * time.Minute,
+			MaxResponseSize: 11, StructLogLimit: 12, MaxTraceFilterRange: 13, AllowJSTracers: true},
 		Oracle: oracle.Config{MaxGasPrice: big.NewInt(4), MinGasPrice: big.NewInt(5), DefaultCertainty: 6},
 	}, module)
 }

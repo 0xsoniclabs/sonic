@@ -43,6 +43,17 @@ type Config struct {
 	LogQueryParameterLimit uint
 	// FilterTimeout is how long a polled filter lives after its last poll.
 	FilterTimeout time.Duration
+	// MaxResponseSize bounds, in bytes, the answer of a method that
+	// collects traces; zero for none.
+	MaxResponseSize int
+	// StructLogLimit bounds the steps the default tracer logs; zero for
+	// none, below zero for no steps.
+	StructLogLimit int
+	// MaxTraceFilterRange bounds the blocks one trace_filter replays; zero
+	// for none.
+	MaxTraceFilterRange uint64
+	// AllowJSTracers lets a trace name a tracer that is not built in.
+	AllowJSTracers bool
 }
 
 // DefaultConfig is the configuration unless the node sets one.
@@ -55,5 +66,8 @@ func DefaultConfig() Config {
 		TxSyncMaxTimeout:       30 * time.Second,
 		LogQueryParameterLimit: 1000,
 		FilterTimeout:          5 * time.Minute,
+		MaxResponseSize:        25 * 1024 * 1024,
+		StructLogLimit:         2000,
+		MaxTraceFilterRange:    1000,
 	}
 }

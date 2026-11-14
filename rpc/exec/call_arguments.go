@@ -253,3 +253,21 @@ func (a *CallArguments) uint256Fields(kind string, withBlobFeeCap bool) (uint256
 	}
 	return fields, nil
 }
+
+// ToTracedCall is the message of a traced call, and the legacy transaction
+// the tracers see for it, as the legacy tracing makes them.
+func (a *CallArguments) ToTracedCall(gasCap uint64, baseFee *big.Int) (*types.Transaction, *core.Message, error) {
+	message, err := a.ToMessage(gasCap, baseFee)
+	if err != nil {
+		return nil, nil, err
+	}
+	transaction := types.NewTx(&types.LegacyTx{
+		To:       message.To,
+		Nonce:    message.Nonce,
+		Gas:      message.GasLimit,
+		GasPrice: message.GasPrice,
+		Value:    message.Value,
+		Data:     message.Data,
+	})
+	return transaction, message, nil
+}

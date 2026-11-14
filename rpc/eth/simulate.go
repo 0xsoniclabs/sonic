@@ -389,7 +389,7 @@ func (s *simulator) runBlock(ctx context.Context, block *simulatedBlock, header,
 	vmConfig.NoBaseFee = !s.options.Validation
 	vmConfig.StatePrecompiles = statePrecompiles
 	vmConfig.Tracer = collector.hooks()
-	logging := &loggingState{StateDB: s.state, collector: collector}
+	logging := exec.WithHooks(s.state, vmConfig.Tracer)
 	evm := vm.NewEVM(blockContext, logging, s.chainConfig, vmConfig)
 	evm.SetPrecompiles(precompiles)
 	if s.chainConfig.IsPrague(header.Number, uint64(header.Time.Unix())) {

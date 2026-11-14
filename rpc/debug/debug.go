@@ -31,5 +31,9 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment) {
 	h := &handlers{environment: environment}
 	dispatch.Add(dispatcher, "debug_getBlockRlp", h.getBlockRlp)
 	dispatch.Add(dispatcher, "debug_printBlock", h.printBlock)
+	dispatch.Add(dispatcher, "debug_traceTransaction", h.traceTransaction)
+	dispatch.Add(dispatcher, "debug_traceBlockByNumber", h.traceBlockByNumber)
+	dispatch.Add(dispatcher, "debug_traceBlockByHash", h.traceBlockByHash)
+	dispatch.Add(dispatcher, "debug_traceCall", h.traceCall)
 	registerProfiling(dispatcher)
 }

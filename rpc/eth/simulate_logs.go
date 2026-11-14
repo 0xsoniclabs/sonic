@@ -19,7 +19,6 @@ package eth
 import (
 	"math/big"
 
-	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -112,16 +111,4 @@ func (c *logCollector) startTransaction(txHash common.Hash, txIndex uint) {
 // transaction enters the EVM, which opens its outermost frame.
 func (c *logCollector) logs() []*types.Log {
 	return c.frames[0]
-}
-
-// loggingState reports the logs a state receives to the collector, as the
-// EVM leaves that to the state.
-type loggingState struct {
-	state.StateDB
-	collector *logCollector
-}
-
-func (s *loggingState) AddLog(log *types.Log) {
-	s.StateDB.AddLog(log)
-	s.collector.onLog(log)
 }

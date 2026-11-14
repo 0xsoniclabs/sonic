@@ -115,6 +115,10 @@ func setModuleConfig(module *rpc.Config, node gossip.Config) {
 		// The legacy filters live for a constant time.
 		LogQueryParameterLimit: node.FilterAPI.LogQueryParameterLimit,
 		FilterTimeout:          rpcexec.DefaultConfig().FilterTimeout,
+		MaxResponseSize:        node.MaxResponseSize,
+		StructLogLimit:         node.StructLogLimit,
+		MaxTraceFilterRange:    node.MaxTraceFilterRange,
+		AllowJSTracers:         node.AllowJSTracers,
 	}
 	module.Oracle = oracle.Config{
 		MaxGasPrice:      node.GPO.MaxGasPrice,
