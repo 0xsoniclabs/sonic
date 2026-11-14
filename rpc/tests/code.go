@@ -26,6 +26,8 @@ var (
 	RevertsWithData = hexutil.MustDecode("0x63deadbeef6000526004601cfd")
 	// WritesStorage writes 1 into slot 0.
 	WritesStorage = hexutil.MustDecode("0x600160005500")
+	// EmitsLog emits a log of the topic 0x01 without data.
+	EmitsLog = hexutil.MustDecode("0x600160006000a100")
 	// Spins loops until its gas runs out.
 	Spins = hexutil.MustDecode("0x5b600056")
 	// ReturnsBlockHash returns the BLOCKHASH of the number its call data

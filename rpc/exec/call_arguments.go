@@ -18,6 +18,7 @@ package exec
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"math/big"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/holiman/uint256"
 )
 
 // CallArguments are the arguments of a call or of a new transaction, as
@@ -167,4 +169,87 @@ func (a *CallArguments) prices(baseFee *big.Int) (gasPrice, gasFeeCap, gasTipCap
 		gasPrice = utils.BigMin(new(big.Int).Add(gasTipCap, baseFee), gasFeeCap)
 	}
 	return gasPrice, gasFeeCap, gasTipCap
+}
+
+// ToTransaction turns arguments, whose defaults are filled, into an unsigned
+// transaction of the type its fields name: a set-code, blob, dynamic fee,
+// access list or legacy transaction.
+func (a *CallArguments) ToTransaction() (*types.Transaction, error) {
+	accessList := types.AccessList{}
+	if a.AccessList != nil {
+		accessList = *a.AccessList
+	}
+	switch {
+	case len(a.AuthorizationList) > 0:
+		fields, err := a.uint256Fields("SetCodeTx", false)
+		if err != nil {
+			return nil, err
+		}
+		return types.NewTx(&types.SetCodeTx{
+			To: *a.To, ChainID: fields.chainID, Nonce: uint64(*a.Nonce), Gas: uint64(*a.Gas),
+			GasFeeCap: fields.feeCap, GasTipCap: fields.tipCap, Value: fields.value,
+			Data: a.CallData(), AccessList: accessList, AuthList: a.AuthorizationList,
+		}), nil
+	case a.BlobFeeCap != nil || len(a.BlobHashes) > 0:
+		fields, err := a.uint256Fields("BlobTx", true)
+		if err != nil {
+			return nil, err
+		}
+		return types.NewTx(&types.BlobTx{
+			To: *a.To, ChainID: fields.chainID, Nonce: uint64(*a.Nonce), Gas: uint64(*a.Gas),
+			GasFeeCap: fields.feeCap, GasTipCap: fields.tipCap, Value: fields.value,
+			Data: a.CallData(), AccessList: accessList, BlobFeeCap: fields.blobFeeCap, BlobHashes: a.BlobHashes,
+		}), nil
+	case a.MaxFeePerGas != nil:
+		return types.NewTx(&types.DynamicFeeTx{
+			To: a.To, ChainID: a.ChainID.ToInt(), Nonce: uint64(*a.Nonce), Gas: uint64(*a.Gas),
+			GasFeeCap: a.MaxFeePerGas.ToInt(), GasTipCap: a.MaxPriorityFeePerGas.ToInt(), Value: a.Value.ToInt(),
+			Data: a.CallData(), AccessList: accessList,
+		}), nil
+	case a.AccessList != nil:
+		return types.NewTx(&types.AccessListTx{
+			To: a.To, ChainID: a.ChainID.ToInt(), Nonce: uint64(*a.Nonce), Gas: uint64(*a.Gas),
+			GasPrice: a.GasPrice.ToInt(), Value: a.Value.ToInt(), Data: a.CallData(), AccessList: *a.AccessList,
+		}), nil
+	default:
+		return types.NewTx(&types.LegacyTx{
+			To: a.To, Nonce: uint64(*a.Nonce), Gas: uint64(*a.Gas),
+			GasPrice: a.GasPrice.ToInt(), Value: a.Value.ToInt(), Data: a.CallData(),
+		}), nil
+	}
+}
+
+// uint256Fields are the fields a set-code or blob transaction holds as
+// 256-bit integers.
+type uint256Fields struct {
+	chainID, feeCap, tipCap, blobFeeCap, value *uint256.Int
+}
+
+// uint256Fields converts the fields a set-code or blob transaction holds as
+// 256-bit integers, the blob fee cap with it for a blob transaction, and
+// checks its recipient, which such a transaction needs.
+func (a *CallArguments) uint256Fields(kind string, withBlobFeeCap bool) (uint256Fields, error) {
+	var fields uint256Fields
+	var err error
+	if fields.chainID, err = utils.BigIntToUint256(a.ChainID.ToInt()); err != nil {
+		return fields, fmt.Errorf("invalid ChainID: %w", err)
+	}
+	if fields.feeCap, err = utils.BigIntToUint256(a.MaxFeePerGas.ToInt()); err != nil {
+		return fields, fmt.Errorf("invalid MaxFeePerGas: %w", err)
+	}
+	if fields.tipCap, err = utils.BigIntToUint256(a.MaxPriorityFeePerGas.ToInt()); err != nil {
+		return fields, fmt.Errorf("invalid MaxPriorityFeePerGas: %w", err)
+	}
+	if withBlobFeeCap {
+		if fields.blobFeeCap, err = utils.BigIntToUint256(a.BlobFeeCap.ToInt()); err != nil {
+			return fields, fmt.Errorf("invalid BlobFeeCap: %w", err)
+		}
+	}
+	if fields.value, err = utils.BigIntToUint256(a.Value.ToInt()); err != nil {
+		return fields, fmt.Errorf("invalid Value: %w", err)
+	}
+	if a.To == nil {
+		return fields, fmt.Errorf("missing To in %s", kind)
+	}
+	return fields, nil
 }
