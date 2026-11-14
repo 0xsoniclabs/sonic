@@ -15,11 +15,12 @@
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
 // Package exec holds what the namespaces of the RPC module share: the
-// lookups of the served chain, bounded by the served head, and, as they are
-// added, the execution of calls and the send path.
+// lookups of the served chain, bounded by the served head, the execution of
+// calls and the send path.
 package exec
 
 import (
+	"context"
 	"errors"
 	"math/big"
 
@@ -34,11 +35,13 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-// Reader is what the environment reads from the node.
+// Reader is what the environment reads from the node, and the pool it sends
+// transactions to.
 type Reader interface {
 	core.ChainReader
 	core.StateProvider
 	PoolNonce(address common.Address) uint64
+	SendTransaction(ctx context.Context, transaction *types.Transaction) error
 }
 
 // Environment offers the namespaces the served chain, the execution of calls
@@ -72,6 +75,11 @@ func (e *Environment) Config() Config {
 // Oracle is the gas price oracle.
 func (e *Environment) Oracle() *oracle.Oracle {
 	return e.oracle
+}
+
+// NextHead is closed once a head newer than the served one is served.
+func (e *Environment) NextHead() <-chan struct{} {
+	return e.chain.NextHead()
 }
 
 // Head is the served head, which a request reads once. It is shared and must

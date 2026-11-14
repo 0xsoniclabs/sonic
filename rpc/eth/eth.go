@@ -86,4 +86,7 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, no
 	dispatch.Add(dispatcher, "eth_estimateGas", h.estimateGas)
 	dispatch.Add(dispatcher, "eth_createAccessList", h.createAccessList)
 	dispatch.Add(dispatcher, "eth_simulateV1", h.simulateV1)
+
+	dispatch.Add(dispatcher, "eth_sendRawTransaction", h.sendRawTransaction)
+	dispatch.Add(dispatcher, "eth_sendRawTransactionSync", h.sendRawTransactionSync)
 }

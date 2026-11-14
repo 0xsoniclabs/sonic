@@ -69,6 +69,25 @@ func TestChain_NeverGoesBack(t *testing.T) {
 	require.Equal(t, uint64(2), served.Head().NumberU64())
 }
 
+func TestChain_NextHeadIsClosedOnceANewerHeadIsServed(t *testing.T) {
+	fake := tests.NewFakeCore()
+	fake.AddBlock()
+	served, _ := startChain(t, fake, chain.Config{})
+	next := served.NextHead()
+	select {
+	case <-next:
+		t.Fatal("closed before a newer head")
+	default:
+	}
+	fake.SetHead(1)
+	select {
+	case <-next:
+	case <-time.After(time.Second):
+		t.Fatal("not closed for a newer head")
+	}
+	require.Equal(t, uint64(1), served.Head().NumberU64(), "the newer head is served when it closes")
+}
+
 func TestChain_KeepsTheLastHeadWhenTheSubscriptionIsLost(t *testing.T) {
 	fake := tests.NewFakeCore()
 	fake.AddBlock()

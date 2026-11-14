@@ -118,17 +118,22 @@ func TestTakeOverRPC_MovesEveryEndpointToTheModule(t *testing.T) {
 // Each key of the node's configuration the module reads reaches its field.
 func TestSetModuleConfig_MapsEachKey(t *testing.T) {
 	node := gossip.Config{
-		RPCTimeout:    1 * time.Second,
-		RPCGasCap:     2,
-		RPCEVMTimeout: 3 * time.Second,
-		GPO:           gasprice.Config{MaxGasPrice: big.NewInt(4), MinGasPrice: big.NewInt(5), DefaultCertainty: 6},
+		RPCTimeout:           1 * time.Second,
+		RPCGasCap:            2,
+		RPCEVMTimeout:        3 * time.Second,
+		GPO:                  gasprice.Config{MaxGasPrice: big.NewInt(4), MinGasPrice: big.NewInt(5), DefaultCertainty: 6},
+		RPCTxFeeCap:          7,
+		AllowUnprotectedTxs:  true,
+		TxSyncDefaultTimeout: 8 * time.Second,
+		TxSyncMaxTimeout:     9 * time.Second,
 	}
 	var module rpc.Config
 	setModuleConfig(&module, node)
 	require.Equal(t, rpc.Config{
 		Dispatch: dispatch.Config{RequestTimeout: 1 * time.Second},
-		Exec:     rpcexec.Config{RPCGasCap: 2, RPCEVMTimeout: 3 * time.Second},
-		Oracle:   oracle.Config{MaxGasPrice: big.NewInt(4), MinGasPrice: big.NewInt(5), DefaultCertainty: 6},
+		Exec: rpcexec.Config{RPCGasCap: 2, RPCEVMTimeout: 3 * time.Second, RPCTxFeeCap: 7, AllowUnprotectedTxs: true,
+			TxSyncDefaultTimeout: 8 * time.Second, TxSyncMaxTimeout: 9 * time.Second},
+		Oracle: oracle.Config{MaxGasPrice: big.NewInt(4), MinGasPrice: big.NewInt(5), DefaultCertainty: 6},
 	}, module)
 }
 

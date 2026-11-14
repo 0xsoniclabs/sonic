@@ -60,8 +60,15 @@ type Source interface {
 type Chain struct {
 	config  Config
 	source  Source
-	head    atomic.Pointer[evmcore.EvmBlock]
+	head    atomic.Pointer[servedHead]
 	metrics *metrics
+}
+
+// servedHead is a served head with the channel closed once a newer one is
+// served.
+type servedHead struct {
+	block *evmcore.EvmBlock
+	next  chan struct{}
 }
 
 // New creates a chain without a head; Start reads the first one.
@@ -82,7 +89,12 @@ func (c *Chain) Start(dispatcher *dispatch.Dispatcher) error {
 
 // Head is the served head. It is shared and must not be changed.
 func (c *Chain) Head() *evmcore.EvmBlock {
-	return c.head.Load()
+	return c.head.Load().block
+}
+
+// NextHead is closed once a head newer than the served one is served.
+func (c *Chain) NextHead() <-chan struct{} {
+	return c.head.Load().next
 }
 
 // headBuffer is how many heads the node's feed may hand over before the loop
@@ -116,10 +128,13 @@ func (c *Chain) follow(ctx context.Context) {
 func (c *Chain) advance(head *evmcore.EvmBlock) {
 	for {
 		current := c.head.Load()
-		if current != nil && current.NumberU64() >= head.NumberU64() {
+		if current != nil && current.block.NumberU64() >= head.NumberU64() {
 			return
 		}
-		if c.head.CompareAndSwap(current, head) {
+		if c.head.CompareAndSwap(current, &servedHead{block: head, next: make(chan struct{})}) {
+			if current != nil {
+				close(current.next)
+			}
 			break
 		}
 	}

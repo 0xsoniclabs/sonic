@@ -105,8 +105,12 @@ func (m *moduleStack) prepare(cfg *config.Config) {
 func setModuleConfig(module *rpc.Config, node gossip.Config) {
 	module.Dispatch = dispatch.Config{RequestTimeout: node.RPCTimeout}
 	module.Exec = rpcexec.Config{
-		RPCGasCap:     node.RPCGasCap,
-		RPCEVMTimeout: node.RPCEVMTimeout,
+		RPCGasCap:            node.RPCGasCap,
+		RPCEVMTimeout:        node.RPCEVMTimeout,
+		RPCTxFeeCap:          node.RPCTxFeeCap,
+		AllowUnprotectedTxs:  node.AllowUnprotectedTxs,
+		TxSyncDefaultTimeout: node.TxSyncDefaultTimeout,
+		TxSyncMaxTimeout:     node.TxSyncMaxTimeout,
 	}
 	module.Oracle = oracle.Config{
 		MaxGasPrice:      node.GPO.MaxGasPrice,

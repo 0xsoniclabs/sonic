@@ -26,12 +26,25 @@ type Config struct {
 	// RPCEVMTimeout bounds an EVM run of a call; only go-ethereum's
 	// interpreter polls it.
 	RPCEVMTimeout time.Duration
+	// RPCTxFeeCap caps the fee, in FTM, of a sent transaction; zero for none.
+	RPCTxFeeCap float64
+	// AllowUnprotectedTxs accepts sent transactions without EIP-155 replay
+	// protection.
+	AllowUnprotectedTxs bool
+	// TxSyncDefaultTimeout is how long eth_sendRawTransactionSync waits for
+	// the transaction's block unless the request names a wait, which
+	// TxSyncMaxTimeout caps unless it is zero.
+	TxSyncDefaultTimeout time.Duration
+	TxSyncMaxTimeout     time.Duration
 }
 
 // DefaultConfig is the configuration unless the node sets one.
 func DefaultConfig() Config {
 	return Config{
-		RPCGasCap:     50000000,
-		RPCEVMTimeout: 5 * time.Second,
+		RPCGasCap:            50000000,
+		RPCEVMTimeout:        5 * time.Second,
+		RPCTxFeeCap:          100,
+		TxSyncDefaultTimeout: 5 * time.Second,
+		TxSyncMaxTimeout:     30 * time.Second,
 	}
 }
