@@ -51,6 +51,9 @@ type Config struct {
 	Oracle   oracle.Config
 	// HTTP is the HTTP endpoint, none if nil.
 	HTTP *HTTPConfig
+	// WS is the WebSocket endpoint, none if nil. It shares the HTTP
+	// endpoint's server if it has the same host and port.
+	WS *WSConfig
 	// IPCPath is the path of the IPC socket, none if empty.
 	IPCPath string
 	// ClientVersion is the node's name as its peers see it.
@@ -60,6 +63,13 @@ type Config struct {
 // HTTPConfig is the HTTP endpoint with the namespaces it serves.
 type HTTPConfig struct {
 	transport.HTTPConfig
+	// Modules is the API list of the endpoint; all namespaces if empty.
+	Modules []string
+}
+
+// WSConfig is the WebSocket endpoint with the namespaces it serves.
+type WSConfig struct {
+	transport.WSConfig
 	// Modules is the API list of the endpoint; all namespaces if empty.
 	Modules []string
 }
@@ -77,6 +87,8 @@ type Module struct {
 	registerer prometheus.Registerer
 	dispatcher *dispatch.Dispatcher
 	http       *transport.HTTPServer
+	ws         *transport.HTTPServer
+	wsShared   bool
 	ipc        *transport.IPCServer
 }
 
@@ -125,10 +137,28 @@ func modules(ctx context.Context, _ struct{}) (map[string]string, error) {
 }
 
 func (m *Module) startTransports() error {
+	var ws *transport.WebSocket
+	if m.config.WS != nil {
+		front := transport.NewFront(m.dispatcher, m.config.WS.Modules, "ws.api")
+		var err error
+		if ws, err = transport.NewWebSocket(m.dispatcher, m.config.WS.WSConfig, front, m.registerer); err != nil {
+			return err
+		}
+	}
+	m.wsShared = ws != nil && m.config.HTTP != nil && m.config.WS.Endpoint == m.config.HTTP.Endpoint
 	var err error
 	if m.config.HTTP != nil {
 		front := transport.NewFront(m.dispatcher, m.config.HTTP.Modules, "http.api")
-		if m.http, err = transport.StartHTTP(m.dispatcher, m.config.HTTP.HTTPConfig, front, m.registerer); err != nil {
+		var shared *transport.WebSocket
+		if m.wsShared {
+			shared = ws
+		}
+		if m.http, err = transport.StartHTTP(m.dispatcher, m.config.HTTP.HTTPConfig, front, shared, m.registerer); err != nil {
+			return err
+		}
+	}
+	if ws != nil && !m.wsShared {
+		if m.ws, err = transport.StartWebSocket(m.dispatcher, m.config.WS.Endpoint, ws, m.registerer); err != nil {
 			return err
 		}
 	}
@@ -149,11 +179,25 @@ func (m *Module) HTTPEndpoint() (string, error) {
 	return "http://" + m.http.Address().String(), nil
 }
 
+// WSEndpoint is the URL of the WebSocket endpoint, without its path prefix.
+func (m *Module) WSEndpoint() (string, error) {
+	switch {
+	case m.wsShared:
+		return "ws://" + m.http.Address().String(), nil
+	case m.ws != nil:
+		return "ws://" + m.ws.Address().String(), nil
+	}
+	return "", errors.New("the RPC module serves no WebSocket endpoint")
+}
+
 // Stop closes the endpoints, lets the calls in flight finish, and returns
 // once no goroutine of the module runs.
 func (m *Module) Stop() {
 	if m.http != nil {
 		m.http.Stop()
+	}
+	if m.ws != nil {
+		m.ws.Stop()
 	}
 	if m.ipc != nil {
 		m.ipc.Stop()

@@ -56,11 +56,16 @@ func newParamsLayout(paramsType reflect.Type) paramsLayout {
 	return layout
 }
 
-// decode fills the fields of params, a pointer to the parameter struct, from
-// the raw parameters of a request. Its errors are worded as go-ethereum's
-// server words them; missing or null parameters are an empty list.
-func (l paramsLayout) decode(raw json.RawMessage, params any) error {
+// fieldsOf answers the address of each field of a parameter struct.
+func fieldsOf(params any) func(position int) any {
 	fields := reflect.ValueOf(params).Elem()
+	return func(position int) any { return fields.Field(position).Addr().Interface() }
+}
+
+// decode fills the field of each position from the raw parameters of a
+// request. Its errors are worded as go-ethereum's server words them; missing
+// or null parameters are an empty list.
+func (l paramsLayout) decode(raw json.RawMessage, field func(position int) any) error {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	token, err := decoder.Token()
 	count := 0
@@ -69,7 +74,7 @@ func (l paramsLayout) decode(raw json.RawMessage, params any) error {
 	case err != nil:
 		return err
 	case token == json.Delim('['):
-		if count, err = l.decodeArray(decoder, fields); err != nil {
+		if count, err = l.decodeArray(decoder, field); err != nil {
 			return err
 		}
 	default:
@@ -85,13 +90,13 @@ func (l paramsLayout) decode(raw json.RawMessage, params any) error {
 
 // decodeArray decodes the elements of a parameter array into the fields, and
 // answers how many there were.
-func (l paramsLayout) decodeArray(decoder *json.Decoder, fields reflect.Value) (int, error) {
+func (l paramsLayout) decodeArray(decoder *json.Decoder, field func(position int) any) (int, error) {
 	count := 0
 	for ; decoder.More(); count++ {
 		if count >= len(l.optional) {
 			return count, fmt.Errorf("too many arguments, want at most %d", len(l.optional))
 		}
-		if err := decoder.Decode(fields.Field(count).Addr().Interface()); err != nil {
+		if err := decoder.Decode(field(count)); err != nil {
 			return count, fmt.Errorf("invalid argument %d: %v", count, err)
 		}
 	}

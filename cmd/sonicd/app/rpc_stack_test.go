@@ -101,9 +101,18 @@ func TestTakeOverRPC_MovesEveryEndpointToTheModule(t *testing.T) {
 				return config
 			}(),
 		},
-		"websocket is not served yet": {
-			node: node.Config{WSHost: "127.0.0.1", WSPort: 8546},
-			want: rpc.DefaultConfig(),
+		"websocket": {
+			node: node.Config{WSHost: "127.0.0.1", WSPort: 8546, WSPathPrefix: "/ws", WSOrigins: []string{"a.example"},
+				WSModules: []string{"eth"}, BatchRequestLimit: 10, BatchResponseMaxSize: 20},
+			want: func() rpc.Config {
+				config := rpc.DefaultConfig()
+				config.WS = &rpc.WSConfig{
+					WSConfig: transport.WSConfig{Endpoint: "127.0.0.1:8546", PathPrefix: "/ws", Origins: []string{"a.example"},
+						Batch: transport.BatchLimits{Items: 10, ResponseBytes: 20}},
+					Modules: []string{"eth"},
+				}
+				return config
+			}(),
 		},
 	}
 	for name, test := range cases {

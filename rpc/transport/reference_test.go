@@ -55,6 +55,21 @@ func (referenceService) Nothing() *string { return nil }
 
 func (referenceService) Large(size int) string { return string(make([]byte, size)) }
 
+// Ticks notifies the numbers up to the count.
+func (referenceService) Ticks(ctx context.Context, count int, label *string) (*rpc.Subscription, error) {
+	notifier, supported := rpc.NotifierFromContext(ctx)
+	if !supported {
+		return nil, rpc.ErrNotificationsUnsupported
+	}
+	subscription := notifier.CreateSubscription()
+	go func() {
+		for tick := range count {
+			_ = notifier.Notify(subscription.ID, tick)
+		}
+	}()
+	return subscription, nil
+}
+
 func (referenceService) Slow() string {
 	time.Sleep(slowDuration)
 	return "late"
@@ -70,6 +85,10 @@ func newReference(t testing.TB) *rpc.Server {
 type echoParams struct{ Text string }
 type addParams struct{ A, B int }
 type sizeParams struct{ Size int }
+type ticksParams struct {
+	Count int
+	Label *string
+}
 
 // newTestDispatcher serves the test methods and rpc_modules, as the module
 // registers it.
@@ -85,6 +104,14 @@ func newTestDispatcher(t testing.TB) *dispatch.Dispatcher {
 	dispatch.Add(dispatcher, "test_slow", func(context.Context, struct{}) (string, error) {
 		time.Sleep(slowDuration)
 		return "late", nil
+	})
+	dispatch.AddSubscription(dispatcher, "test", "ticks", func(_ context.Context, subscription *dispatch.Subscription, p ticksParams) error {
+		subscription.Go(func(context.Context) {
+			for tick := range p.Count {
+				_ = subscription.Notify(tick)
+			}
+		})
+		return nil
 	})
 	dispatch.Add(dispatcher, "rpc_modules", func(ctx context.Context, _ struct{}) (map[string]string, error) {
 		return Modules(ctx), nil

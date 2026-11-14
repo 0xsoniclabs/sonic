@@ -202,8 +202,15 @@ func takeOverRPC(cfg *node.Config) rpc.Config {
 		cfg.HTTPHost = ""
 	}
 	if cfg.WSHost != "" {
-		log.Warn("The RPC module does not serve WebSocket yet; the endpoint is not opened",
-			"endpoint", fmt.Sprintf("ws://%s", net.JoinHostPort(cfg.WSHost, strconv.Itoa(cfg.WSPort))))
+		module.WS = &rpc.WSConfig{
+			WSConfig: transport.WSConfig{
+				Endpoint:   net.JoinHostPort(cfg.WSHost, strconv.Itoa(cfg.WSPort)),
+				PathPrefix: cfg.WSPathPrefix,
+				Origins:    cfg.WSOrigins,
+				Batch:      transport.BatchLimits{Items: cfg.BatchRequestLimit, ResponseBytes: cfg.BatchResponseMaxSize},
+			},
+			Modules: cfg.WSModules,
+		}
 		cfg.WSHost = ""
 	}
 	module.IPCPath = cfg.IPCEndpoint()

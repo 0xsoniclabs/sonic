@@ -54,10 +54,11 @@ var defaultTimeouts = Timeouts{Read: 30 * time.Second, ReadHeader: 30 * time.Sec
 // shutdownTimeout bounds how long stopping waits for HTTP requests in flight.
 const shutdownTimeout = 5 * time.Second
 
-// HTTPServer serves JSON-RPC over HTTP on one endpoint.
+// HTTPServer serves JSON-RPC over HTTP, WebSocket or both on one endpoint.
 type HTTPServer struct {
 	server   *http.Server
 	listener net.Listener
+	ws       *WebSocket
 }
 
 // ValidatePrefix checks a path prefix of an endpoint.
@@ -74,27 +75,54 @@ func ValidatePrefix(what, prefix string) error {
 	return nil
 }
 
-// StartHTTP listens on the endpoint and serves the front's calls in a
+// StartHTTP listens on the endpoint and serves the front's calls over HTTP,
+// and over WebSocket if ws is given, which then shares the endpoint, in a
 // goroutine of the dispatcher.
-func StartHTTP(dispatcher *dispatch.Dispatcher, config HTTPConfig, front *Front, registerer prometheus.Registerer) (*HTTPServer, error) {
+func StartHTTP(dispatcher *dispatch.Dispatcher, config HTTPConfig, front *Front, ws *WebSocket, registerer prometheus.Registerer) (*HTTPServer, error) {
 	if err := ValidatePrefix("HTTP", config.PathPrefix); err != nil {
 		return nil, err
 	}
 	handler := &httpHandler{front: front, limits: config.Batch}
-	server := &http.Server{Handler: &pathHandler{prefix: config.PathPrefix, next: newHTTPStack(handler, config.CorsAllowedOrigins, config.VirtualHosts)}}
+	timeouts := config.Timeouts
+	if timeouts != (Timeouts{}) {
+		timeouts = sanitize(timeouts)
+		handler.timeout = timeouts.Write - timeoutMargin
+	}
+	routes := &router{ws: ws, httpPrefix: config.PathPrefix, http: newHTTPStack(handler, config.CorsAllowedOrigins, config.VirtualHosts)}
+	server, err := startServer(dispatcher, config.Endpoint, routes, timeouts, ws, registerer)
+	if err != nil {
+		return nil, err
+	}
+	log.Info("HTTP server started", "endpoint", server.Address(), "prefix", config.PathPrefix,
+		"cors", strings.Join(config.CorsAllowedOrigins, ","), "vhosts", strings.Join(config.VirtualHosts, ","))
+	return server, nil
+}
+
+// StartWebSocket listens on an endpoint of the WebSocket's own and serves
+// the front's calls over WebSocket only, with go-ethereum's default
+// timeouts.
+func StartWebSocket(dispatcher *dispatch.Dispatcher, endpoint string, ws *WebSocket, registerer prometheus.Registerer) (*HTTPServer, error) {
+	server, err := startServer(dispatcher, endpoint, &router{ws: ws}, defaultTimeouts, ws, registerer)
+	if err != nil {
+		return nil, err
+	}
+	log.Info("WebSocket enabled", "url", "ws://"+server.Address().String()+ws.prefix)
+	return server, nil
+}
+
+func startServer(dispatcher *dispatch.Dispatcher, endpoint string, handler http.Handler, timeouts Timeouts, ws *WebSocket, registerer prometheus.Registerer) (*HTTPServer, error) {
+	server := &http.Server{
+		Handler:           handler,
+		ReadTimeout:       timeouts.Read,
+		ReadHeaderTimeout: timeouts.ReadHeader,
+		WriteTimeout:      timeouts.Write,
+		IdleTimeout:       timeouts.Idle,
+	}
 	server.Protocols = new(http.Protocols)
 	server.Protocols.SetHTTP1(true)
 	server.Protocols.SetUnencryptedHTTP2(true)
 	server.ConnState = countConnections(connectionsGauge(registerer).WithLabelValues("http"))
-	if timeouts := config.Timeouts; timeouts != (Timeouts{}) {
-		timeouts = sanitize(timeouts)
-		server.ReadTimeout = timeouts.Read
-		server.ReadHeaderTimeout = timeouts.ReadHeader
-		server.WriteTimeout = timeouts.Write
-		server.IdleTimeout = timeouts.Idle
-		handler.timeout = timeouts.Write - timeoutMargin
-	}
-	listener, err := net.Listen("tcp", config.Endpoint)
+	listener, err := net.Listen("tcp", endpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -102,9 +130,7 @@ func StartHTTP(dispatcher *dispatch.Dispatcher, config HTTPConfig, front *Front,
 		_ = listener.Close()
 		return nil, errors.New("the RPC module is stopping")
 	}
-	log.Info("HTTP server started", "endpoint", listener.Addr(), "prefix", config.PathPrefix,
-		"cors", strings.Join(config.CorsAllowedOrigins, ","), "vhosts", strings.Join(config.VirtualHosts, ","))
-	return &HTTPServer{server: server, listener: listener}, nil
+	return &HTTPServer{server: server, listener: listener, ws: ws}, nil
 }
 
 // Address is where the server listens.
@@ -115,6 +141,9 @@ func (s *HTTPServer) Address() net.Addr {
 // Stop closes the listener and waits for the requests in flight, for at most
 // the shutdown timeout.
 func (s *HTTPServer) Stop() {
+	if s.ws != nil {
+		s.ws.closeAll()
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	if err := s.server.Shutdown(ctx); errors.Is(err, context.DeadlineExceeded) {
@@ -151,19 +180,28 @@ func sanitize(timeouts Timeouts) Timeouts {
 	return timeouts
 }
 
-// pathHandler serves the requests on the path prefix, at the root without
-// one, and answers others 404.
-type pathHandler struct {
-	prefix string
-	next   http.Handler
+// router routes the requests of an endpoint as go-ethereum's server does: a
+// WebSocket upgrade on the WebSocket's path prefix to the WebSocket, one on
+// another path to nothing, other requests on the HTTP path prefix to HTTP
+// and the rest 404. A prefix is the root without one.
+type router struct {
+	ws         *WebSocket
+	http       http.Handler
+	httpPrefix string
 }
 
-func (h *pathHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	if !matchesPrefix(request, h.prefix) {
-		response.WriteHeader(http.StatusNotFound)
+func (r *router) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	if r.ws != nil && isWebSocket(request) {
+		if matchesPrefix(request, r.ws.prefix) {
+			r.ws.ServeHTTP(response, request)
+		}
 		return
 	}
-	h.next.ServeHTTP(response, request)
+	if r.http != nil && matchesPrefix(request, r.httpPrefix) {
+		r.http.ServeHTTP(response, request)
+		return
+	}
+	response.WriteHeader(http.StatusNotFound)
 }
 
 func matchesPrefix(request *http.Request, prefix string) bool {

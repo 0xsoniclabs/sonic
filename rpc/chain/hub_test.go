@@ -77,7 +77,7 @@ func TestChain_HandsAHeadOverBeforeServingIt(t *testing.T) {
 	fake.AddBlock()
 	fake.AddBlock()
 	served, _ := startChain(t, fake, chain.Config{})
-	require.Eventually(t, func() bool { return fake.Calls("SubscribeHead") == 1 }, time.Second, time.Millisecond)
+	require.Eventually(t, fake.FeedsSubscribed, time.Second, time.Millisecond)
 	consumer := served.SubscribeHeads(2)
 	fake.SetHead(1)
 	waitForHead(t, served, 1)
@@ -119,6 +119,7 @@ func TestChain_DropsTheConsumersOfALoopThatPanics(t *testing.T) {
 	fake := tests.NewFakeCore()
 	fake.AddBlock()
 	served, _ := startChain(t, fake, chain.Config{})
+	require.Eventually(t, fake.FeedsSubscribed, time.Second, time.Millisecond)
 	consumer := served.SubscribeHeads(1)
 	fake.SetMode("Progress", tests.Panic)
 	fake.SetHead(1)
@@ -129,6 +130,7 @@ func TestChain_DropsTheConsumersOfALoopThatPanics(t *testing.T) {
 func TestChain_HandsOverTheTransactionsThatEnterThePool(t *testing.T) {
 	fake := tests.NewFakeCore()
 	served, _ := startChain(t, fake, chain.Config{})
+	require.Eventually(t, fake.FeedsSubscribed, time.Second, time.Millisecond)
 	consumer := served.SubscribeTransactions(1)
 	recipient := common.Address{0x42}
 	transaction := tests.NewAccount().Sign(&types.LegacyTx{To: &recipient, Gas: 21000, GasPrice: big.NewInt(1)})

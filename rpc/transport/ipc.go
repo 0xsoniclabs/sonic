@@ -99,46 +99,12 @@ func (s *IPCServer) accept(ctx context.Context) {
 	}
 }
 
-// serve reads the messages of a connection until it fails, and serves each in
-// a goroutine of its own, as their answers may come in any order. Closing a
-// connection cancels its calls first, then waits for them.
+// serve serves a connection until it ends.
 func (s *IPCServer) serve(ctx context.Context, connection net.Conn) {
 	defer s.untrack(connection)
-	ctx, cancel := context.WithCancel(ctx)
-	var calls sync.WaitGroup
-	defer func() {
-		cancel()
-		calls.Wait()
-		_ = connection.Close()
-	}()
-	out := &streamWriter{connection: connection}
-	served := &session{front: s.front, out: out}
 	decoder := json.NewDecoder(connection)
 	decoder.UseNumber()
-	for {
-		var raw json.RawMessage
-		if err := decoder.Decode(&raw); err != nil {
-			var syntaxErr *json.SyntaxError
-			if errors.As(err, &syntaxErr) {
-				out.write(errorMessage(invalidMessage(err.Error())), true)
-			}
-			return
-		}
-		messages, batch := parseMessages(raw)
-		calls.Add(1)
-		started := s.dispatcher.Go("IPC call", func(context.Context) {
-			defer calls.Done()
-			if batch {
-				served.serveBatch(ctx, messages)
-			} else {
-				served.serveMessage(ctx, messages[0])
-			}
-		})
-		if !started {
-			calls.Done()
-			return
-		}
-	}
+	serveStream(ctx, s.dispatcher, s.front, BatchLimits{}, &ipcStream{connection: connection, decoder: decoder})
 }
 
 func (s *IPCServer) track(connection net.Conn) bool {
@@ -174,17 +140,43 @@ func (s *IPCServer) Stop() {
 	log.Info("IPC endpoint closed", "url", s.listener.Addr())
 }
 
-// streamWriter writes the answers of a stream connection, one at a time.
-type streamWriter struct {
+// ipcStream is an IPC connection: newline-delimited JSON, written one
+// message at a time.
+type ipcStream struct {
 	mutex      sync.Mutex
 	connection net.Conn
+	decoder    *json.Decoder
 }
 
-func (w *streamWriter) write(value any, isError bool) {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
-	_ = w.connection.SetWriteDeadline(time.Now().Add(streamWriteTimeout))
-	_ = json.NewEncoder(w.connection).Encode(value)
+func (s *ipcStream) read() (json.RawMessage, error) {
+	var raw json.RawMessage
+	err := s.decoder.Decode(&raw)
+	if syntaxErr, isSyntax := errors.AsType[*json.SyntaxError](err); isSyntax {
+		s.write(errorMessage(invalidMessage(syntaxErr.Error())), true)
+	}
+	return raw, err
+}
+
+func (s *ipcStream) write(value any, _ bool) {
+	_ = s.send(value)
+}
+
+func (s *ipcStream) send(message any) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	_ = s.connection.SetWriteDeadline(time.Now().Add(streamWriteTimeout))
+	return json.NewEncoder(s.connection).Encode(message)
+}
+
+// end tells the client the reason in an error without an id, and closes the
+// connection.
+func (s *ipcStream) end(reason error) {
+	s.write(errorMessage(&dispatch.Error{Code: dispatch.CodeDefault, Message: reason.Error()}), true)
+	s.close()
+}
+
+func (s *ipcStream) close() {
+	_ = s.connection.Close()
 }
 
 // connectionsGauge counts the open connections by transport.

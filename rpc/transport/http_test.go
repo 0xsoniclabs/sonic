@@ -239,7 +239,7 @@ func send(t *testing.T, url, method, path, body string, headers map[string]strin
 func startReferenceHTTP(t *testing.T, config HTTPConfig) string {
 	t.Helper()
 	handler := node.NewHTTPHandlerStack(newReference(t), config.CorsAllowedOrigins, config.VirtualHosts, nil)
-	server := &http.Server{Handler: &pathHandler{prefix: config.PathPrefix, next: handler}}
+	server := &http.Server{Handler: &router{httpPrefix: config.PathPrefix, http: handler}}
 	if config.Timeouts != (Timeouts{}) {
 		server.ReadTimeout, server.ReadHeaderTimeout = config.Timeouts.Read, config.Timeouts.ReadHeader
 		server.WriteTimeout, server.IdleTimeout = config.Timeouts.Write, config.Timeouts.Idle
@@ -255,7 +255,7 @@ func startModuleHTTP(t *testing.T, config HTTPConfig) string {
 	t.Helper()
 	dispatcher := newTestDispatcher(t)
 	config.Endpoint = "127.0.0.1:0"
-	server, err := StartHTTP(dispatcher, config, NewFront(dispatcher, nil, "http.api"), prometheus.NewRegistry())
+	server, err := StartHTTP(dispatcher, config, NewFront(dispatcher, nil, "http.api"), nil, prometheus.NewRegistry())
 	require.NoError(t, err)
 	t.Cleanup(server.Stop)
 	return "http://" + server.Address().String()

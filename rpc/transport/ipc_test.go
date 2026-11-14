@@ -23,7 +23,9 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -115,6 +117,72 @@ func TestIPC_AnswersAsGoEthereumServer(t *testing.T) {
 			require.Equal(t, want, got)
 		})
 	}
+}
+
+// ids replaces the random ids of subscriptions with a placeholder.
+var ids = regexp.MustCompile(`"0x[0-9a-f]{8,32}"`)
+
+// A subscription is answered with its id before its notifications, and its
+// calls are checked in go-ethereum's order and words.
+func TestIPC_SubscribesAsGoEthereumServer(t *testing.T) {
+	reference := startReferenceIPC(t)
+	module := startModuleIPC(t)
+	call := func(method, params string) string {
+		return `{"jsonrpc":"2.0","id":1,"method":"` + method + `","params":` + params + `}`
+	}
+	cases := map[string]struct {
+		request string
+		answers int
+		ordered bool
+	}{
+		"subscription":            {call("test_subscribe", `["ticks",3]`), 4, true},
+		"in a batch":              {"[" + call("test_subscribe", `["ticks",2]`) + "]", 3, true},
+		"no array":                {call("test_subscribe", `{}`), 1, false},
+		"no name":                 {call("test_subscribe", `[1]`), 1, false},
+		"unknown kind":            {call("test_subscribe", `["other"]`), 1, false},
+		"unknown namespace":       {call("other_subscribe", `["ticks",1]`), 1, false},
+		"missing parameter":       {call("test_subscribe", `["ticks"]`), 1, false},
+		"too many parameters":     {call("test_subscribe", `["ticks",1,"a",2]`), 1, false},
+		"invalid parameter":       {call("test_subscribe", `["ticks","x"]`), 1, false},
+		"long name":               {call(strings.Repeat("a", 2048)+"_subscribe", `["ticks",1]`), 1, false},
+		"unsubscribe unknown":     {call("test_unsubscribe", `["0x1"]`), 1, false},
+		"unsubscribe no id":       {call("test_unsubscribe", `[]`), 1, false},
+		"unsubscribe invalid id":  {call("other_unsubscribe", `[1]`), 1, false},
+		"unsubscribe long method": {call(strings.Repeat("a", 2048)+"_unsubscribe", `["0x1"]`), 1, false},
+	}
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			exchanged := exchange
+			if test.ordered {
+				exchanged = exchangeInOrder
+			}
+			want := exchanged(t, reference, test.request, test.answers)
+			got := exchanged(t, module, test.request, test.answers)
+			for i := range want {
+				want[i], got[i] = ids.ReplaceAllString(want[i], `"id"`), ids.ReplaceAllString(got[i], `"id"`)
+			}
+			require.Equal(t, want, got)
+		})
+	}
+}
+
+// exchangeInOrder is exchange without sorting the answers.
+func exchangeInOrder(t *testing.T, path, request string, answers int) []string {
+	t.Helper()
+	connection, err := net.Dial("unix", path)
+	require.NoError(t, err)
+	defer func() { _ = connection.Close() }()
+	_, err = connection.Write([]byte(request))
+	require.NoError(t, err)
+	reader := bufio.NewReader(connection)
+	var got []string
+	for range answers {
+		require.NoError(t, connection.SetReadDeadline(time.Now().Add(5*time.Second)))
+		line, err := reader.ReadString('\n')
+		require.NoError(t, err)
+		got = append(got, line)
+	}
+	return got
 }
 
 // IPC has no batch limits, as go-ethereum's IPC server has none.

@@ -77,6 +77,12 @@ func (f *feed[Event]) send(event Event) {
 	}
 }
 
+func (f *feed[Event]) subscribed() int {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	return len(f.subscribers)
+}
+
 func (f *feed[Event]) stop() {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()

@@ -139,7 +139,9 @@ func (f *Front) forwards(msg *message) bool {
 func (f *Front) call(ctx context.Context, msg *message) *message {
 	switch {
 	case strings.HasSuffix(msg.Method, subscribeMethodSuffix):
-		return msg.errorResponse(errNotificationsUnsupported)
+		return f.subscribe(ctx, msg)
+	case strings.HasSuffix(msg.Method, unsubscribeMethodSuffix):
+		return msg.answer(dispatch.Unsubscribe(notifierOf(ctx), msg.Params))
 	case len(msg.Method) > maxMethodNameLength:
 		return msg.errorResponse(invalidRequest(fmt.Sprintf("method name too long: %d > %d", len(msg.Method), maxMethodNameLength)))
 	case f.forwards(msg):
@@ -149,6 +151,43 @@ func (f *Front) call(ctx context.Context, msg *message) *message {
 	default:
 		return msg.errorResponse(dispatch.MethodNotFound(msg.Method))
 	}
+}
+
+// subscribe installs a subscription on a stream connection. Its
+// notifications begin once its answer is written.
+func (f *Front) subscribe(ctx context.Context, msg *message) *message {
+	notifier := notifierOf(ctx)
+	switch {
+	case notifier == nil:
+		return msg.errorResponse(errNotificationsUnsupported)
+	case len(msg.Method) > maxMethodNameLength:
+		return msg.errorResponse(invalidRequest(fmt.Sprintf("subscription name too long: %d > %d", len(msg.Method), maxMethodNameLength)))
+	case !f.serves(msg.namespace()):
+		name, err := dispatch.SubscriptionName(msg.Params)
+		if err != nil {
+			return msg.errorResponse(dispatch.InvalidParams(err.Error()))
+		}
+		return msg.errorResponse(dispatch.SubscriptionNotFound(msg.namespace(), name))
+	}
+	response, subscription := f.dispatcher.Subscribe(ctx, notifier, msg.Method, msg.Params)
+	answer := msg.answer(response)
+	if subscription != nil {
+		answer.written = subscription.Activate
+	}
+	return answer
+}
+
+type notifierKey struct{}
+
+// withNotifier gives the calls of a stream connection its notifier.
+func withNotifier(ctx context.Context, notifier *dispatch.Notifier) context.Context {
+	return context.WithValue(ctx, notifierKey{}, notifier)
+}
+
+// notifierOf is the notifier of a call's connection, nil on HTTP.
+func notifierOf(ctx context.Context) *dispatch.Notifier {
+	notifier, _ := ctx.Value(notifierKey{}).(*dispatch.Notifier)
+	return notifier
 }
 
 // forward has the node's handler answer a call, as an HTTP request in

@@ -46,6 +46,9 @@ type message struct {
 	Params  json.RawMessage `json:"params,omitempty"`
 	Error   *dispatch.Error `json:"error,omitempty"`
 	Result  json.RawMessage `json:"result,omitempty"`
+	// written is called once the answer has been written: it activates the
+	// subscription a call installed.
+	written func()
 }
 
 func (m *message) hasValidVersion() bool {

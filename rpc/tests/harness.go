@@ -71,9 +71,7 @@ func NewHarness(t testing.TB, fake *FakeCore, register func(*Harness), mutate ..
 	t.Cleanup(harness.Dispatcher.Stop)
 	// The chain's loops subscribe to the node's feeds; until they have, an
 	// event would be lost.
-	require.Eventually(t, func() bool {
-		return fake.Calls("SubscribeHead") > 0 && fake.Calls("SubscribeTransactions") > 0
-	}, time.Second, time.Millisecond)
+	require.Eventually(t, fake.FeedsSubscribed, time.Second, time.Millisecond)
 	return harness
 }
 

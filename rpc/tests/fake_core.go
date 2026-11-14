@@ -349,6 +349,12 @@ func (f *FakeCore) StopFeeds() {
 	f.transactions.stop()
 }
 
+// FeedsSubscribed tells whether both feeds, the heads' and the pool's, have
+// a subscriber.
+func (f *FakeCore) FeedsSubscribed() bool {
+	return f.heads.subscribed() > 0 && f.transactions.subscribed() > 0
+}
+
 func mustBeCoreMethod(method string) {
 	if !coreMethods[method] {
 		panic(fmt.Sprintf("%s is not a method of core.Core", method))

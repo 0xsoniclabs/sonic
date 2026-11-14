@@ -37,6 +37,9 @@ type metrics struct {
 	inflight      prometheus.Gauge
 	panics        *prometheus.CounterVec
 	loopRestarts  *prometheus.CounterVec
+
+	subscriptions      *prometheus.GaugeVec
+	subscriptionEvents *prometheus.CounterVec
 }
 
 func newMetrics(registerer prometheus.Registerer) *metrics {
@@ -67,6 +70,14 @@ func newMetrics(registerer prometheus.Registerer) *metrics {
 			Name: "rpc_loop_restarts_total",
 			Help: "Restarts of a long-lived loop after a panic, by loop.",
 		}, []string{"loop"})),
+		subscriptions: Register(registerer, prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "rpc_subscriptions",
+			Help: "Live subscriptions, by kind.",
+		}, []string{"kind"})),
+		subscriptionEvents: Register(registerer, prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "rpc_subscription_events_total",
+			Help: "Notifications of subscriptions, by kind and outcome (sent or failed).",
+		}, []string{"kind", "outcome"})),
 	}
 }
 

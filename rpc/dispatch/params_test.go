@@ -217,7 +217,7 @@ func BenchmarkParams_TypedDecoding(b *testing.B) {
 	layout := newParamsLayout(reflect.TypeFor[balanceParams]())
 	for b.Loop() {
 		var params balanceParams
-		if err := layout.decode(balanceRequest, &params); err != nil {
+		if err := layout.decode(balanceRequest, fieldsOf(&params)); err != nil {
 			b.Fatal(err)
 		}
 	}

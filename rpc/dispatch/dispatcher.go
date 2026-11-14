@@ -66,9 +66,10 @@ type Response struct {
 // Dispatcher serves the registered methods and owns every goroutine of the
 // module.
 type Dispatcher struct {
-	config  Config
-	methods map[string]*method
-	metrics *metrics
+	config            Config
+	methods           map[string]*method
+	subscriptionKinds map[string]*subscriptionKind
+	metrics           *metrics
 
 	// root is cancelled when Stop ends its grace period.
 	root       context.Context
@@ -98,12 +99,13 @@ type task struct {
 func New(config Config, registerer prometheus.Registerer) *Dispatcher {
 	root, cancel := context.WithCancel(context.Background())
 	return &Dispatcher{
-		config:     config,
-		methods:    map[string]*method{},
-		metrics:    newMetrics(registerer),
-		root:       root,
-		cancelRoot: cancel,
-		running:    map[*task]struct{}{},
+		config:            config,
+		methods:           map[string]*method{},
+		subscriptionKinds: map[string]*subscriptionKind{},
+		metrics:           newMetrics(registerer),
+		root:              root,
+		cancelRoot:        cancel,
+		running:           map[*task]struct{}{},
 	}
 }
 
@@ -120,7 +122,7 @@ func Add[Params, Result any](dispatcher *Dispatcher, name string, handler Handle
 	dispatcher.methods[name] = &method{
 		serve: func(ctx context.Context, raw json.RawMessage) (any, error) {
 			var params Params
-			if err := layout.decode(raw, &params); err != nil {
+			if err := layout.decode(raw, fieldsOf(&params)); err != nil {
 				return nil, InvalidParams(err.Error())
 			}
 			ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -143,12 +145,18 @@ func (d *Dispatcher) Serves(name string) bool {
 
 // Serve answers one call. Everything it runs is under one recover: a panic
 // in decoding, in the handler or in encoding answers -32603.
-func (d *Dispatcher) Serve(ctx context.Context, name string, params json.RawMessage) (response Response) {
+func (d *Dispatcher) Serve(ctx context.Context, name string, params json.RawMessage) Response {
 	method, found := d.methods[name]
 	if !found {
 		d.metrics.countUnknown()
 		return Response{Error: MethodNotFound(name)}
 	}
+	return d.run(ctx, name, func(ctx context.Context) (any, error) { return method.serve(ctx, params) })
+}
+
+// run serves a call of a registered method: it admits it, counts it, and
+// runs it and encodes its result under one recover.
+func (d *Dispatcher) run(ctx context.Context, name string, call func(ctx context.Context) (any, error)) (response Response) {
 	release, admitted := d.admit(name, &d.requests)
 	if !admitted {
 		return Response{Error: errShuttingDown}
@@ -167,7 +175,7 @@ func (d *Dispatcher) Serve(ctx context.Context, name string, params json.RawMess
 
 	ctx, stop := d.cancelledByStop(ctx)
 	defer stop()
-	result, err := method.serve(ctx, params)
+	result, err := call(ctx)
 	if err != nil {
 		if crash, isCrash := errors.AsType[*childCrash](err); isCrash {
 			return d.crashed(name, crash.recovered, crash.stack)

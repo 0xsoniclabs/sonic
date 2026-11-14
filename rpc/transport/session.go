@@ -77,6 +77,7 @@ func (s *session) serveMessage(ctx context.Context, msg *message) {
 	responded.Do(func() {
 		if answer != nil {
 			s.out.write(answer, false)
+			wrote(answer)
 		}
 	})
 }
@@ -216,5 +217,15 @@ func (b *batchBuffer) writeLocked(out writer, isError bool) {
 	b.wrote = true
 	if len(b.answers) > 0 {
 		out.write(b.answers, isError)
+	}
+	for _, answer := range b.answers {
+		wrote(answer)
+	}
+}
+
+// wrote tells an answer that it has been written.
+func wrote(answer *message) {
+	if answer.written != nil {
+		answer.written()
 	}
 }

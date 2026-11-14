@@ -21,6 +21,8 @@ package filters
 import (
 	"context"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/rpc/chain"
 	"github.com/0xsoniclabs/sonic/rpc/core"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
@@ -36,12 +38,21 @@ type handlers struct {
 	environment *exec.Environment
 	node        Node
 	filters     *filterSet
+	// headForms hands each new head, formed once, to the newHeads
+	// subscriptions.
+	headForms *chain.Hub[*evmcore.EvmHeaderJson]
 }
 
-// Register adds the methods of the namespace to the dispatcher, and starts
-// the loops that feed and expire the polled filters.
+// Register adds the methods and the subscriptions of the namespace to the
+// dispatcher, and starts the loops that feed them and expire the polled
+// filters.
 func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, node Node) {
-	h := &handlers{environment: environment, node: node, filters: newFilterSet(environment.Config().FilterTimeout)}
+	h := &handlers{
+		environment: environment,
+		node:        node,
+		filters:     newFilterSet(environment.Config().FilterTimeout),
+		headForms:   chain.NewHub[*evmcore.EvmHeaderJson](),
+	}
 	dispatch.Add(dispatcher, "eth_getLogs", h.getLogs)
 	dispatch.Add(dispatcher, "eth_newFilter", h.newFilter)
 	dispatch.Add(dispatcher, "eth_newBlockFilter", h.newBlockFilter)
@@ -51,6 +62,7 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, no
 	dispatch.Add(dispatcher, "eth_uninstallFilter", h.uninstallFilter)
 	h.startJournals(dispatcher)
 	dispatcher.Loop("polled filters expiry", h.expireFilters)
+	h.registerSubscriptions(dispatcher)
 }
 
 type logsParams struct {
