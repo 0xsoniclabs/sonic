@@ -126,13 +126,14 @@ func TestSetModuleConfig_MapsEachKey(t *testing.T) {
 		AllowUnprotectedTxs:  true,
 		TxSyncDefaultTimeout: 8 * time.Second,
 		TxSyncMaxTimeout:     9 * time.Second,
+		EnableTestOnlyApi:    true,
 	}
 	var module rpc.Config
 	setModuleConfig(&module, node)
 	require.Equal(t, rpc.Config{
 		Dispatch: dispatch.Config{RequestTimeout: 1 * time.Second},
 		Exec: rpcexec.Config{RPCGasCap: 2, RPCEVMTimeout: 3 * time.Second, RPCTxFeeCap: 7, AllowUnprotectedTxs: true,
-			TxSyncDefaultTimeout: 8 * time.Second, TxSyncMaxTimeout: 9 * time.Second},
+			TxSyncDefaultTimeout: 8 * time.Second, TxSyncMaxTimeout: 9 * time.Second, EnableTestOnlyApi: true},
 		Oracle: oracle.Config{MaxGasPrice: big.NewInt(4), MinGasPrice: big.NewInt(5), DefaultCertainty: 6},
 	}, module)
 }
@@ -186,7 +187,7 @@ func TestRPCStack_ANodeServesTheModulesOfItsStack(t *testing.T) {
 	}{
 		"legacy by default": {nil, []string{"abft", "admin", "dag", "debug", "eth", "ftm", "net", "personal", "rpc", "sonic", "test", "trace", "txpool", "web3"}},
 		"legacy":            {[]string{"--rpc.stack", "legacy"}, []string{"abft", "admin", "dag", "debug", "eth", "ftm", "net", "personal", "rpc", "sonic", "test", "trace", "txpool", "web3"}},
-		"module":            {[]string{"--rpc.stack", "module"}, []string{"admin", "debug", "eth", "net", "rpc", "sonic", "web3"}},
+		"module":            {[]string{"--rpc.stack", "module"}, []string{"admin", "debug", "eth", "net", "rpc", "sonic", "test", "txpool", "web3"}},
 	}
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {

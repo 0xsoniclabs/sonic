@@ -111,6 +111,7 @@ func setModuleConfig(module *rpc.Config, node gossip.Config) {
 		AllowUnprotectedTxs:  node.AllowUnprotectedTxs,
 		TxSyncDefaultTimeout: node.TxSyncDefaultTimeout,
 		TxSyncMaxTimeout:     node.TxSyncMaxTimeout,
+		EnableTestOnlyApi:    node.EnableTestOnlyApi,
 	}
 	module.Oracle = oracle.Config{
 		MaxGasPrice:      node.GPO.MaxGasPrice,

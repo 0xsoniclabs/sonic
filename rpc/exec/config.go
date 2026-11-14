@@ -36,6 +36,8 @@ type Config struct {
 	// TxSyncMaxTimeout caps unless it is zero.
 	TxSyncDefaultTimeout time.Duration
 	TxSyncMaxTimeout     time.Duration
+	// EnableTestOnlyApi lets the methods of the test namespace do their work.
+	EnableTestOnlyApi bool
 }
 
 // DefaultConfig is the configuration unless the node sets one.

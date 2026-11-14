@@ -55,6 +55,12 @@ func (h *handlers) sendRawTransaction(ctx context.Context, params rawTransaction
 	return transaction.Hash(), nil
 }
 
+// pendingTransactions answers none: the pending transactions of the node's
+// own accounts, of which the module knows none.
+func pendingTransactions(context.Context, struct{}) ([]*format.Transaction, error) {
+	return []*format.Transaction{}, nil
+}
+
 type rawTransactionSyncParams struct {
 	Transaction hexutil.Bytes
 	// TimeoutMs is the wait in milliseconds.

@@ -89,4 +89,5 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, no
 
 	dispatch.Add(dispatcher, "eth_sendRawTransaction", h.sendRawTransaction)
 	dispatch.Add(dispatcher, "eth_sendRawTransactionSync", h.sendRawTransactionSync)
+	dispatch.Add(dispatcher, "eth_pendingTransactions", pendingTransactions)
 }

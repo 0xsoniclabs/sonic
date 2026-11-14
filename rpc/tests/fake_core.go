@@ -20,6 +20,7 @@
 package tests
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -79,6 +80,7 @@ type FakeCore struct {
 	progress   core.Progress
 	peers      int
 	pool       map[common.Hash]*types.Transaction
+	queued     types.Transactions
 	poolNonces map[common.Address]uint64
 	modes      map[string]Mode
 	calls      map[string]int
@@ -215,6 +217,14 @@ func (f *FakeCore) AddPoolTransaction(transaction *types.Transaction) {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 	f.pool[transaction.Hash()] = transaction
+}
+
+// AddQueuedTransaction puts a transaction into the pool's queue, which only
+// the pool's content and statistics tell.
+func (f *FakeCore) AddQueuedTransaction(transaction *types.Transaction) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	f.queued = append(f.queued, transaction)
 }
 
 // SetPoolNonce sets the pending nonce of a sender.
@@ -475,18 +485,39 @@ func (f *FakeCore) PoolNextTransactions() types.Transactions {
 
 func (f *FakeCore) PoolContent() (map[common.Address]types.Transactions, map[common.Address]types.Transactions) {
 	content := read(f, "PoolContent", func() [2]map[common.Address]types.Transactions {
-		return [2]map[common.Address]types.Transactions{{}, {}}
+		return [2]map[common.Address]types.Transactions{bySender(slices.Collect(maps.Values(f.pool))), bySender(f.queued)}
 	})
 	return content[0], content[1]
 }
 
 func (f *FakeCore) PoolContentFrom(address common.Address) (types.Transactions, types.Transactions) {
-	content := read(f, "PoolContentFrom", func() [2]types.Transactions { return [2]types.Transactions{} })
+	content := read(f, "PoolContentFrom", func() [2]types.Transactions {
+		return [2]types.Transactions{bySender(slices.Collect(maps.Values(f.pool)))[address], bySender(f.queued)[address]}
+	})
 	return content[0], content[1]
 }
 
+// bySender groups transactions by their senders, in the order of their
+// nonces.
+func bySender(transactions types.Transactions) map[common.Address]types.Transactions {
+	signer := types.LatestSignerForChainID(big.NewInt(ChainID))
+	grouped := map[common.Address]types.Transactions{}
+	for _, transaction := range transactions {
+		sender, err := types.Sender(signer, transaction)
+		if err != nil {
+			panic(err)
+		}
+		grouped[sender] = append(grouped[sender], transaction)
+	}
+	for _, group := range grouped {
+		slices.SortFunc(group, func(a, b *types.Transaction) int { return cmp.Compare(a.Nonce(), b.Nonce()) })
+	}
+	return grouped
+}
+
 func (f *FakeCore) PoolStats() (int, int) {
-	return read(f, "PoolStats", func() int { return len(f.pool) }), 0
+	stats := read(f, "PoolStats", func() [2]int { return [2]int{len(f.pool), len(f.queued)} })
+	return stats[0], stats[1]
 }
 
 func (f *FakeCore) SubscribeTransactions(events chan<- evmcore.NewTxsNotify) core.Subscription {

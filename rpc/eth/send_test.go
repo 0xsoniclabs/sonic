@@ -184,3 +184,9 @@ func TestSendRawTransactionSync_WordsAMissingBlockOrReceipt(t *testing.T) {
 		})
 	}
 }
+
+func TestPendingTransactions_AreNoneOfTheNodesAccounts(t *testing.T) {
+	h, account := sendHarness(t)
+	h.Core.AddPoolTransaction(transfer(account, 0))
+	require.Equal(t, "[]", h.Result(t, "eth_pendingTransactions"))
+}
