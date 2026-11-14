@@ -227,11 +227,13 @@ func (f *FakeCore) SetUpgradeHeights(heights []opera.UpgradeHeight) {
 	f.upgrades = slices.Clone(heights)
 }
 
-// AddPoolTransaction puts a transaction into the pool.
+// AddPoolTransaction puts a transaction into the pool and announces it on
+// the pool's feed.
 func (f *FakeCore) AddPoolTransaction(transaction *types.Transaction) {
 	f.mutex.Lock()
-	defer f.mutex.Unlock()
 	f.pool[transaction.Hash()] = transaction
+	f.mutex.Unlock()
+	f.transactions.send(evmcore.NewTxsNotify{Txs: []*types.Transaction{transaction}})
 }
 
 // AddQueuedTransaction puts a transaction into the pool's queue, which only
@@ -522,11 +524,18 @@ func (f *FakeCore) State(number uint64) (state.StateDB, error) {
 	})
 }
 
+// SendTransaction puts a transaction into the pool and announces it on the
+// pool's feed.
 func (f *FakeCore) SendTransaction(ctx context.Context, transaction *types.Transaction) error {
+	added := false
 	_, err := lookup(f, "SendTransaction", func() (struct{}, error) {
 		f.pool[transaction.Hash()] = transaction
+		added = true
 		return struct{}{}, nil
 	})
+	if added {
+		f.transactions.send(evmcore.NewTxsNotify{Txs: []*types.Transaction{transaction}})
+	}
 	return err
 }
 

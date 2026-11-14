@@ -38,15 +38,22 @@ type Config struct {
 	TxSyncMaxTimeout     time.Duration
 	// EnableTestOnlyApi lets the methods of the test namespace do their work.
 	EnableTestOnlyApi bool
+	// LogQueryParameterLimit caps the addresses and topics of the criteria
+	// of a polled filter or a subscription; zero for none.
+	LogQueryParameterLimit uint
+	// FilterTimeout is how long a polled filter lives after its last poll.
+	FilterTimeout time.Duration
 }
 
 // DefaultConfig is the configuration unless the node sets one.
 func DefaultConfig() Config {
 	return Config{
-		RPCGasCap:            50000000,
-		RPCEVMTimeout:        5 * time.Second,
-		RPCTxFeeCap:          100,
-		TxSyncDefaultTimeout: 5 * time.Second,
-		TxSyncMaxTimeout:     30 * time.Second,
+		RPCGasCap:              50000000,
+		RPCEVMTimeout:          5 * time.Second,
+		RPCTxFeeCap:            100,
+		TxSyncDefaultTimeout:   5 * time.Second,
+		TxSyncMaxTimeout:       30 * time.Second,
+		LogQueryParameterLimit: 1000,
+		FilterTimeout:          5 * time.Minute,
 	}
 }

@@ -112,6 +112,9 @@ func setModuleConfig(module *rpc.Config, node gossip.Config) {
 		TxSyncDefaultTimeout: node.TxSyncDefaultTimeout,
 		TxSyncMaxTimeout:     node.TxSyncMaxTimeout,
 		EnableTestOnlyApi:    node.EnableTestOnlyApi,
+		// The legacy filters live for a constant time.
+		LogQueryParameterLimit: node.FilterAPI.LogQueryParameterLimit,
+		FilterTimeout:          rpcexec.DefaultConfig().FilterTimeout,
 	}
 	module.Oracle = oracle.Config{
 		MaxGasPrice:      node.GPO.MaxGasPrice,

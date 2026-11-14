@@ -25,6 +25,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip"
+	"github.com/0xsoniclabs/sonic/gossip/filters"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/rpc"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
@@ -127,13 +128,15 @@ func TestSetModuleConfig_MapsEachKey(t *testing.T) {
 		TxSyncDefaultTimeout: 8 * time.Second,
 		TxSyncMaxTimeout:     9 * time.Second,
 		EnableTestOnlyApi:    true,
+		FilterAPI:            filters.Config{LogQueryParameterLimit: 10},
 	}
 	var module rpc.Config
 	setModuleConfig(&module, node)
 	require.Equal(t, rpc.Config{
 		Dispatch: dispatch.Config{RequestTimeout: 1 * time.Second},
 		Exec: rpcexec.Config{RPCGasCap: 2, RPCEVMTimeout: 3 * time.Second, RPCTxFeeCap: 7, AllowUnprotectedTxs: true,
-			TxSyncDefaultTimeout: 8 * time.Second, TxSyncMaxTimeout: 9 * time.Second, EnableTestOnlyApi: true},
+			TxSyncDefaultTimeout: 8 * time.Second, TxSyncMaxTimeout: 9 * time.Second, EnableTestOnlyApi: true,
+			LogQueryParameterLimit: 10, FilterTimeout: 5 * time.Minute},
 		Oracle: oracle.Config{MaxGasPrice: big.NewInt(4), MinGasPrice: big.NewInt(5), DefaultCertainty: 6},
 	}, module)
 }

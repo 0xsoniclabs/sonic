@@ -35,12 +35,22 @@ type Node interface {
 type handlers struct {
 	environment *exec.Environment
 	node        Node
+	filters     *filterSet
 }
 
-// Register adds the methods of the namespace to the dispatcher.
+// Register adds the methods of the namespace to the dispatcher, and starts
+// the loops that feed and expire the polled filters.
 func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, node Node) {
-	h := &handlers{environment: environment, node: node}
+	h := &handlers{environment: environment, node: node, filters: newFilterSet(environment.Config().FilterTimeout)}
 	dispatch.Add(dispatcher, "eth_getLogs", h.getLogs)
+	dispatch.Add(dispatcher, "eth_newFilter", h.newFilter)
+	dispatch.Add(dispatcher, "eth_newBlockFilter", h.newBlockFilter)
+	dispatch.Add(dispatcher, "eth_newPendingTransactionFilter", h.newPendingTransactionFilter)
+	dispatch.Add(dispatcher, "eth_getFilterChanges", h.getFilterChanges)
+	dispatch.Add(dispatcher, "eth_getFilterLogs", h.getFilterLogs)
+	dispatch.Add(dispatcher, "eth_uninstallFilter", h.uninstallFilter)
+	h.startJournals(dispatcher)
+	dispatcher.Loop("polled filters expiry", h.expireFilters)
 }
 
 type logsParams struct {

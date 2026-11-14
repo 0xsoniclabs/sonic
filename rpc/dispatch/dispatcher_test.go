@@ -338,7 +338,7 @@ func TestToError_KeepsCodeAndData(t *testing.T) {
 
 func TestMethods_ListsTheRegisteredNames(t *testing.T) {
 	dispatcher := newShapesDispatcher()
-	require.Equal(t, []string{"test_hex", "test_mixed", "test_none", "test_slice"}, dispatcher.Methods())
+	require.Equal(t, []string{"test_hex", "test_identified", "test_mixed", "test_none", "test_slice"}, dispatcher.Methods())
 	require.True(t, dispatcher.Serves("test_hex"))
 	require.False(t, dispatcher.Serves("test_other"))
 }

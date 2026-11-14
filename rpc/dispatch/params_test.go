@@ -53,6 +53,10 @@ func (gethService) None(ctx context.Context) (string, error) {
 	return "ok", nil
 }
 
+func (gethService) Identified(ctx context.Context, id rpc.ID) (string, error) {
+	return string(id), nil
+}
+
 type mixedParams struct {
 	Number uint64
 	Label  *string
@@ -67,6 +71,10 @@ type sliceParams struct {
 	Values []float64
 }
 
+type idParams struct {
+	ID ID
+}
+
 func ok[Params any](context.Context, Params) (string, error) {
 	return "ok", nil
 }
@@ -77,6 +85,7 @@ func newShapesDispatcher() *Dispatcher {
 	Add(dispatcher, "test_hex", ok[hexParams])
 	Add(dispatcher, "test_slice", ok[sliceParams])
 	Add(dispatcher, "test_none", ok[struct{}])
+	Add(dispatcher, "test_identified", func(_ context.Context, params idParams) (string, error) { return string(params.ID), nil })
 	return dispatcher
 }
 
@@ -113,6 +122,12 @@ func TestParams_DecodeAsGoEthereumServer(t *testing.T) {
 		"none with one":            {"test_none", `[1]`},
 		"nested error in element":  {"test_slice", `[["a"]]`},
 		"second argument mismatch": {"test_hex", `["0x1",5]`},
+		"id":                       {"test_identified", `["0x1a"]`},
+		"id null":                  {"test_identified", `[null]`},
+		"id number":                {"test_identified", `[1]`},
+		"id bool":                  {"test_identified", `[true]`},
+		"id array":                 {"test_identified", `[["0x1"]]`},
+		"id object":                {"test_identified", `[{}]`},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {

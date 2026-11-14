@@ -80,6 +80,18 @@ func (e *Environment) Oracle() *oracle.Oracle {
 	return e.oracle
 }
 
+// SubscribeHeads adds a consumer of the heads served from now on, each with
+// its logs, handed over before it is served.
+func (e *Environment) SubscribeHeads(buffer int) *chain.Consumer[core.HeadNotify] {
+	return e.chain.SubscribeHeads(buffer)
+}
+
+// SubscribeTransactions adds a consumer of the transactions that enter the
+// pool from now on.
+func (e *Environment) SubscribeTransactions(buffer int) *chain.Consumer[evmcore.NewTxsNotify] {
+	return e.chain.SubscribeTransactions(buffer)
+}
+
 // NextHead is closed once a head newer than the served one is served.
 func (e *Environment) NextHead() <-chan struct{} {
 	return e.chain.NextHead()
