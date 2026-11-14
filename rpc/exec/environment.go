@@ -27,28 +27,51 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/rpc/chain"
 	"github.com/0xsoniclabs/sonic/rpc/core"
+	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 )
 
-// Environment offers the namespaces the served chain. Every lookup takes the
-// head a request read once, finds nothing above it, and reports a missing
-// item as core.ErrNotFound or a sentinel of chain.Resolve.
+// Reader is what the environment reads from the node.
+type Reader interface {
+	core.ChainReader
+	core.StateProvider
+	PoolNonce(address common.Address) uint64
+}
+
+// Environment offers the namespaces the served chain, the execution of calls
+// on it, the limits of the module and the gas price oracle. Every lookup
+// takes the head a request read once, finds nothing above it, and reports a
+// missing item as core.ErrNotFound or a sentinel of chain.Resolve.
 type Environment struct {
+	config  Config
 	chain   *chain.Chain
-	reader  core.ChainReader
+	reader  Reader
+	oracle  *oracle.Oracle
 	chainID *big.Int
 }
 
 // NewEnvironment creates the environment of a served chain.
-func NewEnvironment(served *chain.Chain, reader core.ChainReader) *Environment {
+func NewEnvironment(config Config, served *chain.Chain, reader Reader, suggester *oracle.Oracle) *Environment {
 	return &Environment{
+		config:  config,
 		chain:   served,
 		reader:  reader,
+		oracle:  suggester,
 		chainID: new(big.Int).SetUint64(reader.ChainInfo().ChainID),
 	}
+}
+
+// Config holds the limits and switches of the module.
+func (e *Environment) Config() Config {
+	return e.config
+}
+
+// Oracle is the gas price oracle.
+func (e *Environment) Oracle() *oracle.Oracle {
+	return e.oracle
 }
 
 // Head is the served head, which a request reads once. It is shared and must

@@ -29,6 +29,7 @@ import (
 // Node is what the namespace asks the node beyond the served chain.
 type Node interface {
 	Progress() core.Progress
+	PoolNonce(address common.Address) uint64
 	PoolTransaction(hash common.Hash) (*types.Transaction, error)
 }
 
@@ -68,4 +69,20 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, no
 
 	dispatch.Add(dispatcher, "eth_getTransactionReceipt", h.getTransactionReceipt)
 	dispatch.Add(dispatcher, "eth_getBlockReceipts", h.getBlockReceipts)
+
+	dispatch.Add(dispatcher, "eth_getBalance", h.getBalance)
+	dispatch.Add(dispatcher, "eth_getCode", h.getCode)
+	dispatch.Add(dispatcher, "eth_getStorageAt", h.getStorageAt)
+	dispatch.Add(dispatcher, "eth_getTransactionCount", h.getTransactionCount)
+	dispatch.Add(dispatcher, "eth_getAccount", h.getAccount)
+	dispatch.Add(dispatcher, "eth_getProof", h.getProof)
+
+	dispatch.Add(dispatcher, "eth_gasPrice", h.gasPrice)
+	dispatch.Add(dispatcher, "eth_maxPriorityFeePerGas", h.maxPriorityFeePerGas)
+	dispatch.Add(dispatcher, "eth_feeHistory", h.feeHistory)
+	dispatch.Add(dispatcher, "eth_blobBaseFee", h.blobBaseFee)
+
+	dispatch.Add(dispatcher, "eth_call", h.call)
+	dispatch.Add(dispatcher, "eth_estimateGas", h.estimateGas)
+	dispatch.Add(dispatcher, "eth_createAccessList", h.createAccessList)
 }

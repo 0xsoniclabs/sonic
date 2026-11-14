@@ -36,6 +36,10 @@ import (
 // without an error.
 var ErrNotFound = errors.New("not found")
 
+// ErrNoArchive reports a state read on a node that keeps no archive, as a
+// validator does.
+var ErrNoArchive = errors.New("no archive")
+
 // Core is everything the RPC module may ask the node. No call takes a tag:
 // chain and state are read by block number, by hash or by id; the bounds of a
 // log query are the one exception. Only SendTransaction and the TestOnly

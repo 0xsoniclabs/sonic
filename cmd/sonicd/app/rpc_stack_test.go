@@ -17,6 +17,7 @@
 package app
 
 import (
+	"math/big"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,8 +25,13 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip"
+	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/rpc"
+	"github.com/0xsoniclabs/sonic/rpc/dispatch"
+	rpcexec "github.com/0xsoniclabs/sonic/rpc/exec"
+	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
+	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/node"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
@@ -109,12 +115,32 @@ func TestTakeOverRPC_MovesEveryEndpointToTheModule(t *testing.T) {
 	}
 }
 
-func TestModuleStack_TakesTheRequestTimeout(t *testing.T) {
-	cfg := &config.Config{}
-	cfg.Opera.RPCTimeout = 7 * time.Second
-	stack := &moduleStack{}
-	stack.prepare(cfg)
-	require.Equal(t, 7*time.Second, stack.config.Dispatch.RequestTimeout)
+// Each key of the node's configuration the module reads reaches its field.
+func TestSetModuleConfig_MapsEachKey(t *testing.T) {
+	node := gossip.Config{
+		RPCTimeout:    1 * time.Second,
+		RPCGasCap:     2,
+		RPCEVMTimeout: 3 * time.Second,
+		GPO:           gasprice.Config{MaxGasPrice: big.NewInt(4), MinGasPrice: big.NewInt(5), DefaultCertainty: 6},
+	}
+	var module rpc.Config
+	setModuleConfig(&module, node)
+	require.Equal(t, rpc.Config{
+		Dispatch: dispatch.Config{RequestTimeout: 1 * time.Second},
+		Exec:     rpcexec.Config{RPCGasCap: 2, RPCEVMTimeout: 3 * time.Second},
+		Oracle:   oracle.Config{MaxGasPrice: big.NewInt(4), MinGasPrice: big.NewInt(5), DefaultCertainty: 6},
+	}, module)
+}
+
+// The node's defaults of the keys the module reads are the module's own,
+// as long as the node keeps its own literals for the legacy stack.
+func TestSetModuleConfig_NodeDefaultsAreTheModulesDefaults(t *testing.T) {
+	var module rpc.Config
+	setModuleConfig(&module, gossip.DefaultConfig(cachescale.Identity))
+	defaults := rpc.DefaultConfig()
+	require.Equal(t, defaults.Dispatch, module.Dispatch)
+	require.Equal(t, defaults.Exec, module.Exec)
+	require.Equal(t, defaults.Oracle, module.Oracle)
 }
 
 // startFakenetNode runs a node of a one-validator fake network with the

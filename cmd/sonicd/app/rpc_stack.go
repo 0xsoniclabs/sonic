@@ -27,6 +27,8 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/rpc"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
+	rpcexec "github.com/0xsoniclabs/sonic/rpc/exec"
+	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
@@ -96,7 +98,21 @@ type moduleStack struct {
 
 func (m *moduleStack) prepare(cfg *config.Config) {
 	m.config = takeOverRPC(&cfg.Node)
-	m.config.Dispatch = dispatch.Config{RequestTimeout: cfg.Opera.RPCTimeout}
+	setModuleConfig(&m.config, cfg.Opera)
+}
+
+// setModuleConfig maps the node's configuration of the RPC into the module's.
+func setModuleConfig(module *rpc.Config, node gossip.Config) {
+	module.Dispatch = dispatch.Config{RequestTimeout: node.RPCTimeout}
+	module.Exec = rpcexec.Config{
+		RPCGasCap:     node.RPCGasCap,
+		RPCEVMTimeout: node.RPCEVMTimeout,
+	}
+	module.Oracle = oracle.Config{
+		MaxGasPrice:      node.GPO.MaxGasPrice,
+		MinGasPrice:      node.GPO.MinGasPrice,
+		DefaultCertainty: node.GPO.DefaultCertainty,
+	}
 }
 
 func (m *moduleStack) attach(stack *node.Node, service *gossip.Service) error {

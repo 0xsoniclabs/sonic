@@ -192,7 +192,21 @@ func (c *RPCCore) State(number uint64) (state.StateDB, error) {
 	if block == nil || idx.Block(number) > c.store().GetLatestBlockIndex() {
 		return nil, core.ErrNotFound
 	}
-	return c.store().evm.GetBlockStateDb(new(big.Int).SetUint64(number), block.StateRoot)
+	stateDB, err := c.store().evm.GetBlockStateDb(new(big.Int).SetUint64(number), block.StateRoot)
+	if errors.Is(err, evmstore.NoArchiveError) {
+		return nil, noArchiveError{err}
+	}
+	return stateDB, err
+}
+
+// noArchiveError is the archive's refusal on a node without one, which keeps
+// its words and is a core.ErrNoArchive.
+type noArchiveError struct {
+	error
+}
+
+func (e noArchiveError) Is(target error) bool {
+	return target == core.ErrNoArchive
 }
 
 func (c *RPCCore) SendTransaction(ctx context.Context, transaction *types.Transaction) error {

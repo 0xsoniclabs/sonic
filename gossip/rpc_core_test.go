@@ -413,5 +413,6 @@ func TestRPCCore_WithoutAnArchiveServesTheCommittedHeadAndNoState(t *testing.T) 
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), head.NumberU64())
 	_, err = rpcCore.State(1)
-	require.ErrorIs(t, err, evmstore.NoArchiveError)
+	require.ErrorIs(t, err, core.ErrNoArchive)
+	require.EqualError(t, err, evmstore.NoArchiveError.Error(), "the archive's words are kept")
 }

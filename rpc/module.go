@@ -31,6 +31,7 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/eth"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
 	"github.com/0xsoniclabs/sonic/rpc/net"
+	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
 	"github.com/0xsoniclabs/sonic/rpc/web3"
 	"github.com/prometheus/client_golang/prometheus"
@@ -40,6 +41,8 @@ import (
 type Config struct {
 	Dispatch dispatch.Config
 	Chain    chain.Config
+	Exec     exec.Config
+	Oracle   oracle.Config
 	// HTTP is the HTTP endpoint, none if nil.
 	HTTP *HTTPConfig
 	// IPCPath is the path of the IPC socket, none if empty.
@@ -57,7 +60,7 @@ type HTTPConfig struct {
 
 // DefaultConfig is the configuration of a module without endpoints.
 func DefaultConfig() Config {
-	return Config{Dispatch: dispatch.DefaultConfig()}
+	return Config{Dispatch: dispatch.DefaultConfig(), Exec: exec.DefaultConfig(), Oracle: oracle.DefaultConfig()}
 }
 
 // Module is the RPC module of a node.
@@ -81,12 +84,14 @@ func New(config Config, node core.Core, nodeHandler http.Handler, registerer pro
 func (m *Module) Start() error {
 	m.dispatcher = dispatch.New(m.config.Dispatch, m.registerer)
 	served := chain.New(m.config.Chain, m.core, m.registerer)
-	environment := exec.NewEnvironment(served, m.core)
+	suggester := oracle.New(m.config.Oracle, m.core, func() uint64 { return served.Head().NumberU64() })
+	environment := exec.NewEnvironment(m.config.Exec, served, m.core, suggester)
 	m.register(environment)
 	if err := served.Start(m.dispatcher); err != nil {
 		m.dispatcher.Stop()
 		return err
 	}
+	m.dispatcher.Loop("gas price oracle", suggester.Sample)
 	if err := m.startTransports(); err != nil {
 		m.Stop()
 		return err

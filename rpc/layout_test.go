@@ -119,10 +119,12 @@ var gethOnlyIn = map[string][]string{
 }
 
 // lachesisTypes are the lachesis-base packages of the index and hash types the
-// node libraries hand out.
+// node libraries hand out, and the piecewise functions of the gas price
+// oracle, which the module shares with the node's.
 var lachesisTypes = []string{
 	"github.com/Fantom-foundation/lachesis-base/hash",
 	"github.com/Fantom-foundation/lachesis-base/inter/idx",
+	"github.com/Fantom-foundation/lachesis-base/utils/piecefunc",
 }
 
 // legacyPackages are the legacy RPC stack. The module imports none of them and

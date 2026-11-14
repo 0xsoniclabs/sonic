@@ -25,6 +25,7 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/chain"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
+	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
@@ -33,6 +34,8 @@ import (
 type Settings struct {
 	Dispatch dispatch.Config
 	Chain    chain.Config
+	Exec     exec.Config
+	Oracle   oracle.Config
 }
 
 // Harness serves the methods of a namespace over a core as a transport would:
@@ -50,7 +53,7 @@ type Harness struct {
 // with the test.
 func NewHarness(t testing.TB, fake *FakeCore, register func(*Harness), mutate ...func(*Settings)) *Harness {
 	t.Helper()
-	settings := Settings{Dispatch: dispatch.DefaultConfig()}
+	settings := Settings{Dispatch: dispatch.DefaultConfig(), Exec: exec.DefaultConfig(), Oracle: oracle.DefaultConfig()}
 	for _, change := range mutate {
 		change(&settings)
 	}
@@ -61,7 +64,8 @@ func NewHarness(t testing.TB, fake *FakeCore, register func(*Harness), mutate ..
 		Chain:      chain.New(settings.Chain, fake, registry),
 		registry:   registry,
 	}
-	harness.Environment = exec.NewEnvironment(harness.Chain, fake)
+	suggester := oracle.New(settings.Oracle, fake, func() uint64 { return harness.Chain.Head().NumberU64() })
+	harness.Environment = exec.NewEnvironment(settings.Exec, harness.Chain, fake, suggester)
 	register(harness)
 	require.NoError(t, harness.Chain.Start(harness.Dispatcher))
 	t.Cleanup(harness.Dispatcher.Stop)

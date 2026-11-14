@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"reflect"
 	"slices"
@@ -54,6 +55,8 @@ const (
 	// Nil answers a zero value without an error, which no lookup of the node
 	// does, so that handlers are checked to survive it.
 	Nil
+	// NoArchive answers core.ErrNoArchive, as a node without an archive does.
+	NoArchive
 )
 
 // ErrInjected is the error of a method in Fail mode.
@@ -67,19 +70,27 @@ const ChainID = 4003
 // and handed out as copies. Each method can be put into a Mode, is counted,
 // and can be held at a gate; every call waits the fake's delay.
 type FakeCore struct {
-	mutex        sync.Mutex
-	blocks       []*evmcore.EvmBlock
-	receipts     []types.Receipts
-	rules        opera.Rules
-	archived     uint64
-	upgrades     []opera.UpgradeHeight
-	progress     core.Progress
-	peers        int
-	pool         map[common.Hash]*types.Transaction
-	modes        map[string]Mode
-	calls        map[string]int
-	gates        map[string]chan struct{}
-	delay        time.Duration
+	mutex      sync.Mutex
+	blocks     []*evmcore.EvmBlock
+	receipts   []types.Receipts
+	rules      opera.Rules
+	archived   uint64
+	upgrades   []opera.UpgradeHeight
+	progress   core.Progress
+	peers      int
+	pool       map[common.Hash]*types.Transaction
+	poolNonces map[common.Address]uint64
+	modes      map[string]Mode
+	calls      map[string]int
+	gates      map[string]chan struct{}
+	delay      time.Duration
+	// openState opens the state of a Carmen core; a fake without it has no
+	// state.
+	openState  func() (state.StateDB, error)
+	openStates int
+	stateRoot  common.Hash
+	// oracleInputs replace the inputs derived from the rules if set.
+	oracleInputs *core.OracleInputs
 	heads        feed[core.HeadNotify]
 	transactions feed[evmcore.NewTxsNotify]
 }
@@ -100,12 +111,13 @@ func NewFakeCore() *FakeCore {
 	rules := opera.FakeNetRules(opera.GetCantoUpgrades())
 	rules.NetworkID = ChainID
 	fake := &FakeCore{
-		rules:    rules,
-		upgrades: []opera.UpgradeHeight{opera.MakeUpgradeHeight(rules.Upgrades, 0)},
-		pool:     map[common.Hash]*types.Transaction{},
-		modes:    map[string]Mode{},
-		calls:    map[string]int{},
-		gates:    map[string]chan struct{}{},
+		rules:      rules,
+		upgrades:   []opera.UpgradeHeight{opera.MakeUpgradeHeight(rules.Upgrades, 0)},
+		pool:       map[common.Hash]*types.Transaction{},
+		poolNonces: map[common.Address]uint64{},
+		modes:      map[string]Mode{},
+		calls:      map[string]int{},
+		gates:      map[string]chan struct{}{},
 	}
 	fake.AddBlock()
 	return fake
@@ -137,7 +149,7 @@ func (f *FakeCore) AddBlockWithReceipts(transactions types.Transactions, receipt
 	header := &evmcore.EvmHeader{
 		Number:   new(big.Int).SetUint64(number),
 		Hash:     crypto.Keccak256Hash([]byte(fmt.Sprintf("block %d", number))),
-		Root:     crypto.Keccak256Hash([]byte(fmt.Sprintf("root %d", number))),
+		Root:     f.stateRoot,
 		Time:     inter.Timestamp(number+1) * inter.Timestamp(time.Second),
 		Duration: time.Second,
 		GasLimit: 1 << 40,
@@ -203,6 +215,27 @@ func (f *FakeCore) AddPoolTransaction(transaction *types.Transaction) {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 	f.pool[transaction.Hash()] = transaction
+}
+
+// SetPoolNonce sets the pending nonce of a sender.
+func (f *FakeCore) SetPoolNonce(address common.Address, nonce uint64) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	f.poolNonces[address] = nonce
+}
+
+// SetRules sets the rules of every block.
+func (f *FakeCore) SetRules(rules opera.Rules) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	f.rules = rules
+}
+
+// SetOracleInputs sets what the gas price oracle reads.
+func (f *FakeCore) SetOracleInputs(inputs core.OracleInputs) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	f.oracleInputs = &inputs
 }
 
 // SetMode sets how a method of core.Core answers.
@@ -278,6 +311,8 @@ func lookup[Value any](f *FakeCore, method string, answer func() (Value, error))
 		return zero, ErrInjected
 	case NotFound:
 		return zero, core.ErrNotFound
+	case NoArchive:
+		return zero, core.ErrNoArchive
 	case Nil:
 		return zero, nil
 	}
@@ -398,7 +433,17 @@ func (f *FakeCore) SubscribeHead(events chan<- core.HeadNotify) core.Subscriptio
 
 func (f *FakeCore) State(number uint64) (state.StateDB, error) {
 	return lookup(f, "State", func() (state.StateDB, error) {
-		return nil, errors.New("the fake core holds no state")
+		if f.openState == nil {
+			return nil, errors.New("the fake core holds no state")
+		}
+		if number >= uint64(len(f.blocks)) {
+			return nil, core.ErrNotFound
+		}
+		opened, err := f.openState()
+		if err != nil {
+			return nil, err
+		}
+		return f.track(opened), nil
 	})
 }
 
@@ -411,7 +456,7 @@ func (f *FakeCore) SendTransaction(ctx context.Context, transaction *types.Trans
 }
 
 func (f *FakeCore) PoolNonce(address common.Address) uint64 {
-	return read(f, "PoolNonce", func() uint64 { return 0 })
+	return read(f, "PoolNonce", func() uint64 { return f.poolNonces[address] })
 }
 
 func (f *FakeCore) PoolTransaction(hash common.Hash) (*types.Transaction, error) {
@@ -425,7 +470,7 @@ func (f *FakeCore) PoolTransaction(hash common.Hash) (*types.Transaction, error)
 }
 
 func (f *FakeCore) PoolNextTransactions() types.Transactions {
-	return read(f, "PoolNextTransactions", func() types.Transactions { return nil })
+	return read(f, "PoolNextTransactions", func() types.Transactions { return slices.Collect(maps.Values(f.pool)) })
 }
 
 func (f *FakeCore) PoolContent() (map[common.Address]types.Transactions, map[common.Address]types.Transactions) {
@@ -458,6 +503,9 @@ func (f *FakeCore) Progress() core.Progress {
 
 func (f *FakeCore) OracleInputs() core.OracleInputs {
 	return read(f, "OracleInputs", func() core.OracleInputs {
+		if f.oracleInputs != nil {
+			return *f.oracleInputs
+		}
 		return core.OracleInputs{NextEpochRules: f.rules.Copy(), MinTip: new(big.Int)}
 	})
 }
