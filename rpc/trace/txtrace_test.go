@@ -1,0 +1,770 @@
+// Copyright 2026 Sonic Operations Ltd
+// This file is part of the Sonic Client
+//
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
+package trace
+
+import (
+	"encoding/json"
+	"math/big"
+	"strings"
+	"testing"
+
+	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
+)
+
+var (
+	blockNumber     = big.NewInt(123)
+	blockHash       = common.HexToHash("0x123")
+	from            = common.HexToAddress("1")
+	to              = common.HexToAddress("2")
+	toInner         = common.HexToAddress("3")
+	inputData       = common.Hex2Bytes("2f7468610000000000000000000000000000000000000000000000000000000000000008")
+	inputDataInner  = common.Hex2Bytes("2f7468610000000000000000000000000000000000000000000000000000000000000002")
+	outputData      = common.Hex2Bytes("456")
+	outputDataInner = common.Hex2Bytes("789")
+
+	txIndex  uint     = 3
+	nonce    uint64   = 0
+	gaslimit uint64   = 3000000
+	gasUsed  uint64   = 2000
+	gasprice *big.Int = big.NewInt(100)
+	value    *big.Int = big.NewInt(5)
+)
+
+func TestTracerSimpleCall(t *testing.T) {
+
+	block, tx := getDefaultBlockTxMessage()
+	tracer := NewTraceStructLogger(block, txIndex)
+
+	tracer.OnTxStart(nil, tx, from)
+	tracer.OnEnter(0, byte(vm.CALL), from, to, inputData, gaslimit, value)
+	tracer.OnExit(0, outputData, 100, nil, false)
+	tracer.OnTxEnd(&types.Receipt{GasUsed: gasUsed}, nil)
+
+	want := `[
+    {
+        "action": {
+            "callType": "call",
+            "from": "0x0000000000000000000000000000000000000001",
+            "to": "0x0000000000000000000000000000000000000002",
+            "value": "0x5",
+            "gas": "0x2dc6c0",
+            "input": "0x2f7468610000000000000000000000000000000000000000000000000000000000000008"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x7d0",
+            "output": "0x45"
+        },
+        "subtraces": 0,
+        "traceAddress": [],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "call"
+    }
+]`
+	checkResult(t, tracer.GetResult(), want)
+}
+
+func TestTracerSimpleCreate(t *testing.T) {
+
+	block, tx := getDefaultBlockTxMessage()
+	tracer := NewTraceStructLogger(block, txIndex)
+
+	tracer.OnTxStart(nil, tx, from)
+	tracer.OnEnter(0, byte(vm.CREATE), from, to, inputData, gaslimit, value)
+	tracer.OnExit(0, outputData, 100, nil, false)
+	tracer.OnTxEnd(&types.Receipt{GasUsed: gasUsed}, nil)
+
+	want := `[
+    {
+        "action": {
+            "from": "0x0000000000000000000000000000000000000001",
+            "value": "0x5",
+            "gas": "0x2dc6c0",
+            "init": "0x2f7468610000000000000000000000000000000000000000000000000000000000000008"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x7d0",
+            "code": "0x45",
+            "address": "0x0000000000000000000000000000000000000002"
+        },
+        "subtraces": 0,
+        "traceAddress": [],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "create"
+    }
+]`
+	checkResult(t, tracer.GetResult(), want)
+}
+
+func TestTracerComplexCall(t *testing.T) {
+
+	block, tx := getDefaultBlockTxMessage()
+	tracer := NewTraceStructLogger(block, txIndex)
+
+	tracer.OnTxStart(nil, tx, from)
+	tracer.OnEnter(0, byte(vm.CALL), from, to, inputData, gaslimit, value)
+
+	tracer.OnEnter(1, byte(vm.CREATE2), to, toInner, inputDataInner, 600, value)
+
+	tracer.OnEnter(2, byte(vm.CALL), to, toInner, inputDataInner, 601, value)
+	tracer.OnExit(2, outputDataInner, 401, nil, false)
+
+	tracer.OnEnter(2, byte(vm.STATICCALL), to, toInner, inputDataInner, 602, value)
+	tracer.OnExit(2, outputDataInner, 402, nil, false)
+
+	tracer.OnEnter(2, byte(vm.DELEGATECALL), to, toInner, inputDataInner, 603, value)
+	tracer.OnExit(2, outputDataInner, 403, nil, false)
+
+	tracer.OnEnter(2, byte(vm.SELFDESTRUCT), to, toInner, inputDataInner, 604, value)
+	tracer.OnExit(2, outputDataInner, 404, nil, false)
+
+	tracer.OnExit(1, outputDataInner, 400, nil, false)
+
+	tracer.OnEnter(1, byte(vm.CREATE), to, toInner, inputDataInner, 600, value)
+	tracer.OnExit(1, outputDataInner, 406, nil, false)
+
+	tracer.OnExit(0, outputData, 100, nil, false)
+	tracer.OnTxEnd(&types.Receipt{GasUsed: gasUsed}, nil)
+
+	want := `[
+    {
+        "action": {
+            "callType": "call",
+            "from": "0x0000000000000000000000000000000000000001",
+            "to": "0x0000000000000000000000000000000000000002",
+            "value": "0x5",
+            "gas": "0x2dc6c0",
+            "input": "0x2f7468610000000000000000000000000000000000000000000000000000000000000008"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x7d0",
+            "output": "0x45"
+        },
+        "subtraces": 2,
+        "traceAddress": [],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "call"
+    },
+    {
+        "action": {
+            "from": "0x0000000000000000000000000000000000000002",
+            "value": "0x5",
+            "gas": "0x258",
+            "init": "0x2f7468610000000000000000000000000000000000000000000000000000000000000002"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x190",
+            "code": "0x78",
+            "address": "0x0000000000000000000000000000000000000003"
+        },
+        "subtraces": 4,
+        "traceAddress": [
+            0
+        ],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "create"
+    },
+    {
+        "action": {
+            "callType": "call",
+            "from": "0x0000000000000000000000000000000000000002",
+            "to": "0x0000000000000000000000000000000000000003",
+            "value": "0x5",
+            "gas": "0x259",
+            "input": "0x2f7468610000000000000000000000000000000000000000000000000000000000000002"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x191",
+            "output": "0x78"
+        },
+        "subtraces": 0,
+        "traceAddress": [
+            0,
+            0
+        ],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "call"
+    },
+    {
+        "action": {
+            "callType": "staticcall",
+            "from": "0x0000000000000000000000000000000000000002",
+            "to": "0x0000000000000000000000000000000000000003",
+            "value": "0x5",
+            "gas": "0x25a",
+            "input": "0x2f7468610000000000000000000000000000000000000000000000000000000000000002"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x192",
+            "output": "0x78"
+        },
+        "subtraces": 0,
+        "traceAddress": [
+            0,
+            1
+        ],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "call"
+    },
+    {
+        "action": {
+            "callType": "delegatecall",
+            "from": "0x0000000000000000000000000000000000000002",
+            "to": "0x0000000000000000000000000000000000000003",
+            "value": "0x5",
+            "gas": "0x25b",
+            "input": "0x2f7468610000000000000000000000000000000000000000000000000000000000000002"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x193",
+            "output": "0x78"
+        },
+        "subtraces": 0,
+        "traceAddress": [
+            0,
+            2
+        ],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "call"
+    },
+    {
+        "action": {
+            "address": "0x0000000000000000000000000000000000000002",
+            "refundAddress": "0x0000000000000000000000000000000000000003",
+            "balance": "0x5"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "subtraces": 0,
+        "traceAddress": [
+            0,
+            3
+        ],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "suicide",
+        "result": null
+    },
+    {
+        "action": {
+            "from": "0x0000000000000000000000000000000000000002",
+            "value": "0x5",
+            "gas": "0x258",
+            "init": "0x2f7468610000000000000000000000000000000000000000000000000000000000000002"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x196",
+            "code": "0x78",
+            "address": "0x0000000000000000000000000000000000000003"
+        },
+        "subtraces": 0,
+        "traceAddress": [
+            1
+        ],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "create"
+    }
+]`
+	checkResult(t, tracer.GetResult(), want)
+}
+
+func TestTracerZeroValues(t *testing.T) {
+
+	block, tx := getDefaultBlockTxMessage()
+	tracer := NewTraceStructLogger(block, txIndex)
+
+	tracer.OnTxStart(nil, tx, from)
+	tracer.OnEnter(0, byte(vm.CALL), from, to, []byte{}, gaslimit, nil)
+	tracer.OnExit(0, []byte{}, 100, nil, false)
+	tracer.OnTxEnd(&types.Receipt{GasUsed: gasUsed}, nil)
+
+	want := `[
+    {
+        "action": {
+            "callType": "call",
+            "from": "0x0000000000000000000000000000000000000001",
+            "to": "0x0000000000000000000000000000000000000002",
+            "value": "0x0",
+            "gas": "0x2dc6c0",
+            "input": "0x"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x7d0",
+            "output": "0x"
+        },
+        "subtraces": 0,
+        "traceAddress": [],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "call"
+    }
+]`
+	checkResult(t, tracer.GetResult(), want)
+}
+
+func TestTracerSimpleErrorCall(t *testing.T) {
+
+	block, tx := getDefaultBlockTxMessage()
+	tracer := NewTraceStructLogger(block, txIndex)
+
+	tracer.OnTxStart(nil, tx, from)
+	tracer.OnEnter(0, byte(vm.CALL), from, to, inputData, gaslimit, value)
+	tracer.OnExit(0, outputData, 100, vm.ErrExecutionReverted, false)
+	tracer.OnTxEnd(&types.Receipt{GasUsed: gasUsed}, vm.ErrExecutionReverted)
+
+	want := `[
+    {
+        "action": {
+            "callType": "call",
+            "from": "0x0000000000000000000000000000000000000001",
+            "to": "0x0000000000000000000000000000000000000002",
+            "value": "0x5",
+            "gas": "0x2dc6c0",
+            "input": "0x2f7468610000000000000000000000000000000000000000000000000000000000000008"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "error": "Reverted",
+        "subtraces": 0,
+        "traceAddress": [],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "call"
+    }
+]`
+	checkResult(t, tracer.GetResult(), want)
+}
+
+func TestTracerInnerErrorCall(t *testing.T) {
+
+	block, tx := getDefaultBlockTxMessage()
+	tracer := NewTraceStructLogger(block, txIndex)
+
+	tracer.OnTxStart(nil, tx, from)
+	tracer.OnEnter(0, byte(vm.CALL), from, to, inputData, gaslimit, value)
+	tracer.OnEnter(1, byte(vm.CALL), to, toInner, inputDataInner, 200, value)
+	tracer.OnExit(1, outputDataInner, 201, vm.ErrExecutionReverted, false)
+	tracer.OnExit(0, outputData, 100, nil, false)
+	tracer.OnTxEnd(&types.Receipt{GasUsed: gasUsed}, nil)
+
+	want := `[
+    {
+        "action": {
+            "callType": "call",
+            "from": "0x0000000000000000000000000000000000000001",
+            "to": "0x0000000000000000000000000000000000000002",
+            "value": "0x5",
+            "gas": "0x2dc6c0",
+            "input": "0x2f7468610000000000000000000000000000000000000000000000000000000000000008"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x7d0",
+            "output": "0x45"
+        },
+        "subtraces": 1,
+        "traceAddress": [],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "call"
+    },
+    {
+        "action": {
+            "callType": "call",
+            "from": "0x0000000000000000000000000000000000000002",
+            "to": "0x0000000000000000000000000000000000000003",
+            "value": "0x5",
+            "gas": "0xc8",
+            "input": "0x2f7468610000000000000000000000000000000000000000000000000000000000000002"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "error": "Reverted",
+        "subtraces": 0,
+        "traceAddress": [
+            0
+        ],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "call"
+    }
+]`
+	checkResult(t, tracer.GetResult(), want)
+}
+
+func TestTracerSelfDestruct(t *testing.T) {
+	tests := map[string]struct {
+		run  func(tracer *TraceStructLogger)
+		want string
+	}{
+		"suicide with zero balance": {
+			run: func(tracer *TraceStructLogger) {
+				tracer.OnEnter(0, byte(vm.CALL), from, to, inputData, gaslimit, value)
+				tracer.OnEnter(1, byte(vm.SELFDESTRUCT), to, toInner, nil, 0, big.NewInt(0))
+				tracer.OnExit(1, nil, 0, nil, false)
+				tracer.OnExit(0, outputData, 100, nil, false)
+			},
+			want: `[
+    {
+        "action": {
+            "callType": "call",
+            "from": "0x0000000000000000000000000000000000000001",
+            "to": "0x0000000000000000000000000000000000000002",
+            "value": "0x5",
+            "gas": "0x2dc6c0",
+            "input": "0x2f7468610000000000000000000000000000000000000000000000000000000000000008"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x7d0",
+            "output": "0x45"
+        },
+        "subtraces": 1,
+        "traceAddress": [],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "call"
+    },
+    {
+        "action": {
+            "address": "0x0000000000000000000000000000000000000002",
+            "refundAddress": "0x0000000000000000000000000000000000000003",
+            "balance": "0x0"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "subtraces": 0,
+        "traceAddress": [
+            0
+        ],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "suicide",
+        "result": null
+    }
+]`,
+		},
+		"suicide action has only address refundAddress balance": {
+			run: func(tracer *TraceStructLogger) {
+				tracer.OnEnter(0, byte(vm.CALL), from, to, inputData, gaslimit, value)
+				tracer.OnEnter(1, byte(vm.SELFDESTRUCT), to, toInner, inputDataInner, 604, value)
+				tracer.OnExit(1, nil, 0, nil, false)
+				tracer.OnExit(0, outputData, 100, nil, false)
+			},
+			want: `[
+    {
+        "action": {
+            "callType": "call",
+            "from": "0x0000000000000000000000000000000000000001",
+            "to": "0x0000000000000000000000000000000000000002",
+            "value": "0x5",
+            "gas": "0x2dc6c0",
+            "input": "0x2f7468610000000000000000000000000000000000000000000000000000000000000008"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x7d0",
+            "output": "0x45"
+        },
+        "subtraces": 1,
+        "traceAddress": [],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "call"
+    },
+    {
+        "action": {
+            "address": "0x0000000000000000000000000000000000000002",
+            "refundAddress": "0x0000000000000000000000000000000000000003",
+            "balance": "0x5"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "subtraces": 0,
+        "traceAddress": [
+            0
+        ],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "suicide",
+        "result": null
+    }
+]`,
+		},
+		"nested suicide gets correct traceAddress": {
+			run: func(tracer *TraceStructLogger) {
+				tracer.OnEnter(0, byte(vm.CALL), from, to, inputData, gaslimit, value)
+				tracer.OnEnter(1, byte(vm.CALL), to, toInner, inputDataInner, 600, value)
+				tracer.OnEnter(2, byte(vm.SELFDESTRUCT), toInner, to, nil, 0, value)
+				tracer.OnExit(2, nil, 0, nil, false)
+				tracer.OnExit(1, outputDataInner, 400, nil, false)
+				tracer.OnExit(0, outputData, 100, nil, false)
+			},
+			want: `[
+    {
+        "action": {
+            "callType": "call",
+            "from": "0x0000000000000000000000000000000000000001",
+            "to": "0x0000000000000000000000000000000000000002",
+            "value": "0x5",
+            "gas": "0x2dc6c0",
+            "input": "0x2f7468610000000000000000000000000000000000000000000000000000000000000008"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x7d0",
+            "output": "0x45"
+        },
+        "subtraces": 1,
+        "traceAddress": [],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "call"
+    },
+    {
+        "action": {
+            "callType": "call",
+            "from": "0x0000000000000000000000000000000000000002",
+            "to": "0x0000000000000000000000000000000000000003",
+            "value": "0x5",
+            "gas": "0x258",
+            "input": "0x2f7468610000000000000000000000000000000000000000000000000000000000000002"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x190",
+            "output": "0x78"
+        },
+        "subtraces": 1,
+        "traceAddress": [
+            0
+        ],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "call"
+    },
+    {
+        "action": {
+            "address": "0x0000000000000000000000000000000000000003",
+            "refundAddress": "0x0000000000000000000000000000000000000002",
+            "balance": "0x5"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "subtraces": 0,
+        "traceAddress": [
+            0,
+            0
+        ],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "suicide",
+        "result": null
+    }
+]`,
+		},
+		"suicide alongside normal calls keeps call fields intact": {
+			run: func(tracer *TraceStructLogger) {
+				tracer.OnEnter(0, byte(vm.CALL), from, to, inputData, gaslimit, value)
+				tracer.OnEnter(1, byte(vm.CALL), to, toInner, inputDataInner, 600, value)
+				tracer.OnExit(1, outputDataInner, 400, nil, false)
+				tracer.OnEnter(1, byte(vm.SELFDESTRUCT), to, toInner, nil, 0, value)
+				tracer.OnExit(1, nil, 0, nil, false)
+				tracer.OnExit(0, outputData, 100, nil, false)
+			},
+			want: `[
+    {
+        "action": {
+            "callType": "call",
+            "from": "0x0000000000000000000000000000000000000001",
+            "to": "0x0000000000000000000000000000000000000002",
+            "value": "0x5",
+            "gas": "0x2dc6c0",
+            "input": "0x2f7468610000000000000000000000000000000000000000000000000000000000000008"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x7d0",
+            "output": "0x45"
+        },
+        "subtraces": 2,
+        "traceAddress": [],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "call"
+    },
+    {
+        "action": {
+            "callType": "call",
+            "from": "0x0000000000000000000000000000000000000002",
+            "to": "0x0000000000000000000000000000000000000003",
+            "value": "0x5",
+            "gas": "0x258",
+            "input": "0x2f7468610000000000000000000000000000000000000000000000000000000000000002"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "result": {
+            "gasUsed": "0x190",
+            "output": "0x78"
+        },
+        "subtraces": 0,
+        "traceAddress": [
+            0
+        ],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "call"
+    },
+    {
+        "action": {
+            "address": "0x0000000000000000000000000000000000000002",
+            "refundAddress": "0x0000000000000000000000000000000000000003",
+            "balance": "0x5"
+        },
+        "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "blockNumber": 123,
+        "subtraces": 0,
+        "traceAddress": [
+            1
+        ],
+        "transactionHash": "0xb3a9e46933c0c55b3e9facb9d291b1c606ffa59acbdc9b58540130155b0699ec",
+        "transactionPosition": 3,
+        "type": "suicide",
+        "result": null
+    }
+]`,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			block, tx := getDefaultBlockTxMessage()
+			tracer := NewTraceStructLogger(block, txIndex)
+			tracer.OnTxStart(nil, tx, from)
+			test.run(tracer)
+			tracer.OnTxEnd(&types.Receipt{GasUsed: gasUsed}, nil)
+			checkResult(t, tracer.GetResult(), test.want)
+		})
+	}
+}
+
+func TestActionTrace_MarshalJSON_ResultField(t *testing.T) {
+	tests := map[string]struct {
+		trace      ActionTrace
+		wantResult string
+		omitResult bool
+	}{
+		"suicide trace has explicit null result": {
+			trace: ActionTrace{
+				TraceType: SELFDESTRUCT,
+				Action:    &AddressAction{},
+			},
+			wantResult: `"result":null`,
+		},
+		"error trace omits result key": {
+			trace: ActionTrace{
+				TraceType: CALL,
+				Action:    &AddressAction{},
+				Error:     "Reverted",
+			},
+			omitResult: true,
+		},
+		"successful call keeps result object": {
+			trace: ActionTrace{
+				TraceType: CALL,
+				Action:    &AddressAction{},
+				Result:    &TraceActionResult{},
+			},
+			wantResult: `"result":{`,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			out, err := json.Marshal(test.trace)
+			if err != nil {
+				t.Fatalf("failed to marshal trace: %v", err)
+			}
+			if test.omitResult {
+				if strings.Contains(string(out), `"result"`) {
+					t.Errorf("expected result key to be omitted, got: %s", out)
+				}
+			} else if !strings.Contains(string(out), test.wantResult) {
+				t.Errorf("expected output to contain %s, got: %s", test.wantResult, out)
+			}
+		})
+	}
+}
+
+func getDefaultBlockTxMessage() (*evmcore.EvmBlock, *types.Transaction) {
+
+	// create transaction with default values
+	tx := types.NewTransaction(nonce, to, value, gaslimit, gasprice, inputData)
+
+	// create block
+	block := evmcore.NewEvmBlock(&evmcore.EvmHeader{
+		Number: blockNumber,
+		Hash:   blockHash}, types.Transactions{tx})
+
+	return block, tx
+}
+
+func checkResult(t *testing.T, traces *[]ActionTrace, expectedTraces string) {
+	result, err := json.MarshalIndent(&traces, "", "    ")
+	if err != nil {
+		t.Errorf("problem with formating result, got error: %v", err)
+	}
+
+	if expectedTraces != string(result) {
+		t.Errorf("expected result is not the same as output got: %v, want: %v", string(result), expectedTraces)
+	}
+}
