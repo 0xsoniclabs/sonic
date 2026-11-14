@@ -489,8 +489,23 @@ func TestIntegrationTestNet_ValidateAndSanitizeOptions(t *testing.T) {
 				ValidatorsStake: []uint64{10, 20, 30},
 			},
 		},
+		"if the RPC stack is defined, it is preserved": {
+			options: []IntegrationTestNetOptions{
+				{
+					RPCStack: "given",
+				},
+			},
+			expectedOptions: IntegrationTestNetOptions{
+				Upgrades:        AsPointer(opera.GetSonicUpgrades()),
+				NumNodes:        1,
+				ValidatorsStake: []uint64{5_000_000},
+				RPCStack:        "given",
+			},
+		},
 	}
 
+	runStack, err := RPCStackOfRun()
+	require.NoError(t, err)
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			options, err := validateAndSanitizeOptions(test.options...)
@@ -499,6 +514,9 @@ func TestIntegrationTestNet_ValidateAndSanitizeOptions(t *testing.T) {
 				return
 			} else {
 				require.NoError(t, err)
+			}
+			if test.expectedOptions.RPCStack == "" {
+				test.expectedOptions.RPCStack = runStack // the stack of the run unless given
 			}
 			require.Equal(t, test.expectedOptions, options)
 		})
