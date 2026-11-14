@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -53,7 +53,7 @@ func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 		},
 		session.GetSessionSponsor())
 
-	pendingTxs := make(chan *ethapi.RPCTransaction)
+	pendingTxs := make(chan *RPCTransaction)
 	defer close(pendingTxs)
 
 	trueBool := true
@@ -64,7 +64,7 @@ func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 	err = client.SendTransaction(t.Context(), tx)
 	require.NoError(t, err, "failed to send transaction ", err)
 
-	var got *ethapi.RPCTransaction
+	var got *RPCTransaction
 	select {
 	case got = <-pendingTxs:
 	case err := <-subs.Err():
@@ -73,8 +73,7 @@ func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 		t.Fatalf("no pending-transaction notification received within %v", pendingTxNotificationTimeout)
 	}
 
-	want := ethapi.NewRPCPendingTransaction(tx, tx.GasPrice(), session.GetChainId())
-	require.Equal(t, want, got, "transaction from address does not match")
+	require.Equal(t, pendingForm(tx, session.GetSessionSponsor().Address()), got, "transaction from address does not match")
 
 }
 
@@ -108,4 +107,25 @@ func TestPendingTransactionSubscription_ReturnsHashes(t *testing.T) {
 	}
 
 	require.Equal(t, tx.Hash(), got, "transaction hash does not match")
+}
+
+// pendingForm is how the RPC answers a legacy transaction that is in no
+// block: priced by its gas price, with its signature and chain id.
+func pendingForm(tx *types.Transaction, from common.Address) *RPCTransaction {
+	v, r, s := tx.RawSignatureValues()
+	return &RPCTransaction{
+		From:     from,
+		Gas:      hexutil.Uint64(tx.Gas()),
+		GasPrice: (*hexutil.Big)(tx.GasPrice()),
+		Hash:     tx.Hash(),
+		Input:    tx.Data(),
+		Nonce:    hexutil.Uint64(tx.Nonce()),
+		To:       tx.To(),
+		Value:    (*hexutil.Big)(tx.Value()),
+		Type:     hexutil.Uint64(tx.Type()),
+		ChainID:  (*hexutil.Big)(tx.ChainId()),
+		V:        (*hexutil.Big)(v),
+		R:        (*hexutil.Big)(r),
+		S:        (*hexutil.Big)(s),
+	}
 }

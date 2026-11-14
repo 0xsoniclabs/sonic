@@ -20,7 +20,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
@@ -47,13 +46,13 @@ func TestCreateAccessList_PreservesBundleOnlyMarker(t *testing.T) {
 	// given access list and returns the resulting access list.
 	callCreateAccessList := func(t *testing.T, acl *types.AccessList) types.AccessList {
 		t.Helper()
-		rpcTx := ethapi.TransactionArgs{
+		rpcTx := tests.TransactionArgs{
 			From:       tests.AsPointer(sender.Address()),
 			To:         &common.Address{0x42},
 			Value:      (*hexutil.Big)(big.NewInt(1)),
 			AccessList: acl,
 		}
-		// mirrors the unexported ethapi.accessListResult
+		// the answer of eth_createAccessList
 		type accessListResult struct {
 			AccessList *types.AccessList `json:"accessList"`
 			Error      string            `json:"error,omitempty"`

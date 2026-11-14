@@ -27,7 +27,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
@@ -204,7 +203,7 @@ func waitUntilTransactionIsRetiredFromPoolByHash(t *testing.T, client *PooledEht
 	// - pending: transactions that are pending to be executed
 	// - queued: transactions that are queued to be executed
 	// each of the internal maps group transactions by sender address
-	var content map[string]map[string]map[string]*ethapi.RPCTransaction
+	var content map[string]map[string]map[string]*RPCTransaction
 	return WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 
 		err := client.Client().Call(&content, "txpool_content")

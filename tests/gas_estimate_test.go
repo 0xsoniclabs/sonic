@@ -20,7 +20,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/data_reader"
 	"github.com/ethereum/go-ethereum"
@@ -250,7 +249,7 @@ func TestEstimateGas_StateOverridesAreCommittedBeforeTheCall(t *testing.T) {
 			// Overwriting a committed non-zero slot is charged a full storage reset.
 			want := params.TxGas + 2*vm.GasFastestStep + params.SstoreResetGasEIP2200
 
-			overrides := map[string]ethapi.OverrideAccount{
+			overrides := map[string]OverrideAccount{
 				"state":     {Code: &code, State: &storage},
 				"stateDiff": {Code: &code, StateDiff: &storage},
 			}
@@ -258,7 +257,7 @@ func TestEstimateGas_StateOverridesAreCommittedBeforeTheCall(t *testing.T) {
 				t.Run(kind, func(t *testing.T) {
 					var got hexutil.Uint64
 					err := client.Client().CallContext(t.Context(), &got, "eth_estimateGas",
-						ethapi.TransactionArgs{To: &target}, "latest", ethapi.StateOverride{target: account})
+						TransactionArgs{To: &target}, "latest", StateOverride{target: account})
 					require.NoError(t, err)
 					require.Equal(t, want, uint64(got))
 				})

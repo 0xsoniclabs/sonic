@@ -590,11 +590,12 @@ func (n *IntegrationTestNet) start() error {
 
 				// http-client option
 				"--http", "--http.addr", "127.0.0.1", "--http.port", "0",
-				"--http.api", "admin,eth,dag,web3,net,txpool,trace,debug,sonic,test",
+				"--http.api", clientAPIs,
 
-				// websocket-client options
+				// websocket-client options, the same namespaces as over HTTP
+				// so that a run can use either transport
 				"--ws", "--ws.addr", "127.0.0.1", "--ws.port", "0",
-				"--ws.api", "admin,eth",
+				"--ws.api", clientAPIs,
 
 				// extend rpc timeout to avoid flakes in tests that perform heavy operations or run on slow machines
 				"--rpc.timeout", "60s",
@@ -681,7 +682,7 @@ func (n *IntegrationTestNet) start() error {
 
 		n.nodes[i].clients = &sync.Pool{
 			New: func() any {
-				client, err := ethclient.Dial(fmt.Sprintf("http://localhost:%d", n.nodes[i].httpPort))
+				client, err := dialClient(n.nodes[i].httpPort)
 				if err != nil {
 					return nil
 				}
@@ -883,7 +884,7 @@ func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*PooledEhtClient, 
 	if client != nil {
 		return client, nil
 	}
-	ethclient, err := ethclient.Dial(fmt.Sprintf("http://localhost:%d", n.nodes[i].httpPort))
+	ethclient, err := dialClient(n.nodes[i].httpPort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 	}
@@ -1664,6 +1665,29 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 	}
 
 	return options[0], nil
+}
+
+// clientAPIs are the namespaces the nodes serve their clients, over HTTP
+// and WebSocket alike.
+const clientAPIs = "admin,eth,dag,web3,net,txpool,trace,debug,sonic,test"
+
+// rpcTransportVariable names the transport the clients of a test run use.
+const rpcTransportVariable = "SONIC_TESTS_RPC_TRANSPORT"
+
+// dialClient connects a client to the RPC endpoint of a node, over the
+// transport of the test run: HTTP, the default, or WebSocket with
+// SONIC_TESTS_RPC_TRANSPORT set to ws; another value fails.
+func dialClient(port int) (*ethclient.Client, error) {
+	switch transport := os.Getenv(rpcTransportVariable); transport {
+	case "", "http", "ws":
+		scheme := transport
+		if scheme == "" {
+			scheme = "http"
+		}
+		return ethclient.Dial(fmt.Sprintf("%s://localhost:%d", scheme, port))
+	default:
+		return nil, fmt.Errorf("%s is %q, want %q or %q", rpcTransportVariable, transport, "http", "ws")
+	}
 }
 
 // rpcStackVariable names the RPC stack the networks of a test run serve.

@@ -310,33 +310,15 @@ func parseFile(t *testing.T, file string) *ast.File {
 	return parsed
 }
 
-// testsUsingLegacyTypes are the files of the integration tests that still
-// decode into types of a legacy package. A type moves to the module or to
-// the tests when its namespace is ported, and its files leave the list.
-var testsUsingLegacyTypes = []string{
-	"tests/block_header/block_header.go",
-	"tests/block_override_test.go",
-	"tests/bundles/bundle_test_utils.go",
-	"tests/bundles/bundle_tx_test.go",
-	"tests/bundles/rpc_single_tx_bundle_test.go",
-	"tests/bundles/stop_start_network_test.go",
-	"tests/call_tracer_log_index_test.go",
-	"tests/chainid_test.go",
-	"tests/code_size_test.go",
-	"tests/gas_estimate_test.go",
-	"tests/get_account_test.go",
-	"tests/network_rules_update/network_rules_update_test.go",
-	"tests/pending_transactions_subscription_test.go",
-	"tests/rpc_replay_test.go",
-	"tests/set_code_trace_test.go",
-	"tests/test_utils.go",
-	"tests/trace_consistency_test.go",
-	"tests/tx_max_gas/tx_max_gas_test.go",
-}
+// consensusInLegacyPackages are the legacy packages whose other half is the
+// node's own: gossip/gasprice holds the legacy gas price oracle and the base
+// fee of the blocks, which the tests check blocks against.
+var consensusInLegacyPackages = []string{"gossip/gasprice"}
 
 // The integration tests run against both RPC stacks, so they import no
 // legacy package, except the tests of what only the legacy stack serves,
-// which live in files ending in _legacy_test.go.
+// which live in files ending in _legacy_test.go, and the half of a legacy
+// package that is the node's own.
 func TestLayout_IntegrationTestsImportLegacyPackagesOnlyInLegacyTests(t *testing.T) {
 	importing := map[string]bool{}
 	err := filepath.WalkDir(repositoryPath("tests"), func(path string, entry fs.DirEntry, err error) error {
@@ -350,7 +332,9 @@ func TestLayout_IntegrationTestsImportLegacyPackagesOnlyInLegacyTests(t *testing
 		}
 		for _, spec := range parsed.Imports {
 			imported := strings.Trim(spec.Path.Value, `"`)
-			if slices.ContainsFunc(legacyPackages, func(legacy string) bool { return repository+legacy == imported }) {
+			legacy := slices.ContainsFunc(legacyPackages, func(legacy string) bool { return repository+legacy == imported })
+			consensus := slices.ContainsFunc(consensusInLegacyPackages, func(own string) bool { return repository+own == imported })
+			if legacy && !consensus {
 				importing[file] = true
 			}
 		}
@@ -358,12 +342,7 @@ func TestLayout_IntegrationTestsImportLegacyPackagesOnlyInLegacyTests(t *testing
 	})
 	require.NoError(t, err)
 	for file := range importing {
-		if !strings.HasSuffix(file, "_legacy_test.go") {
-			require.Contains(t, testsUsingLegacyTypes, file, "%s imports a legacy package", file)
-		}
-	}
-	for _, file := range testsUsingLegacyTypes {
-		require.True(t, importing[file], "%s imports no legacy package any more; remove it from the list", file)
+		require.True(t, strings.HasSuffix(file, "_legacy_test.go"), "%s imports a legacy package", file)
 	}
 }
 
@@ -397,6 +376,21 @@ func TestLayout_OnlyTheDispatcherStartsGoroutines(t *testing.T) {
 			ast.Inspect(parseFile(t, path), func(node ast.Node) bool {
 				_, isGo := node.(*ast.GoStmt)
 				require.False(t, isGo, "%s starts a goroutine; use the dispatcher's Go or Loop", path)
+				return true
+			})
+		}
+	}
+}
+
+// The dispatcher bounds every request with the node's RPC timeout; the
+// execution time limit of go-ethereum's server is not the module's.
+func TestLayout_TheModuleSetsNoExecutionTimeLimit(t *testing.T) {
+	for _, pkg := range modulePackages(t) {
+		for _, file := range importPackage(t, pkg).GoFiles {
+			path := pkg + "/" + file
+			ast.Inspect(parseFile(t, path), func(node ast.Node) bool {
+				selector, isSelector := node.(*ast.SelectorExpr)
+				require.False(t, isSelector && selector.Sel.Name == "SetExecutionTimeLimit", "%s sets go-ethereum's execution time limit", path)
 				return true
 			})
 		}
@@ -529,4 +523,37 @@ func fileImports(t *testing.T, file string) []string {
 // this package's directory.
 func repositoryPath(path string) string {
 	return filepath.Join("..", filepath.FromSlash(path))
+}
+
+// attachCallers are the node's code that attaches an in-process client to
+// the node's own handler, which serves no namespace of the module: the wallet
+// event loop, which the module's stack does not start. A new caller is to be
+// served by the module.
+var attachCallers = []string{"cmd/sonicd/app/launcher.go"}
+
+func TestLayout_TheNodesInProcessClientsAreKnown(t *testing.T) {
+	var callers []string
+	err := filepath.WalkDir(repositoryPath("."), func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() && (entry.Name() == ".git" || entry.Name() == "build") {
+			return filepath.SkipDir
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file := strings.TrimPrefix(filepath.ToSlash(path), "../")
+		ast.Inspect(parseFile(t, file), func(node ast.Node) bool {
+			if call, isCall := node.(*ast.CallExpr); isCall && len(call.Args) == 0 {
+				if selector, isSelector := call.Fun.(*ast.SelectorExpr); isSelector && selector.Sel.Name == "Attach" {
+					callers = append(callers, file)
+				}
+			}
+			return true
+		})
+		return nil
+	})
+	require.NoError(t, err)
+	require.ElementsMatch(t, attachCallers, callers)
 }

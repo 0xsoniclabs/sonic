@@ -21,7 +21,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/indexed_logs"
 	"github.com/ethereum/go-ethereum/common"
@@ -109,9 +108,9 @@ func TestCallTracer_WithLog_ReportsBlockLevelLogIndexOfReceipts(t *testing.T) {
 	})
 }
 
-func callTracerWithLogConfig() *ethapi.TraceCallConfig {
+func callTracerWithLogConfig() *TraceCallConfig {
 	tracer := "callTracer"
-	return &ethapi.TraceCallConfig{
+	return &TraceCallConfig{
 		TraceConfig: tracers.TraceConfig{
 			Tracer:       &tracer,
 			TracerConfig: json.RawMessage(`{"withLog": true}`),

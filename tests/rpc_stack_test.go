@@ -36,8 +36,8 @@ func TestRPCStack_ANodeServesTheNamespacesOfItsStack(t *testing.T) {
 			ipc:  []string{"abft", "admin", "dag", "debug", "eth", "ftm", "net", "personal", "rpc", "sonic", "test", "trace", "txpool", "web3"},
 		},
 		gossip.ModuleRPCStack: {
-			http: []string{"debug", "eth", "net", "rpc", "web3"},
-			ipc:  []string{"admin", "debug", "eth", "net", "rpc", "web3"},
+			http: []string{"dag", "debug", "eth", "net", "rpc", "sonic", "test", "trace", "txpool", "web3"},
+			ipc:  []string{"abft", "admin", "dag", "debug", "eth", "net", "rpc", "sonic", "test", "trace", "txpool", "web3"},
 		},
 	}
 	for stack, want := range cases {
@@ -50,6 +50,12 @@ func TestRPCStack_ANodeServesTheNamespacesOfItsStack(t *testing.T) {
 			var modules map[string]string
 			require.NoError(t, client.Client().Call(&modules, "rpc_modules"))
 			require.Equal(t, want.http, slices.Sorted(maps.Keys(modules)))
+
+			ws, err := net.GetWebSocketClient()
+			require.NoError(t, err)
+			defer ws.Close()
+			require.NoError(t, ws.Client().Call(&modules, "rpc_modules"))
+			require.Equal(t, want.http, slices.Sorted(maps.Keys(modules)), "WebSocket serves the namespaces of HTTP")
 
 			ipc, err := net.GetIpcClient(0)
 			require.NoError(t, err)

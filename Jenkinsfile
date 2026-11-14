@@ -59,6 +59,18 @@ pipeline {
             }
         }
 
+        stage('Run integration tests on the RPC module') {
+            steps {
+                sh 'SONIC_TESTS_RPC_STACK=module go test --timeout 30m -failfast ./tests/...'
+            }
+        }
+
+        stage('Run integration tests on the RPC module over WebSocket') {
+            steps {
+                sh 'SONIC_TESTS_RPC_STACK=module SONIC_TESTS_RPC_TRANSPORT=ws go test --timeout 30m -failfast ./tests/...'
+            }
+        }
+
         stage('Upload test coverage') {
             environment {
                 CODECOV_TOKEN = credentials('codecov-uploader-0xsoniclabs-global')

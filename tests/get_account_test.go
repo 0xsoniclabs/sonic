@@ -19,7 +19,6 @@ package tests
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/ethereum/go-ethereum/common"
@@ -42,7 +41,7 @@ func TestGetAccount(t *testing.T) {
 	require.NoError(t, err, "failed to get client")
 	defer client.Close()
 
-	var res ethapi.GetAccountResult
+	var res AccountResult
 	err = client.Client().Call(&res, "eth_getAccount", addr, rpc.LatestBlockNumber)
 	require.NoError(t, err, "failed to call get account")
 

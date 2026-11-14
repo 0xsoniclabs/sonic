@@ -25,7 +25,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/api/sonicapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/revert"
@@ -119,7 +118,7 @@ func runSingleTxBundleRevertRound(
 	// once and land in the same blocks, where they disturb each other.
 	blockNumber, err := client.BlockNumber(t.Context())
 	require.NoError(err)
-	submissions := make([]sonicapi.SubmitBundleArgs, N)
+	submissions := make([]tests.SubmittedBundle, N)
 	txHashes := make([]common.Hash, N)
 	for i, sender := range senders {
 		leaf := fmt.Sprintf(
@@ -129,7 +128,7 @@ func runSingleTxBundleRevertRound(
 		proposal := fmt.Sprintf(`{"blockRange": {"first": %q}, %s}`,
 			hexutil.EncodeUint64(blockNumber), fmt.Sprintf(shape, leaf))
 
-		var prepared sonicapi.RPCPreparedBundle
+		var prepared tests.PreparedBundle
 		require.NoError(client.Client().CallContext(
 			t.Context(), &prepared, "sonic_prepareBundle", json.RawMessage(proposal),
 		))
@@ -142,7 +141,7 @@ func runSingleTxBundleRevertRound(
 		encoded, err := tx.MarshalBinary()
 		require.NoError(err)
 
-		submissions[i] = sonicapi.SubmitBundleArgs{
+		submissions[i] = tests.SubmittedBundle{
 			SignedTransactions: []hexutil.Bytes{encoded},
 			ExecutionPlan:      prepared.ExecutionPlan,
 		}
@@ -243,9 +242,6 @@ func TestBundle_SingleTxBundleWithBareRoot_IsRejectedBySubmitBundle(t *testing.T
 		SetEarliest(blockNumber).
 		With(Step(t, net, sender, newBurnMoneyTransaction())).
 		BuildBundleAndPlan()
-
-	_, err = sonicapi.NewRPCExecutionPlanComposable(plan)
-	require.ErrorContains(err, "root must be a group")
 
 	refs := plan.Root.GetTransactionReferencesInReferencedOrder()
 	require.Len(refs, 1)

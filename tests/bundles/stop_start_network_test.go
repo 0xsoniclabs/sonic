@@ -20,7 +20,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/sonicapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
@@ -71,7 +70,7 @@ func testBundle_GetBundleInfoSurvivesNetworkRestart(t *testing.T, net *tests.Int
 	net.AdvanceEpoch(t, 2)
 
 	// Wait for the bundle to be executed and record the info.
-	infoBefore := make(map[common.Hash]*sonicapi.RPCBundleInfo)
+	infoBefore := make(map[common.Hash]*tests.BundleInfo)
 	for i, planHash := range planHashes {
 		info, err := WaitForBundleExecution(t.Context(), client.Client(), planHash)
 		require.NoError(t, err)

@@ -21,7 +21,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/contractcreator"
 	"github.com/ethereum/go-ethereum"
@@ -299,8 +298,8 @@ func requireNoErrorFrames(t *testing.T, frames []callFrame) {
 	}
 }
 
-func callArgs(tx *types.Transaction, sender *Account) ethapi.TransactionArgs {
-	return ethapi.TransactionArgs{
+func callArgs(tx *types.Transaction, sender *Account) TransactionArgs {
+	return TransactionArgs{
 		From: AsPointer(sender.Address()),
 		To:   tx.To(),
 		Gas:  AsPointer(hexutil.Uint64(tx.Gas())),
@@ -318,7 +317,7 @@ type traceResult struct {
 func traceWithAllMethods(
 	rpcClient *rpc.Client,
 	txHash common.Hash,
-	args ethapi.TransactionArgs,
+	args TransactionArgs,
 	block string,
 	txIndex *hexutil.Uint,
 ) map[string]traceResult {
@@ -331,7 +330,7 @@ func traceWithAllMethods(
 	var call struct {
 		Trace []callFrame `json:"trace"`
 	}
-	callConfig := ethapi.TraceCallConfig{TxIndex: txIndex}
+	callConfig := TraceCallConfig{TxIndex: txIndex}
 	callErr := rpcClient.Call(&call, "trace_call", args, []string{"trace"}, block, callConfig)
 	var transaction []callFrame
 	transactionErr := rpcClient.Call(&transaction, "trace_transaction", txHash)

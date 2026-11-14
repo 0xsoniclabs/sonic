@@ -30,7 +30,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/sonicapi"
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -734,7 +733,7 @@ func replaceUserPrompter(newPrompt prompt.UserPrompter) (cleanup func()) {
 // of the execution plan and the info about the execution of the bundle.
 func runBundle(t *testing.T, net tests.IntegrationTestNetSession) (
 	common.Hash,
-	*sonicapi.RPCBundleInfo,
+	*tests.BundleInfo,
 ) {
 	t.Helper()
 	client, err := net.GetClient()

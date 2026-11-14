@@ -23,7 +23,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/sonicapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
@@ -40,8 +39,8 @@ func GetBundleInfo(
 	ctxt context.Context,
 	client *rpc.Client,
 	executionPlanHash common.Hash,
-) (*sonicapi.RPCBundleInfo, error) {
-	var info *sonicapi.RPCBundleInfo
+) (*tests.BundleInfo, error) {
+	var info *tests.BundleInfo
 	err := client.CallContext(
 		ctxt,
 		&info,
@@ -61,7 +60,7 @@ func WaitForBundleExecution(
 	ctxt context.Context,
 	client *rpc.Client,
 	executionPlanHash common.Hash,
-) (*sonicapi.RPCBundleInfo, error) {
+) (*tests.BundleInfo, error) {
 	infos, err := WaitForBundleExecutions(
 		ctxt, client,
 		[]common.Hash{executionPlanHash},
@@ -76,9 +75,9 @@ func WaitForBundleExecutions(
 	ctxt context.Context,
 	client *rpc.Client,
 	executionPlanHashes []common.Hash,
-) ([]*sonicapi.RPCBundleInfo, error) {
+) ([]*tests.BundleInfo, error) {
 
-	infos := make([]*sonicapi.RPCBundleInfo, len(executionPlanHashes))
+	infos := make([]*tests.BundleInfo, len(executionPlanHashes))
 	err := tests.WaitFor(ctxt, func(innerCtx context.Context) (bool, error) {
 		for i, plan := range executionPlanHashes {
 			if infos[i] != nil {
