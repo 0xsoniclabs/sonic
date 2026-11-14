@@ -74,12 +74,19 @@ type vmTraceFrame struct {
 }
 
 // vmTraceSizeLimit caps the approximate number of bytes a single vmTrace
-// retains (code, memory diffs and per-op overhead), protecting the node
-// from running out of memory on pathological traces.
+// retains when the answer has no bound of its own, protecting the node from
+// running out of memory on pathological traces.
 const vmTraceSizeLimit = 256 << 20
 
-// vmTraceOpSize approximates the fixed footprint of one traced operation.
-const vmTraceOpSize = 128
+// What a vmTrace keeps is counted in the larger of its memory and its
+// answer: an operation by a fixed footprint, a pushed value as up to 64 hex
+// digits with "0x", quotes and a comma, and code and memory as two hex
+// digits a byte.
+const (
+	vmTraceOpSize     = 128
+	vmTracePushedSize = 70
+	vmTraceHexPerByte = 2
+)
 
 var errVmTraceTooLarge = errors.New("vmTrace exceeds size limit")
 
@@ -91,12 +98,14 @@ type VmTraceLogger struct {
 	pendingStore *StorageDiff // latest storage write, attributed to the current op
 	size         uint64       // approximate bytes retained so far
 	sizeLimit    uint64
-	err          error // set once the trace is dropped for exceeding sizeLimit
+	err          error  // set once the trace is dropped for exceeding sizeLimit
+	onDrop       func() // called when the trace is dropped, to stop the run
 }
 
-// NewVmTraceLogger creates a new VmTraceLogger.
-func NewVmTraceLogger() *VmTraceLogger {
-	return &VmTraceLogger{sizeLimit: vmTraceSizeLimit}
+// NewVmTraceLogger creates a VmTraceLogger that keeps at most sizeLimit
+// bytes, and drops the trace once it would keep more.
+func NewVmTraceLogger(sizeLimit uint64) *VmTraceLogger {
+	return &VmTraceLogger{sizeLimit: sizeLimit}
 }
 
 // Hooks returns the tracing hooks.
@@ -109,6 +118,12 @@ func (l *VmTraceLogger) Hooks() *tracing.Hooks {
 		OnFault:         l.onFault,
 		OnStorageChange: l.OnStorageChange,
 	}
+}
+
+// OnDrop sets what stops the run once the trace is dropped, as its result
+// is then of no use.
+func (l *VmTraceLogger) OnDrop(stop func()) {
+	l.onDrop = stop
 }
 
 // GetResult returns the completed vmTrace after execution.
@@ -134,6 +149,9 @@ func (l *VmTraceLogger) grow(n uint64) bool {
 		l.traceStack = nil
 		l.result = nil
 		l.pendingStore = nil
+		if l.onDrop != nil {
+			l.onDrop()
+		}
 		return false
 	}
 	l.size += n
@@ -177,7 +195,7 @@ func (l *VmTraceLogger) onEnter(depth int, typ byte, _ common.Address, to common
 		}
 	}
 
-	if !l.grow(uint64(len(code))) {
+	if !l.grow(vmTraceHexPerByte * uint64(len(code))) {
 		return
 	}
 
@@ -244,9 +262,12 @@ func (l *VmTraceLogger) onOpcode(pc uint64, op byte, gas, cost uint64, scope tra
 		prevOp := &frame.trace.Ops[frame.lastOpIdx]
 		if prevOp.Ex != nil {
 			prevOp.Ex.Push = computePushed(frame.lastOp, scope.StackData())
+			if !l.grow(vmTracePushedSize * uint64(len(prevOp.Ex.Push))) {
+				return
+			}
 			if frame.memWrite && frame.memSize > 0 {
 				// Report the full reserved [off, off+size) region, matching Parity/OpenEthereum's vmTrace semantics.
-				if !l.grow(frame.memSize) {
+				if !l.grow(vmTraceHexPerByte * frame.memSize) {
 					return
 				}
 				data := memoryRegion(scope.MemoryData(), frame.memOff, frame.memSize)

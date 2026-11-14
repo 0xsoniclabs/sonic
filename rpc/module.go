@@ -37,6 +37,7 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/oracle"
 	"github.com/0xsoniclabs/sonic/rpc/sonic"
 	"github.com/0xsoniclabs/sonic/rpc/testonly"
+	"github.com/0xsoniclabs/sonic/rpc/trace"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
 	"github.com/0xsoniclabs/sonic/rpc/txpool"
 	"github.com/0xsoniclabs/sonic/rpc/web3"
@@ -129,6 +130,7 @@ func (m *Module) register(environment *exec.Environment) {
 	testonly.Register(m.dispatcher, environment, m.core)
 	dag.Register(m.dispatcher, environment, m.core)
 	abft.Register(m.dispatcher, environment, m.core)
+	trace.Register(m.dispatcher, environment)
 }
 
 // modules answers the namespaces served on the transport of the call.
