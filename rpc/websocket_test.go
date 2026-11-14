@@ -19,12 +19,16 @@ package rpc_test
 import (
 	"context"
 	"encoding/json"
+	"math/big"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/rpc"
 	"github.com/0xsoniclabs/sonic/rpc/tests"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
@@ -94,4 +98,42 @@ func TestModule_RefusesAWebSocketFromAnOriginNotAllowed(t *testing.T) {
 			_ = connection.Close()
 		}
 	}
+}
+
+// A client that does not read its notifications is disconnected once its
+// subscription falls behind, and told why, rather than holding the node's
+// events.
+func TestModule_DisconnectsAClientThatDoesNotRead(t *testing.T) {
+	config := rpc.DefaultConfig()
+	config.WS = &rpc.WSConfig{WSConfig: transport.WSConfig{Endpoint: "127.0.0.1:0"}}
+	fake := tests.NewFakeCore()
+	module := rpc.New(config, fake, gethrpc.NewServer(), prometheus.NewRegistry())
+	require.NoError(t, module.Start())
+	defer module.Stop()
+	require.Eventually(t, fake.FeedsSubscribed, time.Second, time.Millisecond)
+	endpoint, err := module.WSEndpoint()
+	require.NoError(t, err)
+	connection, _, err := websocket.DefaultDialer.Dial(endpoint, nil)
+	require.NoError(t, err)
+	defer func() { _ = connection.Close() }()
+	require.NoError(t, connection.WriteJSON(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "eth_subscribe", "params": []any{"newPendingTransactions", true},
+	}))
+
+	// Enough notifications to fill the sockets' buffers and the
+	// subscription's queue while the client reads nothing.
+	account := tests.NewAccount()
+	recipient := common.Address{0x42}
+	for nonce := range uint64(5000) {
+		fake.AddPoolTransaction(account.Sign(&types.LegacyTx{Nonce: nonce, To: &recipient, Gas: 21000, GasPrice: big.NewInt(1), Data: make([]byte, 1024)}))
+	}
+	for {
+		require.NoError(t, connection.SetReadDeadline(time.Now().Add(30*time.Second)))
+		if _, _, err = connection.ReadMessage(); err != nil {
+			break
+		}
+	}
+	closeErr, closed := err.(*websocket.CloseError)
+	require.True(t, closed, "the connection was closed: %v", err)
+	require.Contains(t, closeErr.Text, "the consumer fell behind the events")
 }

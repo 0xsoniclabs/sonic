@@ -21,6 +21,8 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Added
 
+- Added a new RPC stack, selected with `--rpc.stack module` or `RPCStack = "module"` in the `[Opera]` section of the configuration; the legacy stack stays the default. It serves the namespaces of the legacy stack over HTTP, WebSocket and IPC with the same answers and the same flags, except the `ftm` namespace and the methods that use the node's accounts, and serves the node's administration on IPC only. Where it answers differently, such as one latest block for every read, a bound on tracer timeouts and bounded polled filters and subscriptions, `rpc/README.md` says so, with the metrics it exports and the alerts to install on them.
+
 ### Changed
 
 ### Removed
