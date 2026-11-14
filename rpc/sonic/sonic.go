@@ -23,8 +23,10 @@ import (
 	"fmt"
 
 	"github.com/0xsoniclabs/sonic/rpc/chain"
+	"github.com/0xsoniclabs/sonic/rpc/core"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/exec"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -39,14 +41,23 @@ const (
 	markerGas = params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
 )
 
+// Node is what the namespace asks the node beyond the served chain.
+type Node interface {
+	BundleInfo(executionPlanHash common.Hash) (core.BundleInfo, error)
+}
+
 type handlers struct {
 	environment *exec.Environment
+	node        Node
 }
 
 // Register adds the methods of the namespace to the dispatcher.
-func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment) {
-	h := &handlers{environment: environment}
+func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, node Node) {
+	h := &handlers{environment: environment, node: node}
 	dispatch.Add(dispatcher, "sonic_estimateGasForTransactions", h.estimateGasForTransactions)
+	dispatch.Add(dispatcher, "sonic_prepareBundle", h.prepareBundle)
+	dispatch.Add(dispatcher, "sonic_submitBundle", h.submitBundle)
+	dispatch.Add(dispatcher, "sonic_getBundleInfo", h.getBundleInfo)
 }
 
 type estimateParams struct {

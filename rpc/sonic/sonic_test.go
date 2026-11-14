@@ -29,8 +29,9 @@ import (
 )
 
 var (
-	funded = common.Address{0x0f}
-	writer = common.Address{0xc0}
+	funded   = common.Address{0x0f}
+	writer   = common.Address{0xc0}
+	reverter = common.Address{0xc1}
 )
 
 func newHarness(t *testing.T) *tests.Harness {
@@ -42,7 +43,7 @@ func newHarness(t *testing.T) *tests.Harness {
 	fake.AddBlock()
 	fake.SetHead(1)
 	return tests.NewHarness(t, fake, func(h *tests.Harness) {
-		sonic.Register(h.Dispatcher, h.Environment)
+		sonic.Register(h.Dispatcher, h.Environment, h.Core)
 	})
 }
 

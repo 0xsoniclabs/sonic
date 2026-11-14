@@ -82,6 +82,7 @@ type FakeCore struct {
 	pool       map[common.Hash]*types.Transaction
 	queued     types.Transactions
 	poolNonces map[common.Address]uint64
+	bundles    map[common.Hash]core.BundleInfo
 	modes      map[string]Mode
 	calls      map[string]int
 	gates      map[string]chan struct{}
@@ -117,6 +118,7 @@ func NewFakeCore() *FakeCore {
 		upgrades:   []opera.UpgradeHeight{opera.MakeUpgradeHeight(rules.Upgrades, 0)},
 		pool:       map[common.Hash]*types.Transaction{},
 		poolNonces: map[common.Address]uint64{},
+		bundles:    map[common.Hash]core.BundleInfo{},
 		modes:      map[string]Mode{},
 		calls:      map[string]int{},
 		gates:      map[string]chan struct{}{},
@@ -225,6 +227,13 @@ func (f *FakeCore) AddQueuedTransaction(transaction *types.Transaction) {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 	f.queued = append(f.queued, transaction)
+}
+
+// SetBundleInfo records where the bundle of an execution plan was executed.
+func (f *FakeCore) SetBundleInfo(executionPlanHash common.Hash, info core.BundleInfo) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	f.bundles[executionPlanHash] = info
 }
 
 // SetPoolNonce sets the pending nonce of a sender.
@@ -427,7 +436,11 @@ func (f *FakeCore) TransactionByHash(hash common.Hash) (*types.Transaction, uint
 
 func (f *FakeCore) BundleInfo(executionPlanHash common.Hash) (core.BundleInfo, error) {
 	return lookup(f, "BundleInfo", func() (core.BundleInfo, error) {
-		return core.BundleInfo{}, core.ErrNotFound
+		info, found := f.bundles[executionPlanHash]
+		if !found {
+			return core.BundleInfo{}, core.ErrNotFound
+		}
+		return info, nil
 	})
 }
 

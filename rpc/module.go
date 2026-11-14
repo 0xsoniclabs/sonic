@@ -108,7 +108,7 @@ func (m *Module) register(environment *exec.Environment) {
 	net.Register(m.dispatcher, environment, m.core)
 	web3.Register(m.dispatcher, m.config.ClientVersion)
 	debug.Register(m.dispatcher, environment)
-	sonic.Register(m.dispatcher, environment)
+	sonic.Register(m.dispatcher, environment, m.core)
 	txpool.Register(m.dispatcher, environment, m.core)
 	testonly.Register(m.dispatcher, environment, m.core)
 }
