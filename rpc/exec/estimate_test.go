@@ -36,36 +36,40 @@ func TestEstimateGas_AnswersTheSearchOrWhyItFails(t *testing.T) {
 	recipient, unknown := common.Address{0x42}, common.Hash{0x01}
 	price := (*hexutil.Big)(big.NewInt(1e9))
 	poor := common.Address{0x99}
+	latest := chain.ReferenceTo(chain.LatestBlockNumber)
 	cases := map[string]struct {
+		args       exec.CallArguments
 		estimation exec.Estimation
 		gas        hexutil.Uint64
 		err        string
 	}{
-		"transfer":            {estimation: exec.Estimation{Arguments: exec.CallArguments{From: &funded, To: &recipient}}, gas: 21000},
-		"priced by its funds": {estimation: exec.Estimation{Arguments: exec.CallArguments{From: &funded, To: &recipient, GasPrice: price}}, gas: 21000},
-		"capped by its funds": {estimation: exec.Estimation{Arguments: exec.CallArguments{From: &funded, To: &spinner,
-			MaxFeePerGas: (*hexutil.Big)(big.NewInt(1e12)), MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(1))}},
+		"transfer":            {args: exec.CallArguments{From: &funded, To: &recipient}, gas: 21000},
+		"priced by its funds": {args: exec.CallArguments{From: &funded, To: &recipient, GasPrice: price}, gas: 21000},
+		"capped by its funds": {args: exec.CallArguments{From: &funded, To: &spinner,
+			MaxFeePerGas: (*hexutil.Big)(big.NewInt(1e12)), MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(1))},
 			err: "execution unsuccessful"},
-		"funds for the value": {estimation: exec.Estimation{Arguments: exec.CallArguments{From: &poor, To: &recipient, GasPrice: price, Value: price}},
+		"funds for the value": {args: exec.CallArguments{From: &poor, To: &recipient, GasPrice: price, Value: price},
 			err: "insufficient funds for transfer"},
-		"both pricings": {estimation: exec.Estimation{Arguments: exec.CallArguments{To: &recipient, GasPrice: price, MaxFeePerGas: price}},
+		"both pricings": {args: exec.CallArguments{To: &recipient, GasPrice: price, MaxFeePerGas: price},
 			err: "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified"},
 		"unknown hash": {estimation: exec.Estimation{Block: chain.BlockReference{Hash: &unknown}},
 			err: "block with hash " + unknown.Hex() + " not found"},
 		"block above the head": {estimation: exec.Estimation{Block: chain.ReferenceTo(5)}, err: "block does not exists"},
 		"no selector":          {estimation: exec.Estimation{}, err: "invalid block number or hash"},
-		"overrides of the state": {estimation: exec.Estimation{Arguments: exec.CallArguments{To: &recipient},
-			StateOverrides: &exec.StateOverride{recipient: {State: &map[common.Hash]common.Hash{}, StateDiff: &map[common.Hash]common.Hash{}}}},
+		"overrides of the state": {args: exec.CallArguments{To: &recipient},
+			estimation: exec.Estimation{Block: latest,
+				StateOverrides: &exec.StateOverride{recipient: {State: &map[common.Hash]common.Hash{}, StateDiff: &map[common.Hash]common.Hash{}}}},
 			err: "account " + recipient.Hex() + " has both 'state' and 'stateDiff'"},
-		"with a block override": {estimation: exec.Estimation{Arguments: exec.CallArguments{From: &funded, To: &recipient},
-			BlockOverrides: &exec.BlockOverrides{Number: (*hexutil.Big)(big.NewInt(9)), Time: new(hexutil.Uint64)}}, gas: 21000},
+		"with a block override": {args: exec.CallArguments{From: &funded, To: &recipient},
+			estimation: exec.Estimation{Block: latest, BlockOverrides: &exec.BlockOverrides{Number: (*hexutil.Big)(big.NewInt(9)), Time: new(hexutil.Uint64)}},
+			gas:        21000},
 	}
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
-			if test.estimation.Block.Number == nil && test.estimation.Block.Hash == nil && name != "no selector" {
-				test.estimation.Block = chain.ReferenceTo(chain.LatestBlockNumber)
+			if test.estimation == (exec.Estimation{}) && name != "no selector" {
+				test.estimation.Block = latest
 			}
-			gas, err := h.Environment.EstimateGas(context.Background(), h.Environment.Head(), test.estimation)
+			gas, err := h.Environment.EstimateGas(context.Background(), h.Environment.Head(), test.estimation, test.args)
 			if test.err != "" {
 				require.EqualError(t, err, test.err)
 			} else {
@@ -81,10 +85,42 @@ func TestEstimateGas_PassesOnAFailingState(t *testing.T) {
 	h := newStateEnvironment(t)
 	h.Core.SetMode("State", tests.Fail)
 	recipient := common.Address{0x42}
-	_, err := h.Environment.EstimateGas(context.Background(), h.Environment.Head(), exec.Estimation{
-		Arguments: exec.CallArguments{To: &recipient}, Block: chain.ReferenceTo(chain.LatestBlockNumber),
-	})
+	_, err := h.Environment.EstimateGas(context.Background(), h.Environment.Head(),
+		exec.Estimation{Block: chain.ReferenceTo(chain.LatestBlockNumber)}, exec.CallArguments{To: &recipient})
 	require.ErrorIs(t, err, tests.ErrInjected)
+}
+
+// Each estimation runs the calls before it with their estimates, on one
+// state for all of them.
+func TestEstimateGasInOrder_RunsTheCallsBeforeEach(t *testing.T) {
+	h := newStateEnvironment(t)
+	recipient := common.Address{0x42}
+	estimation := exec.Estimation{Block: chain.ReferenceTo(chain.LatestBlockNumber)}
+	write := exec.CallArguments{From: &funded, To: &writer}
+	states := h.Core.Calls("State")
+	estimates, err := h.Environment.EstimateGasInOrder(context.Background(), h.Environment.Head(), estimation,
+		[]exec.CallArguments{write, write, {From: &funded, To: &recipient}})
+	require.NoError(t, err)
+	require.Equal(t, states+1, h.Core.Calls("State"))
+	require.Zero(t, h.Core.OpenStates())
+	require.Len(t, estimates, 3)
+	require.Greater(t, estimates[0], estimates[1], "the first write sets the slot, the second finds it set")
+	require.Equal(t, hexutil.Uint64(21000), estimates[2])
+}
+
+func TestEstimateGasInOrder_NamesTheCallThatFails(t *testing.T) {
+	h := newStateEnvironment(t)
+	recipient, reverter := common.Address{0x42}, common.Address{0xc6}
+	_, err := h.Environment.EstimateGasInOrder(context.Background(), h.Environment.Head(), exec.Estimation{
+		Block:          chain.ReferenceTo(chain.LatestBlockNumber),
+		StateOverrides: &exec.StateOverride{reverter: {Code: (*hexutil.Bytes)(&tests.RevertsWithData)}},
+	}, []exec.CallArguments{{To: &recipient}, {To: &reverter}})
+	require.EqualError(t, err, "failed to estimate gas for transaction 1: execution reverted")
+	require.Zero(t, h.Core.OpenStates())
+
+	estimates, err := h.Environment.EstimateGasInOrder(context.Background(), h.Environment.Head(), exec.Estimation{}, nil)
+	require.NoError(t, err, "no call reads no block")
+	require.Empty(t, estimates)
 }
 
 func TestNewEVM_TakesTheBlockOverrides(t *testing.T) {

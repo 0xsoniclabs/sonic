@@ -181,7 +181,7 @@ func TestRPCStack_ANodeServesTheModulesOfItsStack(t *testing.T) {
 	}{
 		"legacy by default": {nil, []string{"abft", "admin", "dag", "debug", "eth", "ftm", "net", "personal", "rpc", "sonic", "test", "trace", "txpool", "web3"}},
 		"legacy":            {[]string{"--rpc.stack", "legacy"}, []string{"abft", "admin", "dag", "debug", "eth", "ftm", "net", "personal", "rpc", "sonic", "test", "trace", "txpool", "web3"}},
-		"module":            {[]string{"--rpc.stack", "module"}, []string{"admin", "debug", "eth", "net", "rpc", "web3"}},
+		"module":            {[]string{"--rpc.stack", "module"}, []string{"admin", "debug", "eth", "net", "rpc", "sonic", "web3"}},
 	}
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {

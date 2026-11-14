@@ -34,49 +34,41 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-// Estimation is a gas estimation of a call on top of a block.
+// Estimation is the block and the overrides gas estimations run on.
 type Estimation struct {
-	Arguments      CallArguments
 	Block          chain.BlockReference
 	StateOverrides *StateOverride
 	BlockOverrides *BlockOverrides
-	// Before are calls run first in every run of the estimation.
-	Before []CallArguments
 }
 
 // EstimateGas searches the least gas with which the call does not fail,
 // between the intrinsic gas and the most the call may use: the gas given or
 // the transaction limit, capped from Osaka on, by the funds of the sender and
 // by the gas cap. Each run starts from the overridden state of the block.
-func (e *Environment) EstimateGas(ctx context.Context, head *evmcore.EvmBlock, estimation Estimation) (hexutil.Uint64, error) {
-	args := estimation.Arguments
-	if args.From == nil {
-		args.From = new(common.Address)
-	}
-	header, err := e.estimationHeader(head, estimation.Block)
-	if err != nil {
-		return 0, err
-	}
-	highest, err := e.highestGas(head, header, args, estimation.BlockOverrides)
-	if err != nil {
-		return 0, err
-	}
-	feeCap, err := args.feeCap()
-	if err != nil {
-		return 0, err
-	}
-	runs := &estimationRuns{environment: e, header: header, estimation: estimation}
+func (e *Environment) EstimateGas(ctx context.Context, head *evmcore.EvmBlock, estimation Estimation, args CallArguments) (hexutil.Uint64, error) {
+	runs := &estimationRuns{environment: e, head: head, estimation: estimation}
 	defer runs.release()
-	if feeCap.BitLen() != 0 {
-		if highest, err = runs.capByFunds(args, feeCap, highest); err != nil {
-			return 0, err
+	return runs.estimate(ctx, args, nil)
+}
+
+// EstimateGasInOrder estimates the gas of calls that run in order: each
+// estimation runs the calls before it first, with their estimates. The
+// estimations share one overridden state of the block.
+func (e *Environment) EstimateGasInOrder(ctx context.Context, head *evmcore.EvmBlock, estimation Estimation, calls []CallArguments) ([]hexutil.Uint64, error) {
+	runs := &estimationRuns{environment: e, head: head, estimation: estimation}
+	defer runs.release()
+	estimates := make([]hexutil.Uint64, len(calls))
+	before := make([]CallArguments, 0, len(calls))
+	for i, call := range calls {
+		estimate, err := runs.estimate(ctx, call, before)
+		if err != nil {
+			return nil, fmt.Errorf("failed to estimate gas for transaction %d: %w", i, err)
 		}
+		estimates[i] = estimate
+		call.Gas = &estimate
+		before = append(before, call)
 	}
-	if gasCap := e.config.RPCGasCap; gasCap != 0 && highest > gasCap {
-		log.Warn("Caller gas above allowance, capping", "requested", highest, "cap", gasCap)
-		highest = gasCap
-	}
-	return runs.search(ctx, args, highest)
+	return estimates, nil
 }
 
 // estimationHeader reads the block of an estimation, wording a missing one
@@ -133,13 +125,49 @@ func (a *CallArguments) feeCap() (*big.Int, error) {
 	}
 }
 
-// estimationRuns runs an estimation's call, each run on a copy of one state of
-// the block with the state overrides applied, opened at the first run.
+// estimationRuns runs the calls of estimations, each run on a copy of one
+// state of the block with the state overrides applied, opened at the first
+// run.
 type estimationRuns struct {
 	environment *Environment
-	header      *evmcore.EvmHeader
+	head        *evmcore.EvmBlock
 	estimation  Estimation
+	header      *evmcore.EvmHeader
 	base        state.StateDB
+}
+
+// estimate searches the gas of a call that runs after the calls before it.
+// The balance that caps the gas is the sender's before them, as in the
+// legacy estimation.
+func (r *estimationRuns) estimate(ctx context.Context, args CallArguments, before []CallArguments) (hexutil.Uint64, error) {
+	if args.From == nil {
+		args.From = new(common.Address)
+	}
+	if r.header == nil {
+		header, err := r.environment.estimationHeader(r.head, r.estimation.Block)
+		if err != nil {
+			return 0, err
+		}
+		r.header = header
+	}
+	highest, err := r.environment.highestGas(r.head, r.header, args, r.estimation.BlockOverrides)
+	if err != nil {
+		return 0, err
+	}
+	feeCap, err := args.feeCap()
+	if err != nil {
+		return 0, err
+	}
+	if feeCap.BitLen() != 0 {
+		if highest, err = r.capByFunds(args, feeCap, highest); err != nil {
+			return 0, err
+		}
+	}
+	if gasCap := r.environment.config.RPCGasCap; gasCap != 0 && highest > gasCap {
+		log.Warn("Caller gas above allowance, capping", "requested", highest, "cap", gasCap)
+		highest = gasCap
+	}
+	return r.search(ctx, args, before, highest)
 }
 
 func (r *estimationRuns) state() (state.StateDB, error) {
@@ -195,7 +223,7 @@ func (r *estimationRuns) capByFunds(args CallArguments, feeCap *big.Int, highest
 // run runs the call with the gas, and tells whether it failed. A refusal for
 // too little or too much gas is a failure to search on; another refusal ends
 // the search.
-func (r *estimationRuns) run(ctx context.Context, args CallArguments, gas uint64) (bool, *core.ExecutionResult, error) {
+func (r *estimationRuns) run(ctx context.Context, args CallArguments, before []CallArguments, gas uint64) (bool, *core.ExecutionResult, error) {
 	base, err := r.state()
 	if err != nil {
 		return true, nil, err
@@ -206,7 +234,7 @@ func (r *estimationRuns) run(ctx context.Context, args CallArguments, gas uint64
 	result, err := r.environment.Execute(ctx, branch, r.header, Call{
 		Arguments:      args,
 		BlockOverrides: r.estimation.BlockOverrides,
-		Before:         r.estimation.Before,
+		Before:         before,
 	})
 	switch {
 	case errors.Is(err, core.ErrIntrinsicGas), errors.Is(err, core.ErrFloorDataGas), errors.Is(err, core.ErrGasLimitTooHigh):
@@ -220,11 +248,11 @@ func (r *estimationRuns) run(ctx context.Context, args CallArguments, gas uint64
 // search halves the range of gas between the intrinsic gas and the highest
 // until it holds one value, and answers why the call fails at the highest
 // when it does.
-func (r *estimationRuns) search(ctx context.Context, args CallArguments, highest uint64) (hexutil.Uint64, error) {
+func (r *estimationRuns) search(ctx context.Context, args CallArguments, before []CallArguments, highest uint64) (hexutil.Uint64, error) {
 	lowest, gasCap := params.TxGas-1, highest
 	for lowest+1 < highest {
 		middle := (highest + lowest) / 2
-		failed, _, err := r.run(ctx, args, middle)
+		failed, _, err := r.run(ctx, args, before, middle)
 		if err != nil {
 			return 0, err
 		}
@@ -237,7 +265,7 @@ func (r *estimationRuns) search(ctx context.Context, args CallArguments, highest
 	if highest != gasCap {
 		return hexutil.Uint64(highest), nil
 	}
-	failed, result, err := r.run(ctx, args, highest)
+	failed, result, err := r.run(ctx, args, before, highest)
 	if err != nil {
 		return 0, err
 	}

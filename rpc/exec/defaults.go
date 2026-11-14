@@ -50,21 +50,19 @@ func (e *Environment) SetDefaults(ctx context.Context, head *evmcore.EvmBlock, a
 	if args.Gas == nil {
 		// The estimation takes the data, not the input, as the legacy
 		// defaulting does; clients see the same estimate.
-		estimated, err := e.EstimateGas(ctx, head, Estimation{
-			Arguments: CallArguments{
-				From:                 args.From,
-				To:                   args.To,
-				GasPrice:             args.GasPrice,
-				MaxFeePerGas:         args.MaxFeePerGas,
-				MaxPriorityFeePerGas: args.MaxPriorityFeePerGas,
-				Value:                args.Value,
-				Data:                 args.Data,
-				AccessList:           args.AccessList,
-				BlobFeeCap:           args.BlobFeeCap,
-				BlobHashes:           args.BlobHashes,
-				AuthorizationList:    args.AuthorizationList,
-			},
-			Block: chain.ReferenceTo(chain.PendingBlockNumber),
+		estimation := Estimation{Block: chain.ReferenceTo(chain.PendingBlockNumber)}
+		estimated, err := e.EstimateGas(ctx, head, estimation, CallArguments{
+			From:                 args.From,
+			To:                   args.To,
+			GasPrice:             args.GasPrice,
+			MaxFeePerGas:         args.MaxFeePerGas,
+			MaxPriorityFeePerGas: args.MaxPriorityFeePerGas,
+			Value:                args.Value,
+			Data:                 args.Data,
+			AccessList:           args.AccessList,
+			BlobFeeCap:           args.BlobFeeCap,
+			BlobHashes:           args.BlobHashes,
+			AuthorizationList:    args.AuthorizationList,
 		})
 		if err != nil {
 			return err

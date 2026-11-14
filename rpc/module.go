@@ -32,6 +32,7 @@ import (
 	"github.com/0xsoniclabs/sonic/rpc/exec"
 	"github.com/0xsoniclabs/sonic/rpc/net"
 	"github.com/0xsoniclabs/sonic/rpc/oracle"
+	"github.com/0xsoniclabs/sonic/rpc/sonic"
 	"github.com/0xsoniclabs/sonic/rpc/transport"
 	"github.com/0xsoniclabs/sonic/rpc/web3"
 	"github.com/prometheus/client_golang/prometheus"
@@ -105,6 +106,7 @@ func (m *Module) register(environment *exec.Environment) {
 	net.Register(m.dispatcher, environment, m.core)
 	web3.Register(m.dispatcher, m.config.ClientVersion)
 	debug.Register(m.dispatcher, environment)
+	sonic.Register(m.dispatcher, environment)
 }
 
 // modules answers the namespaces served on the transport of the call.

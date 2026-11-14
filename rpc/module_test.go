@@ -60,7 +60,7 @@ func TestModule_ServesItsNamespacesPerTransport(t *testing.T) {
 		version bool
 	}{
 		"http": {endpoint, map[string]string{"eth": "1.0", "web3": "1.0", "rpc": "1.0"}, false},
-		"ipc":  {config.IPCPath, map[string]string{"eth": "1.0", "web3": "1.0", "net": "1.0", "debug": "1.0", "rpc": "1.0"}, true},
+		"ipc":  {config.IPCPath, map[string]string{"eth": "1.0", "web3": "1.0", "net": "1.0", "debug": "1.0", "sonic": "1.0", "rpc": "1.0"}, true},
 	}
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {

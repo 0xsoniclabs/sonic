@@ -67,11 +67,10 @@ func (h *handlers) call(ctx context.Context, params callParams) (hexutil.Bytes, 
 
 func (h *handlers) estimateGas(ctx context.Context, params callParams) (hexutil.Uint64, error) {
 	return h.environment.EstimateGas(ctx, h.environment.Head(), exec.Estimation{
-		Arguments:      params.Arguments,
 		Block:          orLatest(params.Block),
 		StateOverrides: params.StateOverrides,
 		BlockOverrides: params.BlockOverrides,
-	})
+	}, params.Arguments)
 }
 
 type accessListParams struct {
