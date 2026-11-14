@@ -24,8 +24,10 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/0xsoniclabs/sonic/rpc/abft"
 	"github.com/0xsoniclabs/sonic/rpc/chain"
 	"github.com/0xsoniclabs/sonic/rpc/core"
+	"github.com/0xsoniclabs/sonic/rpc/dag"
 	"github.com/0xsoniclabs/sonic/rpc/debug"
 	"github.com/0xsoniclabs/sonic/rpc/dispatch"
 	"github.com/0xsoniclabs/sonic/rpc/eth"
@@ -111,6 +113,8 @@ func (m *Module) register(environment *exec.Environment) {
 	sonic.Register(m.dispatcher, environment, m.core)
 	txpool.Register(m.dispatcher, environment, m.core)
 	testonly.Register(m.dispatcher, environment, m.core)
+	dag.Register(m.dispatcher, environment, m.core)
+	abft.Register(m.dispatcher, environment, m.core)
 }
 
 // modules answers the namespaces served on the transport of the call.

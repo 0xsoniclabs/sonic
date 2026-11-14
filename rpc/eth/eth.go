@@ -48,6 +48,10 @@ func Register(dispatcher *dispatch.Dispatcher, environment *exec.Environment, no
 	dispatch.Add(dispatcher, "eth_etherbase", zeroAddress)
 	dispatch.Add(dispatcher, "eth_coinbase", zeroAddress)
 	dispatch.Add(dispatcher, "eth_hashrate", zeroHashrate)
+	dispatch.Add(dispatcher, "eth_currentEpoch", h.currentEpoch)
+	dispatch.Add(dispatcher, "eth_getRules", h.getRules)
+	dispatch.Add(dispatcher, "eth_getEpochBlock", h.getEpochBlock)
+	dispatch.Add(dispatcher, "eth_getEpochStats", h.getEpochStats)
 
 	dispatch.Add(dispatcher, "eth_getBlockByNumber", h.getBlockByNumber)
 	dispatch.Add(dispatcher, "eth_getBlockByHash", h.getBlockByHash)

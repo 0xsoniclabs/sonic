@@ -20,6 +20,7 @@
 package tests
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
@@ -36,6 +37,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/rpc/core"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -83,10 +85,16 @@ type FakeCore struct {
 	queued     types.Transactions
 	poolNonces map[common.Address]uint64
 	bundles    map[common.Hash]core.BundleInfo
-	modes      map[string]Mode
-	calls      map[string]int
-	gates      map[string]chan struct{}
-	delay      time.Duration
+	// epoch is the epoch of the blocks added next.
+	epoch       uint64
+	epochStates map[uint64]core.EpochSnapshot
+	liveEpoch   core.EpochSnapshot
+	epochHeads  map[uint64][]common.Hash
+	events      map[common.Hash]*inter.EventPayload
+	modes       map[string]Mode
+	calls       map[string]int
+	gates       map[string]chan struct{}
+	delay       time.Duration
 	// openState opens the state of a Carmen core; a fake without it has no
 	// state.
 	openState  func() (state.StateDB, error)
@@ -114,14 +122,18 @@ func NewFakeCore() *FakeCore {
 	rules := opera.FakeNetRules(opera.GetCantoUpgrades())
 	rules.NetworkID = ChainID
 	fake := &FakeCore{
-		rules:      rules,
-		upgrades:   []opera.UpgradeHeight{opera.MakeUpgradeHeight(rules.Upgrades, 0)},
-		pool:       map[common.Hash]*types.Transaction{},
-		poolNonces: map[common.Address]uint64{},
-		bundles:    map[common.Hash]core.BundleInfo{},
-		modes:      map[string]Mode{},
-		calls:      map[string]int{},
-		gates:      map[string]chan struct{}{},
+		rules:       rules,
+		upgrades:    []opera.UpgradeHeight{opera.MakeUpgradeHeight(rules.Upgrades, 0)},
+		pool:        map[common.Hash]*types.Transaction{},
+		poolNonces:  map[common.Address]uint64{},
+		bundles:     map[common.Hash]core.BundleInfo{},
+		epoch:       1,
+		epochStates: map[uint64]core.EpochSnapshot{},
+		epochHeads:  map[uint64][]common.Hash{},
+		events:      map[common.Hash]*inter.EventPayload{},
+		modes:       map[string]Mode{},
+		calls:       map[string]int{},
+		gates:       map[string]chan struct{}{},
 	}
 	fake.AddBlock()
 	return fake
@@ -158,7 +170,7 @@ func (f *FakeCore) AddBlockWithReceipts(transactions types.Transactions, receipt
 		Duration: time.Second,
 		GasLimit: 1 << 40,
 		BaseFee:  big.NewInt(1e9),
-		Epoch:    1,
+		Epoch:    idx.Epoch(f.epoch),
 	}
 	if number > 0 {
 		header.ParentHash = f.blocks[number-1].Hash
@@ -234,6 +246,42 @@ func (f *FakeCore) SetBundleInfo(executionPlanHash common.Hash, info core.Bundle
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 	f.bundles[executionPlanHash] = info
+}
+
+// SetEpoch sets the epoch of the blocks added next.
+func (f *FakeCore) SetEpoch(epoch uint64) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	f.epoch = epoch
+}
+
+// SetEpochState sets the states stored when an epoch opened.
+func (f *FakeCore) SetEpochState(epoch uint64, states core.EpochSnapshot) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	f.epochStates[epoch] = states
+}
+
+// SetLiveEpochState sets the block and epoch states the node has now.
+func (f *FakeCore) SetLiveEpochState(states core.EpochSnapshot) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	f.liveEpoch = states
+}
+
+// SetLiveEpochHeads sets the events without descendants of the open epoch,
+// the only one whose heads the node keeps.
+func (f *FakeCore) SetLiveEpochHeads(epoch uint64, heads []common.Hash) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	f.epochHeads = map[uint64][]common.Hash{epoch: heads}
+}
+
+// AddEvent puts an event into the DAG.
+func (f *FakeCore) AddEvent(event *inter.EventPayload) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	f.events[common.Hash(event.ID())] = event
 }
 
 // SetPoolNonce sets the pending nonce of a sender.
@@ -570,28 +618,61 @@ func (f *FakeCore) EpochOf(number uint64) (uint64, error) {
 
 func (f *FakeCore) EpochState(epoch uint64) (core.EpochSnapshot, error) {
 	return lookup(f, "EpochState", func() (core.EpochSnapshot, error) {
-		return core.EpochSnapshot{}, core.ErrNotFound
+		states, found := f.epochStates[epoch]
+		if !found {
+			return core.EpochSnapshot{}, core.ErrNotFound
+		}
+		return states, nil
 	})
 }
 
 func (f *FakeCore) LiveEpochState() core.EpochSnapshot {
-	return read(f, "LiveEpochState", func() core.EpochSnapshot { return core.EpochSnapshot{} })
+	return read(f, "LiveEpochState", func() core.EpochSnapshot { return f.liveEpoch })
 }
 
 func (f *FakeCore) LiveEpochHeads(epoch uint64) ([]common.Hash, error) {
-	return lookup(f, "LiveEpochHeads", func() ([]common.Hash, error) { return nil, core.ErrNotFound })
+	return lookup(f, "LiveEpochHeads", func() ([]common.Hash, error) {
+		heads, found := f.epochHeads[epoch]
+		if !found {
+			return nil, core.ErrNotFound
+		}
+		return slices.Clone(heads), nil
+	})
 }
 
+// FindEvents answers the events whose ids start with the epoch, the lamport
+// and the prefix, as the node's store finds them.
 func (f *FakeCore) FindEvents(epoch uint64, lamport uint32, prefix []byte) []common.Hash {
-	return read(f, "FindEvents", func() []common.Hash { return nil })
+	return read(f, "FindEvents", func() []common.Hash {
+		start := append(append(idx.Epoch(epoch).Bytes(), idx.Lamport(lamport).Bytes()...), prefix...)
+		var found []common.Hash
+		for id := range f.events {
+			if bytes.HasPrefix(id.Bytes(), start) {
+				found = append(found, id)
+			}
+		}
+		return found
+	})
 }
 
 func (f *FakeCore) Event(id common.Hash) (*inter.Event, error) {
-	return lookup(f, "Event", func() (*inter.Event, error) { return nil, core.ErrNotFound })
+	return lookup(f, "Event", func() (*inter.Event, error) {
+		event, found := f.events[id]
+		if !found {
+			return nil, core.ErrNotFound
+		}
+		return &event.Event, nil
+	})
 }
 
 func (f *FakeCore) EventPayload(id common.Hash) (*inter.EventPayload, error) {
-	return lookup(f, "EventPayload", func() (*inter.EventPayload, error) { return nil, core.ErrNotFound })
+	return lookup(f, "EventPayload", func() (*inter.EventPayload, error) {
+		event, found := f.events[id]
+		if !found {
+			return nil, core.ErrNotFound
+		}
+		return event, nil
+	})
 }
 
 func (f *FakeCore) SendTransactions(transactions types.Transactions) error {

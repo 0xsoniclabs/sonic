@@ -159,6 +159,11 @@ func (c *Chain) Resolve(head uint64, reference BlockReference) (uint64, error) {
 	}
 }
 
+// HistoryCutoff is the first block the node keeps, which earliest names.
+func (c *Chain) HistoryCutoff() uint64 {
+	return c.config.HistoryCutoff
+}
+
 // ResolveNumber turns a block number or tag into a block number. There is no
 // pending block: pending, safe and finalized are the head, as latest is.
 func (c *Chain) ResolveNumber(head uint64, number BlockNumber) (uint64, error) {
@@ -166,7 +171,7 @@ func (c *Chain) ResolveNumber(head uint64, number BlockNumber) (uint64, error) {
 	case number >= 0:
 		return uint64(number), nil
 	case number == EarliestBlockNumber:
-		return c.config.HistoryCutoff, nil
+		return c.HistoryCutoff(), nil
 	case number == LatestBlockNumber, number == PendingBlockNumber,
 		number == SafeBlockNumber, number == FinalizedBlockNumber:
 		return head, nil

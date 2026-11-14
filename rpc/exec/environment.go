@@ -42,6 +42,9 @@ type Reader interface {
 	core.StateProvider
 	PoolNonce(address common.Address) uint64
 	SendTransaction(ctx context.Context, transaction *types.Transaction) error
+	EpochOf(number uint64) (uint64, error)
+	EpochState(epoch uint64) (core.EpochSnapshot, error)
+	LiveEpochState() core.EpochSnapshot
 }
 
 // Environment offers the namespaces the served chain, the execution of calls
