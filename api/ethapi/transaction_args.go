@@ -166,6 +166,9 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 	}
 	// Estimate the gas usage if necessary.
 	if args.Gas == nil {
+		// The calldata may be given as either input or data, so the
+		// estimation is given the resolved one.
+		data := hexutil.Bytes(args.data())
 		// These fields are immutable during the estimation, safe to
 		// pass the pointer directly.
 		callArgs := TransactionArgs{
@@ -175,7 +178,7 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 			MaxFeePerGas:         args.MaxFeePerGas,
 			MaxPriorityFeePerGas: args.MaxPriorityFeePerGas,
 			Value:                args.Value,
-			Data:                 args.Data,
+			Data:                 &data,
 			AccessList:           args.AccessList,
 			BlobFeeCap:           args.BlobFeeCap,
 			BlobHashes:           args.BlobHashes,
