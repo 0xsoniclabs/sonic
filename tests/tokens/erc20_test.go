@@ -162,7 +162,7 @@ func TestTokenStandards_ERC20(t *testing.T) {
 		totalSupply, err := token.TotalSupply(nil)
 		require.NoError(t, err, "totalSupply")
 		require.Equal(t,
-			uint64(supply), totalSupply.Uint64(),
+			big.NewInt(int64(supply)), totalSupply,
 			"totalSupply must be the supply created for the deployer")
 	})
 
@@ -172,7 +172,7 @@ func TestTokenStandards_ERC20(t *testing.T) {
 		totalSupply, err := token.TotalSupply(nil)
 		require.NoError(t, err, "totalSupply")
 		require.Equal(t,
-			uint64(supply), totalSupply.Uint64(),
+			big.NewInt(int64(supply)), totalSupply,
 			"transfers must not change totalSupply")
 	})
 
@@ -240,10 +240,12 @@ func observeErc20(t *testing.T, token *erc20.Erc20, a tokenActors) erc20State {
 	for i := range s.balances {
 		balance, err := token.BalanceOf(nil, a[i])
 		require.NoError(t, err, "balanceOf %v", tokenActor(i))
+		require.True(t, balance.IsUint64(), "balanceOf %v exceeds uint64: %v", tokenActor(i), balance)
 		s.balances[i] = balance.Uint64()
 	}
 	allowed, err := token.Allowance(nil, a[alice], a[bob])
 	require.NoError(t, err, "allowance of Bob over Alice's tokens")
+	require.True(t, allowed.IsUint64(), "allowance of Bob over Alice's tokens exceeds uint64: %v", allowed)
 	s.allowance = allowed.Uint64()
 	return s
 }
