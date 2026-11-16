@@ -23,14 +23,18 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/logger"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -1216,4 +1220,163 @@ func TestTransactionArgs_SetDefaults_ChainID(t *testing.T) {
 			require.Equal(t, (*hexutil.Big)(nodeChainID), args.ChainID)
 		})
 	}
+}
+
+func TestTransactionArgs_SetDefaults_EstimatesGasForCalldataInInputOrData(t *testing.T) {
+	t.Parallel()
+
+	sender := common.Address{1}
+	contract := common.Address{2}
+	external := common.Address{3}
+
+	// The contract reverts without calldata. With calldata, it reads the
+	// balance of an external account, so it needs more gas than the
+	// intrinsic gas of the call.
+	code := append(append([]byte{
+		byte(vm.CALLDATASIZE), byte(vm.PUSH1), 7, byte(vm.JUMPI),
+		byte(vm.PUSH0), byte(vm.PUSH0), byte(vm.REVERT),
+		byte(vm.JUMPDEST), byte(vm.PUSH20)}, external.Bytes()...),
+		byte(vm.BALANCE), byte(vm.POP), byte(vm.STOP),
+	)
+
+	calldata := hexutil.Bytes{0x01, 0x02, 0x03, 0x04}
+	other := hexutil.Bytes{0x05}
+	empty := hexutil.Bytes{}
+
+	// Depending on the gas of the probe that fails last, the VM reports the
+	// revert as "execution reverted" or "execution unsuccessful".
+	const failedExecution = "execution"
+
+	tests := map[string]struct {
+		input   *hexutil.Bytes
+		data    *hexutil.Bytes
+		wantErr string
+	}{
+		"calldata in input": {
+			input: &calldata,
+		},
+		"calldata in data": {
+			data: &calldata,
+		},
+		"same calldata in input and data": {
+			input: &calldata,
+			data:  &calldata,
+		},
+		"calldata in input and empty data": {
+			input:   &calldata,
+			data:    &empty,
+			wantErr: `both "data" and "input" are set and not equal`,
+		},
+		"different calldata in input and data": {
+			input:   &calldata,
+			data:    &other,
+			wantErr: `both "data" and "input" are set and not equal`,
+		},
+		"no calldata": {
+			wantErr: failedExecution,
+		},
+		"empty input": {
+			input:   &empty,
+			wantErr: failedExecution,
+		},
+		"empty data": {
+			data:    &empty,
+			wantErr: failedExecution,
+		},
+	}
+
+	estimate := func(t *testing.T, input, data *hexutil.Bytes) (hexutil.Uint64, error) {
+		t.Helper()
+		backend := newEstimateGasTestBackend(t, contract, code)
+		nonce := hexutil.Uint64(0)
+		args := TransactionArgs{
+			From:     &sender,
+			To:       &contract,
+			Nonce:    &nonce,
+			GasPrice: (*hexutil.Big)(big.NewInt(0)),
+			Input:    input,
+			Data:     data,
+		}
+		if err := args.setDefaults(t.Context(), backend); err != nil {
+			return 0, err
+		}
+		require.NotNil(t, args.Gas, "gas was not estimated")
+		return *args.Gas, nil
+	}
+
+	// The gas a call with the calldata needs, estimated by eth_estimateGas,
+	// which resolves the calldata independently of setDefaults.
+	reference := func(t *testing.T) hexutil.Uint64 {
+		t.Helper()
+		backend := newEstimateGasTestBackend(t, contract, code)
+		gas, err := DoEstimateGas(t.Context(), backend, TransactionArgs{
+			From:  &sender,
+			To:    &contract,
+			Input: &calldata,
+		}, rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber), nil, nil, backend.RPCGasCap(), nil)
+		require.NoError(t, err)
+		return gas
+	}(t)
+	require.Greater(t, uint64(reference), params.TxGas+uint64(len(calldata))*params.TxDataNonZeroGasEIP2028,
+		"the call must need more than its intrinsic gas")
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := estimate(t, test.input, test.data)
+			if test.wantErr != "" {
+				require.ErrorContains(t, err, test.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, reference, got)
+		})
+	}
+}
+
+// newEstimateGasTestBackend builds a mock Backend able to run a gas estimation
+// for calls to a single contract with the given code.
+func newEstimateGasTestBackend(t *testing.T, contract common.Address, code []byte) *MockBackend {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+	stateDb := state.NewMockStateDB(ctrl)
+
+	header := &evmcore.EvmHeader{Number: big.NewInt(1), BaseFee: big.NewInt(0)}
+	block := &evmcore.EvmBlock{EvmHeader: *header}
+	upgrades := opera.GetSonicUpgrades()
+	chainConfig := makeChainConfig(upgrades)
+	gasCap := uint64(10_000_000)
+	blockCtx := vm.BlockContext{
+		BlockNumber: header.Number,
+		BaseFee:     header.BaseFee,
+		Transfer:    vm.TransferFunc(func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {}),
+		CanTransfer: vm.CanTransferFunc(func(vm.StateDB, common.Address, *uint256.Int) bool { return true }),
+	}
+
+	any := gomock.Any()
+	backend.EXPECT().CurrentBlock().Return(block).AnyTimes()
+	backend.EXPECT().ChainConfig(any).Return(chainConfig).AnyTimes()
+	backend.EXPECT().ChainID().Return(chainConfig.ChainID).AnyTimes()
+	backend.EXPECT().HeaderByNumber(any, any).Return(header, nil).AnyTimes()
+	backend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(stateDb, block, nil).AnyTimes()
+	backend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{Upgrades: upgrades}, nil).AnyTimes()
+	backend.EXPECT().RPCGasCap().Return(gasCap).AnyTimes()
+	backend.EXPECT().MaxGasLimit().Return(gasCap).AnyTimes()
+	backend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(
+		func(_ context.Context, _ state.StateDB, _ *evmcore.EvmHeader, vmConfig *vm.Config, _ *vm.BlockContext) (*vm.EVM, func() error, error) {
+			return vm.NewEVM(blockCtx, stateDb, chainConfig, *vmConfig), func() error { return nil }, nil
+		}).AnyTimes()
+
+	stateDb.EXPECT().GetCode(contract).Return(code).AnyTimes()
+	stateDb.EXPECT().GetCodeHash(contract).Return(crypto.Keccak256Hash(code)).AnyTimes()
+	stateDb.EXPECT().Copy().Return(stateDb).AnyTimes()
+	stateDb.EXPECT().AddressInAccessList(any).Return(false).AnyTimes()
+	stateDb.EXPECT().AddAddressToAccessList(any).AnyTimes()
+	stateDb.EXPECT().RevertToSnapshot(any).AnyTimes()
+	stateDb.EXPECT().AddRefund(any).AnyTimes()
+	stateDb.EXPECT().SubRefund(any).AnyTimes()
+	setExpectedStateCalls(stateDb)
+	return backend
 }
