@@ -27,7 +27,7 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Fixed
 
-## [2.2.7] - Unreleased
+## [2.2.7] - 16 November 2026
 
 Version 2.2.7 fixes several RPC and tracing methods so they report what actually happens on chain. Upgrading is recommended for node operators who serve RPC, tracing or simulation requests.
 
