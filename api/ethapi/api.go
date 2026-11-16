@@ -1818,19 +1818,22 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		accessList := prevTracer.AccessList()
 		log.Trace("Creating access list", "input", accessList)
 
+		// Set the access list to the last one discovered. This must happen
+		// before the gas estimation below, as the intrinsic gas of the call
+		// depends on the access list.
+		args.AccessList = &accessList
+
 		// If no gas amount was specified, each unique access list needs it's own
 		// gas calculation. This is quite expensive, but we need to be accurate
 		// and it's convered by the sender only anyway.
 		if nogas {
 			args.Gas = nil
 			if err := args.setDefaults(ctx, b); err != nil {
-				return nil, 0, nil, err // shouldn't happen, just in case
+				return nil, 0, nil, err
 			}
 		}
 		// Copy the original db so we don't modify it
 		statedb := db.Copy()
-		// Set the accesslist to the last al
-		args.AccessList = &accessList
 		msg, err := args.ToMessage(b.RPCGasCap(), block.BaseFee, log.Root())
 		if err != nil {
 			statedb.Release()
