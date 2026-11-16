@@ -393,9 +393,10 @@ func (l *txList) Filter(
 
 	hasSponsored := l.txs.containsFunc(subsidies.IsSponsorshipRequest)
 	hasBundles := l.txs.containsFunc(bundle.IsEnvelope)
+	hasBlobs := upgrades.Canto && l.txs.containsFunc(isBlobTx)
 
 	// If all transactions are below the threshold, short circuit
-	if !hasSponsored && !hasBundles && l.costcap.Cmp(costLimit) <= 0 && l.gascap <= gasLimit {
+	if !hasSponsored && !hasBundles && !hasBlobs && l.costcap.Cmp(costLimit) <= 0 && l.gascap <= gasLimit {
 		return nil, nil
 	}
 	l.costcap = new(big.Int).Set(costLimit) // Lower the caps to the thresholds
@@ -405,6 +406,10 @@ func (l *txList) Filter(
 
 	// Filter out all the transactions above the account's funds
 	removed := l.txs.Filter(func(tx *types.Transaction) bool {
+		// Blob transactions pooled before Canto can no longer be executed.
+		if upgrades.Canto && isBlobTx(tx) {
+			return true
+		}
 		// Before Brio, bundle envelopes are regular transactions and must not
 		// be subject to bundle-specific filtering in the pool.
 		if upgrades.Brio {
@@ -742,4 +747,8 @@ func (l *txPricedList) SetBaseFee(baseFee *big.Int) {
 		l.urgent.baseFee = baseFee
 		l.Reheap()
 	}
+}
+
+func isBlobTx(tx *types.Transaction) bool {
+	return tx.Type() == types.BlobTxType
 }

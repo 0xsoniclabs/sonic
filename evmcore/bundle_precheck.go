@@ -121,6 +121,9 @@ func getBundleState(
 	if err != nil {
 		return makePermanentlyBlockedState(fmt.Sprintf("invalid bundle: %v", err))
 	}
+	if chain.GetCurrentNetworkRules().Upgrades.Canto && containsBlobTx(signer, bundle) {
+		return makePermanentlyBlockedState("bundle contains a blob transaction, not supported since Canto")
+	}
 
 	// Quickest filter: check if the bundle is in the valid block range.
 	currentBlock := chain.GetLatestHeader().Number.Uint64()
@@ -170,6 +173,25 @@ func getBundleState(
 		return makePermanentlyBlockedState("bundle trial-run failed")
 	}
 	return makeRunnableState(gasEfficiency)
+}
+
+// containsBlobTx reports whether the bundle or any bundle nested in it
+// contains a blob transaction. The bundle must have passed
+// bundle.ValidateEnvelope.
+func containsBlobTx(signer types.Signer, txBundle *bundle.TransactionBundle) bool {
+	for _, tx := range txBundle.Transactions {
+		if tx.Type() == types.BlobTxType {
+			return true
+		}
+		if !bundle.IsEnvelope(tx) {
+			continue
+		}
+		nested, err := bundle.OpenEnvelope(signer, tx)
+		if err == nil && containsBlobTx(signer, &nested) {
+			return true
+		}
+	}
+	return false
 }
 
 // ChainStateForBundleEval is an extension of the ChainState interface providing

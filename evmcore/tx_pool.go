@@ -751,6 +751,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 
 		gasSubsidies:       pool.chain.CurrentRules().Upgrades.GasSubsidies,
 		brio:               pool.chain.CurrentRules().Upgrades.Brio,
+		canto:              pool.chain.CurrentRules().Upgrades.Canto,
 		transactionBundles: pool.chain.CurrentRules().Upgrades.TransactionBundles,
 	}
 

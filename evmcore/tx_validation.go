@@ -63,6 +63,7 @@ type NetworkRules struct {
 	eip7702 bool // Fork indicator whether we are using EIP-7702 set code transactions.
 
 	brio               bool // Indicator whether Brio revision is active
+	canto              bool // Indicator whether Canto revision is active
 	gasSubsidies       bool // Indicator whether gas subsidies are active.
 	transactionBundles bool // Indicator whether transaction bundles are active.
 }
@@ -142,9 +143,9 @@ func ValidateTxForNetwork(tx *types.Transaction, rules NetworkRules, chain State
 	if !rules.eip1559 && tx.Type() == types.DynamicFeeTxType {
 		return ErrTxTypeNotSupported
 	}
-	// Reject blob transactions until EIP-4844 activates or if is already EIP-4844 and they are not empty
+	// Reject blob transactions outside of [EIP-4844, Canto) or if they are not empty
 	if tx.Type() == types.BlobTxType {
-		if !rules.eip4844 {
+		if !rules.eip4844 || rules.canto {
 			return ErrTxTypeNotSupported
 		}
 		// Sonic only supports Blob transactions without blob data.

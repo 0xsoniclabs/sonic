@@ -1378,6 +1378,9 @@ func isPermissibleInternal(
 	// -- Check Type specific properties --
 
 	if tx.Type() == types.BlobTxType {
+		if rules.Upgrades.Canto {
+			return fmt.Errorf("blob transactions are not supported since Canto")
+		}
 		if have := len(tx.BlobHashes()); have > 0 {
 			return fmt.Errorf(
 				"blob transaction with blob hashes is not supported, got %d",
