@@ -26,6 +26,7 @@ import (
 	"os"
 	"time"
 
+	freezeRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
 	priorityRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/proxy"
 	subsidiesRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
@@ -195,6 +196,30 @@ func GenerateFakeJsonGenesis(
 			Name:    "PriorityRegistryImplementation",
 			Address: implementationAddress,
 			Code:    priorityRegistry.GetCode(),
+			Nonce:   1,
+		})
+	}
+
+	// Deploy the account freeze registry contract if enabled.
+	if upgrades.AccountFreeze {
+		implementationAddress := freezeRegistry.GetImplementationAddress()
+		addressAsStorageValue := common.Hash{}
+		copy(addressAsStorageValue[12:], implementationAddress[:])
+		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
+			Name:    "FreezeRegistryProxy",
+			Address: freezeRegistry.GetAddress(),
+			Code:    proxy.GetCode(),
+			Nonce:   1,
+			Storage: map[common.Hash]common.Hash{
+				// Set the implementation address in the proxy contract.
+				proxy.GetSlotForImplementation(): addressAsStorageValue,
+			},
+		})
+
+		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
+			Name:    "FreezeRegistryImplementation",
+			Address: implementationAddress,
+			Code:    freezeRegistry.GetCode(),
 			Nonce:   1,
 		})
 	}
