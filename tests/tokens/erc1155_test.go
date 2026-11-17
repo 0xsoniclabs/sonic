@@ -211,6 +211,21 @@ func TestTokenStandards_ERC1155(t *testing.T) {
 	token, deployment, shared := deployToken(t, session, deployErc1155([]int64{10 * int64(n), 5 * int64(n)}))
 	shared = addTokenReceivers(t, session, shared)
 
+	// Cleanups run after all subtests, including the parallel cases, and
+	// before the network registered earlier is stopped. The accepting
+	// receiver gets 3+3+3 tokens of id 1 and 5 of id 2 from the cases
+	// transferring to it, and the deployer funds all of its tokens to Alices.
+	t.Cleanup(func() {
+		for actor, want := range map[tokenActor][2]uint64{acceptingReceiver: {9, 5}, rejectingReceiver: {}, deployer: {}} {
+			for i, id := range toBigInts(erc1155Ids) {
+				balance, err := token.BalanceOf(nil, shared[actor], id)
+				require.NoError(t, err, "balanceOf %v for id %v", actor, id)
+				require.True(t, balance.IsUint64(), "balanceOf %v for id %v exceeds uint64: %v", actor, id, balance)
+				require.Equal(t, want[i], balance.Uint64(), "balance of %v for id %v after all cases", actor, id)
+			}
+		}
+	})
+
 	t.Run("contract is correctly deployed for defined cases", func(t *testing.T) {
 		require.Equal(t,
 			emits("TransferBatch", deployer, zeroAddress, deployer, []int{1, 2}, []int{10 * n, 5 * n}),
@@ -312,6 +327,7 @@ func observeErc1155(t *testing.T, token *erc1155.Erc1155, a tokenActors) erc1155
 		for i, id := range toBigInts(erc1155Ids) {
 			balance, err := token.BalanceOf(nil, a[holder], id)
 			require.NoError(t, err, "balanceOf %v for id %v", tokenActor(holder), id)
+			require.True(t, balance.IsUint64(), "balanceOf %v for id %v exceeds uint64: %v", tokenActor(holder), id, balance)
 			s.balances[holder][i] = balance.Uint64()
 			owners, ids = append(owners, a[holder]), append(ids, id)
 		}
@@ -321,6 +337,7 @@ func observeErc1155(t *testing.T, token *erc1155.Erc1155, a tokenActors) erc1155
 	require.Len(t, batch, len(owners), "balanceOfBatch must return one balance per owner and id")
 	for i, balance := range batch {
 		holder, id := i/len(erc1155Ids), i%len(erc1155Ids)
+		require.True(t, balance.IsUint64(), "balanceOfBatch of %v for id %d exceeds uint64: %v", tokenActor(holder), erc1155Ids[id], balance)
 		require.Equal(t,
 			s.balances[holder][id], balance.Uint64(),
 			"balanceOfBatch must agree with balanceOf for %v and id %d", tokenActor(holder), erc1155Ids[id])
