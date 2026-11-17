@@ -44,6 +44,10 @@ var (
 	// next one expected based on the local chain.
 	ErrNonceTooHigh = errors.New("nonce too high")
 
+	// ErrFrozenAccount is returned if a transaction is sent by, or would move
+	// assets of, an account listed in the freeze registry.
+	ErrFrozenAccount = errors.New("account is frozen")
+
 	// ErrGasLimitReached is returned by the gas pool if the amount of gas required
 	// by a transaction is higher than what's left in the block.
 	ErrGasLimitReached = errors.New("gas limit reached")

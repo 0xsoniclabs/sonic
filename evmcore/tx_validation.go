@@ -23,6 +23,7 @@ import (
 	"math/big"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -65,6 +66,7 @@ type NetworkRules struct {
 	brio               bool // Indicator whether Brio revision is active
 	gasSubsidies       bool // Indicator whether gas subsidies are active.
 	transactionBundles bool // Indicator whether transaction bundles are active.
+	accountFreeze      bool // Indicator whether the account freeze is active.
 }
 
 // Signer wraps types.Signer to allow mocking it in tests.
@@ -105,6 +107,10 @@ func validateTx(
 	}
 
 	if err := ValidateTxForState(tx, state, signer); err != nil {
+		return err
+	}
+
+	if err := validateTxForFreeze(tx, netRules, state, signer); err != nil {
 		return err
 	}
 
@@ -401,6 +407,27 @@ func ValidateTxForState(tx *types.Transaction, state state.StateDB, signer types
 		return ErrSenderNoEOA
 	}
 
+	return nil
+}
+
+// validateTxForFreeze rejects transactions sent by an account listed in the
+// freeze registry, which the block processor would skip.
+func validateTxForFreeze(
+	tx *types.Transaction,
+	netRules NetworkRules,
+	state state.StateDB,
+	signer types.Signer,
+) error {
+	if !netRules.accountFreeze {
+		return nil
+	}
+	from, err := types.Sender(signer, tx)
+	if err != nil {
+		return ErrInvalidSender
+	}
+	if freeze.IsFrozen(state, from) {
+		return ErrFrozenAccount
+	}
 	return nil
 }
 

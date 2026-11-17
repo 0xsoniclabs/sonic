@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -752,6 +753,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		gasSubsidies:       pool.chain.CurrentRules().Upgrades.GasSubsidies,
 		brio:               pool.chain.CurrentRules().Upgrades.Brio,
 		transactionBundles: pool.chain.CurrentRules().Upgrades.TransactionBundles,
+		accountFreeze:      pool.chain.CurrentRules().Upgrades.AccountFreeze,
 	}
 
 	subsidiesChecker := pool.subsidiesCheckerFactory(
@@ -1812,6 +1814,7 @@ func (pool *TxPool) truncateQueue() {
 // is always explicitly triggered by SetBaseFee and it would be unnecessary and wasteful
 // to trigger a re-heap is this function
 func (pool *TxPool) demoteUnexecutables() {
+	pool.dropFrozenSenders()
 
 	isSponsored := pool.getSubsidiesCheckerForReorg()
 	evaluateBundle := newBundlesChecker(pool.bundleEvaluationCache, pool.chain, pool.currentState)
@@ -1883,6 +1886,28 @@ func (pool *TxPool) demoteUnexecutables() {
 		if list.Empty() {
 			delete(pool.pending, addr)
 		}
+	}
+}
+
+// dropFrozenSenders removes all transactions of senders frozen since they
+// entered the pool, which the block processor would skip.
+func (pool *TxPool) dropFrozenSenders() {
+	if !pool.chain.CurrentRules().Upgrades.AccountFreeze {
+		return
+	}
+	var drops []common.Hash
+	for _, txs := range []map[common.Address]*txList{pool.pending, pool.queue} {
+		for addr, list := range txs {
+			if freeze.IsFrozen(pool.currentState, addr) {
+				for _, tx := range list.Flatten() {
+					drops = append(drops, tx.Hash())
+				}
+			}
+		}
+	}
+	for _, hash := range drops {
+		log.Trace("Removed transaction of frozen sender", "hash", hash)
+		pool.removeTx(hash, true)
 	}
 }
 
