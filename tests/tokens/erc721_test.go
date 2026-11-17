@@ -361,6 +361,7 @@ func observeErc721(t *testing.T, token *erc721.Erc721, a tokenActors, id *big.In
 		}
 		balance, err := token.BalanceOf(nil, a[holder])
 		require.NoError(t, err, "balanceOf %v", holder)
+		require.True(t, balance.IsUint64(), "balanceOf %v exceeds uint64: %v", holder, balance)
 		require.Equal(t,
 			want, balance.Uint64(),
 			"balance of %v must be 1 if it owns the case's token and 0 otherwise", holder)
