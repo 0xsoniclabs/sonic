@@ -38,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/txtrace"
@@ -319,8 +320,8 @@ func (s *PublicTxTraceAPI) traceCallExec(
 	}
 	tracedEVM.vmenv.SetTxContext(vmContext)
 
-	// Execute the transaction using core.ApplyMessage to capture raw return data.
-	result, err := core.ApplyMessage(tracedEVM.vmenv, msg, core.NewGasPool(msg.GasLimit))
+	// Execute the transaction using freeze.ApplyMessage to capture raw return data.
+	result, err := freeze.ApplyMessage(tracedEVM.vmenv, msg, core.NewGasPool(msg.GasLimit))
 	if err != nil {
 		return nil, err
 	}
@@ -507,7 +508,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 				return nil, fmt.Errorf("cannot initialize vm for transaction %s, error: %s", tx.Hash().String(), err.Error())
 			}
 
-			res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
+			res, err := freeze.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
 			failed := false
 			if err != nil {
 				failed = true
