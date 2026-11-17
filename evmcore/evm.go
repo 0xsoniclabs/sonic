@@ -29,6 +29,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/holiman/uint256"
+
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
+	"github.com/0xsoniclabs/sonic/opera"
 )
 
 // DummyChain supports retrieving headers and consensus parameters from the
@@ -157,10 +160,23 @@ func GetHashFn(ref *EvmHeader, chain DummyChain) func(n uint64) common.Hash {
 	}
 }
 
+// NewEVM creates an EVM that applies the account freeze when the
+// AccountFreeze upgrade is on: a transaction during which value moves from
+// or to a frozen account, or an ERC-20 token moves tokens from or to one,
+// reverts. This is part of a block's result, so every EVM running a block's
+// transactions, in block processing, replays and RPC, must be created by it
+// under that block's upgrades.
+func NewEVM(context vm.BlockContext, db vm.StateDB, chainConfig *params.ChainConfig, config vm.Config, upgrades opera.Upgrades) *vm.EVM {
+	if !upgrades.AccountFreeze {
+		return vm.NewEVM(context, db, chainConfig, config)
+	}
+	return freeze.NewEVM(context, db, chainConfig, config)
+}
+
 // CanTransfer checks whether there are enough funds in the address' account to make a transfer.
 // This does not take the necessary gas in to account to make the transfer valid.
-func CanTransfer(db vm.StateDB, addr common.Address, amount *uint256.Int) bool {
-	return db.GetBalance(addr).Cmp(amount) >= 0
+func CanTransfer(db vm.StateDB, from common.Address, amount *uint256.Int) bool {
+	return db.GetBalance(from).Cmp(amount) >= 0
 }
 
 // Transfer subtracts amount from sender and adds amount to recipient using the given Db
