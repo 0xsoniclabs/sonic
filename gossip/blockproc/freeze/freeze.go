@@ -1,0 +1,68 @@
+// Copyright 2026 Sonic Operations Ltd
+// This file is part of the Sonic Client
+//
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
+// Package freeze implements the checks that keep frozen accounts from moving
+// native S or ERC-20 tokens. A transaction during which value moves from
+// or to a frozen account, or an ERC-20 token moves tokens from or to one,
+// reverts, and transactions sent by a frozen account are skipped by the block
+// processor.
+package freeze
+
+import (
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
+	priorities "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
+	subsidies "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
+	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
+	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
+	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
+	"github.com/ethereum/go-ethereum/common"
+)
+
+// StateReader is the part of the state needed to read the registry.
+type StateReader interface {
+	GetState(common.Address, common.Hash) common.Hash
+}
+
+// IsFrozen reports whether the registry lists account as frozen. System
+// contracts are never frozen, whatever the registry says.
+func IsFrozen(db StateReader, account common.Address) bool {
+	if isSystemContract(account) {
+		return false
+	}
+	return db.GetState(registry.GetAddress(), registry.GetFrozenSlot(account)) != (common.Hash{})
+}
+
+// IsOptedOut reports whether the registry lists account as a token operator
+// opted out of the freeze: its transactions and its contract's token events
+// are not checked.
+func IsOptedOut(db StateReader, account common.Address) bool {
+	return db.GetState(registry.GetAddress(), registry.GetOptedOutSlot(account)) != (common.Hash{})
+}
+
+func isSystemContract(addr common.Address) bool {
+	switch addr {
+	case registry.GetAddress(),
+		sfc.ContractAddress,
+		driver.ContractAddress,
+		driverauth.ContractAddress,
+		evmwriter.ContractAddress,
+		subsidies.GetAddress(),
+		priorities.GetAddress():
+		return true
+	}
+	return false
+}
