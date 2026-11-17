@@ -353,6 +353,89 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 	}
 }
 
+func Test_GetBundleState_BundleWithBlobTransaction_IsPermanentlyBlockedWithCanto(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	// Steps are mutated by the builder, so each run builds its own tree.
+	blob := func() bundle.BuilderStep { return bundle.Step(key, &types.BlobTx{}) }
+	other := func() bundle.BuilderStep { return bundle.Step(key, &types.AccessListTx{}) }
+	nested := func(steps ...bundle.BuilderStep) bundle.BuilderStep {
+		return bundle.Step(key, bundle.NewBuilder().WithSigner(signer).AllOf(steps...).Build())
+	}
+
+	tests := map[string]func() bundle.BuilderStep{
+		"top-level":            func() bundle.BuilderStep { return bundle.AllOf(other(), blob()) },
+		"nested envelope":      func() bundle.BuilderStep { return bundle.AllOf(other(), nested(blob())) },
+		"deeply nested":        func() bundle.BuilderStep { return bundle.AllOf(nested(other(), nested(blob()))) },
+		"unselected one-of":    func() bundle.BuilderStep { return bundle.OneOf(other(), blob()) },
+		"unselected in nested": func() bundle.BuilderStep { return bundle.OneOf(other(), nested(blob())) },
+	}
+
+	currentBlock := uint64(100)
+	for name, root := range tests {
+		for _, canto := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/canto=%t", name, canto), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				chainState := NewMockChainStateForBundleEval(ctrl)
+				chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+					NetworkID: 1,
+					Upgrades:  opera.Upgrades{TransactionBundles: true, Canto: canto},
+				}).AnyTimes()
+				chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{
+					Number: big.NewInt(int64(currentBlock)),
+				}).AnyTimes()
+
+				// The bundle targets future blocks to stop evaluation right
+				// after the blob check if the bundle passes it.
+				envelope := bundle.NewBuilder().
+					WithSigner(signer).
+					SetEarliest(currentBlock + 1).
+					With(root()).
+					Build()
+				_, _, err := bundle.ValidateEnvelope(signer, envelope)
+				require.NoError(t, err)
+
+				want := makeTemporaryBlockedState("bundle targets future blocks")
+				if canto {
+					want = makePermanentlyBlockedState("bundle contains a blob transaction, not supported since Canto")
+				}
+				require.Equal(t, want, GetBundleState(chainState, nil, envelope))
+			})
+		}
+	}
+}
+
+func Test_GetBundleState_BundleWithoutBlobTransaction_IsNotBlockedWithCanto(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	ctrl := gomock.NewController(t)
+	chainState := NewMockChainStateForBundleEval(ctrl)
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true, Canto: true},
+	}).AnyTimes()
+	chainState.EXPECT().GetLatestHeader().Return(&EvmHeader{Number: big.NewInt(100)}).AnyTimes()
+
+	envelope := bundle.NewBuilder().
+		WithSigner(signer).
+		SetEarliest(101).
+		AllOf(
+			bundle.Step(key, &types.AccessListTx{}),
+			bundle.Step(key, bundle.NewBuilder().WithSigner(signer).AllOf(
+				bundle.Step(key, &types.DynamicFeeTx{}),
+			).Build()),
+		).
+		Build()
+
+	require.Equal(t,
+		makeTemporaryBlockedState("bundle targets future blocks"),
+		GetBundleState(chainState, nil, envelope),
+	)
+}
+
 func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 
 	const initialNonce = 1

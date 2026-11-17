@@ -180,7 +180,7 @@ func getBundleState(
 // bundle.ValidateEnvelope.
 func containsBlobTx(signer types.Signer, txBundle *bundle.TransactionBundle) bool {
 	for _, tx := range txBundle.Transactions {
-		if tx.Type() == types.BlobTxType {
+		if isBlobTx(tx) {
 			return true
 		}
 		if !bundle.IsEnvelope(tx) {

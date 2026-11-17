@@ -1612,6 +1612,7 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 		// - too high gas cost for the current rules
 		// - not sponsored anymore
 		// - bundle has been executed
+		// - blob transaction since Canto
 		// queue is not strict, transactions cannot be demoted, "invalid" return unused
 		drops, _ := list.Filter(
 			utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)),
@@ -1834,6 +1835,7 @@ func (pool *TxPool) demoteUnexecutables() {
 		// - too high gas cost for the current rules
 		// - not sponsored anymore
 		// - bundle is not executable (final)
+		// - blob transaction since Canto
 		// the pending list is strict, invalid transactions are returned to be re-queued
 		// - gapped nonces
 		// - temporarily not executable bundles

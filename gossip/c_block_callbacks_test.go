@@ -1799,6 +1799,37 @@ func TestIsPermissible_WithBrio_RejectsBundleOnlyTransactions(t *testing.T) {
 	require.ErrorContains(isPermissible(tx, &rules, nil), "bundle-only transactions are not supported")
 }
 
+func TestIsPermissible_RejectsBlobTransactionsWithCanto(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	tests := map[string]*types.Transaction{
+		"stand-alone": types.NewTx(&types.BlobTx{}),
+		"in bundle": bundle.NewBuilder().WithSigner(signer).AllOf(
+			bundle.Step(key, &types.BlobTx{}),
+		).Build(),
+		"in unselected one-of alternative": bundle.NewBuilder().WithSigner(signer).OneOf(
+			bundle.Step(key, &types.AccessListTx{}),
+			bundle.Step(key, &types.BlobTx{}),
+		).Build(),
+	}
+
+	for name, tx := range tests {
+		t.Run(name, func(t *testing.T) {
+			rules := opera.Rules{Upgrades: opera.GetBrioUpgrades()}
+			rules.Upgrades.TransactionBundles = true
+			require.NoError(t, isPermissible(tx, &rules, signer))
+
+			rules.Upgrades.Canto = true
+			require.ErrorContains(t,
+				isPermissible(tx, &rules, signer),
+				"blob transactions are not supported since Canto",
+			)
+		})
+	}
+}
+
 func TestIsPermissible_WithBrio_BundlesDisabled_RejectsBundleEnvelopes(t *testing.T) {
 	require := require.New(t)
 	signer := types.LatestSignerForChainID(big.NewInt(1))

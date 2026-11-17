@@ -498,6 +498,14 @@ func (brioTestBlockChain) CurrentRules() opera.Rules {
 	return opera.Rules{Upgrades: opera.Upgrades{Brio: true}}
 }
 
+type cantoTestBlockChain struct {
+	StateReader
+}
+
+func (cantoTestBlockChain) CurrentRules() opera.Rules {
+	return opera.Rules{Upgrades: opera.GetCantoUpgrades()}
+}
+
 type countingBundleStateDb struct {
 	*testTxPoolStateDb
 	lookups int

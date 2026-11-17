@@ -534,6 +534,10 @@ func TestValidateTxForNetwork_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T
 			tx:    &types.BlobTx{},
 			rules: NetworkRules{eip2718: true, eip1559: true, eip4844: false},
 		},
+		"reject blob tx with canto": {
+			tx:    &types.BlobTx{},
+			rules: NetworkRules{eip2718: true, eip1559: true, eip4844: true, canto: true},
+		},
 		"reject setCode tx before eip7702": {
 			tx:    &types.SetCodeTx{AuthList: []types.SetCodeAuthorization{{}}},
 			rules: NetworkRules{eip2718: true, eip1559: true, eip4844: false, eip7702: false},

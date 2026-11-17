@@ -573,6 +573,17 @@ func TestEIP4844Transactions(t *testing.T) {
 	}
 }
 
+func TestEIP4844Transactions_RejectedWithCanto(t *testing.T) {
+	pool, key := setupTxPoolWithChain(cancunConfig, cantoTestBlockChain{NewTestBlockChain(newTestTxPoolStateDb())})
+	defer pool.Stop()
+	testAddBalance(pool, crypto.PubkeyToAddress(key.PublicKey), big.NewInt(params.Ether))
+
+	tx, err := blobTransaction(params.TestChainConfig.ChainID, nil, key)
+	require.NoError(t, err)
+	_, err = pool.add(tx, false)
+	require.ErrorIs(t, err, ErrTxTypeNotSupported)
+}
+
 func TestEIP7702Transactions_InvalidTransactionsReturnAnError(t *testing.T) {
 
 	configCopy := *params.TestChainConfig

@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -469,6 +470,42 @@ func TestTxList_Filter_ShortCircuitIfAllTransactionsAreBelowThreshold(t *testing
 	require.Len(removed, 0)
 	require.Len(invalidated, 0)
 	require.Equal(5, list.Len(), "all transactions should remain in the list")
+}
+
+func TestTxList_Filter_RemovesBlobTransactions_WithCanto(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	// The over-gas transaction forces Filter to evaluate every transaction.
+	newList := func() (list *txList, blob, overGas *types.Transaction) {
+		list = newTxList(true)
+		blob = types.NewTx(&types.BlobTx{Nonce: 2, Gas: 21_000, GasFeeCap: uint256.NewInt(1)})
+		overGas = transaction(4, 2_000_000, key)
+		for _, tx := range []*types.Transaction{
+			transaction(0, 21_000, key),
+			transaction(1, 21_000, key),
+			blob,
+			transaction(3, 21_000, key),
+			overGas,
+		} {
+			added, _ := list.Add(tx, DefaultTxPoolConfig.PriceBump)
+			require.True(t, added)
+		}
+		return list, blob, overGas
+	}
+
+	list, blob, overGas := newList()
+	removed, invalidated := list.Filter(big.NewInt(1e18), 1_000_000, nil, nil, opera.GetBrioUpgrades())
+	require.Equal(t, types.Transactions{overGas}, removed)
+	require.Empty(t, invalidated)
+	require.Same(t, blob, list.txs.Get(2))
+
+	list, blob, overGas = newList()
+	removed, invalidated = list.Filter(big.NewInt(1e18), 1_000_000, nil, nil, opera.GetCantoUpgrades())
+	require.ElementsMatch(t, types.Transactions{blob, overGas}, removed)
+	require.Len(t, invalidated, 1)
+	require.Equal(t, uint64(3), invalidated[0].Nonce())
+	require.Equal(t, 2, list.Len())
 }
 
 func TestTxList_Ready_PromotesAllConsecutiveNonces(t *testing.T) {
