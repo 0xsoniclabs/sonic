@@ -1132,9 +1132,11 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 		t.Run(name, func(t *testing.T) {
 			pragueTime := uint64(1000)
 			callToSnapshot := 0
+			callToDebit := 1
 			if isPrague {
 				pragueTime = 0
 				callToSnapshot = 1
+				callToDebit = 0
 			}
 			ctrl := gomock.NewController(t)
 			state := state.NewMockStateDB(ctrl)
@@ -1169,6 +1171,7 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 				state.EXPECT().Snapshot().Return(42).Times(callToSnapshot),
 				state.EXPECT().RevertToSnapshot(42).Times(callToSnapshot),
 				state.EXPECT().GetBalance(msg.From).Return(uint256.NewInt(1000000)),
+				state.EXPECT().SubBalance(msg.From, uint256.NewInt(1000000), tracing.BalanceDecreaseGasBuy).Times(callToDebit),
 				state.EXPECT().EndTransaction(),
 			)
 
@@ -1184,28 +1187,27 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 func TestApplyTransaction_SkippedTransaction_ChargesGasPoolOnlyAfterBalanceCheck(t *testing.T) {
 	call := &common.Address{1}
 	tests := map[string]struct {
-		to          *common.Address
-		gasPrice    *uint256.Int
-		gasFeeCap   *uint256.Int
-		balance     uint64
-		pool        uint64
-		upgrades    opera.Upgrades
-		err         error
-		gasBought   bool
-		poolCharged bool
+		to        *common.Address
+		gasPrice  *uint256.Int
+		gasFeeCap *uint256.Int
+		balance   uint64
+		pool      uint64
+		upgrades  opera.Upgrades
+		err       error
+		gasBought bool
 	}{
 		"insufficient funds": {to: call, balance: 0, pool: 1_000_000, err: core.ErrInsufficientFunds},
 		"intrinsic gas too low": {
-			to: call, balance: 1_000_000, pool: 1_000_000, err: core.ErrIntrinsicGas, gasBought: true, poolCharged: true,
+			to: call, balance: 1_000_000, pool: 1_000_000, err: core.ErrIntrinsicGas, gasBought: true,
 		},
 		"oversized init code": {
-			balance: 1_000_000, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded, poolCharged: true,
+			balance: 1_000_000, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded, gasBought: true,
 		},
 		"oversized init code, exact balance": {
-			balance: 1_000, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded, poolCharged: true,
+			balance: 1_000, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded, gasBought: true,
 		},
 		"oversized init code, balance covers gas price but not fee cap": {
-			gasFeeCap: uint256.NewInt(2), balance: 1_000, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded, poolCharged: true,
+			gasFeeCap: uint256.NewInt(2), balance: 1_000, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded, gasBought: true,
 		},
 		"oversized init code, cost overflows": {
 			gasPrice: new(uint256.Int).Lsh(uint256.NewInt(1), 255), balance: 1_000_000, pool: 1_000_000, err: vm.ErrMaxInitCodeSizeExceeded,
@@ -1224,12 +1226,6 @@ func TestApplyTransaction_SkippedTransaction_ChargesGasPoolOnlyAfterBalanceCheck
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			state := state.NewMockStateDB(ctrl)
-			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(test.balance)).MaxTimes(1)
-			if test.gasBought {
-				state.EXPECT().SubBalance(gomock.Any(), gomock.Any(), gomock.Any())
-			}
-			state.EXPECT().EndTransaction()
-
 			maxInitCodeSize := 0
 			evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{}, vm.Config{MaxInitCodeSize: &maxInitCodeSize})
 			gp := core.NewGasPool(test.pool)
@@ -1246,11 +1242,18 @@ func TestApplyTransaction_SkippedTransaction_ChargesGasPoolOnlyAfterBalanceCheck
 				Data:      []byte{0},
 			}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
 
+			state.EXPECT().GetBalance(msg.From).Return(uint256.NewInt(test.balance)).MaxTimes(1)
+			if test.gasBought {
+				cost := new(uint256.Int).Mul(uint256.NewInt(msg.GasLimit), gasPrice)
+				state.EXPECT().SubBalance(msg.From, cost, tracing.BalanceDecreaseGasBuy)
+			}
+			state.EXPECT().EndTransaction()
+
 			_, _, err := applyTransaction(msg, gp, state, nil, types.NewTx(&types.LegacyTx{}), new(uint64), evm, test.upgrades)
 			require.ErrorIs(t, err, test.err)
 
 			want := test.pool
-			if test.poolCharged {
+			if test.gasBought {
 				want -= msg.GasLimit
 			}
 			require.Equal(t, want, gp.Available(false, params.MaxTxGas))

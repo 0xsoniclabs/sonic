@@ -24,6 +24,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -1029,14 +1030,17 @@ func applyTransaction(
 			gp.Set(gasPool)
 		}
 		// go-ethereum checks the init code size before that balance check since
-		// 1.17.10; until Canto, Sonic keeps charging the pool for creations whose
-		// sender can pay for the gas limit. That balance check was gasLimit*gasPrice
-		// only because opera.GetVmConfig sets IgnoreGasFeeCap and, until Canto,
-		// InsufficientBalanceIsNotAnError.
+		// 1.17.10. Until Canto, Sonic still charges the pool for creations whose
+		// sender can pay for the gas limit, and before Allegro, which does not
+		// revert skipped transactions, it still debits the sender for that gas.
+		// That balance check was gasLimit*gasPrice only because opera.GetVmConfig
+		// sets IgnoreGasFeeCap and, until Canto, InsufficientBalanceIsNotAnError.
 		if !upgrades.Canto && errors.Is(err, vm.ErrMaxInitCodeSizeExceeded) {
 			cost, overflow := new(uint256.Int).MulOverflow(uint256.NewInt(msg.GasLimit), msg.GasPrice)
 			if !overflow && !statedb.GetBalance(msg.From).Lt(cost) {
-				_ = gp.CheckGasLegacy(msg.GasLimit)
+				if gp.CheckGasLegacy(msg.GasLimit) == nil && !isAllegro {
+					statedb.SubBalance(msg.From, cost, tracing.BalanceDecreaseGasBuy)
+				}
 			}
 		}
 		statedb.EndTransaction()

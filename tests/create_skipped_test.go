@@ -29,7 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *testing.T) {
+func TestAccountCreation_CreateCallsWithInitCodesTooLargeAreSkipped(t *testing.T) {
 
 	testSizes := map[string]int{
 		"Sonic":   50000,
@@ -106,7 +106,12 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 			postBalance, err := client.BalanceAt(t.Context(), sender.Address(), receipt.BlockNumber)
 			require.NoError(t, err)
 
-			require.Equal(t, preBalance, postBalance, "balance should not change after skipped contract creation")
+			// Before Allegro, skipped transactions keep the gas they bought.
+			wantBalance := new(big.Int).Set(preBalance)
+			if !version.Allegro {
+				wantBalance.Sub(wantBalance, new(big.Int).Mul(new(big.Int).SetUint64(txData.Gas), gasPrice))
+			}
+			require.Equal(t, wantBalance.String(), postBalance.String(), "unexpected balance after skipped contract creation")
 
 			postNonce, err := client.NonceAt(t.Context(), sender.Address(), receipt.BlockNumber)
 			require.NoError(t, err)
