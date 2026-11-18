@@ -151,6 +151,14 @@ func TestTokenStandards_ERC1155(t *testing.T) {
 				then("ERC1155BatchReceived", alice, alice, []int{1, 2}, []int{3, 5}, erc1155HookData),
 			want: erc1155Held(erc1155Balances{{7, 0}, {0, 0}, {0, 0}}, false),
 		},
+		"safeBatchTransferFrom by an operator to an accepting receiver succeeds": {
+			setup:  operatorBob,
+			sender: bob,
+			action: erc1155SafeBatchTransferFrom(alice, acceptingReceiver, []int64{1, 2}, []int64{3, 5}),
+			wantLogs: emits("TransferBatch", bob, alice, acceptingReceiver, []int{1, 2}, []int{3, 5}).
+				then("ERC1155BatchReceived", bob, alice, []int{1, 2}, []int{3, 5}, erc1155HookData),
+			want: erc1155Held(erc1155Balances{{7, 0}, {0, 0}, {0, 0}}, true),
+		},
 		"safeBatchTransferFrom without approval fails": {
 			sender: bob,
 			action: erc1155SafeBatchTransferFrom(alice, carol, []int64{1, 2}, []int64{3, 5}),
@@ -213,10 +221,10 @@ func TestTokenStandards_ERC1155(t *testing.T) {
 
 	// Cleanups run after all subtests, including the parallel cases, and
 	// before the network registered earlier is stopped. The accepting
-	// receiver gets 3+3+3 tokens of id 1 and 5 of id 2 from the cases
+	// receiver gets 3+3+3+3 tokens of id 1 and 5+5 of id 2 from the cases
 	// transferring to it, and the deployer funds all of its tokens to Alices.
 	t.Cleanup(func() {
-		for actor, want := range map[tokenActor][2]uint64{acceptingReceiver: {9, 5}, rejectingReceiver: {}, deployer: {}} {
+		for actor, want := range map[tokenActor][2]uint64{acceptingReceiver: {12, 10}, rejectingReceiver: {}, deployer: {}} {
 			for i, id := range toBigInts(erc1155Ids) {
 				balance, err := token.BalanceOf(nil, shared[actor], id)
 				require.NoError(t, err, "balanceOf %v for id %v", actor, id)
