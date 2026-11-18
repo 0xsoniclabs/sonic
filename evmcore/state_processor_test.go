@@ -429,6 +429,178 @@ func TestProcess_OversizedInitCodeTakesGasFromThePoolBeforeCanto(t *testing.T) {
 	}
 }
 
+func TestProcess_ValueAbove256BitsTakesGasFromThePoolBeforeBrio(t *testing.T) {
+	tests := map[string]struct {
+		upgrades     opera.Upgrades
+		callIncluded bool
+	}{
+		"before Brio": {upgrades: opera.Upgrades{}},
+		"Brio":        {upgrades: opera.Upgrades{Brio: true}, callIncluded: true},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			ctrl := gomock.NewController(t)
+			processor := NewStateProcessorForHeadState(&params.ChainConfig{}, NewMockDummyChain(ctrl), test.upgrades, nil)
+
+			key, err := crypto.GenerateKey()
+			require.NoError(err)
+			signer := types.LatestSignerForChainID(nil)
+			const overflowGas = 1_000_000
+			overflow := types.MustSignNewTx(key, signer, &types.LegacyTx{
+				To: &common.Address{1}, Gas: overflowGas, Value: new(big.Int).Lsh(big.NewInt(1), 256),
+			})
+			call := types.MustSignNewTx(key, signer, &types.LegacyTx{
+				To: &common.Address{1}, Gas: params.TxGas,
+			})
+			transactions := []*types.Transaction{overflow, call}
+			state := getStateDbMockForTransactions(ctrl, transactions)
+
+			block := &EvmBlock{
+				EvmHeader:    EvmHeader{Number: big.NewInt(1), GasLimit: math.MaxUint64},
+				Transactions: transactions,
+			}
+
+			// The pool only holds the gas limit of the transaction with the
+			// overflowing value, so the call fits only if that one did not take it.
+			processed := processor.Process(block, state, vm.Config{}, overflowGas, new(uint64), 0, nil, math.MaxUint64).ProcessedTransactions
+			require.Len(processed, 2)
+			require.Nil(processed[0].Receipt)
+			require.Equal(test.callIncluded, processed[1].Receipt != nil)
+		})
+	}
+}
+
+func TestRunTransaction_ValueAbove256BitsBuysGasBeforeBrio(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	sender := crypto.PubkeyToAddress(key.PublicKey)
+	tooHigh := new(big.Int).Lsh(big.NewInt(1), 256)
+	const gasLimit = 21_000
+	legacy := func(nonce uint64, gasPrice *big.Int) types.TxData {
+		return &types.LegacyTx{Nonce: nonce, To: &common.Address{1}, Gas: gasLimit, GasPrice: gasPrice, Value: tooHigh}
+	}
+	dynamic := func(feeCap, tipCap int64) types.TxData {
+		return &types.DynamicFeeTx{
+			To: &common.Address{1}, Gas: gasLimit, GasFeeCap: big.NewInt(feeCap), GasTipCap: big.NewInt(tipCap), Value: tooHigh,
+		}
+	}
+
+	tests := map[string]struct {
+		tx             types.TxData
+		upgrades       opera.Upgrades
+		nonce          uint64
+		code           []byte
+		balance        uint64
+		pool           uint64
+		noBaseFeeCheck bool
+		charged        bool
+		debited        bool
+		gasPrice       uint64
+	}{
+		"Sonic": {
+			tx: legacy(0, big.NewInt(10)), upgrades: opera.GetSonicUpgrades(), balance: 1e9, pool: 1e9,
+			charged: true, debited: true, gasPrice: 10,
+		},
+		"Allegro": {
+			tx: legacy(0, big.NewInt(10)), upgrades: opera.GetAllegroUpgrades(), balance: 1e9, pool: 1e9, charged: true,
+		},
+		"Brio": {
+			tx: legacy(0, big.NewInt(10)), upgrades: opera.GetBrioUpgrades(), balance: 1e9, pool: 1e9,
+		},
+		"effective gas price": {
+			tx: dynamic(100, 2), upgrades: opera.GetSonicUpgrades(), balance: 1e9, pool: 1e9,
+			charged: true, debited: true, gasPrice: 7,
+		},
+		"zero fees without base fee check": {
+			tx: legacy(0, big.NewInt(0)), upgrades: opera.GetSonicUpgrades(), pool: 1e9, noBaseFeeCheck: true,
+			charged: true, debited: true, gasPrice: 0,
+		},
+		"delegated sender": {
+			tx: legacy(0, big.NewInt(10)), upgrades: opera.GetAllegroUpgrades(), balance: 1e9, pool: 1e9,
+			code: types.AddressToDelegation(common.Address{2}), charged: true,
+		},
+		"exact balance": {
+			tx: legacy(0, big.NewInt(10)), upgrades: opera.GetSonicUpgrades(), balance: gasLimit * 10, pool: 1e9,
+			charged: true, debited: true, gasPrice: 10,
+		},
+		"nonce too high": {
+			tx: legacy(1, big.NewInt(10)), upgrades: opera.GetSonicUpgrades(), balance: 1e9, pool: 1e9,
+		},
+		"nonce too low": {
+			tx: legacy(0, big.NewInt(10)), upgrades: opera.GetSonicUpgrades(), nonce: 1, balance: 1e9, pool: 1e9,
+		},
+		"sender with code": {
+			tx: legacy(0, big.NewInt(10)), upgrades: opera.GetSonicUpgrades(), code: []byte{0x60}, balance: 1e9, pool: 1e9,
+		},
+		"fee cap below base fee": {
+			tx: legacy(0, big.NewInt(4)), upgrades: opera.GetSonicUpgrades(), balance: 1e9, pool: 1e9,
+		},
+		"tip above fee cap": {
+			tx: dynamic(10, 11), upgrades: opera.GetSonicUpgrades(), balance: 1e9, pool: 1e9,
+		},
+		"fee cap above 256 bits": {
+			tx: legacy(0, tooHigh), upgrades: opera.GetSonicUpgrades(), balance: 1e9, pool: 1e9,
+		},
+		"cost overflows": {
+			tx: legacy(0, new(big.Int).Lsh(big.NewInt(1), 255)), upgrades: opera.GetSonicUpgrades(), balance: 1e9, pool: 1e9,
+		},
+		"insufficient balance": {
+			tx: legacy(0, big.NewInt(10)), upgrades: opera.GetSonicUpgrades(), balance: gasLimit*10 - 1, pool: 1e9,
+		},
+		"exhausted pool": {
+			tx: legacy(0, big.NewInt(10)), upgrades: opera.GetSonicUpgrades(), balance: 1e9, pool: gasLimit - 1,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+
+			signer := types.LatestSignerForChainID(big.NewInt(1))
+			tx := types.MustSignNewTx(key, signer, test.tx)
+			if !test.upgrades.Brio {
+				state.EXPECT().SetTxContext(tx.Hash(), 0, uint32(1))
+				state.EXPECT().GetNonce(sender).Return(test.nonce).AnyTimes()
+				state.EXPECT().GetCode(sender).Return(test.code).AnyTimes()
+				state.EXPECT().GetBalance(sender).Return(uint256.NewInt(test.balance)).AnyTimes()
+				state.EXPECT().EndTransaction()
+			}
+			if test.debited {
+				cost := uint256.NewInt(gasLimit * test.gasPrice)
+				state.EXPECT().SubBalance(sender, cost, tracing.BalanceDecreaseGasBuy)
+			}
+
+			chainConfig := opera.CreateTransientEvmChainConfig(1, []opera.UpgradeHeight{{Upgrades: test.upgrades}}, 1)
+			baseFee := big.NewInt(5)
+			blockContext := vm.BlockContext{BlockNumber: big.NewInt(1), BaseFee: baseFee}
+			runner := evm{vm.NewEVM(blockContext, state, chainConfig, vm.Config{})}
+			gp := core.NewGasPool(test.pool)
+			ctxt := &runContext{
+				signer:      signer,
+				baseFee:     baseFee,
+				statedb:     state,
+				gasPool:     gp,
+				blockNumber: blockContext.BlockNumber,
+				upgrades:    test.upgrades,
+			}
+
+			run := runner.runWithBaseFeeCheck
+			if test.noBaseFeeCheck {
+				run = runner.runWithoutBaseFeeCheck
+			}
+			processed := run(ctxt, tx, 0)
+			require.Nil(t, processed.Receipt)
+
+			want := test.pool
+			if test.charged {
+				want -= gasLimit
+			}
+			require.Equal(t, want, gp.Available(false, params.MaxTxGas))
+		})
+	}
+}
+
 func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainConfig := params.ChainConfig{}

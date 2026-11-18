@@ -746,13 +746,19 @@ func (e evm) _runTransaction(
 	txIndex int,
 	checkBaseFee bool,
 ) ProcessedTransaction {
+	e.Config.NoBaseFee = !checkBaseFee
 	msg, err := TxAsMessage(tx, ctxt.signer, ctxt.baseFee)
 	if err != nil {
 		log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
+		// Brio filters transactions with such values out of blocks.
+		if !ctxt.upgrades.Brio && tx.Value().BitLen() > 256 {
+			ctxt.statedb.SetTxContext(tx.Hash(), txIndex, uint32(txIndex+1))
+			buyGasOfTransactionWithOverflowingValue(ctxt, tx, e.EVM)
+			ctxt.statedb.EndTransaction()
+		}
 		return ProcessedTransaction{Transaction: tx}
 	}
 
-	e.Config.NoBaseFee = !checkBaseFee
 	ctxt.statedb.SetTxContext(tx.Hash(), txIndex, uint32(txIndex+1))
 	receipt, _, err := applyTransaction(
 		msg, ctxt.gasPool, ctxt.statedb, ctxt.blockNumber, tx,
@@ -1029,19 +1035,9 @@ func applyTransaction(
 		if errors.Is(err, core.ErrInsufficientFunds) {
 			gp.Set(gasPool)
 		}
-		// go-ethereum checks the init code size before that balance check since
-		// 1.17.10. Until Canto, Sonic still charges the pool for creations whose
-		// sender can pay for the gas limit, and before Allegro, which does not
-		// revert skipped transactions, it still debits the sender for that gas.
-		// That balance check was gasLimit*gasPrice only because opera.GetVmConfig
-		// sets IgnoreGasFeeCap and, until Canto, InsufficientBalanceIsNotAnError.
+		// go-ethereum checks the init code size before buying gas since 1.17.10.
 		if !upgrades.Canto && errors.Is(err, vm.ErrMaxInitCodeSizeExceeded) {
-			cost, overflow := new(uint256.Int).MulOverflow(uint256.NewInt(msg.GasLimit), msg.GasPrice)
-			if !overflow && !statedb.GetBalance(msg.From).Lt(cost) {
-				if gp.CheckGasLegacy(msg.GasLimit) == nil && !isAllegro {
-					statedb.SubBalance(msg.From, cost, tracing.BalanceDecreaseGasBuy)
-				}
-			}
+			buyGasOfSkippedTransaction(statedb, gp, msg.From, msg.GasLimit, msg.GasPrice, isAllegro)
 		}
 		statedb.EndTransaction()
 		return nil, 0, err
@@ -1085,6 +1081,68 @@ func applyTransaction(
 	receipt.EffectiveGasPrice = msg.GasPrice.ToBig()
 
 	return receipt, result.UsedGas, nil
+}
+
+// buyGasOfSkippedTransaction emulates the gas purchase of go-ethereum before
+// 1.17.10 for a transaction that 1.17.10 skips before buying its gas. Until
+// Canto, Sonic charged the pool for it if the sender could pay for the gas
+// limit, and before Allegro, which does not revert skipped transactions, the
+// sender's debit stayed in the state as well. That balance check was
+// gasLimit*gasPrice only because opera.GetVmConfig sets IgnoreGasFeeCap and,
+// until Canto, InsufficientBalanceIsNotAnError.
+func buyGasOfSkippedTransaction(
+	statedb state.StateDB,
+	gp *core.GasPool,
+	from common.Address,
+	gasLimit uint64,
+	gasPrice *uint256.Int,
+	isAllegro bool,
+) {
+	cost, overflow := new(uint256.Int).MulOverflow(uint256.NewInt(gasLimit), gasPrice)
+	if overflow || statedb.GetBalance(from).Lt(cost) {
+		return
+	}
+	if gp.CheckGasLegacy(gasLimit) == nil && !isAllegro {
+		statedb.SubBalance(from, cost, tracing.BalanceDecreaseGasBuy)
+	}
+}
+
+// buyGasOfTransactionWithOverflowingValue emulates go-ethereum before 1.17.10
+// for a transaction whose value exceeds 256 bits. 1.17.10 rejects it while
+// converting it to a message. Before, the value was checked only after the
+// remaining checks of stateTransition.preCheck had passed and the gas was
+// bought. Blob and set-code transactions cannot carry such a value.
+func buyGasOfTransactionWithOverflowingValue(ctxt *runContext, tx *types.Transaction, evm *vm.EVM) {
+	from, err := types.Sender(ctxt.signer, tx)
+	if err != nil {
+		return
+	}
+	var converter utils.Uint256Converter
+	feeCap := converter.Convert("gas fee cap", tx.GasFeeCap())
+	tipCap := converter.Convert("gas tip cap", tx.GasTipCap())
+	if converter.Err != nil {
+		return
+	}
+	if nonce := ctxt.statedb.GetNonce(from); nonce != tx.Nonce() || nonce+1 < nonce {
+		return
+	}
+	if code := ctxt.statedb.GetCode(from); len(code) > 0 {
+		if _, delegated := types.ParseDelegation(code); !delegated {
+			return
+		}
+	}
+	gasPrice := feeCap
+	if baseFee := ctxt.baseFee; baseFee != nil {
+		skipFeeChecks := evm.Config.NoBaseFee && feeCap.IsZero() && tipCap.IsZero()
+		if !skipFeeChecks && (feeCap.Lt(tipCap) || feeCap.CmpBig(baseFee) < 0) {
+			return
+		}
+		if effective := new(big.Int).Add(baseFee, tx.GasTipCap()); effective.Cmp(tx.GasFeeCap()) < 0 {
+			gasPrice = uint256.MustFromBig(effective)
+		}
+	}
+	isAllegro := evm.ChainConfig().IsPrague(ctxt.blockNumber, evm.Context.Time)
+	buyGasOfSkippedTransaction(ctxt.statedb, ctxt.gasPool, from, tx.Gas(), gasPrice, isAllegro)
 }
 
 func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (*core.Message, error) {

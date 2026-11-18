@@ -137,3 +137,59 @@ func TestInsufficientBalance_TransactionsNotCoveringTheirValueAreSkippedStarting
 		})
 	}
 }
+
+func TestInsufficientBalance_TransactionsWithValuesAbove256BitsAreSkipped(t *testing.T) {
+	for upgradeName, upgrades := range opera.GetAllHardForksInOrder() {
+		t.Run(upgradeName, func(t *testing.T) {
+			session := getIntegrationTestNetSession(t, upgrades)
+			t.Parallel()
+
+			require := require.New(t)
+			client, err := session.GetClient()
+			require.NoError(err)
+			defer client.Close()
+
+			balance := big.NewInt(1e18)
+			accounts := MakeAccountsWithBalance(t, session, 2, balance)
+			sender, marker := accounts[0], accounts[1]
+
+			// Proposing the transaction directly bypasses the pool, which
+			// would reject it.
+			tx := CreateTransaction(t, session, &types.LegacyTx{
+				To:    &common.Address{0x42},
+				Gas:   100_000,
+				Value: new(big.Int).Lsh(big.NewInt(1), 256),
+			}, sender)
+			// The marker is proposed in the same event to know the block the
+			// transaction is processed in.
+			markerTx := CreateTransaction(t, session, &types.LegacyTx{
+				To: &common.Address{},
+			}, marker)
+			_, err = session.ForceEmitAll(t.Context(), []*types.Transaction{tx, markerTx})
+			require.NoError(err)
+			markerReceipt, err := session.GetReceipt(markerTx.Hash())
+			require.NoError(err)
+			require.Equal(types.ReceiptStatusSuccessful, markerReceipt.Status)
+			block := markerReceipt.BlockNumber
+
+			receipts, err := client.BlockReceipts(t.Context(),
+				rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(block.Int64())))
+			require.NoError(err)
+			for _, receipt := range receipts {
+				require.NotEqual(tx.Hash(), receipt.TxHash, "transaction should be skipped")
+			}
+
+			// Before Allegro, skipped transactions keep the gas they bought.
+			wantBalance := new(big.Int).Set(balance)
+			if !upgrades.Allegro {
+				wantBalance.Sub(wantBalance, new(big.Int).Mul(new(big.Int).SetUint64(tx.Gas()), tx.GasPrice()))
+			}
+			gotBalance, err := client.BalanceAt(t.Context(), sender.Address(), block)
+			require.NoError(err)
+			require.Equal(wantBalance, gotBalance)
+			gotNonce, err := client.NonceAt(t.Context(), sender.Address(), block)
+			require.NoError(err)
+			require.Zero(gotNonce)
+		})
+	}
+}
