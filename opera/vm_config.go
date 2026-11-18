@@ -17,6 +17,7 @@
 package opera
 
 import (
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
 	"github.com/0xsoniclabs/tosca/go/geth_adapter"
 	"github.com/0xsoniclabs/tosca/go/interpreter/sfvm"
@@ -94,6 +95,13 @@ func GetVmConfig(rules Rules) vm.Config {
 	// transferred value are skipped instead of being charged as failed.
 	if rules.Upgrades.Canto {
 		res.InsufficientBalanceIsNotAnError = false
+	}
+
+	// With the account freeze, calls made by or to frozen accounts, and ERC-20
+	// transfers naming them, revert.
+	if rules.Upgrades.AccountFreeze {
+		res.Interpreter = freeze.WrapInterpreter(res.Interpreter)
+		res.InterpreterForTracing = freeze.WrapInterpreter(res.InterpreterForTracing)
 	}
 
 	return res

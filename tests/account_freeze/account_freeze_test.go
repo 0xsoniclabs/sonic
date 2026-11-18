@@ -50,6 +50,9 @@ func TestAccountFreeze_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 
 	oneS := big.NewInt(1e18)
+	token, tokenAddr := deployToken(t, net)
+	tokenABI, err := erc20.Erc20MetaData.GetAbi()
+	require.NoError(t, err)
 	frozen := tests.MakeAccountWithBalance(t, net, oneS)
 	frozenAt := freeze(t, net, reg, frozen.Address(), true).BlockNumber
 
@@ -82,56 +85,12 @@ func TestAccountFreeze_EndToEnd(t *testing.T) {
 		require.Empty(t, content["pending"])
 	})
 
-	t.Run("native S sent to frozen account fails", func(t *testing.T) {
-		sender := tests.MakeAccountWithBalance(t, net, oneS)
-		before := balanceOf(t, net, frozen.Address())
-
-		receipt := requireFrozenRevert(t, net, valueTransfer(t, net, sender, frozen.Address()))
-		require.Equal(t, before, balanceOf(t, net, frozen.Address()))
-
-		// The failed transaction uses the nonce and pays for its gas.
-		nonce, err := client.NonceAt(t.Context(), sender.Address(), nil)
-		require.NoError(t, err)
-		require.Equal(t, uint64(1), nonce)
-		fee := new(big.Int).Mul(new(big.Int).SetUint64(receipt.GasUsed), receipt.EffectiveGasPrice)
-		require.Equal(t, new(big.Int).Sub(oneS, fee), balanceOf(t, net, sender.Address()))
-	})
-
-	t.Run("failed transaction drops its EIP-7702 authorizations", func(t *testing.T) {
-		account := tests.MakeAccountWithBalance(t, net, oneS)
-		_, receipt, err := tests.DeployContract(net, payer.DeployPayer)
-		require.NoError(t, err)
-		payerABI, err := payer.PayerMetaData.GetAbi()
-		require.NoError(t, err)
-		input, err := payerABI.Pack("pay", frozen.Address(), big.NewInt(1))
-		require.NoError(t, err)
-
-		// The account delegates to the payer and, in the same transaction,
-		// pays the frozen account through the delegated code.
-		auth, err := types.SignSetCode(account.PrivateKey, types.SetCodeAuthorization{
-			ChainID: *uint256.MustFromBig(net.GetChainId()),
-			Address: receipt.ContractAddress,
-			Nonce:   1,
-		})
-		require.NoError(t, err)
-		to := account.Address()
-		receipt = requireFrozenRevert(t, net, tests.CreateTransaction(t, net, &types.SetCodeTx{
-			To: to, Gas: 200_000, Data: input, AuthList: []types.SetCodeAuthorization{auth},
-		}, account))
-
-		code, err := client.CodeAt(t.Context(), account.Address(), nil)
-		require.NoError(t, err)
-		require.Empty(t, code, "delegation rolled back")
-		nonce, err := client.NonceAt(t.Context(), account.Address(), nil)
-		require.NoError(t, err)
-		require.Equal(t, uint64(1), nonce, "only the transaction's nonce is used")
-	})
-
 	t.Run("RPC applies the freeze of the queried block", func(t *testing.T) {
-		to := frozen.Address()
-		msg := ethereum.CallMsg{From: net.GetSessionSponsor().Address(), To: &to, Value: big.NewInt(1)}
+		input, err := tokenABI.Pack("transfer", frozen.Address(), big.NewInt(1))
+		require.NoError(t, err)
+		msg := ethereum.CallMsg{From: net.GetSessionSponsor().Address(), To: &tokenAddr, Data: input}
 
-		_, err := client.CallContract(t.Context(), msg, nil)
+		_, err = client.CallContract(t.Context(), msg, nil)
 		require.ErrorContains(t, err, "account is frozen")
 		_, err = client.EstimateGas(t.Context(), msg)
 		require.ErrorContains(t, err, "account is frozen")
@@ -150,7 +109,7 @@ func TestAccountFreeze_EndToEnd(t *testing.T) {
 		}
 		require.NoError(t, client.Client().Call(&blocks, "eth_simulateV1", map[string]any{
 			"blockStateCalls": []any{map[string]any{"calls": []any{map[string]any{
-				"from": msg.From, "to": to, "value": "0x1",
+				"from": msg.From, "to": tokenAddr, "input": hexutil.Bytes(input),
 			}}}},
 		}, "latest"))
 		require.Len(t, blocks, 1)
@@ -160,23 +119,25 @@ func TestAccountFreeze_EndToEnd(t *testing.T) {
 		require.Contains(t, blocks[0].Calls[0].Error.Message, "account is frozen")
 	})
 
-	t.Run("contract paying frozen account fails even if it ignores the result", func(t *testing.T) {
+	t.Run("payment to a frozen contract fails as a call the payer can handle", func(t *testing.T) {
 		contract := deployFundedPayer(t, net, 10)
-		before := balanceOf(t, net, frozen.Address())
+		_, receipt, err := tests.DeployContract(net, payer.DeployPayer)
+		require.NoError(t, err)
+		frozenContract := receipt.ContractAddress
+		freeze(t, net, reg, frozenContract, true)
 
-		receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-			return contract.Pay(opts, frozen.Address(), big.NewInt(1))
+		receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+			return contract.Pay(opts, frozenContract, big.NewInt(1))
 		})
 		require.NoError(t, err)
 		require.Equal(t, types.ReceiptStatusFailed, receipt.Status)
-		require.Equal(t, before, balanceOf(t, net, frozen.Address()))
 
-		// The payment itself succeeds inside the transaction; the freeze
-		// reverts the transaction's outermost call afterwards.
+		// The payment reverts with the freeze's reason, and the payer handles
+		// the failure by reverting with its own.
 		trace := requireTracesMatchReceipt(t, net, receipt)
-		require.Equal(t, "account is frozen", trace.RevertReason)
+		require.Equal(t, "payment failed", trace.RevertReason)
 		require.Len(t, trace.Calls, 1)
-		require.Empty(t, trace.Calls[0].Error)
+		require.Equal(t, "account is frozen", trace.Calls[0].RevertReason)
 	})
 
 	t.Run("frozen contract cannot pay out", func(t *testing.T) {
@@ -189,21 +150,6 @@ func TestAccountFreeze_EndToEnd(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, types.ReceiptStatusFailed, receipt.Status)
 		require.Equal(t, int64(10), balanceOf(t, net, contract.address).Int64())
-	})
-
-	t.Run("selfdestruct cannot pay frozen account", func(t *testing.T) {
-		factory, receipt, err := tests.DeployContract(net, selfdestruct.DeploySelfDestructFactory)
-		require.NoError(t, err)
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-		before := balanceOf(t, net, frozen.Address())
-
-		sender := tests.MakeAccountWithBalance(t, net, oneS)
-		opts := unsentOpts(t, net, sender)
-		opts.Value = big.NewInt(1)
-		tx, err := factory.CreateAndDestroy(opts, frozen.Address())
-		require.NoError(t, err)
-		requireFrozenRevert(t, net, tx)
-		require.Equal(t, before, balanceOf(t, net, frozen.Address()))
 	})
 
 	t.Run("frozen contract cannot selfdestruct its funds away", func(t *testing.T) {
@@ -224,7 +170,6 @@ func TestAccountFreeze_EndToEnd(t *testing.T) {
 	t.Run("tokens cannot move from or to frozen account", func(t *testing.T) {
 		holder := tests.MakeAccountWithBalance(t, net, oneS)
 		spender := tests.MakeAccountWithBalance(t, net, oneS)
-		token, tokenAddr := deployToken(t, net)
 
 		// Before the freeze the holder receives tokens and grants allowances,
 		// to the spender and to a router contract.
@@ -254,8 +199,6 @@ func TestAccountFreeze_EndToEnd(t *testing.T) {
 		requireFrozenRevert(t, net, tx)
 
 		// An old allowance cannot move tokens out of the account.
-		tokenABI, err := erc20.Erc20MetaData.GetAbi()
-		require.NoError(t, err)
 		input, err := tokenABI.Pack("transferFrom", holder.Address(), spender.Address(), big.NewInt(10))
 		require.NoError(t, err)
 		_, err = client.CallContract(t.Context(), ethereum.CallMsg{From: spender.Address(), To: &tokenAddr, Data: input}, nil)
@@ -265,8 +208,8 @@ func TestAccountFreeze_EndToEnd(t *testing.T) {
 		require.NoError(t, err)
 		requireFrozenRevert(t, net, tx)
 
-		// A router moving the tokens fails as well: the token call succeeds
-		// inside it, and the transaction reverts afterwards.
+		// A router moving the tokens fails as well: the token call reverts,
+		// and the router passes the revert on.
 		tx, err = router.Forward(unsentOpts(t, net, spender), tokenAddr, input)
 		require.NoError(t, err)
 		requireFrozenRevert(t, net, tx)
@@ -307,20 +250,16 @@ func TestAccountFreeze_EndToEnd(t *testing.T) {
 	})
 
 	t.Run("opted-out token and operator are not checked", func(t *testing.T) {
-		token, tokenAddr := deployToken(t, net)
-		optOut(t, net, reg, tokenAddr, true)
-		receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-			return token.Transfer(opts, frozen.Address(), big.NewInt(1))
-		})
-		require.NoError(t, err)
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-		optOut(t, net, reg, tokenAddr, false)
-
-		operator := tests.MakeAccountWithBalance(t, net, oneS)
-		optOut(t, net, reg, operator.Address(), true)
-		receipt, err = net.Run(valueTransfer(t, net, operator, frozen.Address()))
-		require.NoError(t, err)
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+		// The session sponsor sends the transfers, so it is the operator.
+		for _, account := range []common.Address{tokenAddr, net.GetSessionSponsor().Address()} {
+			optOut(t, net, reg, account, true)
+			receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+				return token.Transfer(opts, frozen.Address(), big.NewInt(1))
+			})
+			require.NoError(t, err)
+			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+			optOut(t, net, reg, account, false)
+		}
 	})
 
 	t.Run("unfreezing restores normal behaviour", func(t *testing.T) {

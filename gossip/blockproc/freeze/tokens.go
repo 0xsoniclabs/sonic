@@ -17,34 +17,36 @@
 package freeze
 
 import (
+	"bytes"
+	"slices"
+
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 var (
-	transferTopic = common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")
-	approvalTopic = common.HexToHash("0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925")
+	transferSelector     = crypto.Keccak256([]byte("transfer(address,uint256)"))[:4]
+	transferFromSelector = crypto.Keccak256([]byte("transferFrom(address,address,uint256)"))[:4]
 )
 
-// isFrozenTokenLog reports whether log is an ERC-20 Transfer or Approval
-// naming a frozen account as either of its two addresses, emitted by a
-// contract that is not opted out. The events are standard, so this covers
-// every token without listing them.
-func isFrozenTokenLog(db StateReader, log *types.Log) bool {
-	if len(log.Topics) != 3 {
-		return false // ERC-20 Transfer and Approval have exactly 3 topics
-	}
-	if log.Topics[0] != transferTopic && log.Topics[0] != approvalTopic {
+// isFrozenTokenCall reports whether input is an ERC-20 transfer to, or
+// transferFrom from or to, a frozen account, sent to a token that is not
+// opted out. Tokens moved by other functions, such as mints, burnFrom or
+// EIP-3009 transferWithAuthorization, are not checked.
+func isFrozenTokenCall(db StateReader, token common.Address, input []byte) bool {
+	var accounts []byte // the address arguments
+	switch {
+	case bytes.HasPrefix(input, transferSelector) && len(input) >= 4+32:
+		accounts = input[4 : 4+32] // to
+	case bytes.HasPrefix(input, transferFromSelector) && len(input) >= 4+64:
+		accounts = input[4 : 4+64] // from, to
+	default:
 		return false
 	}
-	return (IsFrozen(db, common.BytesToAddress(log.Topics[1].Bytes())) ||
-		IsFrozen(db, common.BytesToAddress(log.Topics[2].Bytes()))) &&
-		!IsOptedOut(db, log.Address)
-}
-
-func (s *StateDB) AddLog(log *types.Log) {
-	s.StateDB.AddLog(log)
-	if isFrozenTokenLog(s.StateDB, log) {
-		s.frozenMoves++
+	for account := range slices.Chunk(accounts, 32) {
+		if IsFrozen(db, common.BytesToAddress(account)) {
+			return !IsOptedOut(db, token)
+		}
 	}
+	return false
 }

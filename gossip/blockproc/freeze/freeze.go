@@ -15,10 +15,9 @@
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
 // Package freeze implements the checks that keep frozen accounts from moving
-// native S or ERC-20 tokens. A transaction during which value moves from
-// or to a frozen account, or an ERC-20 token moves tokens from or to one,
-// reverts, and transactions sent by a frozen account are skipped by the block
-// processor.
+// native S or ERC-20 tokens. Transactions sent by a frozen account are skipped
+// by the block processor, and a call made by or to a frozen account, or an
+// ERC-20 transfer naming one, reverts before any code runs.
 package freeze
 
 import (
@@ -47,8 +46,8 @@ func IsFrozen(db StateReader, account common.Address) bool {
 }
 
 // IsOptedOut reports whether the registry lists account as a token operator
-// opted out of the freeze: its transactions and its contract's token events
-// are not checked.
+// opted out of the freeze: its transactions and its contract's token
+// transfers are not checked.
 func IsOptedOut(db StateReader, account common.Address) bool {
 	return db.GetState(registry.GetAddress(), registry.GetOptedOutSlot(account)) != (common.Hash{})
 }

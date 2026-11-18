@@ -17,83 +17,44 @@
 package freeze
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 )
 
-func TestIsFrozenTokenLog_DetectsErc20EventsNamingFrozenAccounts(t *testing.T) {
+// tokenCall encodes a call of the function with selector, passing accounts
+// and an amount of zero.
+func tokenCall(selector []byte, accounts ...common.Address) []byte {
+	input := slices.Clone(selector)
+	for _, account := range accounts {
+		input = append(input, common.LeftPadBytes(account.Bytes(), 32)...)
+	}
+	return append(input, make([]byte, 32)...)
+}
+
+func TestIsFrozenTokenCall_DetectsErc20TransfersNamingFrozenAccounts(t *testing.T) {
 	db := newFakeState(frozenAccount)
 	db.slots[registry.GetOptedOutSlot(optedOutToken)] = common.Hash{31: 1}
-	topic := func(a common.Address) common.Hash { return common.BytesToHash(a.Bytes()) }
 
 	tests := map[string]struct {
-		log  types.Log
-		want bool
+		token common.Address
+		input []byte
+		want  bool
 	}{
-		"transfer from frozen": {
-			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(frozenAccount), topic(otherAccount)}},
-			true,
-		},
-		"approval by frozen": {
-			types.Log{Address: token, Topics: []common.Hash{approvalTopic, topic(frozenAccount), topic(otherAccount)}},
-			true,
-		},
-		"transfer to frozen": {
-			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(otherAccount), topic(frozenAccount)}},
-			true,
-		},
-		"approval of frozen spender": {
-			types.Log{Address: token, Topics: []common.Hash{approvalTopic, topic(otherAccount), topic(frozenAccount)}},
-			true,
-		},
-		"transfer between others": {
-			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(otherAccount), topic(otherAccount)}},
-			false,
-		},
-		"erc-721 transfer": {
-			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(frozenAccount), topic(otherAccount), {}}},
-			false,
-		},
-		"opted-out token": {
-			types.Log{Address: optedOutToken, Topics: []common.Hash{transferTopic, topic(frozenAccount), topic(otherAccount)}},
-			false,
-		},
-		"other event": {
-			types.Log{Address: token, Topics: []common.Hash{{0x1}, topic(frozenAccount), topic(otherAccount)}},
-			false,
-		},
+		"transfer to frozen":          {token, tokenCall(transferSelector, frozenAccount), true},
+		"transferFrom from frozen":    {token, tokenCall(transferFromSelector, frozenAccount, otherAccount), true},
+		"transferFrom to frozen":      {token, tokenCall(transferFromSelector, otherAccount, frozenAccount), true},
+		"transferFrom between others": {token, tokenCall(transferFromSelector, otherAccount, otherAccount), false},
+		"opted-out token":             {optedOutToken, tokenCall(transferSelector, frozenAccount), false},
+		"other function":              {token, tokenCall([]byte{1, 2, 3, 4}, frozenAccount), false},
+		"truncated arguments":         {token, tokenCall(transferSelector, frozenAccount)[:4+31], false},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			require.Equal(t, test.want, isFrozenTokenLog(db, &test.log))
+			require.Equal(t, test.want, isFrozenTokenCall(db, test.token, test.input))
 		})
 	}
-}
-
-func TestMovedSince_TracksFrozenLogsPerSnapshot(t *testing.T) {
-	db := Wrap(newFakeState(frozenAccount))
-	topic := func(a common.Address) common.Hash { return common.BytesToHash(a.Bytes()) }
-	frozenTransfer := &types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(frozenAccount), topic(otherAccount)}}
-	otherTransfer := &types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(otherAccount), topic(otherAccount)}}
-
-	tokenCall := db.Snapshot()
-	db.AddLog(otherTransfer)
-	require.False(t, db.movedSince(tokenCall), "transfer between others")
-
-	db.AddLog(frozenTransfer)
-	laterCall := db.Snapshot()
-	require.False(t, db.movedSince(laterCall), "call started after the log")
-	require.True(t, db.movedSince(tokenCall))
-
-	db.RevertToSnapshot(tokenCall)
-	require.False(t, db.movedSince(tokenCall), "log reverted")
-
-	db.AddLog(frozenTransfer)
-	db.Prepare(params.Rules{}, otherAccount, common.Address{}, nil, nil, nil)
-	require.False(t, db.movedSince(db.Snapshot()), "next transaction")
 }

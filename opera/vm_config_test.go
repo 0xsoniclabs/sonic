@@ -23,6 +23,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -95,6 +96,92 @@ func TestGetVmConfig_BrioUpgrade_CopiesMaxEventGasValue(t *testing.T) {
 	require.NotNil(t, vmConfig.MaxTxGas)
 	require.Equal(t, want, *vmConfig.MaxTxGas)
 	require.False(t, &rules.Economy.Gas.MaxEventGas == vmConfig.MaxTxGas)
+}
+
+func TestGetVmConfig_AccountFreezeRefusesCallsToFrozenAccountsInAllInterpreters(t *testing.T) {
+	for _, accountFreeze := range []bool{false, true} {
+		upgrades := opera.GetBrioUpgrades()
+		upgrades.AccountFreeze = accountFreeze
+		vmConfig := opera.GetVmConfig(opera.Rules{Upgrades: upgrades})
+		interpreters := map[string]vm.InterpreterFactory{
+			"processing": vmConfig.Interpreter,
+			"tracing":    vmConfig.InterpreterForTracing,
+		}
+		for name, interpreter := range interpreters {
+			t.Run(fmt.Sprintf("AccountFreeze=%t/%s", accountFreeze, name), func(t *testing.T) {
+				stateDB, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+				require.NoError(t, err)
+				frozen, sender := common.Address{1}, common.Address{2}
+				stateDB.SetCode(frozen, []byte{byte(vm.STOP)}, tracing.CodeChangeUnspecified)
+				stateDB.SetState(registry.GetAddress(), registry.GetFrozenSlot(frozen), common.Hash{31: 1})
+
+				chainConfig := opera.CreateTransientEvmChainConfig(
+					opera.FakeNetworkID,
+					[]opera.UpgradeHeight{opera.MakeUpgradeHeight(upgrades, 0)},
+					0,
+				)
+				blockContext := vm.BlockContext{
+					CanTransfer: core.CanTransfer,
+					Transfer:    core.Transfer,
+					BlockNumber: big.NewInt(0),
+					Random:      &common.Hash{},
+				}
+				vmConfig.Interpreter = interpreter
+				evm := vm.NewEVM(blockContext, stateDB, chainConfig, vmConfig)
+				evm.SetTxContext(vm.TxContext{Origin: sender})
+
+				_, _, err = evm.Call(sender, frozen, nil, 100_000, uint256.NewInt(0))
+				if accountFreeze {
+					require.ErrorIs(t, err, vm.ErrExecutionReverted)
+				} else {
+					require.NoError(t, err)
+				}
+			})
+		}
+	}
+}
+
+func TestGetVmConfig_AccountFreezeRefusedCallsFromReadOnlyFramesUseTheSameGasInAllInterpreters(t *testing.T) {
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.AccountFreeze = true
+	vmConfig := opera.GetVmConfig(opera.Rules{Upgrades: upgrades})
+	frozen, caller, sender := common.Address{1}, common.Address{2}, common.Address{3}
+	// STATICCALL(GAS, frozen, 0, 0, 0, 0) STOP
+	code := append(common.FromHex("0x600060006000600073"), frozen.Bytes()...)
+	code = append(code, byte(vm.GAS), byte(vm.STATICCALL), byte(vm.STOP))
+
+	gasLeft := map[string]uint64{}
+	interpreters := map[string]vm.InterpreterFactory{
+		"processing": vmConfig.Interpreter,
+		"tracing":    vmConfig.InterpreterForTracing,
+	}
+	for name, interpreter := range interpreters {
+		stateDB, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		require.NoError(t, err)
+		stateDB.SetCode(caller, code, tracing.CodeChangeUnspecified)
+		stateDB.SetCode(frozen, []byte{byte(vm.STOP)}, tracing.CodeChangeUnspecified)
+		stateDB.SetState(registry.GetAddress(), registry.GetFrozenSlot(frozen), common.Hash{31: 1})
+
+		chainConfig := opera.CreateTransientEvmChainConfig(
+			opera.FakeNetworkID,
+			[]opera.UpgradeHeight{opera.MakeUpgradeHeight(upgrades, 0)},
+			0,
+		)
+		blockContext := vm.BlockContext{
+			CanTransfer: core.CanTransfer,
+			Transfer:    core.Transfer,
+			BlockNumber: big.NewInt(0),
+			Random:      &common.Hash{},
+		}
+		vmConfig.Interpreter = interpreter
+		evm := vm.NewEVM(blockContext, stateDB, chainConfig, vmConfig)
+		evm.SetTxContext(vm.TxContext{Origin: sender})
+
+		// The caller runs read-only, so its call of frozen comes from a read-only frame.
+		_, gasLeft[name], err = evm.StaticCall(sender, caller, nil, 100_000)
+		require.NoError(t, err)
+	}
+	require.Equal(t, gasLeft["tracing"], gasLeft["processing"])
 }
 
 func TestCodeSizeLimits_BrioSetsCustomCodeSizeLimits(t *testing.T) {

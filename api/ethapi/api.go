@@ -36,7 +36,6 @@ import (
 	bip39 "github.com/tyler-smith/go-bip39"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -1269,14 +1268,14 @@ func DoCall(
 			log.Warn("failed to convert previous transaction to message", "index", i, "err", err)
 			continue
 		}
-		if _, err := freeze.ApplyMessage(evm, preMsg, gp); err != nil {
+		if _, err := core.ApplyMessage(evm, preMsg, gp); err != nil {
 			log.Warn("failed to apply previous transaction", "index", i, "err", err)
 		}
 		state.EndTransaction()
 	}
 
 	// Execute the message.
-	result, err := freeze.ApplyMessage(evm, msg, gp)
+	result, err := core.ApplyMessage(evm, msg, gp)
 	if err := vmError(); err != nil {
 		return nil, err
 	}
@@ -1864,7 +1863,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 			return nil, 0, nil, err
 		}
 		stopCancel := context.AfterFunc(ctx, vmenv.Cancel)
-		res, err := freeze.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
+		res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
 		stopCancel()
 		statedb.Release()
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -1923,12 +1922,9 @@ func (s *PublicBlockChainAPI) SimulateV1(ctx context.Context, opts simOpts, bloc
 	}
 
 	chainConfig := s.b.ChainConfig(idx.Block(base.Number.Uint64()))
-	rules, err := s.b.GetNetworkRules(ctx, idx.Block(base.Number.Uint64()))
+	vmConfig, err := GetVmConfig(ctx, s.b, idx.Block(base.Number.Uint64()))
 	if err != nil {
 		return nil, err
-	}
-	if rules == nil {
-		return nil, fmt.Errorf("no network rules found for block height %d", base.Number.Uint64())
 	}
 
 	sim := &simulator{
@@ -1936,8 +1932,7 @@ func (s *PublicBlockChainAPI) SimulateV1(ctx context.Context, opts simOpts, bloc
 		state:          state,
 		base:           base.Header(),
 		chainConfig:    chainConfig,
-		vmConfig:       opera.GetVmConfig(*rules),
-		upgrades:       rules.Upgrades,
+		vmConfig:       vmConfig,
 		gp:             core.NewGasPool(gasCap),
 		traceTransfers: opts.TraceTransfers,
 		validate:       opts.Validation,
@@ -2958,7 +2953,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 		}
 
 		statedb.SetTxContext(tx.Hash(), idx)
-		if _, err := freeze.ApplyMessage(vmenv, msg, core.NewGasPool(tx.Gas())); err != nil {
+		if _, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(tx.Gas())); err != nil {
 			return nil, nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
 		}
 		// Ensure any modifications are committed to the state

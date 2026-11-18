@@ -29,10 +29,8 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	interState "github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
@@ -231,7 +229,6 @@ type simulator struct {
 	base           *evmcore.EvmHeader
 	chainConfig    *params.ChainConfig
 	vmConfig       vm.Config
-	upgrades       opera.Upgrades
 	gp             *core.GasPool
 	traceTransfers bool
 	validate       bool
@@ -343,7 +340,7 @@ func (sim *simulator) processBlock(
 	}
 	activeState := evmstore.WrapStateDbWithLogger(sim.state, tracer.Hooks())
 
-	evm := evmcore.NewEVM(blockContext, activeState, sim.chainConfig, vmConfig, sim.upgrades)
+	evm := vm.NewEVM(blockContext, activeState, sim.chainConfig, vmConfig)
 	if precompiles != nil {
 		evm.SetPrecompiles(precompiles)
 	}
@@ -459,7 +456,7 @@ func applySimMessage(ctx context.Context, evm *vm.EVM, msg *core.Message, timeou
 		<-ctx.Done()
 		evm.Cancel()
 	}()
-	result, err := freeze.ApplyMessage(evm, msg, gp)
+	result, err := core.ApplyMessage(evm, msg, gp)
 	if evm.Cancelled() {
 		return nil, fmt.Errorf("execution aborted (timeout = %v)", timeout)
 	}

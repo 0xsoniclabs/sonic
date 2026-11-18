@@ -157,12 +157,13 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	difficulty *big.Int, remainingSize uint64,
 ) ProcessSummary {
 	var (
-		gp          = core.NewGasPool(gasLimit)
-		header      = block.Header()
-		time        = uint64(block.Time.Unix())
-		vmenv       = NewEVM(NewEVMBlockContextWithDifficulty(header, p.bc, nil, difficulty), statedb, p.config, cfg, p.upgrades)
-		blockNumber = block.Number
-		signer      = types.LatestSignerForChainID(p.config.ChainID)
+		gp           = core.NewGasPool(gasLimit)
+		header       = block.Header()
+		time         = uint64(block.Time.Unix())
+		blockContext = NewEVMBlockContextWithDifficulty(header, p.bc, nil, difficulty)
+		vmenv        = vm.NewEVM(blockContext, statedb, p.config, cfg)
+		blockNumber  = block.Number
+		signer       = types.LatestSignerForChainID(p.config.ChainID)
 	)
 
 	// execute EIP-2935 HistoryStorage contract.
@@ -822,7 +823,8 @@ func (p *StateProcessor) BeginBlock(
 		gp            = core.NewGasPool(gasLimit)
 		header        = block.Header()
 		time          = uint64(block.Time.Unix())
-		vmEnvironment = NewEVM(NewEVMBlockContext(header, p.bc, nil), stateDb, p.config, cfg, p.upgrades)
+		blockContext  = NewEVMBlockContext(header, p.bc, nil)
+		vmEnvironment = vm.NewEVM(blockContext, stateDb, p.config, cfg)
 		blockNumber   = block.Number
 		signer        = types.LatestSignerForChainID(p.config.ChainID)
 	)
@@ -906,7 +908,7 @@ func ApplyTransactionWithEVM(
 	evm.SetTxContext(txContext)
 
 	// Apply the transaction to the current state (included in the env).
-	result, err := freeze.ApplyMessage(evm, msg, gp)
+	result, err := core.ApplyMessage(evm, msg, gp)
 	if err != nil {
 		statedb.EndTransaction()
 		return nil, err
@@ -1005,7 +1007,7 @@ func applyTransaction(
 		snapshot = statedb.Snapshot()
 	}
 	// Apply the transaction to the current state (included in the env).
-	result, err := freeze.ApplyMessage(evm, msg, gp)
+	result, err := core.ApplyMessage(evm, msg, gp)
 	if err != nil {
 		if isAllegro {
 			statedb.RevertToSnapshot(snapshot)

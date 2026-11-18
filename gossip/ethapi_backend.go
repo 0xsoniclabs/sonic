@@ -399,15 +399,15 @@ func (b *EthAPIBackend) GetLogs(ctx context.Context, block common.Hash) ([][]*ty
 func (b *EthAPIBackend) GetEVM(ctx context.Context, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
 	vmError := func() error { return nil }
 
-	block := idx.Block(header.Number.Uint64())
-	rules, err := b.GetNetworkRules(ctx, block)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get network rules for block %d: %w", block, err)
-	}
-	if rules == nil {
-		return nil, nil, fmt.Errorf("network rules for block %d are not found", block)
-	}
 	if vmConfig == nil {
+		block := idx.Block(header.Number.Uint64())
+		rules, err := b.GetNetworkRules(ctx, block)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get network rules for block %d: %w", block, err)
+		}
+		if rules == nil {
+			return nil, nil, fmt.Errorf("network rules for block %d are not found", block)
+		}
 		config := opera.GetVmConfig(*rules)
 		vmConfig = &config
 	}
@@ -418,7 +418,7 @@ func (b *EthAPIBackend) GetEVM(ctx context.Context, state vm.StateDB, header *ev
 		context = *blockContext
 	}
 	config := b.ChainConfig(idx.Block(context.BlockNumber.Uint64()))
-	return evmcore.NewEVM(context, state, config, *vmConfig, rules.Upgrades), vmError, nil
+	return vm.NewEVM(context, state, config, *vmConfig), vmError, nil
 }
 
 func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {

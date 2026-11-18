@@ -22,11 +22,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/tracing"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,12 +32,9 @@ var (
 	optedOutToken = common.Address{0x71}
 )
 
-// fakeState holds the registry storage; other StateDB methods are not used.
+// fakeState holds the registry storage.
 type fakeState struct {
-	state.StateDB
-	slots     map[common.Hash]common.Hash
-	snapshots int
-	moved     int // SubBalance calls
+	slots map[common.Hash]common.Hash
 }
 
 func newFakeState(frozen ...common.Address) *fakeState {
@@ -58,27 +50,6 @@ func (s *fakeState) GetState(addr common.Address, key common.Hash) common.Hash {
 		return common.Hash{}
 	}
 	return s.slots[key]
-}
-
-func (s *fakeState) Snapshot() int {
-	s.snapshots++
-	return s.snapshots
-}
-
-func (s *fakeState) RevertToSnapshot(int) {}
-
-func (s *fakeState) AddLog(*types.Log) {}
-
-func (s *fakeState) Prepare(params.Rules, common.Address, common.Address, *common.Address, []common.Address, types.AccessList) {
-}
-
-func (s *fakeState) SubBalance(common.Address, *uint256.Int, tracing.BalanceChangeReason) uint256.Int {
-	s.moved++
-	return uint256.Int{}
-}
-
-func (s *fakeState) AddBalance(common.Address, *uint256.Int, tracing.BalanceChangeReason) uint256.Int {
-	return uint256.Int{}
 }
 
 func TestIsFrozen_ReadsRegistryAndExemptsSystemContracts(t *testing.T) {
