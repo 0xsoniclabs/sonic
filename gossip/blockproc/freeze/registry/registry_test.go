@@ -37,7 +37,7 @@ import (
 func TestRegistry_SlotsMatchContractLayoutBehindProxy(t *testing.T) {
 	r := newRegistryBehindProxy(t)
 
-	account := common.Address{0xa}
+	account := common.Address{0: 0xa, 19: 0xb}
 	for method, slot := range map[string]common.Hash{
 		"setFrozen":   GetFrozenSlot(account),
 		"setOptedOut": GetOptedOutSlot(account),
@@ -56,7 +56,7 @@ func TestRegistry_SlotsMatchContractLayoutBehindProxy(t *testing.T) {
 func TestRegistry_ViewsAgreeWithSlotsReadByClient(t *testing.T) {
 	r := newRegistryBehindProxy(t)
 
-	account := common.Address{0xa}
+	account := common.Address{0: 0xa, 19: 0xb}
 	slots := map[string]common.Hash{
 		"isFrozen":   GetFrozenSlot(account),
 		"isOptedOut": GetOptedOutSlot(account),
