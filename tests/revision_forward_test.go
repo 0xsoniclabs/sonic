@@ -292,7 +292,7 @@ func TestRevisionIsForwardedCorrectly_RPCCall_BrioEnablesOsaka(t *testing.T) {
 
 // doTraceCall invokes debug_traceCall on the given contract at the given block hash
 // it returns a map with the entries of the json response, or an error
-func doTraceCall(client *PooledEhtClient, contractAddress common.Address, blockHash common.Hash) (map[string]any, error) {
+func doTraceCall(client *PooledEthClient, contractAddress common.Address, blockHash common.Hash) (map[string]any, error) {
 	// debug_traceCall serves to test functions using StateTransition RPC method
 	config := map[string]any{
 		"tracer": "callTracer",
@@ -304,7 +304,7 @@ func doTraceCall(client *PooledEhtClient, contractAddress common.Address, blockH
 
 // doRpcCall invokes eth_call on the given contract at the given block hash
 // it returns a map with the entries of the json response, or an error
-func doRpcCall(client *PooledEhtClient, contractAddress common.Address, blockHash common.Hash) error {
+func doRpcCall(client *PooledEthClient, contractAddress common.Address, blockHash common.Hash) error {
 	// eth_call servers to test functions using the DoCall RPC method
 	_, err := InvokeRpcCallMethod("eth_call", contractAddress, client, blockHash, nil, nil)
 	return err
@@ -313,7 +313,7 @@ func doRpcCall(client *PooledEhtClient, contractAddress common.Address, blockHas
 func InvokeRpcCallMethod(
 	method string,
 	contractAddress common.Address,
-	client *PooledEhtClient,
+	client *PooledEthClient,
 	blockHash common.Hash,
 	args ...any,
 ) (any, error) {

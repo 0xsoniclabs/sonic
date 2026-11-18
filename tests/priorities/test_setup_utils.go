@@ -41,7 +41,7 @@ import (
 func netClientSignerWithPriorities(
 	t *testing.T,
 	configure func(*opera.Upgrades),
-) (*tests.IntegrationTestNet, *tests.PooledEhtClient, types.Signer) {
+) (*tests.IntegrationTestNet, *tests.PooledEthClient, types.Signer) {
 	t.Helper()
 	require := require.New(t)
 
@@ -169,7 +169,7 @@ const fundingBatchSize = 250
 func newFundedPrioritizedAccounts(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
-	client *tests.PooledEhtClient,
+	client *tests.PooledEthClient,
 	count int,
 	balance *big.Int,
 	level, weight, id uint64,
@@ -212,7 +212,7 @@ func newFundedPrioritizedAccounts(
 func newFundedAccounts(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
-	client *tests.PooledEhtClient,
+	client *tests.PooledEthClient,
 	count int,
 	balance *big.Int,
 ) []*tests.Account {
@@ -239,7 +239,7 @@ func newFundedAccounts(
 // blocks containing them are visible on `client`.
 func waitForReceipts(
 	t *testing.T,
-	client *tests.PooledEhtClient,
+	client *tests.PooledEthClient,
 	receipts []*types.Receipt,
 ) {
 	t.Helper()

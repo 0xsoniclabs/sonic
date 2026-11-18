@@ -176,7 +176,7 @@ func makeSponsorRequestTransaction(t *testing.T, tx types.TxData, chainId *big.I
 // receipt in its block, along with the block itself.
 func getTransactionIndexInBlock(
 	t *testing.T,
-	client *tests.PooledEhtClient,
+	client *tests.PooledEthClient,
 	receipt *types.Receipt,
 ) (int, *types.Block) {
 	t.Helper()
