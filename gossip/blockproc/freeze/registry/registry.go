@@ -54,9 +54,9 @@ func GetFrozenSlot(account common.Address) common.Hash {
 }
 
 // GetOptedOutSlot returns the proxy storage slot of the `optedOut` entry of
-// account.
-func GetOptedOutSlot(account common.Address) common.Hash {
-	return mappingSlot(account, optedOutMapping)
+// token.
+func GetOptedOutSlot(token common.Address) common.Hash {
+	return mappingSlot(token, optedOutMapping)
 }
 
 // ------------------------------ Internals ------------------------------------

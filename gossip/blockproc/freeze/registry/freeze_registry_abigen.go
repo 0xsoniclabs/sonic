@@ -31,8 +31,8 @@ var (
 
 // RegistryMetaData contains all meta data concerning the Registry contract.
 var RegistryMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"isFrozen\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"isOptedOut\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"internalType\":\"bool\",\"name\":\"value\",\"type\":\"bool\"}],\"name\":\"setFrozen\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"internalType\":\"bool\",\"name\":\"value\",\"type\":\"bool\"}],\"name\":\"setOptedOut\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
-	Bin: "0x6080604052348015600e575f5ffd5b506102508061001c5f395ff3fe608060405234801561000f575f5ffd5b506004361061004a575f3560e01c8063ac869cd81461004e578063c2b480dd146100a7578063e5839836146100fe578063ff1468f21461015c575b5f5ffd5b6100a561005c3660046101c1565b6001600160a01b03919091165f9081527f79438978416e308cc48db3f2f690ad3d9d4d8848bddb35c7c4dfe2c0165d590060205260409020805460ff1916911515919091179055565b005b6100a56100b53660046101c1565b6001600160a01b03919091165f9081527f79438978416e308cc48db3f2f690ad3d9d4d8848bddb35c7c4dfe2c0165d590160205260409020805460ff1916911515919091179055565b61014861010c3660046101fa565b6001600160a01b03165f9081527f79438978416e308cc48db3f2f690ad3d9d4d8848bddb35c7c4dfe2c0165d5900602052604090205460ff1690565b604051901515815260200160405180910390f35b61014861016a3660046101fa565b6001600160a01b03165f9081527f79438978416e308cc48db3f2f690ad3d9d4d8848bddb35c7c4dfe2c0165d5901602052604090205460ff1690565b80356001600160a01b03811681146101bc575f5ffd5b919050565b5f5f604083850312156101d2575f5ffd5b6101db836101a6565b9150602083013580151581146101ef575f5ffd5b809150509250929050565b5f6020828403121561020a575f5ffd5b610213826101a6565b939250505056fea26469706673582212207cb17b27c74e5e67fb13344dca79b7a2f31511dfc96c6458c01be2bee3f35a9664736f6c63430008260033",
+	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"isFrozen\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"token\",\"type\":\"address\"}],\"name\":\"isOptedOut\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"internalType\":\"bool\",\"name\":\"value\",\"type\":\"bool\"}],\"name\":\"setFrozen\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"token\",\"type\":\"address\"},{\"internalType\":\"bool\",\"name\":\"value\",\"type\":\"bool\"}],\"name\":\"setOptedOut\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
+	Bin: "0x6080604052348015600e575f5ffd5b506102508061001c5f395ff3fe608060405234801561000f575f5ffd5b506004361061004a575f3560e01c8063ac869cd81461004e578063c2b480dd146100a7578063e5839836146100fe578063ff1468f21461015c575b5f5ffd5b6100a561005c3660046101c1565b6001600160a01b03919091165f9081527f79438978416e308cc48db3f2f690ad3d9d4d8848bddb35c7c4dfe2c0165d590060205260409020805460ff1916911515919091179055565b005b6100a56100b53660046101c1565b6001600160a01b03919091165f9081527f79438978416e308cc48db3f2f690ad3d9d4d8848bddb35c7c4dfe2c0165d590160205260409020805460ff1916911515919091179055565b61014861010c3660046101fa565b6001600160a01b03165f9081527f79438978416e308cc48db3f2f690ad3d9d4d8848bddb35c7c4dfe2c0165d5900602052604090205460ff1690565b604051901515815260200160405180910390f35b61014861016a3660046101fa565b6001600160a01b03165f9081527f79438978416e308cc48db3f2f690ad3d9d4d8848bddb35c7c4dfe2c0165d5901602052604090205460ff1690565b80356001600160a01b03811681146101bc575f5ffd5b919050565b5f5f604083850312156101d2575f5ffd5b6101db836101a6565b9150602083013580151581146101ef575f5ffd5b809150509250929050565b5f6020828403121561020a575f5ffd5b610213826101a6565b939250505056fea2646970667358221220ef02186366eaa3ff0cce29594fd49c80205b09d8f206cd38379ba6d23e591fdf64736f6c63430008260033",
 }
 
 // RegistryABI is the input ABI used to generate the binding from.
@@ -235,10 +235,10 @@ func (_Registry *RegistryCallerSession) IsFrozen(account common.Address) (bool, 
 
 // IsOptedOut is a free data retrieval call binding the contract method 0xff1468f2.
 //
-// Solidity: function isOptedOut(address account) view returns(bool)
-func (_Registry *RegistryCaller) IsOptedOut(opts *bind.CallOpts, account common.Address) (bool, error) {
+// Solidity: function isOptedOut(address token) view returns(bool)
+func (_Registry *RegistryCaller) IsOptedOut(opts *bind.CallOpts, token common.Address) (bool, error) {
 	var out []interface{}
-	err := _Registry.contract.Call(opts, &out, "isOptedOut", account)
+	err := _Registry.contract.Call(opts, &out, "isOptedOut", token)
 
 	if err != nil {
 		return *new(bool), err
@@ -252,16 +252,16 @@ func (_Registry *RegistryCaller) IsOptedOut(opts *bind.CallOpts, account common.
 
 // IsOptedOut is a free data retrieval call binding the contract method 0xff1468f2.
 //
-// Solidity: function isOptedOut(address account) view returns(bool)
-func (_Registry *RegistrySession) IsOptedOut(account common.Address) (bool, error) {
-	return _Registry.Contract.IsOptedOut(&_Registry.CallOpts, account)
+// Solidity: function isOptedOut(address token) view returns(bool)
+func (_Registry *RegistrySession) IsOptedOut(token common.Address) (bool, error) {
+	return _Registry.Contract.IsOptedOut(&_Registry.CallOpts, token)
 }
 
 // IsOptedOut is a free data retrieval call binding the contract method 0xff1468f2.
 //
-// Solidity: function isOptedOut(address account) view returns(bool)
-func (_Registry *RegistryCallerSession) IsOptedOut(account common.Address) (bool, error) {
-	return _Registry.Contract.IsOptedOut(&_Registry.CallOpts, account)
+// Solidity: function isOptedOut(address token) view returns(bool)
+func (_Registry *RegistryCallerSession) IsOptedOut(token common.Address) (bool, error) {
+	return _Registry.Contract.IsOptedOut(&_Registry.CallOpts, token)
 }
 
 // SetFrozen is a paid mutator transaction binding the contract method 0xac869cd8.
@@ -287,21 +287,21 @@ func (_Registry *RegistryTransactorSession) SetFrozen(account common.Address, va
 
 // SetOptedOut is a paid mutator transaction binding the contract method 0xc2b480dd.
 //
-// Solidity: function setOptedOut(address account, bool value) returns()
-func (_Registry *RegistryTransactor) SetOptedOut(opts *bind.TransactOpts, account common.Address, value bool) (*types.Transaction, error) {
-	return _Registry.contract.Transact(opts, "setOptedOut", account, value)
+// Solidity: function setOptedOut(address token, bool value) returns()
+func (_Registry *RegistryTransactor) SetOptedOut(opts *bind.TransactOpts, token common.Address, value bool) (*types.Transaction, error) {
+	return _Registry.contract.Transact(opts, "setOptedOut", token, value)
 }
 
 // SetOptedOut is a paid mutator transaction binding the contract method 0xc2b480dd.
 //
-// Solidity: function setOptedOut(address account, bool value) returns()
-func (_Registry *RegistrySession) SetOptedOut(account common.Address, value bool) (*types.Transaction, error) {
-	return _Registry.Contract.SetOptedOut(&_Registry.TransactOpts, account, value)
+// Solidity: function setOptedOut(address token, bool value) returns()
+func (_Registry *RegistrySession) SetOptedOut(token common.Address, value bool) (*types.Transaction, error) {
+	return _Registry.Contract.SetOptedOut(&_Registry.TransactOpts, token, value)
 }
 
 // SetOptedOut is a paid mutator transaction binding the contract method 0xc2b480dd.
 //
-// Solidity: function setOptedOut(address account, bool value) returns()
-func (_Registry *RegistryTransactorSession) SetOptedOut(account common.Address, value bool) (*types.Transaction, error) {
-	return _Registry.Contract.SetOptedOut(&_Registry.TransactOpts, account, value)
+// Solidity: function setOptedOut(address token, bool value) returns()
+func (_Registry *RegistryTransactorSession) SetOptedOut(token common.Address, value bool) (*types.Transaction, error) {
+	return _Registry.Contract.SetOptedOut(&_Registry.TransactOpts, token, value)
 }

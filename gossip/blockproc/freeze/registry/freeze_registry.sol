@@ -16,8 +16,10 @@ pragma solidity ^0.8.24;
 contract FreezeRegistry {
     /// @custom:storage-location erc7201:sonic.freeze.registry
     struct FreezeStorage {
-        mapping(address => bool) frozen; // base + 0
-        mapping(address => bool) optedOut; // base + 1
+        // base + 0: whether transfers from/to this account are disabled
+        mapping(address account => bool isFrozen) frozen;
+        // base + 1: whether transfers of this token ignore account freezes
+        mapping(address token => bool isOptedOut) optedOut;
     }
 
     // keccak256(abi.encode(uint256(keccak256("sonic.freeze.registry")) - 1)) & ~bytes32(uint256(0xff))
@@ -28,16 +30,16 @@ contract FreezeRegistry {
         _storage().frozen[account] = value;
     }
 
-    function setOptedOut(address account, bool value) external {
-        _storage().optedOut[account] = value;
+    function setOptedOut(address token, bool value) external {
+        _storage().optedOut[token] = value;
     }
 
     function isFrozen(address account) external view returns (bool) {
         return _storage().frozen[account];
     }
 
-    function isOptedOut(address account) external view returns (bool) {
-        return _storage().optedOut[account];
+    function isOptedOut(address token) external view returns (bool) {
+        return _storage().optedOut[token];
     }
 
     function _storage() private pure returns (FreezeStorage storage $) {
