@@ -49,9 +49,9 @@ func TestIsFrozen_ReadsRegistryAndExemptsSystemContracts(t *testing.T) {
 }
 
 func TestIsOptedOut_ReadsRegistry(t *testing.T) {
-	optedOut, other := common.Address{0x71}, common.Address{0x70}
-	db := registryState{registry.GetOptedOutSlot(optedOut): common.Hash{31: 1}}
+	token, other := common.Address{0x71}, common.Address{0x70}
+	db := registryState{registry.GetOptedOutSlot(token): common.Hash{31: 1}}
 
-	require.True(t, IsOptedOut(db, optedOut))
+	require.True(t, IsOptedOut(db, token))
 	require.False(t, IsOptedOut(db, other))
 }

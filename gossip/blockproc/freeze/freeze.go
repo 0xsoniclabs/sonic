@@ -44,11 +44,12 @@ func IsFrozen(db StateReader, account common.Address) bool {
 	return db.GetState(registry.GetAddress(), registry.GetFrozenSlot(account)) != (common.Hash{})
 }
 
-// IsOptedOut reports whether the registry lists account as a token operator
-// opted out of the freeze: its transactions and its contract's token events
-// are not checked.
-func IsOptedOut(db StateReader, account common.Address) bool {
-	return db.GetState(registry.GetAddress(), registry.GetOptedOutSlot(account)) != (common.Hash{})
+// IsOptedOut reports whether the registry lists token as opted out of the
+// freeze: transfers of this token contract are exempt from the freezing logic.
+// It is meant to exclude token contracts, not to keep accounts from being
+// frozen.
+func IsOptedOut(db StateReader, token common.Address) bool {
+	return db.GetState(registry.GetAddress(), registry.GetOptedOutSlot(token)) != (common.Hash{})
 }
 
 func isSystemContract(addr common.Address) bool {
