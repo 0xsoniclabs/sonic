@@ -31,26 +31,45 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+//go:generate go tool mockgen -source=freeze.go -destination=freeze_mock.go -package=freeze
+
+// Checker reports the freeze status of addresses.
+type Checker interface {
+	// IsFrozen reports whether account is frozen.
+	IsFrozen(account common.Address) bool
+	// IsOptedOut reports whether token is opted out of the freeze: transfers
+	// of this token contract are exempt from the freezing logic. It is meant
+	// to exclude token contracts, not to keep accounts from being frozen.
+	IsOptedOut(token common.Address) bool
+}
+
 // StateReader is the part of the state needed to read the registry.
 type StateReader interface {
 	GetState(common.Address, common.Hash) common.Hash
 }
 
-// IsFrozen reports whether the registry lists account as frozen. System
-// contracts are never frozen, whatever the registry says.
-func IsFrozen(db StateReader, account common.Address) bool {
+// RegistryChecker is a Checker reading the registry's storage slots from a
+// state. System contracts are never frozen, whatever the registry says.
+type RegistryChecker struct {
+	db StateReader
+}
+
+// NewRegistryChecker creates a RegistryChecker reading the registry from db.
+func NewRegistryChecker(db StateReader) *RegistryChecker {
+	return &RegistryChecker{db: db}
+}
+
+// IsFrozen implements Checker.
+func (c *RegistryChecker) IsFrozen(account common.Address) bool {
 	if isSystemContract(account) {
 		return false
 	}
-	return db.GetState(registry.GetAddress(), registry.GetFrozenSlot(account)) != (common.Hash{})
+	return c.db.GetState(registry.GetAddress(), registry.GetFrozenSlot(account)) != (common.Hash{})
 }
 
-// IsOptedOut reports whether the registry lists token as opted out of the
-// freeze: transfers of this token contract are exempt from the freezing logic.
-// It is meant to exclude token contracts, not to keep accounts from being
-// frozen.
-func IsOptedOut(db StateReader, token common.Address) bool {
-	return db.GetState(registry.GetAddress(), registry.GetOptedOutSlot(token)) != (common.Hash{})
+// IsOptedOut implements Checker.
+func (c *RegistryChecker) IsOptedOut(token common.Address) bool {
+	return c.db.GetState(registry.GetAddress(), registry.GetOptedOutSlot(token)) != (common.Hash{})
 }
 
 func isSystemContract(addr common.Address) bool {
