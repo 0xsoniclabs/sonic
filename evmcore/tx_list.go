@@ -369,6 +369,7 @@ func (l *txList) Forward(threshold uint64) types.Transactions {
 //     (isSponsored returns false).
 //   - It is a bundle envelope whose status is bundleRejected (e.g. already
 //     executed or structurally invalid).
+//   - It is a blob transaction after canto hardfork is enabled
 //
 // In strict mode (pending list), after drops are removed, any remaining
 // transactions that would create a nonce gap are invalidated and returned
