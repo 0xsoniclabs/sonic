@@ -20,6 +20,11 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
+	priorities "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
+	subsidies "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
+	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
+	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -35,23 +40,38 @@ func (s registryState) GetState(addr common.Address, key common.Hash) common.Has
 	return s[key]
 }
 
-func TestIsFrozen_ReadsRegistryAndExemptsSystemContracts(t *testing.T) {
-	frozen, other := common.Address{0xf}, common.Address{0xa}
-	db := registryState{}
-	for _, a := range []common.Address{frozen, sfc.ContractAddress, registry.GetAddress()} {
-		db[registry.GetFrozenSlot(a)] = common.Hash{31: 1}
-	}
+// Any non-zero slot lists the address, not only Solidity's `true`.
+var listedValues = []common.Hash{{31: 1}, {0: 1}}
 
-	require.True(t, IsFrozen(db, frozen))
-	require.False(t, IsFrozen(db, other))
-	require.False(t, IsFrozen(db, sfc.ContractAddress))
-	require.False(t, IsFrozen(db, registry.GetAddress()))
+func TestIsFrozen_ReadsRegistry(t *testing.T) {
+	frozen, other := common.Address{0xf}, common.Address{0xa}
+	for _, value := range listedValues {
+		db := registryState{registry.GetFrozenSlot(frozen): value}
+		require.True(t, IsFrozen(db, frozen), "%v", value)
+		require.False(t, IsFrozen(db, other), "%v", value)
+	}
+}
+
+func TestIsFrozen_ExemptsSystemContracts(t *testing.T) {
+	for _, addr := range []common.Address{
+		registry.GetAddress(),
+		sfc.ContractAddress,
+		driver.ContractAddress,
+		driverauth.ContractAddress,
+		evmwriter.ContractAddress,
+		subsidies.GetAddress(),
+		priorities.GetAddress(),
+	} {
+		db := registryState{registry.GetFrozenSlot(addr): common.Hash{31: 1}}
+		require.False(t, IsFrozen(db, addr), "%v", addr)
+	}
 }
 
 func TestIsOptedOut_ReadsRegistry(t *testing.T) {
 	token, other := common.Address{0x71}, common.Address{0x70}
-	db := registryState{registry.GetOptedOutSlot(token): common.Hash{31: 1}}
-
-	require.True(t, IsOptedOut(db, token))
-	require.False(t, IsOptedOut(db, other))
+	for _, value := range listedValues {
+		db := registryState{registry.GetOptedOutSlot(token): value}
+		require.True(t, IsOptedOut(db, token), "%v", value)
+		require.False(t, IsOptedOut(db, other), "%v", value)
+	}
 }

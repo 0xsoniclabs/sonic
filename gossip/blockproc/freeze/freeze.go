@@ -15,8 +15,9 @@
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
 // Package freeze implements Sonic's account freeze: accounts the on-chain
-// registry lists as frozen may not move native S or tokens. Freeze status is
-// read directly from the registry's storage, never by calling the contract.
+// registry lists as frozen may not move native S or tokens, except tokens whose
+// contracts the registry lists as opted out. Freeze status is read directly
+// from the registry's storage, never by calling the contract.
 package freeze
 
 import (
