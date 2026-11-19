@@ -277,7 +277,7 @@ func TestTransactionGasPrice(t *testing.T) {
 	})
 }
 
-func getBaseFeeAt(t *testing.T, blockNumber *big.Int, client *PooledEhtClient) int64 {
+func getBaseFeeAt(t *testing.T, blockNumber *big.Int, client *PooledEthClient) int64 {
 	t.Helper()
 	block, err := client.BlockByNumber(t.Context(), blockNumber)
 	require.NoError(t, err)
@@ -285,7 +285,7 @@ func getBaseFeeAt(t *testing.T, blockNumber *big.Int, client *PooledEhtClient) i
 	return basefee.Int64()
 }
 
-func getBalance(t *testing.T, client *PooledEhtClient, account common.Address) int64 {
+func getBalance(t *testing.T, client *PooledEthClient, account common.Address) int64 {
 	t.Helper()
 	balance, err := client.BalanceAt(t.Context(), account, nil)
 	require.NoError(t, err)
@@ -295,7 +295,7 @@ func getBalance(t *testing.T, client *PooledEhtClient, account common.Address) i
 // makeLegacyTx creates a legacy transaction from a CallMsg, filling in the nonce
 // and gas limit.
 func makeLegacyTx(t *testing.T,
-	client *PooledEhtClient,
+	client *PooledEthClient,
 	gasPrice int64,
 	sender *Account,
 	to *common.Address,
@@ -327,7 +327,7 @@ func makeLegacyTx(t *testing.T,
 // makeLegacyTx creates a legacy transaction from a CallMsg, filling in the nonce
 // and gas limit.
 func makeEip1559Transaction(t *testing.T,
-	client *PooledEhtClient,
+	client *PooledEthClient,
 	maxFeeCap int64,
 	maxGasTip int64,
 	sender *Account,

@@ -213,7 +213,7 @@ func testHeaders_CompareHeaderHashes(t *testing.T, hashes []common.Hash, newHead
 	}
 }
 
-func testHeaders_TransactionRootMatchesBlockTxsHash(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
+func testHeaders_TransactionRootMatchesBlockTxsHash(t *testing.T, headers []*types.Header, client *tests.PooledEthClient) {
 	require := require.New(t)
 
 	for i, header := range headers {
@@ -226,7 +226,7 @@ func testHeaders_TransactionRootMatchesBlockTxsHash(t *testing.T, headers []*typ
 }
 
 func testHeaders_TransactionReceiptReferencesCorrectContext(
-	t *testing.T, headers []*types.Header, client *tests.PooledEhtClient,
+	t *testing.T, headers []*types.Header, client *tests.PooledEthClient,
 ) {
 	require := require.New(t)
 
@@ -246,7 +246,7 @@ func testHeaders_TransactionReceiptReferencesCorrectContext(
 	}
 }
 
-func testHeaders_ReceiptBlockHashMatchesBlockHash(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
+func testHeaders_ReceiptBlockHashMatchesBlockHash(t *testing.T, headers []*types.Header, client *tests.PooledEthClient) {
 	require := require.New(t)
 
 	for _, header := range headers {
@@ -260,7 +260,7 @@ func testHeaders_ReceiptBlockHashMatchesBlockHash(t *testing.T, headers []*types
 	}
 }
 
-func testHeaders_ReceiptRootMatchesBlockReceipts(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
+func testHeaders_ReceiptRootMatchesBlockReceipts(t *testing.T, headers []*types.Header, client *tests.PooledEthClient) {
 	require := require.New(t)
 
 	for _, header := range headers {
@@ -273,7 +273,7 @@ func testHeaders_ReceiptRootMatchesBlockReceipts(t *testing.T, headers []*types.
 	}
 }
 
-func testHeaders_LogsBloomMatchesLogsInReceipts(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
+func testHeaders_LogsBloomMatchesLogsInReceipts(t *testing.T, headers []*types.Header, client *tests.PooledEthClient) {
 	require := require.New(t)
 
 	for _, header := range headers {
@@ -334,7 +334,7 @@ func testHeaders_MixDigestDiffersForAllBlocks(t *testing.T, headers []*types.Hea
 	require.NotZero(len(seen), "no non-empty blocks in the chain")
 }
 
-func testHeaders_InitialBlocksHaveCorrectEpochNumbers(t *testing.T, client *tests.PooledEhtClient) {
+func testHeaders_InitialBlocksHaveCorrectEpochNumbers(t *testing.T, client *tests.PooledEthClient) {
 	require := require.New(t)
 	for block, want := range []int{1, 1, 2} {
 		got := tests.GetEpochOfBlock(t, client, block)
@@ -342,7 +342,7 @@ func testHeaders_InitialBlocksHaveCorrectEpochNumbers(t *testing.T, client *test
 	}
 }
 
-func testHeaders_LastBlockOfEpochContainsSealingTransaction(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
+func testHeaders_LastBlockOfEpochContainsSealingTransaction(t *testing.T, headers []*types.Header, client *tests.PooledEthClient) {
 	require := require.New(t)
 
 	maxEpoch := 0
@@ -379,7 +379,7 @@ func testHeaders_LastBlockOfEpochContainsSealingTransaction(t *testing.T, header
 	}
 }
 
-func testHeaders_StateRootsMatchActualStateRoots(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
+func testHeaders_StateRootsMatchActualStateRoots(t *testing.T, headers []*types.Header, client *tests.PooledEthClient) {
 	require := require.New(t)
 	// wait until last block is received.
 	tests.WaitForProofOf(t, client, len(headers)-1)
@@ -397,7 +397,7 @@ func testHeaders_StateRootsMatchActualStateRoots(t *testing.T, headers []*types.
 	}
 }
 
-func testHeaders_SystemContractsHaveNonZeroNonce(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
+func testHeaders_SystemContractsHaveNonZeroNonce(t *testing.T, headers []*types.Header, client *tests.PooledEthClient) {
 	require := require.New(t)
 	for i := range headers {
 		block := big.NewInt(int64(i))
@@ -420,7 +420,7 @@ func testHeaders_SystemContractsHaveNonZeroNonce(t *testing.T, headers []*types.
 	}
 }
 
-func testHeaders_LogsReferenceTheirContext(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
+func testHeaders_LogsReferenceTheirContext(t *testing.T, headers []*types.Header, client *tests.PooledEthClient) {
 	require := require.New(t)
 
 	numLogs := 0
@@ -452,7 +452,7 @@ func testHeaders_LogsReferenceTheirContext(t *testing.T, headers []*types.Header
 	require.NotZero(numLogs, "no logs found in the chain")
 }
 
-func testHeaders_CanRetrieveLogEvents(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
+func testHeaders_CanRetrieveLogEvents(t *testing.T, headers []*types.Header, client *tests.PooledEthClient) {
 	require := require.New(t)
 
 	allLogs := []types.Log{}
@@ -534,7 +534,7 @@ func testHeaders_CanRetrieveLogEvents(t *testing.T, headers []*types.Header, cli
 func testHeaders_CounterStateIsVerifiable(
 	t *testing.T,
 	headers []*types.Header,
-	client *tests.PooledEhtClient,
+	client *tests.PooledEthClient,
 	counterAddress common.Address,
 ) {
 	require := require.New(t)
@@ -584,7 +584,7 @@ func testHeaders_CounterStateIsVerifiable(
 
 func getVerifiedCounterState(
 	t *testing.T,
-	client *tests.PooledEhtClient,
+	client *tests.PooledEthClient,
 	stateRoot common.Hash,
 	counterAddress common.Address,
 	blockNumber int,

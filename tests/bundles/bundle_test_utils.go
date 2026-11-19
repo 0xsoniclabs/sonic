@@ -117,7 +117,7 @@ func Step[T types.TxData](
 }
 
 // getBlockTxsHashes returns the hashes of all transactions in block with the given block number.
-func getBlockTxsHashes(t *testing.T, client *tests.PooledEhtClient, blockNumber *big.Int) []common.Hash {
+func getBlockTxsHashes(t *testing.T, client *tests.PooledEthClient, blockNumber *big.Int) []common.Hash {
 	block, err := client.BlockByNumber(t.Context(), blockNumber)
 	require.NoError(t, err)
 	blockTxsHashes := []common.Hash{}

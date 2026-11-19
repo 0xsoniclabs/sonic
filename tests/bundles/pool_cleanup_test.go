@@ -313,7 +313,7 @@ func setNodesConnected(t *testing.T, net *tests.IntegrationTestNet, connected bo
 	t.Helper()
 	require.Equal(t, 2, net.NumNodes())
 
-	clients := make([]*tests.PooledEhtClient, 2)
+	clients := make([]*tests.PooledEthClient, 2)
 	enodes := make([]string, 2)
 	for i := range clients {
 		client, err := net.GetClientConnectedToNode(i)

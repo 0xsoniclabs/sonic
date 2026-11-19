@@ -184,7 +184,7 @@ func SetTransactionDefaults[T types.TxData](
 // Because the transaction pool eviction is asynchronous, executed transactions may remain in the pool
 // for some time after they have been executed.
 // function will eventually time out if the transaction is not retired and an error will be returned.
-func WaitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient, tx *types.Transaction) error {
+func WaitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEthClient, tx *types.Transaction) error {
 	t.Helper()
 
 	txHash := tx.Hash()
@@ -198,7 +198,7 @@ func WaitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient
 // Because the transaction pool eviction is asynchronous, executed transactions may remain in the pool
 // for some time after they have been executed.
 // function will eventually time out if the transaction is not retired and an error will be returned.
-func waitUntilTransactionIsRetiredFromPoolByHash(t *testing.T, client *PooledEhtClient, txHash common.Hash, txSender common.Address) error {
+func waitUntilTransactionIsRetiredFromPoolByHash(t *testing.T, client *PooledEthClient, txHash common.Hash, txSender common.Address) error {
 
 	// txpool_content returns a map containing two maps:
 	// - pending: transactions that are pending to be executed
@@ -279,7 +279,7 @@ func GetNetworkRules(t *testing.T, net IntegrationTestNetSession) opera.Rules {
 	return rules
 }
 
-func GetEpochOfBlock(t *testing.T, client *PooledEhtClient, blockNumber int) int {
+func GetEpochOfBlock(t *testing.T, client *PooledEthClient, blockNumber int) int {
 	var result struct {
 		Epoch hexutil.Uint64
 	}
@@ -420,7 +420,7 @@ func WaitFor(ctx context.Context, predicate func(context.Context) (bool, error))
 // getProofFor retrieves the account proof for the given block number.
 // This is meant to be a testing only function, hence having a *testing.T
 // unused parameter.
-func getProofFor(_ *testing.T, client *PooledEhtClient, blockNumber int) ([]string, error) {
+func getProofFor(_ *testing.T, client *PooledEthClient, blockNumber int) ([]string, error) {
 	var result struct {
 		AccountProof []string
 	}
@@ -434,7 +434,7 @@ func getProofFor(_ *testing.T, client *PooledEhtClient, blockNumber int) ([]stri
 	return result.AccountProof, err
 }
 
-func GetStateRoot(t *testing.T, client *PooledEhtClient, blockNumber int) common.Hash {
+func GetStateRoot(t *testing.T, client *PooledEthClient, blockNumber int) common.Hash {
 
 	accountProof, err := getProofFor(t, client, blockNumber)
 	require.NoError(t, err, "failed to get account proof for block %d", blockNumber)
@@ -451,7 +451,7 @@ func GetStateRoot(t *testing.T, client *PooledEhtClient, blockNumber int) common
 // WaitForBlock waits until the block with the given number is available in the node, it errors
 // if the block is not available after a timeout.
 // It can be used to wait in multiple nodes for the same block, to ensure they have all processed it.
-func WaitForBlock(t *testing.T, client *PooledEhtClient, blockNumber int) *types.Block {
+func WaitForBlock(t *testing.T, client *PooledEthClient, blockNumber int) *types.Block {
 	var block *types.Block
 	err := WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 		var err error
@@ -468,7 +468,7 @@ func WaitForBlock(t *testing.T, client *PooledEhtClient, blockNumber int) *types
 	return block
 }
 
-func WaitForProofOf(t *testing.T, client *PooledEhtClient, blockNumber int) {
+func WaitForProofOf(t *testing.T, client *PooledEthClient, blockNumber int) {
 	err := WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
 		_, err := getProofFor(t, client, blockNumber)
 		if err != nil {
@@ -489,7 +489,7 @@ func WaitForProofOf(t *testing.T, client *PooledEhtClient, blockNumber int) {
 }
 
 // GetEventHeads retrieves the current consensus DAG heads (events tips, childless events)
-func GetEventHeads(t *testing.T, client *PooledEhtClient) []hash.Event {
+func GetEventHeads(t *testing.T, client *PooledEthClient) []hash.Event {
 
 	epoch := GetCurrentEpoch(t, client)
 
@@ -507,7 +507,7 @@ func GetEventHeads(t *testing.T, client *PooledEhtClient) []hash.Event {
 }
 
 // GetCurrentEpoch retrieves the current epoch number
-func GetCurrentEpoch(t *testing.T, client *PooledEhtClient) uint64 {
+func GetCurrentEpoch(t *testing.T, client *PooledEthClient) uint64 {
 	t.Helper()
 
 	var epoch hexutil.Uint64

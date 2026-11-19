@@ -177,7 +177,7 @@ func getEventsInEpoch(t *testing.T, net *tests.IntegrationTestNet) eventMap {
 // collectEventsAncestry recursively collects all ancestor events of the given event
 func collectEventsAncestry(
 	t *testing.T,
-	client *tests.PooledEhtClient,
+	client *tests.PooledEthClient,
 	event testEvent,
 	ancestry eventMap) {
 	t.Helper()
@@ -193,7 +193,7 @@ func collectEventsAncestry(
 }
 
 // fetchEvent retrieves the event details for the given event ID.
-func fetchEvent(t *testing.T, client *tests.PooledEhtClient, eventID hash.Event) testEvent {
+func fetchEvent(t *testing.T, client *tests.PooledEthClient, eventID hash.Event) testEvent {
 	var result map[string]any
 	err := client.Client().Call(&result, "dag_getEvent", eventID.Hex())
 	require.NoError(t, err)

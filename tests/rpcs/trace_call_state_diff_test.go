@@ -109,7 +109,7 @@ func senderOverride(addr common.Address, senderBalance *big.Int) map[string]any 
 // strictly after afterBlock. This guarantees that the deployment or state
 // change that happened in afterBlock is part of the parent-block state used
 // by a subsequent trace_call "latest" call.
-func waitForBlockAfter(t *testing.T, client *tests.PooledEhtClient, afterBlock *big.Int) {
+func waitForBlockAfter(t *testing.T, client *tests.PooledEthClient, afterBlock *big.Int) {
 	t.Helper()
 	err := tests.WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 		var current hexutil.Uint64

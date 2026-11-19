@@ -186,7 +186,7 @@ func testInternalTransactionsDoNotChangeReceiptIndex(t *testing.T, upgrades oper
 }
 
 func getSenderOfTransaction(
-	client *PooledEhtClient,
+	client *PooledEthClient,
 	txHash common.Hash,
 ) (common.Address, error) {
 	details := struct {
