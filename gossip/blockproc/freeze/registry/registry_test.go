@@ -37,15 +37,15 @@ import (
 func TestRegistry_SlotsMatchContractLayoutBehindProxy(t *testing.T) {
 	r := newRegistryBehindProxy(t)
 
-	account := common.Address{0: 0xa, 19: 0xb}
+	addr := common.Address{0: 0xa, 19: 0xb}
 	for method, slot := range map[string]common.Hash{
-		"setFrozen":   GetFrozenSlot(account),
-		"setOptedOut": GetOptedOutSlot(account),
+		"setFrozen":   GetFrozenSlot(addr),
+		"setOptedOut": GetOptedOutSlot(addr),
 	} {
-		r.call(method, account, true)
+		r.call(method, addr, true)
 		require.NotEqual(t, common.Hash{}, r.db.GetState(GetAddress(), slot), method)
 		require.Equal(t, common.Hash{}, r.db.GetState(r.implementation, slot), method)
-		r.call(method, account, false)
+		r.call(method, addr, false)
 		require.Equal(t, common.Hash{}, r.db.GetState(GetAddress(), slot), method)
 	}
 }
@@ -56,18 +56,18 @@ func TestRegistry_SlotsMatchContractLayoutBehindProxy(t *testing.T) {
 func TestRegistry_ViewsAgreeWithSlotsReadByClient(t *testing.T) {
 	r := newRegistryBehindProxy(t)
 
-	account := common.Address{0: 0xa, 19: 0xb}
+	addr := common.Address{0: 0xa, 19: 0xb}
 	slots := map[string]common.Hash{
-		"isFrozen":   GetFrozenSlot(account),
-		"isOptedOut": GetOptedOutSlot(account),
+		"isFrozen":   GetFrozenSlot(addr),
+		"isOptedOut": GetOptedOutSlot(addr),
 	}
 	for set, slot := range slots {
 		r.db.SetState(GetAddress(), slot, common.Hash{31: 1})
 		for view := range slots {
-			require.Equal(t, view == set, r.view(view, account), "%s after setting the %s slot", view, set)
+			require.Equal(t, view == set, r.view(view, addr), "%s after setting the %s slot", view, set)
 		}
 		r.db.SetState(GetAddress(), slot, common.Hash{})
-		require.False(t, r.view(set, account), "%s after clearing its slot", set)
+		require.False(t, r.view(set, addr), "%s after clearing its slot", set)
 	}
 }
 
@@ -107,8 +107,8 @@ func (r *registryBehindProxy) call(method string, args ...any) {
 	require.NoError(r.t, err)
 }
 
-func (r *registryBehindProxy) view(method string, account common.Address) bool {
-	input, err := r.abi.Pack(method, account)
+func (r *registryBehindProxy) view(method string, addr common.Address) bool {
+	input, err := r.abi.Pack(method, addr)
 	require.NoError(r.t, err)
 	output, _, err := r.evm.StaticCall(common.Address{}, GetAddress(), input, 1_000_000)
 	require.NoError(r.t, err)
