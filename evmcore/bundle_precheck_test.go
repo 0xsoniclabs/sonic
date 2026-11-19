@@ -370,6 +370,7 @@ func Test_GetBundleState_BundleWithBlobTransaction_IsPermanentlyBlockedWithCanto
 		"deeply nested":        func() bundle.BuilderStep { return bundle.AllOf(nested(other(), nested(blob()))) },
 		"unselected one-of":    func() bundle.BuilderStep { return bundle.OneOf(other(), blob()) },
 		"unselected in nested": func() bundle.BuilderStep { return bundle.OneOf(other(), nested(blob())) },
+		"bare root":            func() bundle.BuilderStep { return blob() },
 	}
 
 	currentBlock := uint64(100)
