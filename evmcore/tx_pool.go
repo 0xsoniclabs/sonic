@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -95,6 +96,10 @@ var (
 	// ErrOutOfOrderTxFromDelegated is returned when the transaction with gapped
 	// nonce received from the accounts with delegation or pending delegation.
 	ErrOutOfOrderTxFromDelegated = errors.New("gapped-nonce tx from delegated accounts")
+
+	// ErrFrozenAccount is returned if the transaction's sender is listed as
+	// frozen in the freeze registry.
+	ErrFrozenAccount = errors.New("account is frozen")
 
 	// ErrSponsorshipRejected is returned when a sponsored transaction request is
 	// not backed by a valid subsidy.
@@ -349,6 +354,8 @@ type TxPool struct {
 	subsidiesCheckerCache   *utils.TransactionCheckCache // Cache for heavy subsidies check results
 
 	bundleEvaluationCache BundleEvaluator // Cache for bundle evaluation results
+
+	freezeCheckerFactory func(state.StateDB) freeze.Checker // Creates the freeze checker of a state
 }
 
 type txpoolResetRequest struct {
@@ -407,6 +414,10 @@ func newTxPool(
 		subsidiesCheckerCache:   utils.NewCheckerCache(-1), // use default size
 
 		bundleEvaluationCache: bundlesCache,
+
+		freezeCheckerFactory: func(db state.StateDB) freeze.Checker {
+			return freeze.NewRegistryChecker(db)
+		},
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -752,6 +763,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		gasSubsidies:       pool.chain.CurrentRules().Upgrades.GasSubsidies,
 		brio:               pool.chain.CurrentRules().Upgrades.Brio,
 		transactionBundles: pool.chain.CurrentRules().Upgrades.TransactionBundles,
+		accountFreeze:      pool.chain.CurrentRules().Upgrades.AccountFreeze,
 	}
 
 	subsidiesChecker := pool.subsidiesCheckerFactory(
@@ -772,6 +784,9 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		pool.signer,
 	)
 	if err != nil {
+		return err
+	}
+	if err := validateTxForFreeze(tx, netRules, pool.freezeCheckerFactory(pool.currentState), pool.signer); err != nil {
 		return err
 	}
 	return pool.validateAuth(tx)
@@ -1812,6 +1827,7 @@ func (pool *TxPool) truncateQueue() {
 // is always explicitly triggered by SetBaseFee and it would be unnecessary and wasteful
 // to trigger a re-heap is this function
 func (pool *TxPool) demoteUnexecutables() {
+	pool.dropFrozenSenders()
 
 	isSponsored := pool.getSubsidiesCheckerForReorg()
 	evaluateBundle := newBundlesChecker(pool.bundleEvaluationCache, pool.chain, pool.currentState)
@@ -1883,6 +1899,29 @@ func (pool *TxPool) demoteUnexecutables() {
 		if list.Empty() {
 			delete(pool.pending, addr)
 		}
+	}
+}
+
+// dropFrozenSenders removes all transactions of senders frozen since they
+// entered the pool, which the block processor would skip.
+func (pool *TxPool) dropFrozenSenders() {
+	if !pool.chain.CurrentRules().Upgrades.AccountFreeze {
+		return
+	}
+	checker := pool.freezeCheckerFactory(pool.currentState)
+	var drops []common.Hash
+	for _, txs := range []map[common.Address]*txList{pool.pending, pool.queue} {
+		for addr, list := range txs {
+			if checker.IsFrozen(addr) {
+				for _, tx := range list.Flatten() {
+					drops = append(drops, tx.Hash())
+				}
+			}
+		}
+	}
+	for _, hash := range drops {
+		log.Trace("Removed transaction of frozen sender", "hash", hash)
+		pool.removeTx(hash, true)
 	}
 }
 
