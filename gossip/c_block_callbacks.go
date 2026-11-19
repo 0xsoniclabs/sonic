@@ -222,7 +222,6 @@ func consensusCallbackBeginBlockFn(
 						cBlock,
 						bs,
 						es,
-						evmStateReader,
 						eventProcessor,
 						atroposTime,
 						atroposDegenerate,
@@ -736,7 +735,6 @@ func endBlock(
 	cBlock *lachesis.Block,
 	bs iblockproc.BlockState,
 	es iblockproc.EpochState,
-	evmStateReader *EvmStateReader,
 	eventProcessor blockproc.ConfirmedEventsProcessor,
 	atroposTime inter.Timestamp,
 	atroposDegenerate bool,
@@ -775,7 +773,7 @@ func endBlock(
 			"head", parent.Number, "last_block", bs.LastBlock.Idx)
 	}
 	number := parent.Number + 1
-	lastBlockHeader := evmStateReader.Header(parent.Hash(), parent.Number)
+	lastBlockHeader := store.Header(parent.Hash(), parent.Number)
 
 	randao := computePrevRandao(confirmedEvents)
 	chainCfg := opera.CreateTransientEvmChainConfig(
@@ -930,7 +928,7 @@ func endBlock(
 		thisBlocksRules,
 		chainCfg,
 		statedb,
-		evmStateReader,
+		store,
 		signer,
 		blockCtx.Idx,
 		blockCtx.Time,
