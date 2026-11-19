@@ -25,6 +25,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	freezeRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -3827,6 +3828,96 @@ func TestRunRegularTransaction_MatchesReceiptToStatus(t *testing.T) {
 			runner := transactionRunner{evm}
 			_, status := runner.runRegularTransaction(ctxt, tx, 12, math.MaxUint64)
 			require.Equal(t, test.status, status)
+		})
+	}
+}
+
+func TestRunRegularTransaction_AccountFreeze_SkipsTransactionsOfFrozenSenders(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	sender := crypto.PubkeyToAddress(key.PublicKey)
+	regularTx := types.MustSignNewTx(key, types.LatestSignerForChainID(nil), &types.LegacyTx{
+		To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
+	})
+	internalTx := types.NewTx(&types.LegacyTx{To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1)})
+	require.True(t, internaltx.IsInternal(internalTx))
+
+	tests := map[string]struct {
+		accountFreeze bool
+		tx            *types.Transaction
+		frozen        common.Address
+		skipped       bool
+	}{
+		"enabled, frozen sender":          {true, regularTx, sender, true},
+		"enabled, other sender":           {true, regularTx, common.Address{0xa}, false},
+		"enabled, frozen internal sender": {true, internalTx, internaltx.InternalSender(internalTx), false},
+		"disabled, frozen sender":         {false, regularTx, sender, false},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+			any := gomock.Any()
+			state.EXPECT().GetState(freezeRegistry.GetAddress(), any).DoAndReturn(
+				func(_ common.Address, key common.Hash) common.Hash {
+					if key == freezeRegistry.GetFrozenSlot(test.frozen) {
+						return common.Hash{31: 1}
+					}
+					return common.Hash{}
+				}).AnyTimes()
+			if !test.skipped {
+				state.EXPECT().SetTxContext(any, any, any)
+				state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
+				state.EXPECT().EndTransaction()
+				state.EXPECT().SubBalance(any, any, any).AnyTimes()
+				state.EXPECT().Prepare(any, any, any, any, any, any)
+				state.EXPECT().GetNonce(any).Return(uint64(0)).AnyTimes()
+				state.EXPECT().SetNonce(any, any, any)
+				state.EXPECT().GetCode(any).Return([]byte{}).AnyTimes()
+				state.EXPECT().Snapshot().Return(1)
+				state.EXPECT().Exist(any).Return(true)
+				state.EXPECT().GetRefund().Return(uint64(0)).AnyTimes()
+				state.EXPECT().AddBalance(any, any, any).AnyTimes()
+				state.EXPECT().GetLogs(any, any)
+				state.EXPECT().TxIndex().Return(0)
+			}
+
+			rules := opera.FakeNetRules(opera.GetAllegroUpgrades())
+			chainConfig := opera.CreateTransientEvmChainConfig(
+				rules.NetworkID,
+				[]opera.UpgradeHeight{{Upgrades: rules.Upgrades, Height: 0, Time: 0}},
+				1,
+			)
+			baseFee := big.NewInt(1)
+			blockContext := vm.BlockContext{
+				BlockNumber: big.NewInt(123),
+				BaseFee:     baseFee,
+				Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
+				CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
+				Random:      &common.Hash{}, // < signals Revision >= Merge
+			}
+			runner := &transactionRunner{evm{vm.NewEVM(blockContext, state, chainConfig, opera.GetVmConfig(rules))}}
+			context := &runContext{
+				signer:   types.LatestSignerForChainID(nil),
+				baseFee:  baseFee,
+				statedb:  state,
+				gasPool:  core.NewGasPool(1_000_000),
+				usedGas:  new(uint64),
+				runner:   runner,
+				upgrades: opera.Upgrades{AccountFreeze: test.accountFreeze},
+			}
+
+			got, status := runner.runRegularTransaction(context, test.tx, 0, math.MaxUint64)
+
+			require.Equal(t, test.tx, got.Transaction)
+			if test.skipped {
+				require.Equal(t, core_types.TransactionResultInvalid, status)
+				require.Nil(t, got.Receipt)
+			} else {
+				require.Equal(t, core_types.TransactionResultSuccessful, status)
+				require.NotNil(t, got.Receipt)
+			}
 		})
 	}
 }
