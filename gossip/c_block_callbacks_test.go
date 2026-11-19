@@ -1816,17 +1816,26 @@ func TestIsPermissible_RejectsBlobTransactionsWithCanto(t *testing.T) {
 	}
 
 	for name, tx := range tests {
-		t.Run(name, func(t *testing.T) {
-			rules := opera.Rules{Upgrades: opera.GetBrioUpgrades()}
-			rules.Upgrades.TransactionBundles = true
-			require.NoError(t, isPermissible(tx, &rules, signer))
+		for _, canto := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/canto=%t", name, canto),
+				func(t *testing.T) {
+					rules := opera.Rules{Upgrades: opera.GetBrioUpgrades()}
+					rules.Upgrades.TransactionBundles = true
+					require.NoError(t, isPermissible(tx, &rules, signer))
 
-			rules.Upgrades.Canto = true
-			require.ErrorContains(t,
-				isPermissible(tx, &rules, signer),
-				"blob transactions are not supported since Canto",
-			)
-		})
+					rules.Upgrades.Canto = canto
+
+					err := isPermissible(tx, &rules, signer)
+					if canto {
+						require.ErrorContains(t, err,
+							"blob transactions are not supported since Canto",
+						)
+					} else {
+						require.NoError(t, err)
+
+					}
+				})
+		}
 	}
 }
 
