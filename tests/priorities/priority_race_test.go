@@ -224,7 +224,7 @@ func runTargetingVariants(
 
 // raceSetup holds the clients and accounts of one targeting variant.
 type raceSetup struct {
-	prioClient, ordClient *tests.PooledEhtClient
+	prioClient, ordClient *tests.PooledEthClient
 	prioAccs, ordAccs     []*tests.Account
 }
 
@@ -331,7 +331,7 @@ func runRace(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
 	prioAcc, ordAcc *tests.Account,
-	prioClient, ordClient *tests.PooledEhtClient,
+	prioClient, ordClient *tests.PooledEthClient,
 ) (prioReceipt, ordReceipt *types.Receipt, err error) {
 	prioTx := newSignedTx(t, net, prioAcc, 0, 1, 21000, raceGasPrice)
 	ordTx := newSignedTx(t, net, ordAcc, 0, 1, 21000, raceGasPrice)
@@ -410,7 +410,7 @@ func startCongestion(
 	t.Helper()
 	require := require.New(t)
 
-	clients := make([]*tests.PooledEhtClient, net.NumNodes())
+	clients := make([]*tests.PooledEthClient, net.NumNodes())
 	for i := range clients {
 		client, err := net.GetClientConnectedToNode(i)
 		require.NoError(err)

@@ -141,7 +141,7 @@ func TestTraceConsistency_TracesReproduceBlockProcessing(t *testing.T) {
 func runTransactionReadingParentBlockHash(
 	t *testing.T,
 	session IntegrationTestNetSession,
-	client *PooledEhtClient,
+	client *PooledEthClient,
 	contract *read_history_storage.ReadHistoryStorage,
 ) *types.Receipt {
 	t.Helper()

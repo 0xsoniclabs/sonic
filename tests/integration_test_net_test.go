@@ -695,14 +695,14 @@ func (s *latestBlockProbeService) calls() (blockNumber, getBalance int) {
 
 // newLatestBlockProbeClient creates a client connected to an in-process RPC
 // server serving the given fake eth service.
-func newLatestBlockProbeClient(t *testing.T, service *latestBlockProbeService) *PooledEhtClient {
+func newLatestBlockProbeClient(t *testing.T, service *latestBlockProbeService) *PooledEthClient {
 	t.Helper()
 	server := rpc.NewServer()
 	t.Cleanup(server.Stop)
 	require.NoError(t, server.RegisterName("eth", service))
 	rpcClient := rpc.DialInProc(server)
 	t.Cleanup(rpcClient.Close)
-	return &PooledEhtClient{ethClient: *ethclient.NewClient(rpcClient)}
+	return &PooledEthClient{ethClient: *ethclient.NewClient(rpcClient)}
 }
 
 func TestWaitUntilBlockStateIsLatest_ReturnsOnceLatestBlockAndStateAreAvailable(t *testing.T) {

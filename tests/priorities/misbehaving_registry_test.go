@@ -119,7 +119,7 @@ func TestPriorities_RegistryMutatesState_ChangesDoNotPersist(t *testing.T) {
 func installMisbehavingRegistry(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
-	client *tests.PooledEhtClient,
+	client *tests.PooledEthClient,
 ) *misbehaving_priority_registry.MisbehavingPriorityRegistry {
 	t.Helper()
 	require := require.New(t)
