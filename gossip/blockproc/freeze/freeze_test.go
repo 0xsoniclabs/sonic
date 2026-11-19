@@ -17,16 +17,24 @@
 package freeze
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
 	priorities "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/proxy"
 	subsidies "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -74,4 +82,47 @@ func TestRegistryChecker_IsOptedOut_ReadsRegistry(t *testing.T) {
 		require.True(t, NewRegistryChecker(db).IsOptedOut(token), "%v", value)
 		require.False(t, NewRegistryChecker(db).IsOptedOut(other), "%v", value)
 	}
+}
+
+func TestRegistryChecker_ReadsWhatTheRegistryContractWrites(t *testing.T) {
+	db, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+	require.NoError(t, err)
+	implementation := registry.GetImplementationAddress()
+	db.SetCode(registry.GetAddress(), proxy.GetCode(), tracing.CodeChangeUnspecified)
+	db.SetState(registry.GetAddress(), proxy.GetSlotForImplementation(), common.BytesToHash(implementation.Bytes()))
+	db.SetCode(implementation, registry.GetCode(), tracing.CodeChangeUnspecified)
+
+	evm := vm.NewEVM(vm.BlockContext{
+		CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
+		Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
+		BlockNumber: big.NewInt(1),
+		Time:        1,
+		Random:      &common.Hash{},
+	}, db, params.MergedTestChainConfig, vm.Config{})
+	abi, err := registry.RegistryMetaData.GetAbi()
+	require.NoError(t, err)
+	call := func(method string, addr common.Address, value bool) {
+		t.Helper()
+		input, err := abi.Pack(method, addr, value)
+		require.NoError(t, err)
+		_, _, err = evm.Call(common.Address{}, registry.GetAddress(), input, 1_000_000, new(uint256.Int))
+		require.NoError(t, err)
+	}
+
+	account, token := common.Address{0xa}, common.Address{0x7}
+	checker := NewRegistryChecker(db)
+	require.False(t, checker.IsFrozen(account))
+	require.False(t, checker.IsOptedOut(token))
+
+	call("setFrozen", account, true)
+	call("setOptedOut", token, true)
+	require.True(t, checker.IsFrozen(account))
+	require.True(t, checker.IsOptedOut(token))
+	require.False(t, checker.IsFrozen(token))
+	require.False(t, checker.IsOptedOut(account))
+
+	call("setFrozen", account, false)
+	call("setOptedOut", token, false)
+	require.False(t, checker.IsFrozen(account))
+	require.False(t, checker.IsOptedOut(token))
 }
