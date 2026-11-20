@@ -21,7 +21,7 @@ go 1.27.0
 tool go.uber.org/mock/mockgen
 
 require (
-	github.com/0xsoniclabs/carmen/go v0.0.0-20260925152836-62f625a466a9
+	github.com/0xsoniclabs/carmen/go v0.0.0-20261109121926-2f40b1b10da4
 	github.com/0xsoniclabs/tosca v0.0.0-20261006082751-39dec245cca5
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
@@ -104,7 +104,7 @@ require (
 	github.com/influxdata/line-protocol v0.0.0-20210922203350-b1ad95c89adf // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/karalabe/hid v1.0.1-0.20260315100226-f5d04adeffeb // indirect
-	github.com/klauspost/compress v1.18.6 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect

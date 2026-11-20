@@ -309,7 +309,7 @@ func (s *State) ApplyGenesis(genesis *makefakegenesis.GenesisJson) error {
 			s.db.SetState(cc.Address(address), cc.Key(key), cc.Value(value))
 		}
 	}
-	s.db.EndTransaction()
+	s.db.EndTransaction(carmen.CANCUN)
 	staged, err := s.db.EndBlock(0)
 	if err != nil {
 		return fmt.Errorf("failed to end genesis block: %w", err)

@@ -354,7 +354,7 @@ func (c *CarmenStateDB) GetRefund() uint64 {
 }
 
 func (c *CarmenStateDB) EndTransaction() {
-	c.db.EndTransaction()
+	c.db.EndTransaction(carmen.CANCUN)
 }
 
 func (c *CarmenStateDB) InterTxSnapshot() int {
