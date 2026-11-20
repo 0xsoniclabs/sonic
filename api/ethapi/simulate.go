@@ -341,6 +341,7 @@ func (sim *simulator) processBlock(
 	activeState := evmstore.WrapStateDbWithLogger(sim.state, tracer.Hooks())
 
 	evm := vm.NewEVM(blockContext, activeState, sim.chainConfig, vmConfig)
+	defer evm.Release()
 	if precompiles != nil {
 		evm.SetPrecompiles(precompiles)
 	}
@@ -368,13 +369,16 @@ func (sim *simulator) processBlock(
 		senders[txHash] = call.from()
 
 		tracer.reset(txHash, uint(i))
-		activeState.SetTxContext(txHash, i)
+		activeState.SetTxContext(txHash, i, uint32(i+1))
 
-		msg, err := call.ToMessage(sim.gp.Gas(), header.BaseFee, log.Root())
+		msg, err := call.toMessage(sim.gp.Available(false, 0), header.BaseFee, log.Root())
 		if err != nil {
 			return nil, nil, nil, nil, simTxValidationError(err)
 		}
-		msg.SkipNonceChecks = !sim.validate
+		msg.SkipEOACheck().SkipGasLimitCapCheck()
+		if !sim.validate {
+			msg.SkipNonceCheck()
+		}
 
 		result, applyErr := applySimMessage(ctx, evm, msg, timeout, sim.gp)
 		if applyErr != nil {

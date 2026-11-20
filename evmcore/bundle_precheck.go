@@ -412,6 +412,7 @@ func trialRunBundleInternal(
 	}
 
 	transactionProcessor := factory.newTransactionProcessor(chain, stateDb, nextBlock)
+	defer transactionProcessor.Release()
 	summary := transactionProcessor.Run(0, envelope)
 
 	usedGas := uint64(0)
@@ -450,6 +451,7 @@ type transactionProcessorFactory interface {
 
 type transactionProcessor interface {
 	Run(int, *types.Transaction) ProcessSummary
+	Release()
 }
 
 type realTransactionProcessorFactory struct{}

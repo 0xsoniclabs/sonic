@@ -59,7 +59,7 @@ func Test_calculateEnvelopeGas_ComputesGasBasedOnProvidedParameters(t *testing.T
 		"payload dominating gas requirements": {
 			payload: largePayload,
 			expected: func() uint64 {
-				res, err := core.FloorDataGas(largePayload)
+				res, err := core.FloorDataGas(envelopeRules, common.Address{}, &BundleProcessor, nil, largePayload, nil)
 				require.NoError(t, err)
 				return res
 			}(),
@@ -312,6 +312,10 @@ func Test_calculateEnvelopeGasInternal_DetectsTxGasSumOverflow(t *testing.T) {
 	require.ErrorIs(t, err, checked.ErrOverflow)
 }
 
+// envelopeRules are the revisions active wherever bundles are: Brio implies
+// all of them. The gas functions under test do not cover Amsterdam.
+var envelopeRules = params.Rules{IsHomestead: true, IsIstanbul: true, IsShanghai: true, IsPrague: true}
+
 func Test_calculateIntrinsicGas_MatchesGethImplementation(t *testing.T) {
 	tests := map[string]struct {
 		data       []byte
@@ -372,10 +376,10 @@ func Test_calculateIntrinsicGas_MatchesGethImplementation(t *testing.T) {
 				tc.data,
 				tc.accessList,
 				tc.authList,
-				false, // envelopes are not a contract creations
-				true,  // is homestead
-				true,  // is istanbul
-				true,  // is shanghai
+				common.Address{},
+				&BundleProcessor,
+				nil,
+				envelopeRules,
 			)
 			require.NoError(err)
 
@@ -477,7 +481,7 @@ func Test_calculateFloorDataGas_MatchesGethImplementation(t *testing.T) {
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			want, err := core.FloorDataGas(data)
+			want, err := core.FloorDataGas(envelopeRules, common.Address{}, &BundleProcessor, nil, data, nil)
 			require.NoError(err)
 
 			zeros := bytes.Count(data, []byte{0})

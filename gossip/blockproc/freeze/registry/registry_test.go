@@ -103,14 +103,14 @@ func newRegistryBehindProxy(t *testing.T) *registryBehindProxy {
 func (r *registryBehindProxy) call(method string, args ...any) {
 	input, err := r.abi.Pack(method, args...)
 	require.NoError(r.t, err)
-	_, _, err = r.evm.Call(common.Address{}, GetAddress(), input, 1_000_000, new(uint256.Int))
+	_, _, err = r.evm.Call(common.Address{}, GetAddress(), input, vm.NewGasBudget(1_000_000, 0), new(uint256.Int))
 	require.NoError(r.t, err)
 }
 
 func (r *registryBehindProxy) view(method string, addr common.Address) bool {
 	input, err := r.abi.Pack(method, addr)
 	require.NoError(r.t, err)
-	output, _, err := r.evm.StaticCall(common.Address{}, GetAddress(), input, 1_000_000)
+	output, _, err := r.evm.StaticCall(common.Address{}, GetAddress(), input, vm.NewGasBudget(1_000_000, 0))
 	require.NoError(r.t, err)
 	result, err := r.abi.Unpack(method, output)
 	require.NoError(r.t, err)

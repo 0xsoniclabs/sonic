@@ -105,7 +105,7 @@ func TestRegistryChecker_ReadsWhatTheRegistryContractWrites(t *testing.T) {
 		t.Helper()
 		input, err := abi.Pack(method, addr, value)
 		require.NoError(t, err)
-		_, _, err = evm.Call(common.Address{}, registry.GetAddress(), input, 1_000_000, new(uint256.Int))
+		_, _, err = evm.Call(common.Address{}, registry.GetAddress(), input, vm.NewGasBudget(1_000_000, 0), new(uint256.Int))
 		require.NoError(t, err)
 	}
 
