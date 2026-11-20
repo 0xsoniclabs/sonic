@@ -1441,8 +1441,10 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 	// If a new block appeared, validate the pool of pending transactions. This will
 	// remove any transaction that has been included in the block or was invalidated
 	// because of another transaction (e.g. higher gas price).
+	var frozen map[common.Address]struct{}
 	if reset != nil {
 		pool.demoteUnexecutables()
+		frozen = pool.dropFrozenSenders()
 		if baseFee := pool.chain.CurrentBaseFee(); baseFee != nil {
 			// Sonic-specific base fee
 			pool.priced.SetBaseFee(baseFee)
@@ -1473,6 +1475,9 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 			events[addr] = newTxSortedMap()
 		}
 		events[addr].Put(tx)
+	}
+	for addr := range frozen {
+		delete(events, addr)
 	}
 	if len(events) > 0 {
 		var txs []*types.Transaction
@@ -1827,8 +1832,6 @@ func (pool *TxPool) truncateQueue() {
 // is always explicitly triggered by SetBaseFee and it would be unnecessary and wasteful
 // to trigger a re-heap is this function
 func (pool *TxPool) demoteUnexecutables() {
-	pool.dropFrozenSenders()
-
 	isSponsored := pool.getSubsidiesCheckerForReorg()
 	evaluateBundle := newBundlesChecker(pool.bundleEvaluationCache, pool.chain, pool.currentState)
 
@@ -1903,16 +1906,20 @@ func (pool *TxPool) demoteUnexecutables() {
 }
 
 // dropFrozenSenders removes all transactions of senders frozen since they
-// entered the pool, which the block processor would skip.
-func (pool *TxPool) dropFrozenSenders() {
+// entered the pool, which the block processor would skip, and returns those
+// senders. It runs after demoteUnexecutables, so that mined transactions are
+// already gone and removing the rest leaves the pending nonce at the state's.
+func (pool *TxPool) dropFrozenSenders() map[common.Address]struct{} {
 	if !pool.chain.CurrentRules().Upgrades.AccountFreeze {
-		return
+		return nil
 	}
 	checker := pool.freezeCheckerFactory(pool.currentState)
+	frozen := map[common.Address]struct{}{}
 	var drops []common.Hash
 	for _, txs := range []map[common.Address]*txList{pool.pending, pool.queue} {
 		for addr, list := range txs {
 			if checker.IsFrozen(addr) {
+				frozen[addr] = struct{}{}
 				for _, tx := range list.Flatten() {
 					drops = append(drops, tx.Hash())
 				}
@@ -1923,6 +1930,7 @@ func (pool *TxPool) dropFrozenSenders() {
 		log.Trace("Removed transaction of frozen sender", "hash", hash)
 		pool.removeTx(hash, true)
 	}
+	return frozen
 }
 
 // addressByHeartbeat is an account address tagged with its last activity timestamp.
