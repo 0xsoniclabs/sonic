@@ -1180,6 +1180,7 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 			require.ErrorContains(t, err, "max initcode size exceeded")
 			require.Nil(t, receipt)
 			require.Equal(t, uint64(0), gasUsed)
+			require.Zero(t, gp.Available(false, 0))
 		})
 	}
 }
