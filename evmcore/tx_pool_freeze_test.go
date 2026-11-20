@@ -81,6 +81,58 @@ func TestTxPool_AccountFreeze_DropsTransactionsOfSendersFrozenWhileInThePool(t *
 	require.NoError(t, validateTxPoolInternals(pool))
 }
 
+func TestTxPool_AccountFreeze_FreezingBlockAlsoMiningATransaction_KeepsStateNonce(t *testing.T) {
+	checker := freeze.NewMockChecker(gomock.NewController(t))
+	pool, key := setupAccountFreezeTxPool(checker)
+	defer pool.Stop()
+	frozen, isFrozen := crypto.PubkeyToAddress(key.PublicKey), atomic.Bool{}
+	checker.EXPECT().IsFrozen(gomock.Any()).DoAndReturn(func(addr common.Address) bool {
+		return addr == frozen && isFrozen.Load()
+	}).AnyTimes()
+
+	testAddBalance(pool, frozen, big.NewInt(1_000_000))
+	require.NoError(t, pool.AddLocal(transaction(0, 100_000, key)))
+	require.NoError(t, pool.AddLocal(transaction(1, 100_000, key)))
+	<-pool.requestReset(nil, nil)
+
+	testSetNonce(pool, frozen, 1)
+	isFrozen.Store(true)
+	<-pool.requestReset(nil, nil)
+
+	pending, queued := pool.Stats()
+	require.Zero(t, pending)
+	require.Zero(t, queued)
+	require.Equal(t, uint64(1), pool.Nonce(frozen))
+	require.NoError(t, validateTxPoolInternals(pool))
+}
+
+func TestTxPool_AccountFreeze_DoesNotAnnounceTransactionsOfFrozenSenders(t *testing.T) {
+	checker := freeze.NewMockChecker(gomock.NewController(t))
+	pool, key := setupAccountFreezeTxPool(checker)
+	defer pool.Stop()
+	frozen, isFrozen := crypto.PubkeyToAddress(key.PublicKey), atomic.Bool{}
+	checker.EXPECT().IsFrozen(gomock.Any()).DoAndReturn(func(addr common.Address) bool {
+		return addr == frozen && isFrozen.Load()
+	}).AnyTimes()
+
+	testAddBalance(pool, frozen, big.NewInt(1_000_000))
+	require.NoError(t, pool.AddLocal(transaction(1, 100_000, key)))
+	<-pool.requestReset(nil, nil)
+
+	events := make(chan NewTxsNotify, 8)
+	sub := pool.SubscribeNewTxsNotify(events)
+	defer sub.Unsubscribe()
+
+	testSetNonce(pool, frozen, 1) // makes the queued transaction executable
+	isFrozen.Store(true)
+	<-pool.requestReset(nil, nil)
+
+	pending, queued := pool.Stats()
+	require.Zero(t, pending)
+	require.Zero(t, queued)
+	require.NoError(t, validateEvents(events, 0))
+}
+
 func TestTxPool_AccountFreezeDisabled_IgnoresFrozenSenders(t *testing.T) {
 	pool, key := setupTxPool()
 	defer pool.Stop()
