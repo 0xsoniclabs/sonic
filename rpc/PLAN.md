@@ -854,7 +854,7 @@ of its code.
 | ID | Requirement | Verified by |
 |---|---|---|
 | F1 | Every observable answer (result, error code, wording, and which of several failing checks is reported) matches the reference unless a deviations row says otherwise | L |
-| F2 | Checks run in the legacy order: block, then state overrides, then the call object; a tracer's name, config and `timeout` are checked where the tracer is built, after its subject is found | L, U |
+| F2 | Checks run in the order of the legacy function each handler ports, so a request failing two checks reports the same one. `DoCall` (`eth_call`): block, then state overrides, then the call object (`ToMessage`). `DoEstimateGas` (`eth_estimateGas`): block with the EIP-7825 cap (`capMaxGas`, block overrides), then the fee fields (`both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified`), then state overrides, applied only when the fee cap is not zero (the balance recap) and otherwise at the first run. Each other handler's order is written down at its step from its legacy function; a tracer's name, config and `timeout` are checked where the tracer is built, after its subject is found | L, U (paired failures: conflicting fee fields with an account override giving both `state` and `stateDiff`, on `eth_call` and on `eth_estimateGas`, each against the legacy error) |
 | F3 | A missing block is worded as each legacy handler words it: `header not found` (state getters, `eth_call`); `block does not exists` or `block with hash %s not found` (`eth_estimateGas`); `block #%d not found` (`debug_*`); `cannot trace block %d got invalid block for tracing` (`trace_block`); the tracing wording of #1207 | L, U (one assertion per wording) |
 | F4 | A handler's own check (fee fields, `data` vs `input`, `state` vs `stateDiff`, reward percentiles) is a plain error with the legacy text, so -32000; an unknown subscription type is -32601 `no "x" subscription in eth namespace` | L, U |
 | F5 | `err: %w (supplied gas %d)` wraps a failed message only where legacy went through `DoCall` (`eth_call`, `eth_estimateGas`, `eth_simulateV1`); `eth_createAccessList` reports the bare error under `failed to apply transaction from sender …` | L, U |
@@ -949,7 +949,7 @@ Every `port` and `local` row has R; a row without it is a gap.
 | eth_syncing | port | `PublicEthereumAPI.Syncing` | R E | `Progress` |
 | eth_gasPrice, eth_maxPriorityFeePerGas, eth_feeHistory, eth_blobBaseFee | port | `PublicEthereumAPI.*` | R L E | module oracle (I10); count clamp 1024 (V2) |
 | eth_getBalance, eth_getTransactionCount, eth_getCode, eth_getStorageAt | port | `PublicBlockChainAPI.Get*`, `PublicTransactionPoolAPI.GetTransactionCount` | R L E | pending nonce from pool (I5) |
-| eth_getAccount | port | `GetAccount` | R L | storage root from the empty-storage flag |
+| eth_getAccount | port | `GetAccount` | R L | storage root, code hash, balance and nonce from `State.GetProof(address, nil)` and `proof.GetAccountElements` at the block's state root, as `GetAccount`; never `GetStorageRoot`, which Carmen answers with zero or a dummy non-empty hash |
 | eth_getProof | port | `GetProof` | R L E | `State.GetProof`; V10 |
 | eth_call | port | `Call`, `DoCall` | R L E I | revert data in error; `preArgs` (I8); overrides (V5); V11 |
 | eth_estimateGas | port | `EstimateGas`, `DoEstimateGas` | R L E I | binary search bounded by `RPCGasCap`, `MaxGasLimit`; V11 |
@@ -974,7 +974,7 @@ Every `port` and `local` row has R; a row without it is a gap.
 | Method | Decision | Legacy | Cov. | Notes |
 |---|---|---|---|---|
 | txpool_content, txpool_contentFrom, txpool_status, txpool_inspect | port | `PublicTxPoolAPI` | R I | |
-| sonic_estimateGasForTransactions, sonic_prepareBundle, sonic_submitBundle, sonic_getBundleInfo | port | `api/sonicapi` | R I | `tests/rpcs/bundle_test.go`, `tests/bundles` |
+| sonic_estimateGasForTransactions, sonic_prepareBundle, sonic_submitBundle, sonic_getBundleInfo | port | `api/sonicapi` | R I | `tests/rpcs/bundle_test.go`, `tests/bundles`; at most 16 transactions to estimate, checked before state access, also when `sonic_prepareBundle` estimates (section 10) |
 | dag_getEvent, dag_getEventPayload, dag_getHeads | port | `dag_api.go` | R L I | `ConsensusReader` |
 | abft_getValidators, abft_getDowntime, abft_getEpochUptime, abft_getOriginatedEpochFee | port | `abft_api.go` | R L | `ConsensusReader` |
 | test_proposeTransactions, test_addTransactions | port | `api/testapi` | R I | `TestOnly`; always registered, `test-only API is not enabled` while `EnableTestOnlyApi` is off |
@@ -1311,6 +1311,7 @@ the node configuration. Nothing bounds the requests running at once
 | `AllowUnprotectedTxs` | false (TOML only) | accept raw transactions without EIP-155 | `EthAPIBackend.UnprotectedAllowed` | `exec.DefaultConfig` |
 | `EnableTestOnlyApi` | false (`--enable-test-only-api`) | `test_*` do their work | `EthAPIBackend.IsTestOnlyApiEnabled` | `exec.DefaultConfig` |
 | `eth_simulateV1` blocks / calls | 256 / 5,000 per block / 10,000 per request | blocks and calls per simulation, all checked before state access | `maxSimulateBlocks`, `maxSimulateCallsPerBlock`, `maxSimulateTotalCalls` (`simulate.go`) | the same constants in `rpc/eth` |
+| transactions to estimate | 16 | per `sonic_estimateGasForTransactions` request and per `sonic_prepareBundle` that estimates, checked before state access; the estimate is O(n²) in the transactions | `MaxNumEstimableTransactions` (`api/sonicapi/estimate_gas.go`) | `maxEstimableTransactions` in `rpc/sonic` |
 | subscriptions per connection | 10,000 | new (D4, ADR6) | none | `maxSubscriptionsPerConnection` in `rpc/transport` |
 | notification buffer | per subscription; size set at step 4 and named in `rpc/README.md` | new (D4) | none | `rpc/transport` |
 | `--mode validator` | | O3 | `config/config.go` | node configuration |
@@ -1323,7 +1324,13 @@ missing (T5); the timeout test in `rpc/eth` covers `RPCTimeout` and where
 `RPCEVMTimeout` applies (T6). Unit tests in `rpc/eth` port the reference's
 `eth_simulateV1` limit tests (`simulate_test.go`) and add one per cap at
 the cap: a request one block or one call over a cap is refused before state
-access, a request at the cap is not.
+access, a request at the cap is not. lakme does not run `sonic_*`, so unit
+tests in `rpc/sonic` guard the estimate cap: 16 transactions are estimated,
+17 are refused with the legacy text before any state is opened:
+`sonic_estimateGasForTransactions` answers `too many transactions to estimate
+gas for: got 17, max is 16` before any `Core` call, and `sonic_prepareBundle`,
+which reads the head first, answers it wrapped in `failed to prepare bundle:
+gas estimation failed: `.
 
 ## 11. Decisions
 
