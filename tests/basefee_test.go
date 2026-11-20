@@ -17,10 +17,13 @@
 package tests
 
 import (
+	"context"
+	"math/big"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/basefee"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/stretchr/testify/require"
 )
@@ -30,7 +33,7 @@ func TestBaseFee_CanReadBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
 	t.Parallel()
 
 	// Deploy the base fee contract.
-	contract, _, err := DeployContract(session, basefee.DeployBasefee)
+	contract, deployReceipt, err := DeployContract(session, basefee.DeployBasefee)
 	require.NoError(t, err)
 
 	// Collect the current base fee from the head state.
@@ -51,8 +54,22 @@ func TestBaseFee_CanReadBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
 	require.NoError(t, err)
 	fromBlock := block.BaseFee()
 
-	// Collect the base fee from the archive.
-	fromArchive, err := contract.GetBaseFee(&bind.CallOpts{BlockNumber: receipt.BlockNumber})
+	// Collect the base fee from the archive. A call that names no gas price
+	// runs with a base fee of zero, as in go-ethereum, so the call is priced
+	// to observe the block's base fee.
+	priced, err := basefee.NewBasefeeCaller(
+		deployReceipt.ContractAddress,
+		pricedCaller{ContractCaller: client, gasPrice: fromBlock},
+	)
+	require.NoError(t, err)
+	fromArchive, err := priced.GetBaseFee(&bind.CallOpts{
+		BlockNumber: receipt.BlockNumber,
+		From:        session.GetSessionSponsor().Address(),
+	})
+	require.NoError(t, err)
+
+	// An unpriced call observes a base fee of zero.
+	fromUnpricedCall, err := contract.GetBaseFee(&bind.CallOpts{BlockNumber: receipt.BlockNumber})
 	require.NoError(t, err)
 
 	require.Positive(t, fromLog.Int64(),
@@ -64,4 +81,22 @@ func TestBaseFee_CanReadBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
 	require.Equal(t, fromLog, fromArchive,
 		"base fee from log should match base fee from archive",
 	)
+	require.Zero(t, fromUnpricedCall.Sign(),
+		"base fee observed by an unpriced call should be zero",
+	)
+}
+
+// pricedCaller is a bind.ContractCaller that runs every call with the given
+// gas price. eth_call runs a call that names no gas price with a base fee of
+// zero, so a call observing the block's base fee must be priced. The sender
+// named in the call options must be able to pay for the gas limit.
+type pricedCaller struct {
+	bind.ContractCaller
+	gasPrice *big.Int
+}
+
+func (c pricedCaller) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
+	call.GasPrice = c.gasPrice
+	call.Gas = 1_000_000
+	return c.ContractCaller.CallContract(ctx, call, blockNumber)
 }

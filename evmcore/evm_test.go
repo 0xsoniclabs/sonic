@@ -43,10 +43,10 @@ func TestNewEVMBlockContextFromHeader_UsesTheHeadersDifficulty(t *testing.T) {
 		wantDifficulty *big.Int
 		wantRandom     bool
 	}{
-		"a header carrying no difficulty is post-merge": {
+		"a header carrying no difficulty reports zero": {
 			difficulty:     nil,
 			wantDifficulty: big.NewInt(0),
-			wantRandom:     true,
+			wantRandom:     false,
 		},
 		"a zero difficulty is post-merge, and PREVRANDAO is the header's": {
 			difficulty:     big.NewInt(0),
