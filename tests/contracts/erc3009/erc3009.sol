@@ -33,6 +33,7 @@ contract ERC3009 is ERC20 {
         uint8 v, bytes32 r, bytes32 s
     ) external {
         _useAuthorization(TRANSFER_WITH_AUTHORIZATION_TYPEHASH, from, to, value, validAfter, validBefore, nonce, v, r, s);
+        _transfer(from, to, value);
     }
 
     // receiveWithAuthorization is transferWithAuthorization submitted by the
@@ -43,6 +44,7 @@ contract ERC3009 is ERC20 {
     ) external {
         require(to == msg.sender, "caller must be the payee");
         _useAuthorization(RECEIVE_WITH_AUTHORIZATION_TYPEHASH, from, to, value, validAfter, validBefore, nonce, v, r, s);
+        _transfer(from, to, value);
     }
 
     function _useAuthorization(
@@ -62,6 +64,5 @@ contract ERC3009 is ERC20 {
 
         authorizationState[from][nonce] = true;
         emit AuthorizationUsed(from, nonce);
-        _transfer(from, to, value);
     }
 }
