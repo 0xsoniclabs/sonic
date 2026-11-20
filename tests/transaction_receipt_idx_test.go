@@ -306,9 +306,12 @@ func testSkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t *testin
 	require.NoError(t, err)
 	balanceAfter, err := client.BalanceAt(t.Context(), senderSkipped.Address(), big.NewInt(int64(after)))
 	require.NoError(t, err)
-	require.Equal(t, balanceBefore.Uint64(), balanceAfter.Uint64(),
-		"Balance should remain unchanged",
-	)
+	// Before Allegro, skipped transactions keep the gas they bought.
+	wantBalance := balanceBefore.Uint64()
+	if !upgrades.Allegro {
+		wantBalance -= txData.Gas * gasPrice.Uint64()
+	}
+	require.Equal(t, wantBalance, balanceAfter.Uint64())
 	nonceAfter, err := client.NonceAt(t.Context(), senderSkipped.Address(), big.NewInt(int64(after)))
 	require.NoError(t, err)
 	require.Zero(t, nonceAfter, "Nonce should remain unchanged")
