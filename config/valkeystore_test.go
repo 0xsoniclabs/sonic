@@ -103,3 +103,16 @@ func TestUnlockValidatorKey_PasswordPipeTimeout(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.False(t, valKeystore.Unlocked(pubkey))
 }
+
+func TestUnlockValidatorKey_WrongPasswordFails(t *testing.T) {
+	valKeystore, pubkey := newTestValidatorKey(t)
+
+	tmpDir := t.TempDir()
+	passwordPath := path.Join(tmpDir, "password.txt")
+	require.NoError(t, os.WriteFile(passwordPath, []byte("wrong\n"), 0600))
+	cliCtx := newCliContextWithPasswordFile(t, passwordPath)
+
+	err := unlockValidatorKey(t.Context(), cliCtx, pubkey, valKeystore)
+	require.ErrorContains(t, err, "could not decrypt key with given password")
+	require.False(t, valKeystore.Unlocked(pubkey))
+}

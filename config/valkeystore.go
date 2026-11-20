@@ -70,7 +70,7 @@ func unlockValidatorKey(sigCtx context.Context, cliCtx *cli.Context, pubKey vali
 	if !valKeystore.Has(pubKey) {
 		return valkeystore.ErrNotFound
 	}
-	var err error
+	var unlockErr error
 	for trials := 0; trials < 3; trials++ {
 		prompt := fmt.Sprintf("Unlocking validator key %s | Attempt %d/%d", pubKey.String(), trials+1, 3)
 		passwordList, err := makeValidatorPasswordList(sigCtx, cliCtx)
@@ -81,17 +81,17 @@ func unlockValidatorKey(sigCtx context.Context, cliCtx *cli.Context, pubKey vali
 		if err != nil {
 			return err
 		}
-		err = valKeystore.Unlock(pubKey, password)
-		if err == nil {
+		unlockErr = valKeystore.Unlock(pubKey, password)
+		if unlockErr == nil {
 			log.Info("Unlocked validator key", "pubkey", pubKey.String())
 			return nil
 		}
-		if err.Error() != "could not decrypt key with given password" {
-			return err
+		if unlockErr.Error() != "could not decrypt key with given password" {
+			return unlockErr
 		}
 	}
 	// All trials expended to unlock account, bail out
-	return err
+	return unlockErr
 }
 
 func readFileWithContext(ctx context.Context, path string) ([]byte, error) {
