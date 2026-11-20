@@ -70,8 +70,6 @@ func TestAccountFreeze_FrozenSenders(t *testing.T) {
 		require.Len(t, poolContentFrom(t, net, account.Address())["queued"], 1)
 
 		freeze(t, net, reg, account.Address(), true)
-		_, err = net.EndowAccount(common.Address{0x2}, big.NewInt(1))
-		require.NoError(t, err)
 		content := poolContentFrom(t, net, account.Address())
 		require.Empty(t, content["queued"])
 		require.Empty(t, content["pending"])
@@ -88,13 +86,22 @@ func poolContentFrom(t *testing.T, net *tests.IntegrationTestNet, account common
 	return content
 }
 
+// freeze sets the freeze status of account and waits until the pool has seen it.
 func freeze(t *testing.T, net *tests.IntegrationTestNet, reg *freeze_registry.Registry, account common.Address, value bool) *types.Receipt {
 	t.Helper()
+	var tx *types.Transaction
 	receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-		return reg.SetFrozen(opts, account, value)
+		var err error
+		tx, err = reg.SetFrozen(opts, account, value)
+		return tx, err
 	})
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+	require.NoError(t, tests.WaitUntilTransactionIsRetiredFromPool(t, client, tx))
 	return receipt
 }
 
