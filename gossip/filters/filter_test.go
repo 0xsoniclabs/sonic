@@ -27,12 +27,12 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/utils/adapters/ethdb2kvdb"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
 	"github.com/stretchr/testify/require"
 	gomock "go.uber.org/mock/gomock"
 
 	"github.com/0xsoniclabs/sonic/topicsdb"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
@@ -443,14 +443,16 @@ func TestFilter_FilterLogs_ReturnsCorrectedTransactionIndexes(t *testing.T) {
 			return txs[f]
 		}).AnyTimes()
 
+	// The head is block 2, the last block the logs above are taken from, so that
+	// the filtered ranges below do not extend beyond it.
 	backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).
 		Return(&evmcore.EvmHeader{
-			Number: big.NewInt(1),
+			Number: big.NewInt(2),
 		}, nil,
 		).AnyTimes()
 	backend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).
 		Return(&evmcore.EvmHeader{
-			Number: big.NewInt(1),
+			Number: big.NewInt(2),
 		}, nil,
 		).AnyTimes()
 	backend.EXPECT().GetLogs(gomock.Any(), gomock.Any()).Return([][]*types.Log{logs}, nil).AnyTimes()
@@ -601,8 +603,14 @@ func TestFilter_FilterLogs_HandlesMalformedQueries(t *testing.T) {
 		expectedError error
 	}{
 		"invalid block range, begin > end": {
-			begin: 2,
-			end:   1,
+			begin:         2,
+			end:           1,
+			expectedError: errInvalidBlockRange,
+		},
+		"block range beyond the head": {
+			begin:         0,
+			end:           2,
+			expectedError: errBlockRangeIntoFuture,
 		},
 		"invalid block range, begin < 0": {
 			begin:         -2,
@@ -612,6 +620,14 @@ func TestFilter_FilterLogs_HandlesMalformedQueries(t *testing.T) {
 		"block index not found": {
 			begin: 0,
 			end:   0,
+		},
+		"begin is earliest": {
+			begin: rpc.EarliestBlockNumber.Int64(),
+			end:   0,
+		},
+		"begin is earliest, end is head": {
+			begin: rpc.EarliestBlockNumber.Int64(),
+			end:   rpc.LatestBlockNumber.Int64(),
 		},
 	}
 	for name, test := range tests {
@@ -776,19 +792,77 @@ func TestFilter_IndexedLogs_AcceptsAnyQueryIfThereAreNoLimits(t *testing.T) {
 	}
 }
 
-func TestFilter_Logs_RangeIsClampedToHead(t *testing.T) {
+func TestFilter_Logs_RangeBeyondHeadIsRejectedWithoutQueryingTheIndex(t *testing.T) {
 	const head = idx.Block(5)
 
+	// The log index is written before the head advances, so blocks beyond the
+	// head must not be read. The mocks have no expectations for the index, so
+	// any access to it fails the test.
 	ctrl := gomock.NewController(t)
 	backend := NewMockBackend(ctrl)
-	index := topicsdb.NewMockIndex(ctrl)
 	backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.LatestBlockNumber).
 		Return(&evmcore.EvmHeader{Number: big.NewInt(int64(head))}, nil)
-	backend.EXPECT().EvmLogIndex().Return(index)
-	index.EXPECT().FindInBlocks(gomock.Any(), idx.Block(0), head, gomock.Any(), gomock.Any())
 
 	filter, err := NewRangeFilter(backend, testConfig(), 0, int64(head)+10, []common.Address{{0x42}}, nil, 0)
 	require.NoError(t, err)
-	_, err = filter.Logs(t.Context())
+	logs, err := filter.Logs(t.Context())
+	require.ErrorIs(t, err, errBlockRangeIntoFuture)
+	require.Nil(t, logs)
+}
+
+func TestFilter_BlockRangeErrors_AreReportedAsInvalidParams(t *testing.T) {
+	for name, err := range map[string]error{
+		"invalid block range params":              errInvalidBlockRange,
+		"block range extends beyond current head": errBlockRangeIntoFuture,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var rpcErr rpc.Error
+			require.ErrorAs(t, err, &rpcErr)
+			require.Equal(t, -32602, rpcErr.ErrorCode())
+		})
+	}
+}
+
+func TestResolveBlockNumber(t *testing.T) {
+	const head = 10
+	tests := map[string]struct {
+		number   int64
+		expected idx.Block
+	}{
+		"explicit number": {number: 5, expected: 5},
+		"genesis":         {number: 0, expected: 0},
+		"earliest":        {number: rpc.EarliestBlockNumber.Int64(), expected: 0},
+		"latest":          {number: rpc.LatestBlockNumber.Int64(), expected: head},
+		"pending":         {number: rpc.PendingBlockNumber.Int64(), expected: head},
+		"finalized":       {number: rpc.FinalizedBlockNumber.Int64(), expected: head},
+		"safe":            {number: rpc.SafeBlockNumber.Int64(), expected: head},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.expected, resolveBlockNumber(test.number, head))
+		})
+	}
+}
+
+func TestFilter_FilterLogs_EarliestBlockIsResolvedToTheFirstBlock(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+
+	backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.LatestBlockNumber).
+		Return(&evmcore.EvmHeader{Number: big.NewInt(2)}, nil)
+	for n := range 3 {
+		backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(n)).
+			Return(&evmcore.EvmHeader{Number: big.NewInt(int64(n)), Hash: common.Hash{byte(n + 1)}}, nil)
+		backend.EXPECT().GetLogs(gomock.Any(), common.Hash{byte(n + 1)}).Return(nil, nil)
+	}
+
+	filter := &Filter{
+		backend: backend,
+		config:  testConfig(),
+		begin:   rpc.EarliestBlockNumber.Int64(),
+		end:     rpc.LatestBlockNumber.Int64(),
+	}
+	logs, err := filter.Logs(t.Context())
 	require.NoError(t, err)
+	require.Empty(t, logs)
 }
