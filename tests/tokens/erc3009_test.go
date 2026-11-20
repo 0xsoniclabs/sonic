@@ -98,14 +98,15 @@ func TestTokenStandards_ERC3009(t *testing.T) {
 		},
 	}
 
-	net := tests.StartIntegrationTestNet(t)
-	token, _, shared := deployToken(t, net, func(o *bind.TransactOpts, b bind.ContractBackend) (common.Address, *types.Transaction, *erc3009.Erc3009, error) {
+	t.Parallel()
+	session := tests.StartIntegrationTestNet(t).SpawnSession(t)
+	token, _, shared := deployToken(t, session, func(o *bind.TransactOpts, b bind.ContractBackend) (common.Address, *types.Transaction, *erc3009.Erc3009, error) {
 		return erc3009.DeployErc3009(o, b, big.NewInt(int64(100*len(cases))))
 	})
 
 	names := slices.Sorted(maps.Keys(cases))
-	parties := newTokenParties(t, net, shared, len(names))
-	fundTokenParties(t, net, token, parties, func(o *bind.TransactOpts, c *erc3009.Erc3009, a tokenActors, _ *big.Int) (*types.Transaction, error) {
+	parties := newTokenParties(t, session, shared, len(names))
+	fundTokenParties(t, session, token, parties, func(o *bind.TransactOpts, c *erc3009.Erc3009, a tokenActors, _ *big.Int) (*types.Transaction, error) {
 		return c.Transfer(o, a[alice], big.NewInt(100))
 	})
 
@@ -114,10 +115,10 @@ func TestTokenStandards_ERC3009(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			for _, auth := range test.setup {
-				applyAs(t, net, p.accounts[auth.submitter], true, auth.issue(t, net, token, p))
+				applyAs(t, session, p.accounts[auth.submitter], true, auth.issue(t, session, token, p))
 			}
 			before := observeErc3009(t, token, p.actors, test.auth.nonce)
-			receipt := applyAs(t, net, p.accounts[test.auth.submitter], test.want != nil, test.auth.issue(t, net, token, p))
+			receipt := applyAs(t, session, p.accounts[test.auth.submitter], test.want != nil, test.auth.issue(t, session, token, p))
 
 			after := observeErc3009(t, token, p.actors, test.auth.nonce)
 			require.Equal(t,
