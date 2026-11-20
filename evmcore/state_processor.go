@@ -34,6 +34,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -749,6 +750,11 @@ func (e evm) _runTransaction(
 	msg, err := TxAsMessage(tx, ctxt.signer, ctxt.baseFee)
 	if err != nil {
 		log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
+		return ProcessedTransaction{Transaction: tx}
+	}
+
+	if ctxt.upgrades.AccountFreeze && !internaltx.IsInternal(tx) && freeze.NewRegistryChecker(ctxt.statedb).IsFrozen(msg.From) {
+		log.Debug("Transaction from frozen account skipped", "tx", tx.Hash().Hex(), "sender", msg.From)
 		return ProcessedTransaction{Transaction: tx}
 	}
 
