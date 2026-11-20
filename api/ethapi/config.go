@@ -23,6 +23,7 @@ import (
 	"hash/crc32"
 	"math"
 
+	freezeRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
 	priorityRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	subsidiesRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -102,6 +103,9 @@ func activeSystemContracts(upgrade opera.Upgrades) contractRegistry {
 	}
 	if upgrade.TransactionPriorities {
 		sysContracts["TRANSACTION_PRIORITY_REGISTRY_ADDRESS"] = priorityRegistry.GetAddress()
+	}
+	if upgrade.AccountFreeze {
+		sysContracts["ACCOUNT_FREEZE_REGISTRY_ADDRESS"] = freezeRegistry.GetAddress()
 	}
 	return sysContracts
 }

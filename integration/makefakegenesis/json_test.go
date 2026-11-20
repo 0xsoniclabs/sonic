@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	freezeRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
 	priorityRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/proxy"
 	subsidiesRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
@@ -55,6 +56,11 @@ func TestJsonGenesis_DeploysRegistryContracts(t *testing.T) {
 			enable:  func(u *opera.Upgrades) { u.TransactionPriorities = true },
 			address: priorityRegistry.GetAddress(),
 			code:    priorityRegistry.GetCode(),
+		},
+		"account freeze registry": {
+			enable:  func(u *opera.Upgrades) { u.AccountFreeze = true },
+			address: freezeRegistry.GetAddress(),
+			code:    freezeRegistry.GetCode(),
 		},
 	}
 

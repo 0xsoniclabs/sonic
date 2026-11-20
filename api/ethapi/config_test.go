@@ -28,6 +28,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	freezeRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
 	priorityRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/priorities/registry"
 	subsidiesRegistry "github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -167,6 +168,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 	allegroHeight := idx.Block(5)
 	gasSubsidiesHeight := idx.Block(10)
 	prioritiesHeight := idx.Block(15)
+	freezeHeight := idx.Block(20)
 
 	tests := map[string]struct {
 		upgradeHeight    opera.UpgradeHeight
@@ -242,6 +244,13 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				"GAS_SUBSIDY_REGISTRY_ADDRESS":          subsidiesRegistry.GetAddress(),
 				"TRANSACTION_PRIORITY_REGISTRY_ADDRESS": priorityRegistry.GetAddress(),
 			},
+		},
+		"AccountFreeze": {
+			upgradeHeight: opera.UpgradeHeight{
+				Upgrades: opera.Upgrades{AccountFreeze: true},
+				Height:   freezeHeight,
+			},
+			wantSysContracts: contractRegistry{"ACCOUNT_FREEZE_REGISTRY_ADDRESS": freezeRegistry.GetAddress()},
 		},
 	}
 
