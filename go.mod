@@ -22,13 +22,13 @@ tool go.uber.org/mock/mockgen
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20260925152836-62f625a466a9
-	github.com/0xsoniclabs/tosca v0.0.0-20261119190138-18a71eebe35a
+	github.com/0xsoniclabs/tosca v0.0.0-20261120122000-57789c2642fd
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
 	github.com/consensys/gnark-crypto v0.20.1
 	github.com/davecgh/go-spew v1.1.1
 	github.com/deckarep/golang-set v1.8.0
-	github.com/ethereum/go-ethereum v1.17.1
+	github.com/ethereum/go-ethereum v1.17.10
 	github.com/gballet/go-libpcsclite v0.0.0-20191108122812-4678299bea08
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/holiman/uint256 v1.3.2
@@ -162,6 +162,6 @@ require (
 	pgregory.net/rand v1.0.2 // indirect
 )
 
-replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20261119185743-2d2527a19cc6
+replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20261120094246-1d388d218ec0
 
 replace github.com/Fantom-foundation/lachesis-base => github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20260429065829-930ae462cd09
