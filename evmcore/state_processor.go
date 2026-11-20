@@ -1089,25 +1089,41 @@ func applyTransaction(
 
 func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (*core.Message, error) {
 	if internaltx.IsInternal(tx) {
-		var converter utils.Uint256Converter
-		msg := (&core.Message{ // internal tx - no signature checking
+		value, err := utils.BigIntToUint256(tx.Value())
+		if err != nil {
+			return nil, fmt.Errorf("invalid internal transaction value: %w", err)
+		}
+		gasPrice, err := utils.BigIntToUint256(tx.GasPrice())
+		if err != nil {
+			return nil, fmt.Errorf("invalid internal transaction gas price: %w", err)
+		}
+		gasFeeCap, err := utils.BigIntToUint256(tx.GasFeeCap())
+		if err != nil {
+			return nil, fmt.Errorf("invalid internal transaction gas fee cap: %w", err)
+		}
+		gasTipCap, err := utils.BigIntToUint256(tx.GasTipCap())
+		if err != nil {
+			return nil, fmt.Errorf("invalid internal transaction gas tip cap: %w", err)
+		}
+		blobGasFeeCap, err := utils.BigIntToUint256(tx.BlobGasFeeCap())
+		if err != nil {
+			return nil, fmt.Errorf("invalid internal transaction blob gas fee cap: %w", err)
+		}
+
+		return (&core.Message{ // internal tx - no signature checking
 			From:          internaltx.InternalSender(tx),
 			To:            tx.To(),
 			Nonce:         tx.Nonce(),
-			Value:         converter.Convert("value", tx.Value()),
+			Value:         value,
 			GasLimit:      tx.Gas(),
-			GasPrice:      converter.Convert("gas price", tx.GasPrice()),
-			GasFeeCap:     converter.Convert("gas fee cap", tx.GasFeeCap()),
-			GasTipCap:     converter.Convert("gas tip cap", tx.GasTipCap()),
+			GasPrice:      gasPrice,
+			GasFeeCap:     gasFeeCap,
+			GasTipCap:     gasTipCap,
 			Data:          tx.Data(),
 			AccessList:    tx.AccessList(),
-			BlobGasFeeCap: converter.Convert("blob gas fee cap", tx.BlobGasFeeCap()),
+			BlobGasFeeCap: blobGasFeeCap,
 			BlobHashes:    tx.BlobHashes(),
-		}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
-		if converter.Err != nil {
-			return nil, fmt.Errorf("invalid internal transaction: %w", converter.Err)
-		}
-		return msg, nil
+		}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck(), nil
 	}
 
 	msg, err := core.TransactionToMessage(tx, signer, baseFee)

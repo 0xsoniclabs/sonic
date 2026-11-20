@@ -308,26 +308,42 @@ func (args *TransactionArgs) toMessage(globalGasCap uint64, baseFee *big.Int, lo
 		blobGasFeeCap = new(big.Int)
 	}
 
-	var converter utils.Uint256Converter
-	msg := &core.Message{
+	msgValue, err := utils.BigIntToUint256(value)
+	if err != nil {
+		return nil, fmt.Errorf("invalid value: %w", err)
+	}
+	msgGasPrice, err := utils.BigIntToUint256(gasPrice)
+	if err != nil {
+		return nil, fmt.Errorf("invalid gas price: %w", err)
+	}
+	msgGasFeeCap, err := utils.BigIntToUint256(gasFeeCap)
+	if err != nil {
+		return nil, fmt.Errorf("invalid maxFeePerGas: %w", err)
+	}
+	msgGasTipCap, err := utils.BigIntToUint256(gasTipCap)
+	if err != nil {
+		return nil, fmt.Errorf("invalid maxPriorityFeePerGas: %w", err)
+	}
+	msgBlobGasFeeCap, err := utils.BigIntToUint256(blobGasFeeCap)
+	if err != nil {
+		return nil, fmt.Errorf("invalid maxFeePerBlobGas: %w", err)
+	}
+
+	return &core.Message{
 		From:                  addr,
 		To:                    args.To,
 		Nonce:                 nonce,
-		Value:                 converter.Convert("value", value),
+		Value:                 msgValue,
 		GasLimit:              gas,
-		GasPrice:              converter.Convert("gas price", gasPrice),
-		GasFeeCap:             converter.Convert("maxFeePerGas", gasFeeCap),
-		GasTipCap:             converter.Convert("maxPriorityFeePerGas", gasTipCap),
+		GasPrice:              msgGasPrice,
+		GasFeeCap:             msgGasFeeCap,
+		GasTipCap:             msgGasTipCap,
 		Data:                  data,
 		AccessList:            accessList,
-		BlobGasFeeCap:         converter.Convert("maxFeePerBlobGas", blobGasFeeCap),
+		BlobGasFeeCap:         msgBlobGasFeeCap,
 		BlobHashes:            blobHashes,
 		SetCodeAuthorizations: args.AuthorizationList,
-	}
-	if converter.Err != nil {
-		return nil, converter.Err
-	}
-	return msg, nil
+	}, nil
 }
 
 // ToTransaction converts the arguments to an unsigned `types.transaction`.

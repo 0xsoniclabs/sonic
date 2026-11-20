@@ -5803,19 +5803,19 @@ func TestTxAsMessage_RejectsInternalTransactionsWithValuesNotFittingIntoUint256(
 	}{
 		"negative value": {
 			tx:      &types.LegacyTx{GasPrice: big.NewInt(1), Value: big.NewInt(-1)},
-			wantErr: "invalid internal transaction: invalid value",
+			wantErr: "invalid internal transaction value",
 		},
 		"too large value": {
 			tx:      &types.LegacyTx{GasPrice: big.NewInt(1), Value: new(big.Int).Lsh(big.NewInt(1), 256)},
-			wantErr: "invalid internal transaction: invalid value",
+			wantErr: "invalid internal transaction value",
 		},
 		"negative gas price": {
 			tx:      &types.LegacyTx{GasPrice: big.NewInt(-1), Value: big.NewInt(1)},
-			wantErr: "invalid internal transaction: invalid gas price",
+			wantErr: "invalid internal transaction gas price",
 		},
 		"too large gas price": {
 			tx:      &types.LegacyTx{GasPrice: new(big.Int).Lsh(big.NewInt(1), 256), Value: big.NewInt(1)},
-			wantErr: "invalid internal transaction: invalid gas price",
+			wantErr: "invalid internal transaction gas price",
 		},
 	}
 	for name, test := range tests {
