@@ -33,6 +33,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// preAmsterdamRules is the revision set these tests exercise: Sonic always has
+// Homestead, Istanbul and Shanghai active and does not enable Amsterdam yet.
+var preAmsterdamRules = params.Rules{IsHomestead: true, IsIstanbul: true, IsShanghai: true}
+
 type txModification func(tx *types.AccessListTx)
 
 type CostDefinition struct {
@@ -111,7 +115,8 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 				tx := tests.SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
-				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
+				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(),
+					common.Address{}, tx.To(), nil, preAmsterdamRules)
 				require.NoError(t, err)
 				require.Equal(t, expectedCost, tx.Gas())
 
@@ -135,7 +140,8 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 				tx := tests.SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
-				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
+				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(),
+					common.Address{}, tx.To(), nil, preAmsterdamRules)
 				require.NoError(t, err)
 				unused := tx.Gas() - expectedCost
 				if !singleProposer {
@@ -188,11 +194,11 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 	// > )
 
 	computeEIP7623GasCost := func(t *testing.T, tx *types.AccessListTx) uint64 {
-		intrinsicGas, err := core.IntrinsicGas(tx.Data, tx.AccessList, nil, tx.To == nil, true, true, true)
+		intrinsicGas, err := core.IntrinsicGas(tx.Data, tx.AccessList, nil, common.Address{}, tx.To, nil, preAmsterdamRules)
 		require.NoError(t, err)
 		require.Equal(t, intrinsicGas, tx.Gas)
 
-		floorDataGas, err := core.FloorDataGas(tx.Data)
+		floorDataGas, err := core.FloorDataGas(preAmsterdamRules, common.Address{}, tx.To, nil, tx.Data, tx.AccessList)
 		require.NoError(t, err)
 
 		return max(intrinsicGas, floorDataGas)
@@ -255,7 +261,7 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
 
-				floorDataGas, err := core.FloorDataGas(test.txPayload.Data)
+				floorDataGas, err := core.FloorDataGas(preAmsterdamRules, common.Address{}, test.txPayload.To, nil, test.txPayload.Data, test.txPayload.AccessList)
 				require.NoError(t, err)
 
 				// Increase gas by 20% to make sure we have some unused gas
@@ -273,7 +279,8 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 				tx := tests.SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
-				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
+				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(),
+					common.Address{}, tx.To(), nil, preAmsterdamRules)
 				require.NoError(t, err)
 
 				if floorDataGas > expectedCost {

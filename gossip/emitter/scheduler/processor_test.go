@@ -214,10 +214,12 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecutionAndRevertsSta
 	}
 }
 
-func TestEvmProcessor_Release_ReleasesStateDb(t *testing.T) {
+func TestEvmProcessor_Release_ReleasesRunnerAndStateDb(t *testing.T) {
 	ctrl := gomock.NewController(t)
+	runner := NewMockevmProcessorRunner(ctrl)
 	stateDb := state.NewMockStateDB(ctrl)
-	processor := &evmProcessor{stateDb: stateDb}
+	processor := &evmProcessor{processor: runner, stateDb: stateDb}
+	runner.EXPECT().Release()
 	stateDb.EXPECT().Release()
 	processor.release()
 }

@@ -67,7 +67,10 @@ func analyzeDbs(ctx *cli.Context) error {
 }
 
 func analyzeDb(path string) (res map[string]*prefixStats, err error) {
-	db, err := pebble.New(path, 0, 0, "pebble", true)
+	// Sonic's databases are written by lachesis-base's kvdb/pebble, which uses
+	// pebble v1. go-ethereum's pebble.New uses pebble v2 and cannot open them,
+	// so this relies on go-ethereum keeping its legacy NewV1 wrapper.
+	db, err := pebble.NewV1(path, 0, 0, "pebble", true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open DB: %v", err)
 	}

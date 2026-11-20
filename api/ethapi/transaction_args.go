@@ -213,6 +213,15 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 // If the argument baseFee is nil, pre-EIP1559 gas pricing is assumed, otherwise
 // EIP1559 gas pricing is assumed.
 func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int, log log.Logger) (*core.Message, error) {
+	msg, err := args.toMessage(globalGasCap, baseFee, log)
+	if err != nil {
+		return nil, err
+	}
+	return msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck(), nil
+}
+
+// toMessage is like ToMessage, but keeps all message checks enabled.
+func (args *TransactionArgs) toMessage(globalGasCap uint64, baseFee *big.Int, log log.Logger) (*core.Message, error) {
 	// Reject invalid combinations of pre- and post-1559 fee styles
 	if args.GasPrice != nil && (args.MaxFeePerGas != nil || args.MaxPriorityFeePerGas != nil) {
 		return nil, errors.New("both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified")
@@ -299,22 +308,41 @@ func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int, lo
 		blobGasFeeCap = new(big.Int)
 	}
 
+	msgValue, err := utils.BigIntToUint256(value)
+	if err != nil {
+		return nil, fmt.Errorf("invalid value: %w", err)
+	}
+	msgGasPrice, err := utils.BigIntToUint256(gasPrice)
+	if err != nil {
+		return nil, fmt.Errorf("invalid gas price: %w", err)
+	}
+	msgGasFeeCap, err := utils.BigIntToUint256(gasFeeCap)
+	if err != nil {
+		return nil, fmt.Errorf("invalid maxFeePerGas: %w", err)
+	}
+	msgGasTipCap, err := utils.BigIntToUint256(gasTipCap)
+	if err != nil {
+		return nil, fmt.Errorf("invalid maxPriorityFeePerGas: %w", err)
+	}
+	msgBlobGasFeeCap, err := utils.BigIntToUint256(blobGasFeeCap)
+	if err != nil {
+		return nil, fmt.Errorf("invalid maxFeePerBlobGas: %w", err)
+	}
+
 	return &core.Message{
 		From:                  addr,
 		To:                    args.To,
 		Nonce:                 nonce,
-		Value:                 value,
+		Value:                 msgValue,
 		GasLimit:              gas,
-		GasPrice:              gasPrice,
-		GasFeeCap:             gasFeeCap,
-		GasTipCap:             gasTipCap,
+		GasPrice:              msgGasPrice,
+		GasFeeCap:             msgGasFeeCap,
+		GasTipCap:             msgGasTipCap,
 		Data:                  data,
 		AccessList:            accessList,
-		BlobGasFeeCap:         blobGasFeeCap,
+		BlobGasFeeCap:         msgBlobGasFeeCap,
 		BlobHashes:            blobHashes,
 		SetCodeAuthorizations: args.AuthorizationList,
-		SkipNonceChecks:       true,
-		SkipTransactionChecks: true,
 	}, nil
 }
 

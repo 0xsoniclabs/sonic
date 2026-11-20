@@ -268,9 +268,9 @@ func TestSimulateV1_CodeOverrideTakesPrecedenceOverStatePrecompile(t *testing.T)
 func TestSimulateV1_EndsTransactionAfterEachCall(t *testing.T) {
 	f := newSimulateV1Helper(t)
 	gomock.InOrder(
-		f.mockState.EXPECT().SetTxContext(gomock.Any(), 0),
+		f.mockState.EXPECT().SetTxContext(gomock.Any(), 0, uint32(1)),
 		f.mockState.EXPECT().EndTransaction(),
-		f.mockState.EXPECT().SetTxContext(gomock.Any(), 1),
+		f.mockState.EXPECT().SetTxContext(gomock.Any(), 1, uint32(2)),
 		f.mockState.EXPECT().EndTransaction(),
 	)
 	setExpectedStateCalls(f.mockState)
@@ -300,6 +300,7 @@ func TestSimulateV1_BlobCallWithoutBlobFeeCapSucceeds(t *testing.T) {
 		ShanghaiTime: &zero,
 		CancunTime:   &zero,
 	}
+	setup.base.PrevRandao = common.Hash{1}
 	f := newSimulateV1HelperWith(t, setup)
 	setExpectedStateCalls(f.mockState)
 	f.mockState.EXPECT().GetStateHash().Return(common.Hash{})
