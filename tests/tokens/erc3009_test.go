@@ -72,6 +72,9 @@ func TestTokenStandards_ERC3009(t *testing.T) {
 		"transferWithAuthorization signed by someone else than the holder fails": {
 			auth: authorize(alice, carol, 30).signedBy(bob),
 		},
+		"transferWithAuthorization from the zero address without a valid signature fails": {
+			auth: authorize(zeroAddress, carol, 0),
+		},
 		"transferWithAuthorization of another value than signed fails": {
 			auth: authorize(alice, carol, 30).submittingValue(31),
 		},
@@ -90,6 +93,10 @@ func TestTokenStandards_ERC3009(t *testing.T) {
 			wantLogs: emits("AuthorizationUsed", alice, nonce(1)).then("Transfer", alice, carol, 30),
 			want:     &erc3009State{balances{70, 0, 30}, true},
 		},
+		"receiveWithAuthorization reusing a nonce used by transferWithAuthorization fails": {
+			setup: []erc3009Auth{authorize(alice, carol, 30)},
+			auth:  authorize(alice, carol, 30).receivedBy(carol),
+		},
 		"receiveWithAuthorization submitted by someone else than the payee fails": {
 			auth: authorize(alice, carol, 30).receivedBy(bob),
 		},
@@ -100,8 +107,19 @@ func TestTokenStandards_ERC3009(t *testing.T) {
 
 	t.Parallel()
 	session := tests.StartIntegrationTestNet(t).SpawnSession(t)
+	supply := 100 * len(cases)
 	token, _, shared := deployToken(t, session, func(o *bind.TransactOpts, b bind.ContractBackend) (common.Address, *types.Transaction, *erc3009.Erc3009, error) {
-		return erc3009.DeployErc3009(o, b, big.NewInt(int64(100*len(cases))))
+		return erc3009.DeployErc3009(o, b, big.NewInt(int64(supply)))
+	})
+
+	// Cleanups run after all subtests, including the parallel cases, and
+	// before the network registered earlier is stopped.
+	t.Cleanup(func() {
+		totalSupply, err := token.TotalSupply(nil)
+		require.NoError(t, err, "totalSupply")
+		require.Equal(t,
+			big.NewInt(int64(supply)), totalSupply,
+			"transfers must not change totalSupply")
 	})
 
 	names := slices.Sorted(maps.Keys(cases))
@@ -228,7 +246,8 @@ func (a erc3009Auth) validWithin(after, before *big.Int) erc3009Auth {
 }
 
 // issue signs the authorization with the signer's key and returns the
-// submission of it.
+// submission of it. The zero address has no key; it gets the all-zero
+// signature, for which ecrecover returns the zero address.
 func (a erc3009Auth) issue(
 	t *testing.T,
 	session tests.IntegrationTestNetSession,
@@ -272,9 +291,13 @@ func (a erc3009Auth) issue(
 	}
 	digest, _, err := apitypes.TypedDataAndHash(typedData)
 	require.NoError(t, err, "EIP-712 digest of the authorization")
-	sig, err := crypto.Sign(digest, p.accounts[a.signer].PrivateKey)
-	require.NoError(t, err, "signing the authorization")
-	v, r, s := sig[64]+27, [32]byte(sig[:32]), [32]byte(sig[32:64])
+	var v uint8
+	var r, s [32]byte
+	if a.signer != zeroAddress {
+		sig, err := crypto.Sign(digest, p.accounts[a.signer].PrivateKey)
+		require.NoError(t, err, "signing the authorization")
+		v, r, s = sig[64]+27, [32]byte(sig[:32]), [32]byte(sig[32:64])
+	}
 
 	submit := token.TransferWithAuthorization
 	if a.receive {
