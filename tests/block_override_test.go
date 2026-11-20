@@ -74,7 +74,16 @@ func TestBlockOverride(t *testing.T) {
 		newClient, err := session.GetClient()
 		require.NoError(err, "failed to get client; %v", err)
 		defer newClient.Close()
-		compareCalls(t, newClient.Client(), contractAddress, blockNumber, blockOverrides, makeEthCall)
+		// A call that names no gas price runs with a base fee of zero, as in
+		// go-ethereum, which would hide the overridden base fee. The call is
+		// therefore priced, by an account that can pay for it. A priced call
+		// must cover the block's base fee, which exceeds the overridden one.
+		header, err := newClient.HeaderByNumber(t.Context(), receiptLog.BlockNumber)
+		require.NoError(err, "failed to get block header; %v", err)
+		require.Positive(header.BaseFee.Cmp(blockOverrides.BaseFee.ToInt()),
+			"the block's base fee must exceed the overridden one")
+		ethCall := makePricedEthCall(session.GetSessionSponsor().Address(), header.BaseFee)
+		compareCalls(t, newClient.Client(), contractAddress, blockNumber, blockOverrides, ethCall)
 	})
 
 	t.Run("debug_traceCall block override", func(t *testing.T) {
@@ -150,11 +159,21 @@ func getFunctionCallParameters(contractAddress *common.Address) map[string]inter
 	}
 }
 
-func makeEthCall(t *testing.T, rpcClient *rpc.Client, contractAddress common.Address, blockNumber uint64, blockOverrides *ethapi.BlockOverrides) (BlockParameters, error) {
+func makePricedEthCall(from common.Address, gasPrice *big.Int) func(*testing.T, *rpc.Client, common.Address, uint64, *ethapi.BlockOverrides) (BlockParameters, error) {
+	return func(t *testing.T, rpcClient *rpc.Client, contractAddress common.Address, blockNumber uint64, blockOverrides *ethapi.BlockOverrides) (BlockParameters, error) {
+		call := getFunctionCallParameters(&contractAddress)
+		call["from"] = from.String()
+		call["gas"] = hexutil.EncodeUint64(1_000_000)
+		call["gasPrice"] = hexutil.EncodeBig(gasPrice)
+		return makeEthCall(t, rpcClient, call, blockNumber, blockOverrides)
+	}
+}
+
+func makeEthCall(t *testing.T, rpcClient *rpc.Client, call map[string]interface{}, blockNumber uint64, blockOverrides *ethapi.BlockOverrides) (BlockParameters, error) {
 	require := req.New(t)
 
 	var res interface{}
-	err := rpcClient.Call(&res, "eth_call", getFunctionCallParameters(&contractAddress), hexutil.EncodeUint64(blockNumber), nil, blockOverrides)
+	err := rpcClient.Call(&res, "eth_call", call, hexutil.EncodeUint64(blockNumber), nil, blockOverrides)
 	require.NoError(err, "failed to call eth_call; %v", err)
 
 	if s, ok := res.(string); ok {

@@ -580,15 +580,12 @@ func TestBlockStateOverrides(t *testing.T) {
 	setExpectedStateCalls(mockState)
 
 	// The RPC layer builds the block context from the difficulty the header
-	// carries. This header carries none, which is zero - the canonical
-	// post-merge encoding - so the EVM reports PREVRANDAO rather than a
-	// difficulty of 1.
-	prevRandao := block.PrevRandao
+	// carries. This header carries none, which is reported as zero rather
+	// than Sonic's block processing default of 1.
 	expectedBlockCtx := &vm.BlockContext{
 		BlockNumber: big.NewInt(5),
 		Time:        0,
 		Difficulty:  big.NewInt(0),
-		Random:      &prevRandao,
 		BaseFee:     big.NewInt(1234),
 		BlobBaseFee: big.NewInt(1),
 	}
