@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -2734,4 +2735,42 @@ func Test_checkPlanRootsAreGroups(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_validateTxForFreeze_RejectsFrozenSendersOnlyWithAccountFreeze(t *testing.T) {
+	tests := map[string]struct {
+		accountFreeze bool
+		frozen        bool
+		want          error
+	}{
+		"disabled":               {accountFreeze: false},
+		"enabled, frozen sender": {accountFreeze: true, frozen: true, want: ErrFrozenAccount},
+		"enabled, other sender":  {accountFreeze: true, frozen: false},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			sender := common.Address{0xf}
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(sender, nil).AnyTimes()
+			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
+			checker := freeze.NewMockChecker(ctrl) // < not consulted while disabled
+			if test.accountFreeze {
+				checker.EXPECT().IsFrozen(sender).Return(test.frozen)
+			}
+
+			err := validateTxForFreeze(types.NewTx(&types.LegacyTx{}), NetworkRules{accountFreeze: test.accountFreeze}, checker, signer)
+			require.ErrorIs(t, err, test.want)
+		})
+	}
+}
+
+func Test_validateTxForFreeze_RejectsTxWithInvalidSender(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	signer := NewMockSigner(ctrl)
+	signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, fmt.Errorf("some error"))
+	signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
+
+	err := validateTxForFreeze(types.NewTx(&types.LegacyTx{}), NetworkRules{accountFreeze: true}, freeze.NewMockChecker(ctrl), signer)
+	require.ErrorIs(t, err, ErrInvalidSender)
 }
