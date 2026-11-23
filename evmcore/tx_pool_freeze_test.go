@@ -18,6 +18,7 @@ package evmcore
 
 import (
 	"crypto/ecdsa"
+	"fmt"
 	"math/big"
 	"sync/atomic"
 	"testing"
@@ -26,7 +27,9 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -167,3 +170,44 @@ type accountFreezeTestBlockChain struct {
 func (accountFreezeTestBlockChain) CurrentRules() opera.Rules {
 	return opera.Rules{Upgrades: opera.Upgrades{AccountFreeze: true}}
 }
+
+// BenchmarkTxPool_DropFrozenSenders measures evicting 100 frozen senders, each
+// holding the given number of pending transactions.
+func BenchmarkTxPool_DropFrozenSenders(b *testing.B) {
+	log.SetDefault(log.NewLogger(log.DiscardHandler()))
+	for _, perSender := range []int{1, 4, 16, 64} {
+		b.Run(fmt.Sprintf("senders=100/txs=%d", perSender), func(b *testing.B) {
+			pool, _ := setupAccountFreezeTxPool(allFrozenChecker{})
+			defer pool.Stop()
+			pool.waitForIdleReorgLoop_forTesting()
+			pool.mu.Lock()
+			defer pool.mu.Unlock()
+
+			var txs []*types.Transaction
+			for range 100 {
+				key, _ := crypto.GenerateKey()
+				for nonce := range perSender {
+					txs = append(txs, transaction(uint64(nonce), 100_000, key))
+				}
+			}
+			b.ResetTimer()
+			for range b.N {
+				b.StopTimer()
+				for _, tx := range txs {
+					from, _ := types.Sender(pool.signer, tx)
+					pool.all.Add(tx, false)
+					pool.promoteTx(from, tx.Hash(), tx)
+				}
+				b.StartTimer()
+				pool.dropFrozenSenders()
+			}
+			b.StopTimer()
+			require.Zero(b, pool.all.Count())
+		})
+	}
+}
+
+type allFrozenChecker struct{}
+
+func (allFrozenChecker) IsFrozen(common.Address) bool   { return true }
+func (allFrozenChecker) IsOptedOut(common.Address) bool { return false }
