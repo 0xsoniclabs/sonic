@@ -56,7 +56,19 @@ func TestAccountFreeze_FrozenSenders(t *testing.T) {
 
 	t.Run("frozen sender is skipped in a block", func(t *testing.T) {
 		tx := valueTransfer(t, net, frozen, common.Address{0x1})
-		requireNeverIncluded(t, net, tx)
+		nonce, err := client.NonceAt(t.Context(), frozen.Address(), nil)
+		require.NoError(t, err)
+
+		_, err = net.ForceEmit(t.Context(), tx)
+		require.NoError(t, err)
+
+		waitBlocks(t, net, 3)
+
+		_, err = client.TransactionReceipt(t.Context(), tx.Hash())
+		require.ErrorIs(t, err, ethereum.NotFound)
+		after, err := client.NonceAt(t.Context(), frozen.Address(), nil)
+		require.NoError(t, err)
+		require.Equal(t, nonce, after)
 	})
 
 	t.Run("pool drops pending transactions of a newly frozen sender", func(t *testing.T) {
@@ -110,31 +122,10 @@ func valueTransfer(t *testing.T, net *tests.IntegrationTestNet, from *tests.Acco
 	return tests.CreateTransaction(t, net, &types.LegacyTx{To: &to, Value: big.NewInt(1), Gas: 21_000}, from)
 }
 
-// requireNeverIncluded proposes tx directly to a validator, bypassing the pool, and
-// checks that the block processor left it out: no receipt, no nonce bump.
-func requireNeverIncluded(t *testing.T, net *tests.IntegrationTestNet, tx *types.Transaction) {
+func waitBlocks(t *testing.T, net *tests.IntegrationTestNet, n int) {
 	t.Helper()
-	client, err := net.GetClient()
-	require.NoError(t, err)
-	defer client.Close()
-
-	sender, err := types.Sender(types.LatestSignerForChainID(net.GetChainId()), tx)
-	require.NoError(t, err)
-	nonce, err := client.NonceAt(t.Context(), sender, nil)
-	require.NoError(t, err)
-
-	_, err = net.ForceEmit(t.Context(), tx)
-	require.NoError(t, err)
-
-	// Let a few blocks pass after the proposal.
-	for range 3 {
-		_, err = net.EndowAccount(common.Address{0x2}, big.NewInt(1))
+	for range n {
+		_, err := net.EndowAccount(common.Address{0x2}, big.NewInt(1))
 		require.NoError(t, err)
 	}
-
-	_, err = client.TransactionReceipt(t.Context(), tx.Hash())
-	require.ErrorIs(t, err, ethereum.NotFound)
-	after, err := client.NonceAt(t.Context(), sender, nil)
-	require.NoError(t, err)
-	require.Equal(t, nonce, after)
 }
