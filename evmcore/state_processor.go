@@ -583,14 +583,6 @@ func (r *transactionRunner) runTransactionBundleInternal(
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid, 0
 	}
 
-	if ctxt.upgrades.AccountFreeze {
-		sender, err := types.Sender(ctxt.signer, tx)
-		if err != nil || freeze.NewRegistryChecker(ctxt.statedb).IsFrozen(sender) {
-			log.Warn("Bundle from frozen or invalid envelope sender skipped", "tx", tx.Hash().Hex(), "sender", sender, "err", err)
-			return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid, 0
-		}
-	}
-
 	if !plan.Range.IsInRange(ctxt.blockNumber.Uint64()) {
 		log.Warn("Bundle skipped due to out-of-range execution plan", "tx", tx.Hash().Hex(), "planRange", plan.Range, "blockNumber", ctxt.blockNumber.Uint64())
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid, 0
