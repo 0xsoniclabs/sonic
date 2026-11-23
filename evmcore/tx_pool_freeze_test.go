@@ -198,6 +198,7 @@ func BenchmarkTxPool_DropFrozenSenders(b *testing.B) {
 					pool.all.Add(tx, false)
 					pool.promoteTx(from, tx.Hash(), tx)
 				}
+				pool.priced.Reheap()
 				b.StartTimer()
 				pool.dropFrozenSenders()
 			}
