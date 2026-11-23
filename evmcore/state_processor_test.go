@@ -3832,7 +3832,10 @@ func TestRunRegularTransaction_MatchesReceiptToStatus(t *testing.T) {
 	}
 }
 
-func TestRunRegularTransaction_AccountFreeze_SkipsTransactionsOfFrozenSenders(t *testing.T) {
+// The freeze check lives in _runTransaction, reached by regular transactions
+// through runWithBaseFeeCheck, and by sponsored transactions, their
+// post-transactions and bundled transactions through either entry point.
+func TestEvm_RunTransaction_AccountFreeze_SkipsTransactionsOfFrozenSenders(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 	sender := crypto.PubkeyToAddress(key.PublicKey)
@@ -3854,71 +3857,76 @@ func TestRunRegularTransaction_AccountFreeze_SkipsTransactionsOfFrozenSenders(t 
 		"disabled, frozen sender":         {false, regularTx, sender, false},
 	}
 
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			state := state.NewMockStateDB(ctrl)
-			any := gomock.Any()
-			state.EXPECT().GetState(freezeRegistry.GetAddress(), any).DoAndReturn(
-				func(_ common.Address, key common.Hash) common.Hash {
-					if key == freezeRegistry.GetFrozenSlot(test.frozen) {
-						return common.Hash{31: 1}
-					}
-					return common.Hash{}
-				}).AnyTimes()
-			if !test.skipped {
-				state.EXPECT().SetTxContext(any, any, any)
-				state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
-				state.EXPECT().EndTransaction()
-				state.EXPECT().SubBalance(any, any, any).AnyTimes()
-				state.EXPECT().Prepare(any, any, any, any, any, any)
-				state.EXPECT().GetNonce(any).Return(uint64(0)).AnyTimes()
-				state.EXPECT().SetNonce(any, any, any)
-				state.EXPECT().GetCode(any).Return([]byte{}).AnyTimes()
-				state.EXPECT().Snapshot().Return(1)
-				state.EXPECT().Exist(any).Return(true)
-				state.EXPECT().GetRefund().Return(uint64(0)).AnyTimes()
-				state.EXPECT().AddBalance(any, any, any).AnyTimes()
-				state.EXPECT().GetLogs(any, any)
-				state.EXPECT().TxIndex().Return(0)
-			}
+	entryPoints := map[string]func(evm, *runContext, *types.Transaction, int) ProcessedTransaction{
+		"withBaseFeeCheck":    evm.runWithBaseFeeCheck,
+		"withoutBaseFeeCheck": evm.runWithoutBaseFeeCheck,
+	}
 
-			rules := opera.FakeNetRules(opera.GetAllegroUpgrades())
-			chainConfig := opera.CreateTransientEvmChainConfig(
-				rules.NetworkID,
-				[]opera.UpgradeHeight{{Upgrades: rules.Upgrades, Height: 0, Time: 0}},
-				1,
-			)
-			baseFee := big.NewInt(1)
-			blockContext := vm.BlockContext{
-				BlockNumber: big.NewInt(123),
-				BaseFee:     baseFee,
-				Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
-				CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
-				Random:      &common.Hash{}, // < signals Revision >= Merge
-			}
-			runner := &transactionRunner{evm{vm.NewEVM(blockContext, state, chainConfig, opera.GetVmConfig(rules))}}
-			context := &runContext{
-				signer:   types.LatestSignerForChainID(nil),
-				baseFee:  baseFee,
-				statedb:  state,
-				gasPool:  core.NewGasPool(1_000_000),
-				usedGas:  new(uint64),
-				runner:   runner,
-				upgrades: opera.Upgrades{AccountFreeze: test.accountFreeze},
-			}
+	for entryName, run := range entryPoints {
+		for name, test := range tests {
+			t.Run(entryName+"/"+name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				state := state.NewMockStateDB(ctrl)
+				any := gomock.Any()
+				state.EXPECT().GetState(freezeRegistry.GetAddress(), any).DoAndReturn(
+					func(_ common.Address, key common.Hash) common.Hash {
+						if key == freezeRegistry.GetFrozenSlot(test.frozen) {
+							return common.Hash{31: 1}
+						}
+						return common.Hash{}
+					}).AnyTimes()
+				if !test.skipped {
+					state.EXPECT().SetTxContext(any, any, any)
+					state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
+					state.EXPECT().EndTransaction()
+					state.EXPECT().SubBalance(any, any, any).AnyTimes()
+					state.EXPECT().Prepare(any, any, any, any, any, any)
+					state.EXPECT().GetNonce(any).Return(uint64(0)).AnyTimes()
+					state.EXPECT().SetNonce(any, any, any)
+					state.EXPECT().GetCode(any).Return([]byte{}).AnyTimes()
+					state.EXPECT().Snapshot().Return(1)
+					state.EXPECT().Exist(any).Return(true)
+					state.EXPECT().GetRefund().Return(uint64(0)).AnyTimes()
+					state.EXPECT().AddBalance(any, any, any).AnyTimes()
+					state.EXPECT().GetLogs(any, any)
+					state.EXPECT().TxIndex().Return(0)
+				}
 
-			got, status := runner.runRegularTransaction(context, test.tx, 0, math.MaxUint64)
+				rules := opera.FakeNetRules(opera.GetAllegroUpgrades())
+				chainConfig := opera.CreateTransientEvmChainConfig(
+					rules.NetworkID,
+					[]opera.UpgradeHeight{{Upgrades: rules.Upgrades, Height: 0, Time: 0}},
+					1,
+				)
+				baseFee := big.NewInt(1)
+				blockContext := vm.BlockContext{
+					BlockNumber: big.NewInt(123),
+					BaseFee:     baseFee,
+					Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
+					CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
+					Random:      &common.Hash{}, // < signals Revision >= Merge
+				}
+				e := evm{vm.NewEVM(blockContext, state, chainConfig, opera.GetVmConfig(rules))}
+				context := &runContext{
+					signer:   types.LatestSignerForChainID(nil),
+					baseFee:  baseFee,
+					statedb:  state,
+					gasPool:  core.NewGasPool(1_000_000),
+					usedGas:  new(uint64),
+					upgrades: opera.Upgrades{AccountFreeze: test.accountFreeze},
+				}
 
-			require.Equal(t, test.tx, got.Transaction)
-			if test.skipped {
-				require.Equal(t, core_types.TransactionResultInvalid, status)
-				require.Nil(t, got.Receipt)
-			} else {
-				require.Equal(t, core_types.TransactionResultSuccessful, status)
-				require.NotNil(t, got.Receipt)
-			}
-		})
+				got := run(e, context, test.tx, 0)
+
+				require.Equal(t, test.tx, got.Transaction)
+				if test.skipped {
+					require.Nil(t, got.Receipt)
+				} else {
+					require.NotNil(t, got.Receipt)
+					require.Equal(t, types.ReceiptStatusSuccessful, got.Receipt.Status)
+				}
+			})
+		}
 	}
 }
 
