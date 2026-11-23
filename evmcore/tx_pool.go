@@ -1915,23 +1915,48 @@ func (pool *TxPool) dropFrozenSenders() map[common.Address]struct{} {
 	}
 	checker := pool.freezeCheckerFactory(pool.currentState)
 	frozen := map[common.Address]struct{}{}
-	var drops []common.Hash
 	for _, txs := range []map[common.Address]*txList{pool.pending, pool.queue} {
-		for addr, list := range txs {
-			if checker.IsFrozen(addr) {
+		for addr := range txs {
+			if _, seen := frozen[addr]; !seen && checker.IsFrozen(addr) {
 				frozen[addr] = struct{}{}
-				// Highest nonce first, so no removal leaves a gap that demotes the rest.
-				for _, tx := range slices.Backward(list.Flatten()) {
-					drops = append(drops, tx.Hash())
-				}
 			}
 		}
 	}
-	for _, hash := range drops {
-		log.Trace("Removed transaction of frozen sender", "hash", hash)
-		pool.removeTx(hash, true)
+	for addr := range frozen {
+		pool.dropSender(addr)
 	}
 	return frozen
+}
+
+// dropSender removes all transactions of addr with the bookkeeping of
+// removeTx, without re-filtering the list after every single removal.
+func (pool *TxPool) dropSender(addr common.Address) {
+	removed := 0
+	if list := pool.pending[addr]; list != nil {
+		txs := list.Flatten()
+		for _, tx := range txs {
+			pool.all.Remove(tx.Hash())
+		}
+		pool.pendingNonces.setIfLower(addr, txs[0].Nonce())
+		pendingGauge.Dec(int64(len(txs)))
+		delete(pool.pending, addr)
+		removed += len(txs)
+	}
+	if list := pool.queue[addr]; list != nil {
+		txs := list.Flatten()
+		for _, tx := range txs {
+			pool.all.Remove(tx.Hash())
+		}
+		queuedGauge.Dec(int64(len(txs)))
+		delete(pool.queue, addr)
+		delete(pool.beats, addr)
+		removed += len(txs)
+	}
+	pool.priced.Removed(removed)
+	if pool.locals.contains(addr) {
+		localGauge.Dec(int64(removed))
+	}
+	log.Trace("Removed transactions of frozen sender", "sender", addr, "count", removed)
 }
 
 // addressByHeartbeat is an account address tagged with its last activity timestamp.
