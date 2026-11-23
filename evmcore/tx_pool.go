@@ -1920,7 +1920,8 @@ func (pool *TxPool) dropFrozenSenders() map[common.Address]struct{} {
 		for addr, list := range txs {
 			if checker.IsFrozen(addr) {
 				frozen[addr] = struct{}{}
-				for _, tx := range list.Flatten() {
+				// Highest nonce first, so no removal leaves a gap that demotes the rest.
+				for _, tx := range slices.Backward(list.Flatten()) {
 					drops = append(drops, tx.Hash())
 				}
 			}
