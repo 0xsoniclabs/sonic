@@ -577,6 +577,8 @@ func TestBlockStateOverrides(t *testing.T) {
 	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().HeaderByNumber(any, any).Return(&block.EvmHeader, nil)
 	mockState.EXPECT().SetBalance(common.Address{1}, uint256.NewInt(123)).AnyTimes() // state override
+	// Declared before the defaults so the sender can afford the priced trace call.
+	mockState.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)).AnyTimes()
 	setExpectedStateCalls(mockState)
 
 	// The RPC layer builds the block context from the difficulty the header
@@ -614,7 +616,11 @@ func TestBlockStateOverrides(t *testing.T) {
 
 	rpcBlkNr := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr))
 
-	_, err := apiDebug.TraceCall(context.Background(), getTxArgs(t), rpcBlkNr, traceConfig)
+	// debug_traceCall zeroes the base fee of a call that names no gas price
+	// before the EVM is created, so the call is priced to see the override.
+	tracedArgs := getTxArgs(t)
+	tracedArgs.GasPrice = (*hexutil.Big)(big.NewInt(1234))
+	_, err := apiDebug.TraceCall(context.Background(), tracedArgs, rpcBlkNr, traceConfig)
 	require.NoError(t, err, "debug api must be able to override block number and base fee")
 
 	// Check block overrides on eth api with eth_call and eth_estimateGas rpc function
@@ -2655,4 +2661,133 @@ func TestRPCMarshalBlock_ReportsAnEmptyWithdrawalsList(t *testing.T) {
 	encoded, err := json.Marshal(marshalled)
 	require.NoError(t, err)
 	require.Contains(t, string(encoded), `"withdrawals":[]`)
+}
+
+func TestTraceCall_ZeroesTheBaseFeeForACallThatNamesNoGasPrice(t *testing.T) {
+	headerBaseFee := big.NewInt(27399063)
+
+	tests := map[string]struct {
+		gasPrice    *hexutil.Big
+		wantBaseFee *big.Int
+	}{
+		"no gas price zeroes the base fee": {
+			gasPrice:    nil,
+			wantBaseFee: big.NewInt(0),
+		},
+		"a priced call keeps the block's base fee": {
+			gasPrice:    (*hexutil.Big)(new(big.Int).Add(headerBaseFee, big.NewInt(1))),
+			wantBaseFee: headerBaseFee,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockBackend := NewMockBackend(ctrl)
+			mockState := state.NewMockStateDB(ctrl)
+
+			block := &evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{
+				Number:  big.NewInt(5),
+				BaseFee: headerBaseFee,
+			}}
+
+			any := gomock.Any()
+			mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+			mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil)
+			mockBackend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
+			mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
+			mockBackend.EXPECT().ChainConfig(any).Return(&params.ChainConfig{}).AnyTimes()
+			mockState.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)).AnyTimes()
+			setExpectedStateCalls(mockState)
+
+			// The pre-block system calls get an EVM too, without a block context.
+			var baseFee *big.Int
+			mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(
+				func(_ context.Context, _ state.StateDB, _ *evmcore.EvmHeader, _ *vm.Config, blockCtx *vm.BlockContext) (*vm.EVM, func() error, error) {
+					if blockCtx != nil {
+						baseFee = blockCtx.BaseFee
+					}
+					return getEvmFunc(mockState)(nil, nil, nil, nil, nil)
+				}).AnyTimes()
+
+			args := getTxArgs(t)
+			args.GasPrice = test.gasPrice
+
+			api := NewPublicDebugAPI(mockBackend, 10000, 10000, false)
+			_, err := api.TraceCall(context.Background(), args, rpc.BlockNumberOrHashWithNumber(5), &TraceCallConfig{})
+			require.NoError(t, err)
+			require.Equal(t, test.wantBaseFee, baseFee)
+		})
+	}
+}
+
+func TestAccessList_ZeroesTheBaseFeeForACallThatNamesNoGasPrice(t *testing.T) {
+	headerBaseFee := big.NewInt(27399063)
+
+	tests := map[string]struct {
+		gasPrice    *hexutil.Big
+		wantBaseFee *big.Int
+	}{
+		// A missing gas price is filled in with a suggested one, so only an
+		// explicit zero names no gas price here.
+		"a zero gas price zeroes the base fee": {
+			gasPrice:    (*hexutil.Big)(big.NewInt(0)),
+			wantBaseFee: big.NewInt(0),
+		},
+		"a priced call keeps the block's base fee": {
+			gasPrice:    (*hexutil.Big)(new(big.Int).Add(headerBaseFee, big.NewInt(1))),
+			wantBaseFee: headerBaseFee,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockBackend := NewMockBackend(ctrl)
+			mockState := state.NewMockStateDB(ctrl)
+
+			block := &evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{
+				Number:  big.NewInt(1),
+				BaseFee: headerBaseFee,
+			}}
+			chainConfig := &params.ChainConfig{ChainID: big.NewInt(1), LondonBlock: big.NewInt(0)}
+
+			any := gomock.Any()
+			mockBackend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(mockState, block, nil)
+			mockBackend.EXPECT().ChainConfig(any).Return(chainConfig).AnyTimes()
+			mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+			mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
+			mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000)).AnyTimes()
+			mockBackend.EXPECT().ChainID().Return(big.NewInt(1)).AnyTimes()
+			mockBackend.EXPECT().CurrentBlock().Return(block).AnyTimes()
+			mockState.EXPECT().Copy().Return(mockState).AnyTimes()
+			mockState.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)).AnyTimes()
+			setExpectedStateCalls(mockState)
+
+			var evm *vm.EVM
+			mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(
+				func(_ context.Context, _ state.StateDB, _ *evmcore.EvmHeader, vmConfig *vm.Config, _ *vm.BlockContext) (*vm.EVM, func() error, error) {
+					blockCtx := vm.BlockContext{
+						BlockNumber: block.Number,
+						BaseFee:     new(big.Int).Set(headerBaseFee),
+						Transfer:    vm.TransferFunc(func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {}),
+						CanTransfer: vm.CanTransferFunc(func(vm.StateDB, common.Address, *uint256.Int) bool { return true }),
+					}
+					evm = vm.NewEVM(blockCtx, mockState, chainConfig, *vmConfig)
+					return evm, func() error { return nil }, nil
+				}).AnyTimes()
+
+			nonce := hexutil.Uint64(0)
+			gas := hexutil.Uint64(100_000)
+			args := getTxArgs(t)
+			args.Nonce = &nonce
+			args.Gas = &gas
+			args.GasPrice = test.gasPrice
+
+			_, _, _, err := AccessList(context.Background(), mockBackend, rpc.BlockNumberOrHashWithNumber(1), args)
+			require.NoError(t, err)
+			require.NotNil(t, evm, "the call must have created an EVM")
+			require.Equal(t, test.wantBaseFee, evm.Context.BaseFee)
+		})
+	}
 }
