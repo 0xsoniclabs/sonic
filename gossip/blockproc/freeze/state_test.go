@@ -18,6 +18,7 @@ package freeze
 
 import (
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
@@ -37,6 +38,8 @@ import (
 var (
 	frozenAccount   = common.Address{0x1}
 	unfrozenAccount = common.Address{0x2}
+	token           = common.Address{0x70}
+	optedOutToken   = common.Address{0x71}
 )
 
 // newState returns a state wrapped for frozen-move tracking in which
@@ -153,6 +156,7 @@ func TestStateDB_EVM_TracksFrozenMoves(t *testing.T) {
 		burn         = program.New().Op(vm.ADDRESS, vm.SELFDESTRUCT).Bytes()
 		createBurner = program.New().Create2(burn, 0).Bytes()
 		newFrozen    = crypto.CreateAddress2(unfrozenAccount, common.Hash{}, crypto.Keccak256(burn))
+		logFrozen    = program.New().Push(unfrozenAccount).Push(frozenAccount).Push(transferTopic).Push(0).Push(0).Op(vm.LOG3).Bytes()
 	)
 	tests := map[string]struct {
 		to                       common.Address
@@ -175,6 +179,8 @@ func TestStateDB_EVM_TracksFrozenMoves(t *testing.T) {
 		"frozen selfdestructs to itself":       {frozenAccount, 0, payFrozen, nil, nil, false},
 		"new frozen contract burns balance":    {unfrozenAccount, 0, nil, createBurner, nil, true},
 		"selfdestruct pays frozen":             {unfrozenAccount, 0, nil, payFrozen, nil, true},
+		"token log names frozen":               {unfrozenAccount, 0, nil, logFrozen, nil, true},
+		"reverted token log names frozen":      {unfrozenAccount, 0, nil, slices.Concat(logFrozen, revert), vm.ErrExecutionReverted, false},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -193,6 +199,112 @@ func TestStateDB_EVM_TracksFrozenMoves(t *testing.T) {
 			_, _, err := evm.Call(caller, test.to, nil, vm.NewGasBudget(100_000, 0), uint256.NewInt(test.value))
 			require.ErrorIs(t, err, test.err)
 			require.Equal(t, test.expectMoved, db.frozenMoved)
+		})
+	}
+}
+
+func TestStateDB_AddLog_TracksFrozenTokenMoves(t *testing.T) {
+	topic := func(a common.Address) common.Hash { return common.BytesToHash(a.Bytes()) }
+	tests := map[string]struct {
+		from        common.Address
+		expectMoved bool
+	}{
+		"transfer from frozen":   {frozenAccount, true},
+		"transfer from unfrozen": {unfrozenAccount, false},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			db, inner := newState(t)
+			log := &types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(test.from), topic(unfrozenAccount)}}
+
+			db.AddLog(log)
+			require.Equal(t, test.expectMoved, db.frozenMoved)
+			require.Equal(t, []*types.Log{log}, inner.Logs())
+		})
+	}
+}
+
+func TestIsFrozenTokenLog_DetectsTokenEventsNamingFrozenAccounts(t *testing.T) {
+	db, inner := newState(t)
+	inner.SetState(registry.GetAddress(), registry.GetOptedOutSlot(optedOutToken), common.Hash{31: 1})
+	topic := func(a common.Address) common.Hash { return common.BytesToHash(a.Bytes()) }
+
+	tests := map[string]struct {
+		log         types.Log
+		expectMoved bool
+	}{
+		"transfer from frozen": {
+			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(frozenAccount), topic(unfrozenAccount)}},
+			true,
+		},
+		"approval by frozen": {
+			types.Log{Address: token, Topics: []common.Hash{approvalTopic, topic(frozenAccount), topic(unfrozenAccount)}},
+			true,
+		},
+		"transfer to frozen": {
+			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(unfrozenAccount), topic(frozenAccount)}},
+			true,
+		},
+		"approval of frozen spender": {
+			types.Log{Address: token, Topics: []common.Hash{approvalTopic, topic(unfrozenAccount), topic(frozenAccount)}},
+			true,
+		},
+		"transfer between others": {
+			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(unfrozenAccount), topic(unfrozenAccount)}},
+			false,
+		},
+		"erc-721 transfer from frozen": {
+			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(frozenAccount), topic(unfrozenAccount), {}}},
+			true,
+		},
+		"erc-721 approval of frozen": {
+			types.Log{Address: token, Topics: []common.Hash{approvalTopic, topic(unfrozenAccount), topic(frozenAccount), {}}},
+			true,
+		},
+		"erc-721 token id is no address": {
+			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(unfrozenAccount), topic(unfrozenAccount), topic(frozenAccount)}},
+			false,
+		},
+		"approval for all by frozen owner": {
+			types.Log{Address: token, Topics: []common.Hash{approvalForAllTopic, topic(frozenAccount), topic(unfrozenAccount)}},
+			true,
+		},
+		"approval for all of frozen operator": {
+			types.Log{Address: token, Topics: []common.Hash{approvalForAllTopic, topic(unfrozenAccount), topic(frozenAccount)}},
+			true,
+		},
+		"erc-1155 transfer by frozen operator": {
+			types.Log{Address: token, Topics: []common.Hash{transferSingleTopic, topic(frozenAccount), topic(unfrozenAccount), topic(unfrozenAccount)}},
+			true,
+		},
+		"erc-1155 transfer from frozen": {
+			types.Log{Address: token, Topics: []common.Hash{transferSingleTopic, topic(unfrozenAccount), topic(frozenAccount), topic(unfrozenAccount)}},
+			true,
+		},
+		"erc-1155 batch transfer to frozen": {
+			types.Log{Address: token, Topics: []common.Hash{transferBatchTopic, topic(unfrozenAccount), topic(unfrozenAccount), topic(frozenAccount)}},
+			true,
+		},
+		"erc-1155 transfer between others": {
+			types.Log{Address: token, Topics: []common.Hash{transferSingleTopic, topic(unfrozenAccount), topic(unfrozenAccount), topic(unfrozenAccount)}},
+			false,
+		},
+		"opted-out token": {
+			types.Log{Address: optedOutToken, Topics: []common.Hash{transferTopic, topic(frozenAccount), topic(unfrozenAccount)}},
+			false,
+		},
+		"other event": {
+			types.Log{Address: token, Topics: []common.Hash{{0x1}, topic(frozenAccount), topic(unfrozenAccount)}},
+			false,
+		},
+		"no topics": {
+			types.Log{Address: token},
+			false,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.expectMoved, isFrozenTokenLog(db.checker, &test.log))
 		})
 	}
 }
