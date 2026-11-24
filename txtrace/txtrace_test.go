@@ -18,6 +18,8 @@ package txtrace
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 	"testing"
@@ -26,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -766,5 +769,72 @@ func checkResult(t *testing.T, traces *[]ActionTrace, expectedTraces string) {
 
 	if expectedTraces != string(result) {
 		t.Errorf("expected result is not the same as output got: %v, want: %v", string(result), expectedTraces)
+	}
+}
+
+func TestTracer_ReportsParityErrorNamesForAllFrameTypes(t *testing.T) {
+	errorsToParity := map[string]struct {
+		err  error
+		want string
+	}{
+		"wrapped out of gas": {
+			err:  fmt.Errorf("%w: %v", vm.ErrOutOfGas, vm.ErrWriteProtection),
+			want: "Out of gas",
+		},
+		"stack underflow (0 <=> 2)": {
+			err:  errors.New("stack underflow (0 <=> 2)"),
+			want: "Stack underflow",
+		},
+		"stack underflow (5 <=> 7)": {
+			err:  errors.New("stack underflow (5 <=> 7)"),
+			want: "Stack underflow",
+		},
+		"invalid opcode": {
+			err:  errors.New("invalid opcode: INVALID"),
+			want: "Bad instruction",
+		},
+	}
+	frameTypes := map[vm.OpCode]string{
+		vm.CALL:         CALL,
+		vm.CALLCODE:     CALL,
+		vm.DELEGATECALL: CALL,
+		vm.STATICCALL:   CALL,
+		vm.CREATE:       CREATE,
+		vm.CREATE2:      CREATE,
+	}
+	for errName, test := range errorsToParity {
+		for op, traceType := range frameTypes {
+			t.Run(errName+"/"+op.String()+"/top-level", func(t *testing.T) {
+				block, tx := getDefaultBlockTxMessage()
+				tracer := NewTraceStructLogger(block, txIndex)
+
+				tracer.OnTxStart(nil, tx, from)
+				tracer.OnEnter(0, byte(op), from, to, inputData, gaslimit, value)
+				tracer.OnExit(0, nil, 100, test.err, false)
+				tracer.OnTxEnd(&types.Receipt{GasUsed: gasUsed}, test.err)
+
+				traces := *tracer.GetResult()
+				require.Len(t, traces, 1)
+				require.Equal(t, traceType, traces[0].TraceType)
+				require.Equal(t, test.want, traces[0].Error)
+			})
+			t.Run(errName+"/"+op.String()+"/inner", func(t *testing.T) {
+				block, tx := getDefaultBlockTxMessage()
+				tracer := NewTraceStructLogger(block, txIndex)
+
+				tracer.OnTxStart(nil, tx, from)
+				tracer.OnEnter(0, byte(vm.CALL), from, to, inputData, gaslimit, value)
+				tracer.OnEnter(1, byte(op), to, toInner, inputDataInner, 200, value)
+				tracer.OnExit(1, nil, 201, test.err, false)
+				tracer.OnExit(0, outputData, 100, nil, false)
+				tracer.OnTxEnd(&types.Receipt{GasUsed: gasUsed}, nil)
+
+				traces := *tracer.GetResult()
+				require.Len(t, traces, 2)
+				require.Empty(t, traces[0].Error)
+				require.Equal(t, traceType, traces[1].TraceType)
+				require.Equal(t, test.want, traces[1].Error)
+			})
+		}
 	}
 }

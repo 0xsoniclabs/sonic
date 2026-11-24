@@ -86,6 +86,10 @@ func TestToParityError_ConvertsGethErrors(t *testing.T) {
 			err:  errors.New("stack underflow (0 <=> 2)"),
 			want: "Stack underflow",
 		},
+		"stack underflow with other operands": {
+			err:  errors.New("stack underflow (5 <=> 7)"),
+			want: "Stack underflow",
+		},
 		"invalid opcode INVALID": {
 			err:  errors.New("invalid opcode: INVALID"),
 			want: "Bad instruction",
