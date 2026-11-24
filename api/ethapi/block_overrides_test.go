@@ -26,6 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/txtrace"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -36,34 +37,6 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestBlockOverrides_baseFeeOr_ReturnsOverrideOrFallback(t *testing.T) {
-	fallback := big.NewInt(100)
-	override := big.NewInt(1000)
-
-	tests := map[string]struct {
-		overrides *BlockOverrides
-		want      *big.Int
-	}{
-		"no overrides": {
-			overrides: nil,
-			want:      fallback,
-		},
-		"base fee not overridden": {
-			overrides: &BlockOverrides{Number: (*hexutil.Big)(big.NewInt(5))},
-			want:      fallback,
-		},
-		"base fee overridden": {
-			overrides: &BlockOverrides{BaseFee: (*hexutil.Big)(override)},
-			want:      override,
-		},
-	}
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, test.want, test.overrides.baseFeeOr(fallback))
-		})
-	}
-}
-
 // gasPriceAndBaseFeeCode returns GASPRICE and BASEFEE as two 32-byte words.
 var gasPriceAndBaseFeeCode = []byte{
 	byte(vm.GASPRICE), byte(vm.PUSH0), byte(vm.MSTORE),
@@ -71,41 +44,66 @@ var gasPriceAndBaseFeeCode = []byte{
 	byte(vm.PUSH1), 0x40, byte(vm.PUSH0), byte(vm.RETURN),
 }
 
-// gasPriceTestCase is a call on a block with base fee 100, optionally
-// overridden to 1000, with the GASPRICE and BASEFEE the call must see.
-type gasPriceTestCase struct {
-	overrides    *BlockOverrides
-	wantBaseFee  *big.Int
-	wantGasPrice *big.Int
+// revertIfGasPriceBelowBaseFeeCode reverts if GASPRICE < BASEFEE and stops
+// otherwise.
+var revertIfGasPriceBelowBaseFeeCode = []byte{
+	byte(vm.BASEFEE), byte(vm.GASPRICE), byte(vm.LT), // GASPRICE < BASEFEE
+	byte(vm.PUSH1), 0x07, byte(vm.JUMPI),
+	byte(vm.STOP),
+	byte(vm.JUMPDEST), byte(vm.PUSH0), byte(vm.PUSH0), byte(vm.REVERT),
 }
 
-var (
-	gasPriceTestHeaderBaseFee = big.NewInt(100)
-	gasPriceTestCases         = map[string]gasPriceTestCase{
-		"no overrides": {
-			overrides:    nil,
-			wantBaseFee:  big.NewInt(100),
-			wantGasPrice: big.NewInt(100),
-		},
-		"base fee overridden": {
-			overrides:    &BlockOverrides{BaseFee: (*hexutil.Big)(big.NewInt(1000))},
-			wantBaseFee:  big.NewInt(1000),
-			wantGasPrice: big.NewInt(1000),
-		},
-	}
-)
+// gasPriceTestCase is a call on a block with the given header base fee and
+// block overrides, with the GASPRICE and BASEFEE the call must see. A nil
+// gasPrice makes it a dynamic-fee call without a tip, which pays exactly the
+// base fee; otherwise it is a legacy call with that gas price.
+type gasPriceTestCase struct {
+	headerBaseFee *big.Int
+	overrides     *BlockOverrides
+	gasPrice      *big.Int
+	wantBaseFee   *big.Int
+	wantGasPrice  *big.Int
+}
 
-// gasPriceTestArgs is a dynamic-fee call without a tip, which pays exactly
-// the base fee.
-func gasPriceTestArgs(contract common.Address) TransactionArgs {
-	gas := hexutil.Uint64(100_000)
-	return TransactionArgs{
-		From:                 &common.Address{0x1},
-		To:                   &contract,
-		Gas:                  &gas,
-		MaxFeePerGas:         (*hexutil.Big)(big.NewInt(1_000_000)),
-		MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(0)),
+var gasPriceTestCases = map[string]gasPriceTestCase{
+	"no overrides": {
+		headerBaseFee: big.NewInt(100),
+		wantBaseFee:   big.NewInt(100),
+		wantGasPrice:  big.NewInt(100),
+	},
+	"base fee overridden": {
+		headerBaseFee: big.NewInt(100),
+		overrides:     &BlockOverrides{BaseFee: (*hexutil.Big)(big.NewInt(1000))},
+		wantBaseFee:   big.NewInt(1000),
+		wantGasPrice:  big.NewInt(1000),
+	},
+	"base fee overridden on block without base fee": {
+		headerBaseFee: nil,
+		overrides:     &BlockOverrides{BaseFee: (*hexutil.Big)(big.NewInt(1000))},
+		wantBaseFee:   big.NewInt(1000),
+		wantGasPrice:  big.NewInt(1000),
+	},
+	"legacy gas price with base fee overridden": {
+		headerBaseFee: big.NewInt(100),
+		overrides:     &BlockOverrides{BaseFee: (*hexutil.Big)(big.NewInt(1000))},
+		gasPrice:      big.NewInt(2000),
+		wantBaseFee:   big.NewInt(1000),
+		wantGasPrice:  big.NewInt(2000),
+	},
+}
+
+const gasPriceTestGas = 100_000
+
+func (test gasPriceTestCase) args(from, contract common.Address) TransactionArgs {
+	gas := hexutil.Uint64(gasPriceTestGas)
+	args := TransactionArgs{From: &from, To: &contract, Gas: &gas}
+	if test.gasPrice != nil {
+		args.GasPrice = (*hexutil.Big)(test.gasPrice)
+	} else {
+		args.MaxFeePerGas = (*hexutil.Big)(big.NewInt(1_000_000))
+		args.MaxPriorityFeePerGas = (*hexutil.Big)(big.NewInt(0))
 	}
+	return args
 }
 
 func requireGasPriceAndBaseFee(t *testing.T, test gasPriceTestCase, returnData []byte) {
@@ -117,13 +115,18 @@ func requireGasPriceAndBaseFee(t *testing.T, test gasPriceTestCase, returnData [
 	require.Equal(t, test.wantGasPrice, gasPrice, "GASPRICE")
 }
 
+var (
+	gasPriceTestSender   = common.Address{0x1}
+	gasPriceTestContract = common.Address{0x42}
+)
+
 func TestDoCall_GasPriceFollowsOverriddenBaseFee(t *testing.T) {
 	for name, test := range gasPriceTestCases {
 		t.Run(name, func(t *testing.T) {
-			contract := common.Address{0x42}
-			backend := newCallTestBackend(t, gasPriceTestHeaderBaseFee, contract, gasPriceAndBaseFeeCode)
+			stateDb := state.NewMockStateDB(gomock.NewController(t))
+			backend := newCallTestBackend(t, stateDb, test.headerBaseFee, gasPriceTestContract, gasPriceAndBaseFeeCode)
 
-			result, err := DoCall(t.Context(), backend, gasPriceTestArgs(contract),
+			result, err := DoCall(t.Context(), backend, test.args(gasPriceTestSender, gasPriceTestContract),
 				rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
 				nil, test.overrides, time.Second, 10_000_000, nil)
 			require.NoError(t, err)
@@ -133,17 +136,53 @@ func TestDoCall_GasPriceFollowsOverriddenBaseFee(t *testing.T) {
 	}
 }
 
+func TestDoCall_PreArgsGasPriceFollowsOverriddenBaseFee(t *testing.T) {
+	for name, test := range gasPriceTestCases {
+		t.Run(name, func(t *testing.T) {
+			preSender := common.Address{0x2}
+			stateDb := state.NewMockStateDB(gomock.NewController(t))
+			// Buying gas charges the sender gas limit times gas price, which
+			// reveals the gas price the previous transaction is priced with.
+			charge := new(big.Int).Mul(big.NewInt(gasPriceTestGas), test.wantGasPrice)
+			stateDb.EXPECT().SubBalance(preSender, uint256.MustFromBig(charge), gomock.Any())
+			backend := newCallTestBackend(t, stateDb, test.headerBaseFee, gasPriceTestContract, gasPriceAndBaseFeeCode)
+
+			preArgs := []TransactionArgs{test.args(preSender, gasPriceTestContract)}
+			result, err := DoCall(t.Context(), backend, test.args(gasPriceTestSender, gasPriceTestContract),
+				rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
+				nil, test.overrides, time.Second, 10_000_000, preArgs)
+			require.NoError(t, err)
+			require.False(t, result.Failed(), "call failed: %v", result.Err)
+		})
+	}
+}
+
+func TestDoEstimateGas_GasPriceFollowsOverriddenBaseFee(t *testing.T) {
+	for name, test := range gasPriceTestCases {
+		t.Run(name, func(t *testing.T) {
+			stateDb := state.NewMockStateDB(gomock.NewController(t))
+			backend := newCallTestBackend(t, stateDb, test.headerBaseFee, gasPriceTestContract, revertIfGasPriceBelowBaseFeeCode)
+
+			// The contract reverts if GASPRICE < BASEFEE, which fails the estimation.
+			_, err := DoEstimateGas(t.Context(), backend, test.args(gasPriceTestSender, gasPriceTestContract),
+				rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
+				nil, test.overrides, 10_000_000, nil)
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestTraceCall_GasPriceFollowsOverriddenBaseFee(t *testing.T) {
 	for name, test := range gasPriceTestCases {
 		t.Run(name, func(t *testing.T) {
-			contract := common.Address{0x42}
-			backend := newCallTestBackend(t, gasPriceTestHeaderBaseFee, contract, gasPriceAndBaseFeeCode)
+			stateDb := state.NewMockStateDB(gomock.NewController(t))
+			backend := newCallTestBackend(t, stateDb, test.headerBaseFee, gasPriceTestContract, gasPriceAndBaseFeeCode)
 			api := NewPublicDebugAPI(backend, 10000, 10000, false)
 
 			tracer := "callTracer"
 			config := &TraceCallConfig{BlockOverrides: test.overrides}
 			config.Tracer = &tracer
-			res, err := api.TraceCall(t.Context(), gasPriceTestArgs(contract),
+			res, err := api.TraceCall(t.Context(), test.args(gasPriceTestSender, gasPriceTestContract),
 				rpc.BlockNumberOrHashWithNumber(1), config)
 			require.NoError(t, err)
 
@@ -160,14 +199,50 @@ func TestTraceCall_GasPriceFollowsOverriddenBaseFee(t *testing.T) {
 	}
 }
 
-// newCallTestBackend builds a mock Backend able to run DoCall and TraceCall
-// against a single contract with the given code, on a block with the given base fee.
-// The EVM uses the block context the caller passes, so block overrides apply.
-func newCallTestBackend(t *testing.T, baseFee *big.Int, contract common.Address, code []byte) *MockBackend {
+// trace_call and trace_callMany take no block overrides, so the call keeps
+// the block's base fee even if the config carries block overrides.
+func TestTxTraceCalls_IgnoreBlockOverridesAndUseBlockBaseFee(t *testing.T) {
+	headerBaseFee := big.NewInt(100)
+	test := gasPriceTestCase{wantBaseFee: headerBaseFee, wantGasPrice: headerBaseFee}
+	config := &TraceCallConfig{BlockOverrides: &BlockOverrides{BaseFee: (*hexutil.Big)(big.NewInt(1000))}}
+	args := test.args(gasPriceTestSender, gasPriceTestContract)
+
+	calls := map[string]func(*PublicTxTraceAPI) (*txtrace.TraceCallResult, error){
+		"trace_call": func(api *PublicTxTraceAPI) (*txtrace.TraceCallResult, error) {
+			return api.Call(t.Context(), args, []string{TraceTypeTrace}, rpc.BlockNumberOrHashWithNumber(1), config)
+		},
+		"trace_callMany": func(api *PublicTxTraceAPI) (*txtrace.TraceCallResult, error) {
+			results, err := api.CallMany(t.Context(),
+				[]CallRequest{{Args: args, TraceTypes: []string{TraceTypeTrace}}},
+				rpc.BlockNumberOrHashWithNumber(1), config)
+			if err != nil {
+				return nil, err
+			}
+			require.Len(t, results, 1)
+			return results[0], nil
+		},
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			stateDb := state.NewMockStateDB(gomock.NewController(t))
+			backend := newCallTestBackend(t, stateDb, headerBaseFee, gasPriceTestContract, gasPriceAndBaseFeeCode)
+			api := NewPublicTxTraceAPI(backend, 10000, 10000)
+
+			result, err := call(api)
+			require.NoError(t, err)
+			requireGasPriceAndBaseFee(t, test, result.Output)
+		})
+	}
+}
+
+// newCallTestBackend builds a mock Backend able to run calls and traces
+// against a single contract with the given code, on a block with the given
+// base fee. The EVM uses the block context the caller passes, so block
+// overrides apply. Expectations already set on stateDb take precedence over
+// the defaults added here.
+func newCallTestBackend(t *testing.T, stateDb *state.MockStateDB, baseFee *big.Int, contract common.Address, code []byte) *MockBackend {
 	t.Helper()
-	ctrl := gomock.NewController(t)
-	backend := NewMockBackend(ctrl)
-	stateDb := state.NewMockStateDB(ctrl)
+	backend := NewMockBackend(gomock.NewController(t))
 
 	header := &evmcore.EvmHeader{
 		Number:     big.NewInt(1),
@@ -181,6 +256,9 @@ func newCallTestBackend(t *testing.T, baseFee *big.Int, contract common.Address,
 	any := gomock.Any()
 	backend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(stateDb, block, nil).AnyTimes()
 	backend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
+	backend.EXPECT().HeaderByNumber(any, any).Return(header, nil).AnyTimes()
+	backend.EXPECT().MaxGasLimit().Return(uint64(10_000_000)).AnyTimes()
+	backend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
 	backend.EXPECT().ChainConfig(any).Return(chainConfig).AnyTimes()
 	backend.EXPECT().RPCGasCap().Return(uint64(10_000_000)).AnyTimes()
 	backend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{Upgrades: upgrades}, nil).AnyTimes()
@@ -201,6 +279,7 @@ func newCallTestBackend(t *testing.T, baseFee *big.Int, contract common.Address,
 	stateDb.EXPECT().AddAddressToAccessList(any).AnyTimes()
 	stateDb.EXPECT().AddRefund(any).AnyTimes()
 	stateDb.EXPECT().SubRefund(any).AnyTimes()
+	stateDb.EXPECT().RevertToSnapshot(any).AnyTimes()
 	setExpectedStateCalls(stateDb)
 	return backend
 }

@@ -1231,7 +1231,14 @@ func DoCall(
 
 	// The gas price of the call follows the base fee the EVM runs with, so
 	// that an overridden base fee is respected as on chain.
-	baseFee := blockOverrides.baseFeeOr(block.BaseFee)
+	baseFee := block.BaseFee
+	var blockCtx *vm.BlockContext
+	if blockOverrides != nil {
+		bctx := GetBlockContext(ctx, b, block.Header())
+		blockOverrides.apply(&bctx)
+		blockCtx = &bctx
+		baseFee = bctx.BaseFee
+	}
 
 	// Get a new instance of the EVM.
 	msg, err := args.ToMessage(globalGasCap, baseFee, log.Root())
@@ -1243,12 +1250,6 @@ func DoCall(
 		return nil, err
 	}
 
-	var blockCtx *vm.BlockContext
-	if blockOverrides != nil {
-		bctx := GetBlockContext(ctx, b, block.Header())
-		blockOverrides.apply(&bctx)
-		blockCtx = &bctx
-	}
 	evm, vmError, err := b.GetEVM(ctx, state, block.Header(), &vmConfig, blockCtx)
 	if err != nil {
 		return nil, err
