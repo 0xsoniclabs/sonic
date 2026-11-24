@@ -549,18 +549,20 @@ func returnHashes(hashes []common.Hash) []common.Hash {
 	return hashes
 }
 
-// returnLogs is a helper that will return an empty log array in case the given logs array is nil,
-// otherwise the given logs array is returned.
+// returnLogs prepares logs for an RPC response: a nil array becomes empty, and
+// so do nil topics. The given logs are not modified, since they are shared with
+// other subscriptions and the event loop; logs with nil topics are copied.
 func returnLogs(logs []*types.Log) []*types.Log {
-	if logs == nil {
-		return []*types.Log{}
-	}
-	for _, l := range logs {
+	res := make([]*types.Log, len(logs))
+	for i, l := range logs {
 		if l.Topics == nil {
-			l.Topics = []common.Hash{}
+			normalized := *l
+			normalized.Topics = []common.Hash{}
+			l = &normalized
 		}
+		res[i] = l
 	}
-	return logs
+	return res
 }
 
 // UnmarshalJSON sets *args fields with given data.

@@ -26,7 +26,9 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/stretchr/testify/require"
 )
 
 func TestUnmarshalJSONNewFilterArgs(t *testing.T) {
@@ -308,4 +310,19 @@ func TestPublicFilterAPI_LogQueryParameterLimit_IsEnforcedOnAllPaths(t *testing.
 			}
 		})
 	}
+}
+
+func TestReturnLogs_NormalizesNilWithoutModifyingInput(t *testing.T) {
+	require.Equal(t, []*types.Log{}, returnLogs(nil))
+
+	withTopics := &types.Log{BlockNumber: 1, Topics: []common.Hash{{0x01}}}
+	withoutTopics := &types.Log{BlockNumber: 2}
+	input := []*types.Log{withTopics, withoutTopics}
+
+	got := returnLogs(input)
+
+	require.Equal(t, []*types.Log{withTopics, {BlockNumber: 2, Topics: []common.Hash{}}}, got)
+	require.Same(t, withTopics, got[0])
+	require.Nil(t, withoutTopics.Topics, "shared log must not be modified")
+	require.Same(t, withoutTopics, input[1], "input slice must not be modified")
 }

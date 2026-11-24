@@ -530,7 +530,12 @@ func TestLogFilter(t *testing.T) {
 			if fetched[l].Removed {
 				t.Errorf("expected log not to be removed for log %d in case %d", l, i)
 			}
-			if !reflect.DeepEqual(fetched[l], tt.expected[l]) {
+			// RPC responses carry empty, not nil, topics.
+			want := *tt.expected[l]
+			if want.Topics == nil {
+				want.Topics = []common.Hash{}
+			}
+			if !reflect.DeepEqual(fetched[l], &want) {
 				t.Errorf("invalid log on index %d for case %d", l, i)
 			}
 		}
