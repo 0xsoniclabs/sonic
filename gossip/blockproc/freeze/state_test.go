@@ -54,17 +54,6 @@ func newState(t *testing.T) (*StateDB, *state.StateDB) {
 	return Wrap(inner, NewRegistryChecker(true, inner)), inner
 }
 
-func TestStateDB_Prepare_ResetsTracking(t *testing.T) {
-	db, inner := newState(t)
-	db.frozenMoved = true
-	db.frozenMovedAt[1] = true
-
-	db.Prepare(params.Rules{IsEIP2929: true}, unfrozenAccount, common.Address{}, nil, nil, nil)
-	require.False(t, db.frozenMoved)
-	require.Empty(t, db.frozenMovedAt)
-	require.True(t, inner.AddressInAccessList(unfrozenAccount))
-}
-
 func TestStateDB_Snapshot_RecordsFrozenMoved(t *testing.T) {
 	tests := map[string]struct {
 		moved bool

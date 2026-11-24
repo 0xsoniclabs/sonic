@@ -18,17 +18,41 @@ package freeze
 
 import (
 	"errors"
+	"slices"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 )
 
 // ErrFrozenAccount is returned if a message is sent by an account listed as
 // frozen in the freeze registry.
 var ErrFrozenAccount = errors.New("account is frozen")
 
+// frozenRevertData is the revert data of transactions failed by the freeze, the
+// encoding of Error("account is frozen").
+var frozenRevertData = func() []byte {
+	stringType, err := abi.NewType("string", "", nil)
+	if err != nil {
+		panic(err)
+	}
+	reason, err := abi.Arguments{{Type: stringType}}.Pack(ErrFrozenAccount.Error())
+	if err != nil {
+		panic(err)
+	}
+	return append(crypto.Keccak256([]byte("Error(string)"))[:4], reason...)
+}()
+
 // ApplyMessage runs msg like core.ApplyMessage. If checker is enabled, a frozen
-// sender fails with ErrFrozenAccount.
+// sender fails with ErrFrozenAccount, and a message moving frozen funds is fully
+// rolled back, EIP-7702 authorizations included, and reverts, keeping only its
+// nonce use and gas fee. That fee keeps the gas refund and pays no tip, so evm
+// must set SkipTipPaymentToCoinbase.
 func ApplyMessage(evm *vm.EVM, msg *core.Message, gp *core.GasPool, checker Checker) (*core.ExecutionResult, error) {
 	// before the upgrade, run msg exactly as go-ethereum does
 	if !checker.IsEnabled() {
@@ -40,5 +64,43 @@ func ApplyMessage(evm *vm.EVM, msg *core.Message, gp *core.GasPool, checker Chec
 		return nil, ErrFrozenAccount
 	}
 
-	return core.ApplyMessage(evm, msg, gp)
+	// while msg runs, the EVM's state tracks frozen moves
+	db := evm.StateDB
+	defer func() { evm.StateDB = db }()
+	state := Wrap(evm.StateDB, checker)
+	evm.StateDB = state
+
+	snapshot := state.Snapshot()
+	nonce := state.GetNonce(msg.From)
+	result, err := core.ApplyMessage(evm, msg, gp)
+
+	// the tx failed or did not touch frozen funds, so nothing to do
+	if err != nil || !violatesFreeze(state, msg.From) {
+		return result, err
+	}
+
+	// the tx succeeded but must fail because it moves frozen funds
+	state.RevertToSnapshot(snapshot)
+	reason := tracing.NonceChangeEoACall
+	if msg.To == nil {
+		reason = tracing.NonceChangeContractCreator
+	}
+	state.SetNonce(msg.From, nonce+1, reason)
+	// charge the gas used, keeping the refund a real revert would drop
+	fee := new(uint256.Int).Mul(uint256.NewInt(result.UsedGas), msg.GasPrice)
+	state.SubBalance(msg.From, fee, tracing.BalanceDecreaseGasBuy)
+	return &core.ExecutionResult{
+		UsedGas:    result.UsedGas,
+		MaxUsedGas: result.MaxUsedGas,
+		Err:        vm.ErrExecutionReverted,
+		ReturnData: slices.Clone(frozenRevertData),
+	}, nil
+}
+
+// violatesFreeze reports whether sender's transaction moved frozen funds,
+// exempting internal transactions and system calls.
+func violatesFreeze(state *StateDB, sender common.Address) bool {
+	return state.frozenMoved &&
+		sender != (common.Address{}) &&
+		sender != params.SystemAddress
 }
