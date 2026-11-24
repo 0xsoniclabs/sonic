@@ -33,6 +33,7 @@ import (
 	notify "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
@@ -556,7 +557,8 @@ func TestLogFilter_EarliestIsResolvedForLiveLogs(t *testing.T) {
 	backend.cutoff = 2
 	api := NewPublicFilterAPI(backend, testConfig())
 
-	allLogs := []*types.Log{{BlockNumber: 1}, {BlockNumber: 2}, {BlockNumber: 3}}
+	topics := []common.Hash{}
+	allLogs := []*types.Log{{BlockNumber: 1, Topics: topics}, {BlockNumber: 2, Topics: topics}, {BlockNumber: 3, Topics: topics}}
 	earliest := big.NewInt(rpc.EarliestBlockNumber.Int64())
 	tests := map[string]struct {
 		crit     FilterCriteria
@@ -573,23 +575,21 @@ func TestLogFilter_EarliestIsResolvedForLiveLogs(t *testing.T) {
 		ids[name] = id
 	}
 
-	time.Sleep(time.Second)
+	// NewFilter returns once the subscription is installed, so no wait is
+	// needed before sending.
 	require.NotZero(t, backend.logsFeed.Send(allLogs))
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
+			// The matched logs of one sent batch reach the filter in a single
+			// append, so the first non-empty result is the complete match.
 			var fetched []*types.Log
-			require.Eventually(t, func() bool {
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
 				results, err := api.GetFilterChanges(ids[name])
-				require.NoError(t, err)
-				fetched = append(fetched, results.([]*types.Log)...)
-				return len(fetched) >= len(test.expected)
-			}, time.Second, 50*time.Millisecond)
-			// Give any unexpected extra logs a chance to arrive.
-			time.Sleep(100 * time.Millisecond)
-			results, err := api.GetFilterChanges(ids[name])
-			require.NoError(t, err)
-			fetched = append(fetched, results.([]*types.Log)...)
+				require.NoError(c, err)
+				fetched = results.([]*types.Log)
+				assert.NotEmpty(c, fetched)
+			}, 5*time.Second, 10*time.Millisecond)
 			require.Equal(t, test.expected, fetched)
 		})
 	}
