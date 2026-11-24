@@ -19,6 +19,7 @@ package txtrace
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"testing"
 
@@ -28,11 +29,49 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// parityErrorCase is a geth error with the Parity name trace_* must report for it.
+type parityErrorCase struct {
+	err  error
+	want string
+}
+
+// prefixedGethErrors are geth errors that carry a suffix after a known
+// prefix, so only the prefix mapping converts them. Tests at every level of
+// the tracer share this table.
+var prefixedGethErrors = map[string]parityErrorCase{
+	"wrapped out of gas, write protection": {
+		err:  fmt.Errorf("%w: %v", vm.ErrOutOfGas, vm.ErrWriteProtection),
+		want: "Out of gas",
+	},
+	"wrapped out of gas, gas uint64 overflow": {
+		err:  fmt.Errorf("%w: %v", vm.ErrOutOfGas, vm.ErrGasUintOverflow),
+		want: "Out of gas",
+	},
+	"wrapped out of gas, max initcode size exceeded": {
+		err: fmt.Errorf("%w: %v", vm.ErrOutOfGas,
+			fmt.Errorf("%w: code size %v limit %v", vm.ErrMaxInitCodeSizeExceeded, 98305, 49152)),
+		want: "Out of gas",
+	},
+	"stack underflow (0 <=> 2)": {
+		err:  errors.New("stack underflow (0 <=> 2)"),
+		want: "Stack underflow",
+	},
+	"stack underflow (5 <=> 7)": {
+		err:  errors.New("stack underflow (5 <=> 7)"),
+		want: "Stack underflow",
+	},
+	"invalid opcode INVALID": {
+		err:  errors.New("invalid opcode: INVALID"),
+		want: "Bad instruction",
+	},
+	"invalid opcode not defined": {
+		err:  errors.New("invalid opcode: opcode 0xef not defined"),
+		want: "Bad instruction",
+	},
+}
+
 func TestToParityError_ConvertsGethErrors(t *testing.T) {
-	tests := map[string]struct {
-		err  error
-		want string
-	}{
+	tests := map[string]parityErrorCase{
 		"out of gas": {
 			err:  vm.ErrOutOfGas,
 			want: "Out of gas",
@@ -69,36 +108,8 @@ func TestToParityError_ConvertsGethErrors(t *testing.T) {
 			err:  errors.New("invalid input length"),
 			want: "Built-in failed",
 		},
-		"wrapped out of gas, write protection": {
-			err:  fmt.Errorf("%w: %v", vm.ErrOutOfGas, vm.ErrWriteProtection),
-			want: "Out of gas",
-		},
-		"wrapped out of gas, gas uint64 overflow": {
-			err:  fmt.Errorf("%w: %v", vm.ErrOutOfGas, vm.ErrGasUintOverflow),
-			want: "Out of gas",
-		},
-		"wrapped out of gas, max initcode size exceeded": {
-			err: fmt.Errorf("%w: %v", vm.ErrOutOfGas,
-				fmt.Errorf("%w: code size %v limit %v", vm.ErrMaxInitCodeSizeExceeded, 98305, 49152)),
-			want: "Out of gas",
-		},
-		"stack underflow": {
-			err:  errors.New("stack underflow (0 <=> 2)"),
-			want: "Stack underflow",
-		},
-		"stack underflow with other operands": {
-			err:  errors.New("stack underflow (5 <=> 7)"),
-			want: "Stack underflow",
-		},
-		"invalid opcode INVALID": {
-			err:  errors.New("invalid opcode: INVALID"),
-			want: "Bad instruction",
-		},
-		"invalid opcode not defined": {
-			err:  errors.New("invalid opcode: opcode 0xef not defined"),
-			want: "Bad instruction",
-		},
 	}
+	maps.Copy(tests, prefixedGethErrors)
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			got, ok := toParityError(test.err.Error())
@@ -124,27 +135,13 @@ func TestToParityError_KeepsUnknownErrors(t *testing.T) {
 }
 
 func TestActionTrace_ProcessOutput_ReportsParityErrorNames(t *testing.T) {
-	tests := map[string]struct {
-		err  error
-		want string
-	}{
-		"wrapped out of gas": {
-			err:  fmt.Errorf("%w: %v", vm.ErrOutOfGas, vm.ErrWriteProtection),
-			want: "Out of gas",
-		},
-		"stack underflow": {
-			err:  errors.New("stack underflow (0 <=> 2)"),
-			want: "Stack underflow",
-		},
-		"invalid opcode": {
-			err:  errors.New("invalid opcode: INVALID"),
-			want: "Bad instruction",
-		},
+	tests := map[string]parityErrorCase{
 		"unknown error": {
 			err:  errors.New("some unknown error"),
 			want: "some unknown error",
 		},
 	}
+	maps.Copy(tests, prefixedGethErrors)
 	for name, test := range tests {
 		for _, traceType := range []string{CALL, CREATE} {
 			t.Run(name+"/"+traceType, func(t *testing.T) {

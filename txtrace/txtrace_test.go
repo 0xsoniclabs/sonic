@@ -18,8 +18,6 @@ package txtrace
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"math/big"
 	"strings"
 	"testing"
@@ -773,27 +771,6 @@ func checkResult(t *testing.T, traces *[]ActionTrace, expectedTraces string) {
 }
 
 func TestTracer_ReportsParityErrorNamesForAllFrameTypes(t *testing.T) {
-	errorsToParity := map[string]struct {
-		err  error
-		want string
-	}{
-		"wrapped out of gas": {
-			err:  fmt.Errorf("%w: %v", vm.ErrOutOfGas, vm.ErrWriteProtection),
-			want: "Out of gas",
-		},
-		"stack underflow (0 <=> 2)": {
-			err:  errors.New("stack underflow (0 <=> 2)"),
-			want: "Stack underflow",
-		},
-		"stack underflow (5 <=> 7)": {
-			err:  errors.New("stack underflow (5 <=> 7)"),
-			want: "Stack underflow",
-		},
-		"invalid opcode": {
-			err:  errors.New("invalid opcode: INVALID"),
-			want: "Bad instruction",
-		},
-	}
 	frameTypes := map[vm.OpCode]string{
 		vm.CALL:         CALL,
 		vm.CALLCODE:     CALL,
@@ -802,7 +779,7 @@ func TestTracer_ReportsParityErrorNamesForAllFrameTypes(t *testing.T) {
 		vm.CREATE:       CREATE,
 		vm.CREATE2:      CREATE,
 	}
-	for errName, test := range errorsToParity {
+	for errName, test := range prefixedGethErrors {
 		for op, traceType := range frameTypes {
 			t.Run(errName+"/"+op.String()+"/top-level", func(t *testing.T) {
 				block, tx := getDefaultBlockTxMessage()
