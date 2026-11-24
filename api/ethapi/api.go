@@ -1257,12 +1257,7 @@ func DoCall(
 	defer evm.Release()
 	// Skip gas price checks for API runs.
 	evm.Config.NoBaseFee = true
-	if msg.GasPrice.Sign() == 0 {
-		evm.Context.BaseFee = new(big.Int)
-	}
-	if msg.BlobGasFeeCap != nil && msg.BlobGasFeeCap.BitLen() == 0 {
-		evm.Context.BlobBaseFee = new(big.Int)
-	}
+	lowerFeesForUnpricedCall(&evm.Context, msg)
 
 	// Wait for the context to be done and cancel the evm. Even if the
 	// EVM has finished, cancelling may be done (repeatedly)
@@ -1301,6 +1296,18 @@ func DoCall(
 		return result, fmt.Errorf("err: %w (supplied gas %d)", err, msg.GasLimit)
 	}
 	return result, nil
+}
+
+// lowerFeesForUnpricedCall lowers the base fee, and the blob base fee, to zero
+// for a call that names no gas price, as go-ethereum does, so that the EVM's
+// basefee <= feecap invariant holds and BASEFEE reads zero for such a call.
+func lowerFeesForUnpricedCall(blockCtx *vm.BlockContext, msg *core.Message) {
+	if msg.GasPrice.Sign() == 0 {
+		blockCtx.BaseFee = new(big.Int)
+	}
+	if msg.BlobGasFeeCap != nil && msg.BlobGasFeeCap.BitLen() == 0 {
+		blockCtx.BlobBaseFee = new(big.Int)
+	}
 }
 
 func newRevertError(result *core.ExecutionResult) *revertError {
@@ -1878,6 +1885,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 			statedb.Release()
 			return nil, 0, nil, err
 		}
+		lowerFeesForUnpricedCall(&vmenv.Context, msg)
 		stopCancel := context.AfterFunc(ctx, vmenv.Cancel)
 		res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
 		stopCancel()
@@ -3037,6 +3045,7 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 	if err != nil {
 		return nil, err
 	}
+	lowerFeesForUnpricedCall(&blockCtx, msg)
 
 	var traceConfig *tracers.TraceConfig
 	if config != nil {
