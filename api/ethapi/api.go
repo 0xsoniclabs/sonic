@@ -1229,8 +1229,12 @@ func DoCall(
 	// this makes sure resources are cleaned up.
 	defer cancel()
 
+	// The gas price of the call follows the base fee the EVM runs with, so
+	// that an overridden base fee is respected as on chain.
+	baseFee := blockOverrides.baseFeeOr(block.BaseFee)
+
 	// Get a new instance of the EVM.
-	msg, err := args.ToMessage(globalGasCap, block.BaseFee, log.Root())
+	msg, err := args.ToMessage(globalGasCap, baseFee, log.Root())
 	if err != nil {
 		return nil, err
 	}
@@ -1264,7 +1268,7 @@ func DoCall(
 
 	// Apply previous transactions if required.
 	for i, arg := range preArgs {
-		preMsg, err := arg.ToMessage(globalGasCap, block.BaseFee, log.Root())
+		preMsg, err := arg.ToMessage(globalGasCap, baseFee, log.Root())
 		if err != nil {
 			log.Warn("failed to convert previous transaction to message", "index", i, "err", err)
 			continue

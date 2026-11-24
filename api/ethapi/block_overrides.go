@@ -18,6 +18,7 @@ package ethapi
 
 import (
 	"context"
+	"math/big"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/ethereum/go-ethereum/common"
@@ -67,6 +68,15 @@ func (diff *BlockOverrides) apply(blockCtx *vm.BlockContext) {
 	if diff.BlobBaseFee != nil {
 		blockCtx.BlobBaseFee = diff.BlobBaseFee.ToInt()
 	}
+}
+
+// baseFeeOr returns the overridden base fee, or the given fallback if the
+// base fee is not overridden.
+func (diff *BlockOverrides) baseFeeOr(fallback *big.Int) *big.Int {
+	if diff == nil || diff.BaseFee == nil {
+		return fallback
+	}
+	return diff.BaseFee.ToInt()
 }
 
 // GetBlockContext returns a new vm.BlockContext based on the given header and backend
