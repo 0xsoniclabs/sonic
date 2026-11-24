@@ -2791,3 +2791,66 @@ func TestAccessList_ZeroesTheBaseFeeForACallThatNamesNoGasPrice(t *testing.T) {
 		})
 	}
 }
+
+func TestLowerFeesForUnpricedCall_ZeroesEachFeeOnlyForItsOwnZeroPrice(t *testing.T) {
+	baseFee := big.NewInt(27399063)
+	blobBaseFee := big.NewInt(1_000)
+
+	tests := map[string]struct {
+		gasPrice        *big.Int
+		blobGasFeeCap   *big.Int
+		wantBaseFee     *big.Int
+		wantBlobBaseFee *big.Int
+	}{
+		"a priced call without a blob fee cap keeps both fees": {
+			gasPrice:        big.NewInt(1),
+			blobGasFeeCap:   nil,
+			wantBaseFee:     baseFee,
+			wantBlobBaseFee: blobBaseFee,
+		},
+		"a priced call with a zero blob fee cap zeroes only the blob base fee": {
+			gasPrice:        big.NewInt(1),
+			blobGasFeeCap:   big.NewInt(0),
+			wantBaseFee:     baseFee,
+			wantBlobBaseFee: big.NewInt(0),
+		},
+		"a priced call with a positive blob fee cap keeps both fees": {
+			gasPrice:        big.NewInt(1),
+			blobGasFeeCap:   big.NewInt(1),
+			wantBaseFee:     baseFee,
+			wantBlobBaseFee: blobBaseFee,
+		},
+		"an unpriced call without a blob fee cap zeroes only the base fee": {
+			gasPrice:        big.NewInt(0),
+			blobGasFeeCap:   nil,
+			wantBaseFee:     big.NewInt(0),
+			wantBlobBaseFee: blobBaseFee,
+		},
+		"an unpriced call with a zero blob fee cap zeroes both fees": {
+			gasPrice:        big.NewInt(0),
+			blobGasFeeCap:   big.NewInt(0),
+			wantBaseFee:     big.NewInt(0),
+			wantBlobBaseFee: big.NewInt(0),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			blockCtx := vm.BlockContext{
+				BaseFee:     new(big.Int).Set(baseFee),
+				BlobBaseFee: new(big.Int).Set(blobBaseFee),
+			}
+			msg := &core.Message{
+				GasPrice:      test.gasPrice,
+				BlobGasFeeCap: test.blobGasFeeCap,
+			}
+
+			lowerFeesForUnpricedCall(&blockCtx, msg)
+
+			require.Equal(t, 0, test.wantBaseFee.Cmp(blockCtx.BaseFee),
+				"base fee: want %v, got %v", test.wantBaseFee, blockCtx.BaseFee)
+			require.Equal(t, 0, test.wantBlobBaseFee.Cmp(blockCtx.BlobBaseFee),
+				"blob base fee: want %v, got %v", test.wantBlobBaseFee, blockCtx.BlobBaseFee)
+		})
+	}
+}
