@@ -536,3 +536,7 @@ func TestLogFilter(t *testing.T) {
 		}
 	}
 }
+
+func (b *testBackend) HistoryPruningCutoff() uint64 {
+	return 0
+}
