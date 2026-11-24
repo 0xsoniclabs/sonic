@@ -179,6 +179,20 @@ func (mr *MockBackendMockRecorder) HeaderByNumber(ctx, blockNr any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HeaderByNumber", reflect.TypeOf((*MockBackend)(nil).HeaderByNumber), ctx, blockNr)
 }
 
+// HistoryPruningCutoff mocks base method.
+func (m *MockBackend) HistoryPruningCutoff() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HistoryPruningCutoff")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// HistoryPruningCutoff indicates an expected call of HistoryPruningCutoff.
+func (mr *MockBackendMockRecorder) HistoryPruningCutoff() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HistoryPruningCutoff", reflect.TypeOf((*MockBackend)(nil).HistoryPruningCutoff))
+}
+
 // SubscribeLogsNotify mocks base method.
 func (m *MockBackend) SubscribeLogsNotify(ch chan<- []*types.Log) event.Subscription {
 	m.ctrl.T.Helper()
