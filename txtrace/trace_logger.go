@@ -321,7 +321,7 @@ func (trace *ActionTrace) processOutput(output []byte, err error, rootTrace bool
 	if trace.TraceType == CREATE {
 		trace.Action.To = nil
 	}
-	if traceError, ok := traceErrorMapping[err.Error()]; ok {
+	if traceError, ok := toParityError(err.Error()); ok {
 		trace.Error = traceError
 		return
 	}
@@ -483,4 +483,32 @@ var traceErrorMapping = map[string]string{
 	vm.ErrReturnDataOutOfBounds.Error(): "Out of bounds",
 	"precompiled failed":                "Built-in failed",
 	"invalid input length":              "Built-in failed",
+}
+
+// traceErrorPrefixMapping converts errors whose text carries details after a
+// fixed prefix, such as wrapped out-of-gas errors ("out of gas: write
+// protection") or errors with operands ("stack underflow (0 <=> 2)"). It
+// mirrors parityErrorMappingStartingWith of geth's flatCallTracer, so that
+// both tracers report the same Parity error names.
+var traceErrorPrefixMapping = []struct {
+	prefix      string
+	parityError string
+}{
+	{"out of gas:", "Out of gas"},
+	{"invalid opcode:", "Bad instruction"},
+	{"stack underflow", "Stack underflow"},
+}
+
+// toParityError returns the Parity name of an EVM error, given its text. The
+// second result is false if the error has no Parity name.
+func toParityError(gethError string) (string, bool) {
+	if parityError, ok := traceErrorMapping[gethError]; ok {
+		return parityError, true
+	}
+	for _, mapping := range traceErrorPrefixMapping {
+		if strings.HasPrefix(gethError, mapping.prefix) {
+			return mapping.parityError, true
+		}
+	}
+	return "", false
 }
