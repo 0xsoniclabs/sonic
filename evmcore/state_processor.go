@@ -890,7 +890,8 @@ func (tp *TransactionProcessor) Release() {
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
 // and uses the input parameters for its environment similar to ApplyTransaction. However,
-// this method takes an already created EVM instance as input.
+// this method takes an already created EVM instance as input, and applies the
+// account freeze as freezeChecker reports it.
 //
 // The primary use case for this method is to apply transactions from RPC calls or
 // traces.
@@ -904,6 +905,7 @@ func ApplyTransactionWithEVM(
 	tx *types.Transaction,
 	usedGas *uint64,
 	evm *vm.EVM,
+	freezeChecker freeze.Checker,
 ) (receipt *types.Receipt, err error) {
 	if evm.Config.Tracer != nil && evm.Config.Tracer.OnTxStart != nil {
 		evm.Config.Tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
@@ -922,7 +924,7 @@ func ApplyTransactionWithEVM(
 	evm.SetTxContext(txContext)
 
 	// Apply the transaction to the current state (included in the env).
-	result, err := core.ApplyMessage(evm, msg, gp)
+	result, err := freeze.ApplyMessage(evm, msg, gp, freezeChecker)
 	if err != nil {
 		statedb.EndTransaction()
 		return nil, err

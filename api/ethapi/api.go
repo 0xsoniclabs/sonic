@@ -36,6 +36,7 @@ import (
 	bip39 "github.com/tyler-smith/go-bip39"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -1247,10 +1248,11 @@ func DoCall(
 	if err != nil {
 		return nil, err
 	}
-	vmConfig, err := GetVmConfig(ctx, b, idx.Block(block.Number.Uint64()))
+	vmConfig, upgrades, err := GetVmConfig(ctx, b, idx.Block(block.Number.Uint64()))
 	if err != nil {
 		return nil, err
 	}
+	freezeChecker := freeze.NewRegistryChecker(upgrades.AccountFreeze, state)
 
 	evm, vmError, err := b.GetEVM(ctx, state, block.Header(), &vmConfig, blockCtx)
 	if err != nil {
@@ -1277,14 +1279,14 @@ func DoCall(
 			log.Warn("failed to convert previous transaction to message", "index", i, "err", err)
 			continue
 		}
-		if _, err := core.ApplyMessage(evm, preMsg, gp); err != nil {
+		if _, err := freeze.ApplyMessage(evm, preMsg, gp, freezeChecker); err != nil {
 			log.Warn("failed to apply previous transaction", "index", i, "err", err)
 		}
 		state.EndTransaction()
 	}
 
 	// Execute the message.
-	result, err := core.ApplyMessage(evm, msg, gp)
+	result, err := freeze.ApplyMessage(evm, msg, gp, freezeChecker)
 	if err := vmError(); err != nil {
 		return nil, err
 	}
@@ -1830,7 +1832,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 	if args.AccessList != nil {
 		prevTracer = logger.NewAccessListTracer(*args.AccessList, addressesToExclude)
 	}
-	vmConfig, err := GetVmConfig(ctx, b, idx.Block(block.Number.Uint64()))
+	vmConfig, upgrades, err := GetVmConfig(ctx, b, idx.Block(block.Number.Uint64()))
 	if err != nil {
 		return nil, 0, nil, err
 	}
@@ -1872,7 +1874,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 			return nil, 0, nil, err
 		}
 		stopCancel := context.AfterFunc(ctx, vmenv.Cancel)
-		res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
+		res, err := freeze.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit), freeze.NewRegistryChecker(upgrades.AccountFreeze, statedb))
 		stopCancel()
 		vmenv.Release()
 		statedb.Release()
@@ -1884,6 +1886,9 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 				args.from(), uint64(*args.Nonce), err)
 		}
 		if tracer.Equal(prevTracer) {
+			if len(res.Revert()) > 0 {
+				return accessList, res.UsedGas, newRevertError(res), nil
+			}
 			return accessList, res.UsedGas, res.Err, nil
 		}
 		prevTracer = tracer
@@ -2743,7 +2748,7 @@ func (api *PublicDebugAPI) traceTx(
 		}
 	}
 
-	evmconfig, err := GetVmConfig(ctx, api.b, idx.Block(blockHeader.Number.Uint64()))
+	evmconfig, upgrades, err := GetVmConfig(ctx, api.b, idx.Block(blockHeader.Number.Uint64()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get vm config: %w", err)
 	}
@@ -2789,6 +2794,7 @@ func (api *PublicDebugAPI) traceTx(
 		tx,
 		&usedGas,
 		vmenv,
+		freeze.NewRegistryChecker(upgrades.AccountFreeze, statedb),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("tracing failed: %w", err)
@@ -2841,22 +2847,22 @@ func (api *PublicDebugAPI) TraceBlockByHash(ctx context.Context, hash common.Has
 
 // applyPreBlockSystemCalls executes the system calls which have to be applied on
 // top of the parent state before any transaction of the given block can be executed.
-func applyPreBlockSystemCalls(ctx context.Context, b Backend, block *evmcore.EvmBlock, statedb state.StateDB) (*vm.EVM, error) {
-	cfg, err := GetVmConfig(ctx, b, idx.Block(block.NumberU64()))
+func applyPreBlockSystemCalls(ctx context.Context, b Backend, block *evmcore.EvmBlock, statedb state.StateDB) (*vm.EVM, opera.Upgrades, error) {
+	cfg, upgrades, err := GetVmConfig(ctx, b, idx.Block(block.NumberU64()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to get vm config: %w", err)
+		return nil, opera.Upgrades{}, fmt.Errorf("failed to get vm config: %w", err)
 	}
 	cfg.NoBaseFee = true
 	vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &cfg, nil)
 	if err != nil {
-		return nil, err
+		return nil, opera.Upgrades{}, err
 	}
 
 	// execute EIP-2935 HistoryStorage contract.
 	if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
 		evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
 	}
-	return vmenv, nil
+	return vmenv, upgrades, nil
 }
 
 // traceBlock configures a new tracer according to the provided configuration, and
@@ -2872,7 +2878,7 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 	}
 	defer statedb.Release()
 
-	vmenv, err := applyPreBlockSystemCalls(ctx, api.b, block, statedb)
+	vmenv, _, err := applyPreBlockSystemCalls(ctx, api.b, block, statedb)
 	if err != nil {
 		return nil, err
 	}
@@ -2935,11 +2941,12 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 		}
 	}()
 
-	vmenv, err := applyPreBlockSystemCalls(ctx, b, block, statedb)
+	vmenv, upgrades, err := applyPreBlockSystemCalls(ctx, b, block, statedb)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer vmenv.Release()
+	freezeChecker := freeze.NewRegistryChecker(upgrades.AccountFreeze, statedb)
 
 	if txIndex == 0 && len(block.Transactions) == 0 {
 		return nil, statedb, nil
@@ -2968,7 +2975,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 		}
 
 		statedb.SetTxContext(tx.Hash(), idx, uint32(idx+1))
-		if _, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(tx.Gas())); err != nil {
+		if _, err := freeze.ApplyMessage(vmenv, msg, core.NewGasPool(tx.Gas()), freezeChecker); err != nil {
 			return nil, nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
 		}
 		// Ensure any modifications are committed to the state

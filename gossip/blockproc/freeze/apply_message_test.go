@@ -135,22 +135,29 @@ func TestApplyMessage_RejectsFrozenSenders(t *testing.T) {
 	}
 }
 
-func TestApplyMessage_RestoresTheStateDBOfTheEVM(t *testing.T) {
+func TestApplyMessage_RestoresTheStateDBAndTracerOfTheEVM(t *testing.T) {
 	payer := common.Address{0x2}
 	tests := map[string]struct {
 		accountFreeze          bool
 		to                     common.Address
 		nonce                  uint64
+		withoutOnExit          bool
 		expectErr, expectVMErr error
 	}{
-		"disabled":           {accountFreeze: false, to: payer},
-		"enabled non-frozen": {accountFreeze: true, to: common.Address{0x3}},
-		"enabled frozen":     {accountFreeze: true, to: payer, expectVMErr: vm.ErrExecutionReverted},
-		"invalid message":    {accountFreeze: true, to: payer, nonce: 1, expectErr: core.ErrNonceTooHigh},
+		"disabled":                      {accountFreeze: false, to: payer},
+		"enabled non-frozen":            {accountFreeze: true, to: common.Address{0x3}},
+		"enabled frozen":                {accountFreeze: true, to: payer, expectVMErr: vm.ErrExecutionReverted},
+		"enabled frozen without OnExit": {accountFreeze: true, to: payer, withoutOnExit: true, expectVMErr: vm.ErrExecutionReverted},
+		"invalid message":               {accountFreeze: true, to: payer, nonce: 1, expectErr: core.ErrNonceTooHigh},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			evm, statedb := newEVMWithFrozenAccounts(t)
+			hooks := &tracing.Hooks{OnExit: func(int, []byte, uint64, error, bool) {}}
+			if test.withoutOnExit {
+				hooks.OnExit = nil
+			}
+			evm.Config.Tracer = hooks
 			statedb.AddBalance(payer, uint256.NewInt(1), tracing.BalanceChangeUnspecified)
 			statedb.SetCode(payer, payCode(frozenAccount), tracing.CodeChangeUnspecified)
 
@@ -164,6 +171,7 @@ func TestApplyMessage_RestoresTheStateDBOfTheEVM(t *testing.T) {
 				require.ErrorIs(t, result.Err, test.expectVMErr)
 			}
 			require.Same(t, statedb, evm.StateDB)
+			require.Same(t, hooks, evm.Config.Tracer)
 		})
 	}
 }
@@ -196,42 +204,83 @@ func TestApplyMessage_SettlesFrozenMovesAsRevertedTransactions(t *testing.T) {
 		"refund before the move":        {to: &other, code: refundThenPay, expectReason: tracing.NonceChangeEoACall},
 	}
 	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			setup := func() (*vm.EVM, *state.StateDB) {
-				evm, statedb := newEVMWithFrozenAccounts(t, created)
-				if test.to != nil {
-					statedb.AddBalance(*test.to, uint256.NewInt(1), tracing.BalanceChangeUnspecified)
-					statedb.SetCode(*test.to, test.code, tracing.CodeChangeUnspecified)
+		for _, hook := range []string{"OnExit", "OnExitV2"} {
+			t.Run(name+" with "+hook, func(t *testing.T) {
+				type exit struct {
+					depth    int
+					output   []byte
+					err      error
+					reverted bool
 				}
-				return evm, statedb
-			}
-			executedEVM, _ := setup()
-			executed := apply(t, executedEVM, sender, test.to, test.value, false)
-			require.NoError(t, executed.Err)
+				setup := func() (*vm.EVM, *state.StateDB, *[]exit) {
+					evm, statedb := newEVMWithFrozenAccounts(t, created)
+					if test.to != nil {
+						statedb.AddBalance(*test.to, uint256.NewInt(1), tracing.BalanceChangeUnspecified)
+						statedb.SetCode(*test.to, test.code, tracing.CodeChangeUnspecified)
+					}
+					exits := &[]exit{}
+					evm.Config.Tracer = map[string]*tracing.Hooks{
+						"OnExit": {OnExit: func(depth int, output []byte, _ uint64, err error, reverted bool) {
+							*exits = append(*exits, exit{depth, output, err, reverted})
+						}},
+						"OnExitV2": {OnExitV2: func(depth int, output []byte, _ tracing.Gas, err error, reverted bool) {
+							*exits = append(*exits, exit{depth, output, err, reverted})
+						}},
+					}[hook]
+					return evm, statedb, exits
+				}
+				executedEVM, _, executedExits := setup()
+				executed := apply(t, executedEVM, sender, test.to, test.value, false)
+				require.NoError(t, executed.Err)
 
-			evm, statedb := setup()
-			var reason tracing.NonceChangeReason
-			evm.StateDB = state.NewHookedState(statedb, &tracing.Hooks{
-				OnNonceChangeV2: func(_ common.Address, _, _ uint64, r tracing.NonceChangeReason) { reason = r },
+				evm, statedb, exits := setup()
+				var reason tracing.NonceChangeReason
+				evm.StateDB = state.NewHookedState(statedb, &tracing.Hooks{
+					OnNonceChangeV2: func(_ common.Address, _, _ uint64, r tracing.NonceChangeReason) { reason = r },
+				})
+				balances := func() []uint64 {
+					return []uint64{statedb.GetBalance(frozenAccount).Uint64(), statedb.GetBalance(other).Uint64(), statedb.GetBalance(created).Uint64()}
+				}
+				before, balance := balances(), statedb.GetBalance(sender).Uint64()
+
+				result := apply(t, evm, sender, test.to, test.value, true)
+				require.ErrorIs(t, result.Err, vm.ErrExecutionReverted)
+				revertReason, err := abi.UnpackRevert(result.ReturnData)
+				require.NoError(t, err)
+				require.Equal(t, "account is frozen", revertReason)
+				require.Equal(t, before, balances())
+				require.Equal(t, common.Hash{}, statedb.GetState(other, common.Hash{}))
+				require.Empty(t, statedb.Logs())
+				expectExits := slices.Clone(*executedExits)
+				expectExits[len(expectExits)-1] = exit{0, frozenRevertData, vm.VMErrorFromErr(vm.ErrExecutionReverted), true}
+				require.Equal(t, expectExits, *exits)
+
+				require.Equal(t, uint64(1), statedb.GetNonce(sender))
+				require.Equal(t, test.expectReason, reason)
+				require.Equal(t, balance-result.UsedGas*gasPrice, statedb.GetBalance(sender).Uint64())
+				require.Equal(t, []uint64{executed.UsedGas, executed.MaxUsedGas}, []uint64{result.UsedGas, result.MaxUsedGas})
 			})
-			balances := func() []uint64 {
-				return []uint64{statedb.GetBalance(frozenAccount).Uint64(), statedb.GetBalance(other).Uint64(), statedb.GetBalance(created).Uint64()}
-			}
-			before, balance := balances(), statedb.GetBalance(sender).Uint64()
+		}
+	}
+}
 
-			result := apply(t, evm, sender, test.to, test.value, true)
-			require.ErrorIs(t, result.Err, vm.ErrExecutionReverted)
-			revertReason, err := abi.UnpackRevert(result.ReturnData)
+func TestApplyMessage_KeepsTheRevertDataTracersChange(t *testing.T) {
+	tests := map[string]*tracing.Hooks{
+		"OnExit":   {OnExit: func(_ int, output []byte, _ uint64, _ error, _ bool) { clear(output) }},
+		"OnExitV2": {OnExitV2: func(_ int, output []byte, _ tracing.Gas, _ error, _ bool) { clear(output) }},
+	}
+	for name, hooks := range tests {
+		t.Run(name, func(t *testing.T) {
+			payer := common.Address{0x2}
+			evm, statedb := newEVMWithFrozenAccounts(t)
+			statedb.AddBalance(payer, uint256.NewInt(1), tracing.BalanceChangeUnspecified)
+			statedb.SetCode(payer, payCode(frozenAccount), tracing.CodeChangeUnspecified)
+			evm.Config.Tracer = hooks
+
+			result := apply(t, evm, sender, &payer, 0, true)
+			reason, err := abi.UnpackRevert(result.ReturnData)
 			require.NoError(t, err)
-			require.Equal(t, "account is frozen", revertReason)
-			require.Equal(t, before, balances())
-			require.Equal(t, common.Hash{}, statedb.GetState(other, common.Hash{}))
-			require.Empty(t, statedb.Logs())
-
-			require.Equal(t, uint64(1), statedb.GetNonce(sender))
-			require.Equal(t, test.expectReason, reason)
-			require.Equal(t, balance-result.UsedGas*gasPrice, statedb.GetBalance(sender).Uint64())
-			require.Equal(t, []uint64{executed.UsedGas, executed.MaxUsedGas}, []uint64{result.UsedGas, result.MaxUsedGas})
+			require.Equal(t, "account is frozen", reason)
 		})
 	}
 }
@@ -259,9 +308,16 @@ func TestApplyMessage_IgnoresMovesThatDoNotViolateTheFreeze(t *testing.T) {
 			statedb.AddBalance(outer, uint256.NewInt(1), tracing.BalanceChangeUnspecified)
 			statedb.SetCode(outer, payCode(inner), tracing.CodeChangeUnspecified)
 			statedb.SetCode(inner, revertCode(frozenAccount), tracing.CodeChangeUnspecified)
+			var outermostReverted bool
+			evm.Config.Tracer = &tracing.Hooks{OnExit: func(depth int, _ []byte, _ uint64, _ error, reverted bool) {
+				if depth == 0 {
+					outermostReverted = reverted
+				}
+			}}
 
 			result := apply(t, evm, test.from, &test.to, 0, !test.disabled)
 			require.Equal(t, test.expectFailed, result.Err != nil)
+			require.Equal(t, test.expectFailed, outermostReverted)
 			require.Equal(t, test.expectMoved, !statedb.GetBalance(frozenAccount).IsZero())
 		})
 	}

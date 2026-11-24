@@ -115,18 +115,18 @@ type Backend interface {
 	GetOriginatedFee(ctx context.Context, vid idx.ValidatorID) (*big.Int, error)
 }
 
-// GetVmConfig is a utility function resolving the VM configuration for a block
-// height based on the network rules.
+// GetVmConfig is a utility function resolving the VM configuration and the
+// upgrades for a block height based on the network rules.
 func GetVmConfig(
 	ctx context.Context,
 	backend Backend,
 	blockHeight idx.Block,
-) (vm.Config, error) {
+) (vm.Config, opera.Upgrades, error) {
 	rules, err := getNetworkRules(ctx, backend, blockHeight)
 	if err != nil {
-		return vm.Config{}, err
+		return vm.Config{}, opera.Upgrades{}, err
 	}
-	return opera.GetVmConfig(*rules), nil
+	return opera.GetVmConfig(*rules), rules.Upgrades, nil
 }
 
 // getNetworkRules resolves the network rules for a block height, failing if the

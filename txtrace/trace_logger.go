@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -321,6 +322,12 @@ func (trace *ActionTrace) processOutput(output []byte, err error, rootTrace bool
 	if trace.TraceType == CREATE {
 		trace.Action.To = nil
 	}
+	if errors.Is(err, vm.ErrExecutionReverted) {
+		if reason, unpackErr := abi.UnpackRevert(output); unpackErr == nil && reason == freeze.ErrFrozenAccount.Error() {
+			trace.Error = reason
+			return
+		}
+	}
 	if traceError, ok := toParityError(err.Error()); ok {
 		trace.Error = traceError
 		return
@@ -489,7 +496,8 @@ var traceErrorMapping = map[string]string{
 // fixed prefix, such as wrapped out-of-gas errors ("out of gas: write
 // protection") or errors with operands ("stack underflow (0 <=> 2)"). It
 // mirrors parityErrorMappingStartingWith of geth's flatCallTracer, so that
-// both tracers report the same Parity error names.
+// both tracers report the same Parity error names, except that reverts with
+// Error("account is frozen") report "account is frozen" instead of "Reverted".
 var traceErrorPrefixMapping = []struct {
 	prefix      string
 	parityError string

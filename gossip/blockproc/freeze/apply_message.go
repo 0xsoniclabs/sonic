@@ -52,7 +52,8 @@ var frozenRevertData = func() []byte {
 // sender fails with ErrFrozenAccount, and a message moving frozen funds is fully
 // rolled back, EIP-7702 authorizations included, and reverts, keeping only its
 // nonce use and gas fee. That fee keeps the gas refund and pays no tip, so evm
-// must set SkipTipPaymentToCoinbase.
+// must set SkipTipPaymentToCoinbase. Tracers see its outermost call revert with
+// "account is frozen".
 func ApplyMessage(evm *vm.EVM, msg *core.Message, gp *core.GasPool, checker Checker) (*core.ExecutionResult, error) {
 	// before the upgrade, run msg exactly as go-ethereum does
 	if !checker.IsEnabled() {
@@ -64,11 +65,32 @@ func ApplyMessage(evm *vm.EVM, msg *core.Message, gp *core.GasPool, checker Chec
 		return nil, ErrFrozenAccount
 	}
 
-	// while msg runs, the EVM's state tracks frozen moves
-	db := evm.StateDB
-	defer func() { evm.StateDB = db }()
+	// while msg runs, the EVM's state tracks frozen moves and its tracer sees
+	// the freeze's revert
+	db, tracer := evm.StateDB, evm.Config.Tracer
+	defer func() { evm.StateDB, evm.Config.Tracer = db, tracer }()
 	state := Wrap(evm.StateDB, checker)
 	evm.StateDB = state
+	if tracer != nil && (tracer.OnExit != nil || tracer.OnExitV2 != nil) {
+		copied := *tracer
+		evm.Config.Tracer = &copied
+		if tracer.OnExit != nil {
+			copied.OnExit = func(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
+				if depth == 0 && violatesFreeze(state, msg.From) {
+					output, err, reverted = slices.Clone(frozenRevertData), vm.VMErrorFromErr(vm.ErrExecutionReverted), true
+				}
+				tracer.OnExit(depth, output, gasUsed, err, reverted)
+			}
+		}
+		if tracer.OnExitV2 != nil {
+			copied.OnExitV2 = func(depth int, output []byte, gasLeft tracing.Gas, err error, reverted bool) {
+				if depth == 0 && violatesFreeze(state, msg.From) {
+					output, err, reverted = slices.Clone(frozenRevertData), vm.VMErrorFromErr(vm.ErrExecutionReverted), true
+				}
+				tracer.OnExitV2(depth, output, gasLeft, err, reverted)
+			}
+		}
+	}
 
 	snapshot := state.Snapshot()
 	nonce := state.GetNonce(msg.From)

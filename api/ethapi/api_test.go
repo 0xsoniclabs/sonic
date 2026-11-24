@@ -33,6 +33,8 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common/amount"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/carmen/go/common/witness"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
+	freeze_registry "github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -58,6 +60,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/core/vm/program"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -1386,10 +1389,11 @@ func TestApplyPreBlockSystemCalls(t *testing.T) {
 			any := gomock.Any()
 
 			backend := NewMockBackend(ctrl)
+			rules := &opera.Rules{Upgrades: opera.Upgrades{AccountFreeze: true}}
 			if test.rulesErr != nil {
 				backend.EXPECT().GetNetworkRules(any, any).Return(nil, test.rulesErr)
 			} else {
-				backend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil)
+				backend.EXPECT().GetNetworkRules(any, any).Return(rules, nil)
 			}
 			if test.evmErr != nil {
 				backend.EXPECT().GetEVM(any, any, any, any, any).Return(nil, nil, test.evmErr)
@@ -1399,7 +1403,7 @@ func TestApplyPreBlockSystemCalls(t *testing.T) {
 			}
 
 			block := newTracingTestBlock()
-			vmenv, err := applyPreBlockSystemCalls(t.Context(), backend, block, state.NewMockStateDB(ctrl))
+			vmenv, upgrades, err := applyPreBlockSystemCalls(t.Context(), backend, block, state.NewMockStateDB(ctrl))
 			if test.wantErr != "" {
 				require.ErrorContains(t, err, test.wantErr)
 				require.Nil(t, vmenv)
@@ -1407,6 +1411,7 @@ func TestApplyPreBlockSystemCalls(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.NotNil(t, vmenv)
+			require.Equal(t, rules.Upgrades, upgrades)
 		})
 	}
 }
@@ -1420,6 +1425,19 @@ func TestStateAtTransaction_ReleasesStateOnPreBlockSystemCallsError(t *testing.T
 	require.Nil(t, msg)
 	require.Nil(t, statedb)
 	// gomock verifies on cleanup that the state was released exactly once
+}
+
+func TestStateAtTransaction_RejectsEarlierTransactionsOfFrozenSenders(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	frozen := crypto.PubkeyToAddress(key.PublicKey)
+	tx := types.MustSignNewTx(key, types.LatestSignerForChainID(big.NewInt(250)), &types.LegacyTx{To: &common.Address{0x3}, Gas: 21_000})
+	stateDb := state.NewMockStateDB(gomock.NewController(t))
+	stateDb.EXPECT().GetState(freeze_registry.GetAddress(), freeze_registry.GetFrozenSlot(frozen)).Return(common.Hash{1})
+	backend := newCallTestBackend(t, stateDb, big.NewInt(0), gasPriceTestContract, nil)
+
+	_, _, err = stateAtTransaction(t.Context(), newTracingTestBlock(tx, tx), 1, backend)
+	require.ErrorContains(t, err, freeze.ErrFrozenAccount.Error())
 }
 
 func TestTraceBlock_Errors(t *testing.T) {
@@ -1460,6 +1478,28 @@ func TestReplayBlock_PreBlockSystemCallsError(t *testing.T) {
 	api := PublicTxTraceAPI{b: backend}
 	_, err := api.replayBlock(t.Context(), block, nil, nil)
 	require.ErrorContains(t, err, "cannot apply pre-block system calls for block 5")
+}
+
+func TestReplayBlock_ReplaysTransactionsOfFrozenSendersAsFailed(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	frozen := crypto.PubkeyToAddress(key.PublicKey)
+	signer := types.LatestSignerForChainID(big.NewInt(250))
+	block := newTracingTestBlock(
+		types.MustSignNewTx(key, signer, &types.LegacyTx{Nonce: 0, To: &common.Address{0x3}, Gas: 21_000}),
+		types.MustSignNewTx(key, signer, &types.LegacyTx{Nonce: 1, To: &common.Address{0x3}, Gas: 21_000}),
+	)
+	stateDb := state.NewMockStateDB(gomock.NewController(t))
+	stateDb.EXPECT().GetState(freeze_registry.GetAddress(), freeze_registry.GetFrozenSlot(frozen)).Return(common.Hash{1}).Times(2)
+	backend := newCallTestBackend(t, stateDb, big.NewInt(0), gasPriceTestContract, nil)
+	backend.EXPECT().GetReceiptsByNumber(gomock.Any(), rpc.BlockNumber(5)).Return(types.Receipts{{}, {TransactionIndex: 1}}, nil)
+
+	// the earlier transaction is replayed without tracing, the later one traced
+	txHash := block.Transactions[1].Hash()
+	traces, err := NewPublicTxTraceAPI(backend, 10000, 10000).replayBlock(t.Context(), block, &txHash, nil)
+	require.NoError(t, err)
+	require.Len(t, *traces, 1)
+	require.Equal(t, freeze.ErrFrozenAccount.Error(), (*traces)[0].Error)
 }
 
 // newTracingTestBlock creates a block at height 5 holding the given transactions.
@@ -2278,6 +2318,60 @@ func TestCapMaxGas_IsUpgradesAware(t *testing.T) {
 	}
 }
 
+func TestDoCall_SkipsPreArgsOfFrozenSenders(t *testing.T) {
+	frozen := common.Address{0x2}
+	stateDb := state.NewMockStateDB(gomock.NewController(t))
+	stateDb.EXPECT().GetState(freeze_registry.GetAddress(), freeze_registry.GetFrozenSlot(frozen)).Return(common.Hash{1})
+	charged := false
+	stateDb.EXPECT().SubBalance(frozen, gomock.Any(), gomock.Any()).Do(func(common.Address, *uint256.Int, tracing.BalanceChangeReason) { charged = true }).AnyTimes()
+	test := gasPriceTestCases["no overrides"]
+	backend := newCallTestBackend(t, stateDb, test.headerBaseFee, gasPriceTestContract, gasPriceAndBaseFeeCode)
+
+	_, err := DoCall(t.Context(), backend, test.args(gasPriceTestSender, gasPriceTestContract),
+		rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
+		nil, nil, time.Second, 10_000_000, []TransactionArgs{test.args(frozen, gasPriceTestContract)})
+	require.NoError(t, err)
+	require.False(t, charged)
+}
+
+func TestCalls_RejectFrozenSenders(t *testing.T) {
+	frozen := common.Address{0x2}
+	args := gasPriceTestCases["no overrides"].args(frozen, gasPriceTestContract)
+	block := rpc.BlockNumberOrHashWithNumber(1)
+	calls := map[string]func(*MockBackend) error{
+		"eth_call": func(b *MockBackend) error {
+			_, err := DoCall(t.Context(), b, args, block, nil, nil, time.Second, 10_000_000, nil)
+			return err
+		},
+		"eth_createAccessList": func(b *MockBackend) error {
+			b.EXPECT().CurrentBlock().Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Number: big.NewInt(1)}})
+			b.EXPECT().ChainID().Return(big.NewInt(1))
+			args := args
+			args.Nonce = new(hexutil.Uint64)
+			_, _, _, err := AccessList(t.Context(), b, block, args)
+			return err
+		},
+		"debug_traceCall": func(b *MockBackend) error {
+			_, err := NewPublicDebugAPI(b, 10000, 10000, false).TraceCall(t.Context(), args, block, nil)
+			return err
+		},
+		"trace_call": func(b *MockBackend) error {
+			_, err := NewPublicTxTraceAPI(b, 10000, 10000).Call(t.Context(), args, []string{TraceTypeTrace}, block, nil)
+			return err
+		},
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			stateDb := state.NewMockStateDB(gomock.NewController(t))
+			stateDb.EXPECT().GetState(freeze_registry.GetAddress(), freeze_registry.GetFrozenSlot(frozen)).Return(common.Hash{1}).AnyTimes()
+			stateDb.EXPECT().Copy().Return(stateDb).AnyTimes()
+			backend := newCallTestBackend(t, stateDb, big.NewInt(0), gasPriceTestContract, gasPriceAndBaseFeeCode)
+
+			require.ErrorContains(t, call(backend), freeze.ErrFrozenAccount.Error())
+		})
+	}
+}
+
 func TestAccessList_StopsWhenContextIsCancelled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockBackend := NewMockBackend(ctrl)
@@ -2386,6 +2480,37 @@ func TestAccessList_FailingNetworkRules_ReleasesAllStateCopies(t *testing.T) {
 	_, _, _, err := AccessList(t.Context(), mockBackend, rpc.BlockNumberOrHashWithNumber(1), args)
 	require.ErrorIs(t, err, injectedErr)
 	require.Zero(t, unreleased, "state copies were not released")
+}
+
+func TestAccessList_ReportsTheRevertReason(t *testing.T) {
+	reason := common.FromHex("0x08c379a0" + // Error(string) selector
+		"0000000000000000000000000000000000000000000000000000000000000020" +
+		"0000000000000000000000000000000000000000000000000000000000000004" +
+		"626f6f6d00000000000000000000000000000000000000000000000000000000") // "boom"
+	tests := map[string]struct {
+		revertData []byte
+		wantErr    error
+	}{
+		"with revert data":    {revertData: reason, wantErr: &revertError{error: errors.New("execution reverted: boom"), reason: hexutil.Encode(reason)}},
+		"without revert data": {revertData: nil, wantErr: vm.ErrExecutionReverted},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			sender, contract := common.Address{1}, common.Address{2}
+			code := program.New().Mstore(test.revertData, 0).Push(len(test.revertData)).Push(0).Op(vm.REVERT).Bytes()
+			stateDb := state.NewMockStateDB(gomock.NewController(t))
+			stateDb.EXPECT().Copy().Return(stateDb)
+			backend := newCallTestBackend(t, stateDb, big.NewInt(0), contract, code)
+			backend.EXPECT().CurrentBlock().Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Number: big.NewInt(1)}})
+			backend.EXPECT().ChainID().Return(big.NewInt(1))
+			nonce, gas := hexutil.Uint64(0), hexutil.Uint64(100_000)
+
+			_, _, vmErr, err := AccessList(t.Context(), backend, rpc.BlockNumberOrHashWithNumber(1),
+				TransactionArgs{From: &sender, To: &contract, Nonce: &nonce, Gas: &gas, GasPrice: (*hexutil.Big)(big.NewInt(0))})
+			require.NoError(t, err)
+			require.Equal(t, test.wantErr, vmErr)
+		})
+	}
 }
 
 func TestBlockNrOrHashOrLatest_DefaultsOmittedParameterToLatest(t *testing.T) {

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	freeze_registry "github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -230,6 +231,20 @@ func TestSimulateV1_AppliesSonicInitCodeSizeLimit(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, errCodeMaxInitCodeSizeExceeded, simTxError.ErrorCode())
 	require.ErrorContains(t, err, fmt.Sprintf("limit %d", opera.SonicBrioMaxInitCodeSize))
+}
+
+func TestSimulateV1_RejectsFrozenSendersAsInvalidParams(t *testing.T) {
+	setup := newSimulateV1Setup()
+	setup.upgrades.AccountFreeze = true
+	f := newSimulateV1HelperWith(t, setup)
+	from := common.Address{1}
+	f.mockState.EXPECT().GetState(freeze_registry.GetAddress(), freeze_registry.GetFrozenSlot(from)).Return(common.Hash{31: 1})
+	setExpectedStateCalls(f.mockState)
+	opts := simOpts{BlockStateCalls: []simBlock{{Calls: []TransactionArgs{{From: &from}}}}}
+
+	_, err := f.api.SimulateV1(t.Context(), opts, &f.blkNr)
+
+	require.Equal(t, &simInvalidTxError{Message: "err: account is frozen (supplied gas 1000000)", Code: errCodeInvalidParams}, err)
 }
 
 func TestSimulateV1_CodeOverrideTakesPrecedenceOverStatePrecompile(t *testing.T) {

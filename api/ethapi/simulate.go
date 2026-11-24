@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	interState "github.com/0xsoniclabs/sonic/inter/state"
@@ -343,6 +344,7 @@ func (sim *simulator) processBlock(
 	}
 	activeState := evmstore.WrapStateDbWithLogger(sim.state, tracer.Hooks())
 
+	freezeChecker := freeze.NewRegistryChecker(sim.upgrades.AccountFreeze, sim.state)
 	evm := vm.NewEVM(blockContext, activeState, sim.chainConfig, vmConfig)
 	defer evm.Release()
 	if precompiles != nil {
@@ -400,7 +402,7 @@ func (sim *simulator) processBlock(
 			msg.SkipNonceCheck()
 		}
 
-		result, applyErr := applySimMessage(ctx, evm, msg, timeout, sim.gp)
+		result, applyErr := applySimMessage(ctx, evm, msg, timeout, sim.gp, freezeChecker)
 		if applyErr != nil {
 			return nil, nil, nil, nil, simTxValidationError(applyErr)
 		}
@@ -555,12 +557,12 @@ func repairSimLogs(calls []simCallResult, evmBlock *evmcore.EvmBlock) {
 
 // applySimMessage executes a message on the EVM, cancelling on context
 // expiry, and wraps timeout errors appropriately.
-func applySimMessage(ctx context.Context, evm *vm.EVM, msg *core.Message, timeout time.Duration, gp *core.GasPool) (*core.ExecutionResult, error) {
+func applySimMessage(ctx context.Context, evm *vm.EVM, msg *core.Message, timeout time.Duration, gp *core.GasPool, freezeChecker freeze.Checker) (*core.ExecutionResult, error) {
 	go func() {
 		<-ctx.Done()
 		evm.Cancel()
 	}()
-	result, err := core.ApplyMessage(evm, msg, gp)
+	result, err := freeze.ApplyMessage(evm, msg, gp, freezeChecker)
 	if evm.Cancelled() {
 		return nil, fmt.Errorf("execution aborted (timeout = %v)", timeout)
 	}

@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
@@ -104,6 +105,8 @@ func simTxValidationError(err error) *simInvalidTxError {
 		return &simInvalidTxError{Message: err.Error(), Code: errCodeIntrinsicGas}
 	case errors.Is(err, vm.ErrMaxInitCodeSizeExceeded):
 		return &simInvalidTxError{Message: err.Error(), Code: errCodeMaxInitCodeSizeExceeded}
+	case errors.Is(err, freeze.ErrFrozenAccount):
+		return &simInvalidTxError{Message: err.Error(), Code: errCodeInvalidParams}
 	default:
 		return &simInvalidTxError{
 			Message: err.Error(),
