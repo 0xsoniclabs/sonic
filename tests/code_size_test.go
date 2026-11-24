@@ -216,7 +216,13 @@ func TestCodeSizeLimits_CreateTransactionsAndCreateOpcodesHaveTheirOwnInitCodeSi
 							require.NoError(t, trace.err)
 							require.Equal(t, test.frames, countFrames(trace.frames))
 							if test.status == types.ReceiptStatusFailed {
-								require.Contains(t, trace.frames[0].Error, maxInitCodeSizeExceeded)
+								// The EVM wraps the error as out of gas, which
+								// trace_* methods report with its Parity name.
+								want := maxInitCodeSizeExceeded
+								if strings.HasPrefix(method, "trace_") {
+									want = "Out of gas"
+								}
+								require.Contains(t, trace.frames[0].Error, want)
 							} else {
 								requireNoErrorFrames(t, trace.frames)
 							}
