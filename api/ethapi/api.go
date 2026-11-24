@@ -3020,7 +3020,9 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 		}
 	}
 
-	tx, msg, err := getTxAndMessage(&args, block, api.b)
+	// The gas price of the call follows the base fee the EVM runs with, so
+	// that an overridden base fee is respected as on chain.
+	tx, msg, err := getTxAndMessage(&args, blockCtx.BaseFee, api.b)
 	if err != nil {
 		return nil, err
 	}
@@ -3059,9 +3061,10 @@ func getEvmBlockFromNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNum
 	return block, nil
 }
 
-// getTxAndMessage returns transaction and message constructed from transaction arguments
-func getTxAndMessage(args *TransactionArgs, block *evmcore.EvmBlock, b Backend) (*types.Transaction, *core.Message, error) {
-	msg, err := args.ToMessage(b.RPCGasCap(), block.BaseFee, log.Root())
+// getTxAndMessage returns transaction and message constructed from transaction
+// arguments, priced for a block with the given base fee.
+func getTxAndMessage(args *TransactionArgs, baseFee *big.Int, b Backend) (*types.Transaction, *core.Message, error) {
+	msg, err := args.ToMessage(b.RPCGasCap(), baseFee, log.Root())
 	if err != nil {
 		return nil, nil, err
 	}

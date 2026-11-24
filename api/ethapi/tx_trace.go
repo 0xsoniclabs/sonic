@@ -192,7 +192,7 @@ func (s *PublicTxTraceAPI) Call(ctx context.Context, args TransactionArgs, trace
 		}
 	}
 
-	tx, msg, err := getTxAndMessage(&args, block, s.b)
+	tx, msg, err := getTxAndMessage(&args, block.BaseFee, s.b)
 	if err != nil {
 		return nil, err
 	}
@@ -645,7 +645,7 @@ func (s *PublicTxTraceAPI) CallMany(ctx context.Context, calls []CallRequest, bl
 			return nil, fmt.Errorf("call %d: %w", i, err)
 		}
 
-		tx, msg, err := getTxAndMessage(&call.Args, block, s.b)
+		tx, msg, err := getTxAndMessage(&call.Args, block.BaseFee, s.b)
 		if err != nil {
 			return nil, fmt.Errorf("call %d: %w", i, err)
 		}
