@@ -805,7 +805,6 @@ func TestFilter_Logs_ResolvesRangeBounds(t *testing.T) {
 		"earliest to number":   {earliest, 7, cutoff, 7},
 		"pending to pending":   {rpc.PendingBlockNumber.Int64(), rpc.PendingBlockNumber.Int64(), head, head},
 		"safe to finalized":    {rpc.SafeBlockNumber.Int64(), rpc.FinalizedBlockNumber.Int64(), head, head},
-		"number above head":    {5, head + 5, 5, head},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -824,4 +823,18 @@ func TestFilter_Logs_ResolvesRangeBounds(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestFilter_Logs_UnindexedRangeFromEarliestMeetsRangeLimit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+	backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.LatestBlockNumber).Return(&evmcore.EvmHeader{Number: big.NewInt(10)}, nil)
+	backend.EXPECT().HistoryPruningCutoff().Return(uint64(0))
+
+	config := testConfig()
+	config.UnindexedLogsBlockRangeLimit = 5
+	filter, err := NewRangeFilter(backend, config, rpc.EarliestBlockNumber.Int64(), rpc.LatestBlockNumber.Int64(), nil, nil, 0)
+	require.NoError(t, err)
+	_, err = filter.Logs(t.Context())
+	require.ErrorContains(t, err, "too wide blocks range, the limit is 5")
 }

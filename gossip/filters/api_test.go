@@ -309,3 +309,14 @@ func TestPublicFilterAPI_LogQueryParameterLimit_IsEnforcedOnAllPaths(t *testing.
 		})
 	}
 }
+
+func TestUnmarshalJSONNewFilterArgs_EarliestIsTheEarliestBlockNumber(t *testing.T) {
+	var crit FilterCriteria
+	if err := json.Unmarshal([]byte(`{"fromBlock":"earliest","toBlock":"earliest"}`), &crit); err != nil {
+		t.Fatal(err)
+	}
+	want := rpc.EarliestBlockNumber.Int64()
+	if crit.FromBlock.Int64() != want || crit.ToBlock.Int64() != want {
+		t.Fatalf("expected %d to %d, got %d to %d", want, want, crit.FromBlock, crit.ToBlock)
+	}
+}

@@ -206,6 +206,12 @@ func (es *EventSystem) SubscribeLogs(crit ethereum.FilterQuery, logs chan []*typ
 	} else {
 		to = rpc.BlockNumber(crit.ToBlock.Int64())
 	}
+	if from == rpc.EarliestBlockNumber {
+		from = rpc.BlockNumber(es.backend.HistoryPruningCutoff())
+	}
+	if to == rpc.EarliestBlockNumber {
+		to = rpc.BlockNumber(es.backend.HistoryPruningCutoff())
+	}
 
 	// only interested in pending logs
 	if from == rpc.PendingBlockNumber && to == rpc.PendingBlockNumber {
