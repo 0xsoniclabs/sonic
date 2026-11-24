@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -193,8 +194,18 @@ func (es *EventSystem) subscribe(sub *subscription) *Subscription {
 
 // SubscribeLogs creates a subscription that will write all logs matching the
 // given criteria to the given logs channel. Default value for the from and to
-// block is "latest". If the fromBlock > toBlock an error is returned.
+// block is "latest". "earliest" is the history pruning cutoff. If the
+// fromBlock > toBlock an error is returned.
 func (es *EventSystem) SubscribeLogs(crit ethereum.FilterQuery, logs chan []*types.Log) (*Subscription, error) {
+	// Resolve "earliest" in the installed criteria, so live matching sees an
+	// absolute bound. The caller's values are not modified.
+	if crit.FromBlock != nil {
+		crit.FromBlock = big.NewInt(resolveEarliest(crit.FromBlock.Int64(), es.backend))
+	}
+	if crit.ToBlock != nil {
+		crit.ToBlock = big.NewInt(resolveEarliest(crit.ToBlock.Int64(), es.backend))
+	}
+
 	var from, to rpc.BlockNumber
 	if crit.FromBlock == nil {
 		from = rpc.LatestBlockNumber
@@ -205,12 +216,6 @@ func (es *EventSystem) SubscribeLogs(crit ethereum.FilterQuery, logs chan []*typ
 		to = rpc.LatestBlockNumber
 	} else {
 		to = rpc.BlockNumber(crit.ToBlock.Int64())
-	}
-	if from == rpc.EarliestBlockNumber {
-		from = rpc.BlockNumber(es.backend.HistoryPruningCutoff())
-	}
-	if to == rpc.EarliestBlockNumber {
-		to = rpc.BlockNumber(es.backend.HistoryPruningCutoff())
 	}
 
 	// only interested in pending logs

@@ -181,14 +181,21 @@ func (f *Filter) fetchLogsFromBlockRange(ctx context.Context, logs []*types.Log)
 // resolveBound maps a range bound to a block number: `earliest` is the history
 // pruning cutoff, every other tag is the head.
 func (f *Filter) resolveBound(bound int64, head idx.Block) idx.Block {
-	switch {
-	case bound == rpc.EarliestBlockNumber.Int64():
-		return idx.Block(f.backend.HistoryPruningCutoff())
-	case bound < 0:
+	bound = resolveEarliest(bound, f.backend)
+	if bound < 0 {
 		return head
-	default:
-		return idx.Block(bound)
 	}
+	return idx.Block(bound)
+}
+
+// resolveEarliest replaces the `earliest` tag with the history pruning cutoff.
+// Other tags are returned unchanged, as their meaning depends on the caller:
+// a range query reads them as the head, a subscription as a live stream.
+func resolveEarliest(bound int64, backend Backend) int64 {
+	if bound == rpc.EarliestBlockNumber.Int64() {
+		return int64(backend.HistoryPruningCutoff())
+	}
+	return bound
 }
 
 // indexedLogs returns the logs matching the filter criteria based on topics index.

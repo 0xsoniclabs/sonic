@@ -33,6 +33,7 @@ import (
 	notify "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -46,6 +47,7 @@ type testBackend struct {
 	blocksFeed *notify.Feed
 	txsFeed    *notify.Feed
 	logsFeed   *notify.Feed
+	cutoff     uint64
 }
 
 func newTestBackend() *testBackend {
@@ -544,5 +546,51 @@ func TestLogFilter(t *testing.T) {
 }
 
 func (b *testBackend) HistoryPruningCutoff() uint64 {
-	return 0
+	return b.cutoff
+}
+
+func TestLogFilter_EarliestIsResolvedForLiveLogs(t *testing.T) {
+	t.Parallel()
+
+	backend := newTestBackend()
+	backend.cutoff = 2
+	api := NewPublicFilterAPI(backend, testConfig())
+
+	allLogs := []*types.Log{{BlockNumber: 1}, {BlockNumber: 2}, {BlockNumber: 3}}
+	earliest := big.NewInt(rpc.EarliestBlockNumber.Int64())
+	tests := map[string]struct {
+		crit     FilterCriteria
+		expected []*types.Log
+	}{
+		"earliest to earliest": {FilterCriteria{FromBlock: earliest, ToBlock: earliest}, allLogs[1:2]},
+		"earliest to latest":   {FilterCriteria{FromBlock: earliest}, allLogs[1:]},
+		"earliest to number":   {FilterCriteria{FromBlock: earliest, ToBlock: big.NewInt(2)}, allLogs[1:2]},
+	}
+	ids := make(map[string]rpc.ID)
+	for name, test := range tests {
+		id, err := api.NewFilter(test.crit)
+		require.NoError(t, err)
+		ids[name] = id
+	}
+
+	time.Sleep(time.Second)
+	require.NotZero(t, backend.logsFeed.Send(allLogs))
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			var fetched []*types.Log
+			require.Eventually(t, func() bool {
+				results, err := api.GetFilterChanges(ids[name])
+				require.NoError(t, err)
+				fetched = append(fetched, results.([]*types.Log)...)
+				return len(fetched) >= len(test.expected)
+			}, time.Second, 50*time.Millisecond)
+			// Give any unexpected extra logs a chance to arrive.
+			time.Sleep(100 * time.Millisecond)
+			results, err := api.GetFilterChanges(ids[name])
+			require.NoError(t, err)
+			fetched = append(fetched, results.([]*types.Log)...)
+			require.Equal(t, test.expected, fetched)
+		})
+	}
 }
