@@ -404,3 +404,35 @@ func TestCalls_RunInTheBlockContextOfTheHeader(t *testing.T) {
 		})
 	}
 }
+
+// A block without a base fee prices calls as legacy calls, whose tip is not
+// checked against a fee cap. Block overrides that leave the base fee alone
+// must keep it that way.
+func TestDoCall_BlockWithoutBaseFeePricesLegacyCallsUnlessBaseFeeIsOverridden(t *testing.T) {
+	blockTime := hexutil.Uint64(1234)
+	tests := map[string]*BlockOverrides{
+		"no overrides":               nil,
+		"overrides without base fee": {Time: &blockTime},
+	}
+	for name, overrides := range tests {
+		t.Run(name, func(t *testing.T) {
+			stateDb := state.NewMockStateDB(gomock.NewController(t))
+			backend := newCallTestBackend(t, stateDb, nil, gasPriceTestContract, gasPriceAndBaseFeeCode)
+
+			// A tip without a fee cap is rejected as a dynamic-fee call.
+			from, to := gasPriceTestSender, gasPriceTestContract
+			gas := hexutil.Uint64(gasPriceTestGas)
+			args := TransactionArgs{From: &from, To: &to, Gas: &gas,
+				MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(7))}
+
+			result, err := DoCall(t.Context(), backend, args,
+				rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
+				nil, overrides, time.Second, 10_000_000, nil)
+			require.NoError(t, err)
+			require.False(t, result.Failed(), "call failed: %v", result.Err)
+			require.Len(t, result.ReturnData, 64)
+			require.Zero(t, new(big.Int).SetBytes(result.ReturnData[:32]).Sign(), "GASPRICE")
+			require.Zero(t, new(big.Int).SetBytes(result.ReturnData[32:]).Sign(), "BASEFEE")
+		})
+	}
+}

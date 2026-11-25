@@ -1230,14 +1230,16 @@ func DoCall(
 	defer cancel()
 
 	// The gas price of the call follows the base fee the EVM runs with, so
-	// that an overridden base fee is respected as on chain. Without overrides
-	// the block's own base fee is used, as the block context reports a block
-	// without one as having a base fee of zero.
+	// that an overridden base fee is respected as on chain. Otherwise the
+	// block's own base fee is used, not the one of the block context, which
+	// reports a block without a base fee as having a base fee of zero.
 	baseFee := block.BaseFee
 	blockCtx := GetBlockContext(ctx, b, block.Header())
 	if blockOverrides != nil {
 		blockOverrides.apply(&blockCtx)
-		baseFee = blockCtx.BaseFee
+		if blockOverrides.BaseFee != nil {
+			baseFee = blockOverrides.BaseFee.ToInt()
+		}
 	}
 
 	// Get a new instance of the EVM.
