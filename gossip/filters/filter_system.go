@@ -21,7 +21,6 @@ package filters
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -207,6 +206,11 @@ func (es *EventSystem) SubscribeLogs(crit ethereum.FilterQuery, logs chan []*typ
 		to = rpc.BlockNumber(crit.ToBlock.Int64())
 	}
 
+	// The earliest block is the genesis block, history is never pruned.
+	if from == rpc.EarliestBlockNumber {
+		from = 0
+	}
+
 	// only interested in pending logs
 	if from == rpc.PendingBlockNumber && to == rpc.PendingBlockNumber {
 		return es.subscribePendingLogs(crit, logs), nil
@@ -227,7 +231,7 @@ func (es *EventSystem) SubscribeLogs(crit ethereum.FilterQuery, logs chan []*typ
 	if from >= 0 && to == rpc.LatestBlockNumber {
 		return es.subscribeLogs(crit, logs), nil
 	}
-	return nil, fmt.Errorf("invalid from and to block combination: from > to")
+	return nil, errInvalidBlockRange
 }
 
 // subscribeMinedPendingLogs creates a subscription that returned mined and
