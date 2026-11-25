@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	req "github.com/stretchr/testify/require"
 )
@@ -254,4 +255,95 @@ func checkOverrides(params BlockParameters, overrides ethapi.BlockOverrides) err
 		return fmt.Errorf("BlobBaseFee override incorrect, wanted %v, got %v", want, got)
 	}
 	return nil
+}
+
+func TestBlockOverride_CallAsNextBlock_KnowsBaseBlockHash(t *testing.T) {
+	session := getIntegrationTestNetSession(t, opera.GetCantoUpgrades())
+	t.Parallel()
+
+	client, err := session.GetClient()
+	req.NoError(t, err)
+	defer client.Close()
+
+	// Produce a few blocks so the base block has ancestors.
+	for range 3 {
+		_, err := session.EndowAccount(common.Address{0x42}, big.NewInt(1))
+		req.NoError(t, err)
+	}
+	base, err := client.BlockByNumber(t.Context(), nil)
+	req.NoError(t, err)
+	baseNumber := base.NumberU64()
+	parent, err := client.BlockByNumber(t.Context(), new(big.Int).SetUint64(baseNumber-1))
+	req.NoError(t, err)
+
+	// Code returning BLOCKHASH of the number given as the 32-byte input:
+	// PUSH1 0, CALLDATALOAD, BLOCKHASH, PUSH1 0, MSTORE, PUSH1 32, PUSH1 0, RETURN
+	blockHashReader := common.Address{0xbe, 0xef}
+	stateOverrides := map[common.Address]map[string]any{
+		blockHashReader: {"code": hexutil.Bytes{0x60, 0x00, 0x35, 0x40, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3}},
+	}
+
+	type caller func(t *testing.T, to common.Address, input []byte, number uint64) common.Hash
+	callers := map[string]caller{
+		"eth_call": func(t *testing.T, to common.Address, input []byte, number uint64) common.Hash {
+			t.Helper()
+			var res hexutil.Bytes
+			err := client.Client().Call(&res, "eth_call",
+				map[string]any{"to": to, "data": hexutil.Bytes(input)},
+				hexutil.EncodeUint64(baseNumber), stateOverrides, numberOverride(number))
+			req.NoError(t, err)
+			return common.BytesToHash(res)
+		},
+		"debug_traceCall": func(t *testing.T, to common.Address, input []byte, number uint64) common.Hash {
+			t.Helper()
+			var res struct {
+				Failed      bool   `json:"failed"`
+				ReturnValue string `json:"returnValue"`
+			}
+			err := client.Client().Call(&res, "debug_traceCall",
+				map[string]any{"to": to, "data": hexutil.Bytes(input)},
+				hexutil.EncodeUint64(baseNumber),
+				map[string]any{"stateOverrides": stateOverrides, "blockOverrides": numberOverride(number)})
+			req.NoError(t, err)
+			req.False(t, res.Failed, "call failed")
+			out, err := hexutil.Decode("0x" + strings.TrimPrefix(res.ReturnValue, "0x"))
+			req.NoError(t, err)
+			return common.BytesToHash(out)
+		},
+	}
+
+	blockHash := func(call caller, t *testing.T, of, number uint64) common.Hash {
+		return call(t, blockHashReader, common.BigToHash(new(big.Int).SetUint64(of)).Bytes(), number)
+	}
+	historyHash := func(call caller, t *testing.T, of, number uint64) common.Hash {
+		return call(t, params.HistoryStorageAddress, common.BigToHash(new(big.Int).SetUint64(of)).Bytes(), number)
+	}
+
+	for name, call := range callers {
+		t.Run(name, func(t *testing.T) {
+			t.Run("next block: BLOCKHASH of the base block", func(t *testing.T) {
+				req.Equal(t, base.Hash(), blockHash(call, t, baseNumber, baseNumber+1))
+			})
+			t.Run("next block: BLOCKHASH of the base block's parent", func(t *testing.T) {
+				req.Equal(t, parent.Hash(), blockHash(call, t, baseNumber-1, baseNumber+1))
+			})
+			t.Run("next block: history contract holds the base block", func(t *testing.T) {
+				req.Equal(t, base.Hash(), historyHash(call, t, baseNumber, baseNumber+1))
+			})
+			t.Run("two blocks ahead: BLOCKHASH of the base block is unknown", func(t *testing.T) {
+				req.Equal(t, common.Hash{}, blockHash(call, t, baseNumber, baseNumber+2))
+				req.Equal(t, common.Hash{}, blockHash(call, t, baseNumber+1, baseNumber+2))
+			})
+			t.Run("two blocks ahead: history contract does not hold the base block", func(t *testing.T) {
+				req.Equal(t, common.Hash{}, historyHash(call, t, baseNumber, baseNumber+2))
+			})
+			t.Run("two blocks ahead: BLOCKHASH of the base block's parent", func(t *testing.T) {
+				req.Equal(t, parent.Hash(), blockHash(call, t, baseNumber-1, baseNumber+2))
+			})
+		})
+	}
+}
+
+func numberOverride(number uint64) *ethapi.BlockOverrides {
+	return &ethapi.BlockOverrides{Number: (*hexutil.Big)(new(big.Int).SetUint64(number))}
 }
