@@ -232,3 +232,61 @@ func TestNewEVMBlockContextWithDifficulty_UsesHeaderParametersIfDefinedOrSonicDe
 		})
 	}
 }
+
+// countingChain is a DummyChain of blocks 0 to head, where block i has hash
+// chainHash(i). It counts the headers it is asked for.
+type countingChain struct {
+	head    uint64
+	lookups int
+}
+
+func (c *countingChain) Header(hash common.Hash, number uint64) *EvmHeader {
+	c.lookups++
+	if number > c.head || hash != chainHash(number) {
+		return nil
+	}
+	return &EvmHeader{
+		Number:     new(big.Int).SetUint64(number),
+		Hash:       chainHash(number),
+		ParentHash: chainHash(number - 1),
+	}
+}
+
+func chainHash(n uint64) common.Hash {
+	return common.BigToHash(new(big.Int).SetUint64(n + 1))
+}
+
+func TestGetHashFn_ResolvesAncestors(t *testing.T) {
+	const refNumber = 100
+	chain := &countingChain{head: refNumber}
+	ref := chain.Header(chainHash(refNumber), refNumber)
+	getHash := GetHashFn(ref, chain)
+
+	for _, n := range []uint64{refNumber - 1, refNumber - 2, refNumber - 50, 0} {
+		require.Equal(t, chainHash(n), getHash(n), "hash of block %d", n)
+	}
+}
+
+func TestGetHashFn_ReferenceBlockAndLaterAreUnknownWithoutLookups(t *testing.T) {
+	const refNumber = 10_000
+	for _, n := range []uint64{refNumber, refNumber + 1, refNumber + 255, ^uint64(0)} {
+		chain := &countingChain{head: refNumber}
+		ref := chain.Header(chainHash(refNumber), refNumber)
+		chain.lookups = 0
+		getHash := GetHashFn(ref, chain)
+
+		require.Equal(t, common.Hash{}, getHash(n), "hash of block %d", n)
+		require.Zero(t, chain.lookups, "headers looked up for block %d", n)
+	}
+}
+
+func TestGetHashFn_LooksUpOnlyBlocksDownToTheRequestedOne(t *testing.T) {
+	const refNumber = 10_000
+	chain := &countingChain{head: refNumber}
+	ref := chain.Header(chainHash(refNumber), refNumber)
+	chain.lookups = 0
+	getHash := GetHashFn(ref, chain)
+
+	require.Equal(t, chainHash(refNumber-5), getHash(refNumber-5))
+	require.LessOrEqual(t, chain.lookups, 5)
+}
