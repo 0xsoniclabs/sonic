@@ -102,7 +102,7 @@ func (p *EVMModule) Start(
 		prevRandao:          prevrandao,
 		gasBaseFee:          baseFee,
 		processorFactory:    stateProcessorFactory{},
-		freezeChecker:       freeze.NewRegistryChecker(statedb),
+		freezeChecker:       freeze.NewRegistryChecker(rules.Upgrades.AccountFreeze, statedb),
 		metrics:             metrics,
 		forReplay:           p.forReplay,
 		overrideInterpreter: p.overrideInterpreter,

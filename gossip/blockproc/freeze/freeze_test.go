@@ -51,12 +51,30 @@ func (s registryState) GetState(addr common.Address, key common.Hash) common.Has
 // Any non-zero slot lists the address, not only Solidity's `true`.
 var listedValues = []common.Hash{{31: 1}, {0: 1}}
 
+func TestRegistryChecker_DisabledReportsNothing(t *testing.T) {
+	account := common.Address{0xf}
+	db := registryState{registry.GetFrozenSlot(account): {31: 1}, registry.GetOptedOutSlot(account): {31: 1}}
+	tests := map[string]struct {
+		enabled bool
+	}{
+		"enabled":  {enabled: true},
+		"disabled": {enabled: false},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			checker := NewRegistryChecker(test.enabled, db)
+			require.Equal(t, test.enabled, checker.IsFrozen(account))
+			require.Equal(t, test.enabled, checker.IsOptedOut(account))
+		})
+	}
+}
+
 func TestRegistryChecker_IsFrozen_ReadsRegistry(t *testing.T) {
 	frozen, other := common.Address{0xf}, common.Address{0xa}
 	for _, value := range listedValues {
 		db := registryState{registry.GetFrozenSlot(frozen): value}
-		require.True(t, NewRegistryChecker(db).IsFrozen(frozen), "%v", value)
-		require.False(t, NewRegistryChecker(db).IsFrozen(other), "%v", value)
+		require.True(t, NewRegistryChecker(true, db).IsFrozen(frozen), "%v", value)
+		require.False(t, NewRegistryChecker(true, db).IsFrozen(other), "%v", value)
 	}
 }
 
@@ -71,7 +89,7 @@ func TestRegistryChecker_IsFrozen_ExemptsSystemContracts(t *testing.T) {
 		priorities.GetAddress(),
 	} {
 		db := registryState{registry.GetFrozenSlot(addr): common.Hash{31: 1}}
-		require.False(t, NewRegistryChecker(db).IsFrozen(addr), "%v", addr)
+		require.False(t, NewRegistryChecker(true, db).IsFrozen(addr), "%v", addr)
 	}
 }
 
@@ -79,8 +97,8 @@ func TestRegistryChecker_IsOptedOut_ReadsRegistry(t *testing.T) {
 	token, other := common.Address{0x71}, common.Address{0x70}
 	for _, value := range listedValues {
 		db := registryState{registry.GetOptedOutSlot(token): value}
-		require.True(t, NewRegistryChecker(db).IsOptedOut(token), "%v", value)
-		require.False(t, NewRegistryChecker(db).IsOptedOut(other), "%v", value)
+		require.True(t, NewRegistryChecker(true, db).IsOptedOut(token), "%v", value)
+		require.False(t, NewRegistryChecker(true, db).IsOptedOut(other), "%v", value)
 	}
 }
 
@@ -110,7 +128,7 @@ func TestRegistryChecker_ReadsWhatTheRegistryContractWrites(t *testing.T) {
 	}
 
 	account, token := common.Address{0xa}, common.Address{0x7}
-	checker := NewRegistryChecker(db)
+	checker := NewRegistryChecker(true, db)
 	require.False(t, checker.IsFrozen(account))
 	require.False(t, checker.IsOptedOut(token))
 
