@@ -63,6 +63,7 @@ func TestRegistryChecker_DisabledReportsNothing(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			checker := NewRegistryChecker(test.enabled, db)
+			require.Equal(t, test.enabled, checker.IsEnabled())
 			require.Equal(t, test.enabled, checker.IsFrozen(account))
 			require.Equal(t, test.enabled, checker.IsOptedOut(account))
 		})
@@ -78,8 +79,9 @@ func TestRegistryChecker_IsFrozen_ReadsRegistry(t *testing.T) {
 	}
 }
 
-func TestRegistryChecker_IsFrozen_ExemptsSystemContracts(t *testing.T) {
+func TestRegistryChecker_IsFrozen_ExemptsZeroAddressAndSystemContracts(t *testing.T) {
 	for _, addr := range []common.Address{
+		{},
 		registry.GetAddress(),
 		sfc.ContractAddress,
 		driver.ContractAddress,
