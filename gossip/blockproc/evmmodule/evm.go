@@ -30,6 +30,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -101,6 +102,7 @@ func (p *EVMModule) Start(
 		prevRandao:          prevrandao,
 		gasBaseFee:          baseFee,
 		processorFactory:    stateProcessorFactory{},
+		freezeChecker:       freeze.NewRegistryChecker(statedb),
 		metrics:             metrics,
 		forReplay:           p.forReplay,
 		overrideInterpreter: p.overrideInterpreter,
@@ -126,6 +128,9 @@ type OperaEVMProcessor struct {
 	prevRandao   common.Hash
 
 	processorFactory _stateProcessorFactory
+
+	// freezeChecker is shared by all Execute calls of the block.
+	freezeChecker freeze.Checker
 
 	metrics evmcore.BlockExecutionMetrics
 
@@ -196,7 +201,7 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64, siz
 
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
-	summary := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, trueTxsOffset, p.onNewLog, sizeLimit)
+	summary := evmProcessor.Process(evmBlock, p.statedb, p.freezeChecker, vmConfig, gasLimit, &p.gasUsed, trueTxsOffset, p.onNewLog, sizeLimit)
 
 	p.processedTxs = append(p.processedTxs, summary.ProcessedTransactions...)
 
@@ -272,6 +277,7 @@ type _stateProcessor interface {
 	Process(
 		block *evmcore.EvmBlock,
 		statedb state.StateDB,
+		freezeChecker freeze.Checker,
 		vmCfg vm.Config,
 		gasLimit uint64,
 		gasUsed *uint64,
