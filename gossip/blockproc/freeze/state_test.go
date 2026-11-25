@@ -101,31 +101,42 @@ func TestStateDB_RevertToSnapshot_RestoresFrozenMovedAndState(t *testing.T) {
 	}
 }
 
-func TestStateDB_BalanceChanges_TrackFrozenMoves(t *testing.T) {
+func TestStateDB_AddBalance_TracksFrozenMoves(t *testing.T) {
 	tests := map[string]struct {
-		sub         bool
-		reason      tracing.BalanceChangeReason
+		account     common.Address
+		amount      uint64
 		expectMoved bool
 	}{
-		"add transfer":   {false, tracing.BalanceChangeTransfer, true},
-		"add gas refund": {false, tracing.BalanceIncreaseGasReturn, false},
-		"sub transfer":   {true, tracing.BalanceChangeTransfer, true},
-		"sub gas buy":    {true, tracing.BalanceDecreaseGasBuy, false},
+		"frozen":      {frozenAccount, 1, true},
+		"zero amount": {frozenAccount, 0, false},
+		"unfrozen":    {unfrozenAccount, 1, false},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			db, inner := newState(t)
-			one := uint256.NewInt(1)
-			balance := uint256.NewInt(10)
-			if test.sub {
-				db.SubBalance(frozenAccount, one, test.reason)
-				balance.Sub(balance, one)
-			} else {
-				db.AddBalance(frozenAccount, one, test.reason)
-				balance.Add(balance, one)
-			}
+			db.AddBalance(test.account, uint256.NewInt(test.amount), tracing.BalanceIncreaseGasReturn)
 			require.Equal(t, test.expectMoved, db.frozenMoved)
-			require.Equal(t, balance, inner.GetBalance(frozenAccount))
+			require.Equal(t, uint256.NewInt(10+test.amount), inner.GetBalance(test.account))
+		})
+	}
+}
+
+func TestStateDB_SubBalance_TracksFrozenMoves(t *testing.T) {
+	tests := map[string]struct {
+		account     common.Address
+		amount      uint64
+		expectMoved bool
+	}{
+		"frozen":      {frozenAccount, 1, true},
+		"zero amount": {frozenAccount, 0, false},
+		"unfrozen":    {unfrozenAccount, 1, false},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			db, inner := newState(t)
+			db.SubBalance(test.account, uint256.NewInt(test.amount), tracing.BalanceDecreaseGasBuy)
+			require.Equal(t, test.expectMoved, db.frozenMoved)
+			require.Equal(t, uint256.NewInt(10-test.amount), inner.GetBalance(test.account))
 		})
 	}
 }
@@ -182,29 +193,6 @@ func TestStateDB_EVM_TracksFrozenMoves(t *testing.T) {
 			_, _, err := evm.Call(caller, test.to, nil, vm.NewGasBudget(100_000, 0), uint256.NewInt(test.value))
 			require.ErrorIs(t, err, test.err)
 			require.Equal(t, test.expectMoved, db.frozenMoved)
-		})
-	}
-}
-
-func TestIsFrozenMove(t *testing.T) {
-	tests := map[string]struct {
-		account     common.Address
-		amount      uint64
-		reason      tracing.BalanceChangeReason
-		expectMoved bool
-	}{
-		"transfer of frozen":            {frozenAccount, 1, tracing.BalanceChangeTransfer, true},
-		"selfdestruct payout to frozen": {frozenAccount, 1, tracing.BalanceIncreaseSelfdestruct, true},
-		"selfdestruct of frozen":        {frozenAccount, 1, tracing.BalanceDecreaseSelfdestruct, true},
-		"selfdestruct burn of frozen":   {frozenAccount, 1, tracing.BalanceDecreaseSelfdestructBurn, true},
-		"zero transfer of frozen":       {frozenAccount, 0, tracing.BalanceChangeTransfer, false},
-		"account not frozen":            {unfrozenAccount, 1, tracing.BalanceChangeTransfer, false},
-		"reason not covered":            {frozenAccount, 1, tracing.BalanceDecreaseGasBuy, false},
-	}
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			db, _ := newState(t)
-			require.Equal(t, test.expectMoved, isFrozenMove(db.checker, test.account, uint256.NewInt(test.amount), test.reason))
 		})
 	}
 }

@@ -58,30 +58,19 @@ func (s *StateDB) RevertToSnapshot(id int) {
 }
 
 // --- native token transfers ---
-// AddBalance and SubBalance track non-zero value transfers (transaction value,
-// CALL, CREATE, CREATE2) and SELFDESTRUCT payouts from or to a frozen account.
+// AddBalance and SubBalance track every non-zero balance change of a frozen
+// account.
 
 func (s *StateDB) AddBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
-	if isFrozenMove(s.checker, addr, amount, reason) {
+	if !amount.IsZero() && s.checker.IsFrozen(addr) {
 		s.frozenMoved = true
 	}
 	return s.StateDB.AddBalance(addr, amount, reason)
 }
 
 func (s *StateDB) SubBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
-	if isFrozenMove(s.checker, addr, amount, reason) {
+	if !amount.IsZero() && s.checker.IsFrozen(addr) {
 		s.frozenMoved = true
 	}
 	return s.StateDB.SubBalance(addr, amount, reason)
-}
-
-func isFrozenMove(checker Checker, addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) bool {
-	switch reason {
-	case tracing.BalanceChangeTransfer,
-		tracing.BalanceIncreaseSelfdestruct,
-		tracing.BalanceDecreaseSelfdestruct,
-		tracing.BalanceDecreaseSelfdestructBurn:
-		return !amount.IsZero() && checker.IsFrozen(addr)
-	}
-	return false
 }
