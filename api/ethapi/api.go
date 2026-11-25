@@ -1230,14 +1230,14 @@ func DoCall(
 	defer cancel()
 
 	// The gas price of the call follows the base fee the EVM runs with, so
-	// that an overridden base fee is respected as on chain.
+	// that an overridden base fee is respected as on chain. Without overrides
+	// the block's own base fee is used, as the block context reports a block
+	// without one as having a base fee of zero.
 	baseFee := block.BaseFee
-	var blockCtx *vm.BlockContext
+	blockCtx := GetBlockContext(ctx, b, block.Header())
 	if blockOverrides != nil {
-		bctx := GetBlockContext(ctx, b, block.Header())
-		blockOverrides.apply(&bctx)
-		blockCtx = &bctx
-		baseFee = bctx.BaseFee
+		blockOverrides.apply(&blockCtx)
+		baseFee = blockCtx.BaseFee
 	}
 
 	// Get a new instance of the EVM.
@@ -1250,7 +1250,7 @@ func DoCall(
 		return nil, err
 	}
 
-	evm, vmError, err := b.GetEVM(ctx, state, block.Header(), &vmConfig, blockCtx)
+	evm, vmError, err := b.GetEVM(ctx, state, block.Header(), &vmConfig, &blockCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -1880,7 +1880,8 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		tracer := logger.NewAccessListTracer(accessList, addressesToExclude)
 		config := vmConfig
 		config.Tracer = tracer.Hooks()
-		vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &config, nil)
+		blockCtx := GetBlockContext(ctx, b, block.Header())
+		vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &config, &blockCtx)
 		if err != nil {
 			statedb.Release()
 			return nil, 0, nil, err
