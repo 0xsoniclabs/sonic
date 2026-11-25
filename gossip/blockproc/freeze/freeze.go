@@ -52,7 +52,7 @@ type StateReader interface {
 
 // RegistryChecker is a Checker reading the registry's storage slots from a
 // state. The zero address and system contracts are never frozen, whatever the
-// registry says.
+// registry says, so that internal transactions are never blocked.
 type RegistryChecker struct {
 	enabled bool // feature flag `AccountFreeze` is enabled
 	db      StateReader
