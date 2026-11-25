@@ -416,7 +416,7 @@ func newTxPool(
 		bundleEvaluationCache: bundlesCache,
 
 		freezeCheckerFactory: func(db state.StateDB) freeze.Checker {
-			return freeze.NewRegistryChecker(db)
+			return freeze.NewRegistryChecker(chain.CurrentRules().Upgrades.AccountFreeze, db)
 		},
 	}
 	pool.locals = newAccountSet(pool.signer)
@@ -763,7 +763,6 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		gasSubsidies:       pool.chain.CurrentRules().Upgrades.GasSubsidies,
 		brio:               pool.chain.CurrentRules().Upgrades.Brio,
 		transactionBundles: pool.chain.CurrentRules().Upgrades.TransactionBundles,
-		accountFreeze:      pool.chain.CurrentRules().Upgrades.AccountFreeze,
 	}
 
 	subsidiesChecker := pool.subsidiesCheckerFactory(
@@ -786,7 +785,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	if err != nil {
 		return err
 	}
-	if err := validateTxForFreeze(tx, netRules, pool.freezeCheckerFactory(pool.currentState), pool.signer); err != nil {
+	if err := validateTxForFreeze(tx, pool.freezeCheckerFactory(pool.currentState), pool.signer); err != nil {
 		return err
 	}
 	return pool.validateAuth(tx)
@@ -1910,9 +1909,6 @@ func (pool *TxPool) demoteUnexecutables() {
 // senders. It runs after demoteUnexecutables, so that mined transactions are
 // already gone and removing the rest leaves the pending nonce at the state's.
 func (pool *TxPool) dropFrozenSenders() map[common.Address]struct{} {
-	if !pool.chain.CurrentRules().Upgrades.AccountFreeze {
-		return nil
-	}
 	checker := pool.freezeCheckerFactory(pool.currentState)
 	frozen := map[common.Address]struct{}{}
 	for _, txs := range []map[common.Address]*txList{pool.pending, pool.queue} {

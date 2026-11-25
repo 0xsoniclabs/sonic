@@ -33,6 +33,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -374,6 +375,7 @@ func (s *State) ApplyBlock(
 	processed := processor.Process(
 		evmBlock,
 		stateDb,
+		freeze.NewRegistryChecker(rules.Upgrades.AccountFreeze, stateDb),
 		vmConfig,
 		gasLimit,
 		&usedGas,

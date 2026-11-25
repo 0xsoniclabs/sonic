@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
+	freezeregistry "github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
@@ -136,23 +137,34 @@ func TestTxPool_AccountFreeze_DoesNotAnnounceTransactionsOfFrozenSenders(t *test
 	require.NoError(t, validateEvents(events, 0))
 }
 
-func TestTxPool_AccountFreezeDisabled_IgnoresFrozenSenders(t *testing.T) {
-	pool, key := setupTxPool()
+func TestTxPool_AccountFreeze_AppliesRegistryOnlyWhileEnabled(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	frozen := crypto.PubkeyToAddress(key.PublicKey)
+	db := newTestTxPoolStateDb()
+	db.storage = map[common.Address]map[common.Hash]common.Hash{
+		freezeregistry.GetAddress(): {freezeregistry.GetFrozenSlot(frozen): {31: 1}},
+	}
+	chain := accountFreezeTestBlockChain{NewTestBlockChain(db), new(atomic.Bool)}
+	pool, _ := setupTxPoolWithChain(params.TestChainConfig, chain)
 	defer pool.Stop()
-	checker := freeze.NewMockChecker(gomock.NewController(t)) // isFrozen never called
-	setFreezeChecker(pool, checker)
+	testAddBalance(pool, frozen, big.NewInt(1_000_000))
 
-	testAddBalance(pool, crypto.PubkeyToAddress(key.PublicKey), big.NewInt(1_000_000))
 	require.NoError(t, pool.AddLocal(transaction(0, 100_000, key)))
 	<-pool.requestReset(nil, nil)
 	pending, _ := pool.Stats()
 	require.Equal(t, 1, pending)
+
+	chain.accountFreeze.Store(true)
+	require.ErrorIs(t, pool.AddLocal(transaction(1, 100_000, key)), ErrFrozenAccount)
+	<-pool.requestReset(nil, nil)
+	pending, _ = pool.Stats()
+	require.Zero(t, pending)
 }
 
-// setupAccountFreezeTxPool is setupTxPool on a chain with AccountFreeze on,
-// with freeze status reported by checker.
+// setupAccountFreezeTxPool is setupTxPool with freeze status reported by checker.
 func setupAccountFreezeTxPool(checker freeze.Checker) (*TxPool, *ecdsa.PrivateKey) {
-	pool, key := setupTxPoolWithChain(params.TestChainConfig, accountFreezeTestBlockChain{NewTestBlockChain(newTestTxPoolStateDb())})
+	pool, key := setupTxPool()
 	setFreezeChecker(pool, checker)
 	return pool, key
 }
@@ -165,10 +177,11 @@ func setFreezeChecker(pool *TxPool, checker freeze.Checker) {
 
 type accountFreezeTestBlockChain struct {
 	StateReader
+	accountFreeze *atomic.Bool
 }
 
-func (accountFreezeTestBlockChain) CurrentRules() opera.Rules {
-	return opera.Rules{Upgrades: opera.Upgrades{AccountFreeze: true}}
+func (c accountFreezeTestBlockChain) CurrentRules() opera.Rules {
+	return opera.Rules{Upgrades: opera.Upgrades{AccountFreeze: c.accountFreeze.Load()}}
 }
 
 // BenchmarkTxPool_DropFrozenSenders measures evicting 100 frozen senders, each

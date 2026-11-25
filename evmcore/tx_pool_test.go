@@ -93,6 +93,7 @@ type testTxPoolStateDb struct {
 	balances   map[common.Address]*uint256.Int
 	nonces     map[common.Address]uint64
 	codeHashes map[common.Address]common.Hash
+	storage    map[common.Address]map[common.Hash]common.Hash
 }
 
 func newTestTxPoolStateDb() *testTxPoolStateDb {
@@ -117,6 +118,10 @@ func (t testTxPoolStateDb) GetCodeHash(addr common.Address) common.Hash {
 		return types.EmptyCodeHash
 	}
 	return hash
+}
+
+func (t testTxPoolStateDb) GetState(addr common.Address, key common.Hash) common.Hash {
+	return t.storage[addr][key]
 }
 
 func (t testTxPoolStateDb) GetCode(addr common.Address) []byte {

@@ -2737,15 +2737,13 @@ func Test_checkPlanRootsAreGroups(t *testing.T) {
 	}
 }
 
-func Test_validateTxForFreeze_RejectsFrozenSendersOnlyWithAccountFreeze(t *testing.T) {
+func Test_validateTxForFreeze_RejectsFrozenSenders(t *testing.T) {
 	tests := map[string]struct {
-		accountFreeze bool
-		frozen        bool
-		want          error
+		frozen bool
+		want   error
 	}{
-		"disabled":               {accountFreeze: false},
-		"enabled, frozen sender": {accountFreeze: true, frozen: true, want: ErrFrozenAccount},
-		"enabled, other sender":  {accountFreeze: true, frozen: false},
+		"frozen sender": {frozen: true, want: ErrFrozenAccount},
+		"other sender":  {frozen: false},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -2754,12 +2752,10 @@ func Test_validateTxForFreeze_RejectsFrozenSendersOnlyWithAccountFreeze(t *testi
 			signer := NewMockSigner(ctrl)
 			signer.EXPECT().Sender(gomock.Any()).Return(sender, nil).AnyTimes()
 			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
-			checker := freeze.NewMockChecker(ctrl) // < not consulted while disabled
-			if test.accountFreeze {
-				checker.EXPECT().IsFrozen(sender).Return(test.frozen)
-			}
+			checker := freeze.NewMockChecker(ctrl)
+			checker.EXPECT().IsFrozen(sender).Return(test.frozen)
 
-			err := validateTxForFreeze(types.NewTx(&types.LegacyTx{}), NetworkRules{accountFreeze: test.accountFreeze}, checker, signer)
+			err := validateTxForFreeze(types.NewTx(&types.LegacyTx{}), checker, signer)
 			require.ErrorIs(t, err, test.want)
 		})
 	}
@@ -2771,6 +2767,6 @@ func Test_validateTxForFreeze_RejectsTxWithInvalidSender(t *testing.T) {
 	signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, fmt.Errorf("some error"))
 	signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
 
-	err := validateTxForFreeze(types.NewTx(&types.LegacyTx{}), NetworkRules{accountFreeze: true}, freeze.NewMockChecker(ctrl), signer)
+	err := validateTxForFreeze(types.NewTx(&types.LegacyTx{}), freeze.NewMockChecker(ctrl), signer)
 	require.ErrorIs(t, err, ErrInvalidSender)
 }
