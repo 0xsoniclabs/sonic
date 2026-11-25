@@ -123,25 +123,26 @@ func overriddenBlockContext(
 ) vm.BlockContext {
 	blockCtx := GetBlockContext(ctx, backend, base)
 	overrides.apply(&blockCtx)
-	if isNextBlock(&blockCtx, base) {
-		linkBaseBlockHash(&blockCtx, base)
-	}
+	limitHashLookup(&blockCtx, base, isNextBlock(&blockCtx, base))
 	return blockCtx
 }
 
-// linkBaseBlockHash makes BLOCKHASH return the base block's hash for the base
-// block's number. Without it, the hash lookup starts at the base block, which
-// is not its own ancestor, so its hash is unknown. Other numbers are resolved
-// as before.
-func linkBaseBlockHash(blockCtx *vm.BlockContext, base *evmcore.EvmHeader) {
+// limitHashLookup makes BLOCKHASH resolve only the ancestors of the base
+// block and, if linkBase is set, the base block itself. Later numbers, which an
+// overridden block number can ask for, are unknown; without this, their lookup
+// would walk back to genesis.
+func limitHashLookup(blockCtx *vm.BlockContext, base *evmcore.EvmHeader, linkBase bool) {
 	baseNumber := base.Number.Uint64()
 	baseHash := base.Hash
 	ancestors := blockCtx.GetHash
 	blockCtx.GetHash = func(n uint64) common.Hash {
-		if n == baseNumber {
+		switch {
+		case n < baseNumber:
+			return ancestors(n)
+		case n == baseNumber && linkBase:
 			return baseHash
 		}
-		return ancestors(n)
+		return common.Hash{}
 	}
 }
 
