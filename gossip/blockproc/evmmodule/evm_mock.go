@@ -14,6 +14,7 @@ import (
 
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	core_types "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	freeze "github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	opera "github.com/0xsoniclabs/sonic/opera"
 	vm "github.com/ethereum/go-ethereum/core/vm"
@@ -98,15 +99,15 @@ func (m *Mock_stateProcessor) EXPECT() *Mock_stateProcessorMockRecorder {
 }
 
 // Process mocks base method.
-func (m *Mock_stateProcessor) Process(block *evmcore.EvmBlock, statedb state.StateDB, vmCfg vm.Config, gasLimit uint64, gasUsed *uint64, trueTxOffset int, onNewLog func(*core_types.Log), remainingSize uint64) evmcore.ProcessSummary {
+func (m *Mock_stateProcessor) Process(block *evmcore.EvmBlock, statedb state.StateDB, freezeChecker freeze.Checker, vmCfg vm.Config, gasLimit uint64, gasUsed *uint64, trueTxOffset int, onNewLog func(*core_types.Log), remainingSize uint64) evmcore.ProcessSummary {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Process", block, statedb, vmCfg, gasLimit, gasUsed, trueTxOffset, onNewLog, remainingSize)
+	ret := m.ctrl.Call(m, "Process", block, statedb, freezeChecker, vmCfg, gasLimit, gasUsed, trueTxOffset, onNewLog, remainingSize)
 	ret0, _ := ret[0].(evmcore.ProcessSummary)
 	return ret0
 }
 
 // Process indicates an expected call of Process.
-func (mr *Mock_stateProcessorMockRecorder) Process(block, statedb, vmCfg, gasLimit, gasUsed, trueTxOffset, onNewLog, remainingSize any) *gomock.Call {
+func (mr *Mock_stateProcessorMockRecorder) Process(block, statedb, freezeChecker, vmCfg, gasLimit, gasUsed, trueTxOffset, onNewLog, remainingSize any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Process", reflect.TypeOf((*Mock_stateProcessor)(nil).Process), block, statedb, vmCfg, gasLimit, gasUsed, trueTxOffset, onNewLog, remainingSize)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Process", reflect.TypeOf((*Mock_stateProcessor)(nil).Process), block, statedb, freezeChecker, vmCfg, gasLimit, gasUsed, trueTxOffset, onNewLog, remainingSize)
 }

@@ -144,11 +144,11 @@ type ProcessedTransaction struct {
 // Future hard-forks may be used to clean up the rules and make them more
 // consistent.
 func (p *StateProcessor) Process(
-	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
+	block *EvmBlock, statedb state.StateDB, freezeChecker freeze.Checker, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, trueTxOffset int, onNewLog func(*core_types.Log), remainingSize uint64,
 ) ProcessSummary {
 	sonicDifficulty := big.NewInt(1)
-	return p.ProcessWithDifficulty(block, statedb, cfg, gasLimit, usedGas, trueTxOffset, onNewLog, sonicDifficulty, remainingSize)
+	return p.ProcessWithDifficulty(block, statedb, freezeChecker, cfg, gasLimit, usedGas, trueTxOffset, onNewLog, sonicDifficulty, remainingSize)
 }
 
 // ProcessWithDifficulty is the same as Process, but allows specifying a custom
@@ -156,7 +156,7 @@ func (p *StateProcessor) Process(
 // purposes, when processing blocks from non-Sonic networks exhibiting different
 // difficulty values than Sonic's constant difficulty of 1.
 func (p *StateProcessor) ProcessWithDifficulty(
-	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
+	block *EvmBlock, statedb state.StateDB, freezeChecker freeze.Checker, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, trueTxOffset int, onNewLog func(*core_types.Log),
 	difficulty *big.Int, remainingSize uint64,
 ) ProcessSummary {
@@ -179,7 +179,7 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	// Iterate over and process the individual transactions
 	summary := runTransactions(newRunContext(
 		signer, header.BaseFee, statedb, gp, blockNumber, block.Time, usedGas,
-		p.upgrades, &transactionRunner{evm{vmenv}}, p.forReplay, p.metrics,
+		p.upgrades, freezeChecker, &transactionRunner{evm{vmenv}}, p.forReplay, p.metrics,
 	),
 		block.Transactions, trueTxOffset, remainingSize)
 
@@ -202,17 +202,18 @@ func (p *StateProcessor) ProcessWithDifficulty(
 // block. It is used as input to the runTransactions helper function and passed
 // along the processing layers to make the parameters available where needed.
 type runContext struct {
-	signer      types.Signer
-	baseFee     *big.Int
-	statedb     state.StateDB
-	gasPool     *core.GasPool
-	blockNumber *big.Int
-	blockTime   inter.Timestamp
-	usedGas     *uint64
-	upgrades    opera.Upgrades
-	runner      _transactionRunner
-	forReplay   bool // Whether the context is used for replaying transactions or for head state processing.
-	metrics     BlockExecutionMetrics
+	signer        types.Signer
+	baseFee       *big.Int
+	statedb       state.StateDB
+	gasPool       *core.GasPool
+	blockNumber   *big.Int
+	blockTime     inter.Timestamp
+	usedGas       *uint64
+	upgrades      opera.Upgrades
+	freezeChecker freeze.Checker
+	runner        _transactionRunner
+	forReplay     bool // Whether the context is used for replaying transactions or for head state processing.
+	metrics       BlockExecutionMetrics
 }
 
 // newRunContext creates a new runContext instance bundling the given parameters
@@ -228,22 +229,24 @@ func newRunContext(
 	blockTime inter.Timestamp,
 	usedGas *uint64,
 	upgrades opera.Upgrades,
+	freezeChecker freeze.Checker,
 	runner _transactionRunner,
 	isReplay bool,
 	metrics BlockExecutionMetrics,
 ) *runContext {
 	return &runContext{
-		signer:      signer,
-		baseFee:     baseFee,
-		statedb:     statedb,
-		gasPool:     gasPool,
-		blockNumber: blockNumber,
-		blockTime:   blockTime,
-		usedGas:     usedGas,
-		upgrades:    upgrades,
-		runner:      runner,
-		forReplay:   isReplay,
-		metrics:     metrics,
+		signer:        signer,
+		baseFee:       baseFee,
+		statedb:       statedb,
+		gasPool:       gasPool,
+		blockNumber:   blockNumber,
+		blockTime:     blockTime,
+		usedGas:       usedGas,
+		upgrades:      upgrades,
+		freezeChecker: freezeChecker,
+		runner:        runner,
+		forReplay:     isReplay,
+		metrics:       metrics,
 	}
 }
 
@@ -753,7 +756,7 @@ func (e evm) _runTransaction(
 		return ProcessedTransaction{Transaction: tx}
 	}
 
-	if ctxt.upgrades.AccountFreeze && !internaltx.IsInternal(tx) && freeze.NewRegistryChecker(ctxt.statedb).IsFrozen(msg.From) {
+	if ctxt.upgrades.AccountFreeze && !internaltx.IsInternal(tx) && ctxt.freezeChecker.IsFrozen(msg.From) {
 		log.Debug("Transaction from frozen account skipped", "tx", tx.Hash().Hex(), "sender", msg.From)
 		return ProcessedTransaction{Transaction: tx}
 	}
@@ -813,7 +816,7 @@ func NewTransactionProcessorForBlock(
 		rules.Upgrades,
 		nil,
 	)
-	return stateProcessor.BeginBlock(block, state, vmConfig, gasLimit)
+	return stateProcessor.BeginBlock(block, state, freeze.NewRegistryChecker(state), vmConfig, gasLimit)
 }
 
 // BeginBlock starts the processing of a new block and returns a function to
@@ -822,7 +825,7 @@ func NewTransactionProcessorForBlock(
 // This is required by the transaction scheduler in the emitter, which needs to
 // probe individual transactions to determine their applicability and gas usage.
 func (p *StateProcessor) BeginBlock(
-	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, gasLimit uint64,
+	block *EvmBlock, stateDb state.StateDB, freezeChecker freeze.Checker, cfg vm.Config, gasLimit uint64,
 ) *TransactionProcessor {
 	var (
 		gp            = core.NewGasPool(gasLimit)
@@ -848,6 +851,7 @@ func (p *StateProcessor) BeginBlock(
 		stateDb:       stateDb,
 		vmEnvironment: vmEnvironment,
 		upgrades:      p.upgrades,
+		freezeChecker: freezeChecker,
 		metrics:       p.metrics,
 	}
 }
@@ -864,6 +868,7 @@ type TransactionProcessor struct {
 	usedGas       uint64
 	vmEnvironment *vm.EVM
 	upgrades      opera.Upgrades
+	freezeChecker freeze.Checker
 	metrics       BlockExecutionMetrics
 }
 
@@ -874,7 +879,7 @@ type TransactionProcessor struct {
 func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary {
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber, tp.blockTime,
-		&tp.usedGas, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
+		&tp.usedGas, tp.upgrades, tp.freezeChecker, &transactionRunner{evm{tp.vmEnvironment}},
 		false, tp.metrics,
 	), []*types.Transaction{tx}, i, math.MaxUint64)
 }

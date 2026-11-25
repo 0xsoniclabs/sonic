@@ -28,6 +28,7 @@ import (
 	carmen_state "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -179,7 +180,7 @@ func TestOperaEVMProcessor_Execute_SelectsStateProcessorByReplayMode(t *testing.
 
 			test.expect(factory, reader, metrics, stateProcessor)
 			any := gomock.Any()
-			stateProcessor.EXPECT().Process(any, any, any, any, any, any, any, any)
+			stateProcessor.EXPECT().Process(any, any, any, any, any, any, any, any, any)
 
 			processor := &OperaEVMProcessor{
 				reader:           reader,
@@ -214,7 +215,7 @@ func TestOperaEVMProcessor_Execute_UsesGivenInterpreterFactoryOrDefault(t *testi
 				return reflect.ValueOf(test.want).Pointer() == reflect.ValueOf(cfg.Interpreter).Pointer()
 			})
 			factory.EXPECT().NewStateProcessorForReplay(any, any, any).Return(stateProcessor)
-			stateProcessor.EXPECT().Process(any, any, sameFactory, any, any, any, any, any)
+			stateProcessor.EXPECT().Process(any, any, any, sameFactory, any, any, any, any, any)
 
 			processor := &OperaEVMProcessor{processorFactory: factory, forReplay: true, overrideInterpreter: test.interpreterFactory}
 			processor.Execute(nil, 0, 0)
@@ -326,11 +327,11 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 	}
 
 	stateProcessor.EXPECT().Process(
-		any, any, any, any, any, 0, any, any,
+		any, any, any, any, any, any, 0, any, any,
 	).Return(summary1)
 
 	stateProcessor.EXPECT().Process(
-		any, any, any, any, any, 5, any, any,
+		any, any, any, any, any, any, 5, any, any,
 	).Return(summary2)
 
 	processor := &OperaEVMProcessor{
@@ -372,7 +373,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorProducesTransactionsAndBundles_
 		},
 	}
 
-	stateProcessor.EXPECT().Process(any, any, any, any, any, any, any, any).Return(summary)
+	stateProcessor.EXPECT().Process(any, any, any, any, any, any, any, any, any).Return(summary)
 	processor := &OperaEVMProcessor{
 		processorFactory: factory,
 	}
@@ -419,7 +420,7 @@ func TestOperaEVMProcessor_Execute_UsesNumberOfAcceptedTransactionsAsTransaction
 			}
 
 			stateProcessor.EXPECT().
-				Process(any, any, any, any, any, numPreAccepted, any, any).
+				Process(any, any, any, any, any, any, numPreAccepted, any, any).
 				Return(evmcore.ProcessSummary{
 					ProcessedTransactions: []evmcore.ProcessedTransaction{
 						{Receipt: &types.Receipt{TransactionIndex: uint(numPreAccepted)}},
@@ -477,7 +478,7 @@ func TestOperaEVMProcessor_Execute_UsesNumberOfTransactionsWithReceiptsAsTransac
 					wantedOffset++
 				}
 			}
-			stateProcessor.EXPECT().Process(any, any, any, any, any, wantedOffset, any, any)
+			stateProcessor.EXPECT().Process(any, any, any, any, any, any, wantedOffset, any, any)
 
 			processor := &OperaEVMProcessor{
 				processorFactory: factory,
@@ -496,7 +497,7 @@ func TestOperaEVMProcessor_Execute_ForwardsGasLimitRegardlessOfGasUsedInBlock(t 
 
 	any := gomock.Any()
 	factory.EXPECT().NewStateProcessorForHeadState(any, any, any, any).Return(stateProcessor)
-	stateProcessor.EXPECT().Process(any, any, any, uint64(30_000), any, any, any, any)
+	stateProcessor.EXPECT().Process(any, any, any, any, uint64(30_000), any, any, any, any)
 
 	processor := &OperaEVMProcessor{
 		processorFactory: factory,
@@ -516,7 +517,7 @@ func TestOperaEVMProcessor_Execute_ForwardsMetricsFromStartToStateProcessor(t *t
 	any := gomock.Any()
 	stateDb.EXPECT().BeginBlock(any)
 	factory.EXPECT().NewStateProcessorForHeadState(any, any, any, metrics).Return(stateProcessor)
-	stateProcessor.EXPECT().Process(any, any, any, any, any, any, any, any)
+	stateProcessor.EXPECT().Process(any, any, any, any, any, any, any, any, any)
 
 	processor := New().Start(
 		0, 0, 0,
@@ -525,6 +526,27 @@ func TestOperaEVMProcessor_Execute_ForwardsMetricsFromStartToStateProcessor(t *t
 	).(*OperaEVMProcessor)
 	processor.processorFactory = factory
 
+	processor.Execute(nil, 0, 0)
+}
+
+func TestOperaEVMProcessor_Execute_ForwardsOneFreezeCheckerOfStartToAllCalls(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	factory := NewMock_stateProcessorFactory(ctrl)
+	stateProcessor := NewMock_stateProcessor(ctrl)
+
+	any := gomock.Any()
+	stateDb.EXPECT().BeginBlock(any)
+	processor := New().Start(0, 0, 0, stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{}, nil).(*OperaEVMProcessor)
+	processor.processorFactory = factory
+	checker := processor.freezeChecker
+	require.Equal(t, freeze.NewRegistryChecker(stateDb), checker)
+
+	same := gomock.Cond(func(c freeze.Checker) bool { return c == checker })
+	factory.EXPECT().NewStateProcessorForHeadState(any, any, any, any).Return(stateProcessor).Times(2)
+	stateProcessor.EXPECT().Process(any, stateDb, same, any, any, any, any, any, any).Times(2)
+
+	processor.Execute(nil, 0, 0)
 	processor.Execute(nil, 0, 0)
 }
 
