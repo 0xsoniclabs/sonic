@@ -18,8 +18,12 @@ package ethapi
 
 import (
 	"context"
+	"fmt"
+	"math/big"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -101,4 +105,83 @@ func (context *chainContext) Header(hash common.Hash, number uint64) *evmcore.Ev
 		return nil
 	}
 	return header
+}
+
+// overriddenBlockContext returns the block context for a call made on the
+// state of the base block, with the given block overrides applied. Overrides
+// may be nil.
+//
+// If the overrides make the call run as the block directly following the base
+// block, the base block becomes the parent of the call's block, so BLOCKHASH
+// returns the base block's hash, as it would on chain. For any other number,
+// the hash lookup stays relative to the base block.
+func overriddenBlockContext(
+	ctx context.Context,
+	backend Backend,
+	base *evmcore.EvmHeader,
+	overrides *BlockOverrides,
+) vm.BlockContext {
+	blockCtx := GetBlockContext(ctx, backend, base)
+	overrides.apply(&blockCtx)
+	if isNextBlock(&blockCtx, base) {
+		linkBaseBlockHash(&blockCtx, base)
+	}
+	return blockCtx
+}
+
+// linkBaseBlockHash makes BLOCKHASH return the base block's hash for the base
+// block's number. Without it, the hash lookup starts at the base block, which
+// is not its own ancestor, so its hash is unknown. Other numbers are resolved
+// as before.
+func linkBaseBlockHash(blockCtx *vm.BlockContext, base *evmcore.EvmHeader) {
+	baseNumber := base.Number.Uint64()
+	baseHash := base.Hash
+	ancestors := blockCtx.GetHash
+	blockCtx.GetHash = func(n uint64) common.Hash {
+		if n == baseNumber {
+			return baseHash
+		}
+		return ancestors(n)
+	}
+}
+
+// applyNextBlockSystemCalls runs on the given state the system calls that
+// start the block described by blockCtx, if that block directly follows the
+// base block. After Prague, this is the EIP-2935 call that stores the base
+// block's hash in the history contract, so that the contract agrees with
+// BLOCKHASH, as it would on chain. For any other block, it does nothing.
+func applyNextBlockSystemCalls(
+	ctx context.Context,
+	backend Backend,
+	statedb state.StateDB,
+	base *evmcore.EvmHeader,
+	blockCtx *vm.BlockContext,
+) error {
+	if !isNextBlock(blockCtx, base) {
+		return nil
+	}
+	vmConfig, err := GetVmConfig(ctx, backend, idx.Block(base.Number.Uint64()))
+	if err != nil {
+		return fmt.Errorf("failed to get vm config: %w", err)
+	}
+	vmConfig.NoBaseFee = true
+	evm, _, err := backend.GetEVM(ctx, statedb, base, &vmConfig, blockCtx)
+	if err != nil {
+		return err
+	}
+	defer evm.Release()
+	if evm.ChainConfig().IsPrague(blockCtx.BlockNumber, blockCtx.Time) {
+		evmcore.ProcessParentBlockHash(base.Hash, evm, statedb)
+	}
+	return nil
+}
+
+// isNextBlock reports whether the block context describes the block directly
+// following the base block.
+func isNextBlock(blockCtx *vm.BlockContext, base *evmcore.EvmHeader) bool {
+	if blockCtx.BlockNumber == nil || base.Number == nil {
+		return false
+	}
+	next := new(big.Int).Add(base.Number, common.Big1)
+	return blockCtx.BlockNumber.Cmp(next) == 0
 }

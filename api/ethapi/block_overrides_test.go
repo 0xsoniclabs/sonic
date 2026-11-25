@@ -19,6 +19,7 @@ package ethapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"testing"
 	"time"
@@ -31,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -282,4 +284,238 @@ func newCallTestBackend(t *testing.T, stateDb *state.MockStateDB, baseFee *big.I
 	stateDb.EXPECT().RevertToSnapshot(any).AnyTimes()
 	setExpectedStateCalls(stateDb)
 	return backend
+}
+
+// newHashChainBackend returns a mock Backend serving the headers of a chain
+// of blocks 0 to head, where block i has hash chainHash(i).
+func newHashChainBackend(t *testing.T, head uint64) (*MockBackend, *evmcore.EvmHeader) {
+	t.Helper()
+	backend := NewMockBackend(gomock.NewController(t))
+	headers := make([]*evmcore.EvmHeader, head+1)
+	for i := range headers {
+		headers[i] = &evmcore.EvmHeader{
+			Number:     new(big.Int).SetUint64(uint64(i)),
+			Hash:       chainHash(uint64(i)),
+			ParentHash: chainHash(uint64(i) - 1),
+		}
+	}
+	backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, n rpc.BlockNumber) (*evmcore.EvmHeader, error) {
+			if n < 0 || uint64(n) > head {
+				return nil, nil
+			}
+			return headers[n], nil
+		}).AnyTimes()
+	return backend, headers[head]
+}
+
+func chainHash(n uint64) common.Hash {
+	return common.BigToHash(new(big.Int).SetUint64(n + 1))
+}
+
+func TestOverriddenBlockContext_BaseBlockHashIsKnownOnlyToNextBlock(t *testing.T) {
+	const baseNumber = 10
+	number := func(n int64) *BlockOverrides {
+		return &BlockOverrides{Number: (*hexutil.Big)(big.NewInt(n))}
+	}
+	time := hexutil.Uint64(1234)
+
+	tests := map[string]struct {
+		overrides  *BlockOverrides
+		wantNumber uint64
+		// wantHashes maps block numbers to the hash BLOCKHASH resolves them to.
+		wantHashes map[uint64]common.Hash
+	}{
+		"no overrides": {
+			overrides:  nil,
+			wantNumber: baseNumber,
+			wantHashes: map[uint64]common.Hash{baseNumber: {}, baseNumber - 1: chainHash(baseNumber - 1)},
+		},
+		"number not overridden": {
+			overrides:  &BlockOverrides{Time: &time},
+			wantNumber: baseNumber,
+			wantHashes: map[uint64]common.Hash{baseNumber: {}, baseNumber - 1: chainHash(baseNumber - 1)},
+		},
+		"earlier block": {
+			overrides:  number(baseNumber - 1),
+			wantNumber: baseNumber - 1,
+			wantHashes: map[uint64]common.Hash{baseNumber: {}, baseNumber - 1: chainHash(baseNumber - 1)},
+		},
+		"same block": {
+			overrides:  number(baseNumber),
+			wantNumber: baseNumber,
+			wantHashes: map[uint64]common.Hash{baseNumber: {}, baseNumber - 1: chainHash(baseNumber - 1)},
+		},
+		"next block": {
+			overrides:  number(baseNumber + 1),
+			wantNumber: baseNumber + 1,
+			wantHashes: map[uint64]common.Hash{
+				baseNumber:     chainHash(baseNumber),
+				baseNumber - 1: chainHash(baseNumber - 1),
+				baseNumber - 5: chainHash(baseNumber - 5),
+			},
+		},
+		"two blocks ahead": {
+			overrides:  number(baseNumber + 2),
+			wantNumber: baseNumber + 2,
+			wantHashes: map[uint64]common.Hash{
+				baseNumber + 1: {},
+				baseNumber:     {},
+				baseNumber - 1: chainHash(baseNumber - 1),
+			},
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			backend, base := newHashChainBackend(t, baseNumber)
+
+			blockCtx := overriddenBlockContext(t.Context(), backend, base, test.overrides)
+
+			require.Equal(t, test.wantNumber, blockCtx.BlockNumber.Uint64())
+			for n, want := range test.wantHashes {
+				require.Equal(t, want, blockCtx.GetHash(n), "hash of block %d", n)
+			}
+		})
+	}
+}
+
+func TestOverriddenBlockContext_AppliesOtherOverrides(t *testing.T) {
+	backend, base := newHashChainBackend(t, 3)
+	time := hexutil.Uint64(1234)
+	overrides := &BlockOverrides{
+		Number:  (*hexutil.Big)(big.NewInt(4)),
+		Time:    &time,
+		BaseFee: (*hexutil.Big)(big.NewInt(77)),
+	}
+
+	blockCtx := overriddenBlockContext(t.Context(), backend, base, overrides)
+
+	require.Equal(t, uint64(4), blockCtx.BlockNumber.Uint64())
+	require.Equal(t, uint64(1234), blockCtx.Time)
+	require.Equal(t, big.NewInt(77), blockCtx.BaseFee)
+}
+
+func TestApplyNextBlockSystemCalls_NotNextBlock_DoesNothing(t *testing.T) {
+	base := &evmcore.EvmHeader{Number: big.NewInt(10), Hash: common.Hash{10}}
+	for _, number := range []int64{9, 10, 12} {
+		t.Run(big.NewInt(number).String(), func(t *testing.T) {
+			// Neither mock expects a call: building an EVM or touching the
+			// state would fail the test.
+			backend := NewMockBackend(gomock.NewController(t))
+			stateDb := state.NewMockStateDB(gomock.NewController(t))
+			blockCtx := &vm.BlockContext{BlockNumber: big.NewInt(number)}
+
+			err := applyNextBlockSystemCalls(t.Context(), backend, stateDb, base, blockCtx)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestApplyNextBlockSystemCalls_NextBlockBeforePrague_DoesNotTouchState(t *testing.T) {
+	base := &evmcore.EvmHeader{Number: big.NewInt(10), Hash: common.Hash{10}}
+	// The state mock expects no call.
+	stateDb := state.NewMockStateDB(gomock.NewController(t))
+	backend := newSystemCallTestBackend(t, stateDb, opera.GetSonicUpgrades())
+	blockCtx := &vm.BlockContext{BlockNumber: big.NewInt(11)}
+
+	err := applyNextBlockSystemCalls(t.Context(), backend, stateDb, base, blockCtx)
+	require.NoError(t, err)
+}
+
+func TestApplyNextBlockSystemCalls_NextBlockAfterPrague_StoresBaseBlockHash(t *testing.T) {
+	const baseNumber = 10
+	base := &evmcore.EvmHeader{Number: big.NewInt(baseNumber), Hash: common.Hash{0xab}}
+	stateDb := state.NewMockStateDB(gomock.NewController(t))
+	slot := common.BigToHash(big.NewInt(baseNumber % params.HistoryServeWindow))
+	stateDb.EXPECT().SetState(params.HistoryStorageAddress, slot, base.Hash).Times(1)
+	expectHistoryContractCall(stateDb)
+	backend := newSystemCallTestBackend(t, stateDb, opera.GetAllegroUpgrades())
+	blockCtx := &vm.BlockContext{
+		BlockNumber: big.NewInt(baseNumber + 1),
+		Random:      &common.Hash{}, // post-merge rules, needed for PUSH0
+		CanTransfer: evmcore.CanTransfer,
+		Transfer:    evmcore.Transfer,
+	}
+
+	err := applyNextBlockSystemCalls(t.Context(), backend, stateDb, base, blockCtx)
+	require.NoError(t, err)
+}
+
+func TestApplyNextBlockSystemCalls_PropagatesErrors(t *testing.T) {
+	base := &evmcore.EvmHeader{Number: big.NewInt(10)}
+	blockCtx := &vm.BlockContext{BlockNumber: big.NewInt(11)}
+	stateDb := state.NewMockStateDB(gomock.NewController(t))
+	injected := errors.New("injected")
+
+	t.Run("vm config", func(t *testing.T) {
+		backend := NewMockBackend(gomock.NewController(t))
+		backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).Return(nil, injected)
+		err := applyNextBlockSystemCalls(t.Context(), backend, stateDb, base, blockCtx)
+		require.ErrorIs(t, err, injected)
+	})
+	t.Run("evm", func(t *testing.T) {
+		backend := NewMockBackend(gomock.NewController(t))
+		backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).
+			Return(&opera.Rules{Upgrades: opera.GetAllegroUpgrades()}, nil)
+		backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil, nil, injected)
+		err := applyNextBlockSystemCalls(t.Context(), backend, stateDb, base, blockCtx)
+		require.ErrorIs(t, err, injected)
+	})
+}
+
+// newSystemCallTestBackend returns a mock Backend building EVMs with the
+// given upgrades on the given state, using the block context it is given.
+func newSystemCallTestBackend(t *testing.T, stateDb state.StateDB, upgrades opera.Upgrades) *MockBackend {
+	t.Helper()
+	backend := NewMockBackend(gomock.NewController(t))
+	chainConfig := makeChainConfig(upgrades)
+	backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).
+		Return(&opera.Rules{Upgrades: upgrades}, nil)
+	backend.EXPECT().GetEVM(gomock.Any(), stateDb, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ vm.StateDB, _ *evmcore.EvmHeader, vmConfig *vm.Config, blockCtx *vm.BlockContext) (*vm.EVM, func() error, error) {
+			require.True(t, vmConfig.NoBaseFee)
+			return vm.NewEVM(*blockCtx, stateDb, chainConfig, *vmConfig), func() error { return nil }, nil
+		})
+	return backend
+}
+
+// expectHistoryContractCall sets the state expectations of a system call to
+// the EIP-2935 history contract, apart from the storage write.
+func expectHistoryContractCall(stateDb *state.MockStateDB) {
+	any := gomock.Any()
+	code := params.HistoryStorageCode
+	stateDb.EXPECT().GetCode(params.HistoryStorageAddress).Return(code).AnyTimes()
+	stateDb.EXPECT().GetCodeHash(params.HistoryStorageAddress).Return(crypto.Keccak256Hash(code)).AnyTimes()
+	stateDb.EXPECT().AddressInAccessList(any).Return(true).AnyTimes()
+	stateDb.EXPECT().SlotInAccessList(any, any).Return(true, true).AnyTimes()
+	stateDb.EXPECT().AddAddressToAccessList(any).AnyTimes()
+	stateDb.EXPECT().AddSlotToAccessList(any, any).AnyTimes()
+	stateDb.EXPECT().GetState(any, any).Return(common.Hash{}).AnyTimes()
+	stateDb.EXPECT().GetStateAndCommittedState(any, any).Return(common.Hash{}, common.Hash{}).AnyTimes()
+	stateDb.EXPECT().AddRefund(any).AnyTimes()
+	stateDb.EXPECT().SubRefund(any).AnyTimes()
+	stateDb.EXPECT().Finalise(any).AnyTimes()
+	setExpectedStateCalls(stateDb)
+}
+
+func TestIsNextBlock(t *testing.T) {
+	base := &evmcore.EvmHeader{Number: big.NewInt(10)}
+	tests := map[string]struct {
+		blockCtx *vm.BlockContext
+		base     *evmcore.EvmHeader
+		want     bool
+	}{
+		"next block":       {&vm.BlockContext{BlockNumber: big.NewInt(11)}, base, true},
+		"same block":       {&vm.BlockContext{BlockNumber: big.NewInt(10)}, base, false},
+		"two blocks ahead": {&vm.BlockContext{BlockNumber: big.NewInt(12)}, base, false},
+		"earlier block":    {&vm.BlockContext{BlockNumber: big.NewInt(9)}, base, false},
+		"no block number":  {&vm.BlockContext{}, base, false},
+		"no base number":   {&vm.BlockContext{BlockNumber: big.NewInt(11)}, &evmcore.EvmHeader{}, false},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.want, isNextBlock(test.blockCtx, test.base))
+		})
+	}
 }

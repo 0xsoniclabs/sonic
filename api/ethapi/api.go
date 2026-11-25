@@ -1234,8 +1234,10 @@ func DoCall(
 	baseFee := block.BaseFee
 	var blockCtx *vm.BlockContext
 	if blockOverrides != nil {
-		bctx := GetBlockContext(ctx, b, block.Header())
-		blockOverrides.apply(&bctx)
+		bctx := overriddenBlockContext(ctx, b, block.Header(), blockOverrides)
+		if err := applyNextBlockSystemCalls(ctx, b, state, block.Header(), &bctx); err != nil {
+			return nil, err
+		}
 		blockCtx = &bctx
 		baseFee = bctx.BaseFee
 	}
@@ -1257,6 +1259,7 @@ func DoCall(
 	defer evm.Release()
 	// Skip gas price checks for API runs.
 	evm.Config.NoBaseFee = true
+
 	// Wait for the context to be done and cancel the evm. Even if the
 	// EVM has finished, cancelling may be done (repeatedly)
 	go func() {
@@ -3009,16 +3012,20 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 	}
 	defer statedb.Release()
 
-	blockCtx := GetBlockContext(ctx, api.b, &block.EvmHeader)
-	if config != nil && config.BlockOverrides != nil {
-		config.BlockOverrides.apply(&blockCtx)
+	var blockOverrides *BlockOverrides
+	if config != nil {
+		blockOverrides = config.BlockOverrides
 	}
+	blockCtx := overriddenBlockContext(ctx, api.b, &block.EvmHeader, blockOverrides)
 
 	// Apply state overrides
 	if config != nil && config.StateOverrides != nil {
 		if err := config.StateOverrides.Apply(statedb); err != nil {
 			return nil, err
 		}
+	}
+	if err := applyNextBlockSystemCalls(ctx, api.b, statedb, &block.EvmHeader, &blockCtx); err != nil {
+		return nil, err
 	}
 
 	// The gas price of the call follows the base fee the EVM runs with, so
