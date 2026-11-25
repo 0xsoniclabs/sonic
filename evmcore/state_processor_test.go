@@ -556,9 +556,13 @@ func TestProcess_SkipsSendersFrozenByGivenChecker(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			checker := freeze.NewMockChecker(ctrl)
+			checker.EXPECT().IsEnabled().Return(true)
 			checker.EXPECT().IsFrozen(crypto.PubkeyToAddress(key.PublicKey)).Return(true)
+			stateDb := state.NewMockStateDB(ctrl)
+			stateDb.EXPECT().SetTxContext(tx.Hash(), 0, uint32(1))
+			stateDb.EXPECT().EndTransaction()
 
-			processed := process(block, state.NewMockStateDB(ctrl), checker, vm.Config{}, math.MaxUint64, new(uint64), 0, nil, math.MaxUint64).ProcessedTransactions
+			processed := process(block, stateDb, checker, vm.Config{}, math.MaxUint64, new(uint64), 0, nil, math.MaxUint64).ProcessedTransactions
 
 			require.Equal(t, []ProcessedTransaction{{Transaction: tx}}, processed)
 		})
@@ -1130,7 +1134,7 @@ func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 			// this is not relevant. We just want to check if the base fee
 			// configuration flag is updated to match whether the transaction
 			// is internal.
-			_, _, err := applyTransaction(msg, gp, state, nil, tx, nil, evm, opera.Upgrades{})
+			_, _, err := applyTransaction(msg, gp, state, nil, tx, nil, evm, opera.Upgrades{}, freeze.NewRegistryChecker(false, nil))
 			if err == nil {
 				t.Errorf("expected transaction to fail")
 			}
@@ -1147,7 +1151,7 @@ func TestApplyTransaction_FailsForTransactionWithMissingGasPrice(t *testing.T) {
 	stateDb := state.NewMockStateDB(ctrl)
 	stateDb.EXPECT().EndTransaction()
 
-	_, _, err := applyTransaction(&core.Message{}, nil, stateDb, nil, nil, nil, nil, opera.Upgrades{})
+	_, _, err := applyTransaction(&core.Message{}, nil, stateDb, nil, nil, nil, nil, opera.Upgrades{}, freeze.NewRegistryChecker(false, nil))
 	require.ErrorContains(t, err, "failed to create EVM transaction context")
 }
 
@@ -1205,7 +1209,7 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 			)
 
 			receipt, gasUsed, err :=
-				applyTransaction(msg, gp, state, blockNumber, types.NewTx(&types.LegacyTx{}), new(uint64), evm, opera.Upgrades{})
+				applyTransaction(msg, gp, state, blockNumber, types.NewTx(&types.LegacyTx{}), new(uint64), evm, opera.Upgrades{}, freeze.NewRegistryChecker(false, nil))
 			require.ErrorContains(t, err, "max initcode size exceeded")
 			require.Nil(t, receipt)
 			require.Equal(t, uint64(0), gasUsed)
@@ -1279,7 +1283,7 @@ func TestApplyTransaction_SkippedTransaction_ChargesGasPoolOnlyAfterBalanceCheck
 			}
 			state.EXPECT().EndTransaction()
 
-			_, _, err := applyTransaction(msg, gp, state, nil, types.NewTx(&types.LegacyTx{}), new(uint64), evm, test.upgrades)
+			_, _, err := applyTransaction(msg, gp, state, nil, types.NewTx(&types.LegacyTx{}), new(uint64), evm, test.upgrades, freeze.NewRegistryChecker(false, nil))
 			require.ErrorIs(t, err, test.err)
 
 			want := test.pool
@@ -1287,6 +1291,42 @@ func TestApplyTransaction_SkippedTransaction_ChargesGasPoolOnlyAfterBalanceCheck
 				want -= msg.GasLimit
 			}
 			require.Equal(t, want, gp.Available(false, params.MaxTxGas))
+		})
+	}
+}
+
+func TestApplyTransaction_FrozenSender_LeavesStateAndGasPoolUnchanged(t *testing.T) {
+	for name, isPrague := range map[string]bool{"pre prague": false, "prague": true} {
+		t.Run(name, func(t *testing.T) {
+			pragueTime, snapshots := uint64(1000), 0
+			if isPrague {
+				pragueTime, snapshots = 0, 1
+			}
+			ctrl := gomock.NewController(t)
+			stateDb := state.NewMockStateDB(ctrl)
+			gomock.InOrder(
+				stateDb.EXPECT().Snapshot().Return(42).Times(snapshots),
+				stateDb.EXPECT().RevertToSnapshot(42).Times(snapshots),
+				stateDb.EXPECT().EndTransaction(),
+			)
+			checker := freeze.NewMockChecker(ctrl)
+			checker.EXPECT().IsEnabled().Return(true)
+			checker.EXPECT().IsFrozen(common.Address{1}).Return(true)
+			blockNumber := big.NewInt(100)
+			evm := vm.NewEVM(vm.BlockContext{BlockNumber: blockNumber, Time: 100}, stateDb, &params.ChainConfig{
+				LondonBlock: big.NewInt(0),
+				PragueTime:  &pragueTime,
+			}, vm.Config{})
+			gp := core.NewGasPool(21_000)
+			usedGas := uint64(0)
+			msg := &core.Message{From: common.Address{1}, GasLimit: 21_000, GasPrice: uint256.NewInt(1)}
+
+			receipt, gasUsed, err := applyTransaction(msg, gp, stateDb, blockNumber, types.NewTx(&types.LegacyTx{}), &usedGas, evm, opera.Upgrades{}, checker)
+			require.ErrorIs(t, err, freeze.ErrFrozenAccount)
+			require.Nil(t, receipt)
+			require.Zero(t, gasUsed)
+			require.Zero(t, usedGas)
+			require.Equal(t, uint64(21_000), gp.Available(false, params.MaxTxGas))
 		})
 	}
 }
@@ -1364,7 +1404,7 @@ func TestApplyTransaction_SetsEffectiveGasPriceInReceipt(t *testing.T) {
 				GasLimit:  21_000,
 			}
 
-			receipt, _, err := applyTransaction(msg, gp, state, blockNum, tx, &usedGas, evm, opera.Upgrades{})
+			receipt, _, err := applyTransaction(msg, gp, state, blockNum, tx, &usedGas, evm, opera.Upgrades{}, freeze.NewRegistryChecker(false, nil))
 			require.NoError(err)
 
 			require.Equal(price.ToBig(), receipt.EffectiveGasPrice)
@@ -1422,7 +1462,7 @@ func TestApplyTransaction_CollectsLogsFromStateDbIntoReceipt(t *testing.T) {
 		Value:     uint256.NewInt(0),
 	}).SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
 
-	receipt, _, err := applyTransaction(msg, gp, stateDb, big.NewInt(1), tx, &usedGas, evmInstance, opera.Upgrades{})
+	receipt, _, err := applyTransaction(msg, gp, stateDb, big.NewInt(1), tx, &usedGas, evmInstance, opera.Upgrades{}, freeze.NewRegistryChecker(false, nil))
 	require.NoError(t, err)
 	require.Equal(t, expectedLogs, receipt.Logs)
 }
@@ -3864,9 +3904,10 @@ func TestRunRegularTransaction_MatchesReceiptToStatus(t *testing.T) {
 	}
 }
 
-// The freeze check lives in _runTransaction, reached by regular transactions
-// through runWithBaseFeeCheck, and by sponsored transactions, their
-// post-transactions and bundled transactions through either entry point.
+// The freeze check runs in freeze.ApplyMessage, called by _runTransaction
+// through applyTransaction. Regular transactions reach it through
+// runWithBaseFeeCheck, and sponsored transactions, their post-transactions and
+// bundled transactions through either entry point.
 func TestEvm_RunTransaction_AccountFreeze_SkipsTransactionsOfFrozenSenders(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
@@ -3874,17 +3915,10 @@ func TestEvm_RunTransaction_AccountFreeze_SkipsTransactionsOfFrozenSenders(t *te
 	regularTx := types.MustSignNewTx(key, types.LatestSignerForChainID(nil), &types.LegacyTx{
 		To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
 	})
-	internalTx := types.NewTx(&types.LegacyTx{To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1)})
-	require.True(t, internaltx.IsInternal(internalTx))
 
-	tests := map[string]struct {
-		tx      *types.Transaction
-		checked bool
-		skipped bool
-	}{
-		"frozen sender":   {regularTx, true, true},
-		"unfrozen sender": {regularTx, true, false},
-		"internal sender": {internalTx, false, false},
+	tests := map[string]bool{
+		"frozen sender":   true,
+		"unfrozen sender": false,
 	}
 
 	entryPoints := map[string]func(evm, *runContext, *types.Transaction, int) ProcessedTransaction{
@@ -3893,19 +3927,18 @@ func TestEvm_RunTransaction_AccountFreeze_SkipsTransactionsOfFrozenSenders(t *te
 	}
 
 	for entryName, run := range entryPoints {
-		for name, test := range tests {
+		for name, frozen := range tests {
 			t.Run(entryName+"/"+name, func(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				state := state.NewMockStateDB(ctrl)
 				any := gomock.Any()
 				checker := freeze.NewMockChecker(ctrl)
-				if test.checked {
-					checker.EXPECT().IsFrozen(sender).Return(test.skipped)
-				}
-				if !test.skipped {
-					state.EXPECT().SetTxContext(any, any, any)
+				checker.EXPECT().IsEnabled().Return(true)
+				checker.EXPECT().IsFrozen(sender).Return(frozen)
+				state.EXPECT().SetTxContext(any, any, any)
+				state.EXPECT().EndTransaction()
+				if !frozen {
 					state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
-					state.EXPECT().EndTransaction()
 					state.EXPECT().SubBalance(any, any, any).AnyTimes()
 					state.EXPECT().Prepare(any, any, any, any, any, any)
 					state.EXPECT().GetNonce(any).Return(uint64(0)).AnyTimes()
@@ -3943,10 +3976,10 @@ func TestEvm_RunTransaction_AccountFreeze_SkipsTransactionsOfFrozenSenders(t *te
 					freezeChecker: checker,
 				}
 
-				got := run(e, context, test.tx, 0)
+				got := run(e, context, regularTx, 0)
 
-				require.Equal(t, test.tx, got.Transaction)
-				if test.skipped {
+				require.Equal(t, regularTx, got.Transaction)
+				if frozen {
 					require.Nil(t, got.Receipt)
 				} else {
 					require.NotNil(t, got.Receipt)

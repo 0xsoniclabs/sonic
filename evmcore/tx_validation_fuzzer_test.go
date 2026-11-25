@@ -23,6 +23,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
@@ -277,7 +278,7 @@ func FuzzValidateTransaction(f *testing.F) {
 		gp := core.NewGasPool(maxGas)
 		var usedGas uint64
 		_, _, processorError := applyTransaction(msg, gp, state, big.NewInt(blockNum),
-			signedTx, &usedGas, evm, opera.Upgrades{})
+			signedTx, &usedGas, evm, opera.Upgrades{}, freeze.NewRegistryChecker(false, nil))
 
 		// validateTx should not reject transactions that the processor would accept
 		if processorError != nil && validateErr == nil {

@@ -223,5 +223,6 @@ func BenchmarkTxPool_DropFrozenSenders(b *testing.B) {
 
 type allFrozenChecker struct{}
 
+func (allFrozenChecker) IsEnabled() bool                { return true }
 func (allFrozenChecker) IsFrozen(common.Address) bool   { return true }
 func (allFrozenChecker) IsOptedOut(common.Address) bool { return false }

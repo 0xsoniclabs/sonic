@@ -99,7 +99,7 @@ var (
 
 	// ErrFrozenAccount is returned if the transaction's sender is listed as
 	// frozen in the freeze registry.
-	ErrFrozenAccount = errors.New("account is frozen")
+	ErrFrozenAccount = freeze.ErrFrozenAccount
 
 	// ErrSponsorshipRejected is returned when a sponsored transaction request is
 	// not backed by a valid subsidy.
