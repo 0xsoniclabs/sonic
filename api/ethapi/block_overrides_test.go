@@ -29,6 +29,7 @@ import (
 	"github.com/0xsoniclabs/sonic/txtrace"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
@@ -283,6 +284,58 @@ func newCallTestBackend(t *testing.T, stateDb *state.MockStateDB, baseFee *big.I
 	stateDb.EXPECT().RevertToSnapshot(any).AnyTimes()
 	setExpectedStateCalls(stateDb)
 	return backend
+}
+
+// logBaseFeeCode emits BASEFEE as the data of a LOG0.
+var logBaseFeeCode = []byte{
+	byte(vm.BASEFEE), byte(vm.PUSH0), byte(vm.MSTORE),
+	byte(vm.PUSH1), 0x20, byte(vm.PUSH0), byte(vm.LOG0),
+	byte(vm.STOP),
+}
+
+func TestDoCall_PreArgsRunWithTheFeesOfTheirOwnPricing(t *testing.T) {
+	headerBaseFee := big.NewInt(100)
+	// A dynamic-fee call without a tip pays exactly the base fee.
+	pricedArgs := gasPriceTestCase{}.args
+	unpriced := func(from, to common.Address) TransactionArgs {
+		gas := hexutil.Uint64(gasPriceTestGas)
+		return TransactionArgs{From: &from, To: &to, Gas: &gas}
+	}
+
+	tests := map[string]struct {
+		preArgs, call func(from, to common.Address) TransactionArgs
+		wantBaseFees  []string
+	}{
+		"a priced previous transaction before an unpriced call": {
+			preArgs:      pricedArgs,
+			call:         unpriced,
+			wantBaseFees: []string{"100", "0"},
+		},
+		"an unpriced previous transaction before a priced call": {
+			preArgs:      unpriced,
+			call:         pricedArgs,
+			wantBaseFees: []string{"0", "100"},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			stateDb := state.NewMockStateDB(gomock.NewController(t))
+			var gotBaseFees []string
+			stateDb.EXPECT().AddLog(gomock.Any()).Do(func(l *types.Log) {
+				gotBaseFees = append(gotBaseFees, new(big.Int).SetBytes(l.Data).String())
+			}).AnyTimes()
+			backend := newCallTestBackend(t, stateDb, headerBaseFee, gasPriceTestContract, logBaseFeeCode)
+
+			preArgs := []TransactionArgs{test.preArgs(common.Address{0x2}, gasPriceTestContract)}
+			result, err := DoCall(t.Context(), backend, test.call(gasPriceTestSender, gasPriceTestContract),
+				rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
+				nil, nil, time.Second, 10_000_000, preArgs)
+			require.NoError(t, err)
+			require.False(t, result.Failed(), "call failed: %v", result.Err)
+			require.Equal(t, test.wantBaseFees, gotBaseFees, "BASEFEE of the previous transaction and the call")
+		})
+	}
 }
 
 // Block processing runs with a difficulty of 1 unless the header carries a

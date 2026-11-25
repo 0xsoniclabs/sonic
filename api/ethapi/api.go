@@ -1257,7 +1257,6 @@ func DoCall(
 	defer evm.Release()
 	// Skip gas price checks for API runs.
 	evm.Config.NoBaseFee = true
-	lowerFeesForUnpricedCall(&evm.Context, msg)
 
 	// Wait for the context to be done and cancel the evm. Even if the
 	// EVM has finished, cancelling may be done (repeatedly)
@@ -1269,6 +1268,16 @@ func DoCall(
 	// Add sufficient gas to the pool.
 	gp := core.NewGasPool(math.MaxUint64)
 
+	// The fees are chosen for each message on its own, so that a previous
+	// transaction runs with the fees it would run with as a call of its own,
+	// whatever the pricing of the other messages.
+	applyMessage := func(message *core.Message) (*core.ExecutionResult, error) {
+		evm.Context.BaseFee = blockCtx.BaseFee
+		evm.Context.BlobBaseFee = blockCtx.BlobBaseFee
+		lowerFeesForUnpricedCall(&evm.Context, message)
+		return core.ApplyMessage(evm, message, gp)
+	}
+
 	// Apply previous transactions if required.
 	for i, arg := range preArgs {
 		preMsg, err := arg.ToMessage(globalGasCap, baseFee, log.Root())
@@ -1276,14 +1285,14 @@ func DoCall(
 			log.Warn("failed to convert previous transaction to message", "index", i, "err", err)
 			continue
 		}
-		if _, err := core.ApplyMessage(evm, preMsg, gp); err != nil {
+		if _, err := applyMessage(preMsg); err != nil {
 			log.Warn("failed to apply previous transaction", "index", i, "err", err)
 		}
 		state.EndTransaction()
 	}
 
 	// Execute the message.
-	result, err := core.ApplyMessage(evm, msg, gp)
+	result, err := applyMessage(msg)
 	if err := vmError(); err != nil {
 		return nil, err
 	}
