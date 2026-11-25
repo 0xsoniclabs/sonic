@@ -2705,7 +2705,6 @@ func (api *PublicDebugAPI) traceTx(
 	var (
 		tracer  *tracers.Tracer
 		err     error
-		timeout = defaultTraceTimeout
 		usedGas uint64
 	)
 	if config == nil {
@@ -2758,10 +2757,9 @@ func (api *PublicDebugAPI) traceTx(
 	defer vmenv.Release()
 
 	// Define a meaningful timeout of a single transaction trace
-	if config.Timeout != nil {
-		if timeout, err = time.ParseDuration(*config.Timeout); err != nil {
-			return nil, err
-		}
+	timeout, err := traceTimeout(config)
+	if err != nil {
+		return nil, err
 	}
 	deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
 	go func() {
@@ -3012,11 +3010,24 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 	}
 	defer statedb.Release()
 
-	var blockOverrides *BlockOverrides
+	var (
+		blockOverrides *BlockOverrides
+		traceConfig    *tracers.TraceConfig
+	)
 	if config != nil {
 		blockOverrides = config.BlockOverrides
+		traceConfig = &config.TraceConfig
 	}
 	blockCtx := overriddenBlockContext(ctx, api.b, &block.EvmHeader, blockOverrides)
+
+	// The trace's timeout also covers the system calls run before it, which
+	// state overrides can make run until their gas is used up.
+	timeout, err := traceTimeout(traceConfig)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	// Apply state overrides
 	if config != nil && config.StateOverrides != nil {
@@ -3035,12 +3046,16 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 		return nil, err
 	}
 
-	var traceConfig *tracers.TraceConfig
-	if config != nil {
-		traceConfig = &config.TraceConfig
-	}
-
 	return api.traceTx(ctx, tx, msg, new(tracers.Context), &block.EvmHeader, statedb, traceConfig, &blockCtx)
+}
+
+// traceTimeout returns the timeout of a single transaction trace: the one the
+// config gives, or defaultTraceTimeout. The config may be nil.
+func traceTimeout(config *tracers.TraceConfig) (time.Duration, error) {
+	if config == nil || config.Timeout == nil {
+		return defaultTraceTimeout, nil
+	}
+	return time.ParseDuration(*config.Timeout)
 }
 
 // getEvmBlockFromNumberOrHash returns EvmBlock from block number or block hash

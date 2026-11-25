@@ -17,10 +17,12 @@
 package tests
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -346,4 +348,43 @@ func TestBlockOverride_CallAsNextBlock_KnowsBaseBlockHash(t *testing.T) {
 
 func numberOverride(number uint64) *ethapi.BlockOverrides {
 	return &ethapi.BlockOverrides{Number: (*hexutil.Big)(new(big.Int).SetUint64(number))}
+}
+
+func TestBlockOverride_CallAsNextBlock_TraceTimeoutCoversHistorySystemCall(t *testing.T) {
+	session := getIntegrationTestNetSession(t, opera.GetCantoUpgrades())
+	t.Parallel()
+
+	client, err := session.GetClient()
+	req.NoError(t, err)
+	defer client.Close()
+
+	base, err := client.BlockByNumber(t.Context(), nil)
+	req.NoError(t, err)
+	baseNumber := base.NumberU64()
+
+	// The history contract is replaced by a loop calling the BLAKE2F
+	// precompile with 10,000 rounds, which takes seconds to use up the
+	// 30,000,000 gas of the system call that runs before the call:
+	//   PUSH4 10000, PUSH1 224, SHL, PUSH0, MSTORE       // rounds
+	//   loop: JUMPDEST, PUSH0, PUSH0, PUSH1 213, PUSH0, PUSH1 9, GAS,
+	//         STATICCALL, POP, PUSH1 loop, JUMP
+	slowHistory := hexutil.MustDecode("0x630000271060e01b5f525b5f5f60d55f60095afa50600a56")
+	stateOverrides := map[common.Address]map[string]any{
+		params.HistoryStorageAddress: {"code": hexutil.Bytes(slowHistory)},
+	}
+
+	start := time.Now()
+	var res json.RawMessage
+	err = client.Client().Call(&res, "debug_traceCall",
+		map[string]any{"to": common.Address{0x42}},
+		hexutil.EncodeUint64(baseNumber),
+		map[string]any{
+			"stateOverrides": stateOverrides,
+			"blockOverrides": numberOverride(baseNumber + 1),
+			"timeout":        "50ms",
+		})
+	elapsed := time.Since(start)
+
+	req.Error(t, err, "trace succeeded after %v", elapsed)
+	req.Less(t, elapsed, 2*time.Second)
 }

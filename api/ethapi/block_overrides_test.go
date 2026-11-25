@@ -519,3 +519,51 @@ func TestIsNextBlock(t *testing.T) {
 		})
 	}
 }
+
+func TestApplyNextBlockSystemCalls_StopsWhenTheContextEnds(t *testing.T) {
+	const baseNumber = 10
+	base := &evmcore.EvmHeader{Number: big.NewInt(baseNumber), Hash: common.Hash{0xab}}
+	blockCtx := &vm.BlockContext{
+		BlockNumber: big.NewInt(baseNumber + 1),
+		Random:      &common.Hash{}, // post-merge rules, needed for PUSH0
+		CanTransfer: evmcore.CanTransfer,
+		Transfer:    evmcore.Transfer,
+	}
+	// A history contract replaced by a loop reading storage:
+	// JUMPDEST, PUSH0, SLOAD, POP, PUSH0, JUMP. Without being stopped, it
+	// reads storage about 270,000 times before its gas runs out.
+	loop := []byte{0x5b, 0x5f, 0x54, 0x50, 0x5f, 0x56}
+
+	t.Run("ended before", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		// The state mock expects no call.
+		stateDb := state.NewMockStateDB(gomock.NewController(t))
+		backend := newSystemCallTestBackend(t, stateDb, opera.GetAllegroUpgrades())
+
+		err := applyNextBlockSystemCalls(ctx, backend, stateDb, base, blockCtx)
+		require.ErrorIs(t, err, context.Canceled)
+	})
+	t.Run("ends during", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		stateDb := state.NewMockStateDB(gomock.NewController(t))
+		stateDb.EXPECT().GetCode(params.HistoryStorageAddress).DoAndReturn(func(common.Address) []byte {
+			cancel()
+			return loop
+		}).AnyTimes()
+		stateDb.EXPECT().GetCodeHash(params.HistoryStorageAddress).Return(crypto.Keccak256Hash(loop)).AnyTimes()
+		reads := 0
+		stateDb.EXPECT().GetState(params.HistoryStorageAddress, gomock.Any()).DoAndReturn(func(common.Address, common.Hash) common.Hash {
+			reads++
+			return common.Hash{}
+		}).AnyTimes()
+		stateDb.EXPECT().RevertToSnapshot(gomock.Any()).AnyTimes()
+		expectHistoryContractCall(stateDb)
+		backend := newSystemCallTestBackend(t, stateDb, opera.GetAllegroUpgrades())
+
+		err := applyNextBlockSystemCalls(ctx, backend, stateDb, base, blockCtx)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Less(t, reads, 100_000, "storage reads after the context ended")
+	})
+}

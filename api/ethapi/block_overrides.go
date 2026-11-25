@@ -150,6 +150,10 @@ func linkBaseBlockHash(blockCtx *vm.BlockContext, base *evmcore.EvmHeader) {
 // base block. After Prague, this is the EIP-2935 call that stores the base
 // block's hash in the history contract, so that the contract agrees with
 // BLOCKHASH, as it would on chain. For any other block, it does nothing.
+//
+// The system calls stop when ctx ends, since state overrides can replace the
+// history contract with code that runs until the system call's gas is used
+// up. The error of ctx is then returned, and the call must not be made.
 func applyNextBlockSystemCalls(
 	ctx context.Context,
 	backend Backend,
@@ -165,13 +169,27 @@ func applyNextBlockSystemCalls(
 		return fmt.Errorf("failed to get vm config: %w", err)
 	}
 	vmConfig.NoBaseFee = true
+	// Only Geth's interpreter stops when the EVM is cancelled; the default
+	// one runs until its gas is used up.
+	if vmConfig.InterpreterForTracing != nil {
+		vmConfig.Interpreter = vmConfig.InterpreterForTracing
+	}
 	evm, _, err := backend.GetEVM(ctx, statedb, base, &vmConfig, blockCtx)
 	if err != nil {
 		return err
 	}
 	defer evm.Release()
-	if evm.ChainConfig().IsPrague(blockCtx.BlockNumber, blockCtx.Time) {
-		evmcore.ProcessParentBlockHash(base.Hash, evm, statedb)
+	if !evm.ChainConfig().IsPrague(blockCtx.BlockNumber, blockCtx.Time) {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("system calls of the next block not run: %w", err)
+	}
+	stop := context.AfterFunc(ctx, evm.Cancel)
+	evmcore.ProcessParentBlockHash(base.Hash, evm, statedb)
+	stop()
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("system calls of the next block aborted: %w", err)
 	}
 	return nil
 }
