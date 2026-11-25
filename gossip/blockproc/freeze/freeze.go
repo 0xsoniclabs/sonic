@@ -35,6 +35,8 @@ import (
 
 // Checker reports the freeze status of addresses.
 type Checker interface {
+	// IsEnabled reports whether the freeze applies at all.
+	IsEnabled() bool
 	// IsFrozen reports whether account is frozen.
 	IsFrozen(account common.Address) bool
 	// IsOptedOut reports whether token is opted out of the freeze: transfers
@@ -49,7 +51,8 @@ type StateReader interface {
 }
 
 // RegistryChecker is a Checker reading the registry's storage slots from a
-// state. System contracts are never frozen, whatever the registry says.
+// state. The zero address and system contracts are never frozen, whatever the
+// registry says.
 type RegistryChecker struct {
 	enabled bool // feature flag `AccountFreeze` is enabled
 	db      StateReader
@@ -61,9 +64,14 @@ func NewRegistryChecker(enabled bool, db StateReader) *RegistryChecker {
 	return &RegistryChecker{enabled: enabled, db: db}
 }
 
+// IsEnabled implements Checker.
+func (c *RegistryChecker) IsEnabled() bool {
+	return c.enabled
+}
+
 // IsFrozen implements Checker.
 func (c *RegistryChecker) IsFrozen(account common.Address) bool {
-	if !c.enabled || isSystemContract(account) {
+	if !c.enabled || account == (common.Address{}) || isSystemContract(account) {
 		return false
 	}
 	return c.db.GetState(registry.GetAddress(), registry.GetFrozenSlot(account)) != (common.Hash{})

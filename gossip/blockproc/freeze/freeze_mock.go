@@ -40,6 +40,20 @@ func (m *MockChecker) EXPECT() *MockCheckerMockRecorder {
 	return m.recorder
 }
 
+// IsEnabled mocks base method.
+func (m *MockChecker) IsEnabled() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsEnabled")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsEnabled indicates an expected call of IsEnabled.
+func (mr *MockCheckerMockRecorder) IsEnabled() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsEnabled", reflect.TypeOf((*MockChecker)(nil).IsEnabled))
+}
+
 // IsFrozen mocks base method.
 func (m *MockChecker) IsFrozen(account common.Address) bool {
 	m.ctrl.T.Helper()

@@ -756,16 +756,11 @@ func (e evm) _runTransaction(
 		return ProcessedTransaction{Transaction: tx}
 	}
 
-	if !internaltx.IsInternal(tx) && ctxt.freezeChecker.IsFrozen(msg.From) {
-		log.Debug("Transaction from frozen account skipped", "tx", tx.Hash().Hex(), "sender", msg.From)
-		return ProcessedTransaction{Transaction: tx}
-	}
-
 	e.Config.NoBaseFee = !checkBaseFee
 	ctxt.statedb.SetTxContext(tx.Hash(), txIndex, uint32(txIndex+1))
 	receipt, _, err := applyTransaction(
 		msg, ctxt.gasPool, ctxt.statedb, ctxt.blockNumber, tx,
-		ctxt.usedGas, e.EVM, ctxt.upgrades,
+		ctxt.usedGas, e.EVM, ctxt.upgrades, ctxt.freezeChecker,
 	)
 	if err != nil {
 		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
@@ -1006,6 +1001,7 @@ func applyTransaction(
 	usedGas *uint64,
 	evm *vm.EVM,
 	upgrades opera.Upgrades,
+	freezeChecker freeze.Checker,
 ) (
 	*types.Receipt,
 	uint64,
@@ -1029,7 +1025,7 @@ func applyTransaction(
 	}
 	gasPool := gp.Snapshot()
 	// Apply the transaction to the current state (included in the env).
-	result, err := core.ApplyMessage(evm, msg, gp)
+	result, err := freeze.ApplyMessage(evm, msg, gp, freezeChecker)
 	if err != nil {
 		if isAllegro {
 			statedb.RevertToSnapshot(snapshot)
