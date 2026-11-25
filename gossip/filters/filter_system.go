@@ -206,6 +206,14 @@ func (es *EventSystem) SubscribeLogs(crit ethereum.FilterQuery, logs chan []*typ
 	} else {
 		to = rpc.BlockNumber(crit.ToBlock.Int64())
 	}
+	// Delivery reads a negative bound as open, which is right for `earliest`
+	// as the lower bound only.
+	if to == rpc.EarliestBlockNumber {
+		return nil, errors.New("earliest is not supported as toBlock of a log filter")
+	}
+	if from == rpc.EarliestBlockNumber {
+		from = rpc.BlockNumber(es.backend.HistoryPruningCutoff())
+	}
 
 	// only interested in pending logs
 	if from == rpc.PendingBlockNumber && to == rpc.PendingBlockNumber {

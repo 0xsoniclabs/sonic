@@ -369,6 +369,12 @@ func TestLogFilterCreation(t *testing.T) {
 			{FilterCriteria{FromBlock: big.NewInt(1), ToBlock: big.NewInt(rpc.LatestBlockNumber.Int64())}, true},
 			// new mined and pending blocks
 			{FilterCriteria{FromBlock: big.NewInt(rpc.LatestBlockNumber.Int64()), ToBlock: big.NewInt(rpc.PendingBlockNumber.Int64())}, true},
+			// earliest to new mined blocks
+			{FilterCriteria{FromBlock: big.NewInt(rpc.EarliestBlockNumber.Int64())}, true},
+			// earliest as toBlock is refused
+			{FilterCriteria{FromBlock: big.NewInt(rpc.EarliestBlockNumber.Int64()), ToBlock: big.NewInt(rpc.EarliestBlockNumber.Int64())}, false},
+			// earliest to a block number
+			{FilterCriteria{FromBlock: big.NewInt(rpc.EarliestBlockNumber.Int64()), ToBlock: big.NewInt(2)}, true},
 			// from block "higher" than to block
 			{FilterCriteria{FromBlock: big.NewInt(2), ToBlock: big.NewInt(1)}, false},
 			// from block "higher" than to block
@@ -486,6 +492,8 @@ func TestLogFilter(t *testing.T) {
 			8: {FilterCriteria{FromBlock: big.NewInt(1), ToBlock: big.NewInt(2), Topics: [][]common.Hash{{secondTopic}}}, allLogs[3:4], ""},
 			// match all logs due to wildcard topic
 			9: {FilterCriteria{Topics: [][]common.Hash{nil}}, allLogs[1:], ""},
+			// all logs from the pruning cutoff block (0)
+			10: {FilterCriteria{FromBlock: big.NewInt(rpc.EarliestBlockNumber.Int64())}, allLogs, ""},
 		}
 	)
 
@@ -540,4 +548,8 @@ func TestLogFilter(t *testing.T) {
 			}
 		}
 	}
+}
+
+func (b *testBackend) HistoryPruningCutoff() uint64 {
+	return 0
 }

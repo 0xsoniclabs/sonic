@@ -46,6 +46,7 @@ type Backend interface {
 	GetLogs(ctx context.Context, blockHash common.Hash) ([][]*types.Log, error)
 	GetTxPosition(txid common.Hash) *evmstore.TxPosition
 	ChainID() *big.Int
+	HistoryPruningCutoff() uint64
 
 	SubscribeNewBlockNotify(ch chan<- evmcore.ChainHeadNotify) notify.Subscription
 	SubscribeNewTxsNotify(chan<- evmcore.NewTxsNotify) notify.Subscription
@@ -162,16 +163,10 @@ func (f *Filter) fetchLogsFromBlockRange(ctx context.Context, logs []*types.Log)
 	}
 	head := idx.Block(header.Number.Uint64())
 
-	begin := idx.Block(f.begin)
-	if f.begin < 0 {
-		begin = head
-	}
+	begin := f.resolveBound(f.begin, head)
 	// The log index is written before the head advances; blocks beyond it are
 	// not published yet.
-	end := idx.Block(f.end)
-	if f.end < 0 || end > head {
-		end = head
-	}
+	end := min(f.resolveBound(f.end, head), head)
 	if begin > end {
 		return nil, nil
 	}
@@ -180,6 +175,19 @@ func (f *Filter) fetchLogsFromBlockRange(ctx context.Context, logs []*types.Log)
 		return f.unindexedLogs(ctx, begin, end)
 	} else {
 		return f.indexedLogs(ctx, begin, end)
+	}
+}
+
+// resolveBound maps a range bound to a block number: `earliest` is the history
+// pruning cutoff, every other tag is the head.
+func (f *Filter) resolveBound(bound int64, head idx.Block) idx.Block {
+	switch {
+	case bound == rpc.EarliestBlockNumber.Int64():
+		return idx.Block(f.backend.HistoryPruningCutoff())
+	case bound < 0:
+		return head
+	default:
+		return idx.Block(bound)
 	}
 }
 

@@ -326,3 +326,14 @@ func TestReturnLogs_NormalizesNilWithoutModifyingInput(t *testing.T) {
 	require.Nil(t, withoutTopics.Topics, "shared log must not be modified")
 	require.Same(t, withoutTopics, input[1], "input slice must not be modified")
 }
+
+func TestUnmarshalJSONNewFilterArgs_EarliestIsTheEarliestBlockNumber(t *testing.T) {
+	var crit FilterCriteria
+	if err := json.Unmarshal([]byte(`{"fromBlock":"earliest","toBlock":"earliest"}`), &crit); err != nil {
+		t.Fatal(err)
+	}
+	want := rpc.EarliestBlockNumber.Int64()
+	if crit.FromBlock.Int64() != want || crit.ToBlock.Int64() != want {
+		t.Fatalf("expected %d to %d, got %d to %d", want, want, crit.FromBlock, crit.ToBlock)
+	}
+}

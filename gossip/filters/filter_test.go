@@ -792,3 +792,49 @@ func TestFilter_Logs_RangeIsClampedToHead(t *testing.T) {
 	_, err = filter.Logs(t.Context())
 	require.NoError(t, err)
 }
+
+func TestFilter_Logs_ResolvesRangeBounds(t *testing.T) {
+	const cutoff, head = 3, 10
+	earliest := rpc.EarliestBlockNumber.Int64()
+	tests := map[string]struct {
+		begin, end         int64
+		wantBegin, wantEnd idx.Block
+	}{
+		"earliest to latest":   {earliest, rpc.LatestBlockNumber.Int64(), cutoff, head},
+		"earliest to earliest": {earliest, earliest, cutoff, cutoff},
+		"earliest to number":   {earliest, 7, cutoff, 7},
+		"pending to pending":   {rpc.PendingBlockNumber.Int64(), rpc.PendingBlockNumber.Int64(), head, head},
+		"safe to finalized":    {rpc.SafeBlockNumber.Int64(), rpc.FinalizedBlockNumber.Int64(), head, head},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			backend := NewMockBackend(ctrl)
+			index := topicsdb.NewMockIndex(ctrl)
+
+			backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.LatestBlockNumber).Return(&evmcore.EvmHeader{Number: big.NewInt(head)}, nil)
+			backend.EXPECT().HistoryPruningCutoff().Return(uint64(cutoff)).AnyTimes()
+			backend.EXPECT().EvmLogIndex().Return(index)
+			index.EXPECT().FindInBlocks(gomock.Any(), test.wantBegin, test.wantEnd, gomock.Any(), gomock.Any()).Return(nil, nil)
+
+			filter, err := NewRangeFilter(backend, testConfig(), test.begin, test.end, []common.Address{{0x42}}, nil, 0)
+			require.NoError(t, err)
+			_, err = filter.Logs(t.Context())
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestFilter_Logs_UnindexedRangeFromEarliestMeetsRangeLimit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+	backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.LatestBlockNumber).Return(&evmcore.EvmHeader{Number: big.NewInt(10)}, nil)
+	backend.EXPECT().HistoryPruningCutoff().Return(uint64(0))
+
+	config := testConfig()
+	config.UnindexedLogsBlockRangeLimit = 5
+	filter, err := NewRangeFilter(backend, config, rpc.EarliestBlockNumber.Int64(), rpc.LatestBlockNumber.Int64(), nil, nil, 0)
+	require.NoError(t, err)
+	_, err = filter.Logs(t.Context())
+	require.ErrorContains(t, err, "too wide blocks range, the limit is 5")
+}
