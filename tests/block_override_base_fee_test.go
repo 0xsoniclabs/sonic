@@ -232,6 +232,12 @@ func TestBlockOverride_BaseFeeDeterminesGasPrice(t *testing.T) {
 						overrides = &ethapi.BlockOverrides{BaseFee: toHexBig(test.baseFee)}
 						wantBaseFee = test.baseFee
 					}
+					// A call that names no gas price runs with a base fee of
+					// zero, as in go-ethereum. eth_simulateV1 keeps the base
+					// fee of its simulated block.
+					if test.wantGasPrice != nil && test.wantGasPrice.Sign() == 0 && methodName != "eth_simulateV1" {
+						wantBaseFee = big0
+					}
 
 					wantErr := test.wantErr
 					if methodName == "eth_estimateGas" && test.wantEstimateErr != "" {
