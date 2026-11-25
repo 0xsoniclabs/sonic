@@ -1229,8 +1229,19 @@ func DoCall(
 	// this makes sure resources are cleaned up.
 	defer cancel()
 
+	// The gas price of the call follows the base fee the EVM runs with, so
+	// that an overridden base fee is respected as on chain.
+	baseFee := block.BaseFee
+	var blockCtx *vm.BlockContext
+	if blockOverrides != nil {
+		bctx := GetBlockContext(ctx, b, block.Header())
+		blockOverrides.apply(&bctx)
+		blockCtx = &bctx
+		baseFee = bctx.BaseFee
+	}
+
 	// Get a new instance of the EVM.
-	msg, err := args.ToMessage(globalGasCap, block.BaseFee, log.Root())
+	msg, err := args.ToMessage(globalGasCap, baseFee, log.Root())
 	if err != nil {
 		return nil, err
 	}
@@ -1239,12 +1250,6 @@ func DoCall(
 		return nil, err
 	}
 
-	var blockCtx *vm.BlockContext
-	if blockOverrides != nil {
-		bctx := GetBlockContext(ctx, b, block.Header())
-		blockOverrides.apply(&bctx)
-		blockCtx = &bctx
-	}
 	evm, vmError, err := b.GetEVM(ctx, state, block.Header(), &vmConfig, blockCtx)
 	if err != nil {
 		return nil, err
@@ -1264,7 +1269,7 @@ func DoCall(
 
 	// Apply previous transactions if required.
 	for i, arg := range preArgs {
-		preMsg, err := arg.ToMessage(globalGasCap, block.BaseFee, log.Root())
+		preMsg, err := arg.ToMessage(globalGasCap, baseFee, log.Root())
 		if err != nil {
 			log.Warn("failed to convert previous transaction to message", "index", i, "err", err)
 			continue
@@ -3016,7 +3021,9 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 		}
 	}
 
-	tx, msg, err := getTxAndMessage(&args, block, api.b)
+	// The gas price of the call follows the base fee the EVM runs with, so
+	// that an overridden base fee is respected as on chain.
+	tx, msg, err := getTxAndMessage(&args, blockCtx.BaseFee, api.b)
 	if err != nil {
 		return nil, err
 	}
@@ -3055,9 +3062,10 @@ func getEvmBlockFromNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNum
 	return block, nil
 }
 
-// getTxAndMessage returns transaction and message constructed from transaction arguments
-func getTxAndMessage(args *TransactionArgs, block *evmcore.EvmBlock, b Backend) (*types.Transaction, *core.Message, error) {
-	msg, err := args.ToMessage(b.RPCGasCap(), block.BaseFee, log.Root())
+// getTxAndMessage returns transaction and message constructed from transaction
+// arguments, priced for a block with the given base fee.
+func getTxAndMessage(args *TransactionArgs, baseFee *big.Int, b Backend) (*types.Transaction, *core.Message, error) {
+	msg, err := args.ToMessage(b.RPCGasCap(), baseFee, log.Root())
 	if err != nil {
 		return nil, nil, err
 	}
