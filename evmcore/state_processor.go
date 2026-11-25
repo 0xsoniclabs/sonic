@@ -756,7 +756,7 @@ func (e evm) _runTransaction(
 		return ProcessedTransaction{Transaction: tx}
 	}
 
-	if ctxt.upgrades.AccountFreeze && !internaltx.IsInternal(tx) && ctxt.freezeChecker.IsFrozen(msg.From) {
+	if !internaltx.IsInternal(tx) && ctxt.freezeChecker.IsFrozen(msg.From) {
 		log.Debug("Transaction from frozen account skipped", "tx", tx.Hash().Hex(), "sender", msg.From)
 		return ProcessedTransaction{Transaction: tx}
 	}
@@ -816,7 +816,7 @@ func NewTransactionProcessorForBlock(
 		rules.Upgrades,
 		nil,
 	)
-	return stateProcessor.BeginBlock(block, state, freeze.NewRegistryChecker(state), vmConfig, gasLimit)
+	return stateProcessor.BeginBlock(block, state, freeze.NewRegistryChecker(rules.Upgrades.AccountFreeze, state), vmConfig, gasLimit)
 }
 
 // BeginBlock starts the processing of a new block and returns a function to

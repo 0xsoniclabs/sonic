@@ -148,6 +148,24 @@ func TestEVMModule_Start_HandsReplayModeAndInterpreterFactoryToProcessor(t *test
 	}
 }
 
+func TestEVMModule_Start_GatesFreezeCheckerOnAccountFreeze(t *testing.T) {
+	tests := map[string]struct {
+		accountFreeze bool
+	}{
+		"disabled": {accountFreeze: false},
+		"enabled":  {accountFreeze: true},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			stateDb := state.NewMockStateDB(gomock.NewController(t))
+			stateDb.EXPECT().BeginBlock(gomock.Any())
+			rules := opera.Rules{Upgrades: opera.Upgrades{AccountFreeze: test.accountFreeze}}
+			processor := New().Start(0, 0, 0, stateDb, nil, nil, rules, &params.ChainConfig{}, common.Hash{}, nil).(*OperaEVMProcessor)
+			require.Equal(t, freeze.NewRegistryChecker(test.accountFreeze, stateDb), processor.freezeChecker)
+		})
+	}
+}
+
 func TestOperaEVMProcessor_Execute_SelectsStateProcessorByReplayMode(t *testing.T) {
 	evmCfg := &params.ChainConfig{}
 	upgrades := opera.Upgrades{Brio: true}
@@ -540,7 +558,6 @@ func TestOperaEVMProcessor_Execute_ForwardsOneFreezeCheckerOfStartToAllCalls(t *
 	processor := New().Start(0, 0, 0, stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{}, nil).(*OperaEVMProcessor)
 	processor.processorFactory = factory
 	checker := processor.freezeChecker
-	require.Equal(t, freeze.NewRegistryChecker(stateDb), checker)
 
 	same := gomock.Cond(func(c freeze.Checker) bool { return c == checker })
 	factory.EXPECT().NewStateProcessorForHeadState(any, any, any, any).Return(stateProcessor).Times(2)

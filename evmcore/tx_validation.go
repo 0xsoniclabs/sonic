@@ -66,7 +66,6 @@ type NetworkRules struct {
 	brio               bool // Indicator whether Brio revision is active
 	gasSubsidies       bool // Indicator whether gas subsidies are active.
 	transactionBundles bool // Indicator whether transaction bundles are active.
-	accountFreeze      bool // Indicator whether the account freeze is active.
 }
 
 // Signer wraps types.Signer to allow mocking it in tests.
@@ -416,13 +415,9 @@ func ValidateTxForState(tx *types.Transaction, state state.StateDB, signer types
 // freeze registry, which the block processor would skip.
 func validateTxForFreeze(
 	tx *types.Transaction,
-	netRules NetworkRules,
 	checker freeze.Checker,
 	signer types.Signer,
 ) error {
-	if !netRules.accountFreeze {
-		return nil
-	}
 	from, err := types.Sender(signer, tx)
 	if err != nil {
 		return ErrInvalidSender

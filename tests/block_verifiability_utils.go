@@ -375,7 +375,7 @@ func (s *State) ApplyBlock(
 	processed := processor.Process(
 		evmBlock,
 		stateDb,
-		freeze.NewRegistryChecker(stateDb),
+		freeze.NewRegistryChecker(rules.Upgrades.AccountFreeze, stateDb),
 		vmConfig,
 		gasLimit,
 		&usedGas,

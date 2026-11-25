@@ -138,7 +138,7 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 			gasLimit := uint64(blockGasLimit)
 			usedGas := new(uint64)
 
-			summary := process(block, state, nil, vmConfig, gasLimit, usedGas, 0, onLog, math.MaxUint64)
+			summary := process(block, state, freeze.NewRegistryChecker(false, nil), vmConfig, gasLimit, usedGas, 0, onLog, math.MaxUint64)
 			processed := summary.ProcessedTransactions
 
 			// Receipts should be set accordingly.
@@ -243,7 +243,7 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 			gasLimit := uint64(math.MaxUint64)
 			usedGas := new(uint64)
 
-			summary := process(block, state, nil, vmConfig, gasLimit, usedGas, 0, nil, math.MaxUint64)
+			summary := process(block, state, freeze.NewRegistryChecker(false, nil), vmConfig, gasLimit, usedGas, 0, nil, math.MaxUint64)
 			processed := summary.ProcessedTransactions
 
 			require.Len(processed, len(transactions))
@@ -318,7 +318,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 				vmConfig := vm.Config{}
 				gasLimit := uint64(math.MaxUint64)
 				usedGas := new(uint64)
-				processed := process(block, state, nil, vmConfig, gasLimit, usedGas, 0, nil, math.MaxUint64).ProcessedTransactions
+				processed := process(block, state, freeze.NewRegistryChecker(false, nil), vmConfig, gasLimit, usedGas, 0, nil, math.MaxUint64).ProcessedTransactions
 				require.Empty(processed)
 			})
 		}
@@ -377,7 +377,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	// Process the block
 	gasLimit := uint64(math.MaxUint64)
 	usedGas := new(uint64)
-	processed := processor.Process(block, state, nil, vm.Config{}, gasLimit, usedGas, 0, nil, math.MaxUint64).ProcessedTransactions
+	processed := processor.Process(block, state, freeze.NewRegistryChecker(false, nil), vm.Config{}, gasLimit, usedGas, 0, nil, math.MaxUint64).ProcessedTransactions
 
 	require.Len(t, processed, 2)
 	require.Equal(t, processed[0].Transaction, block.Transactions[0])
@@ -422,7 +422,7 @@ func TestProcess_OversizedInitCodeTakesGasFromThePoolBeforeCanto(t *testing.T) {
 
 			// The pool only holds the creation's gas limit, so the call fits only if
 			// the skipped creation did not take it.
-			processed := processor.Process(block, state, nil, vmConfig, creationGas, new(uint64), 0, nil, math.MaxUint64).ProcessedTransactions
+			processed := processor.Process(block, state, freeze.NewRegistryChecker(false, nil), vmConfig, creationGas, new(uint64), 0, nil, math.MaxUint64).ProcessedTransactions
 			require.Len(processed, 2)
 			require.Nil(processed[0].Receipt)
 			require.Equal(test.callIncluded, processed[1].Receipt != nil)
@@ -500,7 +500,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 					require := require.New(t)
 					usedGas := uint64(1_000_000)
 					gasLimit := test.gasLimit
-					processed := process(block, state, nil, vmConfig, gasLimit, &usedGas, 0, nil, math.MaxUint64).ProcessedTransactions
+					processed := process(block, state, freeze.NewRegistryChecker(false, nil), vmConfig, gasLimit, &usedGas, 0, nil, math.MaxUint64).ProcessedTransactions
 					require.Len(processed, 3)
 
 					for i, tx := range transactions {
@@ -526,7 +526,7 @@ func TestProcess_UsesDifficultyOfOne(t *testing.T) {
 	state, block := createScenarioWithTxCheckingDifficulty(ctrl, big.NewInt(1))
 
 	// Check that the difficulty of 1 is used.
-	results := processor.Process(block, state, nil, vm.Config{}, math.MaxUint64, new(uint64), 0, nil, math.MaxUint64).ProcessedTransactions
+	results := processor.Process(block, state, freeze.NewRegistryChecker(false, nil), vm.Config{}, math.MaxUint64, new(uint64), 0, nil, math.MaxUint64).ProcessedTransactions
 	require.Len(t, results, 1)
 	require.NotNil(t, results[0].Receipt)
 	require.Equal(t, types.ReceiptStatusSuccessful, results[0].Receipt.Status)
@@ -534,7 +534,7 @@ func TestProcess_UsesDifficultyOfOne(t *testing.T) {
 	// Check that an unexpected difficulty causes a revert.
 	wrongDifficulty := big.NewInt(2)
 	state, block = createScenarioWithTxCheckingDifficulty(ctrl, wrongDifficulty)
-	results = processor.Process(block, state, nil, vm.Config{}, math.MaxUint64, new(uint64), 0, nil, math.MaxUint64).ProcessedTransactions
+	results = processor.Process(block, state, freeze.NewRegistryChecker(false, nil), vm.Config{}, math.MaxUint64, new(uint64), 0, nil, math.MaxUint64).ProcessedTransactions
 	require.Len(t, results, 1)
 	require.NotNil(t, results[0].Receipt)
 	require.Equal(t, types.ReceiptStatusFailed, results[0].Receipt.Status)
@@ -546,7 +546,7 @@ func TestProcess_SkipsSendersFrozenByGivenChecker(t *testing.T) {
 	require.NoError(t, err)
 	tx := types.MustSignNewTx(key, types.LatestSignerForChainID(nil), &types.LegacyTx{To: &common.Address{1}, Gas: 21_000})
 	block := &EvmBlock{EvmHeader: EvmHeader{Number: big.NewInt(1)}, Transactions: types.Transactions{tx}}
-	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{AccountFreeze: true}, nil)
+	processor := NewStateProcessorForHeadState(&params.ChainConfig{}, nil, opera.Upgrades{}, nil)
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -573,7 +573,7 @@ func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 
 			state, block := createScenarioWithTxCheckingDifficulty(ctrl, difficulty)
 			results := processor.ProcessWithDifficulty(
-				block, state, nil, vm.Config{}, math.MaxUint64,
+				block, state, freeze.NewRegistryChecker(false, nil), vm.Config{}, math.MaxUint64,
 				new(uint64), 0, nil, difficulty, math.MaxUint64,
 			).ProcessedTransactions
 			require.Len(t, results, 1)
@@ -717,7 +717,7 @@ func TestProcessWithDifficulty_onNewLog_CollectsLogsAccordingToLogsProduced(t *t
 			summary := processor.ProcessWithDifficulty(
 				block,
 				stateDb,
-				nil,
+				freeze.NewRegistryChecker(false, nil),
 				vm.Config{},
 				math.MaxUint64,
 				new(uint64),
@@ -791,7 +791,7 @@ func TestProcessWithDifficulty_onNewLog_ReportsLogsInOrder(t *testing.T) {
 	summary := processor.ProcessWithDifficulty(
 		block,
 		stateDb,
-		nil,
+		freeze.NewRegistryChecker(false, nil),
 		vm.Config{},
 		math.MaxUint64,
 		new(uint64),
@@ -844,7 +844,7 @@ func TestProcessWithDifficulty_onNewLog_SkipsCallbackWhenNil(t *testing.T) {
 		summary := processor.ProcessWithDifficulty(
 			block,
 			stateDb,
-			nil,
+			freeze.NewRegistryChecker(false, nil),
 			vm.Config{},
 			math.MaxUint64,
 			new(uint64),
@@ -924,7 +924,7 @@ func TestProcessWithDifficulty_onNewLog_DoesNotLogRolledBackTransactions(t *test
 	summary := processor.ProcessWithDifficulty(
 		block,
 		stateDb,
-		nil,
+		freeze.NewRegistryChecker(false, nil),
 		vm.Config{},
 		math.MaxUint64,
 		new(uint64),
@@ -1027,7 +1027,7 @@ func TestProcessWithDifficulty_ForwardsTimeToBundleProcessing(t *testing.T) {
 	}
 
 	summary := processor.ProcessWithDifficulty(
-		block, stateDb, nil, vm.Config{}, math.MaxUint64,
+		block, stateDb, freeze.NewRegistryChecker(false, nil), vm.Config{}, math.MaxUint64,
 		new(uint64), 0, nil, big.NewInt(1), math.MaxUint64,
 	)
 
@@ -1093,7 +1093,7 @@ func TestProcess_ForwardsCorrectIndexToTransactionProcessor(t *testing.T) {
 			}
 
 			// run the block on the processor with the desired initial offset
-			processor.Process(block, state, nil, vm.Config{}, math.MaxUint64, new(uint64), offset, nil, math.MaxUint64)
+			processor.Process(block, state, freeze.NewRegistryChecker(false, nil), vm.Config{}, math.MaxUint64, new(uint64), offset, nil, math.MaxUint64)
 		})
 	}
 }
@@ -3086,13 +3086,14 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	gasPool := core.NewGasPool(1_000_000)
 	usedGas := new(uint64)
 	context := &runContext{
-		signer:   signer,
-		baseFee:  baseFee,
-		statedb:  state,
-		gasPool:  gasPool,
-		usedGas:  usedGas,
-		runner:   runner,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		signer:        signer,
+		baseFee:       baseFee,
+		statedb:       state,
+		gasPool:       gasPool,
+		usedGas:       usedGas,
+		runner:        runner,
+		upgrades:      opera.Upgrades{GasSubsidies: true},
+		freezeChecker: freeze.NewRegistryChecker(false, state),
 	}
 
 	// --- start of actual test ---
@@ -3667,13 +3668,14 @@ func TestRunRegularTransaction_InternalTransactions_SkipsTransactionChecksTrue(t
 	gasPool := core.NewGasPool(maxTxGas * 3)
 	usedGas := new(uint64)
 	context := &runContext{
-		signer:   types.LatestSignerForChainID(nil),
-		baseFee:  baseFee,
-		statedb:  state,
-		gasPool:  gasPool,
-		usedGas:  usedGas,
-		runner:   runner,
-		upgrades: opera.Upgrades{Brio: true},
+		signer:        types.LatestSignerForChainID(nil),
+		baseFee:       baseFee,
+		statedb:       state,
+		gasPool:       gasPool,
+		usedGas:       usedGas,
+		runner:        runner,
+		upgrades:      opera.Upgrades{Brio: true},
+		freezeChecker: freeze.NewRegistryChecker(false, state),
 	}
 
 	// -- end of setup --
@@ -3793,13 +3795,14 @@ func TestRunRegularTransaction_RegularTransaction(t *testing.T) {
 			gasPool := core.NewGasPool(maxTxGas * 3)
 			usedGas := new(uint64)
 			context := &runContext{
-				signer:   types.LatestSignerForChainID(nil),
-				baseFee:  baseFee,
-				statedb:  state,
-				gasPool:  gasPool,
-				usedGas:  usedGas,
-				runner:   runner,
-				upgrades: opera.Upgrades{Brio: true},
+				signer:        types.LatestSignerForChainID(nil),
+				baseFee:       baseFee,
+				statedb:       state,
+				gasPool:       gasPool,
+				usedGas:       usedGas,
+				runner:        runner,
+				upgrades:      opera.Upgrades{Brio: true},
+				freezeChecker: freeze.NewRegistryChecker(false, state),
 			}
 
 			// -- end of setup --
@@ -3875,15 +3878,13 @@ func TestEvm_RunTransaction_AccountFreeze_SkipsTransactionsOfFrozenSenders(t *te
 	require.True(t, internaltx.IsInternal(internalTx))
 
 	tests := map[string]struct {
-		accountFreeze bool
-		tx            *types.Transaction
-		checked       bool
-		skipped       bool
+		tx      *types.Transaction
+		checked bool
+		skipped bool
 	}{
-		"enabled, frozen sender":   {true, regularTx, true, true},
-		"enabled, unfrozen sender": {true, regularTx, true, false},
-		"enabled, internal sender": {true, internalTx, false, false},
-		"disabled":                 {false, regularTx, false, false},
+		"frozen sender":   {regularTx, true, true},
+		"unfrozen sender": {regularTx, true, false},
+		"internal sender": {internalTx, false, false},
 	}
 
 	entryPoints := map[string]func(evm, *runContext, *types.Transaction, int) ProcessedTransaction{
@@ -3939,7 +3940,6 @@ func TestEvm_RunTransaction_AccountFreeze_SkipsTransactionsOfFrozenSenders(t *te
 					statedb:       state,
 					gasPool:       core.NewGasPool(1_000_000),
 					usedGas:       new(uint64),
-					upgrades:      opera.Upgrades{AccountFreeze: test.accountFreeze},
 					freezeChecker: checker,
 				}
 
@@ -4811,44 +4811,55 @@ func collectAllReferencedTransactionNonces(
 }
 
 func TestNewTransactionProcessorForBlock_ConfiguresTransactionProcessorWithValuesFromParameters(t *testing.T) {
-	require := require.New(t)
-	ctrl := gomock.NewController(t)
-
-	block := &EvmBlock{
-		EvmHeader: EvmHeader{
-			Number: big.NewInt(123),
-		},
+	tests := map[string]struct {
+		accountFreeze bool
+	}{
+		"account freeze disabled": {accountFreeze: false},
+		"account freeze enabled":  {accountFreeze: true},
 	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			ctrl := gomock.NewController(t)
 
-	chainCfg := &params.ChainConfig{
-		ChainID: big.NewInt(456),
+			block := &EvmBlock{
+				EvmHeader: EvmHeader{
+					Number: big.NewInt(123),
+				},
+			}
+
+			chainCfg := &params.ChainConfig{
+				ChainID: big.NewInt(456),
+			}
+			currentRules := opera.Rules{
+				Name: "unit-test-net",
+				Upgrades: opera.Upgrades{
+					Berlin:        true,
+					Brio:          true,
+					AccountFreeze: test.accountFreeze,
+				},
+			}
+
+			chain := NewMockChainState(ctrl)
+			chain.EXPECT().GetCurrentChainConfig().Return(chainCfg)
+			chain.EXPECT().GetCurrentNetworkRules().Return(currentRules).AnyTimes()
+
+			state := state.NewMockStateDB(ctrl)
+
+			processor := NewTransactionProcessorForBlock(chain, state, block)
+
+			require.Equal(block.Number, processor.blockNumber)
+			require.NotNil(processor.gp)
+			require.Equal(uint64(math.MaxUint64), processor.gp.Available(false, params.MaxTxGas))
+			require.Equal(block.Header(), processor.header)
+			require.Equal(types.LatestSignerForChainID(chainCfg.ChainID), processor.signer)
+			require.Equal(state, processor.stateDb)
+			require.EqualValues(0, processor.usedGas)
+			require.NotNil(processor.vmEnvironment)
+			require.Equal(currentRules.Upgrades, processor.upgrades)
+			require.Equal(freeze.NewRegistryChecker(currentRules.Upgrades.AccountFreeze, state), processor.freezeChecker)
+		})
 	}
-	currentRules := opera.Rules{
-		Name: "unit-test-net",
-		Upgrades: opera.Upgrades{
-			Berlin: true,
-			Brio:   true,
-		},
-	}
-
-	chain := NewMockChainState(ctrl)
-	chain.EXPECT().GetCurrentChainConfig().Return(chainCfg)
-	chain.EXPECT().GetCurrentNetworkRules().Return(currentRules).AnyTimes()
-
-	state := state.NewMockStateDB(ctrl)
-
-	processor := NewTransactionProcessorForBlock(chain, state, block)
-
-	require.Equal(block.Number, processor.blockNumber)
-	require.NotNil(processor.gp)
-	require.Equal(uint64(math.MaxUint64), processor.gp.Available(false, params.MaxTxGas))
-	require.Equal(block.Header(), processor.header)
-	require.Equal(types.LatestSignerForChainID(chainCfg.ChainID), processor.signer)
-	require.Equal(state, processor.stateDb)
-	require.EqualValues(0, processor.usedGas)
-	require.NotNil(processor.vmEnvironment)
-	require.Equal(currentRules.Upgrades, processor.upgrades)
-	require.Equal(freeze.NewRegistryChecker(state), processor.freezeChecker)
 }
 
 func TestTransactionProcessor_Release_CanBeCalledRepeatedly(t *testing.T) {

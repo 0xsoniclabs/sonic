@@ -51,17 +51,19 @@ type StateReader interface {
 // RegistryChecker is a Checker reading the registry's storage slots from a
 // state. System contracts are never frozen, whatever the registry says.
 type RegistryChecker struct {
-	db StateReader
+	enabled bool
+	db      StateReader
 }
 
-// NewRegistryChecker creates a RegistryChecker reading the registry from db.
-func NewRegistryChecker(db StateReader) *RegistryChecker {
-	return &RegistryChecker{db: db}
+// NewRegistryChecker creates a RegistryChecker reading the registry from db,
+// reporting nothing as frozen or opted out unless enabled.
+func NewRegistryChecker(enabled bool, db StateReader) *RegistryChecker {
+	return &RegistryChecker{enabled: enabled, db: db}
 }
 
 // IsFrozen implements Checker.
 func (c *RegistryChecker) IsFrozen(account common.Address) bool {
-	if isSystemContract(account) {
+	if !c.enabled || isSystemContract(account) {
 		return false
 	}
 	return c.db.GetState(registry.GetAddress(), registry.GetFrozenSlot(account)) != (common.Hash{})
@@ -69,6 +71,9 @@ func (c *RegistryChecker) IsFrozen(account common.Address) bool {
 
 // IsOptedOut implements Checker.
 func (c *RegistryChecker) IsOptedOut(token common.Address) bool {
+	if !c.enabled {
+		return false
+	}
 	return c.db.GetState(registry.GetAddress(), registry.GetOptedOutSlot(token)) != (common.Hash{})
 }
 
