@@ -18,8 +18,12 @@ package ethapi
 
 import (
 	"context"
+	"fmt"
+	"math/big"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -101,4 +105,102 @@ func (context *chainContext) Header(hash common.Hash, number uint64) *evmcore.Ev
 		return nil
 	}
 	return header
+}
+
+// overriddenBlockContext returns the block context for a call made on the
+// state of the base block, with the given block overrides applied. Overrides
+// may be nil.
+//
+// If the overrides make the call run as the block directly following the base
+// block, the base block becomes the parent of the call's block, so BLOCKHASH
+// returns the base block's hash, as it would on chain. For any other number,
+// the hash lookup stays relative to the base block.
+func overriddenBlockContext(
+	ctx context.Context,
+	backend Backend,
+	base *evmcore.EvmHeader,
+	overrides *BlockOverrides,
+) vm.BlockContext {
+	blockCtx := GetBlockContext(ctx, backend, base)
+	overrides.apply(&blockCtx)
+	limitHashLookup(&blockCtx, base, isNextBlock(&blockCtx, base))
+	return blockCtx
+}
+
+// limitHashLookup makes BLOCKHASH resolve only the ancestors of the base
+// block and, if linkBase is set, the base block itself. Later numbers, which an
+// overridden block number can ask for, are unknown; without this, their lookup
+// would walk back to genesis.
+func limitHashLookup(blockCtx *vm.BlockContext, base *evmcore.EvmHeader, linkBase bool) {
+	baseNumber := base.Number.Uint64()
+	baseHash := base.Hash
+	ancestors := blockCtx.GetHash
+	blockCtx.GetHash = func(n uint64) common.Hash {
+		switch {
+		case n < baseNumber:
+			return ancestors(n)
+		case n == baseNumber && linkBase:
+			return baseHash
+		}
+		return common.Hash{}
+	}
+}
+
+// applyNextBlockSystemCalls runs on the given state the system calls that
+// start the block described by blockCtx, if that block directly follows the
+// base block. After Prague, this is the EIP-2935 call that stores the base
+// block's hash in the history contract, so that the contract agrees with
+// BLOCKHASH, as it would on chain. For any other block, it does nothing.
+//
+// The system calls stop when ctx ends, since state overrides can replace the
+// history contract with code that runs until the system call's gas is used
+// up. The error of ctx is then returned, and the call must not be made.
+func applyNextBlockSystemCalls(
+	ctx context.Context,
+	backend Backend,
+	statedb state.StateDB,
+	base *evmcore.EvmHeader,
+	blockCtx *vm.BlockContext,
+) error {
+	if !isNextBlock(blockCtx, base) {
+		return nil
+	}
+	vmConfig, err := GetVmConfig(ctx, backend, idx.Block(base.Number.Uint64()))
+	if err != nil {
+		return fmt.Errorf("failed to get vm config: %w", err)
+	}
+	vmConfig.NoBaseFee = true
+	// Only Geth's interpreter stops when the EVM is cancelled; the default
+	// one runs until its gas is used up.
+	if vmConfig.InterpreterForTracing != nil {
+		vmConfig.Interpreter = vmConfig.InterpreterForTracing
+	}
+	evm, _, err := backend.GetEVM(ctx, statedb, base, &vmConfig, blockCtx)
+	if err != nil {
+		return err
+	}
+	defer evm.Release()
+	if !evm.ChainConfig().IsPrague(blockCtx.BlockNumber, blockCtx.Time) {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("system calls of the next block not run: %w", err)
+	}
+	stop := context.AfterFunc(ctx, evm.Cancel)
+	evmcore.ProcessParentBlockHash(base.Hash, evm, statedb)
+	stop()
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("system calls of the next block aborted: %w", err)
+	}
+	return nil
+}
+
+// isNextBlock reports whether the block context describes the block directly
+// following the base block.
+func isNextBlock(blockCtx *vm.BlockContext, base *evmcore.EvmHeader) bool {
+	if blockCtx.BlockNumber == nil || base.Number == nil {
+		return false
+	}
+	next := new(big.Int).Add(base.Number, common.Big1)
+	return blockCtx.BlockNumber.Cmp(next) == 0
 }
