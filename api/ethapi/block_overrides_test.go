@@ -379,12 +379,12 @@ func TestOverriddenBlockContext_BaseBlockHashIsKnownOnlyToNextBlock(t *testing.T
 	}
 }
 
-func TestOverriddenBlockContext_EarlierBlockLooksUpOnlyTheAskedHeader(t *testing.T) {
+func TestOverriddenBlockContext_EarlierBlockLooksUpOnlyItsChild(t *testing.T) {
 	const baseNumber = 1_000_000
 	base := &evmcore.EvmHeader{Number: big.NewInt(baseNumber), Hash: chainHash(baseNumber)}
 	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(100)).
-		Return(&evmcore.EvmHeader{Number: big.NewInt(100), Hash: chainHash(100)}, nil).
+	backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(101)).
+		Return(&evmcore.EvmHeader{Number: big.NewInt(101), Hash: chainHash(101), ParentHash: chainHash(100)}, nil).
 		Times(1)
 	overrides := &BlockOverrides{Number: (*hexutil.Big)(big.NewInt(300))}
 
@@ -392,6 +392,32 @@ func TestOverriddenBlockContext_EarlierBlockLooksUpOnlyTheAskedHeader(t *testing
 
 	require.Equal(t, chainHash(100), blockCtx.GetHash(100))
 	require.Equal(t, chainHash(100), blockCtx.GetHash(100), "second lookup")
+}
+
+func TestOverriddenBlockContext_ParentHashIsKnownWithoutHeaderLookup(t *testing.T) {
+	const baseNumber = 10
+	base := &evmcore.EvmHeader{Number: big.NewInt(baseNumber), Hash: chainHash(baseNumber), ParentHash: chainHash(baseNumber - 1)}
+	backend := NewMockBackend(gomock.NewController(t)) // expects no header lookup, as if the parent was pruned
+
+	blockCtx := overriddenBlockContext(t.Context(), backend, base, nil)
+
+	require.Equal(t, chainHash(baseNumber-1), blockCtx.GetHash(baseNumber-1))
+}
+
+func TestOverriddenBlockContext_HashesBelowTheOldestStoredHeader(t *testing.T) {
+	const baseNumber, oldest = 100, 40
+	base := &evmcore.EvmHeader{Number: big.NewInt(baseNumber), Hash: chainHash(baseNumber)}
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(oldest)).
+		Return(&evmcore.EvmHeader{Number: big.NewInt(oldest), Hash: chainHash(oldest), ParentHash: chainHash(oldest - 1)}, nil).
+		Times(1)
+	backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(oldest-1)).Return(nil, nil).Times(1)
+
+	blockCtx := overriddenBlockContext(t.Context(), backend, base, nil)
+
+	require.Equal(t, chainHash(oldest-1), blockCtx.GetHash(oldest-1), "parent of the oldest stored header")
+	require.Equal(t, common.Hash{}, blockCtx.GetHash(oldest-2), "below it")
+	require.Equal(t, common.Hash{}, blockCtx.GetHash(oldest-2), "below it, second lookup")
 }
 
 func TestOverriddenBlockContext_AppliesOtherOverrides(t *testing.T) {
