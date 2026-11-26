@@ -17,10 +17,13 @@
 package freeze
 
 import (
+	"slices"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -73,4 +76,50 @@ func (s *StateDB) SubBalance(addr common.Address, amount *uint256.Int, reason tr
 		s.frozenMoved = true
 	}
 	return s.StateDB.SubBalance(addr, amount, reason)
+}
+
+// --- non-native token transfers ---
+// AddLog tracks ERC-20, ERC-721 and ERC-1155 transfer events naming a frozen
+// account.
+
+func (s *StateDB) AddLog(log *types.Log) {
+	if isFrozenTokenLog(s.checker, log) {
+		s.frozenMoved = true
+	}
+	s.StateDB.AddLog(log)
+}
+
+var (
+	transferTopic       = crypto.Keccak256Hash([]byte("Transfer(address,address,uint256)"))
+	transferSingleTopic = crypto.Keccak256Hash([]byte("TransferSingle(address,address,address,uint256,uint256)"))
+	transferBatchTopic  = crypto.Keccak256Hash([]byte("TransferBatch(address,address,address,uint256[],uint256[])"))
+)
+
+// isFrozenTokenLog reports whether log is a standard ERC-20, ERC-721 or
+// ERC-1155 transfer event naming a frozen account, emitted by a token not
+// opted out.
+func isFrozenTokenLog(checker Checker, log *types.Log) bool {
+	var addresses []common.Hash
+	switch topics := log.Topics; {
+	// ERC-20: indexed topics = [event signature, address1, address2]
+	case len(topics) == 3 && topics[0] == transferTopic:
+		addresses = topics[1:]
+	// ERC-721: indexed topics = [event signature, address1, address2, token id]
+	case len(topics) == 4 && topics[0] == transferTopic:
+		addresses = topics[1:3]
+	// ERC-1155: indexed topics = [event signature, address1, address2, address3]
+	case len(topics) == 4 && (topics[0] == transferSingleTopic || topics[0] == transferBatchTopic):
+		addresses = topics[1:]
+	default:
+		return false
+	}
+
+	if checker.IsOptedOut(log.Address) {
+		return false
+	}
+
+	isFrozen := func(addr common.Hash) bool {
+		return checker.IsFrozen(common.BytesToAddress(addr.Bytes()))
+	}
+	return slices.ContainsFunc(addresses, isFrozen)
 }
