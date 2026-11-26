@@ -122,12 +122,26 @@ func GetVmConfig(
 	backend Backend,
 	blockHeight idx.Block,
 ) (vm.Config, error) {
-	rules, err := backend.GetNetworkRules(ctx, blockHeight)
+	rules, err := getNetworkRules(ctx, backend, blockHeight)
 	if err != nil {
 		return vm.Config{}, err
 	}
-	if rules == nil {
-		return vm.Config{}, fmt.Errorf("no network rules found for block height %d", blockHeight)
-	}
 	return opera.GetVmConfig(*rules), nil
+}
+
+// getNetworkRules resolves the network rules for a block height, failing if the
+// backend knows none for it.
+func getNetworkRules(
+	ctx context.Context,
+	backend Backend,
+	blockHeight idx.Block,
+) (*opera.Rules, error) {
+	rules, err := backend.GetNetworkRules(ctx, blockHeight)
+	if err != nil {
+		return nil, err
+	}
+	if rules == nil {
+		return nil, fmt.Errorf("no network rules found for block height %d", blockHeight)
+	}
+	return rules, nil
 }

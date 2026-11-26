@@ -1932,7 +1932,7 @@ func (s *PublicBlockChainAPI) SimulateV1(ctx context.Context, opts simOpts, bloc
 	}
 
 	chainConfig := s.b.ChainConfig(idx.Block(base.Number.Uint64()))
-	vmConfig, err := GetVmConfig(ctx, s.b, idx.Block(base.Number.Uint64()))
+	rules, err := getNetworkRules(ctx, s.b, idx.Block(base.Number.Uint64()))
 	if err != nil {
 		return nil, err
 	}
@@ -1942,7 +1942,8 @@ func (s *PublicBlockChainAPI) SimulateV1(ctx context.Context, opts simOpts, bloc
 		state:          state,
 		base:           base.Header(),
 		chainConfig:    chainConfig,
-		vmConfig:       vmConfig,
+		upgrades:       rules.Upgrades,
+		vmConfig:       opera.GetVmConfig(*rules),
 		gp:             core.NewGasPool(gasCap),
 		traceTransfers: opts.TraceTransfers,
 		validate:       opts.Validation,

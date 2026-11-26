@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	interState "github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
@@ -37,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -44,6 +46,7 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/opera"
 )
 
 const (
@@ -228,6 +231,7 @@ type simulator struct {
 	state          interState.StateDB
 	base           *evmcore.EvmHeader
 	chainConfig    *params.ChainConfig
+	upgrades       opera.Upgrades
 	vmConfig       vm.Config
 	gp             *core.GasPool
 	traceTransfers bool
@@ -330,7 +334,6 @@ func (sim *simulator) processBlock(
 		receipts    = make([]*types.Receipt, len(block.Calls))
 		vmConfig    = sim.vmConfig
 	)
-	vmConfig.NoBaseFee = !sim.validate
 	vmConfig.StatePrecompiles = statePrecompiles
 
 	tracer := newSimTracer(sim.traceTransfers, blockContext.BlockNumber.Uint64(), blockContext.Time,
@@ -367,6 +370,19 @@ func (sim *simulator) processBlock(
 		txHash := tx.Hash()
 		txes[i] = tx
 		senders[txHash] = call.from()
+
+		// Block processing runs a sponsorship request that a subsidy covers
+		// without the base-fee check, so validation does the same; one that no
+		// subsidy covers is refused by the base-fee check, as the processor
+		// leaves it out of the block.
+		evm.Config.NoBaseFee = !sim.validate
+		if sim.validate {
+			covered, err := sim.isCoveredBySubsidy(evm, activeState, tx, call.from(), header.BaseFee)
+			if err != nil {
+				return nil, nil, nil, nil, simTxValidationError(err)
+			}
+			evm.Config.NoBaseFee = covered
+		}
 
 		tracer.reset(txHash, uint(i))
 		activeState.SetTxContext(txHash, i, uint32(i+1))
@@ -437,6 +453,63 @@ func (sim *simulator) processBlock(
 	repairSimLogs(callResults, evmBlock)
 
 	return evmBlock, callResults, senders, receipts, nil
+}
+
+// isCoveredBySubsidy reports whether tx, sent by from, is a sponsorship request
+// that a gas subsidy covers on the given state, as block processing decides it.
+//
+// A simulated call is unsigned, and an unsigned transaction is an internal one
+// to the subsidies code, never a sponsorship request. The call is therefore
+// judged as the transaction its sender would sign: a copy with a placeholder
+// signature, whose sender is from. The registry query reads the sender, target,
+// value, nonce, data and gas, never the signature. No one can sign for the zero
+// address, so a call from it stays internal, as the driver's transactions are.
+//
+// The registry is queried in a snapshot that is reverted, so the query leaves
+// nothing behind in the state the call then runs on.
+func (sim *simulator) isCoveredBySubsidy(
+	evm subsidies.VirtualMachine,
+	state interState.StateDB,
+	tx *types.Transaction,
+	from common.Address,
+	baseFee *big.Int,
+) (bool, error) {
+	if !sim.upgrades.GasSubsidies || from == (common.Address{}) {
+		return false, nil
+	}
+	signer := types.LatestSignerForChainID(sim.chainConfig.ChainID)
+	placeholder := make([]byte, crypto.SignatureLength)
+	placeholder[31], placeholder[63] = 1, 1 // r = 1, s = 1
+	request, err := tx.WithSignature(signer, placeholder)
+	if err != nil {
+		return false, fmt.Errorf("failed to judge call as a sponsorship request: %w", err)
+	}
+	if !subsidies.IsSponsorshipRequest(request) {
+		return false, nil
+	}
+	snapshot := state.Snapshot()
+	sponsorship, err := subsidies.IsCovered(sim.upgrades, evm, simSenderSigner{Signer: signer, from: from}, request, baseFee)
+	state.RevertToSnapshot(snapshot)
+	if err != nil {
+		return false, fmt.Errorf("failed to query subsidies registry: %w", err)
+	}
+	return sponsorship.IsSponsored(), nil
+}
+
+// simSenderSigner gives the sender of a simulated call, which is unsigned, to
+// code that derives a transaction's sender through a types.Signer.
+type simSenderSigner struct {
+	types.Signer
+	from common.Address
+}
+
+func (s simSenderSigner) Sender(*types.Transaction) (common.Address, error) {
+	return s.from, nil
+}
+
+func (s simSenderSigner) Equal(other types.Signer) bool {
+	o, ok := other.(simSenderSigner)
+	return ok && o.from == s.from
 }
 
 // repairSimLogs updates the BlockHash, BlockNumber, and BlockTimestamp
