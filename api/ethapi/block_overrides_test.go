@@ -29,8 +29,10 @@ import (
 	"github.com/0xsoniclabs/sonic/txtrace"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -282,4 +284,155 @@ func newCallTestBackend(t *testing.T, stateDb *state.MockStateDB, baseFee *big.I
 	stateDb.EXPECT().RevertToSnapshot(any).AnyTimes()
 	setExpectedStateCalls(stateDb)
 	return backend
+}
+
+// logBaseFeeCode emits BASEFEE as the data of a LOG0.
+var logBaseFeeCode = []byte{
+	byte(vm.BASEFEE), byte(vm.PUSH0), byte(vm.MSTORE),
+	byte(vm.PUSH1), 0x20, byte(vm.PUSH0), byte(vm.LOG0),
+	byte(vm.STOP),
+}
+
+func TestDoCall_PreArgsRunWithTheFeesOfTheirOwnPricing(t *testing.T) {
+	headerBaseFee := big.NewInt(100)
+	// A dynamic-fee call without a tip pays exactly the base fee.
+	pricedArgs := gasPriceTestCase{}.args
+	unpriced := func(from, to common.Address) TransactionArgs {
+		gas := hexutil.Uint64(gasPriceTestGas)
+		return TransactionArgs{From: &from, To: &to, Gas: &gas}
+	}
+
+	tests := map[string]struct {
+		preArgs, call func(from, to common.Address) TransactionArgs
+		wantBaseFees  []string
+	}{
+		"a priced previous transaction before an unpriced call": {
+			preArgs:      pricedArgs,
+			call:         unpriced,
+			wantBaseFees: []string{"100", "0"},
+		},
+		"an unpriced previous transaction before a priced call": {
+			preArgs:      unpriced,
+			call:         pricedArgs,
+			wantBaseFees: []string{"0", "100"},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			stateDb := state.NewMockStateDB(gomock.NewController(t))
+			var gotBaseFees []string
+			stateDb.EXPECT().AddLog(gomock.Any()).Do(func(l *types.Log) {
+				gotBaseFees = append(gotBaseFees, new(big.Int).SetBytes(l.Data).String())
+			}).AnyTimes()
+			backend := newCallTestBackend(t, stateDb, headerBaseFee, gasPriceTestContract, logBaseFeeCode)
+
+			preArgs := []TransactionArgs{test.preArgs(common.Address{0x2}, gasPriceTestContract)}
+			result, err := DoCall(t.Context(), backend, test.call(gasPriceTestSender, gasPriceTestContract),
+				rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
+				nil, nil, time.Second, 10_000_000, preArgs)
+			require.NoError(t, err)
+			require.False(t, result.Failed(), "call failed: %v", result.Err)
+			require.Equal(t, test.wantBaseFees, gotBaseFees, "BASEFEE of the previous transaction and the call")
+		})
+	}
+}
+
+// Block processing runs with a difficulty of 1 unless the header carries a
+// PREVRANDAO. Calls are not part of a block and must instead see the
+// difficulty the header reports, so they must not rely on the default
+// context of GetEVM.
+func TestCalls_RunInTheBlockContextOfTheHeader(t *testing.T) {
+	calls := map[string]func(Backend) error{
+		"eth_call": func(b Backend) error {
+			_, err := DoCall(t.Context(), b, getTxArgs(t),
+				rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
+				nil, nil, 0, 10_000_000, nil)
+			return err
+		},
+		"eth_createAccessList": func(b Backend) error {
+			nonce := hexutil.Uint64(0)
+			gas := hexutil.Uint64(100_000)
+			args := getTxArgs(t)
+			args.Nonce = &nonce
+			args.Gas = &gas
+			// A missing gas price would be filled in with a suggested one.
+			args.GasPrice = (*hexutil.Big)(big.NewInt(0))
+			_, _, _, err := AccessList(t.Context(), b, rpc.BlockNumberOrHashWithNumber(1), args)
+			return err
+		},
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			backend := NewMockBackend(ctrl)
+			stateDb := state.NewMockStateDB(ctrl)
+
+			// No PREVRANDAO, so block processing would use a difficulty of 1.
+			block := &evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{
+				Number:     big.NewInt(1),
+				BaseFee:    big.NewInt(100),
+				Difficulty: big.NewInt(0),
+			}}
+			chainConfig := &params.ChainConfig{ChainID: big.NewInt(1), BerlinBlock: big.NewInt(0), LondonBlock: big.NewInt(0)}
+
+			any := gomock.Any()
+			backend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(stateDb, block, nil).AnyTimes()
+			backend.EXPECT().ChainConfig(any).Return(chainConfig).AnyTimes()
+			backend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+			backend.EXPECT().RPCGasCap().Return(uint64(10_000_000)).AnyTimes()
+			backend.EXPECT().MaxGasLimit().Return(uint64(10_000_000)).AnyTimes()
+			backend.EXPECT().ChainID().Return(big.NewInt(1)).AnyTimes()
+			backend.EXPECT().CurrentBlock().Return(block).AnyTimes()
+			stateDb.EXPECT().Copy().Return(stateDb).AnyTimes()
+			stateDb.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)).AnyTimes()
+			setExpectedStateCalls(stateDb)
+
+			var contexts []*vm.BlockContext
+			backend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(
+				func(_ context.Context, _ state.StateDB, _ *evmcore.EvmHeader, vmConfig *vm.Config, blockCtx *vm.BlockContext) (*vm.EVM, func() error, error) {
+					contexts = append(contexts, blockCtx)
+					require.NotNil(t, blockCtx, "the call must pass its block context")
+					return vm.NewEVM(*blockCtx, stateDb, chainConfig, *vmConfig), func() error { return nil }, nil
+				}).AnyTimes()
+
+			require.NoError(t, call(backend))
+			require.NotEmpty(t, contexts, "the call must have created an EVM")
+			for _, blockCtx := range contexts {
+				require.Zero(t, blockCtx.Difficulty.Sign(), "DIFFICULTY")
+			}
+		})
+	}
+}
+
+// A block without a base fee prices calls as legacy calls, whose tip is not
+// checked against a fee cap. Block overrides that leave the base fee alone
+// must keep it that way.
+func TestDoCall_BlockWithoutBaseFeePricesLegacyCallsUnlessBaseFeeIsOverridden(t *testing.T) {
+	blockTime := hexutil.Uint64(1234)
+	tests := map[string]*BlockOverrides{
+		"no overrides":               nil,
+		"overrides without base fee": {Time: &blockTime},
+	}
+	for name, overrides := range tests {
+		t.Run(name, func(t *testing.T) {
+			stateDb := state.NewMockStateDB(gomock.NewController(t))
+			backend := newCallTestBackend(t, stateDb, nil, gasPriceTestContract, gasPriceAndBaseFeeCode)
+
+			// A tip without a fee cap is rejected as a dynamic-fee call.
+			from, to := gasPriceTestSender, gasPriceTestContract
+			gas := hexutil.Uint64(gasPriceTestGas)
+			args := TransactionArgs{From: &from, To: &to, Gas: &gas,
+				MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(7))}
+
+			result, err := DoCall(t.Context(), backend, args,
+				rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
+				nil, overrides, time.Second, 10_000_000, nil)
+			require.NoError(t, err)
+			require.False(t, result.Failed(), "call failed: %v", result.Err)
+			require.Len(t, result.ReturnData, 64)
+			require.Zero(t, new(big.Int).SetBytes(result.ReturnData[:32]).Sign(), "GASPRICE")
+			require.Zero(t, new(big.Int).SetBytes(result.ReturnData[32:]).Sign(), "BASEFEE")
+		})
+	}
 }

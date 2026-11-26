@@ -107,14 +107,18 @@ func testBlockHeaderMatchesObservableBlockParameters(
 				require.Equal(blockHashesFromReceipts[blockNumber], block.Hash())
 			}
 
-			// Verify that the contract can retrieve the block parameters from the archive.
-			contract, err := block_parameters.NewBlockParameters(
-				receipt.ContractAddress, client,
-			)
-			require.NoError(err, "Failed to create contract instance")
+			// Verify that the contract can retrieve the block parameters from the
+			// archive. A call that names no gas price runs with a base fee of
+			// zero, so each call is priced to observe the block's base fee.
 			for blockNumber, fromTx := range fromBlocks {
+				contract, err := block_parameters.NewBlockParametersCaller(
+					receipt.ContractAddress,
+					pricedCaller{ContractCaller: client, gasPrice: fromTx.BaseFee},
+				)
+				require.NoError(err, "Failed to create contract instance")
 				fromArchive, err := contract.GetBlockParameters(&bind.CallOpts{
 					BlockNumber: big.NewInt(int64(blockNumber)),
+					From:        net.GetSessionSponsor().Address(),
 				})
 				require.NoError(err, "Failed to get block parameters from archive")
 

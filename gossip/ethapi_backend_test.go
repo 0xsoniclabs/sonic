@@ -18,8 +18,10 @@ package gossip
 
 import (
 	"fmt"
+	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -30,6 +32,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -402,4 +405,63 @@ func TestEthApiBackend_GetHeads_ReportsUnavailableHeadsWhileEpochStoreLagsBehind
 		_, err = backend.GetHeads(t.Context(), rpc.PendingBlockNumber)
 	})
 	require.ErrorIs(t, err, errHeadsUnavailable)
+}
+
+// Replaying a block's transactions, as tracing does, must reproduce their
+// execution, so without an explicit block context the EVM runs in the
+// context of block processing rather than with the header's difficulty.
+func TestEthApiBackend_GetEVM_DefaultsToTheBlockProcessingContext(t *testing.T) {
+	backend := newGetEvmTestBackend(t)
+
+	tests := map[string]struct {
+		prevRandao     common.Hash
+		wantDifficulty int64
+	}{
+		"without PREVRANDAO the difficulty is 1": {
+			wantDifficulty: 1,
+		},
+		"with PREVRANDAO the difficulty is 0": {
+			prevRandao:     common.Hash{0x1},
+			wantDifficulty: 0,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			// The header reports a difficulty of zero, as Sonic blocks do.
+			header := &evmcore.EvmHeader{
+				Number:     big.NewInt(1),
+				Difficulty: big.NewInt(0),
+				PrevRandao: test.prevRandao,
+			}
+			evm, _, err := backend.GetEVM(t.Context(), nil, header, &vm.Config{}, nil)
+			require.NoError(t, err)
+			require.Equal(t, test.wantDifficulty, evm.Context.Difficulty.Int64(), "DIFFICULTY")
+		})
+	}
+}
+
+func TestEthApiBackend_GetEVM_UsesTheGivenBlockContext(t *testing.T) {
+	backend := newGetEvmTestBackend(t)
+
+	header := &evmcore.EvmHeader{Number: big.NewInt(1)}
+	blockCtx := vm.BlockContext{BlockNumber: big.NewInt(1), Difficulty: big.NewInt(42)}
+	evm, _, err := backend.GetEVM(t.Context(), nil, header, &vm.Config{}, &blockCtx)
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt(42), evm.Context.Difficulty)
+}
+
+// newGetEvmTestBackend returns a backend whose store holds the rules GetEVM
+// needs to derive the chain config.
+func newGetEvmTestBackend(t *testing.T) *EthAPIBackend {
+	t.Helper()
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	store.SetBlockEpochState(
+		iblockproc.BlockState{},
+		iblockproc.EpochState{Rules: opera.FakeNetRules(opera.GetSonicUpgrades())},
+	)
+	return &EthAPIBackend{
+		svc:   &Service{store: store},
+		state: &EvmStateReader{store: store},
+	}
 }

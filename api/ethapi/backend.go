@@ -78,6 +78,10 @@ type Backend interface {
 	BlockByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmBlock, error)
 	GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error)
 	FetchReceiptsForBlock(block *evmcore.EvmBlock) types.Receipts
+	// GetEVM returns an EVM running on the given state. A nil blockContext
+	// runs it in the block context block processing uses, as needed to replay
+	// a block's transactions. Calls that are not part of a block, such as
+	// eth_call, pass the context from GetBlockContext instead.
 	GetEVM(ctx context.Context, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error)
 	MinGasPrice() *big.Int
 	MaxGasLimit() uint64

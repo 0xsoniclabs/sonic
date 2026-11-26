@@ -413,6 +413,9 @@ func (b *EthAPIBackend) GetEVM(ctx context.Context, state vm.StateDB, header *ev
 	}
 	var context vm.BlockContext
 	if blockContext == nil {
+		// Without an explicit context, the EVM runs in the context block
+		// processing uses, so that replaying a block's transactions
+		// reproduces their execution.
 		context = evmcore.NewEVMBlockContext(header, b.state, nil)
 	} else {
 		context = *blockContext

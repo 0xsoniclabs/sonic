@@ -69,13 +69,15 @@ func (diff *BlockOverrides) apply(blockCtx *vm.BlockContext) {
 	}
 }
 
-// GetBlockContext returns a new vm.BlockContext based on the given header and backend
+// GetBlockContext returns a new vm.BlockContext based on the given header and
+// backend, for running calls that are not part of a block. Unlike the context
+// of block processing, it takes the difficulty from the header.
 func GetBlockContext(ctx context.Context, backend Backend, header *evmcore.EvmHeader) vm.BlockContext {
 	chain := chainContext{
 		ctx: ctx,
 		b:   backend,
 	}
-	return evmcore.NewEVMBlockContext(header, &chain, nil)
+	return evmcore.NewEVMBlockContextFromHeader(header, &chain, nil)
 }
 
 // chainContextBackend provides methods required to implement ChainContext.

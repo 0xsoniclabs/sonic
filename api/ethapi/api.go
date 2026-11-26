@@ -1230,14 +1230,16 @@ func DoCall(
 	defer cancel()
 
 	// The gas price of the call follows the base fee the EVM runs with, so
-	// that an overridden base fee is respected as on chain.
+	// that an overridden base fee is respected as on chain. Otherwise the
+	// block's own base fee is used, not the one of the block context, which
+	// reports a block without a base fee as having a base fee of zero.
 	baseFee := block.BaseFee
-	var blockCtx *vm.BlockContext
+	blockCtx := GetBlockContext(ctx, b, block.Header())
 	if blockOverrides != nil {
-		bctx := GetBlockContext(ctx, b, block.Header())
-		blockOverrides.apply(&bctx)
-		blockCtx = &bctx
-		baseFee = bctx.BaseFee
+		blockOverrides.apply(&blockCtx)
+		if blockOverrides.BaseFee != nil {
+			baseFee = blockOverrides.BaseFee.ToInt()
+		}
 	}
 
 	// Get a new instance of the EVM.
@@ -1250,13 +1252,14 @@ func DoCall(
 		return nil, err
 	}
 
-	evm, vmError, err := b.GetEVM(ctx, state, block.Header(), &vmConfig, blockCtx)
+	evm, vmError, err := b.GetEVM(ctx, state, block.Header(), &vmConfig, &blockCtx)
 	if err != nil {
 		return nil, err
 	}
 	defer evm.Release()
 	// Skip gas price checks for API runs.
 	evm.Config.NoBaseFee = true
+
 	// Wait for the context to be done and cancel the evm. Even if the
 	// EVM has finished, cancelling may be done (repeatedly)
 	go func() {
@@ -1267,6 +1270,16 @@ func DoCall(
 	// Add sufficient gas to the pool.
 	gp := core.NewGasPool(math.MaxUint64)
 
+	// The fees are chosen for each message on its own, so that a previous
+	// transaction runs with the fees it would run with as a call of its own,
+	// whatever the pricing of the other messages.
+	applyMessage := func(message *core.Message) (*core.ExecutionResult, error) {
+		evm.Context.BaseFee = blockCtx.BaseFee
+		evm.Context.BlobBaseFee = blockCtx.BlobBaseFee
+		lowerFeesForUnpricedCall(&evm.Context, message)
+		return core.ApplyMessage(evm, message, gp)
+	}
+
 	// Apply previous transactions if required.
 	for i, arg := range preArgs {
 		preMsg, err := arg.ToMessage(globalGasCap, baseFee, log.Root())
@@ -1274,14 +1287,14 @@ func DoCall(
 			log.Warn("failed to convert previous transaction to message", "index", i, "err", err)
 			continue
 		}
-		if _, err := core.ApplyMessage(evm, preMsg, gp); err != nil {
+		if _, err := applyMessage(preMsg); err != nil {
 			log.Warn("failed to apply previous transaction", "index", i, "err", err)
 		}
 		state.EndTransaction()
 	}
 
 	// Execute the message.
-	result, err := core.ApplyMessage(evm, msg, gp)
+	result, err := applyMessage(msg)
 	if err := vmError(); err != nil {
 		return nil, err
 	}
@@ -1294,6 +1307,18 @@ func DoCall(
 		return result, fmt.Errorf("err: %w (supplied gas %d)", err, msg.GasLimit)
 	}
 	return result, nil
+}
+
+// lowerFeesForUnpricedCall lowers the base fee, and the blob base fee, to zero
+// for a call that names no gas price, as go-ethereum does, so that the EVM's
+// basefee <= feecap invariant holds and BASEFEE reads zero for such a call.
+func lowerFeesForUnpricedCall(blockCtx *vm.BlockContext, msg *core.Message) {
+	if msg.GasPrice.Sign() == 0 {
+		blockCtx.BaseFee = new(big.Int)
+	}
+	if msg.BlobGasFeeCap != nil && msg.BlobGasFeeCap.BitLen() == 0 {
+		blockCtx.BlobBaseFee = new(big.Int)
+	}
 }
 
 func newRevertError(result *core.ExecutionResult) *revertError {
@@ -1575,6 +1600,9 @@ func RPCMarshalBlock(block *evmcore.EvmBlock, receipts types.Receipts, inclTx bo
 	json := &evmcore.EvmBlockJson{
 		EvmHeaderJson: block.Header().ToJson(receipts),
 		Size:          &size,
+		// Sonic blocks carry no withdrawals; the field is reported as the empty
+		// list every post-Shanghai client emits, never as null.
+		Withdrawals: []*types.Withdrawal{},
 	}
 
 	if inclTx {
@@ -1863,11 +1891,13 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		tracer := logger.NewAccessListTracer(accessList, addressesToExclude)
 		config := vmConfig
 		config.Tracer = tracer.Hooks()
-		vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &config, nil)
+		blockCtx := GetBlockContext(ctx, b, block.Header())
+		vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &config, &blockCtx)
 		if err != nil {
 			statedb.Release()
 			return nil, 0, nil, err
 		}
+		lowerFeesForUnpricedCall(&vmenv.Context, msg)
 		stopCancel := context.AfterFunc(ctx, vmenv.Cancel)
 		res, err := core.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit))
 		stopCancel()
@@ -3027,6 +3057,7 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 	if err != nil {
 		return nil, err
 	}
+	lowerFeesForUnpricedCall(&blockCtx, msg)
 
 	var traceConfig *tracers.TraceConfig
 	if config != nil {

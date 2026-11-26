@@ -558,3 +558,19 @@ func MustDeployRevertContractAndGetMethodCallParameters(t testing.TB, session In
 	input := MustGetMethodParameters(t, revert.RevertMetaData, "doCrash")
 	return addr, input
 }
+
+// pricedCaller is a bind.ContractCaller that runs every call with the given
+// gas price and a gas limit of 1,000,000, replacing those of the call.
+// eth_call runs a call that names no gas price with a base fee of zero, so a
+// call observing the block's base fee must be priced. The sender named in the
+// call options must be able to pay for the gas limit.
+type pricedCaller struct {
+	bind.ContractCaller
+	gasPrice *big.Int
+}
+
+func (c pricedCaller) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
+	call.GasPrice = c.gasPrice
+	call.Gas = 1_000_000
+	return c.ContractCaller.CallContract(ctx, call, blockNumber)
+}
