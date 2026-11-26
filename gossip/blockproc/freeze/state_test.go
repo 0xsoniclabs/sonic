@@ -249,6 +249,10 @@ func TestIsFrozenTokenLog_DetectsTokenEventsNamingFrozenAccounts(t *testing.T) {
 			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(frozenAccount), topic(unfrozenAccount), {}}},
 			true,
 		},
+		"erc-721 transfer to frozen": {
+			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(unfrozenAccount), topic(frozenAccount), {}}},
+			true,
+		},
 		"erc-721 token id is no address": {
 			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(unfrozenAccount), topic(unfrozenAccount), topic(frozenAccount)}},
 			false,
