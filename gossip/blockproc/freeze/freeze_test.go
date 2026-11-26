@@ -79,9 +79,10 @@ func TestRegistryChecker_IsFrozen_ReadsRegistry(t *testing.T) {
 	}
 }
 
-func TestRegistryChecker_IsFrozen_ExemptsZeroAddressAndSystemContracts(t *testing.T) {
+func TestRegistryChecker_IsFrozen_ExemptsZeroAddressSystemAddressAndSystemContracts(t *testing.T) {
 	for _, addr := range []common.Address{
 		{},
+		params.SystemAddress,
 		registry.GetAddress(),
 		sfc.ContractAddress,
 		driver.ContractAddress,

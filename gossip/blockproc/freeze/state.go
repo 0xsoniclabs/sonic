@@ -24,7 +24,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -41,12 +40,6 @@ type StateDB struct {
 // checker for the freeze status of addresses.
 func Wrap(db vm.StateDB, checker Checker) *StateDB {
 	return &StateDB{StateDB: db, checker: checker, frozenMovedAt: map[int]bool{}}
-}
-
-func (s *StateDB) Prepare(rules params.Rules, sender, coinbase common.Address, dest *common.Address, precompiles []common.Address, txAccesses types.AccessList) {
-	s.frozenMoved = false
-	clear(s.frozenMovedAt)
-	s.StateDB.Prepare(rules, sender, coinbase, dest, precompiles, txAccesses)
 }
 
 func (s *StateDB) Snapshot() int {
