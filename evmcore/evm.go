@@ -129,12 +129,6 @@ func GetHashFn(ref *EvmHeader, chain DummyChain) func(n uint64) common.Hash {
 	var cache []common.Hash
 
 	return func(n uint64) common.Hash {
-		// The reference block and later blocks are not ancestors of the
-		// reference block. Without this check, the search below would walk
-		// back to genesis without finding them.
-		if n >= ref.Number.Uint64() {
-			return common.Hash{}
-		}
 		// If there's no hash cache yet, make one
 		if len(cache) == 0 {
 			cache = append(cache, ref.ParentHash)

@@ -567,3 +567,16 @@ func TestApplyNextBlockSystemCalls_StopsWhenTheContextEnds(t *testing.T) {
 		require.Less(t, reads, 100_000, "storage reads after the context ended")
 	})
 }
+
+func TestOverriddenBlockContext_LaterBlocksAreUnknownWithoutHeaderLookups(t *testing.T) {
+	const baseNumber = 10_000
+	base := &evmcore.EvmHeader{Number: big.NewInt(baseNumber), Hash: chainHash(baseNumber)}
+	backend := NewMockBackend(gomock.NewController(t)) // expects no header lookup
+	overrides := &BlockOverrides{Number: (*hexutil.Big)(big.NewInt(baseNumber + 256))}
+
+	blockCtx := overriddenBlockContext(t.Context(), backend, base, overrides)
+
+	for _, n := range []uint64{baseNumber, baseNumber + 1, baseNumber + 255} {
+		require.Equal(t, common.Hash{}, blockCtx.GetHash(n), "hash of block %d", n)
+	}
+}
