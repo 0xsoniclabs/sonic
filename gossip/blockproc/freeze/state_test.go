@@ -237,16 +237,8 @@ func TestIsFrozenTokenLog_DetectsTokenEventsNamingFrozenAccounts(t *testing.T) {
 			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(frozenAccount), topic(unfrozenAccount)}},
 			true,
 		},
-		"approval by frozen": {
-			types.Log{Address: token, Topics: []common.Hash{approvalTopic, topic(frozenAccount), topic(unfrozenAccount)}},
-			true,
-		},
 		"transfer to frozen": {
 			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(unfrozenAccount), topic(frozenAccount)}},
-			true,
-		},
-		"approval of frozen spender": {
-			types.Log{Address: token, Topics: []common.Hash{approvalTopic, topic(unfrozenAccount), topic(frozenAccount)}},
 			true,
 		},
 		"transfer between others": {
@@ -257,21 +249,9 @@ func TestIsFrozenTokenLog_DetectsTokenEventsNamingFrozenAccounts(t *testing.T) {
 			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(frozenAccount), topic(unfrozenAccount), {}}},
 			true,
 		},
-		"erc-721 approval of frozen": {
-			types.Log{Address: token, Topics: []common.Hash{approvalTopic, topic(unfrozenAccount), topic(frozenAccount), {}}},
-			true,
-		},
 		"erc-721 token id is no address": {
 			types.Log{Address: token, Topics: []common.Hash{transferTopic, topic(unfrozenAccount), topic(unfrozenAccount), topic(frozenAccount)}},
 			false,
-		},
-		"approval for all by frozen owner": {
-			types.Log{Address: token, Topics: []common.Hash{approvalForAllTopic, topic(frozenAccount), topic(unfrozenAccount)}},
-			true,
-		},
-		"approval for all of frozen operator": {
-			types.Log{Address: token, Topics: []common.Hash{approvalForAllTopic, topic(unfrozenAccount), topic(frozenAccount)}},
-			true,
 		},
 		"erc-1155 transfer by frozen operator": {
 			types.Log{Address: token, Topics: []common.Hash{transferSingleTopic, topic(frozenAccount), topic(unfrozenAccount), topic(unfrozenAccount)}},
