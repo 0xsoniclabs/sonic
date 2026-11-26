@@ -29,6 +29,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 //go:generate go tool mockgen -source=freeze.go -destination=freeze_mock.go -package=freeze
@@ -51,8 +52,9 @@ type StateReader interface {
 }
 
 // RegistryChecker is a Checker reading the registry's storage slots from a
-// state. The zero address and system contracts are never frozen, whatever the
-// registry says, so that internal transactions are never blocked.
+// state. The zero address, params.SystemAddress and system contracts are never
+// frozen, whatever the registry says, so that internal transactions and system
+// calls are never blocked.
 type RegistryChecker struct {
 	enabled bool // feature flag `AccountFreeze` is enabled
 	db      StateReader
@@ -71,7 +73,7 @@ func (c *RegistryChecker) IsEnabled() bool {
 
 // IsFrozen implements Checker.
 func (c *RegistryChecker) IsFrozen(account common.Address) bool {
-	if !c.enabled || account == (common.Address{}) || isSystemContract(account) {
+	if !c.enabled || account == (common.Address{}) || account == params.SystemAddress || isSystemContract(account) {
 		return false
 	}
 	return c.db.GetState(registry.GetAddress(), registry.GetFrozenSlot(account)) != (common.Hash{})
