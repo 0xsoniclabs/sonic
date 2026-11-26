@@ -3016,6 +3016,18 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 	if config != nil {
 		blockOverrides = config.BlockOverrides
 	}
+
+	// The trace's timeout also covers the header lookups of BLOCKHASH and the
+	// system calls run before the trace, which state overrides can make run
+	// until their gas is used up.
+	timeout := defaultTraceTimeout
+	if config != nil && config.Timeout != nil {
+		if timeout, err = time.ParseDuration(*config.Timeout); err != nil {
+			return nil, err
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	blockCtx := overriddenBlockContext(ctx, api.b, &block.EvmHeader, blockOverrides)
 
 	// Apply state overrides
