@@ -84,15 +84,21 @@ func apply(t *testing.T, evm *vm.EVM, from common.Address, to *common.Address, v
 }
 
 // payCode is a contract that calls `to` with 1 wei, ignores whether the call
-// succeeded, and then stores 1 in slot 0. With `revert` set, it reverts instead
-// of storing.
-func payCode(to common.Address, revert bool) []byte {
+// succeeded, and then stores 1 in slot 0.
+func payCode(to common.Address) []byte {
+	return append(callCode(to), 0x60, 0x01, 0x60, 0x00, 0x55, 0x00)
+}
+
+// revertCode is like payCode but reverts instead of storing.
+func revertCode(to common.Address) []byte {
+	return append(callCode(to), 0x60, 0x00, 0x60, 0x00, 0xfd)
+}
+
+// callCode calls `to` with 1 wei with all gas and ignores whether the call
+// succeeded.
+func callCode(to common.Address) []byte {
 	code := append(common.FromHex("0x6000600060006000600173"), to.Bytes()...)
-	code = append(code, 0x5a, 0xf1, 0x50) // GAS CALL POP
-	if revert {
-		return append(code, 0x60, 0x00, 0x60, 0x00, 0xfd)
-	}
-	return append(code, 0x60, 0x01, 0x60, 0x00, 0x55, 0x00)
+	return append(code, 0x5a, 0xf1, 0x50) // GAS CALL POP
 }
 
 func TestApplyMessage_RejectsFrozenSenders(t *testing.T) {
@@ -146,7 +152,7 @@ func TestApplyMessage_RestoresTheStateDBOfTheEVM(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			evm, statedb := newEVMWithFrozenAccounts(t)
 			statedb.AddBalance(payer, uint256.NewInt(1), tracing.BalanceChangeUnspecified)
-			statedb.SetCode(payer, payCode(frozenAccount, false), tracing.CodeChangeUnspecified)
+			statedb.SetCode(payer, payCode(frozenAccount), tracing.CodeChangeUnspecified)
 
 			zero := new(uint256.Int)
 			result, err := ApplyMessage(evm, &core.Message{
@@ -172,7 +178,7 @@ func TestApplyMessage_SettlesFrozenMovesAsRevertedTransactions(t *testing.T) {
 		return slices.Concat([]byte{0x73}, to.Bytes(), []byte{0x73}, from.Bytes(), []byte{0x7f}, transferTopic.Bytes(), []byte{0x60, 0x00, 0x60, 0x00, 0xa3, 0x00})
 	}
 	// SSTORE(1, 1) SSTORE(1, 0), then the payment
-	refundThenPay := append([]byte{0x60, 0x01, 0x60, 0x01, 0x55, 0x60, 0x00, 0x60, 0x01, 0x55}, payCode(frozenAccount, false)...)
+	refundThenPay := append([]byte{0x60, 0x01, 0x60, 0x01, 0x55, 0x60, 0x00, 0x60, 0x01, 0x55}, payCode(frozenAccount)...)
 	tests := map[string]struct {
 		to           *common.Address
 		value        uint64
@@ -180,11 +186,11 @@ func TestApplyMessage_SettlesFrozenMovesAsRevertedTransactions(t *testing.T) {
 		expectReason tracing.NonceChangeReason
 	}{
 		"value to frozen":               {to: &frozenAccount, value: 1, expectReason: tracing.NonceChangeEoACall},
-		"value from frozen":             {to: &frozenAccount, code: payCode(other, false), expectReason: tracing.NonceChangeEoACall},
+		"value from frozen":             {to: &frozenAccount, code: payCode(other), expectReason: tracing.NonceChangeEoACall},
 		"creation at frozen":            {to: nil, value: 1, expectReason: tracing.NonceChangeContractCreator},
 		"selfdestruct to frozen":        {to: &other, code: selfdestructTo(frozenAccount), expectReason: tracing.NonceChangeEoACall},
 		"selfdestruct from frozen":      {to: &frozenAccount, code: selfdestructTo(other), expectReason: tracing.NonceChangeEoACall},
-		"contract ignoring the failure": {to: &other, code: payCode(frozenAccount, false), expectReason: tracing.NonceChangeEoACall},
+		"contract ignoring the failure": {to: &other, code: payCode(frozenAccount), expectReason: tracing.NonceChangeEoACall},
 		"token transfer to frozen":      {to: &other, code: transferLog(other, frozenAccount), expectReason: tracing.NonceChangeEoACall},
 		"token transfer from frozen":    {to: &other, code: transferLog(frozenAccount, other), expectReason: tracing.NonceChangeEoACall},
 		"refund before the move":        {to: &other, code: refundThenPay, expectReason: tracing.NonceChangeEoACall},
@@ -249,10 +255,10 @@ func TestApplyMessage_IgnoresMovesThatDoNotViolateTheFreeze(t *testing.T) {
 			evm, statedb := newEVMWithFrozenAccounts(t)
 			statedb.AddBalance(test.from, uint256.NewInt(gasLimit*gasPrice), tracing.BalanceChangeUnspecified)
 			statedb.AddBalance(payer, uint256.NewInt(1), tracing.BalanceChangeUnspecified)
-			statedb.SetCode(payer, payCode(frozenAccount, false), tracing.CodeChangeUnspecified)
+			statedb.SetCode(payer, payCode(frozenAccount), tracing.CodeChangeUnspecified)
 			statedb.AddBalance(outer, uint256.NewInt(1), tracing.BalanceChangeUnspecified)
-			statedb.SetCode(outer, payCode(inner, false), tracing.CodeChangeUnspecified)
-			statedb.SetCode(inner, payCode(frozenAccount, true), tracing.CodeChangeUnspecified)
+			statedb.SetCode(outer, payCode(inner), tracing.CodeChangeUnspecified)
+			statedb.SetCode(inner, revertCode(frozenAccount), tracing.CodeChangeUnspecified)
 
 			result := apply(t, evm, test.from, &test.to, 0, !test.disabled)
 			require.Equal(t, test.expectFailed, result.Err != nil)
@@ -276,7 +282,7 @@ func TestApplyMessage_FrozenMoveUndoesItsAuthorizations(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			evm, statedb := newEVMWithFrozenAccounts(t)
 			statedb.AddBalance(payer, uint256.NewInt(1), tracing.BalanceChangeUnspecified)
-			statedb.SetCode(payer, payCode(frozenAccount, false), tracing.CodeChangeUnspecified)
+			statedb.SetCode(payer, payCode(frozenAccount), tracing.CodeChangeUnspecified)
 			key, err := crypto.GenerateKey()
 			require.NoError(t, err)
 			auth, err := types.SignSetCode(key, types.SetCodeAuthorization{

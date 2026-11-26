@@ -80,6 +80,7 @@ func ApplyMessage(evm *vm.EVM, msg *core.Message, gp *core.GasPool, checker Chec
 	}
 
 	// the tx succeeded but must fail because it moves frozen funds
+	// revert all its effects, bump the nonce and charge the gas
 	state.RevertToSnapshot(snapshot)
 	reason := tracing.NonceChangeEoACall
 	if msg.To == nil {
