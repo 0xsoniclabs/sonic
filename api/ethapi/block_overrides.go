@@ -123,22 +123,31 @@ func overriddenBlockContext(
 ) vm.BlockContext {
 	blockCtx := GetBlockContext(ctx, backend, base)
 	overrides.apply(&blockCtx)
-	limitHashLookup(&blockCtx, base, isNextBlock(&blockCtx, base))
+	limitHashLookup(ctx, backend, &blockCtx, base, isNextBlock(&blockCtx, base))
 	return blockCtx
 }
 
 // limitHashLookup makes BLOCKHASH resolve only the ancestors of the base
 // block and, if linkBase is set, the base block itself. Later numbers, which an
 // overridden block number can ask for, are unknown; without this, their lookup
-// would walk back to genesis.
-func limitHashLookup(blockCtx *vm.BlockContext, base *evmcore.EvmHeader, linkBase bool) {
+// would walk back to genesis. Ancestors are looked up by number, since an
+// earlier overridden block number can ask for blocks far below the base block,
+// which the walk back from the base block would reach one header at a time.
+func limitHashLookup(ctx context.Context, backend chainContextBackend, blockCtx *vm.BlockContext, base *evmcore.EvmHeader, linkBase bool) {
 	baseNumber := base.Number.Uint64()
 	baseHash := base.Hash
-	ancestors := blockCtx.GetHash
+	ancestors := map[uint64]common.Hash{}
 	blockCtx.GetHash = func(n uint64) common.Hash {
 		switch {
 		case n < baseNumber:
-			return ancestors(n)
+			hash, ok := ancestors[n]
+			if !ok {
+				if header, _ := backend.HeaderByNumber(ctx, rpc.BlockNumber(n)); header != nil {
+					hash = header.Hash
+				}
+				ancestors[n] = hash
+			}
+			return hash
 		case n == baseNumber && linkBase:
 			return baseHash
 		}

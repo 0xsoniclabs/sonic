@@ -379,6 +379,21 @@ func TestOverriddenBlockContext_BaseBlockHashIsKnownOnlyToNextBlock(t *testing.T
 	}
 }
 
+func TestOverriddenBlockContext_EarlierBlockLooksUpOnlyTheAskedHeader(t *testing.T) {
+	const baseNumber = 1_000_000
+	base := &evmcore.EvmHeader{Number: big.NewInt(baseNumber), Hash: chainHash(baseNumber)}
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(100)).
+		Return(&evmcore.EvmHeader{Number: big.NewInt(100), Hash: chainHash(100)}, nil).
+		Times(1)
+	overrides := &BlockOverrides{Number: (*hexutil.Big)(big.NewInt(300))}
+
+	blockCtx := overriddenBlockContext(t.Context(), backend, base, overrides)
+
+	require.Equal(t, chainHash(100), blockCtx.GetHash(100))
+	require.Equal(t, chainHash(100), blockCtx.GetHash(100), "second lookup")
+}
+
 func TestOverriddenBlockContext_AppliesOtherOverrides(t *testing.T) {
 	backend, base := newHashChainBackend(t, 3)
 	time := hexutil.Uint64(1234)
