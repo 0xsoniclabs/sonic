@@ -123,17 +123,21 @@ func overriddenBlockContext(
 ) vm.BlockContext {
 	blockCtx := GetBlockContext(ctx, backend, base)
 	overrides.apply(&blockCtx)
-	limitHashLookup(ctx, backend, &blockCtx, base, isNextBlock(&blockCtx, base))
+	setHashLookup(ctx, backend, &blockCtx, base, isNextBlock(&blockCtx, base))
 	return blockCtx
 }
 
-// limitHashLookup makes BLOCKHASH resolve only the ancestors of the base
-// block and, if linkBase is set, the base block itself. Later numbers, which an
-// overridden block number can ask for, are unknown; without this, their lookup
-// would walk back to genesis. Ancestors are looked up by number, since an
-// earlier overridden block number can ask for blocks far below the base block,
-// which the walk back from the base block would reach one header at a time.
-func limitHashLookup(ctx context.Context, backend chainContextBackend, blockCtx *vm.BlockContext, base *evmcore.EvmHeader, linkBase bool) {
+// setHashLookup sets the hash lookup of BLOCKHASH for a call made on the state
+// of the base block, whose block number may be overridden:
+//   - a block below the base block resolves to its hash, looked up by number,
+//     since an earlier overridden number can ask for blocks far below the base
+//     block, which a walk back from the base block would reach one header at
+//     a time;
+//   - the base block resolves to its hash if linkBase is set, as the call's
+//     block then directly follows it;
+//   - any other block is unknown, as it is not an ancestor of the base block's
+//     state.
+func setHashLookup(ctx context.Context, backend chainContextBackend, blockCtx *vm.BlockContext, base *evmcore.EvmHeader, linkBase bool) {
 	baseNumber := base.Number.Uint64()
 	baseHash := base.Hash
 	ancestors := map[uint64]common.Hash{}
