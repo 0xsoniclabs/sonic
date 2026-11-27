@@ -1102,6 +1102,34 @@ func TestProcess_ForwardsCorrectIndexToTransactionProcessor(t *testing.T) {
 	}
 }
 
+func TestApplyTransactionWithEVM_RejectsFrozenSendersOnlyWhileTheFreezeIsEnabled(t *testing.T) {
+	tests := map[string]struct {
+		enabled                  bool
+		frozenChecks, nonceReads int
+		wantErr                  error
+	}{
+		"enabled":  {enabled: true, frozenChecks: 1, wantErr: freeze.ErrFrozenAccount},
+		"disabled": {enabled: false, nonceReads: 1, wantErr: core.ErrNonceTooLow},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			sender := common.Address{1}
+			checker := freeze.NewMockChecker(ctrl)
+			checker.EXPECT().IsEnabled().Return(test.enabled)
+			checker.EXPECT().IsFrozen(sender).Return(true).Times(test.frozenChecks)
+			stateDb := state.NewMockStateDB(ctrl)
+			stateDb.EXPECT().GetNonce(sender).Return(uint64(1)).Times(test.nonceReads)
+			stateDb.EXPECT().EndTransaction()
+			evm := vm.NewEVM(vm.BlockContext{BlockNumber: big.NewInt(1)}, stateDb, &params.ChainConfig{}, vm.Config{})
+			msg := &core.Message{From: sender, GasPrice: uint256.NewInt(1)}
+
+			_, err := ApplyTransactionWithEVM(msg, nil, core.NewGasPool(0), stateDb, big.NewInt(1), common.Hash{}, types.NewTx(&types.LegacyTx{}), new(uint64), evm, checker)
+			require.ErrorIs(t, err, test.wantErr)
+		})
+	}
+}
+
 func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 	for _, internal := range []bool{true, false} {
 		t.Run("internal="+fmt.Sprint(internal), func(t *testing.T) {

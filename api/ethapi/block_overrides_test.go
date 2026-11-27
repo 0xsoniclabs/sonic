@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	freeze_registry "github.com/0xsoniclabs/sonic/gossip/blockproc/freeze/registry"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/txtrace"
@@ -253,6 +254,7 @@ func newCallTestBackend(t *testing.T, stateDb *state.MockStateDB, baseFee *big.I
 	}
 	block := &evmcore.EvmBlock{EvmHeader: *header}
 	upgrades := opera.GetSonicUpgrades()
+	upgrades.AccountFreeze = true
 	chainConfig := makeChainConfig(upgrades)
 
 	any := gomock.Any()
@@ -282,6 +284,7 @@ func newCallTestBackend(t *testing.T, stateDb *state.MockStateDB, baseFee *big.I
 	stateDb.EXPECT().AddRefund(any).AnyTimes()
 	stateDb.EXPECT().SubRefund(any).AnyTimes()
 	stateDb.EXPECT().RevertToSnapshot(any).AnyTimes()
+	stateDb.EXPECT().GetState(freeze_registry.GetAddress(), any).Return(common.Hash{}).AnyTimes()
 	setExpectedStateCalls(stateDb)
 	return backend
 }

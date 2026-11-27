@@ -27,18 +27,19 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestGetVmConfig_RetrievesVmConfigFromRules(t *testing.T) {
+func TestGetVmConfig_RetrievesVmConfigAndUpgradesFromRules(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	backend := NewMockBackend(ctrl)
 
 	ctx := t.Context()
 	height := idx.Block(12)
 
-	rules := opera.Rules{}
+	rules := opera.Rules{Upgrades: opera.Upgrades{AccountFreeze: true}}
 	backend.EXPECT().GetNetworkRules(ctx, height).Return(&rules, nil).AnyTimes()
 
-	config, err := GetVmConfig(ctx, backend, 12)
+	config, upgrades, err := GetVmConfig(ctx, backend, 12)
 	require.NoError(t, err)
+	require.Equal(t, rules.Upgrades, upgrades)
 
 	// The config contains functions that can not be compared with require.Equal,
 	// so we compare a debug print of the config instead.
@@ -55,7 +56,7 @@ func TestGetVmConfig_ForwardsErrorFromRuleRetrieval(t *testing.T) {
 	expectedErr := fmt.Errorf("injected error")
 	backend.EXPECT().GetNetworkRules(any, any).Return(nil, expectedErr).AnyTimes()
 
-	config, err := GetVmConfig(t.Context(), backend, 12)
+	config, _, err := GetVmConfig(t.Context(), backend, 12)
 	require.ErrorIs(t, err, expectedErr)
 	require.Equal(t, vm.Config{}, config)
 }
@@ -67,7 +68,7 @@ func TestGetVmConfig_ProducesAnErrorIfRulesAreNotAvailable(t *testing.T) {
 	any := gomock.Any()
 	backend.EXPECT().GetNetworkRules(any, any).Return(nil, nil).AnyTimes()
 
-	config, err := GetVmConfig(t.Context(), backend, 12)
+	config, _, err := GetVmConfig(t.Context(), backend, 12)
 	require.ErrorContains(t, err, "no network rules found for block height 12")
 	require.Equal(t, vm.Config{}, config)
 }

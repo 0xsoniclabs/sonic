@@ -23,9 +23,11 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -156,5 +158,33 @@ func TestActionTrace_ProcessOutput_ReportsParityErrorNames(t *testing.T) {
 				require.Nil(t, trace.Result)
 			})
 		}
+	}
+}
+
+func TestActionTrace_ProcessOutput_ReportsTheFreezeRevertReasonAsError(t *testing.T) {
+	revertWith := func(reason string) []byte {
+		stringType, err := abi.NewType("string", "", nil)
+		require.NoError(t, err)
+		data, err := abi.Arguments{{Type: stringType}}.Pack(reason)
+		require.NoError(t, err)
+		return append(crypto.Keccak256([]byte("Error(string)"))[:4], data...)
+	}
+	tests := map[string]struct {
+		output []byte
+		want   string
+	}{
+		"no revert data":    {output: nil, want: "Reverted"},
+		"other reason":      {output: revertWith("other reason"), want: "Reverted"},
+		"account is frozen": {output: revertWith("account is frozen"), want: "account is frozen"},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			trace := CreateActionTrace(common.Hash{}, *big.NewInt(1), common.Hash{}, 0, CALL)
+			trace.Result = &TraceActionResult{}
+
+			trace.processOutput(test.output, vm.ErrExecutionReverted, false)
+
+			require.Equal(t, test.want, trace.Error)
+		})
 	}
 }

@@ -135,22 +135,29 @@ func TestApplyMessage_RejectsFrozenSenders(t *testing.T) {
 	}
 }
 
-func TestApplyMessage_RestoresTheStateDBOfTheEVM(t *testing.T) {
+func TestApplyMessage_RestoresTheStateDBAndTracerOfTheEVM(t *testing.T) {
 	payer := common.Address{0x2}
 	tests := map[string]struct {
 		accountFreeze          bool
 		to                     common.Address
 		nonce                  uint64
+		withoutOnExit          bool
 		expectErr, expectVMErr error
 	}{
-		"disabled":           {accountFreeze: false, to: payer},
-		"enabled non-frozen": {accountFreeze: true, to: common.Address{0x3}},
-		"enabled frozen":     {accountFreeze: true, to: payer, expectVMErr: vm.ErrExecutionReverted},
-		"invalid message":    {accountFreeze: true, to: payer, nonce: 1, expectErr: core.ErrNonceTooHigh},
+		"disabled":                      {accountFreeze: false, to: payer},
+		"enabled non-frozen":            {accountFreeze: true, to: common.Address{0x3}},
+		"enabled frozen":                {accountFreeze: true, to: payer, expectVMErr: vm.ErrExecutionReverted},
+		"enabled frozen without OnExit": {accountFreeze: true, to: payer, withoutOnExit: true, expectVMErr: vm.ErrExecutionReverted},
+		"invalid message":               {accountFreeze: true, to: payer, nonce: 1, expectErr: core.ErrNonceTooHigh},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			evm, statedb := newEVMWithFrozenAccounts(t)
+			hooks := &tracing.Hooks{OnExit: func(int, []byte, uint64, error, bool) {}}
+			if test.withoutOnExit {
+				hooks.OnExit = nil
+			}
+			evm.Config.Tracer = hooks
 			statedb.AddBalance(payer, uint256.NewInt(1), tracing.BalanceChangeUnspecified)
 			statedb.SetCode(payer, payCode(frozenAccount), tracing.CodeChangeUnspecified)
 
@@ -164,6 +171,7 @@ func TestApplyMessage_RestoresTheStateDBOfTheEVM(t *testing.T) {
 				require.ErrorIs(t, result.Err, test.expectVMErr)
 			}
 			require.Same(t, statedb, evm.StateDB)
+			require.Same(t, hooks, evm.Config.Tracer)
 		})
 	}
 }
@@ -236,6 +244,48 @@ func TestApplyMessage_SettlesFrozenMovesAsRevertedTransactions(t *testing.T) {
 	}
 }
 
+func TestApplyMessage_ReportsTheFreezeRevertToTracers(t *testing.T) {
+	type exit struct {
+		depth    int
+		reason   string
+		err      error
+		reverted bool
+	}
+	var exits []exit
+	record := func(depth int, output []byte, err error, reverted bool) {
+		reason, _ := abi.UnpackRevert(output)
+		exits = append(exits, exit{depth, reason, err, reverted})
+		clear(output)
+	}
+	tests := map[string]*tracing.Hooks{
+		"OnExit": {OnExit: func(depth int, output []byte, _ uint64, err error, reverted bool) {
+			record(depth, output, err, reverted)
+		}},
+		"OnExitV2": {OnExitV2: func(depth int, output []byte, _ tracing.Gas, err error, reverted bool) {
+			record(depth, output, err, reverted)
+		}},
+	}
+	for name, hooks := range tests {
+		t.Run(name, func(t *testing.T) {
+			exits = nil
+			payer := common.Address{0x2}
+			evm, statedb := newEVMWithFrozenAccounts(t)
+			statedb.AddBalance(payer, uint256.NewInt(1), tracing.BalanceChangeUnspecified)
+			statedb.SetCode(payer, payCode(frozenAccount), tracing.CodeChangeUnspecified)
+			evm.Config.Tracer = hooks
+
+			result := apply(t, evm, sender, &payer, 0, true)
+			require.Equal(t, []exit{
+				{depth: 1},
+				{depth: 0, reason: "account is frozen", err: vm.VMErrorFromErr(vm.ErrExecutionReverted), reverted: true},
+			}, exits)
+			reason, err := abi.UnpackRevert(result.ReturnData)
+			require.NoError(t, err)
+			require.Equal(t, "account is frozen", reason)
+		})
+	}
+}
+
 func TestApplyMessage_IgnoresMovesThatDoNotViolateTheFreeze(t *testing.T) {
 	payer, outer, inner := common.Address{0x2}, common.Address{0x3}, common.Address{0x4}
 	tests := map[string]struct {
@@ -259,9 +309,16 @@ func TestApplyMessage_IgnoresMovesThatDoNotViolateTheFreeze(t *testing.T) {
 			statedb.AddBalance(outer, uint256.NewInt(1), tracing.BalanceChangeUnspecified)
 			statedb.SetCode(outer, payCode(inner), tracing.CodeChangeUnspecified)
 			statedb.SetCode(inner, revertCode(frozenAccount), tracing.CodeChangeUnspecified)
+			var outermostReverted bool
+			evm.Config.Tracer = &tracing.Hooks{OnExit: func(depth int, _ []byte, _ uint64, _ error, reverted bool) {
+				if depth == 0 {
+					outermostReverted = reverted
+				}
+			}}
 
 			result := apply(t, evm, test.from, &test.to, 0, !test.disabled)
 			require.Equal(t, test.expectFailed, result.Err != nil)
+			require.Equal(t, test.expectFailed, outermostReverted)
 			require.Equal(t, test.expectMoved, !statedb.GetBalance(frozenAccount).IsZero())
 		})
 	}
