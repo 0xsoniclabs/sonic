@@ -654,6 +654,8 @@ func (sim *simulator) setCallPriceDefaults(call *TransactionArgs, baseFee *big.I
 	}
 	if call.ChainID == nil {
 		call.ChainID = (*hexutil.Big)(sim.chainConfig.ChainID)
+	} else if have, want := call.ChainID.ToInt(), sim.chainConfig.ChainID; have.Cmp(want) != 0 {
+		return fmt.Errorf("chainId does not match node's (have=%v, want=%v)", have, want)
 	}
 	if call.Value == nil {
 		call.Value = new(hexutil.Big)

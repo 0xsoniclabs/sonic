@@ -925,6 +925,23 @@ func TestSetCallPriceDefaults_SetsChainIDWhenMissing(t *testing.T) {
 	require.Equal(t, chainConfig.ChainID, call.ChainID.ToInt())
 }
 
+func TestSetCallPriceDefaults_AcceptsTheNodeChainID(t *testing.T) {
+	chainConfig := newSimTestChainConfig()
+	sim := &simulator{chainConfig: chainConfig}
+	call := TransactionArgs{ChainID: (*hexutil.Big)(new(big.Int).Set(chainConfig.ChainID))}
+
+	require.NoError(t, sim.setCallPriceDefaults(&call, nil))
+}
+
+func TestSetCallPriceDefaults_RejectsAnotherChainID(t *testing.T) {
+	sim := &simulator{chainConfig: newSimTestChainConfig()}
+	call := TransactionArgs{ChainID: (*hexutil.Big)(big.NewInt(1235))}
+
+	err := sim.setCallPriceDefaults(&call, nil)
+
+	require.ErrorContains(t, err, "chainId does not match node's (have=1235, want=1234)")
+}
+
 func TestSetCallPriceDefaults_SetsZeroValueWhenMissing(t *testing.T) {
 	sim := &simulator{chainConfig: newSimTestChainConfig()}
 	call := TransactionArgs{}
