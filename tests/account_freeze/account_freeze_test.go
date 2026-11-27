@@ -348,6 +348,40 @@ func TestAccountFreeze_RPCReportsTheFreezeAsReason(t *testing.T) {
 			})
 		})
 	}
+
+}
+
+func TestAccountFreeze_RPCAppliesTheFreezeOfTheQueriedBlock(t *testing.T) {
+	upgrades := opera.GetCantoUpgrades()
+	upgrades.AccountFreeze = true
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	reg, err := freeze_registry.NewRegistry(freeze_registry.GetAddress(), client)
+	require.NoError(t, err)
+
+	oneS := big.NewInt(1e18)
+	sender := tests.MakeAccountWithBalance(t, net, oneS)
+	frozen := tests.MakeAccountWithBalance(t, net, oneS)
+	frozenAt := freeze(t, net, reg, frozen.Address(), true).BlockNumber
+	beforeFreeze := hexutil.EncodeBig(new(big.Int).Sub(frozenAt, big.NewInt(1)))
+
+	calls := map[string]map[string]any{
+		"moving frozen funds": {"from": sender.Address(), "to": frozen.Address(), "value": "0x1"},
+		"from frozen":         {"from": frozen.Address(), "to": sender.Address(), "value": "0x1"},
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			var result hexutil.Bytes
+			require.NoError(t, client.Client().Call(&result, "eth_call", call, beforeFreeze))
+			require.ErrorContains(t, client.Client().Call(&result, "eth_call", call, "latest"), "account is frozen")
+		})
+	}
 }
 
 func TestAccountFreeze_RPCAppliesTheFreezeOnlyWhileEnabled(t *testing.T) {
