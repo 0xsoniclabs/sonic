@@ -102,13 +102,14 @@ func TestGasSubsidies_SimulateWithValidation_TreatsSponsorshipRequestsAsBlockPro
 
 // TestGasSubsidies_SimulateWithValidation_RegistryQueryIsBoundedAndLeavesNoTrace
 // checks that the registry query eth_simulateV1 runs under validation is bounded
-// by the request's gas pool and does not shift the log index of the calls, for
+// on a node without a gas cap and does not shift the log index of the calls, for
 // a registry that a state override replaces.
 func TestGasSubsidies_SimulateWithValidation_RegistryQueryIsBoundedAndLeavesNoTrace(t *testing.T) {
 	upgrades := opera.GetAllegroUpgrades()
 	upgrades.GasSubsidies = true
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
+		Upgrades:             &upgrades,
+		ClientExtraArguments: []string{"--rpc.gascap", "0"},
 	})
 
 	client, err := net.GetClient()

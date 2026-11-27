@@ -500,10 +500,14 @@ func (sim *simulator) isCoveredBySubsidy(
 	return sponsorship.IsSponsored(), nil
 }
 
+// DefaultRPCGasCap is the node's default cap on the gas of an RPC execution.
+const DefaultRPCGasCap = 50_000_000
+
 // gasPoolVM runs each registry query on the request's gas pool. A state
 // override of the registry can give the query any gas limit, and the EVM
 // timeout does not stop a loop inside a contract, so the pool bounds the query
-// as it bounds the simulated calls.
+// as it bounds the simulated calls. A node without a gas cap has an unbounded
+// pool, so the query also never gets more than DefaultRPCGasCap.
 type gasPoolVM struct {
 	subsidies.VirtualMachine
 	gp *core.GasPool
@@ -515,7 +519,7 @@ func (v gasPoolVM) Call(
 	gas vm.GasBudget,
 	value *uint256.Int,
 ) ([]byte, vm.GasBudget, error) {
-	gas.ExecutionGas = min(gas.ExecutionGas, v.gp.Available(false, 0))
+	gas.ExecutionGas = min(gas.ExecutionGas, v.gp.Available(false, 0), DefaultRPCGasCap)
 	result, left, err := v.VirtualMachine.Call(from, to, input, gas, value)
 	used := gas.ExecutionGas - min(left.ExecutionGas, gas.ExecutionGas)
 	// Cannot fail, as the query used at most the gas that was available.

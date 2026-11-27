@@ -19,6 +19,7 @@ package ethapi
 import (
 	"encoding/binary"
 	"errors"
+	"math"
 	"math/big"
 	"testing"
 
@@ -231,6 +232,9 @@ func TestGasPoolVM_CapsTheQueryAtThePoolAndDeductsTheGasItUses(t *testing.T) {
 		},
 		"failed query uses all its gas": {
 			pool: 50_000, requested: 1 << 62, wantGas: 50_000, left: 0, err: vm.ErrOutOfGas, wantPool: 0,
+		},
+		"query on an unbounded pool is capped at the default gas cap": {
+			pool: math.MaxUint64, requested: 1 << 62, wantGas: DefaultRPCGasCap, left: 0, err: vm.ErrOutOfGas, wantPool: math.MaxUint64 - DefaultRPCGasCap,
 		},
 		"empty pool gives no gas": {
 			pool: 0, requested: 100_000, wantGas: 0, left: 0, err: vm.ErrOutOfGas, wantPool: 0,

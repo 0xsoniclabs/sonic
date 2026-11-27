@@ -29,6 +29,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 
+	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/eventcheck/heavycheck"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/filters"
@@ -233,7 +234,7 @@ func DefaultConfig(scale cachescale.Func) Config {
 
 		RPCBlockExt: true,
 
-		RPCGasCap:   50000000,
+		RPCGasCap:   ethapi.DefaultRPCGasCap,
 		RPCTxFeeCap: 100, // 100 FTM
 		RPCTimeout:  5 * time.Second,
 
