@@ -320,16 +320,69 @@ func TestAccountFreeze_RPCReportsTheFreezeAsReason(t *testing.T) {
 					wantErr  string
 					wantData any
 				}{
-					"eth_call moving frozen funds":        {method: "eth_call", params: []any{toFrozen, "latest"}, wantCode: 3, wantErr: "execution reverted: account is frozen", wantData: frozenRevertData},
-					"eth_estimateGas moving frozen funds": {method: "eth_estimateGas", params: []any{toFrozen, "latest"}, wantCode: 3, wantErr: "execution reverted: account is frozen", wantData: frozenRevertData},
-					"eth_createAccessList without gas":    {method: "eth_createAccessList", params: []any{toFrozen, "latest"}, wantCode: 3, wantErr: "execution reverted: account is frozen", wantData: frozenRevertData},
-					"eth_call from frozen":                {method: "eth_call", params: []any{fromFrozen, "latest"}, wantCode: -32000, wantErr: "account is frozen"},
-					"eth_estimateGas from frozen":         {method: "eth_estimateGas", params: []any{fromFrozen, "latest"}, wantCode: -32000, wantErr: "account is frozen"},
-					"eth_simulateV1 from frozen":          {method: "eth_simulateV1", params: []any{simulate(fromFrozen), "latest"}, wantCode: -32602, wantErr: "account is frozen"},
-					"eth_createAccessList from frozen":    {method: "eth_createAccessList", params: []any{fromFrozenWithGas, "latest"}, wantCode: -32000, wantErr: "account is frozen"},
-					"debug_traceCall from frozen":         {method: "debug_traceCall", params: []any{fromFrozen, "latest", callTracer}, wantCode: -32000, wantErr: "account is frozen"},
-					"trace_call from frozen":              {method: "trace_call", params: []any{fromFrozen, []string{"trace"}, "latest"}, wantCode: -32000, wantErr: "account is frozen"},
-					"trace_callMany from frozen":          {method: "trace_callMany", params: []any{[]any{[]any{fromFrozen, []string{"trace"}}}, "latest"}, wantCode: -32000, wantErr: "account is frozen"},
+					"eth_call moving frozen funds": {
+						method:   "eth_call",
+						params:   []any{toFrozen, "latest"},
+						wantCode: 3,
+						wantErr:  "execution reverted: account is frozen",
+						wantData: frozenRevertData,
+					},
+					"eth_estimateGas moving frozen funds": {
+						method:   "eth_estimateGas",
+						params:   []any{toFrozen, "latest"},
+						wantCode: 3,
+						wantErr:  "execution reverted: account is frozen",
+						wantData: frozenRevertData,
+					},
+					"eth_createAccessList without gas": {
+						method:   "eth_createAccessList",
+						params:   []any{toFrozen, "latest"},
+						wantCode: 3,
+						wantErr:  "execution reverted: account is frozen",
+						wantData: frozenRevertData,
+					},
+					"eth_call from frozen": {
+						method:   "eth_call",
+						params:   []any{fromFrozen, "latest"},
+						wantCode: -32000,
+						wantErr:  "account is frozen",
+					},
+					"eth_estimateGas from frozen": {
+						method:   "eth_estimateGas",
+						params:   []any{fromFrozen, "latest"},
+						wantCode: -32000,
+						wantErr:  "account is frozen",
+					},
+					"eth_simulateV1 from frozen": {
+						method:   "eth_simulateV1",
+						params:   []any{simulate(fromFrozen), "latest"},
+						wantCode: -32602,
+						wantErr:  "account is frozen",
+					},
+					"eth_createAccessList from frozen": {
+						method:   "eth_createAccessList",
+						params:   []any{fromFrozenWithGas, "latest"},
+						wantCode: -32000,
+						wantErr:  "account is frozen",
+					},
+					"debug_traceCall from frozen": {
+						method:   "debug_traceCall",
+						params:   []any{fromFrozen, "latest", callTracer},
+						wantCode: -32000,
+						wantErr:  "account is frozen",
+					},
+					"trace_call from frozen": {
+						method:   "trace_call",
+						params:   []any{fromFrozen, []string{"trace"}, "latest"},
+						wantCode: -32000,
+						wantErr:  "account is frozen",
+					},
+					"trace_callMany from frozen": {
+						method:   "trace_callMany",
+						params:   []any{[]any{[]any{fromFrozen, []string{"trace"}}}, "latest"},
+						wantCode: -32000,
+						wantErr:  "account is frozen",
+					},
 				}
 				for name, test := range cases {
 					t.Run(name, func(t *testing.T) {
@@ -401,15 +454,42 @@ func TestAccountFreeze_RPCAppliesTheFreezeOnlyWhileEnabled(t *testing.T) {
 		method string
 		params []any
 	}{
-		"eth_call moving frozen funds":        {method: "eth_call", params: []any{toFrozen, "latest", overrides}},
-		"eth_call from frozen":                {method: "eth_call", params: []any{fromFrozen, "latest", overrides}},
-		"eth_estimateGas moving frozen funds": {method: "eth_estimateGas", params: []any{toFrozen, "latest", overrides}},
-		"eth_estimateGas from frozen":         {method: "eth_estimateGas", params: []any{fromFrozen, "latest", overrides}},
-		"eth_simulateV1":                      {method: "eth_simulateV1", params: []any{map[string]any{"blockStateCalls": []any{map[string]any{"stateOverrides": overrides, "calls": []any{toFrozen}}}}, "latest"}},
-		"eth_simulateV1 from frozen":          {method: "eth_simulateV1", params: []any{map[string]any{"blockStateCalls": []any{map[string]any{"stateOverrides": overrides, "calls": []any{fromFrozen}}}}, "latest"}},
-		"debug_traceCall":                     {method: "debug_traceCall", params: []any{toFrozen, "latest", map[string]any{"tracer": "callTracer", "stateOverrides": overrides}}},
-		"trace_call":                          {method: "trace_call", params: []any{toFrozen, []string{"trace"}, "latest", map[string]any{"StateOverrides": overrides}}},
-		"trace_callMany":                      {method: "trace_callMany", params: []any{[]any{[]any{toFrozen, []string{"trace"}}}, "latest", map[string]any{"StateOverrides": overrides}}},
+		"eth_call moving frozen funds": {
+			method: "eth_call",
+			params: []any{toFrozen, "latest", overrides},
+		},
+		"eth_call from frozen": {
+			method: "eth_call",
+			params: []any{fromFrozen, "latest", overrides},
+		},
+		"eth_estimateGas moving frozen funds": {
+			method: "eth_estimateGas",
+			params: []any{toFrozen, "latest", overrides},
+		},
+		"eth_estimateGas from frozen": {
+			method: "eth_estimateGas",
+			params: []any{fromFrozen, "latest", overrides},
+		},
+		"eth_simulateV1": {
+			method: "eth_simulateV1",
+			params: []any{map[string]any{"blockStateCalls": []any{map[string]any{"stateOverrides": overrides, "calls": []any{toFrozen}}}}, "latest"},
+		},
+		"eth_simulateV1 from frozen": {
+			method: "eth_simulateV1",
+			params: []any{map[string]any{"blockStateCalls": []any{map[string]any{"stateOverrides": overrides, "calls": []any{fromFrozen}}}}, "latest"},
+		},
+		"debug_traceCall": {
+			method: "debug_traceCall",
+			params: []any{toFrozen, "latest", map[string]any{"tracer": "callTracer", "stateOverrides": overrides}},
+		},
+		"trace_call": {
+			method: "trace_call",
+			params: []any{toFrozen, []string{"trace"}, "latest", map[string]any{"StateOverrides": overrides}},
+		},
+		"trace_callMany": {
+			method: "trace_callMany",
+			params: []any{[]any{[]any{toFrozen, []string{"trace"}}}, "latest", map[string]any{"StateOverrides": overrides}},
+		},
 	}
 	for name, enabled := range map[string]bool{"enabled": true, "disabled": false} {
 		t.Run(name, func(t *testing.T) {
