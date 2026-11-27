@@ -17,9 +17,12 @@
 package gas_subsidies
 
 import (
+	"context"
 	"math/big"
 	"testing"
+	"time"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
@@ -94,5 +97,97 @@ func TestGasSubsidies_SimulateWithValidation_TreatsSponsorshipRequestsAsBlockPro
 		calls, err := simulate(false, zeroFeeCall(unsponsored.Address()))
 		require.NoError(t, err)
 		require.Equal(t, []callResult{{Status: 1, GasUsed: 21000}}, calls)
+	})
+}
+
+// TestGasSubsidies_SimulateWithValidation_RegistryQueryIsBoundedAndLeavesNoTrace
+// checks that the registry query eth_simulateV1 runs under validation is bounded
+// by the request's gas pool and does not shift the log index of the calls, for
+// a registry that a state override replaces.
+func TestGasSubsidies_SimulateWithValidation_RegistryQueryIsBoundedAndLeavesNoTrace(t *testing.T) {
+	upgrades := opera.GetAllegroUpgrades()
+	upgrades.GasSubsidies = true
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	target := common.Address{0x42}
+	zeroFeeCall := map[string]any{
+		"from":                 common.Address{0x51},
+		"to":                   target,
+		"gas":                  hexutil.Uint64(100_000),
+		"maxFeePerGas":         (*hexutil.Big)(big.NewInt(0)),
+		"maxPriorityFeePerGas": (*hexutil.Big)(big.NewInt(0)),
+	}
+
+	t.Run("looping registry runs out of gas", func(t *testing.T) {
+		// getGasConfig (4 bytes of input) grants chooseFund the largest gas
+		// limit, and chooseFund loops forever.
+		code := hexutil.MustDecode("0x" +
+			"60043614600b" + "57" + // if CALLDATASIZE == 4, jump to getGasConfig
+			"5b600756" + // chooseFund: loop
+			"5b" + "67ffffffffffffffff600052" + "620186a0602052" + "61c350" + "604052" +
+			"60606000f3") // getGasConfig: return the gas config
+		opts := map[string]any{
+			"blockStateCalls": []any{map[string]any{
+				"stateOverrides": map[string]any{
+					registry.GetAddress().Hex(): map[string]any{"code": hexutil.Bytes(code)},
+				},
+				"calls": []any{zeroFeeCall},
+			}},
+			"validation": true,
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+		var result any
+		err := client.Client().CallContext(ctx, &result, "eth_simulateV1", opts, "latest")
+		require.ErrorContains(t, err, "failed to query subsidies registry")
+		require.ErrorContains(t, err, "out of gas")
+	})
+
+	t.Run("logs of the registry query do not shift the log index", func(t *testing.T) {
+		// Every registry query emits a log; getGasConfig (4 bytes of input)
+		// returns a gas config and chooseFund reports that no fund covers the
+		// call. With a base fee of zero, the uncovered call still runs.
+		registryCode := hexutil.MustDecode("0x" +
+			"60006000a0" + // LOG0
+			"600436146011" + "57" + // if CALLDATASIZE == 4, jump to getGasConfig
+			"60206000f3" + // chooseFund: not covered
+			"5b" + "620186a0600052" + "620186a0602052" + "61c350" + "604052" +
+			"60606000f3") // getGasConfig: return the gas config
+		targetCode := hexutil.MustDecode("0x60006000a000") // LOG0, STOP
+		opts := map[string]any{
+			"blockStateCalls": []any{map[string]any{
+				"blockOverrides": map[string]any{"baseFeePerGas": (*hexutil.Big)(big.NewInt(0))},
+				"stateOverrides": map[string]any{
+					registry.GetAddress().Hex(): map[string]any{"code": hexutil.Bytes(registryCode)},
+					target.Hex():                map[string]any{"code": hexutil.Bytes(targetCode)},
+				},
+				"calls": []any{zeroFeeCall, zeroFeeCall},
+			}},
+			"validation": true,
+		}
+		var result []struct {
+			Calls []struct {
+				Status hexutil.Uint64 `json:"status"`
+				Logs   []struct {
+					Address  common.Address `json:"address"`
+					LogIndex hexutil.Uint   `json:"logIndex"`
+				} `json:"logs"`
+			} `json:"calls"`
+		}
+		require.NoError(t, client.Client().Call(&result, "eth_simulateV1", opts, "latest"))
+		require.Len(t, result, 1)
+		require.Len(t, result[0].Calls, 2)
+		for i, call := range result[0].Calls {
+			require.Equal(t, hexutil.Uint64(1), call.Status)
+			require.Len(t, call.Logs, 1)
+			require.Equal(t, target, call.Logs[0].Address)
+			require.Equal(t, hexutil.Uint(i), call.Logs[0].LogIndex)
+		}
 	})
 }

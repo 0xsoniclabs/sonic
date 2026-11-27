@@ -377,7 +377,11 @@ func (sim *simulator) processBlock(
 		// leaves it out of the block.
 		evm.Config.NoBaseFee = !sim.validate
 		if sim.validate {
-			covered, err := sim.isCoveredBySubsidy(evm, activeState, tx, call.from(), header.BaseFee)
+			// The registry query runs with the call's tracer, and the logs it
+			// emits are discarded, so it must not advance the log index.
+			logCount := tracer.count
+			covered, err := sim.isCoveredBySubsidy(gasPoolVM{evm, sim.gp}, activeState, tx, call.from(), header.BaseFee)
+			tracer.count = logCount
 			if err != nil {
 				return nil, nil, nil, nil, simTxValidationError(err)
 			}
@@ -494,6 +498,29 @@ func (sim *simulator) isCoveredBySubsidy(
 		return false, fmt.Errorf("failed to query subsidies registry: %w", err)
 	}
 	return sponsorship.IsSponsored(), nil
+}
+
+// gasPoolVM runs each registry query on the request's gas pool. A state
+// override of the registry can give the query any gas limit, and the EVM
+// timeout does not stop a loop inside a contract, so the pool bounds the query
+// as it bounds the simulated calls.
+type gasPoolVM struct {
+	subsidies.VirtualMachine
+	gp *core.GasPool
+}
+
+func (v gasPoolVM) Call(
+	from, to common.Address,
+	input []byte,
+	gas vm.GasBudget,
+	value *uint256.Int,
+) ([]byte, vm.GasBudget, error) {
+	gas.ExecutionGas = min(gas.ExecutionGas, v.gp.Available(false, 0))
+	result, left, err := v.VirtualMachine.Call(from, to, input, gas, value)
+	used := gas.ExecutionGas - min(left.ExecutionGas, gas.ExecutionGas)
+	// Cannot fail, as the query used at most the gas that was available.
+	_ = v.gp.CheckGasLegacy(used)
+	return result, left, err
 }
 
 // simSenderSigner gives the sender of a simulated call, which is unsigned, to

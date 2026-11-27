@@ -26,6 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/holiman/uint256"
@@ -211,4 +212,44 @@ func TestSimSenderSigner_EqualsOnlyASignerForTheSameSender(t *testing.T) {
 	require.True(t, signer.Equal(simSenderSigner{Signer: inner, from: subsidyTestSender}))
 	require.False(t, signer.Equal(simSenderSigner{Signer: inner, from: common.Address{0x52}}))
 	require.False(t, signer.Equal(inner))
+}
+
+func TestGasPoolVM_CapsTheQueryAtThePoolAndDeductsTheGasItUses(t *testing.T) {
+	tests := map[string]struct {
+		pool      uint64
+		requested uint64
+		wantGas   uint64
+		left      uint64
+		err       error
+		wantPool  uint64
+	}{
+		"query within the pool": {
+			pool: 1_000_000, requested: 100_000, wantGas: 100_000, left: 60_000, wantPool: 960_000,
+		},
+		"query above the pool is capped": {
+			pool: 50_000, requested: 1 << 62, wantGas: 50_000, left: 10_000, wantPool: 10_000,
+		},
+		"failed query uses all its gas": {
+			pool: 50_000, requested: 1 << 62, wantGas: 50_000, left: 0, err: vm.ErrOutOfGas, wantPool: 0,
+		},
+		"empty pool gives no gas": {
+			pool: 0, requested: 100_000, wantGas: 0, left: 0, err: vm.ErrOutOfGas, wantPool: 0,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			vmMock := subsidies.NewMockVirtualMachine(ctrl)
+			gp := core.NewGasPool(test.pool)
+
+			vmMock.EXPECT().Call(common.Address{}, subsidyTestTarget, []byte{1}, vm.NewGasBudget(test.wantGas, 0), uint256.NewInt(0)).
+				Return([]byte{2}, vm.NewGasBudget(test.left, 0), test.err)
+
+			result, left, err := gasPoolVM{vmMock, gp}.Call(common.Address{}, subsidyTestTarget, []byte{1}, vm.NewGasBudget(test.requested, 0), uint256.NewInt(0))
+			require.ErrorIs(t, err, test.err)
+			require.Equal(t, []byte{2}, result)
+			require.Equal(t, test.left, left.ExecutionGas)
+			require.Equal(t, test.wantPool, gp.Available(false, 0))
+		})
+	}
 }
