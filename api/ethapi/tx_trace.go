@@ -41,7 +41,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/txtrace"
 )
 
@@ -76,8 +75,8 @@ type evmSetup struct {
 	txTracer        *txtrace.TraceStructLogger
 	stateDiffLogger *txtrace.StateDiffLogger
 	vmTraceLogger   *txtrace.VmTraceLogger
-	activeState     state.StateDB // may be wrapped for stateDiff/vmTrace
-	upgrades        opera.Upgrades
+	activeState     state.StateDB  // may be wrapped for stateDiff/vmTrace
+	freezeChecker   freeze.Checker // reads the plain statedb
 }
 
 // setupTracedEVM creates an EVM configured with the requested tracing hooks and
@@ -95,15 +94,16 @@ func setupTracedEVM(
 	noBaseFee bool,
 ) (*evmSetup, context.CancelFunc, error) {
 	header := block.Header()
-	cfg, upgrades, err := GetVmConfig(ctx, b, idx.Block(header.Number.Uint64()))
+	rules, err := getExecutionRules(ctx, b, idx.Block(header.Number.Uint64()))
 	if err != nil {
 		return nil, func() {}, fmt.Errorf("cannot get vm config for block %d, error: %w", header.Number.Uint64(), err)
 	}
+	cfg := rules.vmConfig
 	if noBaseFee {
 		cfg.NoBaseFee = true
 	}
 
-	setup := &evmSetup{activeState: statedb, upgrades: upgrades}
+	setup := &evmSetup{activeState: statedb, freezeChecker: rules.freezeChecker(statedb)}
 
 	if tracers.Trace {
 		setup.txTracer = txtrace.NewTraceStructLogger(block, uint(index))
@@ -327,7 +327,7 @@ func (s *PublicTxTraceAPI) traceCallExec(
 	tracedEVM.vmenv.SetTxContext(vmContext)
 
 	// Execute the transaction using freeze.ApplyMessage to capture raw return data.
-	result, err := freeze.ApplyMessage(tracedEVM.vmenv, msg, core.NewGasPool(msg.GasLimit), freeze.NewRegistryChecker(tracedEVM.upgrades.AccountFreeze, statedb))
+	result, err := freeze.ApplyMessage(tracedEVM.vmenv, msg, core.NewGasPool(msg.GasLimit), tracedEVM.freezeChecker)
 	if err != nil {
 		return nil, err
 	}
@@ -456,12 +456,12 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 	}
 	defer state.Release()
 
-	vmenv, upgrades, err := applyPreBlockSystemCalls(ctx, s.b, block, state)
+	vmenv, rules, err := applyPreBlockSystemCalls(ctx, s.b, block, state)
 	if err != nil {
 		return nil, fmt.Errorf("cannot apply pre-block system calls for block %v, error: %v", block.NumberU64(), err.Error())
 	}
 	defer vmenv.Release()
-	freezeChecker := freeze.NewRegistryChecker(upgrades.AccountFreeze, state)
+	freezeChecker := rules.freezeChecker(state)
 
 	receipts, err := s.b.GetReceiptsByNumber(ctx, rpc.BlockNumber(blockNumber))
 	if err != nil {
@@ -557,7 +557,7 @@ func (s *PublicTxTraceAPI) traceTx(
 
 	statedb.SetTxContext(tx.Hash(), int(index), uint32(index+1))
 	chainConfig := s.b.ChainConfig(idx.Block(block.Number.Uint64()))
-	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, core.NewGasPool(msg.GasLimit), statedb, block.Number, block.Hash, tx, &index, tracedEVM.vmenv, freeze.NewRegistryChecker(tracedEVM.upgrades.AccountFreeze, statedb))
+	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, core.NewGasPool(msg.GasLimit), statedb, block.Number, block.Hash, tx, &index, tracedEVM.vmenv, tracedEVM.freezeChecker)
 
 	// Note: statedb.EndTransaction() already included in ApplyTransactionWithEVM
 	traceActions := tracedEVM.txTracer.GetResult()
