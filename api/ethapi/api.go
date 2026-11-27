@@ -1886,7 +1886,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 				args.from(), uint64(*args.Nonce), err)
 		}
 		if tracer.Equal(prevTracer) {
-			if len(res.Revert()) > 0 {
+			if reason, unpackErr := abi.UnpackRevert(res.Revert()); unpackErr == nil && reason == freeze.ErrFrozenAccount.Error() {
 				return accessList, res.UsedGas, newRevertError(res), nil
 			}
 			return accessList, res.UsedGas, res.Err, nil

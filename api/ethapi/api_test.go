@@ -2482,8 +2482,12 @@ func TestAccessList_FailingNetworkRules_ReleasesAllStateCopies(t *testing.T) {
 	require.Zero(t, unreleased, "state copies were not released")
 }
 
-func TestAccessList_ReportsTheRevertReason(t *testing.T) {
-	reason := common.FromHex("0x08c379a0" + // Error(string) selector
+func TestAccessList_ReportsOnlyTheRevertReasonOfTheFreeze(t *testing.T) {
+	frozen := common.FromHex("0x08c379a0" + // Error(string) selector
+		"0000000000000000000000000000000000000000000000000000000000000020" +
+		"0000000000000000000000000000000000000000000000000000000000000011" +
+		"6163636f756e742069732066726f7a656e000000000000000000000000000000") // "account is frozen"
+	other := common.FromHex("0x08c379a0" +
 		"0000000000000000000000000000000000000000000000000000000000000020" +
 		"0000000000000000000000000000000000000000000000000000000000000004" +
 		"626f6f6d00000000000000000000000000000000000000000000000000000000") // "boom"
@@ -2491,7 +2495,8 @@ func TestAccessList_ReportsTheRevertReason(t *testing.T) {
 		revertData []byte
 		wantErr    error
 	}{
-		"with revert data":    {revertData: reason, wantErr: &revertError{error: errors.New("execution reverted: boom"), reason: hexutil.Encode(reason)}},
+		"freeze revert":       {revertData: frozen, wantErr: &revertError{error: errors.New("execution reverted: account is frozen"), reason: hexutil.Encode(frozen)}},
+		"other revert":        {revertData: other, wantErr: vm.ErrExecutionReverted},
 		"without revert data": {revertData: nil, wantErr: vm.ErrExecutionReverted},
 	}
 	for name, test := range tests {

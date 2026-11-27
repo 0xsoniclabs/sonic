@@ -348,14 +348,6 @@ func TestAccountFreeze_RPCReportsTheFreezeAsReason(t *testing.T) {
 			})
 		})
 	}
-
-	t.Run("eth_createAccessList reports the reason of other reverts", func(t *testing.T) {
-		overdraw, err := tokenAbi.Pack("transfer", common.Address{0x1}, big.NewInt(2))
-		require.NoError(t, err)
-		var result map[string]any
-		require.NoError(t, client.Client().Call(&result, "eth_createAccessList", map[string]any{"from": sender.Address(), "to": tokenAddress, "data": hexutil.Bytes(overdraw), "gas": hexutil.Uint64(200_000)}, "latest"))
-		require.Equal(t, "execution reverted: arithmetic underflow or overflow", result["error"])
-	})
 }
 
 func TestAccountFreeze_RPCAppliesTheFreezeOnlyWhileEnabled(t *testing.T) {
