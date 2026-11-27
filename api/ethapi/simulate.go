@@ -614,6 +614,13 @@ func (sim *simulator) applyStateOverrides(
 
 // sanitizeCall fills in defaults for a single simulated call.
 func (sim *simulator) sanitizeCall(call *TransactionArgs, state interState.StateDB, header *evmcore.EvmHeader, gasUsed *uint64) error {
+	// Ensure the call has the correct chain ID set.
+	if call.ChainID == nil {
+		call.ChainID = (*hexutil.Big)(new(big.Int).Set(sim.chainConfig.ChainID))
+	} else if have, want := call.ChainID.ToInt(), sim.chainConfig.ChainID; have.Cmp(want) != 0 {
+		return fmt.Errorf("chainId does not match node's (have=%v, want=%v)", have, want)
+	}
+
 	// Default nonce to the sender's current nonce in state.
 	if call.Nonce == nil {
 		nonce := state.GetNonce(call.from())
@@ -651,11 +658,6 @@ func (sim *simulator) sanitizeCall(call *TransactionArgs, state interState.State
 func (sim *simulator) setCallPriceDefaults(call *TransactionArgs, baseFee *big.Int) error {
 	if call.GasPrice != nil && (call.MaxFeePerGas != nil || call.MaxPriorityFeePerGas != nil) {
 		return errors.New("both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified")
-	}
-	if call.ChainID == nil {
-		call.ChainID = (*hexutil.Big)(sim.chainConfig.ChainID)
-	} else if have, want := call.ChainID.ToInt(), sim.chainConfig.ChainID; have.Cmp(want) != 0 {
-		return fmt.Errorf("chainId does not match node's (have=%v, want=%v)", have, want)
 	}
 	if call.Value == nil {
 		call.Value = new(hexutil.Big)
