@@ -94,6 +94,17 @@ func revertCode(to common.Address) []byte {
 	return append(callCode(to), 0x60, 0x00, 0x60, 0x00, 0xfd)
 }
 
+// revertWithCode reverts with data, which must be shorter than 256 bytes.
+func revertWithCode(data []byte) []byte {
+	var code []byte
+	for offset := 0; offset < len(data); offset += 32 {
+		word := make([]byte, 32)
+		copy(word, data[offset:])
+		code = append(append(append(code, 0x7f), word...), 0x60, byte(offset), 0x52) // PUSH32 word PUSH1 offset MSTORE
+	}
+	return append(code, 0x60, byte(len(data)), 0x60, 0x00, 0xfd) // PUSH1 len PUSH1 0 REVERT
+}
+
 // callCode calls `to` with 1 wei with all gas and ignores whether the call
 // succeeded.
 func callCode(to common.Address) []byte {
@@ -228,7 +239,8 @@ func TestApplyMessage_SettlesFrozenMovesAsRevertedTransactions(t *testing.T) {
 			before, balance := balances(), statedb.GetBalance(sender).Uint64()
 
 			result := apply(t, evm, sender, test.to, test.value, true)
-			require.ErrorIs(t, result.Err, vm.ErrExecutionReverted)
+			require.Equal(t, vm.ErrExecutionReverted, result.Err, "ExecutionResult.Revert needs the plain error")
+			require.True(t, IsFrozenRevert(result))
 			revertReason, err := abi.UnpackRevert(result.ReturnData)
 			require.NoError(t, err)
 			require.Equal(t, "account is frozen", revertReason)
@@ -277,11 +289,67 @@ func TestApplyMessage_ReportsTheFreezeRevertToTracers(t *testing.T) {
 			result := apply(t, evm, sender, &payer, 0, true)
 			require.Equal(t, []exit{
 				{depth: 1},
-				{depth: 0, reason: "account is frozen", err: vm.VMErrorFromErr(vm.ErrExecutionReverted), reverted: true},
+				{depth: 0, reason: "account is frozen", err: vm.VMErrorFromErr(errFrozenRevert), reverted: true},
 			}, exits)
+			require.ErrorIs(t, exits[1].err, ErrFrozenAccount)
+			require.ErrorIs(t, exits[1].err, vm.ErrExecutionReverted)
+			require.EqualError(t, exits[1].err, vm.ErrExecutionReverted.Error())
 			reason, err := abi.UnpackRevert(result.ReturnData)
 			require.NoError(t, err)
 			require.Equal(t, "account is frozen", reason)
+		})
+	}
+}
+
+func TestApplyMessage_ReportsAContractRevertingLikeTheFreezeAsAPlainRevert(t *testing.T) {
+	target := common.Address{0x2}
+	evm, statedb := newEVMWithFrozenAccounts(t)
+	statedb.SetCode(target, revertWithCode(frozenRevertData), tracing.CodeChangeUnspecified)
+	var exitErr error
+	evm.Config.Tracer = &tracing.Hooks{OnExit: func(depth int, _ []byte, _ uint64, err error, _ bool) {
+		if depth == 0 {
+			exitErr = err
+		}
+	}}
+
+	result := apply(t, evm, sender, &target, 0, true)
+	require.ErrorIs(t, exitErr, vm.ErrExecutionReverted)
+	require.NotErrorIs(t, exitErr, ErrFrozenAccount)
+	require.True(t, IsFrozenRevert(result), "the revert data of the contract equals that of the freeze")
+}
+
+func TestWithFreezeRevert_KeepsTracersWithoutExitHooks(t *testing.T) {
+	state := Wrap(nil, nil)
+	require.Nil(t, withFreezeRevert(nil, state, sender))
+	hooks := &tracing.Hooks{OnEnter: func(int, byte, common.Address, common.Address, []byte, uint64, *big.Int) {}}
+	require.Same(t, hooks, withFreezeRevert(hooks, state, sender))
+}
+
+func TestErrFrozenRevert_ReadsAsARevertOfTheFreeze(t *testing.T) {
+	require.ErrorIs(t, errFrozenRevert, vm.ErrExecutionReverted)
+	require.ErrorIs(t, errFrozenRevert, ErrFrozenAccount)
+	require.NotErrorIs(t, errFrozenRevert, vm.ErrOutOfGas)
+	require.EqualError(t, errFrozenRevert, vm.ErrExecutionReverted.Error())
+	require.NotErrorIs(t, vm.ErrExecutionReverted, ErrFrozenAccount)
+}
+
+func TestIsFrozenRevert_RecognizesTheResultOfTheFreeze(t *testing.T) {
+	otherReason := slices.Clone(frozenRevertData)
+	otherReason[len(otherReason)-1] ^= 1
+	tests := map[string]struct {
+		result *core.ExecutionResult
+		want   bool
+	}{
+		"no result":      {result: nil},
+		"success":        {result: &core.ExecutionResult{ReturnData: frozenRevertData}},
+		"other error":    {result: &core.ExecutionResult{Err: vm.ErrOutOfGas, ReturnData: frozenRevertData}},
+		"other reason":   {result: &core.ExecutionResult{Err: vm.ErrExecutionReverted, ReturnData: otherReason}},
+		"no revert data": {result: &core.ExecutionResult{Err: vm.ErrExecutionReverted}},
+		"freeze revert":  {result: &core.ExecutionResult{Err: vm.ErrExecutionReverted, ReturnData: slices.Clone(frozenRevertData)}, want: true},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.want, IsFrozenRevert(test.result))
 		})
 	}
 }
