@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -115,18 +116,50 @@ type Backend interface {
 	GetOriginatedFee(ctx context.Context, vid idx.ValidatorID) (*big.Int, error)
 }
 
-// GetVmConfig is a utility function resolving the VM configuration and the
-// upgrades for a block height based on the network rules.
+// GetVmConfig is a utility function resolving the VM configuration for a block
+// height based on the network rules.
 func GetVmConfig(
 	ctx context.Context,
 	backend Backend,
 	blockHeight idx.Block,
-) (vm.Config, opera.Upgrades, error) {
+) (vm.Config, error) {
+	rules, err := getExecutionRules(ctx, backend, blockHeight)
+	return rules.vmConfig, err
+}
+
+// executionRules are the rules block processing runs the messages of a block
+// with. RPC paths running messages use them, so that their results match the
+// receipts of block processing: they run messages with vmConfig, through
+// freeze.ApplyMessage or evmcore.ApplyTransactionWithEVM with freezeChecker.
+// Calls with block overrides, and all blocks of eth_simulateV1, keep the rules
+// of their base block, also if the next block starts a new epoch.
+type executionRules struct {
+	vmConfig      vm.Config
+	accountFreeze bool // the AccountFreeze upgrade is enabled
+}
+
+// getExecutionRules resolves the execution rules for a block height based on
+// the network rules.
+func getExecutionRules(
+	ctx context.Context,
+	backend Backend,
+	blockHeight idx.Block,
+) (executionRules, error) {
 	rules, err := getNetworkRules(ctx, backend, blockHeight)
 	if err != nil {
-		return vm.Config{}, opera.Upgrades{}, err
+		return executionRules{}, err
 	}
-	return opera.GetVmConfig(*rules), rules.Upgrades, nil
+	return executionRules{
+		vmConfig:      opera.GetVmConfig(*rules),
+		accountFreeze: rules.Upgrades.AccountFreeze,
+	}, nil
+}
+
+// freezeChecker returns the checker of the account freeze for messages running
+// on state. It reads the freeze registry from state, so a state override of
+// the registry changes the freeze status in a call.
+func (r executionRules) freezeChecker(state freeze.StateReader) freeze.Checker {
+	return freeze.NewRegistryChecker(r.accountFreeze, state)
 }
 
 // getNetworkRules resolves the network rules for a block height, failing if the

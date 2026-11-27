@@ -17,6 +17,7 @@
 package freeze
 
 import (
+	"bytes"
 	"errors"
 	"slices"
 
@@ -48,12 +49,42 @@ var frozenRevertData = func() []byte {
 	return append(crypto.Keccak256([]byte("Error(string)"))[:4], reason...)
 }()
 
+// errFrozenRevert is the error tracers see when the outermost call of a message
+// moving frozen funds exits. Its text is that of vm.ErrExecutionReverted, so
+// tracers keep go-ethereum's output, and errors.Is matches it with both
+// vm.ErrExecutionReverted and ErrFrozenAccount. Unlike the revert data, a
+// contract reverting with the reason "account is frozen" cannot produce it.
+var errFrozenRevert error = frozenRevertError{}
+
+type frozenRevertError struct{}
+
+func (frozenRevertError) Error() string {
+	return vm.ErrExecutionReverted.Error()
+}
+
+func (frozenRevertError) Is(target error) bool {
+	return target == vm.ErrExecutionReverted || target == ErrFrozenAccount
+}
+
+// IsFrozenRevert reports whether result is the revert ApplyMessage reports for a
+// message moving frozen funds. A message whose contract reverts with the reason
+// "account is frozen" matches too, so a match does not prove that the freeze
+// applied. Tracers get a proof instead: errors.Is matches the error of the
+// outermost exit with ErrFrozenAccount.
+func IsFrozenRevert(result *core.ExecutionResult) bool {
+	return result != nil &&
+		result.Err == vm.ErrExecutionReverted &&
+		bytes.Equal(result.ReturnData, frozenRevertData)
+}
+
 // ApplyMessage runs msg like core.ApplyMessage. If checker is enabled, a frozen
 // sender fails with ErrFrozenAccount, and a message moving frozen funds is fully
 // rolled back, EIP-7702 authorizations included, and reverts, keeping only its
 // nonce use and gas fee. That fee keeps the gas refund and pays no tip, so evm
-// must set SkipTipPaymentToCoinbase. Tracers see its outermost call revert with
-// "account is frozen".
+// must set SkipTipPaymentToCoinbase. The result of such a message has the error
+// vm.ErrExecutionReverted, as ExecutionResult.Revert requires, and the revert
+// data of Error("account is frozen"); IsFrozenRevert recognizes it. Tracers see
+// its outermost call revert, see withFreezeRevert.
 func ApplyMessage(evm *vm.EVM, msg *core.Message, gp *core.GasPool, checker Checker) (*core.ExecutionResult, error) {
 	// before the upgrade, run msg exactly as go-ethereum does
 	if !checker.IsEnabled() {
@@ -71,26 +102,7 @@ func ApplyMessage(evm *vm.EVM, msg *core.Message, gp *core.GasPool, checker Chec
 	defer func() { evm.StateDB, evm.Config.Tracer = db, tracer }()
 	state := Wrap(evm.StateDB, checker)
 	evm.StateDB = state
-	if tracer != nil && (tracer.OnExit != nil || tracer.OnExitV2 != nil) {
-		copied := *tracer
-		evm.Config.Tracer = &copied
-		if tracer.OnExit != nil {
-			copied.OnExit = func(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
-				if depth == 0 && violatesFreeze(state, msg.From) {
-					output, err, reverted = slices.Clone(frozenRevertData), vm.VMErrorFromErr(vm.ErrExecutionReverted), true
-				}
-				tracer.OnExit(depth, output, gasUsed, err, reverted)
-			}
-		}
-		if tracer.OnExitV2 != nil {
-			copied.OnExitV2 = func(depth int, output []byte, gasLeft tracing.Gas, err error, reverted bool) {
-				if depth == 0 && violatesFreeze(state, msg.From) {
-					output, err, reverted = slices.Clone(frozenRevertData), vm.VMErrorFromErr(vm.ErrExecutionReverted), true
-				}
-				tracer.OnExitV2(depth, output, gasLeft, err, reverted)
-			}
-		}
-	}
+	evm.Config.Tracer = withFreezeRevert(tracer, state, msg.From)
 
 	snapshot := state.Snapshot()
 	nonce := state.GetNonce(msg.From)
@@ -118,6 +130,45 @@ func ApplyMessage(evm *vm.EVM, msg *core.Message, gp *core.GasPool, checker Chec
 		Err:        vm.ErrExecutionReverted,
 		ReturnData: slices.Clone(frozenRevertData),
 	}, nil
+}
+
+// withFreezeRevert returns tracer with exit hooks that report the outermost call
+// of sender's message as reverted with Error("account is frozen") and
+// errFrozenRevert if state has recorded a frozen move by then. Inner calls keep
+// their results. It returns tracer itself if tracer has no exit hook.
+//
+// Only the exit hooks change. The other hooks, such as those of balances,
+// nonces, storage and logs, still see the effects that ApplyMessage then rolls
+// back, followed by its writes of the nonce and the fee, so tracers must discard
+// the effects of a call that exits reverted, as they do for any revert.
+//
+// The outermost call exits before the gas refund. If the refund goes to a
+// sender that msg itself froze, the refund is a frozen move that reverts msg,
+// while its tracer saw the outermost call succeed.
+func withFreezeRevert(tracer *tracing.Hooks, state *StateDB, sender common.Address) *tracing.Hooks {
+	if tracer == nil || (tracer.OnExit == nil && tracer.OnExitV2 == nil) {
+		return tracer
+	}
+	exit := func(depth int, output []byte, reverted bool, err error) ([]byte, bool, error) {
+		if depth == 0 && violatesFreeze(state, sender) {
+			return slices.Clone(frozenRevertData), true, vm.VMErrorFromErr(errFrozenRevert)
+		}
+		return output, reverted, err
+	}
+	hooks := *tracer
+	if tracer.OnExit != nil {
+		hooks.OnExit = func(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
+			output, reverted, err = exit(depth, output, reverted, err)
+			tracer.OnExit(depth, output, gasUsed, err, reverted)
+		}
+	}
+	if tracer.OnExitV2 != nil {
+		hooks.OnExitV2 = func(depth int, output []byte, gasLeft tracing.Gas, err error, reverted bool) {
+			output, reverted, err = exit(depth, output, reverted, err)
+			tracer.OnExitV2(depth, output, gasLeft, err, reverted)
+		}
+	}
+	return &hooks
 }
 
 // violatesFreeze reports whether sender's transaction moved frozen funds,

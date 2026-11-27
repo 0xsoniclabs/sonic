@@ -23,6 +23,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -161,7 +162,7 @@ func TestActionTrace_ProcessOutput_ReportsParityErrorNames(t *testing.T) {
 	}
 }
 
-func TestActionTrace_ProcessOutput_ReportsTheFreezeRevertReasonAsError(t *testing.T) {
+func TestActionTrace_ProcessOutput_ReportsTheFreezeRevertAsError(t *testing.T) {
 	revertWith := func(reason string) []byte {
 		stringType, err := abi.NewType("string", "", nil)
 		require.NoError(t, err)
@@ -169,20 +170,25 @@ func TestActionTrace_ProcessOutput_ReportsTheFreezeRevertReasonAsError(t *testin
 		require.NoError(t, err)
 		return append(crypto.Keccak256([]byte("Error(string)"))[:4], data...)
 	}
+	// freeze.ApplyMessage gives the outermost call of a message it reverts an
+	// error matching both vm.ErrExecutionReverted and freeze.ErrFrozenAccount
+	freezeRevert := vm.VMErrorFromErr(fmt.Errorf("%w: %w", vm.ErrExecutionReverted, freeze.ErrFrozenAccount))
 	tests := map[string]struct {
 		output []byte
+		err    error
 		want   string
 	}{
-		"no revert data":    {output: nil, want: "Reverted"},
-		"other reason":      {output: revertWith("other reason"), want: "Reverted"},
-		"account is frozen": {output: revertWith("account is frozen"), want: "account is frozen"},
+		"no revert data":                 {err: vm.ErrExecutionReverted, want: "Reverted"},
+		"other reason":                   {output: revertWith("other reason"), err: vm.ErrExecutionReverted, want: "Reverted"},
+		"contract reverting like freeze": {output: revertWith("account is frozen"), err: vm.ErrExecutionReverted, want: "Reverted"},
+		"freeze revert":                  {output: revertWith("account is frozen"), err: freezeRevert, want: "account is frozen"},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			trace := CreateActionTrace(common.Hash{}, *big.NewInt(1), common.Hash{}, 0, CALL)
 			trace.Result = &TraceActionResult{}
 
-			trace.processOutput(test.output, vm.ErrExecutionReverted, false)
+			trace.processOutput(test.output, test.err, false)
 
 			require.Equal(t, test.want, trace.Error)
 		})

@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/freeze"
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -27,19 +29,18 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestGetVmConfig_RetrievesVmConfigAndUpgradesFromRules(t *testing.T) {
+func TestGetVmConfig_RetrievesVmConfigFromRules(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	backend := NewMockBackend(ctrl)
 
 	ctx := t.Context()
 	height := idx.Block(12)
 
-	rules := opera.Rules{Upgrades: opera.Upgrades{AccountFreeze: true}}
+	rules := opera.Rules{}
 	backend.EXPECT().GetNetworkRules(ctx, height).Return(&rules, nil).AnyTimes()
 
-	config, upgrades, err := GetVmConfig(ctx, backend, 12)
+	config, err := GetVmConfig(ctx, backend, 12)
 	require.NoError(t, err)
-	require.Equal(t, rules.Upgrades, upgrades)
 
 	// The config contains functions that can not be compared with require.Equal,
 	// so we compare a debug print of the config instead.
@@ -56,7 +57,7 @@ func TestGetVmConfig_ForwardsErrorFromRuleRetrieval(t *testing.T) {
 	expectedErr := fmt.Errorf("injected error")
 	backend.EXPECT().GetNetworkRules(any, any).Return(nil, expectedErr).AnyTimes()
 
-	config, _, err := GetVmConfig(t.Context(), backend, 12)
+	config, err := GetVmConfig(t.Context(), backend, 12)
 	require.ErrorIs(t, err, expectedErr)
 	require.Equal(t, vm.Config{}, config)
 }
@@ -68,7 +69,37 @@ func TestGetVmConfig_ProducesAnErrorIfRulesAreNotAvailable(t *testing.T) {
 	any := gomock.Any()
 	backend.EXPECT().GetNetworkRules(any, any).Return(nil, nil).AnyTimes()
 
-	config, _, err := GetVmConfig(t.Context(), backend, 12)
+	config, err := GetVmConfig(t.Context(), backend, 12)
 	require.ErrorContains(t, err, "no network rules found for block height 12")
 	require.Equal(t, vm.Config{}, config)
+}
+
+func TestGetExecutionRules_RetrievesVmConfigAndAccountFreezeFromRules(t *testing.T) {
+	for _, accountFreeze := range []bool{false, true} {
+		t.Run(fmt.Sprint("accountFreeze=", accountFreeze), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			backend := NewMockBackend(ctrl)
+			rules := opera.Rules{Upgrades: opera.Upgrades{AccountFreeze: accountFreeze}}
+			backend.EXPECT().GetNetworkRules(t.Context(), idx.Block(12)).Return(&rules, nil)
+
+			got, err := getExecutionRules(t.Context(), backend, 12)
+			require.NoError(t, err)
+			require.Equal(t, accountFreeze, got.accountFreeze)
+			require.Equal(t, fmt.Sprintf("%+v", opera.GetVmConfig(rules)), fmt.Sprintf("%+v", got.vmConfig))
+
+			stateDb := state.NewMockStateDB(ctrl)
+			require.Equal(t, freeze.NewRegistryChecker(accountFreeze, stateDb), got.freezeChecker(stateDb))
+		})
+	}
+}
+
+func TestGetExecutionRules_ForwardsErrorFromRuleRetrieval(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+	expectedErr := fmt.Errorf("injected error")
+	backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).Return(nil, expectedErr)
+
+	got, err := getExecutionRules(t.Context(), backend, 12)
+	require.ErrorIs(t, err, expectedErr)
+	require.Equal(t, fmt.Sprintf("%+v", executionRules{}), fmt.Sprintf("%+v", got))
 }

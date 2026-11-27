@@ -1248,11 +1248,11 @@ func DoCall(
 	if err != nil {
 		return nil, err
 	}
-	vmConfig, upgrades, err := GetVmConfig(ctx, b, idx.Block(block.Number.Uint64()))
+	rules, err := getExecutionRules(ctx, b, idx.Block(block.Number.Uint64()))
 	if err != nil {
 		return nil, err
 	}
-	freezeChecker := freeze.NewRegistryChecker(upgrades.AccountFreeze, state)
+	vmConfig, freezeChecker := rules.vmConfig, rules.freezeChecker(state)
 
 	evm, vmError, err := b.GetEVM(ctx, state, block.Header(), &vmConfig, blockCtx)
 	if err != nil {
@@ -1272,7 +1272,8 @@ func DoCall(
 	// Add sufficient gas to the pool.
 	gp := core.NewGasPool(math.MaxUint64)
 
-	// Apply previous transactions if required.
+	// Apply previous transactions if required. One failing, such as one of a
+	// frozen sender, is skipped.
 	for i, arg := range preArgs {
 		preMsg, err := arg.ToMessage(globalGasCap, baseFee, log.Root())
 		if err != nil {
@@ -1366,7 +1367,11 @@ func DoEstimateGas(
 		hi  uint64
 		cap uint64
 	)
-	// Use zero address if sender unspecified.
+	// Use zero address if sender unspecified. Like an internal transaction, a
+	// message of the zero address is neither rejected nor reverted by the
+	// account freeze, so the estimate may succeed where a signed transaction
+	// would revert for moving frozen funds. Contracts querying the freeze
+	// registry still see frozen accounts.
 	if args.From == nil {
 		args.From = new(common.Address)
 	}
@@ -1832,10 +1837,11 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 	if args.AccessList != nil {
 		prevTracer = logger.NewAccessListTracer(*args.AccessList, addressesToExclude)
 	}
-	vmConfig, upgrades, err := GetVmConfig(ctx, b, idx.Block(block.Number.Uint64()))
+	rules, err := getExecutionRules(ctx, b, idx.Block(block.Number.Uint64()))
 	if err != nil {
 		return nil, 0, nil, err
 	}
+	vmConfig := rules.vmConfig
 	vmConfig.NoBaseFee = true
 	for {
 		// Retrieve the current access list to expand
@@ -1874,7 +1880,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 			return nil, 0, nil, err
 		}
 		stopCancel := context.AfterFunc(ctx, vmenv.Cancel)
-		res, err := freeze.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit), freeze.NewRegistryChecker(upgrades.AccountFreeze, statedb))
+		res, err := freeze.ApplyMessage(vmenv, msg, core.NewGasPool(msg.GasLimit), rules.freezeChecker(statedb))
 		stopCancel()
 		vmenv.Release()
 		statedb.Release()
@@ -1886,7 +1892,9 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 				args.from(), uint64(*args.Nonce), err)
 		}
 		if tracer.Equal(prevTracer) {
-			if reason, unpackErr := abi.UnpackRevert(res.Revert()); unpackErr == nil && reason == freeze.ErrFrozenAccount.Error() {
+			// the freeze's revert carries its reason, as in eth_call; other
+			// reverts keep "execution reverted"
+			if freeze.IsFrozenRevert(res) {
 				return accessList, res.UsedGas, newRevertError(res), nil
 			}
 			return accessList, res.UsedGas, res.Err, nil
@@ -2748,10 +2756,11 @@ func (api *PublicDebugAPI) traceTx(
 		}
 	}
 
-	evmconfig, upgrades, err := GetVmConfig(ctx, api.b, idx.Block(blockHeader.Number.Uint64()))
+	rules, err := getExecutionRules(ctx, api.b, idx.Block(blockHeader.Number.Uint64()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get vm config: %w", err)
 	}
+	evmconfig := rules.vmConfig
 	evmconfig.Tracer = tracer.Hooks
 	evmconfig.NoBaseFee = true
 
@@ -2794,7 +2803,7 @@ func (api *PublicDebugAPI) traceTx(
 		tx,
 		&usedGas,
 		vmenv,
-		freeze.NewRegistryChecker(upgrades.AccountFreeze, statedb),
+		rules.freezeChecker(statedb),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("tracing failed: %w", err)
@@ -2847,22 +2856,25 @@ func (api *PublicDebugAPI) TraceBlockByHash(ctx context.Context, hash common.Has
 
 // applyPreBlockSystemCalls executes the system calls which have to be applied on
 // top of the parent state before any transaction of the given block can be executed.
-func applyPreBlockSystemCalls(ctx context.Context, b Backend, block *evmcore.EvmBlock, statedb state.StateDB) (*vm.EVM, opera.Upgrades, error) {
-	cfg, upgrades, err := GetVmConfig(ctx, b, idx.Block(block.NumberU64()))
+// It returns the EVM that ran them and the execution rules of the block, to
+// run the block's transactions with.
+func applyPreBlockSystemCalls(ctx context.Context, b Backend, block *evmcore.EvmBlock, statedb state.StateDB) (*vm.EVM, executionRules, error) {
+	rules, err := getExecutionRules(ctx, b, idx.Block(block.NumberU64()))
 	if err != nil {
-		return nil, opera.Upgrades{}, fmt.Errorf("failed to get vm config: %w", err)
+		return nil, executionRules{}, fmt.Errorf("failed to get vm config: %w", err)
 	}
+	cfg := rules.vmConfig
 	cfg.NoBaseFee = true
 	vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &cfg, nil)
 	if err != nil {
-		return nil, opera.Upgrades{}, err
+		return nil, executionRules{}, err
 	}
 
 	// execute EIP-2935 HistoryStorage contract.
 	if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
 		evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
 	}
-	return vmenv, upgrades, nil
+	return vmenv, rules, nil
 }
 
 // traceBlock configures a new tracer according to the provided configuration, and
@@ -2941,12 +2953,12 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 		}
 	}()
 
-	vmenv, upgrades, err := applyPreBlockSystemCalls(ctx, b, block, statedb)
+	vmenv, rules, err := applyPreBlockSystemCalls(ctx, b, block, statedb)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer vmenv.Release()
-	freezeChecker := freeze.NewRegistryChecker(upgrades.AccountFreeze, statedb)
+	freezeChecker := rules.freezeChecker(statedb)
 
 	if txIndex == 0 && len(block.Transactions) == 0 {
 		return nil, statedb, nil

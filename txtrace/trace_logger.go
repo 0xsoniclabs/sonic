@@ -298,7 +298,11 @@ func (tr *TraceStructLogger) OnTxEnd(receipt *types.Receipt, err error) {
 	}
 }
 
-// Handle output data and error
+// processOutput records the output and the error of the action. Errors get
+// their Parity names, such as "Reverted", except that the error of a message
+// reverted by the account freeze, which freeze.ApplyMessage gives its outermost
+// call, is "account is frozen". A contract reverting with the reason "account
+// is frozen" keeps "Reverted".
 func (trace *ActionTrace) processOutput(output []byte, err error, rootTrace bool) {
 	output = common.CopyBytes(output)
 	if err == nil {
@@ -322,11 +326,9 @@ func (trace *ActionTrace) processOutput(output []byte, err error, rootTrace bool
 	if trace.TraceType == CREATE {
 		trace.Action.To = nil
 	}
-	if errors.Is(err, vm.ErrExecutionReverted) {
-		if reason, unpackErr := abi.UnpackRevert(output); unpackErr == nil && reason == freeze.ErrFrozenAccount.Error() {
-			trace.Error = reason
-			return
-		}
+	if errors.Is(err, freeze.ErrFrozenAccount) {
+		trace.Error = freeze.ErrFrozenAccount.Error()
+		return
 	}
 	if traceError, ok := toParityError(err.Error()); ok {
 		trace.Error = traceError
@@ -496,8 +498,7 @@ var traceErrorMapping = map[string]string{
 // fixed prefix, such as wrapped out-of-gas errors ("out of gas: write
 // protection") or errors with operands ("stack underflow (0 <=> 2)"). It
 // mirrors parityErrorMappingStartingWith of geth's flatCallTracer, so that
-// both tracers report the same Parity error names, except that reverts with
-// Error("account is frozen") report "account is frozen" instead of "Reverted".
+// both tracers report the same Parity error names.
 var traceErrorPrefixMapping = []struct {
 	prefix      string
 	parityError string

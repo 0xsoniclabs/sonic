@@ -1403,7 +1403,7 @@ func TestApplyPreBlockSystemCalls(t *testing.T) {
 			}
 
 			block := newTracingTestBlock()
-			vmenv, upgrades, err := applyPreBlockSystemCalls(t.Context(), backend, block, state.NewMockStateDB(ctrl))
+			vmenv, blockRules, err := applyPreBlockSystemCalls(t.Context(), backend, block, state.NewMockStateDB(ctrl))
 			if test.wantErr != "" {
 				require.ErrorContains(t, err, test.wantErr)
 				require.Nil(t, vmenv)
@@ -1411,7 +1411,7 @@ func TestApplyPreBlockSystemCalls(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.NotNil(t, vmenv)
-			require.Equal(t, rules.Upgrades, upgrades)
+			require.Equal(t, rules.Upgrades.AccountFreeze, blockRules.accountFreeze)
 		})
 	}
 }

@@ -181,7 +181,7 @@ func applyNextBlockSystemCalls(
 	if !isNextBlock(blockCtx, base) {
 		return nil
 	}
-	vmConfig, _, err := GetVmConfig(ctx, backend, idx.Block(base.Number.Uint64()))
+	vmConfig, err := GetVmConfig(ctx, backend, idx.Block(base.Number.Uint64()))
 	if err != nil {
 		return fmt.Errorf("failed to get vm config: %w", err)
 	}
