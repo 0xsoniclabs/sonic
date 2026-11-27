@@ -11,6 +11,11 @@ contract Payer {
         require(ok, "payment failed");
     }
 
+    // payIgnoringResult pays to without checking whether the payment succeeded.
+    function payIgnoringResult(address payable to, uint256 amount) external {
+        to.call{value: amount}("");
+    }
+
     // forward calls to with data and reverts if the call fails.
     function forward(address to, bytes calldata data) external {
         (bool ok, ) = to.call(data);
