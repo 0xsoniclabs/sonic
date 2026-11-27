@@ -912,16 +912,46 @@ func TestSetCallPriceDefaults_SetsLegacyGasPriceWhenNoBaseFee(t *testing.T) {
 	require.Nil(t, call.MaxPriorityFeePerGas)
 }
 
-func TestSetCallPriceDefaults_SetsChainIDWhenMissing(t *testing.T) {
-	chainConfig := newSimTestChainConfig()
-	sim := &simulator{chainConfig: chainConfig}
+func TestSanitizeCall_SetsChainIDWhenMissing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+	mockState.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
+
+	sim := newSimulator()
+	gasUsed := uint64(0)
+	header := &evmcore.EvmHeader{Number: big.NewInt(10), GasLimit: 10_000}
 	call := TransactionArgs{}
 
-	err := sim.setCallPriceDefaults(&call, nil)
+	err := sim.sanitizeCall(&call, mockState, header, &gasUsed)
 
 	require.NoError(t, err)
 	require.NotNil(t, call.ChainID)
-	require.Equal(t, chainConfig.ChainID, call.ChainID.ToInt())
+	require.Equal(t, sim.chainConfig.ChainID, call.ChainID.ToInt())
+	require.NotSame(t, sim.chainConfig.ChainID, call.ChainID.ToInt(), "call must not share the chain config's chain ID")
+}
+
+func TestSanitizeCall_AcceptsTheNodeChainID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+	mockState.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
+
+	sim := newSimulator()
+	gasUsed := uint64(0)
+	header := &evmcore.EvmHeader{Number: big.NewInt(10), GasLimit: 10_000}
+	call := TransactionArgs{ChainID: (*hexutil.Big)(new(big.Int).Set(sim.chainConfig.ChainID))}
+
+	require.NoError(t, sim.sanitizeCall(&call, mockState, header, &gasUsed))
+}
+
+func TestSanitizeCall_RejectsAnotherChainID(t *testing.T) {
+	sim := newSimulator()
+	gasUsed := uint64(0)
+	header := &evmcore.EvmHeader{Number: big.NewInt(10), GasLimit: 10_000}
+	call := TransactionArgs{ChainID: (*hexutil.Big)(big.NewInt(1235))}
+
+	err := sim.sanitizeCall(&call, nil, header, &gasUsed)
+
+	require.ErrorContains(t, err, "chainId does not match node's (have=1235, want=1234)")
 }
 
 func TestSetCallPriceDefaults_SetsZeroValueWhenMissing(t *testing.T) {
