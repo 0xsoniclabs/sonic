@@ -1272,7 +1272,8 @@ func DoCall(
 	// Add sufficient gas to the pool.
 	gp := core.NewGasPool(math.MaxUint64)
 
-	// Apply previous transactions if required.
+	// Apply previous transactions if required. One failing, such as one of a
+	// frozen sender, is skipped.
 	for i, arg := range preArgs {
 		preMsg, err := arg.ToMessage(globalGasCap, baseFee, log.Root())
 		if err != nil {
@@ -1366,7 +1367,11 @@ func DoEstimateGas(
 		hi  uint64
 		cap uint64
 	)
-	// Use zero address if sender unspecified.
+	// Use zero address if sender unspecified. Like an internal transaction, a
+	// message of the zero address is neither rejected nor reverted by the
+	// account freeze, so the estimate may succeed where a signed transaction
+	// would revert for moving frozen funds. Contracts querying the freeze
+	// registry still see frozen accounts.
 	if args.From == nil {
 		args.From = new(common.Address)
 	}

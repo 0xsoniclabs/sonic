@@ -401,7 +401,6 @@ func TestAccountFreeze_RPCReportsTheFreezeAsReason(t *testing.T) {
 			})
 		})
 	}
-
 }
 
 func TestAccountFreeze_RPCAppliesTheFreezeOfTheQueriedBlock(t *testing.T) {
